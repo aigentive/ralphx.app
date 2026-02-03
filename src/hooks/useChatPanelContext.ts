@@ -23,6 +23,7 @@ interface UseChatPanelContextProps {
   isExecutionMode: boolean;
   isReviewMode: boolean;
   isMergeMode: boolean;
+  isHistoryMode: boolean;
   /** Override conversation ID for history mode - forces selection of specific conversation */
   overrideConversationId?: string | undefined;
   /** Override agent run ID for history mode - used for scroll positioning */
@@ -47,6 +48,7 @@ export function useChatPanelContext({
   isExecutionMode,
   isReviewMode,
   isMergeMode,
+  isHistoryMode,
   overrideConversationId,
   overrideAgentRunId,
 }: UseChatPanelContextProps) {
@@ -191,6 +193,7 @@ export function useChatPanelContext({
     reviewLoading: boolean,
     mergeLoading: boolean,
   ) => {
+    const isAgentContext = isMergeMode || isExecutionMode || isReviewMode;
     const isLoading = isMergeMode
       ? mergeLoading
       : isExecutionMode
@@ -204,12 +207,30 @@ export function useChatPanelContext({
       return;
     }
 
+    if (isHistoryMode) {
+      return;
+    }
+
     // CRITICAL: Check for stale activeConversationId FIRST, before checking hasAutoSelectedRef.
     if (activeConversationId && conversations.data && conversations.data.length > 0) {
       const belongsToContext = conversations.data.some(c => c.id === activeConversationId);
       if (!belongsToContext) {
         hasAutoSelectedRef.current = false;
         setActiveConversation(null);
+        return;
+      }
+    }
+
+    if (isAgentContext && conversations.data && conversations.data.length > 0) {
+      const sorted = [...conversations.data].sort((a, b) => {
+        const aTime = a.lastMessageAt || a.createdAt;
+        const bTime = b.lastMessageAt || b.createdAt;
+        return new Date(bTime).getTime() - new Date(aTime).getTime();
+      });
+      const mostRecent = sorted[0];
+      if (mostRecent && mostRecent.id !== activeConversationId) {
+        hasAutoSelectedRef.current = true;
+        setActiveConversation(mostRecent.id);
         return;
       }
     }
@@ -238,7 +259,7 @@ export function useChatPanelContext({
         setActiveConversation(mostRecent.id);
       }
     }
-  }, [activeConversationId, isMergeMode, isExecutionMode, isReviewMode, ideationSessionId, selectedTaskId, contextKey, setActiveConversation]);
+  }, [activeConversationId, isMergeMode, isExecutionMode, isReviewMode, isHistoryMode, ideationSessionId, selectedTaskId, contextKey, setActiveConversation]);
 
   return {
     chatContext,

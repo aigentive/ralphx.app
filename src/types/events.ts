@@ -57,6 +57,31 @@ export const TaskStatusChangedEventSchema = z.object({
 export type TaskStatusChangedEvent = z.infer<typeof TaskStatusChangedEventSchema>;
 
 // ============================================================================
+// Recovery Prompt Events
+// ============================================================================
+
+/**
+ * Schema for recovery prompt events
+ * Emitted when backend needs user input to resolve ambiguous state
+ */
+export const RecoveryPromptEventSchema = z.object({
+  taskId: z.string().uuid(),
+  status: InternalStatusSchema,
+  contextType: z.enum(["execution", "review", "merge", "qa_refining", "qa_testing"]),
+  reason: z.string(),
+  primaryAction: z.object({
+    id: z.enum(["restart", "cancel"]),
+    label: z.string(),
+  }),
+  secondaryAction: z.object({
+    id: z.enum(["restart", "cancel"]),
+    label: z.string(),
+  }),
+});
+
+export type RecoveryPromptEvent = z.infer<typeof RecoveryPromptEventSchema>;
+
+// ============================================================================
 // Supervisor Alert Events
 // ============================================================================
 

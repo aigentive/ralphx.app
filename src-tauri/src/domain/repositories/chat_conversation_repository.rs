@@ -39,6 +39,9 @@ pub trait ChatConversationRepository: Send + Sync {
         claude_session_id: &str,
     ) -> AppResult<()>;
 
+    /// Clear the Claude session ID for a conversation
+    async fn clear_claude_session_id(&self, id: &ChatConversationId) -> AppResult<()>;
+
     /// Update conversation title
     async fn update_title(&self, id: &ChatConversationId, title: &str) -> AppResult<()>;
 

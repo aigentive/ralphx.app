@@ -17,6 +17,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { RecoveryPromptDialog } from "@/components/recovery/RecoveryPromptDialog";
 import { useReviewsByTaskId } from "@/hooks/useReviews";
 import { StateHistoryTimeline } from "./StateHistoryTimeline";
 import { TaskContextPanel } from "./TaskContextPanel";
@@ -354,6 +355,7 @@ export function TaskDetailPanel({
       data-task-id={task.id}
       className="space-y-6"
     >
+      <RecoveryPromptDialog surface="task_detail" taskId={task.id} />
       {/* Header with priority, title, category, status - optional */}
       {showHeader && (
         <div className="space-y-2">

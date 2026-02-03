@@ -299,7 +299,7 @@ export function StateTimelineNav({
 }: StateTimelineNavProps) {
   const { data: transitions, isLoading, error } = useTaskStateTransitions(taskId);
 
-  // Derive unique timeline entries from transitions
+  // Derive unique timeline entries from transitions (latest cycle per status)
   const timelineEntries = useMemo((): TimelineEntry[] => {
     // Transient states to skip in the timeline
     // - ready: brief transition between draft and executing
@@ -324,7 +324,8 @@ export function StateTimelineNav({
     const entries: TimelineEntry[] = [];
     const seenStatuses = new Set<InternalStatus>();
 
-    for (const transition of transitions) {
+    // Walk from newest to oldest so we keep the latest occurrence of each status.
+    for (const transition of [...transitions].reverse()) {
       // Skip transient states - they're brief transitions not worth showing
       if (transientStatuses.includes(transition.toStatus)) {
         continue;
@@ -342,6 +343,8 @@ export function StateTimelineNav({
         agentRunId: transition.agentRunId,
       });
     }
+
+    entries.reverse();
 
     const lastEntry = entries[entries.length - 1];
     if (lastEntry && lastEntry.status !== currentStatus) {

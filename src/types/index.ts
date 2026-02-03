@@ -53,6 +53,7 @@ export type { TaskStepStatus, TaskStep, StepProgressSummary } from "./task-step"
 // Event types and schemas
 export {
   AgentMessageEventSchema,
+  RecoveryPromptEventSchema,
   TaskStatusEventSchema,
   SupervisorAlertEventSchema,
   ReviewEventSchema,
@@ -62,6 +63,7 @@ export {
 } from "./events";
 export type {
   AgentMessageEvent,
+  RecoveryPromptEvent,
   TaskStatusEvent,
   SupervisorAlertEvent,
   ReviewEvent,

@@ -52,10 +52,13 @@ pub async fn resolve_working_directory(
                 .await
             {
                 if let Ok(Some(project)) = project_repo.get_by_id(&task.project_id).await {
-                    // For Worktree mode, use task's worktree_path if available
+                    // For Worktree mode, use task's worktree_path if available and exists
                     if project.git_mode == GitMode::Worktree {
                         if let Some(worktree_path) = &task.worktree_path {
-                            return PathBuf::from(worktree_path);
+                            let path = PathBuf::from(worktree_path);
+                            if path.exists() {
+                                return path;
+                            }
                         }
                     }
                     // Local mode or no worktree_path: use project's working directory
@@ -170,7 +173,9 @@ pub fn build_command(
     // But review-chat needs session persistence for user conversation continuity.
     let is_fresh_review_cycle = conversation.context_type == ChatContextType::Review
         && agent_name == "ralphx-reviewer";
-    let should_resume = conversation.claude_session_id.is_some() && !is_fresh_review_cycle;
+    let should_resume = conversation.claude_session_id.is_some()
+        && !is_fresh_review_cycle
+        && conversation.context_type != ChatContextType::TaskExecution;
 
     let (prompt, resume_session, agent) = if should_resume {
         let session_id = conversation.claude_session_id.as_ref().unwrap();

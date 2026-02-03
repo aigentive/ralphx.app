@@ -46,6 +46,10 @@ pub enum StreamMessage {
         #[serde(default)]
         is_error: bool,
         #[serde(default)]
+        errors: Vec<String>,
+        #[serde(default)]
+        subtype: Option<String>,
+        #[serde(default)]
         cost_usd: f64,
     },
     /// System event (e.g., init messages)
@@ -201,6 +205,12 @@ pub struct StreamProcessor {
     pub content_blocks: Vec<ContentBlockItem>,
     /// Claude session ID for --resume
     pub session_id: Option<String>,
+    /// Indicates the result message reported an error
+    pub result_is_error: bool,
+    /// Errors from the result message (if any)
+    pub result_errors: Vec<String>,
+    /// Optional error subtype from the result message
+    pub result_subtype: Option<String>,
 
     // Internal state for partial tool calls
     current_tool_name: String,
@@ -222,7 +232,18 @@ impl StreamProcessor {
 
     /// Parse a stream-json line
     pub fn parse_line(line: &str) -> Option<StreamMessage> {
-        serde_json::from_str(line).ok()
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed == "[DONE]" {
+            return None;
+        }
+
+        let candidate = if let Some(rest) = trimmed.strip_prefix("data:") {
+            rest.trim()
+        } else {
+            trimmed
+        };
+
+        serde_json::from_str(candidate).ok()
     }
 
     /// Process a stream message and return events
@@ -312,10 +333,25 @@ impl StreamProcessor {
                     self.current_thinking_block.clear();
                 }
             }
-            StreamMessage::Result { session_id, .. } => {
+            StreamMessage::Result {
+                session_id,
+                is_error,
+                errors,
+                subtype,
+                ..
+            } => {
                 if let Some(ref id) = session_id {
                     self.session_id = session_id.clone();
                     events.push(StreamEvent::SessionId(id.clone()));
+                }
+                if is_error {
+                    self.result_is_error = true;
+                    if !errors.is_empty() {
+                        self.result_errors = errors;
+                    }
+                    if subtype.is_some() {
+                        self.result_subtype = subtype;
+                    }
                 }
             }
             StreamMessage::Assistant { message, session_id } => {
@@ -424,6 +460,9 @@ impl StreamProcessor {
             tool_calls: self.tool_calls,
             content_blocks: self.content_blocks,
             session_id: self.session_id,
+            is_error: self.result_is_error,
+            errors: self.result_errors,
+            error_subtype: self.result_subtype,
         }
     }
 }
@@ -436,6 +475,9 @@ pub struct StreamResult {
     /// Content blocks in order (text and tool calls interleaved)
     pub content_blocks: Vec<ContentBlockItem>,
     pub session_id: Option<String>,
+    pub is_error: bool,
+    pub errors: Vec<String>,
+    pub error_subtype: Option<String>,
 }
 
 // ============================================================================
@@ -461,6 +503,15 @@ mod tests {
         };
         assert_eq!(delta.delta_type, "text_delta");
         assert_eq!(delta.text, Some("Hello".to_string()));
+    }
+
+    #[test]
+    fn test_parse_line_with_data_prefix() {
+        let line = r#"data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hi"}}"#;
+        let msg = StreamProcessor::parse_line(line);
+
+        let msg = msg.expect("Expected Some(StreamMessage)");
+        assert!(matches!(msg, StreamMessage::ContentBlockDelta { .. }));
     }
 
     #[test]
@@ -638,6 +689,8 @@ mod tests {
             result: Some("Done".to_string()),
             session_id: Some("result-session".to_string()),
             is_error: false,
+            errors: Vec::new(),
+            subtype: None,
             cost_usd: 0.01,
         };
 

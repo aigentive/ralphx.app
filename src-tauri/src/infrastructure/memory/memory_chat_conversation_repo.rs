@@ -81,6 +81,15 @@ impl ChatConversationRepository for MemoryChatConversationRepository {
         Ok(())
     }
 
+    async fn clear_claude_session_id(&self, id: &ChatConversationId) -> AppResult<()> {
+        let mut convos = self.conversations.write().await;
+        if let Some(conversation) = convos.get_mut(id) {
+            conversation.claude_session_id = None;
+            conversation.updated_at = Utc::now();
+        }
+        Ok(())
+    }
+
     async fn update_title(&self, id: &ChatConversationId, title: &str) -> AppResult<()> {
         let mut convos = self.conversations.write().await;
         if let Some(conv) = convos.get_mut(id) {

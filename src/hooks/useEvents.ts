@@ -39,7 +39,8 @@ export function useAgentEvents(taskId?: string) {
         taskId,
       });
     }
-    return bus.subscribe<AgentMessageEvent>("agent:message", (payload) => {
+    const unsubscribes = [
+      bus.subscribe<AgentMessageEvent>("agent:message", (payload) => {
       if (import.meta.env.DEV) {
         console.log(
           "[useAgentEvents] Received event:",
@@ -50,7 +51,30 @@ export function useAgentEvents(taskId?: string) {
       if (!taskId || payload.taskId === taskId) {
         addMessage(payload);
       }
-    });
+      }),
+      bus.subscribe<{
+        context_type: string;
+        context_id: string;
+        content: string;
+      }>("agent:message_created", (payload) => {
+        if (payload.context_type !== "task_execution") {
+          return;
+        }
+        const message: AgentMessageEvent = {
+          taskId: payload.context_id,
+          type: "text",
+          content: payload.content ?? "",
+          timestamp: Date.now(),
+        };
+        if (!taskId || message.taskId === taskId) {
+          addMessage(message);
+        }
+      }),
+    ];
+
+    return () => {
+      unsubscribes.forEach((unsub) => unsub());
+    };
   }, [bus, taskId, addMessage]);
 }
 
@@ -106,3 +130,4 @@ export { useReviewEvents } from "./useEvents.review";
 export { useProposalEvents } from "./useEvents.proposal";
 export { useExecutionErrorEvents } from "./useEvents.execution";
 export { useStepEvents } from "./useStepEvents";
+export { useRecoveryPromptEvents } from "./useEvents.recovery";

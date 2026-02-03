@@ -87,9 +87,19 @@ pub fn spawn_send_message_background<R: Runtime>(
     app_handle: Option<AppHandle<R>>,
 ) {
     tokio::spawn(async move {
+        eprintln!(
+            "[STREAM_DEBUG] send_background start (context_type={}, context_id={}, conversation_id={})",
+            context_type.to_string(),
+            context_id,
+            conversation_id.as_str()
+        );
         // Create key for unregistering
         let registry_key = RunningAgentKey::new(context_type.to_string(), &context_id);
 
+        eprintln!(
+            "[STREAM_DEBUG] send_background calling process_stream_background (conversation_id={})",
+            conversation_id.as_str()
+        );
         let result = process_stream_background(
             child,
             context_type,
@@ -546,6 +556,17 @@ pub fn spawn_send_message_background<R: Runtime>(
                     .fail(&AgentRunId::from_string(&agent_run_id), &e)
                     .await;
 
+                // If Claude reports an invalid session, clear it to avoid repeat failures
+                if e.contains("No conversation found with session ID") {
+                    let _ = conversation_repo
+                        .clear_claude_session_id(&conversation_id)
+                        .await;
+                    tracing::warn!(
+                        "[CHAT_SERVICE] Cleared stale claude_session_id for conversation {}",
+                        conversation_id.as_str()
+                    );
+                }
+
                 // Emit error event
                 if let Some(ref handle) = app_handle {
                     let _ = handle.emit(
@@ -662,36 +683,34 @@ async fn attempt_merge_auto_complete<R: Runtime>(
         return;
     }
 
-    // 2. Get worktree path to check git state
-    let worktree_path = match &task.worktree_path {
-        Some(path) => PathBuf::from(path),
-        None => {
-            // No worktree - this shouldn't happen for merge tasks, but handle gracefully
+    // 2. Get project for resolving working path
+    let project = match project_repo.get_by_id(&task.project_id).await {
+        Ok(Some(project)) => project,
+        Ok(None) => {
             tracing::error!(
                 task_id = task_id_str,
-                "attempt_merge_auto_complete: no worktree_path on task"
+                project_id = task.project_id.as_str(),
+                "attempt_merge_auto_complete: project not found"
             );
-            // Transition to MergeConflict since we can't verify state
-            transition_to_merge_conflict(
-                &task_id,
-                "Auto-complete failed: no worktree path",
-                task_repo,
-                task_dependency_repo,
-                project_repo,
-                chat_message_repo,
-                conversation_repo,
-                agent_run_repo,
-                ideation_session_repo,
-                activity_event_repo,
-                message_queue,
-                running_agent_registry,
-                execution_state,
-                app_handle,
-            )
-            .await;
+            return;
+        }
+        Err(e) => {
+            tracing::error!(
+                task_id = task_id_str,
+                error = %e,
+                "attempt_merge_auto_complete: failed to get project"
+            );
             return;
         }
     };
+
+    // Resolve working path: prefer worktree if it exists, else fall back to project repo
+    let worktree_path = task
+        .worktree_path
+        .as_ref()
+        .map(PathBuf::from)
+        .filter(|path| path.exists())
+        .unwrap_or_else(|| PathBuf::from(&project.working_directory));
 
     let worktree = Path::new(&worktree_path);
 
@@ -776,28 +795,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
         }
     }
 
-    // 4. Get project for verification and complete_merge_internal
-    let project = match project_repo.get_by_id(&task.project_id).await {
-        Ok(Some(project)) => project,
-        Ok(None) => {
-            tracing::error!(
-                task_id = task_id_str,
-                project_id = task.project_id.as_str(),
-                "attempt_merge_auto_complete: project not found"
-            );
-            return;
-        }
-        Err(e) => {
-            tracing::error!(
-                task_id = task_id_str,
-                error = %e,
-                "attempt_merge_auto_complete: failed to get project"
-            );
-            return;
-        }
-    };
-
-    // 5. Verify merge actually happened on main branch
+    // 4. Verify merge actually happened on main branch
     // Get the task branch HEAD SHA from worktree
     let task_branch_head = match GitService::get_head_sha(worktree) {
         Ok(sha) => sha,

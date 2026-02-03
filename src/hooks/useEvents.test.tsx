@@ -283,6 +283,7 @@ describe("useAgentEvents", () => {
     renderHook(() => useAgentEvents());
 
     expect(mockListen).toHaveBeenCalledWith("agent:message", expect.any(Function));
+    expect(mockListen).toHaveBeenCalledWith("agent:message_created", expect.any(Function));
   });
 
   it("should add message to activity store", async () => {
@@ -302,6 +303,24 @@ describe("useAgentEvents", () => {
     const state = useActivityStore.getState();
     expect(state.messages).toHaveLength(1);
     expect(state.messages[0]?.content).toBe("Processing...");
+  });
+
+  it("should add message from agent:message_created for task execution", async () => {
+    renderHook(() => useAgentEvents());
+
+    await act(async () => {
+      eventCallbacks["agent:message_created"]?.({
+        payload: {
+          context_type: "task_execution",
+          context_id: TASK_UUID,
+          content: "Final output",
+        },
+      });
+    });
+
+    const state = useActivityStore.getState();
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0]?.content).toBe("Final output");
   });
 
   it("should filter messages by taskId when provided", async () => {

@@ -44,7 +44,8 @@ pub use artifact_commands::{
 };
 pub use diff_commands::{get_file_diff, get_task_file_changes};
 pub use execution_commands::{
-    get_execution_status, pause_execution, resume_execution, stop_execution, ExecutionState,
+    get_execution_status, pause_execution, recover_task_execution, resolve_recovery_prompt,
+    resume_execution, stop_execution, ExecutionState,
 };
 pub use health::health_check;
 pub use chat_responses::ChatMessageResponse;

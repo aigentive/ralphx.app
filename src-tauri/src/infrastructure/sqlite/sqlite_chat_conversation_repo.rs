@@ -212,6 +212,18 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
         Ok(())
     }
 
+    async fn clear_claude_session_id(&self, id: &ChatConversationId) -> AppResult<()> {
+        let conn = self.conn.lock().await;
+
+        conn.execute(
+            "UPDATE chat_conversations SET claude_session_id = NULL, updated_at = ?1 WHERE id = ?2",
+            rusqlite::params![Utc::now().to_rfc3339(), id.as_str()],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(())
+    }
+
     async fn update_title(&self, id: &ChatConversationId, title: &str) -> AppResult<()> {
         let conn = self.conn.lock().await;
 

@@ -92,6 +92,9 @@ pub struct TaskResponse {
     pub completed_at: Option<String>,
     pub archived_at: Option<String>,
     pub blocked_reason: Option<String>,
+    pub task_branch: Option<String>,
+    pub worktree_path: Option<String>,
+    pub merge_commit_sha: Option<String>,
 }
 
 impl From<Task> for TaskResponse {
@@ -111,6 +114,9 @@ impl From<Task> for TaskResponse {
             completed_at: task.completed_at.map(|dt| dt.to_rfc3339()),
             archived_at: task.archived_at.map(|dt| dt.to_rfc3339()),
             blocked_reason: task.blocked_reason,
+            task_branch: task.task_branch,
+            worktree_path: task.worktree_path,
+            merge_commit_sha: task.merge_commit_sha,
         }
     }
 }

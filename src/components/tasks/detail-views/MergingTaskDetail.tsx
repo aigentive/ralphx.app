@@ -53,25 +53,38 @@ function ConflictFilesList({ files }: { files: string[] }) {
 /**
  * MergeProgressSteps - Shows progress through merge phases
  */
-function MergeProgressSteps({ isProgrammaticPhase }: { isProgrammaticPhase: boolean }) {
-  const steps = [
-    {
-      label: "Fetching latest changes",
-      status: isProgrammaticPhase ? "active" : "completed",
-    },
-    {
-      label: "Rebasing onto base branch",
-      status: isProgrammaticPhase ? "pending" : "completed",
-    },
-    {
-      label: "Resolving conflicts",
-      status: isProgrammaticPhase ? "pending" : "active",
-    },
-    {
-      label: "Completing merge",
-      status: "pending",
-    },
-  ] as const;
+function MergeProgressSteps({
+  isProgrammaticPhase,
+  isHistorical,
+}: {
+  isProgrammaticPhase: boolean;
+  isHistorical?: boolean;
+}) {
+  const steps = isHistorical
+    ? ([
+        { label: "Fetching latest changes", status: "completed" },
+        { label: "Rebasing onto base branch", status: "completed" },
+        { label: "Resolving conflicts", status: "completed" },
+        { label: "Completing merge", status: "completed" },
+      ] as const)
+    : ([
+        {
+          label: "Fetching latest changes",
+          status: isProgrammaticPhase ? "active" : "completed",
+        },
+        {
+          label: "Rebasing onto base branch",
+          status: isProgrammaticPhase ? "pending" : "completed",
+        },
+        {
+          label: "Resolving conflicts",
+          status: isProgrammaticPhase ? "pending" : "active",
+        },
+        {
+          label: "Completing merge",
+          status: "pending",
+        },
+      ] as const);
 
   return (
     <div className="divide-y divide-white/5">
@@ -81,7 +94,7 @@ function MergeProgressSteps({ isProgrammaticPhase }: { isProgrammaticPhase: bool
             {step.status === "completed" && (
               <CheckCircle2 className="w-5 h-5" style={{ color: "#34c759" }} />
             )}
-            {step.status === "active" && (
+            {step.status === "active" && !isHistorical && (
               <div className="relative">
                 <Loader2
                   className="w-5 h-5 animate-spin"
@@ -95,7 +108,7 @@ function MergeProgressSteps({ isProgrammaticPhase }: { isProgrammaticPhase: bool
                 />
               </div>
             )}
-            {step.status === "pending" && (
+            {(step.status === "pending" || (step.status === "active" && isHistorical)) && (
               <div
                 className="w-5 h-5 rounded-full border-2"
                 style={{ borderColor: "rgba(255,255,255,0.2)" }}
@@ -109,7 +122,9 @@ function MergeProgressSteps({ isProgrammaticPhase }: { isProgrammaticPhase: bool
                 step.status === "completed"
                   ? "rgba(255,255,255,0.6)"
                   : step.status === "active"
-                  ? "#64d2ff"
+                  ? isHistorical
+                    ? "rgba(255,255,255,0.35)"
+                    : "#64d2ff"
                   : "rgba(255,255,255,0.35)",
             }}
           >
@@ -180,8 +195,11 @@ export function MergingTaskDetail({ task, isHistorical }: MergingTaskDetailProps
       {/* Merge Progress */}
       <section data-testid="merge-progress-section">
         <SectionTitle>Merge Progress</SectionTitle>
-        <DetailCard variant={isAgentPhase ? "warning" : "info"}>
-          <MergeProgressSteps isProgrammaticPhase={isProgrammaticPhase} />
+        <DetailCard variant={isHistorical ? "success" : isAgentPhase ? "warning" : "info"}>
+          <MergeProgressSteps
+            isProgrammaticPhase={isProgrammaticPhase}
+            isHistorical={isHistorical}
+          />
         </DetailCard>
       </section>
 

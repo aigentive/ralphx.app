@@ -951,7 +951,7 @@ impl GitService {
             }
         };
 
-        let output = Command::new("git")
+        let mut output = Command::new("git")
             .args([
                 "log",
                 &range,
@@ -967,6 +967,28 @@ impl GitService {
                 "Failed to get merged commits: {}",
                 stderr
             )));
+        }
+
+        if output.stdout.is_empty() {
+            // Fallback: include the merge commit itself (e.g., manual resolution commit on base)
+            let single_range = format!("{}^..{}", merge_commit_sha, merge_commit_sha);
+            output = Command::new("git")
+                .args([
+                    "log",
+                    &single_range,
+                    "--pretty=format:%H|%h|%s|%an|%aI",
+                ])
+                .current_dir(repo)
+                .output()
+                .map_err(|e| AppError::GitOperation(format!("Failed to run git log: {}", e)))?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(AppError::GitOperation(format!(
+                    "Failed to get merged commits: {}",
+                    stderr
+                )));
+            }
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);

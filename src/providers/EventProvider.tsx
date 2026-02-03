@@ -23,6 +23,7 @@ import {
   useProposalEvents,
   useStepEvents,
   useExecutionErrorEvents,
+  useRecoveryPromptEvents,
 } from "@/hooks/useEvents";
 import { useIdeationEvents } from "@/hooks/useIdeationEvents";
 import { usePlanArtifactEvents } from "@/hooks/useEvents.planArtifact";
@@ -76,6 +77,7 @@ function GlobalEventListeners({ children }: { children: ReactNode }) {
   useFileChangeEvents();
   useAgentEvents(); // Listen to agent:message events for Activity view (no active conversation)
   useExecutionErrorEvents(); // Handle agent execution errors and unstick UI
+  useRecoveryPromptEvents(); // Listen to recovery prompts
   useIdeationEvents(); // Listen to ideation events (session title updates)
   usePlanArtifactEvents(); // Listen to plan artifact events for real-time updates
 
