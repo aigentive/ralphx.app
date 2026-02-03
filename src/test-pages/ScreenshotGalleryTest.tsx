@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * Test Page: ScreenshotGallery
  * For visual regression testing in web mode

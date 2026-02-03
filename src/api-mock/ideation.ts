@@ -59,7 +59,6 @@ function ensureMockData(): void {
     userPriority: null,
     userModified: false,
     status: "pending",
-    selected: false,
     createdTaskId: null,
     planArtifactId: null,
     planVersionAtCreation: null,
@@ -174,7 +173,6 @@ export const mockIdeationApi = {
         userPriority: null,
         userModified: false,
         status: "pending",
-        selected: false,
         createdTaskId: null,
         planArtifactId: null,
         planVersionAtCreation: null,
@@ -223,16 +221,6 @@ export const mockIdeationApi = {
     },
 
     delete: async (_proposalId: string): Promise<void> => {
-      // No-op in read-only mode
-    },
-
-    toggleSelection: async (proposalId: string): Promise<boolean> => {
-      ensureMockData();
-      const proposal = mockProposals.get(proposalId);
-      return proposal ? !proposal.selected : false;
-    },
-
-    setSelection: async (_proposalId: string, _selected: boolean): Promise<void> => {
       // No-op in read-only mode
     },
 

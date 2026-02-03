@@ -55,7 +55,7 @@ export function useProposals(sessionId: string) {
  *
  * @example
  * ```tsx
- * const { createProposal, updateProposal, deleteProposal, toggleSelection, reorder } =
+ * const { createProposal, updateProposal, deleteProposal, reorder } =
  *   useProposalMutations();
  *
  * // Create a new proposal
@@ -75,10 +75,6 @@ export function useProposals(sessionId: string) {
  *   });
  * };
  *
- * // Toggle selection
- * const handleToggle = async (id: string) => {
- *   const isSelected = await toggleSelection.mutateAsync(id);
- * };
  * ```
  */
 export function useProposalMutations() {
@@ -138,19 +134,6 @@ export function useProposalMutations() {
     },
   });
 
-  const toggleSelection = useMutation<boolean, Error, string>({
-    mutationFn: (proposalId) => ideationApi.proposals.toggleSelection(proposalId),
-    onSuccess: (_data, proposalId) => {
-      // Invalidate proposal lists
-      queryClient.invalidateQueries({
-        queryKey: proposalKeys.lists(),
-      });
-      queryClient.invalidateQueries({
-        queryKey: proposalKeys.detail(proposalId),
-      });
-    },
-  });
-
   const reorder = useMutation<void, Error, { sessionId: string; proposalIds: string[] }>({
     mutationFn: ({ sessionId, proposalIds }) =>
       ideationApi.proposals.reorder(sessionId, proposalIds),
@@ -170,7 +153,6 @@ export function useProposalMutations() {
     createProposal,
     updateProposal,
     deleteProposal,
-    toggleSelection,
     reorder,
   };
 }

@@ -174,7 +174,6 @@ describe("TaskProposalSchema", () => {
     userPriority: null,
     userModified: false,
     status: "pending" as const,
-    selected: true,
     createdTaskId: null,
     sortOrder: 0,
     createdAt: "2026-01-24T12:00:00Z",

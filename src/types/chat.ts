@@ -38,8 +38,6 @@ export const ChatContextSchema = z.object({
   projectId: z.string().min(1),
   /** Selected task ID (for kanban with selection or task_detail view) */
   selectedTaskId: z.string().optional(),
-  /** Selected proposal IDs (for ideation view) */
-  selectedProposalIds: z.array(z.string()).optional(),
   /** Current ideation session ID (for ideation view) */
   ideationSessionId: z.string().optional(),
 });
@@ -93,16 +91,6 @@ export function hasSelectedTask(context: ChatContext): boolean {
 }
 
 /**
- * Check if context has selected proposals
- */
-export function hasSelectedProposals(context: ChatContext): boolean {
-  return (
-    context.selectedProposalIds !== undefined &&
-    context.selectedProposalIds.length > 0
-  );
-}
-
-/**
  * Check if context has an active ideation session
  */
 export function hasIdeationSession(context: ChatContext): boolean {
@@ -132,14 +120,12 @@ export function createKanbanContext(
  */
 export function createIdeationContext(
   projectId: string,
-  ideationSessionId: string,
-  selectedProposalIds?: string[]
+  ideationSessionId: string
 ): ChatContext {
   return {
     view: "ideation",
     projectId,
     ideationSessionId,
-    selectedProposalIds,
   };
 }
 

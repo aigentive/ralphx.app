@@ -82,7 +82,6 @@ vi.mock("@/hooks/useProposals", () => ({
     createProposal: { mutateAsync: vi.fn() },
     updateProposal: { mutateAsync: vi.fn() },
     deleteProposal: { mutate: vi.fn() },
-    toggleSelection: { mutate: vi.fn() },
     reorder: { mutate: vi.fn() },
   }),
 }));
@@ -138,9 +137,12 @@ function resetStores() {
 
   useProposalStore.setState({
     proposals: {},
-    selectedProposalIds: new Set(),
     isLoading: false,
     error: null,
+    lastProposalAddedAt: null,
+    lastDependencyRefreshRequestedAt: null,
+    lastProposalUpdatedAt: null,
+    lastUpdatedProposalId: null,
   });
 }
 

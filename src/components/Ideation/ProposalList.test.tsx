@@ -40,7 +40,6 @@ function createMockProposal(
     userPriority: null,
     userModified: false,
     status: "pending",
-    selected: false,
     createdTaskId: null,
     sortOrder: 0,
     createdAt: "2026-01-24T10:00:00Z",
@@ -60,12 +59,9 @@ function createMockProposals(): TaskProposal[] {
 describe("ProposalList", () => {
   const defaultProps = {
     proposals: createMockProposals(),
-    onSelect: vi.fn(),
     onEdit: vi.fn(),
     onRemove: vi.fn(),
     onReorder: vi.fn(),
-    onSelectAll: vi.fn(),
-    onDeselectAll: vi.fn(),
     onSortByPriority: vi.fn(),
     onClearAll: vi.fn(),
   };
@@ -127,55 +123,6 @@ describe("ProposalList", () => {
   });
 
   // ============================================================================
-  // Select All / Deselect All Tests
-  // ============================================================================
-
-  describe("select all / deselect all", () => {
-    it("renders select all button", () => {
-      render(<ProposalList {...defaultProps} />);
-      expect(screen.getByTestId("select-all-btn")).toBeInTheDocument();
-    });
-
-    it("renders deselect all button", () => {
-      render(<ProposalList {...defaultProps} />);
-      expect(screen.getByTestId("deselect-all-btn")).toBeInTheDocument();
-    });
-
-    it("calls onSelectAll when select all clicked", async () => {
-      const user = userEvent.setup();
-      const onSelectAll = vi.fn();
-      render(<ProposalList {...defaultProps} onSelectAll={onSelectAll} />);
-
-      await user.click(screen.getByTestId("select-all-btn"));
-      expect(onSelectAll).toHaveBeenCalled();
-    });
-
-    it("calls onDeselectAll when deselect all clicked", async () => {
-      const user = userEvent.setup();
-      const onDeselectAll = vi.fn();
-      render(<ProposalList {...defaultProps} onDeselectAll={onDeselectAll} />);
-
-      await user.click(screen.getByTestId("deselect-all-btn"));
-      expect(onDeselectAll).toHaveBeenCalled();
-    });
-
-    it("shows selected count in toolbar", () => {
-      const proposals = [
-        createMockProposal("p1", { selected: true }),
-        createMockProposal("p2", { selected: true }),
-        createMockProposal("p3", { selected: false }),
-      ];
-      render(<ProposalList {...defaultProps} proposals={proposals} />);
-      expect(screen.getByTestId("selected-count")).toHaveTextContent("2 selected");
-    });
-
-    it("shows correct count for zero selected", () => {
-      render(<ProposalList {...defaultProps} />);
-      expect(screen.getByTestId("selected-count")).toHaveTextContent("0 selected");
-    });
-  });
-
-  // ============================================================================
   // Sort by Priority Tests
   // ============================================================================
 
@@ -230,17 +177,6 @@ describe("ProposalList", () => {
   // ============================================================================
 
   describe("card interactions", () => {
-    it("calls onSelect when card clicked", async () => {
-      const onSelect = vi.fn();
-      render(<ProposalList {...defaultProps} onSelect={onSelect} />);
-
-      const card = screen.getByTestId("proposal-card-p1");
-      // Click on the card to select
-      fireEvent.click(card);
-
-      expect(onSelect).toHaveBeenCalledWith("p1");
-    });
-
     it("calls onEdit when card edit clicked", async () => {
       const onEdit = vi.fn();
       render(<ProposalList {...defaultProps} onEdit={onEdit} />);
@@ -350,9 +286,6 @@ describe("ProposalList", () => {
 
     it("toolbar buttons have accessible labels", () => {
       render(<ProposalList {...defaultProps} />);
-      // Use getByTestId + check aria-label to avoid multiple matches
-      expect(screen.getByTestId("select-all-btn")).toHaveAttribute("aria-label", "Select all");
-      expect(screen.getByTestId("deselect-all-btn")).toHaveAttribute("aria-label", "Deselect all");
       expect(screen.getByTestId("sort-priority-btn")).toHaveAttribute("aria-label", "Sort by priority");
       expect(screen.getByTestId("clear-all-btn")).toHaveAttribute("aria-label", "Clear all");
     });

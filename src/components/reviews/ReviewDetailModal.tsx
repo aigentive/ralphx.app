@@ -340,7 +340,10 @@ export function ReviewDetailModal({
 
   // Use pre-fetched history from prop, or fetch if not provided
   const { data: fetchedHistory } = useTaskStateHistory(taskId, { enabled: !historyProp });
-  const history = historyProp ?? fetchedHistory ?? [];
+  const history = useMemo(
+    () => historyProp ?? fetchedHistory ?? [],
+    [historyProp, fetchedHistory]
+  );
 
   // Git diff data - backend determines working path from task/project
   const {

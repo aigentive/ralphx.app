@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * GraphControls - Filter, layout direction, and grouping controls for Task Graph
  *

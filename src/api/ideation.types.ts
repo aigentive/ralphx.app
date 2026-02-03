@@ -30,7 +30,6 @@ export interface TaskProposalResponse {
   userPriority: string | null;
   userModified: boolean;
   status: string;
-  selected: boolean;
   createdTaskId: string | null;
   planArtifactId: string | null;
   planVersionAtCreation: number | null;

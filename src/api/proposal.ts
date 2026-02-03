@@ -29,7 +29,6 @@ const TaskProposalResponseSchema = z.object({
   user_priority: z.string().nullable(),
   user_modified: z.boolean(),
   status: z.string(),
-  selected: z.boolean(),
   created_task_id: z.string().nullable(),
   plan_artifact_id: z.string().nullable(),
   plan_version_at_creation: z.number().nullable(),
@@ -138,7 +137,6 @@ function transformProposal(raw: RawProposal): TaskProposalResponse {
     userPriority: raw.user_priority,
     userModified: raw.user_modified,
     status: raw.status,
-    selected: raw.selected,
     createdTaskId: raw.created_task_id,
     planArtifactId: raw.plan_artifact_id,
     planVersionAtCreation: raw.plan_version_at_creation,
@@ -269,15 +267,6 @@ export async function deleteTaskProposal(proposalId: string): Promise<void> {
 }
 
 /**
- * Toggle proposal selection state
- * @param proposalId The proposal ID
- * @returns The new selection state
- */
-export async function toggleProposalSelection(proposalId: string): Promise<boolean> {
-  return typedInvoke("toggle_proposal_selection", { id: proposalId }, z.boolean());
-}
-
-/**
  * Reorder proposals within a session
  * @param sessionId The session ID
  * @param proposalIds Array of proposal IDs in desired order
@@ -371,7 +360,7 @@ export async function analyzeDependencies(
 }
 
 /**
- * Apply selected proposals to the Kanban board as tasks
+ * Apply proposals to the Kanban board as tasks
  * @param options Apply options including session, proposals, target column, and dependency preservation
  * @returns Result with created task IDs and warnings
  */
@@ -404,7 +393,6 @@ export const proposalApi = {
   createTaskProposal,
   updateTaskProposal,
   deleteTaskProposal,
-  toggleProposalSelection,
   reorderProposals,
   assessProposalPriority,
   assessAllPriorities,

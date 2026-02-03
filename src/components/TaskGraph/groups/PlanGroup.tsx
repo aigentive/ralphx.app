@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * PlanGroup.tsx - Visual region component for plan groups in the Task Graph
  *
