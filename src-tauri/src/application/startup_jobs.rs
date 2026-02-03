@@ -21,8 +21,13 @@ use tracing::info;
 use crate::commands::execution_commands::{
     ExecutionState, AGENT_ACTIVE_STATUSES, AUTO_TRANSITION_STATES,
 };
-use crate::domain::entities::InternalStatus;
-use crate::domain::repositories::{AgentRunRepository, ProjectRepository, TaskDependencyRepository, TaskRepository};
+use crate::domain::entities::{
+    AgentRun, AgentRunId, AgentRunStatus, ChatContextType, InternalStatus, Task,
+};
+use crate::domain::repositories::{
+    AgentRunRepository, ChatConversationRepository, ProjectRepository, TaskDependencyRepository,
+    TaskRepository,
+};
 use crate::domain::state_machine::services::TaskScheduler;
 
 use super::TaskTransitionService;
@@ -36,6 +41,12 @@ pub struct StartupJobRunner<R: Runtime = tauri::Wry> {
     task_repo: Arc<dyn TaskRepository>,
     task_dep_repo: Arc<dyn TaskDependencyRepository>,
     project_repo: Arc<dyn ProjectRepository>,
+    chat_conversation_repo: Arc<dyn ChatConversationRepository>,
+    chat_message_repo: Arc<dyn crate::domain::repositories::ChatMessageRepository>,
+    ideation_session_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository>,
+    activity_event_repo: Arc<dyn crate::domain::repositories::ActivityEventRepository>,
+    message_queue: Arc<crate::domain::services::MessageQueue>,
+    running_agent_registry: Arc<crate::domain::services::RunningAgentRegistry>,
     agent_run_repo: Arc<dyn AgentRunRepository>,
     transition_service: TaskTransitionService<R>,
     execution_state: Arc<ExecutionState>,
@@ -52,6 +63,12 @@ impl<R: Runtime> StartupJobRunner<R> {
         task_repo: Arc<dyn TaskRepository>,
         task_dep_repo: Arc<dyn TaskDependencyRepository>,
         project_repo: Arc<dyn ProjectRepository>,
+        chat_conversation_repo: Arc<dyn ChatConversationRepository>,
+        chat_message_repo: Arc<dyn crate::domain::repositories::ChatMessageRepository>,
+        ideation_session_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository>,
+        activity_event_repo: Arc<dyn crate::domain::repositories::ActivityEventRepository>,
+        message_queue: Arc<crate::domain::services::MessageQueue>,
+        running_agent_registry: Arc<crate::domain::services::RunningAgentRegistry>,
         agent_run_repo: Arc<dyn AgentRunRepository>,
         transition_service: TaskTransitionService<R>,
         execution_state: Arc<ExecutionState>,
@@ -60,6 +77,12 @@ impl<R: Runtime> StartupJobRunner<R> {
             task_repo,
             task_dep_repo,
             project_repo,
+            chat_conversation_repo,
+            chat_message_repo,
+            ideation_session_repo,
+            activity_event_repo,
+            message_queue,
+            running_agent_registry,
             agent_run_repo,
             transition_service,
             execution_state,
@@ -149,6 +172,26 @@ impl<R: Runtime> StartupJobRunner<R> {
 
                 eprintln!("[STARTUP] Found {} tasks in {:?} status", tasks.len(), status);
                 for task in tasks {
+                    let reconciled = match *status {
+                        InternalStatus::Executing | InternalStatus::ReExecuting => {
+                            self.reconcile_completed_execution(&task, *status).await
+                        }
+                        InternalStatus::Reviewing => {
+                            self.reconcile_reviewing_task(&task, *status).await
+                        }
+                        InternalStatus::Merging => {
+                            self.reconcile_merging_task(&task, *status).await
+                        }
+                        InternalStatus::QaRefining | InternalStatus::QaTesting => {
+                            self.reconcile_qa_task(&task, *status).await
+                        }
+                        _ => false,
+                    };
+
+                    if reconciled {
+                        continue;
+                    }
+
                     eprintln!("[STARTUP] Resuming task: {} ({})", task.id.as_str(), task.title);
                     // Check if we can start another task
                     if !self.execution_state.can_start_task() {
@@ -237,6 +280,340 @@ impl<R: Runtime> StartupJobRunner<R> {
             info!("Scheduling Ready tasks after resumption");
             scheduler.try_schedule_ready_tasks().await;
         }
+    }
+
+    /// Reconcile tasks that finished execution but are still marked executing.
+    ///
+    /// This runs while the app is active to recover from missed transitions
+    /// (e.g., app crash or dropped events).
+    pub async fn reconcile_stuck_tasks(&self) {
+        if self.execution_state.is_paused() {
+            return;
+        }
+
+        let projects = match self.project_repo.get_all().await {
+            Ok(projects) => projects,
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to get projects for reconciliation");
+                return;
+            }
+        };
+
+        for project in &projects {
+            for status in [
+                InternalStatus::Executing,
+                InternalStatus::ReExecuting,
+                InternalStatus::Reviewing,
+                InternalStatus::Merging,
+                InternalStatus::QaRefining,
+                InternalStatus::QaTesting,
+            ] {
+                let tasks = match self.task_repo.get_by_status(&project.id, status).await {
+                    Ok(tasks) => tasks,
+                    Err(e) => {
+                        tracing::warn!(
+                            project_id = project.id.as_str(),
+                            status = ?status,
+                            error = %e,
+                            "Failed to get tasks by status for reconciliation"
+                        );
+                        continue;
+                    }
+                };
+
+                for task in tasks {
+                    match status {
+                        InternalStatus::Executing | InternalStatus::ReExecuting => {
+                            let _ = self.reconcile_completed_execution(&task, status).await;
+                        }
+                        InternalStatus::Reviewing => {
+                            let _ = self.reconcile_reviewing_task(&task, status).await;
+                        }
+                        InternalStatus::Merging => {
+                            let _ = self.reconcile_merging_task(&task, status).await;
+                        }
+                        InternalStatus::QaRefining | InternalStatus::QaTesting => {
+                            let _ = self.reconcile_qa_task(&task, status).await;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
+    async fn reconcile_qa_task(&self, task: &Task, status: InternalStatus) -> bool {
+        if status != InternalStatus::QaRefining && status != InternalStatus::QaTesting {
+            return false;
+        }
+
+        let status_history = match self.task_repo.get_status_history(&task.id).await {
+            Ok(history) => history,
+            Err(e) => {
+                tracing::warn!(
+                    task_id = task.id.as_str(),
+                    error = %e,
+                    "Failed to load status history for QA reconciliation"
+                );
+                return false;
+            }
+        };
+
+        let latest_transition = status_history
+            .iter()
+            .rev()
+            .find(|transition| transition.to == status);
+
+        let Some(transition) = latest_transition else {
+            return false;
+        };
+
+        let age = chrono::Utc::now() - transition.timestamp;
+        if age < chrono::Duration::minutes(5) {
+            return false;
+        }
+
+        if !self.execution_state.can_start_task() {
+            return false;
+        }
+
+        tracing::warn!(
+            task_id = task.id.as_str(),
+            status = ?status,
+            "QA task appears stuck; re-triggering entry actions"
+        );
+
+        self.transition_service
+            .execute_entry_actions(&task.id, task, status)
+            .await;
+
+        true
+    }
+
+    async fn reconcile_completed_execution(&self, task: &Task, status: InternalStatus) -> bool {
+        if status != InternalStatus::Executing && status != InternalStatus::ReExecuting {
+            return false;
+        }
+
+        let status_history = match self.task_repo.get_status_history(&task.id).await {
+            Ok(history) => history,
+            Err(e) => {
+                tracing::warn!(
+                    task_id = task.id.as_str(),
+                    error = %e,
+                    "Failed to load status history for reconciliation"
+                );
+                return false;
+            }
+        };
+
+        let latest_transition = status_history
+            .iter()
+            .rev()
+            .find(|transition| transition.to == status && transition.agent_run_id.is_some());
+
+        let run = if let Some(transition) = latest_transition {
+            let Some(agent_run_id) = transition.agent_run_id.as_ref() else {
+                return false;
+            };
+
+            match self
+                .agent_run_repo
+                .get_by_id(&AgentRunId::from_string(agent_run_id))
+                .await
+            {
+                Ok(run) => run,
+                Err(e) => {
+                    tracing::warn!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Failed to load agent run for reconciliation"
+                    );
+                    return false;
+                }
+            }
+        } else {
+            self.lookup_latest_run_for_task_context(task, ChatContextType::TaskExecution)
+                .await
+        };
+
+        let Some(run) = run else {
+            if !self.execution_state.can_start_task() {
+                return false;
+            }
+
+            tracing::warn!(
+                task_id = task.id.as_str(),
+                "No agent run metadata found; re-triggering entry actions"
+            );
+            self.transition_service
+                .execute_entry_actions(&task.id, task, status)
+                .await;
+            return true;
+        };
+
+        if run.status == AgentRunStatus::Running {
+            return true;
+        }
+
+        if run.status != AgentRunStatus::Completed {
+            return false;
+        }
+
+        tracing::info!(
+            task_id = task.id.as_str(),
+            run_id = run.id.as_str(),
+            "Reconciling completed execution - transitioning to PendingReview"
+        );
+
+        if let Err(e) = self
+            .transition_service
+            .transition_task(&task.id, InternalStatus::PendingReview)
+            .await
+        {
+            tracing::error!(
+                task_id = task.id.as_str(),
+                error = %e,
+                "Failed to reconcile completed execution"
+            );
+            return false;
+        }
+
+        true
+    }
+
+    async fn reconcile_reviewing_task(&self, task: &Task, status: InternalStatus) -> bool {
+        if status != InternalStatus::Reviewing {
+            return false;
+        }
+
+        let run = self
+            .lookup_latest_run_for_task_context(task, ChatContextType::Review)
+            .await;
+
+        let Some(run) = run else {
+            if !self.execution_state.can_start_task() {
+                return false;
+            }
+
+            tracing::warn!(
+                task_id = task.id.as_str(),
+                "No review agent run found; re-triggering entry actions"
+            );
+            self.transition_service
+                .execute_entry_actions(&task.id, task, status)
+                .await;
+            return true;
+        };
+
+        if run.status == AgentRunStatus::Running {
+            return true;
+        }
+
+        if run.status != AgentRunStatus::Completed {
+            return false;
+        }
+
+        tracing::info!(
+            task_id = task.id.as_str(),
+            run_id = run.id.as_str(),
+            "Review run completed without status change; escalating for human decision"
+        );
+
+        if let Err(e) = self
+            .transition_service
+            .transition_task(&task.id, InternalStatus::Escalated)
+            .await
+        {
+            tracing::error!(
+                task_id = task.id.as_str(),
+                error = %e,
+                "Failed to reconcile completed review"
+            );
+            return false;
+        }
+
+        true
+    }
+
+    async fn reconcile_merging_task(&self, task: &Task, status: InternalStatus) -> bool {
+        if status != InternalStatus::Merging {
+            return false;
+        }
+
+        let run = self
+            .lookup_latest_run_for_task_context(task, ChatContextType::Merge)
+            .await;
+
+        let Some(run) = run else {
+            if !self.execution_state.can_start_task() {
+                return false;
+            }
+
+            tracing::warn!(
+                task_id = task.id.as_str(),
+                "No merge agent run found; re-triggering entry actions"
+            );
+            self.transition_service
+                .execute_entry_actions(&task.id, task, status)
+                .await;
+            return true;
+        };
+
+        if run.status == AgentRunStatus::Running {
+            return true;
+        }
+
+        if run.status != AgentRunStatus::Completed {
+            return false;
+        }
+
+        tracing::info!(
+            task_id = task.id.as_str(),
+            run_id = run.id.as_str(),
+            "Merge run completed without status change; reconciling"
+        );
+
+        crate::application::chat_service::reconcile_merge_auto_complete(
+            task.id.as_str(),
+            &self.task_repo,
+            &self.task_dep_repo,
+            &self.project_repo,
+            &self.chat_message_repo,
+            &self.chat_conversation_repo,
+            &self.agent_run_repo,
+            &self.ideation_session_repo,
+            &self.activity_event_repo,
+            &self.message_queue,
+            &self.running_agent_registry,
+            &self.execution_state,
+            self.app_handle.as_ref(),
+        )
+        .await;
+
+        true
+    }
+
+    async fn lookup_latest_run_for_task_context(
+        &self,
+        task: &Task,
+        context_type: ChatContextType,
+    ) -> Option<AgentRun> {
+        let conversations = self
+            .chat_conversation_repo
+            .get_by_context(context_type, task.id.as_str())
+            .await
+            .ok()?;
+
+        let latest_conversation = conversations
+            .into_iter()
+            .max_by_key(|conv| conv.created_at)?;
+
+        self.agent_run_repo
+            .get_latest_for_conversation(&latest_conversation.id)
+            .await
+            .ok()
+            .flatten()
     }
 
     /// Unblock tasks whose blockers are all complete.
@@ -428,6 +805,12 @@ mod tests {
             Arc::clone(&app_state.task_repo),
             Arc::clone(&app_state.task_dependency_repo),
             Arc::clone(&app_state.project_repo),
+            Arc::clone(&app_state.chat_conversation_repo),
+            Arc::clone(&app_state.chat_message_repo),
+            Arc::clone(&app_state.ideation_session_repo),
+            Arc::clone(&app_state.activity_event_repo),
+            Arc::clone(&app_state.message_queue),
+            Arc::clone(&app_state.running_agent_registry),
             agent_run_repo,
             transition_service,
             Arc::clone(execution_state),

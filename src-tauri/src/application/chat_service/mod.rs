@@ -40,6 +40,7 @@ use crate::domain::services::{MessageQueue, QueuedMessage, RunningAgentKey, Runn
 pub use chat_service_helpers::{get_agent_name, get_assistant_role};
 pub use chat_service_mock::{MockChatResponse, MockChatService};
 pub use chat_service_streaming::process_stream_background;
+pub(crate) use chat_service_send_background::reconcile_merge_auto_complete;
 pub use chat_service_types::{
     events, AgentChunkPayload, AgentErrorPayload, AgentMessageCreatedPayload,
     AgentQueueSentPayload, AgentRunCompletedPayload, AgentRunStartedPayload, AgentToolCallPayload,

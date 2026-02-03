@@ -32,7 +32,7 @@ pub mod sqlite_workflow_repo;
 pub mod state_machine_repository;
 
 // Re-export commonly used items
-pub use connection::{get_default_db_path, open_connection, open_memory_connection};
+pub use connection::{get_app_data_db_path, get_default_db_path, open_connection, open_memory_connection};
 pub use migrations::{run_migrations, SCHEMA_VERSION};
 pub use sqlite_activity_event_repo::SqliteActivityEventRepository;
 pub use sqlite_agent_profile_repo::SqliteAgentProfileRepository;

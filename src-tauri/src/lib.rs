@@ -198,6 +198,26 @@ pub fn run() {
                 let chat_resumption_running_agent_registry = Arc::clone(&startup_running_agent_registry);
                 let chat_resumption_app_handle = startup_app_handle.clone();
 
+                let startup_runner_chat_message_repo = Arc::clone(&startup_chat_message_repo);
+                let startup_runner_ideation_session_repo = Arc::clone(&startup_ideation_session_repo);
+                let startup_runner_activity_event_repo = Arc::clone(&startup_activity_event_repo);
+                let startup_runner_message_queue = Arc::clone(&startup_message_queue);
+                let startup_runner_running_agent_registry =
+                    Arc::clone(&startup_running_agent_registry);
+
+                // Clone repos for periodic reconciliation runner
+                let reconcile_task_repo = Arc::clone(&startup_task_repo);
+                let reconcile_task_dependency_repo = Arc::clone(&startup_task_dependency_repo);
+                let reconcile_project_repo = Arc::clone(&startup_project_repo);
+                let reconcile_chat_message_repo = Arc::clone(&startup_chat_message_repo);
+                let reconcile_conversation_repo = Arc::clone(&startup_conversation_repo);
+                let reconcile_agent_run_repo = Arc::clone(&startup_agent_run_repo);
+                let reconcile_ideation_session_repo = Arc::clone(&startup_ideation_session_repo);
+                let reconcile_activity_event_repo = Arc::clone(&startup_activity_event_repo);
+                let reconcile_message_queue = Arc::clone(&startup_message_queue);
+                let reconcile_running_agent_registry = Arc::clone(&startup_running_agent_registry);
+                let reconcile_app_handle = startup_app_handle.clone();
+
                 // Clone task_dependency_repo for StartupJobRunner (before TaskTransitionService consumes it)
                 let startup_runner_task_dep_repo = Arc::clone(&startup_task_dependency_repo);
                 let startup_runner_app_handle = startup_app_handle.clone();
@@ -223,6 +243,12 @@ pub fn run() {
                     startup_task_repo,
                     startup_runner_task_dep_repo,
                     startup_project_repo,
+                    startup_conversation_repo.clone(),
+                    startup_runner_chat_message_repo,
+                    startup_runner_ideation_session_repo,
+                    startup_runner_activity_event_repo,
+                    startup_runner_message_queue,
+                    startup_runner_running_agent_registry,
                     startup_agent_run_repo,
                     transition_service,
                     Arc::clone(&startup_execution_state),
@@ -251,6 +277,50 @@ pub fn run() {
                 .with_app_handle(chat_resumption_app_handle);
 
                 chat_resumption.run().await;
+
+                let reconcile_transition_service: TaskTransitionService<tauri::Wry> =
+                    TaskTransitionService::new(
+                        Arc::clone(&reconcile_task_repo),
+                        Arc::clone(&reconcile_task_dependency_repo),
+                        Arc::clone(&reconcile_project_repo),
+                        reconcile_chat_message_repo,
+                        reconcile_conversation_repo,
+                        Arc::clone(&reconcile_agent_run_repo),
+                        reconcile_ideation_session_repo,
+                        reconcile_activity_event_repo,
+                        reconcile_message_queue,
+                        reconcile_running_agent_registry,
+                        Arc::clone(&startup_execution_state),
+                        Some(reconcile_app_handle.clone()),
+                    )
+                    .with_task_scheduler(Arc::clone(&task_scheduler));
+
+                let reconcile_runner = StartupJobRunner::new(
+                    reconcile_task_repo,
+                    reconcile_task_dependency_repo,
+                    reconcile_project_repo,
+                    reconcile_conversation_repo,
+                    reconcile_chat_message_repo,
+                    reconcile_ideation_session_repo,
+                    reconcile_activity_event_repo,
+                    reconcile_message_queue,
+                    reconcile_running_agent_registry,
+                    reconcile_agent_run_repo,
+                    reconcile_transition_service,
+                    Arc::clone(&startup_execution_state),
+                )
+                .with_task_scheduler(task_scheduler)
+                .with_app_handle(reconcile_app_handle);
+
+                reconcile_runner.reconcile_stuck_tasks().await;
+
+                tauri::async_runtime::spawn(async move {
+                    let interval = Duration::from_secs(30);
+                    loop {
+                        tokio::time::sleep(interval).await;
+                        reconcile_runner.reconcile_stuck_tasks().await;
+                    }
+                });
             });
 
             // Register app_state with Tauri's state management

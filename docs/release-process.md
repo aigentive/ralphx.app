@@ -95,8 +95,7 @@ Add these secrets:
 
 ```bash
 # Quick build for local testing (no signing)
-npm run build
-cd src-tauri && cargo tauri build
+npm run tauri build
 ```
 
 Output:

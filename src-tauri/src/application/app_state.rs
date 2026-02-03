@@ -34,7 +34,8 @@ use crate::infrastructure::memory::{
     MemoryTaskStepRepository, MemoryWorkflowRepository,
 };
 use crate::infrastructure::sqlite::{
-    get_default_db_path, open_connection, run_migrations, SqliteActivityEventRepository,
+    get_app_data_db_path, get_default_db_path, open_connection, run_migrations,
+    SqliteActivityEventRepository,
     SqliteAgentProfileRepository, SqliteAgentRunRepository, SqliteArtifactBucketRepository,
     SqliteArtifactFlowRepository, SqliteArtifactRepository, SqliteChatConversationRepository,
     SqliteChatMessageRepository, SqliteExecutionSettingsRepository, SqliteIdeationSessionRepository,
@@ -118,7 +119,11 @@ impl AppState {
     /// Create AppState for production use with SQLite repositories
     /// Opens the database at the default path and runs migrations
     pub fn new_production(app_handle: AppHandle) -> AppResult<Self> {
-        let path = get_default_db_path();
+        let path = if cfg!(debug_assertions) {
+            get_default_db_path()
+        } else {
+            get_app_data_db_path(&app_handle)?
+        };
         let conn = open_connection(&path)?;
         run_migrations(&conn)?;
 

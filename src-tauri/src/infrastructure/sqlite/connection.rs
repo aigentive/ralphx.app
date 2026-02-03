@@ -2,6 +2,7 @@
 
 use rusqlite::Connection;
 use std::path::PathBuf;
+use tauri::{AppHandle, Manager};
 
 use crate::error::{AppError, AppResult};
 
@@ -10,6 +11,20 @@ pub fn get_default_db_path() -> PathBuf {
     // For now, use a simple path in the working directory
     // In production, this would use Tauri's app data path
     PathBuf::from("ralphx.db")
+}
+
+/// Get the database path inside the app data directory
+pub fn get_app_data_db_path(app_handle: &AppHandle) -> AppResult<PathBuf> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| AppError::Infrastructure(format!("Failed to resolve app data dir: {}", e)))?;
+
+    std::fs::create_dir_all(&app_data_dir).map_err(|e| {
+        AppError::Infrastructure(format!("Failed to create app data dir: {}", e))
+    })?;
+
+    Ok(app_data_dir.join("ralphx.db"))
 }
 
 /// Open a database connection at the specified path

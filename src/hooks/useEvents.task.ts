@@ -7,7 +7,7 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEventBus } from "@/providers/EventProvider";
-import { TaskEventSchema } from "@/types/events";
+import { TaskEventSchema, TaskStatusChangedEventSchema } from "@/types/events";
 import { useTaskStore } from "@/stores/taskStore";
 import { taskKeys } from "@/hooks/useTasks";
 import { infiniteTaskKeys } from "@/hooks/useInfiniteTasksQuery";
@@ -36,7 +36,22 @@ export function useTaskEvents() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    return bus.subscribe<unknown>("task:event", (payload) => {
+    const handleStatusChange = (taskId: string, to: Task["internalStatus"]) => {
+      updateTask(taskId, { internalStatus: to });
+      // Invalidate both regular and infinite task queries so Kanban refetches
+      queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
+      // Invalidate state transitions so StateTimelineNav updates
+      queryClient.invalidateQueries({ queryKey: stateTransitionKeys.task(taskId) });
+      // Refetch full task data when entering merged state to get merge_commit_sha
+      if (to === "merged") {
+        queryClient.invalidateQueries({ queryKey: taskKeys.detail(taskId) });
+      }
+      // Bridge to graph hooks that listen for task:updated
+      bus.emit("task:updated", { taskId });
+    };
+
+    const unsubscribeTaskEvent = bus.subscribe<unknown>("task:event", (payload) => {
       // Runtime validation of backend events
       const parsed = TaskEventSchema.safeParse(payload);
 
@@ -88,20 +103,22 @@ export function useTaskEvents() {
           queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
           break;
         case "status_changed":
-          updateTask(taskEvent.taskId, { internalStatus: taskEvent.to });
-          // Invalidate both regular and infinite task queries so Kanban refetches
-          queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
-          queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
-          // Invalidate state transitions so StateTimelineNav updates
-          queryClient.invalidateQueries({ queryKey: stateTransitionKeys.task(taskEvent.taskId) });
-          // Refetch full task data when entering merged state to get merge_commit_sha
-          if (taskEvent.to === "merged") {
-            queryClient.invalidateQueries({ queryKey: taskKeys.detail(taskEvent.taskId) });
-          }
-          // Bridge to graph hooks that listen for task:updated
-          bus.emit("task:updated", { taskId: taskEvent.taskId });
+          handleStatusChange(taskEvent.taskId, taskEvent.to);
           break;
       }
     });
+
+    const unsubscribeLegacyStatus = bus.subscribe<unknown>("task:status_changed", (payload) => {
+      const parsed = TaskStatusChangedEventSchema.safeParse(payload);
+      if (!parsed.success) {
+        return;
+      }
+      handleStatusChange(parsed.data.task_id, parsed.data.new_status);
+    });
+
+    return () => {
+      unsubscribeTaskEvent();
+      unsubscribeLegacyStatus();
+    };
   }, [bus, addTask, updateTask, removeTask, queryClient]);
 }

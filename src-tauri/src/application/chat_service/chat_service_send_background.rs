@@ -956,6 +956,40 @@ async fn attempt_merge_auto_complete<R: Runtime>(
     }
 }
 
+/// Reconcile merge state when agent run finished but status is still Merging.
+pub(crate) async fn reconcile_merge_auto_complete<R: Runtime>(
+    task_id_str: &str,
+    task_repo: &Arc<dyn TaskRepository>,
+    task_dependency_repo: &Arc<dyn TaskDependencyRepository>,
+    project_repo: &Arc<dyn ProjectRepository>,
+    chat_message_repo: &Arc<dyn ChatMessageRepository>,
+    conversation_repo: &Arc<dyn ChatConversationRepository>,
+    agent_run_repo: &Arc<dyn AgentRunRepository>,
+    ideation_session_repo: &Arc<dyn IdeationSessionRepository>,
+    activity_event_repo: &Arc<dyn ActivityEventRepository>,
+    message_queue: &Arc<MessageQueue>,
+    running_agent_registry: &Arc<RunningAgentRegistry>,
+    execution_state: &Arc<ExecutionState>,
+    app_handle: Option<&AppHandle<R>>,
+) {
+    attempt_merge_auto_complete(
+        task_id_str,
+        task_repo,
+        task_dependency_repo,
+        project_repo,
+        chat_message_repo,
+        conversation_repo,
+        agent_run_repo,
+        ideation_session_repo,
+        activity_event_repo,
+        message_queue,
+        running_agent_registry,
+        execution_state,
+        app_handle,
+    )
+    .await;
+}
+
 /// Helper to transition task to MergeConflict state
 #[allow(clippy::too_many_arguments)]
 async fn transition_to_merge_conflict<R: Runtime>(

@@ -21,8 +21,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { ChatConversation, ContextType, AgentRunStatus } from "@/types/chat-conversation";
-import { useQueries } from "@tanstack/react-query";
+import type { ChatConversation, ContextType, AgentRun, AgentRunStatus } from "@/types/chat-conversation";
+import { useQueries, type Query } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
 
 // ============================================================================
@@ -159,16 +159,14 @@ export function ConversationSelector({
     });
   }, [conversations, isAgentContext]);
 
-  // Fetch agent run status for all agent context conversations using useQueries
-  // This enables status polling for both execution and review contexts
+  // Fetch agent run status for active agent context conversation only
   const statusQueries = useQueries({
     queries: sortedConversations.map((conv) => ({
       queryKey: ["agent-run", conv.id] as const,
       queryFn: () => chatApi.getAgentRunStatus(conv.id),
-      enabled: isAgentContext,
-      // Poll every 2 seconds for running agents
-      refetchInterval: 2000,
-      // Only refetch if we're in agent context
+      enabled: isAgentContext && conv.id === activeConversationId,
+      refetchInterval: (query: Query<AgentRun | null, Error>) =>
+        query.state.data?.status === "running" ? 2000 : false,
       refetchIntervalInBackground: false,
     })),
   });
