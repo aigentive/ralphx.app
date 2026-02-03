@@ -182,16 +182,16 @@ export function computeDependencyTiers(graph: DependencyGraphResponse | null | u
   }
 
   // Build adjacency map: proposalId -> list of proposals it depends on
-  // Edge semantics: edge.to depends on edge.from (from → to in graph)
+  // Edge semantics: edge.from depends on edge.to (from → to in graph)
   const dependsOn = new Map<string, Set<string>>();
   for (const node of graph.nodes) {
     dependsOn.set(node.proposalId, new Set());
   }
   for (const edge of graph.edges) {
-    // edge.to depends on edge.from
-    const deps = dependsOn.get(edge.to);
+    // edge.from depends on edge.to
+    const deps = dependsOn.get(edge.from);
     if (deps) {
-      deps.add(edge.from);
+      deps.add(edge.to);
     }
   }
 
@@ -210,9 +210,10 @@ export function computeDependencyTiers(graph: DependencyGraphResponse | null | u
   const processed = new Set<string>();
   const queue: string[] = [];
 
-  // Initialize tier 0: nodes with inDegree === 0
+  // Initialize tier 0: nodes with no dependencies
   for (const node of graph.nodes) {
-    if (node.inDegree === 0) {
+    const deps = dependsOn.get(node.proposalId);
+    if (!deps || deps.size === 0) {
       tierMap.set(node.proposalId, 0);
       queue.push(node.proposalId);
       processed.add(node.proposalId);

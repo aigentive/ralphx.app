@@ -103,11 +103,14 @@ export const useIdeationStore = create<IdeationState & IdeationActions>()(
     // Actions
     setActiveSession: (sessionId) =>
       set((state) => {
+        const isSameSession = state.activeSessionId === sessionId;
         state.activeSessionId = sessionId;
-        // Clear session-specific state when switching sessions
-        state.planArtifact = null;
-        state.syncNotification = null;
-        state.error = null;
+        // Clear session-specific state only when switching to a different session
+        if (!isSameSession) {
+          state.planArtifact = null;
+          state.syncNotification = null;
+          state.error = null;
+        }
       }),
 
     addSession: (session) =>
@@ -132,16 +135,19 @@ export const useIdeationStore = create<IdeationState & IdeationActions>()(
 
     selectSession: (session) =>
       set((state) => {
+        const isSameSession = state.activeSessionId === session.id;
         // Add session to store
         state.sessions[session.id] = session;
 
         // Set as active
         state.activeSessionId = session.id;
 
-        // Clear session-specific state
-        state.planArtifact = null;
-        state.syncNotification = null;
-        state.error = null;
+        // Clear session-specific state only when switching sessions
+        if (!isSameSession) {
+          state.planArtifact = null;
+          state.syncNotification = null;
+          state.error = null;
+        }
 
         // LRU eviction if needed
         const sessionIds = Object.keys(state.sessions);

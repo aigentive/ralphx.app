@@ -95,7 +95,7 @@ export const DependencyGraphNodeResponseSchema = z.object({
 export const DependencyGraphEdgeResponseSchema = z.object({
   from: z.string(),
   to: z.string(),
-  reason: z.string().nullable(),
+  reason: z.string().nullable().optional(),
 });
 
 /**

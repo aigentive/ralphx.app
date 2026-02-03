@@ -10,6 +10,7 @@ import { useEventBus } from "@/providers/EventProvider";
 import { ProposalEventSchema, ProposalsReorderedEventSchema } from "@/types/events";
 import { useProposalStore } from "@/stores/proposalStore";
 import { ideationKeys } from "./useIdeation";
+import { dependencyKeys } from "./useDependencyGraph";
 import type { TaskProposal } from "@/types/ideation";
 import type { Unsubscribe } from "@/lib/event-bus";
 
@@ -79,6 +80,10 @@ export function useProposalEvents() {
           queryClient.invalidateQueries({
             queryKey: ideationKeys.sessionWithData(proposal.sessionId),
           });
+          // Invalidate dependency graph (proposal list changed)
+          queryClient.invalidateQueries({
+            queryKey: dependencyKeys.graphs(),
+          });
         }
       })
     );
@@ -125,6 +130,10 @@ export function useProposalEvents() {
           queryClient.invalidateQueries({
             queryKey: ideationKeys.sessionWithData(proposal.sessionId),
           });
+          // Invalidate dependency graph (proposal list changed)
+          queryClient.invalidateQueries({
+            queryKey: dependencyKeys.graphs(),
+          });
         }
       })
     );
@@ -141,6 +150,10 @@ export function useProposalEvents() {
 
         if (parsed.data.type === "deleted") {
           removeProposal(parsed.data.proposalId);
+          // Invalidate dependency graph (proposal list changed)
+          queryClient.invalidateQueries({
+            queryKey: dependencyKeys.graphs(),
+          });
         }
       })
     );
@@ -189,6 +202,10 @@ export function useProposalEvents() {
             queryKey: ideationKeys.sessionWithData(parsed.data.session_id),
           });
         }
+        // Invalidate dependency graph (proposal ordering changed)
+        queryClient.invalidateQueries({
+          queryKey: dependencyKeys.graphs(),
+        });
       })
     );
 
