@@ -547,6 +547,14 @@ export function ReviewDetailModal({
 
           {/* Right Pane: DiffViewer (flex-1) */}
           <div className="flex-1 min-w-0">
+            {task?.internalStatus === "merged" && (
+              <div
+                className="px-4 py-2 text-[11px] text-white/55 border-b"
+                style={{ borderColor: "rgba(255,255,255,0.06)" }}
+              >
+                Showing merged diff against the base branch for this task.
+              </div>
+            )}
             <DiffViewer
               changes={changes}
               commits={commits}
