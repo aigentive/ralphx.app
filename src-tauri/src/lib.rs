@@ -227,16 +227,16 @@ pub fn run() {
 
                 // Create TaskTransitionService for startup resumption
                 let transition_service = Arc::new(TaskTransitionService::new(
-                    startup_task_repo.clone(),
-                    startup_task_dependency_repo,
-                    startup_project_repo.clone(),
-                    startup_chat_message_repo,
-                    startup_conversation_repo,
-                    startup_agent_run_repo.clone(),
-                    startup_ideation_session_repo,
-                    startup_activity_event_repo,
-                    startup_message_queue,
-                    startup_running_agent_registry,
+                    Arc::clone(&startup_task_repo),
+                    Arc::clone(&startup_task_dependency_repo),
+                    Arc::clone(&startup_project_repo),
+                    Arc::clone(&startup_chat_message_repo),
+                    Arc::clone(&startup_conversation_repo),
+                    Arc::clone(&startup_agent_run_repo),
+                    Arc::clone(&startup_ideation_session_repo),
+                    Arc::clone(&startup_activity_event_repo),
+                    Arc::clone(&startup_message_queue),
+                    Arc::clone(&startup_running_agent_registry),
                     Arc::clone(&startup_execution_state),
                     Some(startup_app_handle),
                 )
@@ -256,7 +256,7 @@ pub fn run() {
                     Arc::clone(&transition_service),
                     Arc::clone(&startup_execution_state),
                 )
-                .with_task_scheduler(task_scheduler)
+                .with_task_scheduler(Arc::clone(&task_scheduler))
                 .with_app_handle(startup_runner_app_handle);
 
                 runner.run().await;
@@ -285,13 +285,13 @@ pub fn run() {
                         Arc::clone(&reconcile_task_repo),
                         Arc::clone(&reconcile_task_dependency_repo),
                         Arc::clone(&reconcile_project_repo),
-                        reconcile_chat_message_repo,
-                        reconcile_conversation_repo,
+                        Arc::clone(&reconcile_chat_message_repo),
+                        Arc::clone(&reconcile_conversation_repo),
                         Arc::clone(&reconcile_agent_run_repo),
-                        reconcile_ideation_session_repo,
-                        reconcile_activity_event_repo,
-                        reconcile_message_queue,
-                        reconcile_running_agent_registry,
+                        Arc::clone(&reconcile_ideation_session_repo),
+                        Arc::clone(&reconcile_activity_event_repo),
+                        Arc::clone(&reconcile_message_queue),
+                        Arc::clone(&reconcile_running_agent_registry),
                         Arc::clone(&startup_execution_state),
                         Some(reconcile_app_handle.clone()),
                     )

@@ -22,7 +22,7 @@ use crate::commands::execution_commands::{
     ExecutionState, AGENT_ACTIVE_STATUSES, AUTO_TRANSITION_STATES,
 };
 use crate::application::ReconciliationRunner;
-use crate::domain::entities::{InternalStatus, Task};
+use crate::domain::entities::InternalStatus;
 use crate::domain::repositories::{
     AgentRunRepository, ChatConversationRepository, ProjectRepository, TaskDependencyRepository,
     TaskRepository,
