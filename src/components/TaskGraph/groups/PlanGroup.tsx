@@ -222,7 +222,7 @@ export function createPlanGroupNode(
     draggable: false,
     selectable: true,
     // Ensure group renders behind task nodes
-    zIndex: -1,
+    zIndex: -2,
   };
 }
 
