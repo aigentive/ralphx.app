@@ -20,8 +20,20 @@ import {
   boundingBoxToGroupNode,
   GROUP_PADDING,
   HEADER_HEIGHT,
+  calculateBoundingBox,
+  type BoundingBox,
 } from "../groups/groupUtils";
 import { createPlanGroupNode, type PlanGroupNode } from "../groups/PlanGroup";
+import {
+  createTierGroupNode,
+  type TierGroupNode,
+  TIER_HEADER_HEIGHT,
+} from "../groups/TierGroup";
+import {
+  buildTierGroups,
+  type TierGroupInfo,
+  UNGROUPED_PLAN_ID,
+} from "../groups/tierGroupUtils";
 import { NODE_WIDTH, NODE_HEIGHT, COMPACT_NODE_WIDTH, COMPACT_NODE_HEIGHT } from "../nodes/nodeStyles";
 
 // ============================================================================
@@ -46,7 +58,7 @@ export interface LayoutConfig {
 export interface LayoutResult {
   nodes: Node[];
   edges: Edge[];
-  groupNodes: PlanGroupNode[];
+  groupNodes: Array<PlanGroupNode | TierGroupNode>;
 }
 
 // Use Record<string, unknown> compatible structure for React Flow
@@ -92,14 +104,43 @@ const DEFAULT_CONFIG: LayoutConfig = {
 // Group Node Creation
 // ============================================================================
 
-/**
- * ID for the "Ungrouped" pseudo-plan that contains standalone tasks
- */
-const UNGROUPED_PLAN_ID = "__ungrouped__";
-
 /** Collapsed group dimensions */
 const COLLAPSED_GROUP_WIDTH = 320; // Min width to accommodate title + progress
 const COLLAPSED_GROUP_HEIGHT = HEADER_HEIGHT + 8;
+const COLLAPSED_TIER_WIDTH = COLLAPSED_GROUP_WIDTH;
+const COLLAPSED_TIER_HEIGHT = TIER_HEADER_HEIGHT + 8;
+const TIER_STACK_GAP = 12;
+
+interface SizedNode {
+  position: { x: number; y: number };
+  width: number;
+  height: number;
+}
+
+function calculateSizedBoundingBox(nodes: SizedNode[]): BoundingBox | null {
+  if (nodes.length === 0) return null;
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const node of nodes) {
+    minX = Math.min(minX, node.position.x);
+    minY = Math.min(minY, node.position.y);
+    maxX = Math.max(maxX, node.position.x + node.width);
+    maxY = Math.max(maxY, node.position.y + node.height);
+  }
+
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
+}
 
 /**
  * Create React Flow group nodes for plan groups
@@ -295,6 +336,104 @@ function createGroupNodes(
   return groupNodes;
 }
 
+/**
+ * Create React Flow group nodes for tier groups within plans.
+ */
+function createTierGroupNodes(
+  taskNodes: Node[],
+  tierGroups: TierGroupInfo[],
+  collapsedTierIds: Set<string>,
+  collapsedPlanIds: Set<string>,
+  planGroupBounds: Map<string, { position: { x: number; y: number }; width: number }>,
+  positions: Map<string, { x: number; y: number }>,
+  nodeWidth: number,
+  nodeHeight: number,
+  onToggleCollapse?: (tierGroupId: string) => void
+): TierGroupNode[] {
+  if (tierGroups.length === 0) {
+    return [];
+  }
+
+  const groupNodes: TierGroupNode[] = [];
+
+  for (const tg of tierGroups) {
+    if (collapsedPlanIds.has(tg.planArtifactId)) {
+      continue;
+    }
+
+    const isCollapsed = collapsedTierIds.has(tg.id);
+    let position: { x: number; y: number };
+    let width: number;
+    let height: number;
+
+    const planBounds = planGroupBounds.get(tg.planArtifactId);
+    if (isCollapsed) {
+      const placeholderPos = positions.get(`__tier_group_position_${tg.id}__`);
+      const desiredWidth =
+        planBounds?.width !== undefined
+          ? Math.max(planBounds.width - GROUP_PADDING * 2, COLLAPSED_TIER_WIDTH)
+          : COLLAPSED_TIER_WIDTH;
+      const centeredX =
+        planBounds?.position.x !== undefined && planBounds.width !== undefined
+          ? planBounds.position.x + (planBounds.width - desiredWidth) / 2
+          : placeholderPos?.x ?? 0;
+      position = {
+        x: centeredX,
+        y: placeholderPos?.y ?? 0,
+      };
+      width = desiredWidth;
+      height = COLLAPSED_TIER_HEIGHT;
+    } else {
+      const tierTaskNodes = taskNodes.filter((n) => tg.taskIds.includes(n.id));
+      if (tierTaskNodes.length === 0) continue;
+
+      const singleGroupMap = new Map<string, string[]>();
+      singleGroupMap.set(tg.id, tg.taskIds);
+      const boundingBoxes = calculateGroupBoundingBoxes(
+        tierTaskNodes,
+        singleGroupMap,
+        nodeWidth,
+        nodeHeight
+      );
+      const bbox = boundingBoxes[0];
+      if (!bbox) continue;
+
+      const expanded = expandBoundingBox(bbox, GROUP_PADDING, TIER_HEADER_HEIGHT);
+      const groupDims = boundingBoxToGroupNode(expanded);
+      const desiredWidth =
+        planBounds?.width !== undefined
+          ? Math.max(planBounds.width - GROUP_PADDING * 2, groupDims.width)
+          : groupDims.width;
+      const centeredX =
+        planBounds?.position.x !== undefined && planBounds.width !== undefined
+          ? planBounds.position.x + (planBounds.width - desiredWidth) / 2
+          : groupDims.position.x;
+      position = {
+        x: centeredX,
+        y: groupDims.position.y,
+      };
+      width = desiredWidth;
+      height = groupDims.height;
+    }
+
+    groupNodes.push(
+      createTierGroupNode(
+        tg.id,
+        tg.planArtifactId,
+        tg.tier,
+        tg.taskIds,
+        position,
+        width,
+        height,
+        isCollapsed,
+        onToggleCollapse
+      )
+    );
+  }
+
+  return groupNodes;
+}
+
 // ============================================================================
 // Inter-Group Edge Generation
 // ============================================================================
@@ -311,6 +450,13 @@ interface InterGroupEdgeInfo {
   sourceGroupId: string;
   /** Group ID for rendering (target group) */
   targetGroupId: string;
+}
+
+interface InterTierEdgeInfo {
+  sourceTierId: string;
+  targetTierId: string;
+  sourceLabel: string;
+  targetLabel: string;
 }
 
 /**
@@ -412,6 +558,45 @@ function generateInterGroupEdges(
   return interGroupEdges;
 }
 
+/**
+ * Generate synthetic edges between consecutive tier groups within the same plan.
+ * These are render-only edges for visual grouping (no dagre layout influence).
+ */
+function generateInterTierEdges(
+  tierGroups: TierGroupInfo[],
+  collapsedPlanIds: Set<string>
+): InterTierEdgeInfo[] {
+  const tiersByPlan = new Map<string, TierGroupInfo[]>();
+  for (const tierGroup of tierGroups) {
+    if (collapsedPlanIds.has(tierGroup.planArtifactId)) continue;
+    const existing = tiersByPlan.get(tierGroup.planArtifactId);
+    if (existing) {
+      existing.push(tierGroup);
+    } else {
+      tiersByPlan.set(tierGroup.planArtifactId, [tierGroup]);
+    }
+  }
+
+  const edges: InterTierEdgeInfo[] = [];
+  for (const [, tiers] of tiersByPlan) {
+    const ordered = [...tiers].sort((a, b) => a.tier - b.tier);
+    if (ordered.length < 2) continue;
+    for (let i = 0; i < ordered.length - 1; i++) {
+      const sourceTier = ordered[i];
+      const targetTier = ordered[i + 1];
+      if (!sourceTier || !targetTier) continue;
+      edges.push({
+        sourceTierId: sourceTier.id,
+        targetTierId: targetTier.id,
+        sourceLabel: `Tier ${sourceTier.tier}`,
+        targetLabel: `Tier ${targetTier.tier}`,
+      });
+    }
+  }
+
+  return edges;
+}
+
 // ============================================================================
 // Layout Computation (with caching)
 // ============================================================================
@@ -423,7 +608,9 @@ function generateInterGroupEdges(
 function buildCollapsedTaskIds(
   graphNodes: TaskGraphNode[],
   planGroups: PlanGroupInfo[],
-  collapsedPlanIds: Set<string>
+  tierGroups: TierGroupInfo[],
+  collapsedPlanIds: Set<string>,
+  collapsedTierIds: Set<string>
 ): Set<string> {
   const hiddenIds = new Set<string>();
 
@@ -451,6 +638,15 @@ function buildCollapsedTaskIds(
     }
   }
 
+  // Add tasks from collapsed tier groups (unless their plan is already collapsed)
+  for (const tg of tierGroups) {
+    if (collapsedTierIds.has(tg.id) && !collapsedPlanIds.has(tg.planArtifactId)) {
+      for (const taskId of tg.taskIds) {
+        hiddenIds.add(taskId);
+      }
+    }
+  }
+
   return hiddenIds;
 }
 
@@ -468,18 +664,29 @@ function computeLayoutWithCache(
   planGroups: PlanGroupInfo[],
   config: LayoutConfig,
   collapsedPlanIds: Set<string>,
+  collapsedTierIds: Set<string>,
   onToggleCollapse: ((planArtifactId: string) => void) | undefined,
+  onToggleTierCollapse: ((tierGroupId: string) => void) | undefined,
   cache: React.MutableRefObject<CachedLayout | null>
 ): LayoutResult {
   // Use correct node dimensions based on compact mode
   const nodeWidth = config.isCompact ? COMPACT_NODE_WIDTH : NODE_WIDTH;
   const nodeHeight = config.isCompact ? COMPACT_NODE_HEIGHT : NODE_HEIGHT;
 
+  const tierGroups = buildTierGroups(graphNodes, planGroups);
+
   // Build set of collapsed task IDs for lazy loading
-  const collapsedTaskIds = buildCollapsedTaskIds(graphNodes, planGroups, collapsedPlanIds);
+  const collapsedTaskIds = buildCollapsedTaskIds(
+    graphNodes,
+    planGroups,
+    tierGroups,
+    collapsedPlanIds,
+    collapsedTierIds
+  );
 
   // Generate inter-group connector edges to stack groups vertically
   const interGroupEdges = generateInterGroupEdges(graphNodes, planGroups);
+  const interTierEdges = generateInterTierEdges(tierGroups, collapsedPlanIds);
 
   // Filter nodes and edges to exclude collapsed groups (lazy loading)
   // This saves rendering for tasks that won't be shown
@@ -506,8 +713,21 @@ function computeLayoutWithCache(
     planArtifactId: pg.planArtifactId,
     taskIds: pg.taskIds,
   }));
+  const layoutTierGroups: LayoutTierGroup[] = tierGroups.map((tg) => ({
+    tierGroupId: tg.id,
+    planArtifactId: tg.planArtifactId,
+    taskIds: tg.taskIds,
+  }));
 
-  const hash = computeGraphHash(allNodeIds, allEdgePairs, config.direction, layoutPlanGroups, collapsedPlanIds);
+  const hash = computeGraphHash(
+    allNodeIds,
+    allEdgePairs,
+    config.direction,
+    layoutPlanGroups,
+    layoutTierGroups,
+    collapsedPlanIds,
+    collapsedTierIds
+  );
 
   // Check if we can use cached positions
   let positions: Map<string, { x: number; y: number }>;
@@ -517,7 +737,15 @@ function computeLayoutWithCache(
   } else {
     // Cache miss: compute new layout using compound graph and cache it
     // Collapsed groups use minimal placeholder nodes
-    positions = computePositions(allNodeIds, allEdgePairs, config, layoutPlanGroups, collapsedPlanIds);
+    positions = computePositions(
+      allNodeIds,
+      allEdgePairs,
+      config,
+      layoutPlanGroups,
+      layoutTierGroups,
+      collapsedPlanIds,
+      collapsedTierIds
+    );
     cache.current = { hash, positions };
   }
 
@@ -653,6 +881,27 @@ function computeLayoutWithCache(
     });
   }
 
+  // Add inter-tier connector edges (connect tier group nodes directly)
+  const TIER_CONNECTOR_ZINDEX = 12;
+  for (const interEdge of interTierEdges) {
+    const edgeData: DependencyEdgeData = {
+      isCriticalPath: false,
+      isCrossPlan: false,
+      isGroupConnector: true,
+      sourceLabel: interEdge.sourceLabel,
+      targetLabel: interEdge.targetLabel,
+    };
+
+    edges.push({
+      id: `tier-connector-${interEdge.sourceTierId}-${interEdge.targetTierId}`,
+      type: "dependency",
+      source: interEdge.sourceTierId,
+      target: interEdge.targetTierId,
+      data: edgeData,
+      zIndex: TIER_CONNECTOR_ZINDEX,
+    });
+  }
+
   // Create ALL positioned nodes for group bounding box calculation
   // (includes collapsed group tasks that won't be rendered)
   const allPositionedNodes: Node[] = graphNodes.map((graphNode) => {
@@ -666,7 +915,162 @@ function computeLayoutWithCache(
   });
 
   // Create group nodes for plan groups using ALL positioned nodes
-  const groupNodes = createGroupNodes(allPositionedNodes, planGroups, collapsedPlanIds, positions, graphNodes, nodeWidth, nodeHeight, onToggleCollapse);
+  const planGroupNodes = createGroupNodes(
+    allPositionedNodes,
+    planGroups,
+    collapsedPlanIds,
+    positions,
+    graphNodes,
+    nodeWidth,
+    nodeHeight,
+    onToggleCollapse
+  );
+
+  const planGroupBounds = new Map<string, { position: { x: number; y: number }; width: number }>();
+  for (const groupNode of planGroupNodes) {
+    if (!groupNode.data.isCollapsed) {
+      planGroupBounds.set(groupNode.data.planArtifactId, {
+        position: groupNode.position,
+        width: groupNode.data.width,
+      });
+    }
+  }
+  const tierGroupNodes = createTierGroupNodes(
+    allPositionedNodes,
+    tierGroups,
+    collapsedTierIds,
+    collapsedPlanIds,
+    planGroupBounds,
+    positions,
+    nodeWidth,
+    nodeHeight,
+    onToggleTierCollapse
+  );
+
+  // Compress vertical spacing for collapsed tiers to avoid huge gaps
+  const tierGroupsByPlan = new Map<string, TierGroupNode[]>();
+  const tierOriginalY = new Map<string, number>();
+  for (const tierNode of tierGroupNodes) {
+    tierOriginalY.set(tierNode.id, tierNode.position.y);
+    const existing = tierGroupsByPlan.get(tierNode.data.planArtifactId);
+    if (existing) {
+      existing.push(tierNode);
+    } else {
+      tierGroupsByPlan.set(tierNode.data.planArtifactId, [tierNode]);
+    }
+  }
+
+  for (const [, tierNodes] of tierGroupsByPlan) {
+    const ordered = [...tierNodes].sort((a, b) => a.data.tier - b.data.tier);
+    const minY = Math.min(...ordered.map((node) => node.position.y));
+    let cursorY = Number.isFinite(minY) ? minY : 0;
+
+    for (const tierNode of ordered) {
+      const height = tierNode.data.isCollapsed
+        ? COLLAPSED_TIER_HEIGHT
+        : tierNode.data.height;
+      tierNode.position = { ...tierNode.position, y: cursorY };
+      cursorY = tierNode.position.y + height + TIER_STACK_GAP;
+    }
+  }
+
+  const taskToTierGroupId = new Map<string, string>();
+  for (const tierGroup of tierGroups) {
+    for (const taskId of tierGroup.taskIds) {
+      taskToTierGroupId.set(taskId, tierGroup.id);
+    }
+  }
+  const tierDelta = new Map<string, number>();
+  for (const tierNode of tierGroupNodes) {
+    const originalY = tierOriginalY.get(tierNode.id);
+    if (originalY === undefined) continue;
+    const delta = tierNode.position.y - originalY;
+    if (delta !== 0) {
+      tierDelta.set(tierNode.id, delta);
+    }
+  }
+
+  if (tierDelta.size > 0) {
+    for (const node of nodes) {
+      const tierId = taskToTierGroupId.get(node.id);
+      if (!tierId) continue;
+      const delta = tierDelta.get(tierId);
+      if (!delta) continue;
+      node.position = { ...node.position, y: node.position.y + delta };
+    }
+    for (const node of allPositionedNodes) {
+      const tierId = taskToTierGroupId.get(node.id);
+      if (!tierId) continue;
+      const delta = tierDelta.get(tierId);
+      if (!delta) continue;
+      node.position = { ...node.position, y: node.position.y + delta };
+    }
+  }
+
+  // Center task nodes within their tier group lane
+  const tierNodeMap = new Map<string, TierGroupNode>();
+  for (const tierNode of tierGroupNodes) {
+    tierNodeMap.set(tierNode.id, tierNode);
+  }
+  const tasksByTier = new Map<string, Node[]>();
+  for (const node of allPositionedNodes) {
+    const tierId = taskToTierGroupId.get(node.id);
+    if (!tierId) continue;
+    const bucket = tasksByTier.get(tierId);
+    if (bucket) {
+      bucket.push(node);
+    } else {
+      tasksByTier.set(tierId, [node]);
+    }
+  }
+
+  for (const [tierId, tierTasks] of tasksByTier) {
+    const tierNode = tierNodeMap.get(tierId);
+    if (!tierNode || tierNode.data.isCollapsed) continue;
+    const bbox = calculateBoundingBox(tierTasks, nodeWidth, nodeHeight);
+    if (!bbox) continue;
+    const desiredLeft = tierNode.position.x + (tierNode.data.width - bbox.width) / 2;
+    const deltaX = desiredLeft - bbox.minX;
+    if (deltaX === 0) continue;
+
+    for (const node of tierTasks) {
+      node.position = { ...node.position, x: node.position.x + deltaX };
+    }
+    for (const node of nodes) {
+      if (taskToTierGroupId.get(node.id) !== tierId) continue;
+      node.position = { ...node.position, x: node.position.x + deltaX };
+    }
+  }
+
+  // If we have tiers, recompute plan group bounds using tier group nodes
+  if (tierGroups.length > 0) {
+    for (const planGroupNode of planGroupNodes) {
+      if (planGroupNode.data.isCollapsed) continue;
+      const tierNodes = tierGroupNodes.filter(
+        (node) => node.data.planArtifactId === planGroupNode.data.planArtifactId
+      );
+      if (tierNodes.length === 0) continue;
+      const sizedNodes = tierNodes.map((node) => ({
+        position: node.position,
+        width: node.data.width,
+        height: node.data.height,
+      }));
+      const bbox = calculateSizedBoundingBox(sizedNodes);
+      if (!bbox) continue;
+      const expanded = expandBoundingBox(bbox, GROUP_PADDING, HEADER_HEIGHT);
+      const groupDims = boundingBoxToGroupNode(expanded);
+      planGroupNode.position = groupDims.position;
+      planGroupNode.data.width = groupDims.width;
+      planGroupNode.data.height = groupDims.height;
+      planGroupNode.style = {
+        ...planGroupNode.style,
+        width: groupDims.width,
+        height: groupDims.height,
+      };
+    }
+  }
+
+  const groupNodes = [...planGroupNodes, ...tierGroupNodes];
 
   return { nodes, edges, groupNodes };
 }
@@ -725,7 +1129,9 @@ export function useTaskGraphLayout(
   planGroups: PlanGroupInfo[] = [],
   config: Partial<LayoutConfig> = {},
   collapsedPlanIds: Set<string> = new Set(),
-  onToggleCollapse?: (planArtifactId: string) => void
+  collapsedTierIds: Set<string> = new Set(),
+  onToggleCollapse?: (planArtifactId: string) => void,
+  onToggleTierCollapse?: (tierGroupId: string) => void
 ): LayoutResult {
   // Merge with default config
   const fullConfig = useMemo(
@@ -748,10 +1154,22 @@ export function useTaskGraphLayout(
       planGroups,
       fullConfig,
       collapsedPlanIds,
+      collapsedTierIds,
       onToggleCollapse,
+      onToggleTierCollapse,
       layoutCache
     );
-  }, [graphNodes, graphEdges, criticalPath, planGroups, fullConfig, collapsedPlanIds, onToggleCollapse]);
+  }, [
+    graphNodes,
+    graphEdges,
+    criticalPath,
+    planGroups,
+    fullConfig,
+    collapsedPlanIds,
+    collapsedTierIds,
+    onToggleCollapse,
+    onToggleTierCollapse,
+  ]);
 
   return layout;
 }
@@ -777,6 +1195,12 @@ interface LayoutPlanGroup {
   taskIds: string[];
 }
 
+interface LayoutTierGroup {
+  tierGroupId: string;
+  planArtifactId: string;
+  taskIds: string[];
+}
+
 /**
  * Compute a structural hash of the graph for cache key.
  * Hash includes: node IDs (sorted), edge pairs (sorted), config direction, plan groups, and collapsed state.
@@ -787,7 +1211,9 @@ function computeGraphHash(
   edges: { source: string; target: string }[],
   direction: "TB" | "LR",
   planGroups: LayoutPlanGroup[] = [],
-  collapsedPlanIds: Set<string> = new Set()
+  tierGroups: LayoutTierGroup[] = [],
+  collapsedPlanIds: Set<string> = new Set(),
+  collapsedTierIds: Set<string> = new Set()
 ): string {
   // Sort for consistent ordering
   const sortedNodes = [...nodeIds].sort().join(",");
@@ -800,9 +1226,14 @@ function computeGraphHash(
     .map((g) => `${g.planArtifactId}:[${[...g.taskIds].sort().join(",")}]`)
     .sort()
     .join(";");
+  const sortedTierGroups = [...tierGroups]
+    .map((g) => `${g.tierGroupId}:${g.planArtifactId}:[${[...g.taskIds].sort().join(",")}]`)
+    .sort()
+    .join(";");
   // Include collapsed state so layout recalculates when groups collapse/expand
   const sortedCollapsed = [...collapsedPlanIds].sort().join(",");
-  return `${direction}:${sortedNodes}|${sortedEdges}|${sortedGroups}|${sortedCollapsed}`;
+  const sortedCollapsedTiers = [...collapsedTierIds].sort().join(",");
+  return `${direction}:${sortedNodes}|${sortedEdges}|${sortedGroups}|${sortedTierGroups}|${sortedCollapsed}|${sortedCollapsedTiers}`;
 }
 
 /**
@@ -819,14 +1250,16 @@ function computePositions(
   edges: { source: string; target: string }[],
   config: LayoutConfig,
   planGroups: LayoutPlanGroup[] = [],
-  collapsedPlanIds: Set<string> = new Set()
+  tierGroups: LayoutTierGroup[] = [],
+  collapsedPlanIds: Set<string> = new Set(),
+  collapsedTierIds: Set<string> = new Set()
 ): Map<string, { x: number; y: number }> {
   // Use correct node dimensions based on compact mode
   const nodeWidth = config.isCompact ? COMPACT_NODE_WIDTH : NODE_WIDTH;
   const nodeHeight = config.isCompact ? COMPACT_NODE_HEIGHT : NODE_HEIGHT;
 
-  // Use compound graph when we have plan groups to prevent overlap
-  const useCompound = planGroups.length > 0;
+  // Use compound graph when we have plan groups or tier groups to prevent overlap
+  const useCompound = planGroups.length > 0 || tierGroups.length > 0;
   const g = new dagre.graphlib.Graph({ compound: useCompound });
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({
@@ -837,15 +1270,16 @@ function computePositions(
     marginy: config.marginy,
   });
 
-  // Build task to group mapping and identify collapsed group tasks
-  const taskToGroupMap = new Map<string, string>();
+  // Build task/group mappings and identify collapsed tasks
+  const taskToPlanMap = new Map<string, string>();
+  const taskToTierMap = new Map<string, string>();
   const collapsedTaskIds = new Set<string>();
 
   if (useCompound) {
     for (const group of planGroups) {
       const isCollapsed = collapsedPlanIds.has(group.planArtifactId);
       for (const taskId of group.taskIds) {
-        taskToGroupMap.set(taskId, group.planArtifactId);
+        taskToPlanMap.set(taskId, group.planArtifactId);
         if (isCollapsed) {
           collapsedTaskIds.add(taskId);
         }
@@ -853,14 +1287,8 @@ function computePositions(
     }
 
     // Add parent nodes for each plan group
-    // These are "invisible" containers that dagre uses for layout
     for (const group of planGroups) {
-      // Group parent node needs dimensions - we'll use a placeholder
-      // Dagre will expand this based on child nodes
-      g.setNode(group.planArtifactId, {
-        label: group.planArtifactId,
-        // No width/height - dagre computes from children
-      });
+      g.setNode(group.planArtifactId, { label: group.planArtifactId });
     }
 
     // Find ungrouped tasks and create a pseudo-group for them
@@ -870,15 +1298,32 @@ function computePositions(
         groupedTaskIds.add(taskId);
       }
     }
-    const ungroupedTaskIds = nodeIds.filter(id => !groupedTaskIds.has(id));
+    const ungroupedTaskIds = nodeIds.filter((id) => !groupedTaskIds.has(id));
 
-    // Check if ungrouped pseudo-group is collapsed
     const isUngroupedCollapsed = collapsedPlanIds.has(UNGROUPED_PLAN_ID);
     if (ungroupedTaskIds.length > 0) {
       g.setNode(UNGROUPED_PLAN_ID, { label: UNGROUPED_PLAN_ID });
       for (const taskId of ungroupedTaskIds) {
-        taskToGroupMap.set(taskId, UNGROUPED_PLAN_ID);
+        taskToPlanMap.set(taskId, UNGROUPED_PLAN_ID);
         if (isUngroupedCollapsed) {
+          collapsedTaskIds.add(taskId);
+        }
+      }
+    }
+
+    // Add tier group nodes and map tasks to tiers
+    for (const tierGroup of tierGroups) {
+      if (collapsedPlanIds.has(tierGroup.planArtifactId)) {
+        continue;
+      }
+      g.setNode(tierGroup.tierGroupId, { label: tierGroup.tierGroupId });
+      g.setParent(tierGroup.tierGroupId, tierGroup.planArtifactId);
+
+      const isTierCollapsed = collapsedTierIds.has(tierGroup.tierGroupId);
+      const isPlanCollapsed = collapsedPlanIds.has(tierGroup.planArtifactId);
+      for (const taskId of tierGroup.taskIds) {
+        taskToTierMap.set(taskId, tierGroup.tierGroupId);
+        if (isTierCollapsed && !isPlanCollapsed) {
           collapsedTaskIds.add(taskId);
         }
       }
@@ -886,28 +1331,46 @@ function computePositions(
   }
 
   // Add task nodes - skip collapsed group tasks, add placeholder instead
-  const collapsedGroupPlaceholders = new Set<string>();
+  const collapsedPlanPlaceholders = new Set<string>();
+  const collapsedTierPlaceholders = new Set<string>();
   for (const id of nodeIds) {
     if (collapsedTaskIds.has(id)) {
-      // For collapsed groups, add ONE placeholder per group (not per task)
-      const groupId = taskToGroupMap.get(id);
-      if (groupId && !collapsedGroupPlaceholders.has(groupId)) {
-        // Add a small placeholder node for the collapsed group
-        const placeholderId = `__collapsed_placeholder_${groupId}__`;
-        g.setNode(placeholderId, { width: COLLAPSED_GROUP_WIDTH, height: 40 }); // Minimal height
-        g.setParent(placeholderId, groupId);
-        collapsedGroupPlaceholders.add(groupId);
+      const planId = taskToPlanMap.get(id);
+      const tierId = taskToTierMap.get(id);
+
+      if (planId && collapsedPlanIds.has(planId)) {
+        if (!collapsedPlanPlaceholders.has(planId)) {
+          const placeholderId = `__collapsed_placeholder_${planId}__`;
+          g.setNode(placeholderId, { width: COLLAPSED_GROUP_WIDTH, height: 40 });
+          g.setParent(placeholderId, planId);
+          collapsedPlanPlaceholders.add(planId);
+        }
+        continue;
       }
-      continue; // Skip individual collapsed tasks
+
+      if (tierId && collapsedTierIds.has(tierId)) {
+        if (!collapsedTierPlaceholders.has(tierId)) {
+          const placeholderId = `__collapsed_tier_placeholder_${tierId}__`;
+          g.setNode(placeholderId, { width: COLLAPSED_TIER_WIDTH, height: 32 });
+          g.setParent(placeholderId, tierId);
+          collapsedTierPlaceholders.add(tierId);
+        }
+        continue;
+      }
     }
 
     g.setNode(id, { width: nodeWidth, height: nodeHeight });
 
     // Set parent relationship for compound graph
     if (useCompound) {
-      const parentGroupId = taskToGroupMap.get(id);
-      if (parentGroupId) {
-        g.setParent(id, parentGroupId);
+      const parentTierId = taskToTierMap.get(id);
+      if (parentTierId) {
+        g.setParent(id, parentTierId);
+      } else {
+        const parentPlanId = taskToPlanMap.get(id);
+        if (parentPlanId) {
+          g.setParent(id, parentPlanId);
+        }
       }
     }
   }
@@ -917,30 +1380,27 @@ function computePositions(
     let source = edge.source;
     let target = edge.target;
 
-    // If source is in a collapsed group, use the placeholder
-    if (collapsedTaskIds.has(source)) {
-      const groupId = taskToGroupMap.get(source);
-      if (groupId && collapsedGroupPlaceholders.has(groupId)) {
-        source = `__collapsed_placeholder_${groupId}__`;
-      } else {
-        continue; // Skip if no placeholder
+    const resolvePlaceholder = (taskId: string): string | null => {
+      if (!collapsedTaskIds.has(taskId)) return taskId;
+
+      const planId = taskToPlanMap.get(taskId);
+      const tierId = taskToTierMap.get(taskId);
+
+      if (planId && collapsedPlanPlaceholders.has(planId)) {
+        return `__collapsed_placeholder_${planId}__`;
       }
-    }
-
-    // If target is in a collapsed group, use the placeholder
-    if (collapsedTaskIds.has(target)) {
-      const groupId = taskToGroupMap.get(target);
-      if (groupId && collapsedGroupPlaceholders.has(groupId)) {
-        target = `__collapsed_placeholder_${groupId}__`;
-      } else {
-        continue; // Skip if no placeholder
+      if (tierId && collapsedTierPlaceholders.has(tierId)) {
+        return `__collapsed_tier_placeholder_${tierId}__`;
       }
-    }
+      return null;
+    };
 
-    // Avoid self-loops (both source and target collapsed to same placeholder)
-    if (source === target) continue;
+    const resolvedSource = resolvePlaceholder(source);
+    const resolvedTarget = resolvePlaceholder(target);
+    if (!resolvedSource || !resolvedTarget) continue;
+    if (resolvedSource === resolvedTarget) continue;
 
-    g.setEdge(source, target);
+    g.setEdge(resolvedSource, resolvedTarget);
   }
 
   // Run dagre layout
@@ -960,14 +1420,24 @@ function computePositions(
   }
 
   // Store placeholder positions for collapsed groups (used for group bounding boxes)
-  for (const groupId of collapsedGroupPlaceholders) {
+  for (const groupId of collapsedPlanPlaceholders) {
     const placeholderId = `__collapsed_placeholder_${groupId}__`;
     const placeholderNode = g.node(placeholderId);
     if (placeholderNode) {
-      // Store under special key for the group
       positions.set(`__group_position_${groupId}__`, {
         x: placeholderNode.x - COLLAPSED_GROUP_WIDTH / 2,
-        y: placeholderNode.y - 20, // Half of placeholder height (40/2)
+        y: placeholderNode.y - 20,
+      });
+    }
+  }
+
+  for (const tierId of collapsedTierPlaceholders) {
+    const placeholderId = `__collapsed_tier_placeholder_${tierId}__`;
+    const placeholderNode = g.node(placeholderId);
+    if (placeholderNode) {
+      positions.set(`__tier_group_position_${tierId}__`, {
+        x: placeholderNode.x - COLLAPSED_TIER_WIDTH / 2,
+        y: placeholderNode.y - 16,
       });
     }
   }

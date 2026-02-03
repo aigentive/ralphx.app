@@ -34,7 +34,8 @@ import { TaskNode, type TaskNodeHandlers } from "./nodes/TaskNode";
 import { TaskNodeCompact } from "./nodes/TaskNodeCompact";
 import { DependencyEdge } from "./edges/DependencyEdge";
 import { MARKER_IDS, NORMAL_STROKE, CRITICAL_STROKE, EDGE_FADE_COLOR } from "./edges/edgeStyles";
-import { PlanGroup, PLAN_GROUP_NODE_TYPE } from "./groups/PlanGroup";
+import { PlanGroup, PLAN_GROUP_NODE_TYPE, type PlanGroupData } from "./groups/PlanGroup";
+import { TierGroup, TIER_GROUP_NODE_TYPE, type TierGroupData } from "./groups/TierGroup";
 import { FloatingTimeline } from "./timeline/FloatingTimeline";
 import { GraphLegend } from "./controls/GraphLegend";
 import { FloatingGraphFilters } from "./controls/FloatingGraphFilters";
@@ -57,6 +58,7 @@ import { api } from "@/lib/tauri";
 import { toast } from "sonner";
 import { Filter, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { buildTierGroups, UNGROUPED_PLAN_ID } from "./groups/tierGroupUtils";
 
 // ============================================================================
 // Types
@@ -327,6 +329,7 @@ function EdgeMarkerDefinitions() {
 const standardNodeTypes: NodeTypes = {
   task: TaskNode,
   [PLAN_GROUP_NODE_TYPE]: PlanGroup,
+  [TIER_GROUP_NODE_TYPE]: TierGroup,
 };
 
 /**
@@ -336,6 +339,7 @@ const standardNodeTypes: NodeTypes = {
 const compactNodeTypes: NodeTypes = {
   task: TaskNodeCompact,
   [PLAN_GROUP_NODE_TYPE]: PlanGroup,
+  [TIER_GROUP_NODE_TYPE]: TierGroup,
 };
 
 /**
@@ -375,12 +379,12 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   const [collapsedPlanIds, setCollapsedPlanIds] = useState<Set<string>>(
     new Set()
   );
-
-  // ID for ungrouped tasks (must match useTaskGraphLayout.ts)
-  const UNGROUPED_PLAN_ID = "__ungrouped__";
+  const [collapsedTierIds, setCollapsedTierIds] = useState<Set<string>>(
+    new Set()
+  );
 
   // Compute and apply collapsed state: first non-100% expanded, rest collapsed
-  // Applies to ALL groups: plan groups AND ungrouped
+  // Applies to ALL groups: plan groups, ungrouped, and tier groups
   useEffect(() => {
     if (!graphData) return;
 
@@ -449,6 +453,63 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     );
 
     setCollapsedPlanIds(toCollapse);
+
+    const tierGroups = buildTierGroups(allNodes, planGroups);
+    if (tierGroups.length === 0) {
+      setCollapsedTierIds(new Set());
+      return;
+    }
+
+    const completedStatuses = new Set(["approved", "merged", "completed"]);
+    const nodeMap = new Map(allNodes.map((node) => [node.taskId, node]));
+    const tiersByPlan = new Map<string, typeof tierGroups>();
+
+    for (const tg of tierGroups) {
+      const existing = tiersByPlan.get(tg.planArtifactId);
+      if (existing) {
+        existing.push(tg);
+      } else {
+        tiersByPlan.set(tg.planArtifactId, [tg]);
+      }
+    }
+
+    const toCollapseTiers = new Set<string>();
+
+    for (const [, tiers] of tiersByPlan) {
+      const tierInfos = tiers.map((tg) => {
+        let completed = 0;
+        for (const taskId of tg.taskIds) {
+          const node = nodeMap.get(taskId);
+          if (node && completedStatuses.has(node.internalStatus)) {
+            completed += 1;
+          }
+        }
+        return {
+          id: tg.id,
+          total: tg.taskIds.length,
+          completed,
+        };
+      });
+
+      let expandedTierId: string | null = null;
+      for (const tier of tierInfos) {
+        if (tier.total === 0 || tier.completed < tier.total) {
+          expandedTierId = tier.id;
+          break;
+        }
+      }
+      if (!expandedTierId) {
+        expandedTierId = tierInfos[tierInfos.length - 1]?.id ?? null;
+      }
+
+      for (const tier of tierInfos) {
+        if (tier.id !== expandedTierId) {
+          toCollapseTiers.add(tier.id);
+        }
+      }
+    }
+
+    setCollapsedTierIds(toCollapseTiers);
   }, [graphData]);
 
   // GraphControls state
@@ -490,11 +551,97 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
       }
       return next;
     });
-    // Auto-fit view after layout updates
+    // Auto-fit view after layout updates - focus on this group only
     setTimeout(() => {
+      const groupId = `group-${planArtifactId}`;
+      const groupNode = getNodes().find((node) => node.id === groupId);
+      if (groupNode) {
+        const width =
+          groupNode.measured?.width ??
+          (typeof groupNode.width === "number" ? groupNode.width : undefined) ??
+          (groupNode.data as PlanGroupData | undefined)?.width ??
+          320;
+        const height =
+          groupNode.measured?.height ??
+          (typeof groupNode.height === "number" ? groupNode.height : undefined) ??
+          (groupNode.data as PlanGroupData | undefined)?.height ??
+          120;
+        const x = groupNode.position.x + width / 2;
+        const y = groupNode.position.y + height / 2;
+        setCenter(x, y, { duration: 200, zoom: 0.9 });
+        return;
+      }
       fitView({ padding: 0.2, duration: 200 });
     }, 50);
-  }, [fitView]);
+  }, [fitView, getNodes, setCenter]);
+
+  const handleToggleTierCollapse = useCallback((tierGroupId: string) => {
+    let shouldCenterTier = false;
+    let shouldCenterPlan = false;
+    let planArtifactId: string | null = null;
+    setCollapsedTierIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(tierGroupId)) {
+        next.delete(tierGroupId);
+        shouldCenterTier = true;
+      } else {
+        next.add(tierGroupId);
+        shouldCenterPlan = true;
+      }
+      return next;
+    });
+    setTimeout(() => {
+      if (shouldCenterTier) {
+        const tierNode = getNodes().find((node) => node.id === tierGroupId);
+        if (tierNode) {
+          planArtifactId =
+            (tierNode.data as TierGroupData | undefined)?.planArtifactId ?? null;
+          const width =
+            tierNode.measured?.width ??
+            (typeof tierNode.width === "number" ? tierNode.width : undefined) ??
+            (tierNode.data as TierGroupData | undefined)?.width ??
+            320;
+          const height =
+            tierNode.measured?.height ??
+            (typeof tierNode.height === "number" ? tierNode.height : undefined) ??
+            (tierNode.data as TierGroupData | undefined)?.height ??
+            80;
+          const x = tierNode.position.x + width / 2;
+          const y = tierNode.position.y + height / 2;
+          setCenter(x, y, { duration: 200, zoom: 0.95 });
+          return;
+        }
+      }
+      if (shouldCenterPlan) {
+        if (!planArtifactId) {
+          const tierNode = getNodes().find((node) => node.id === tierGroupId);
+          planArtifactId =
+            (tierNode?.data as TierGroupData | undefined)?.planArtifactId ?? null;
+        }
+        if (planArtifactId) {
+          const planNodeId = `group-${planArtifactId}`;
+          const planNode = getNodes().find((node) => node.id === planNodeId);
+          if (planNode) {
+            const width =
+              planNode.measured?.width ??
+              (typeof planNode.width === "number" ? planNode.width : undefined) ??
+              (planNode.data as PlanGroupData | undefined)?.width ??
+              320;
+            const height =
+              planNode.measured?.height ??
+              (typeof planNode.height === "number" ? planNode.height : undefined) ??
+              (planNode.data as PlanGroupData | undefined)?.height ??
+              120;
+            const x = planNode.position.x + width / 2;
+            const y = planNode.position.y + height / 2;
+            setCenter(x, y, { duration: 200, zoom: 0.9 });
+            return;
+          }
+        }
+      }
+      fitView({ padding: 0.2, duration: 200 });
+    }, 50);
+  }, [fitView, getNodes, setCenter]);
 
   // Task mutations for context menu actions
   const {
@@ -615,7 +762,9 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     filteredGraphData.planGroups,
     layoutConfig,
     collapsedPlanIds,
-    handleToggleCollapse
+    collapsedTierIds,
+    handleToggleCollapse,
+    handleToggleTierCollapse
   );
 
   // Compute visible nodes and edges (controlled mode - no useEffect sync needed)
@@ -688,8 +837,8 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   // Single click on node - focus/highlight and center view (consistent with timeline behavior)
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
-      // Skip group nodes (their IDs start with "group-")
-      if (node.id.startsWith("group-")) {
+      // Skip group nodes
+      if (node.type === PLAN_GROUP_NODE_TYPE || node.type === TIER_GROUP_NODE_TYPE) {
         return;
       }
 
@@ -732,16 +881,23 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
       setHighlightedTaskId(null);
 
       // Handle group nodes - collapse/expand
-      if (node.id.startsWith("group-")) {
-        const planArtifactId = node.id.slice(6);
-        handleToggleCollapse(planArtifactId);
+      if (node.type === PLAN_GROUP_NODE_TYPE) {
+        const planArtifactId = (node.data as PlanGroupData | undefined)?.planArtifactId;
+        if (planArtifactId) {
+          handleToggleCollapse(planArtifactId);
+        }
+        return;
+      }
+      if (node.type === TIER_GROUP_NODE_TYPE) {
+        const tierGroupId = (node.data as TierGroupData | undefined)?.tierGroupId ?? node.id;
+        handleToggleTierCollapse(tierGroupId);
         return;
       }
 
       // Handle task nodes - open detail overlay
       setSelectedTaskId(node.id);
     },
-    [handleToggleCollapse, setSelectedTaskId]
+    [handleToggleCollapse, handleToggleTierCollapse, setSelectedTaskId]
   );
 
   // Clear highlight on pane click
