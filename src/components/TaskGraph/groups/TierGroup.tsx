@@ -50,12 +50,15 @@ export const TierGroup = memo(function TierGroup({ data, selected }: TierGroupPr
       className={cn(
         "rounded-md overflow-hidden",
         "bg-[hsla(220_10%_18%_/_0.45)]",
-        isGroupSelected && "ring-1 ring-[hsl(var(--accent-primary)/0.35)]",
         "transition-all duration-200"
       )}
       style={{
         width,
         height: displayHeight,
+        ...(isGroupSelected && {
+          outline: "2px solid hsl(14 100% 55%)",
+          outlineOffset: "-2px",
+        }),
       }}
       data-testid={`tier-group-${tierGroupId}`}
     >

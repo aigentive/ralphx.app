@@ -18,6 +18,8 @@ interface ViewportApi {
   getNodes: () => Node[];
   fitView: (options: { nodes?: Node[]; duration?: number; padding?: number; maxZoom?: number }) => void;
   setCenter: (x: number, y: number, options?: { duration?: number; zoom?: number }) => void;
+  getViewport: () => { x: number; y: number; zoom: number };
+  setViewport: (viewport: { x: number; y: number; zoom: number }, options?: { duration?: number }) => void;
 }
 
 export function resolveNodeDimensions(
@@ -57,7 +59,13 @@ function createNodeCenter(
   };
 }
 
-export function createViewportActions({ getNodes, fitView, setCenter }: ViewportApi) {
+export function createViewportActions({
+  getNodes,
+  fitView,
+  setCenter,
+  getViewport,
+  setViewport,
+}: ViewportApi) {
   const fitNodeInView = (
     nodeId: string,
     { duration = 220, padding = 0.18, maxZoom = 0.95 }: FitNodeOptions = {}
@@ -84,14 +92,49 @@ export function createViewportActions({ getNodes, fitView, setCenter }: Viewport
     return true;
   };
 
+  const fitNode = (
+    node: Node,
+    { duration = 220, padding = 0.18, maxZoom = 0.95 }: FitNodeOptions = {}
+  ): void => {
+    fitView({ nodes: [node], duration, padding, maxZoom });
+  };
+
+  const centerOnNodeObject = (
+    node: Node,
+    {
+      duration = 300,
+      zoom = 1.2,
+      fallbackWidth = 180,
+      fallbackHeight = 60,
+    }: CenterNodeOptions = {}
+  ): void => {
+    const center = createNodeCenter(node, { width: fallbackWidth, height: fallbackHeight });
+    setCenter(center.x, center.y, { duration, zoom });
+  };
+
   const fitViewDefault = (options: { duration?: number; padding?: number } = {}): void => {
     fitView({ padding: options.padding ?? 0.2, duration: options.duration ?? 200 });
   };
 
-  return { fitNodeInView, centerOnNode, fitViewDefault };
+  const zoomBy = (
+    delta: number,
+    {
+      duration = 120,
+      minZoom = 0.6,
+      maxZoom = 1,
+    }: { duration?: number; minZoom?: number; maxZoom?: number } = {}
+  ): boolean => {
+    const viewport = getViewport();
+    const nextZoom = Math.min(maxZoom, Math.max(minZoom, viewport.zoom + delta));
+    if (nextZoom === viewport.zoom) return false;
+    setViewport({ ...viewport, zoom: nextZoom }, { duration });
+    return true;
+  };
+
+  return { fitNodeInView, fitNode, centerOnNode, centerOnNodeObject, fitViewDefault, zoomBy };
 }
 
 export function useTaskGraphViewport() {
-  const { getNodes, fitView, setCenter } = useReactFlow();
-  return createViewportActions({ getNodes, fitView, setCenter });
+  const { getNodes, fitView, setCenter, getViewport, setViewport } = useReactFlow();
+  return createViewportActions({ getNodes, fitView, setCenter, getViewport, setViewport });
 }

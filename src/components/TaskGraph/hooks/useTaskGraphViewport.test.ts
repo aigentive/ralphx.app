@@ -57,6 +57,8 @@ describe("createViewportActions", () => {
       fitView,
       setCenter,
       getNodes: () => [node],
+      getViewport: () => ({ x: 0, y: 0, zoom: 1 }),
+      setViewport: vi.fn(),
     });
 
     expect(actions.fitNodeInView("node-1")).toBe(true);
@@ -74,6 +76,8 @@ describe("createViewportActions", () => {
       fitView,
       setCenter: vi.fn(),
       getNodes: () => [],
+      getViewport: () => ({ x: 0, y: 0, zoom: 1 }),
+      setViewport: vi.fn(),
     });
 
     expect(actions.fitNodeInView("missing")).toBe(false);
@@ -92,6 +96,8 @@ describe("createViewportActions", () => {
       fitView: vi.fn(),
       setCenter,
       getNodes: () => [node],
+      getViewport: () => ({ x: 0, y: 0, zoom: 1 }),
+      setViewport: vi.fn(),
     });
 
     expect(
@@ -104,5 +110,19 @@ describe("createViewportActions", () => {
     ).toBe(true);
 
     expect(setCenter).toHaveBeenCalledWith(60, 60, { duration: 300, zoom: 1.2 });
+  });
+
+  it("zooms by delta within bounds", () => {
+    const setViewport = vi.fn();
+    const actions = createViewportActions({
+      fitView: vi.fn(),
+      setCenter: vi.fn(),
+      getNodes: () => [],
+      getViewport: () => ({ x: 12, y: 34, zoom: 0.92 }),
+      setViewport,
+    });
+
+    expect(actions.zoomBy(0.2, { minZoom: 0.6, maxZoom: 1, duration: 120 })).toBe(true);
+    expect(setViewport).toHaveBeenCalledWith({ x: 12, y: 34, zoom: 1 }, { duration: 120 });
   });
 });

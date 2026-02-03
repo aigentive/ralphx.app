@@ -134,14 +134,16 @@ export const PlanGroup = memo(function PlanGroup({
         "rounded-lg overflow-hidden",
         // Background - Kanban glass at 50% opacity (no border)
         "bg-[hsla(220_10%_14%_/_0.5)]",
-        // Selection state - use ring instead of border
-        isGroupSelected && "ring-1 ring-[hsl(var(--accent-primary)/0.5)]",
         // Transition
         "transition-all duration-200"
       )}
       style={{
         width,
         height: displayHeight,
+        ...(isGroupSelected && {
+          outline: "2px solid hsl(14 100% 55%)",
+          outlineOffset: "-2px",
+        }),
       }}
       data-testid={`plan-group-${planArtifactId}`}
     >
