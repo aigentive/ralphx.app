@@ -61,54 +61,7 @@ impl DiffService {
         project_path: &str,
         base_branch: &str,
     ) -> AppResult<Vec<FileChange>> {
-        // Use git diff --name-status to get all changed files
-        // This captures ALL changes, not just Write/Edit tool calls
-        let output = Command::new("git")
-            .args(["diff", "--name-status", base_branch])
-            .current_dir(project_path)
-            .output()
-            .map_err(|e| AppError::GitOperation(format!("Failed to run git diff: {}", e)))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(AppError::GitOperation(format!(
-                "git diff failed: {}",
-                stderr
-            )));
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let mut changes = Vec::new();
-
-        for line in stdout.lines() {
-            let parts: Vec<&str> = line.split('\t').collect();
-            if parts.len() >= 2 {
-                let status_char = parts[0].chars().next().unwrap_or('M');
-                let file_path = parts[1];
-
-                let status = match status_char {
-                    'A' => FileChangeStatus::Added,
-                    'D' => FileChangeStatus::Deleted,
-                    _ => FileChangeStatus::Modified, // M, R, C, etc.
-                };
-
-                // Get line counts using git diff --numstat
-                let (additions, deletions) =
-                    self.get_file_line_counts(file_path, project_path, base_branch);
-
-                changes.push(FileChange {
-                    path: file_path.to_string(),
-                    status,
-                    additions,
-                    deletions,
-                });
-            }
-        }
-
-        // Sort by path for consistent ordering
-        changes.sort_by(|a, b| a.path.cmp(&b.path));
-
-        Ok(changes)
+        self.get_file_changes_between_refs(project_path, base_branch, "HEAD")
     }
 
     /// Get line additions/deletions for a file compared to base branch
@@ -147,29 +100,13 @@ impl DiffService {
         base_branch: &str,
     ) -> AppResult<FileDiff> {
         let full_path = std::path::Path::new(project_path).join(file_path);
-
-        // Get current content
         let new_content = std::fs::read_to_string(&full_path).unwrap_or_default();
-
-        // Get old content from base branch
-        let old_output = Command::new("git")
-            .args(["show", &format!("{}:{}", base_branch, file_path)])
-            .current_dir(project_path)
-            .output();
-
-        let old_content = old_output
-            .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
-            .unwrap_or_default();
-
-        // Determine language from file extension
-        let language = get_language_from_path(file_path);
-
-        Ok(FileDiff {
-            file_path: file_path.to_string(),
-            old_content,
-            new_content,
-            language,
-        })
+        self.get_file_diff_between_refs_with_new(
+            file_path,
+            project_path,
+            base_branch,
+            &new_content,
+        )
     }
 
     /// Get files changed in a specific commit
@@ -276,49 +213,220 @@ impl DiffService {
         file_path: &str,
         project_path: &str,
     ) -> AppResult<FileDiff> {
-        // Get old content from parent commit (commit^)
-        let old_output = Command::new("git")
-            .args(["show", &format!("{}^:{}", commit_sha, file_path)])
+        self.get_file_diff_between_refs(
+            file_path,
+            project_path,
+            &format!("{}^", commit_sha),
+            commit_sha,
+        )
+    }
+
+    /// Get file changes between two refs (used for merged tasks and range diffs)
+    pub fn get_file_changes_between_refs(
+        &self,
+        project_path: &str,
+        from_ref: &str,
+        to_ref: &str,
+    ) -> AppResult<Vec<FileChange>> {
+        let output = Command::new("git")
+            .args(["diff", "--name-status", from_ref, to_ref])
+            .current_dir(project_path)
+            .output()
+            .map_err(|e| AppError::GitOperation(format!("Failed to run git diff: {}", e)))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AppError::GitOperation(format!(
+                "git diff failed: {}",
+                stderr
+            )));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut changes = Vec::new();
+
+        for line in stdout.lines() {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() >= 2 {
+                let status_char = parts[0].chars().next().unwrap_or('M');
+                let file_path = parts[1];
+
+                let status = match status_char {
+                    'A' => FileChangeStatus::Added,
+                    'D' => FileChangeStatus::Deleted,
+                    _ => FileChangeStatus::Modified, // M, R, C, etc.
+                };
+
+                let (additions, deletions) = self.get_file_line_counts_between_refs(
+                    file_path,
+                    project_path,
+                    from_ref,
+                    to_ref,
+                );
+
+                changes.push(FileChange {
+                    path: file_path.to_string(),
+                    status,
+                    additions,
+                    deletions,
+                });
+            }
+        }
+
+        changes.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(changes)
+    }
+
+    /// Get line additions/deletions for a file between two refs
+    fn get_file_line_counts_between_refs(
+        &self,
+        file_path: &str,
+        project_path: &str,
+        from_ref: &str,
+        to_ref: &str,
+    ) -> (u32, u32) {
+        let output = Command::new("git")
+            .args(["diff", "--numstat", from_ref, to_ref, "--", file_path])
             .current_dir(project_path)
             .output();
 
-        let old_content = old_output
-            .map(|o| {
-                if o.status.success() {
-                    String::from_utf8_lossy(&o.stdout).to_string()
-                } else {
-                    // File didn't exist in parent (new file)
-                    String::new()
+        if let Ok(output) = output {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if let Some(line) = stdout.lines().next() {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    let additions: u32 = parts[0].parse().unwrap_or(0);
+                    let deletions: u32 = parts[1].parse().unwrap_or(0);
+                    return (additions, deletions);
                 }
-            })
+            }
+        }
+
+        (0, 0)
+    }
+
+    /// Get diff for a file between two refs
+    pub fn get_file_diff_between_refs(
+        &self,
+        file_path: &str,
+        project_path: &str,
+        from_ref: &str,
+        to_ref: &str,
+    ) -> AppResult<FileDiff> {
+        let old_content = self
+            .get_file_content_at_ref(project_path, from_ref, file_path)
+            .unwrap_or_default();
+        let new_content = self
+            .get_file_content_at_ref(project_path, to_ref, file_path)
             .unwrap_or_default();
 
-        // Get new content from this commit
-        let new_output = Command::new("git")
-            .args(["show", &format!("{}:{}", commit_sha, file_path)])
-            .current_dir(project_path)
-            .output();
-
-        let new_content = new_output
-            .map(|o| {
-                if o.status.success() {
-                    String::from_utf8_lossy(&o.stdout).to_string()
-                } else {
-                    // File was deleted in this commit
-                    String::new()
-                }
-            })
-            .unwrap_or_default();
-
-        // Determine language from file extension
         let language = get_language_from_path(file_path);
-
         Ok(FileDiff {
             file_path: file_path.to_string(),
             old_content,
             new_content,
             language,
         })
+    }
+
+    /// Same as get_file_diff_between_refs, but with new content already read from disk.
+    fn get_file_diff_between_refs_with_new(
+        &self,
+        file_path: &str,
+        project_path: &str,
+        from_ref: &str,
+        new_content: &str,
+    ) -> AppResult<FileDiff> {
+        let old_content = self
+            .get_file_content_at_ref(project_path, from_ref, file_path)
+            .unwrap_or_default();
+        let language = get_language_from_path(file_path);
+        Ok(FileDiff {
+            file_path: file_path.to_string(),
+            old_content,
+            new_content: new_content.to_string(),
+            language,
+        })
+    }
+
+    /// Determine if a commit has a second parent (true merge commit)
+    pub fn is_merge_commit(&self, project_path: &str, commit_sha: &str) -> bool {
+        let output = Command::new("git")
+            .args(["rev-parse", "--verify", &format!("{}^2", commit_sha)])
+            .current_dir(project_path)
+            .output();
+        output.map(|o| o.status.success()).unwrap_or(false)
+    }
+
+    /// Compute base ref for a merged task range.
+    /// If merge commit, use first parent; otherwise use merge-base with base branch.
+    pub fn get_merged_base_ref(
+        &self,
+        project_path: &str,
+        base_branch: &str,
+        merge_commit_sha: &str,
+    ) -> String {
+        if self.is_merge_commit(project_path, merge_commit_sha) {
+            return format!("{}^1", merge_commit_sha);
+        }
+
+        let output = Command::new("git")
+            .args(["merge-base", base_branch, merge_commit_sha])
+            .current_dir(project_path)
+            .output();
+
+        if let Ok(output) = output {
+            if output.status.success() {
+                let base = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !base.is_empty() {
+                    return base;
+                }
+            }
+        }
+
+        base_branch.to_string()
+    }
+
+    /// Get file changes for a merged task using merge commit range.
+    pub fn get_merged_task_file_changes(
+        &self,
+        project_path: &str,
+        base_branch: &str,
+        merge_commit_sha: &str,
+    ) -> AppResult<Vec<FileChange>> {
+        let from_ref = self.get_merged_base_ref(project_path, base_branch, merge_commit_sha);
+        self.get_file_changes_between_refs(project_path, &from_ref, merge_commit_sha)
+    }
+
+    /// Get file diff for a merged task using merge commit range.
+    pub fn get_merged_task_file_diff(
+        &self,
+        file_path: &str,
+        project_path: &str,
+        base_branch: &str,
+        merge_commit_sha: &str,
+    ) -> AppResult<FileDiff> {
+        let from_ref = self.get_merged_base_ref(project_path, base_branch, merge_commit_sha);
+        self.get_file_diff_between_refs(file_path, project_path, &from_ref, merge_commit_sha)
+    }
+
+    fn get_file_content_at_ref(
+        &self,
+        project_path: &str,
+        git_ref: &str,
+        file_path: &str,
+    ) -> Option<String> {
+        let output = Command::new("git")
+            .args(["show", &format!("{}:{}", git_ref, file_path)])
+            .current_dir(project_path)
+            .output()
+            .ok()?;
+
+        if output.status.success() {
+            Some(String::from_utf8_lossy(&output.stdout).to_string())
+        } else {
+            None
+        }
     }
 }
 
