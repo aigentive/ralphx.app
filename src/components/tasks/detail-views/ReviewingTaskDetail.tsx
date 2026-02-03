@@ -129,7 +129,7 @@ function ReviewStepsCard({
     <DetailCard variant={variant}>
       <div className="divide-y divide-white/5">
         {steps.map((step, index) => (
-          <ReviewStepItem key={index} {...step} isHistorical={isHistorical} />
+          <ReviewStepItem key={index} {...step} isHistorical={isHistorical === true} />
         ))}
       </div>
     </DetailCard>
@@ -224,7 +224,11 @@ export function ReviewingTaskDetail({
       <StatusBanner
         icon={isHistorical ? outcomeConfig?.icon ?? Bot : Bot}
         title={isHistorical ? outcomeConfig?.title ?? "AI Review in Progress" : "AI Review in Progress"}
-        subtitle={isHistorical ? outcomeConfig?.subtitle : "Analyzing changes and running checks"}
+        subtitle={
+          isHistorical
+            ? outcomeConfig?.subtitle ?? "Analyzing changes and running checks"
+            : "Analyzing changes and running checks"
+        }
         variant={isHistorical ? outcomeConfig?.variant ?? "info" : "info"}
         animated={!isHistorical}
         badge={

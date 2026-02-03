@@ -29,6 +29,7 @@ import {
   LoadingState,
   ContextIndicator,
   animationStyles,
+  HistoryEmptyState,
 } from "./IntegratedChatPanel.components";
 import { useIntegratedChatHandlers } from "@/hooks/useIntegratedChatHandlers";
 import { useIntegratedChatEvents } from "@/hooks/useIntegratedChatEvents";
@@ -72,6 +73,7 @@ export function IntegratedChatPanel({
   // History state from store - shared with TaskDetailOverlay for time-travel feature
   const taskHistoryState = useUiStore((s) => s.taskHistoryState);
   const isHistoryMode = !!taskHistoryState;
+  const hasHistoryConversation = !!taskHistoryState?.conversationId;
 
   // Get task data from React Query (useTasks) which has full task data
   const { data: tasks = [] } = useTasks(projectId);
@@ -613,7 +615,12 @@ export function IntegratedChatPanel({
             </div>
           ) : isEmpty ? (
             <div className="flex-1 flex items-center justify-center" data-testid="integrated-chat-messages">
-              {emptyState ?? <EmptyState />}
+              {emptyState ??
+                (isHistoryMode && !hasHistoryConversation ? (
+                  <HistoryEmptyState />
+                ) : (
+                  <EmptyState />
+                ))}
             </div>
           ) : (
             <ChatMessageList

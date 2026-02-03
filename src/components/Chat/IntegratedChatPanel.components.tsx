@@ -98,6 +98,39 @@ export function EmptyState() {
   );
 }
 
+export function HistoryEmptyState() {
+  return (
+    <div
+      data-testid="chat-panel-history-empty"
+      className="flex flex-col items-center justify-center h-full p-6 text-center"
+    >
+      <div
+        className="w-12 h-12 rounded-lg flex items-center justify-center mb-3"
+        style={{
+          backgroundColor: "hsl(220 10% 16%)",
+        }}
+      >
+        <MessageSquare
+          className="w-5 h-5"
+          style={{ color: "hsl(220 10% 50%)" }}
+        />
+      </div>
+      <p
+        className="text-[13px] font-medium"
+        style={{ color: "hsl(220 10% 85%)" }}
+      >
+        No chat for this state
+      </p>
+      <p
+        className="text-xs mt-1"
+        style={{ color: "hsl(220 10% 50%)" }}
+      >
+        This historical state does not have a conversation attached.
+      </p>
+    </div>
+  );
+}
+
 // LoadingState is now extracted to MessageListSkeleton.tsx
 // Re-export for backwards compatibility
 export { MessageListSkeleton as LoadingState } from "./MessageListSkeleton";
