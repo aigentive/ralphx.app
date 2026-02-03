@@ -61,6 +61,12 @@ export interface LayoutResult {
   groupNodes: Array<PlanGroupNode | TierGroupNode>;
 }
 
+export interface GroupingConfig {
+  byPlan: boolean;
+  byTier: boolean;
+  showUncategorized: boolean;
+}
+
 // Use Record<string, unknown> compatible structure for React Flow
 // This matches TaskNodeData from nodes/TaskNode.tsx
 type TaskNodeData = Record<string, unknown> & {
@@ -163,9 +169,10 @@ function createGroupNodes(
   nodeWidth: number,
   nodeHeight: number,
   onToggleCollapse?: (planArtifactId: string) => void,
-  onToggleAllTiers?: (planArtifactId: string, action: "expand" | "collapse") => void
+  onToggleAllTiers?: (planArtifactId: string, action: "expand" | "collapse") => void,
+  includeUncategorized: boolean = true
 ): PlanGroupNode[] {
-  if (planGroups.length === 0) {
+  if (planGroups.length === 0 && !includeUncategorized) {
     return [];
   }
 
@@ -273,8 +280,8 @@ function createGroupNodes(
     groupNodes.push(groupNode);
   }
 
-  // Create "Ungrouped" region for standalone tasks (if any)
-  if (ungroupedTaskIds.length > 0) {
+  // Create "Uncategorized" region for standalone tasks (if any)
+  if (includeUncategorized && ungroupedTaskIds.length > 0) {
     const isUngroupedCollapsed = collapsedPlanIds.has(UNGROUPED_PLAN_ID);
     const ungroupedTierIds = tiersByPlan.get(UNGROUPED_PLAN_ID) ?? [];
     const hasTierGroups = ungroupedTierIds.length > 0;
@@ -353,7 +360,7 @@ function createGroupNodes(
     const groupNode = createPlanGroupNode(
       UNGROUPED_PLAN_ID,
       "", // No session ID
-      "Ungrouped", // Display title
+      "Uncategorized", // Display title
       ungroupedTaskIds,
       ungroupedSummary,
       position!,
@@ -503,7 +510,8 @@ interface InterTierEdgeInfo {
  */
 function generateInterGroupEdges(
   graphNodes: TaskGraphNode[],
-  planGroups: PlanGroupInfo[]
+  planGroups: PlanGroupInfo[],
+  includeUncategorized: boolean
 ): InterGroupEdgeInfo[] {
   // Build node lookup maps
   const nodeMap = new Map<string, TaskGraphNode>();
@@ -533,7 +541,7 @@ function generateInterGroupEdges(
   }));
 
   // Add ungrouped as a pseudo-group if there are ungrouped tasks
-  if (ungroupedTaskIds.length > 0) {
+  if (includeUncategorized && ungroupedTaskIds.length > 0) {
     allGroups.push({
       id: UNGROUPED_PLAN_ID,
       taskIds: ungroupedTaskIds,
@@ -647,7 +655,8 @@ function buildCollapsedTaskIds(
   planGroups: PlanGroupInfo[],
   tierGroups: TierGroupInfo[],
   collapsedPlanIds: Set<string>,
-  collapsedTierIds: Set<string>
+  collapsedTierIds: Set<string>,
+  includeUncategorized: boolean
 ): Set<string> {
   const hiddenIds = new Set<string>();
 
@@ -661,7 +670,7 @@ function buildCollapsedTaskIds(
   }
 
   // Check for ungrouped tasks if the ungrouped group is collapsed
-  if (collapsedPlanIds.has(UNGROUPED_PLAN_ID)) {
+  if (includeUncategorized && collapsedPlanIds.has(UNGROUPED_PLAN_ID)) {
     const groupedTaskIds = new Set<string>();
     for (const pg of planGroups) {
       for (const taskId of pg.taskIds) {
@@ -699,6 +708,7 @@ function computeLayoutWithCache(
   graphEdges: TaskGraphEdge[],
   criticalPath: string[],
   planGroups: PlanGroupInfo[],
+  grouping: GroupingConfig,
   config: LayoutConfig,
   collapsedPlanIds: Set<string>,
   collapsedTierIds: Set<string>,
@@ -711,19 +721,30 @@ function computeLayoutWithCache(
   const nodeWidth = config.isCompact ? COMPACT_NODE_WIDTH : NODE_WIDTH;
   const nodeHeight = config.isCompact ? COMPACT_NODE_HEIGHT : NODE_HEIGHT;
 
-  const tierGroups = buildTierGroups(graphNodes, planGroups);
+  const planGroupingEnabled = grouping.byPlan;
+  const includeUncategorized = grouping.showUncategorized || !planGroupingEnabled;
+  const activePlanGroups = planGroupingEnabled ? planGroups : [];
+  const tierGroups = buildTierGroups(graphNodes, activePlanGroups, {
+    enabled: grouping.byTier,
+    includeUngrouped: includeUncategorized,
+  });
 
   // Build set of collapsed task IDs for lazy loading
   const collapsedTaskIds = buildCollapsedTaskIds(
     graphNodes,
-    planGroups,
+    activePlanGroups,
     tierGroups,
     collapsedPlanIds,
-    collapsedTierIds
+    collapsedTierIds,
+    includeUncategorized
   );
 
   // Generate inter-group connector edges to stack groups vertically
-  const interGroupEdges = generateInterGroupEdges(graphNodes, planGroups);
+  const interGroupEdges = generateInterGroupEdges(
+    graphNodes,
+    activePlanGroups,
+    includeUncategorized
+  );
   const interTierEdges = generateInterTierEdges(tierGroups, collapsedPlanIds);
 
   // Filter nodes and edges to exclude collapsed groups (lazy loading)
@@ -747,7 +768,7 @@ function computeLayoutWithCache(
   ];
 
   // Convert PlanGroupInfo to LayoutPlanGroup for layout computation
-  const layoutPlanGroups: LayoutPlanGroup[] = planGroups.map((pg) => ({
+  const layoutPlanGroups: LayoutPlanGroup[] = activePlanGroups.map((pg) => ({
     planArtifactId: pg.planArtifactId,
     taskIds: pg.taskIds,
   }));
@@ -764,7 +785,8 @@ function computeLayoutWithCache(
     layoutPlanGroups,
     layoutTierGroups,
     collapsedPlanIds,
-    collapsedTierIds
+    collapsedTierIds,
+    includeUncategorized
   );
 
   // Check if we can use cached positions
@@ -782,7 +804,8 @@ function computeLayoutWithCache(
       layoutPlanGroups,
       layoutTierGroups,
       collapsedPlanIds,
-      collapsedTierIds
+      collapsedTierIds,
+      includeUncategorized
     );
     cache.current = { hash, positions };
   }
@@ -885,10 +908,12 @@ function computeLayoutWithCache(
 
   // Build a map of group ID -> session title for edge labels
   const groupTitleMap = new Map<string, string>();
-  for (const pg of planGroups) {
+  for (const pg of activePlanGroups) {
     groupTitleMap.set(pg.planArtifactId, pg.sessionTitle ?? "Plan");
   }
-  groupTitleMap.set(UNGROUPED_PLAN_ID, "Ungrouped");
+  if (includeUncategorized) {
+    groupTitleMap.set(UNGROUPED_PLAN_ID, "Uncategorized");
+  }
 
   // Add inter-group connector edges (connect group nodes directly for rendering)
   // Group node IDs have "group-" prefix (see createPlanGroupNode)
@@ -955,7 +980,7 @@ function computeLayoutWithCache(
   // Create group nodes for plan groups using ALL positioned nodes
   const planGroupNodes = createGroupNodes(
     allPositionedNodes,
-    planGroups,
+    activePlanGroups,
     collapsedPlanIds,
     tierGroups,
     collapsedTierIds,
@@ -964,7 +989,8 @@ function computeLayoutWithCache(
     nodeWidth,
     nodeHeight,
     onToggleCollapse,
-    onToggleAllTiers
+    onToggleAllTiers,
+    includeUncategorized
   );
 
   const planGroupBounds = new Map<string, { position: { x: number; y: number }; width: number }>();
@@ -1168,6 +1194,7 @@ export function useTaskGraphLayout(
   graphEdges: TaskGraphEdge[],
   criticalPath: string[],
   planGroups: PlanGroupInfo[] = [],
+  grouping: GroupingConfig = { byPlan: true, byTier: true, showUncategorized: true },
   config: Partial<LayoutConfig> = {},
   collapsedPlanIds: Set<string> = new Set(),
   collapsedTierIds: Set<string> = new Set(),
@@ -1194,6 +1221,7 @@ export function useTaskGraphLayout(
       graphEdges,
       criticalPath,
       planGroups,
+      grouping,
       fullConfig,
       collapsedPlanIds,
       collapsedTierIds,
@@ -1207,6 +1235,7 @@ export function useTaskGraphLayout(
     graphEdges,
     criticalPath,
     planGroups,
+    grouping,
     fullConfig,
     collapsedPlanIds,
     collapsedTierIds,
@@ -1257,7 +1286,8 @@ function computeGraphHash(
   planGroups: LayoutPlanGroup[] = [],
   tierGroups: LayoutTierGroup[] = [],
   collapsedPlanIds: Set<string> = new Set(),
-  collapsedTierIds: Set<string> = new Set()
+  collapsedTierIds: Set<string> = new Set(),
+  includeUncategorized: boolean = true
 ): string {
   // Sort for consistent ordering
   const sortedNodes = [...nodeIds].sort().join(",");
@@ -1277,7 +1307,7 @@ function computeGraphHash(
   // Include collapsed state so layout recalculates when groups collapse/expand
   const sortedCollapsed = [...collapsedPlanIds].sort().join(",");
   const sortedCollapsedTiers = [...collapsedTierIds].sort().join(",");
-  return `${direction}:${sortedNodes}|${sortedEdges}|${sortedGroups}|${sortedTierGroups}|${sortedCollapsed}|${sortedCollapsedTiers}`;
+  return `${direction}:${sortedNodes}|${sortedEdges}|${sortedGroups}|${sortedTierGroups}|${sortedCollapsed}|${sortedCollapsedTiers}|${includeUncategorized ? "uncategorized" : "no-uncategorized"}`;
 }
 
 /**
@@ -1296,7 +1326,8 @@ function computePositions(
   planGroups: LayoutPlanGroup[] = [],
   tierGroups: LayoutTierGroup[] = [],
   collapsedPlanIds: Set<string> = new Set(),
-  collapsedTierIds: Set<string> = new Set()
+  collapsedTierIds: Set<string> = new Set(),
+  includeUncategorized: boolean = true
 ): Map<string, { x: number; y: number }> {
   // Use correct node dimensions based on compact mode
   const nodeWidth = config.isCompact ? COMPACT_NODE_WIDTH : NODE_WIDTH;
@@ -1345,7 +1376,7 @@ function computePositions(
     const ungroupedTaskIds = nodeIds.filter((id) => !groupedTaskIds.has(id));
 
     const isUngroupedCollapsed = collapsedPlanIds.has(UNGROUPED_PLAN_ID);
-    if (ungroupedTaskIds.length > 0) {
+    if (includeUncategorized && ungroupedTaskIds.length > 0) {
       g.setNode(UNGROUPED_PLAN_ID, { label: UNGROUPED_PLAN_ID });
       for (const taskId of ungroupedTaskIds) {
         taskToPlanMap.set(taskId, UNGROUPED_PLAN_ID);

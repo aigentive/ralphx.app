@@ -49,7 +49,7 @@ import type { InternalStatus } from "@/types/status";
 import type {
   GraphFilters,
   LayoutDirection,
-  GroupingOption,
+  GroupingState,
   NodeMode,
 } from "./GraphControls";
 
@@ -72,10 +72,10 @@ export interface FloatingGraphFiltersProps {
   onNodeModeChange: (mode: NodeMode) => void;
   /** Whether compact mode was auto-activated (50+ tasks) */
   isAutoCompact: boolean;
-  /** Current grouping option */
-  grouping: GroupingOption;
+  /** Current grouping state */
+  grouping: GroupingState;
   /** Callback when grouping changes */
-  onGroupingChange: (grouping: GroupingOption) => void;
+  onGroupingChange: (grouping: GroupingState) => void;
   /** Available plan groups for filtering */
   planGroups: PlanGroupInfo[];
 }
@@ -95,12 +95,19 @@ const STATUS_CATEGORIES: StatusCategory[] = [
   "terminal",
 ];
 
-const GROUPING_OPTIONS: { value: GroupingOption; label: string }[] = [
-  { value: "plan", label: "By Plan" },
-  { value: "tier", label: "By Tier" },
-  { value: "status", label: "By Status" },
-  { value: "none", label: "None" },
-];
+const GROUPING_OPTIONS = [
+  { key: "byPlan", label: "By Plan" },
+  { key: "byTier", label: "By Tier" },
+  { key: "showUncategorized", label: "Uncategorized" },
+] as const;
+
+const getGroupingLabel = (grouping: GroupingState): string => {
+  if (!grouping.byPlan && !grouping.byTier) return "None";
+  const labels: string[] = [];
+  if (grouping.byPlan) labels.push("Plan");
+  if (grouping.byTier) labels.push("Tier");
+  return labels.join(" + ");
+};
 
 // ============================================================================
 // Glass Container Style
@@ -464,8 +471,7 @@ function FloatingGraphFiltersComponent({
     onNodeModeChange(nodeMode === "standard" ? "compact" : "standard");
   }, [nodeMode, onNodeModeChange]);
 
-  const currentGroupingLabel =
-    GROUPING_OPTIONS.find((opt) => opt.value === grouping)?.label ?? "Grouping";
+  const currentGroupingLabel = getGroupingLabel(grouping);
 
   return (
     <div
@@ -576,23 +582,45 @@ function FloatingGraphFiltersComponent({
               side="right"
               sideOffset={8}
             >
-              {GROUPING_OPTIONS.map((option) => (
+              <div className="flex items-center justify-between px-2 py-1">
+                <span className="text-[10px] text-[hsl(220_10%_50%)] uppercase tracking-wide">
+                  Grouping
+                </span>
                 <button
-                  key={option.value}
-                  onClick={() => {
-                    onGroupingChange(option.value);
-                    setGroupingOpen(false);
-                  }}
-                  className={cn(
-                    "w-full px-3 py-1.5 rounded text-left text-xs transition-colors",
-                    grouping === option.value
-                      ? "bg-[hsl(220_10%_18%)] text-[hsl(220_10%_90%)]"
-                      : "text-[hsl(220_10%_70%)] hover:bg-[hsl(220_10%_15%)]"
-                  )}
+                  onClick={() => onGroupingChange({ byPlan: false, byTier: false, showUncategorized: false })}
+                  className="text-[10px] text-[hsl(220_10%_60%)] hover:text-[hsl(220_10%_80%)]"
                 >
-                  {option.label}
+                  None
                 </button>
-              ))}
+              </div>
+              <div className="space-y-1 px-1 pb-1">
+                {GROUPING_OPTIONS.map((option) => {
+                  const isChecked = grouping[option.key];
+                  const isDisabled = option.key === "showUncategorized" && !grouping.byPlan;
+                  return (
+                    <label
+                      key={option.key}
+                      className={cn(
+                        "flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors cursor-pointer",
+                        "text-[hsl(220_10%_70%)] hover:bg-[hsl(220_10%_15%)]",
+                        isDisabled && "opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      <Checkbox
+                        checked={isChecked}
+                        onCheckedChange={(checked) => {
+                          if (isDisabled) return;
+                          onGroupingChange({
+                            ...grouping,
+                            [option.key]: Boolean(checked),
+                          });
+                        }}
+                      />
+                      {option.label}
+                    </label>
+                  );
+                })}
+              </div>
             </PopoverContent>
           </Popover>
         </div>

@@ -41,8 +41,12 @@ function collectUngroupedTaskIds(nodes: TaskGraphNode[], planGroups: PlanGroupIn
  */
 export function buildTierGroups(
   nodes: TaskGraphNode[],
-  planGroups: PlanGroupInfo[]
+  planGroups: PlanGroupInfo[],
+  options: { enabled?: boolean; includeUngrouped?: boolean } = {}
 ): TierGroupInfo[] {
+  if (options.enabled === false) return [];
+
+  const includeUngrouped = options.includeUngrouped !== false;
   const nodeMap = new Map<string, TaskGraphNode>();
   for (const node of nodes) {
     nodeMap.set(node.taskId, node);
@@ -53,8 +57,10 @@ export function buildTierGroups(
     taskIds: pg.taskIds,
   }));
 
-  const ungroupedTaskIds = collectUngroupedTaskIds(nodes, planGroups);
-  if (ungroupedTaskIds.length > 0) {
+  const ungroupedTaskIds = includeUngrouped
+    ? collectUngroupedTaskIds(nodes, planGroups)
+    : [];
+  if (includeUngrouped && ungroupedTaskIds.length > 0) {
     planEntries.push({
       planArtifactId: UNGROUPED_PLAN_ID,
       taskIds: ungroupedTaskIds,
