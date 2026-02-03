@@ -39,7 +39,10 @@ use std::time::Duration;
 use tauri::Manager;
 use tracing::{info, warn};
 
-use application::{ChatResumptionRunner, StartupJobRunner, TaskSchedulerService, TaskTransitionService};
+use application::{
+    ChatResumptionRunner, ReconciliationRunner, StartupJobRunner, TaskSchedulerService,
+    TaskTransitionService,
+};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -223,7 +226,7 @@ pub fn run() {
                 let startup_runner_app_handle = startup_app_handle.clone();
 
                 // Create TaskTransitionService for startup resumption
-                let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
+                let transition_service = Arc::new(TaskTransitionService::new(
                     startup_task_repo.clone(),
                     startup_task_dependency_repo,
                     startup_project_repo.clone(),
@@ -237,7 +240,7 @@ pub fn run() {
                     Arc::clone(&startup_execution_state),
                     Some(startup_app_handle),
                 )
-                .with_task_scheduler(Arc::clone(&task_scheduler));
+                .with_task_scheduler(Arc::clone(&task_scheduler)));
 
                 let runner = StartupJobRunner::new(
                     startup_task_repo,
@@ -250,7 +253,7 @@ pub fn run() {
                     startup_runner_message_queue,
                     startup_runner_running_agent_registry,
                     startup_agent_run_repo,
-                    transition_service,
+                    Arc::clone(&transition_service),
                     Arc::clone(&startup_execution_state),
                 )
                 .with_task_scheduler(task_scheduler)
@@ -278,8 +281,7 @@ pub fn run() {
 
                 chat_resumption.run().await;
 
-                let reconcile_transition_service: TaskTransitionService<tauri::Wry> =
-                    TaskTransitionService::new(
+                let reconcile_transition_service = Arc::new(TaskTransitionService::new(
                         Arc::clone(&reconcile_task_repo),
                         Arc::clone(&reconcile_task_dependency_repo),
                         Arc::clone(&reconcile_project_repo),
@@ -293,9 +295,9 @@ pub fn run() {
                         Arc::clone(&startup_execution_state),
                         Some(reconcile_app_handle.clone()),
                     )
-                    .with_task_scheduler(Arc::clone(&task_scheduler));
+                    .with_task_scheduler(Arc::clone(&task_scheduler)));
 
-                let reconcile_runner = StartupJobRunner::new(
+                let reconcile_runner = ReconciliationRunner::new(
                     reconcile_task_repo,
                     reconcile_task_dependency_repo,
                     reconcile_project_repo,
@@ -308,9 +310,8 @@ pub fn run() {
                     reconcile_agent_run_repo,
                     reconcile_transition_service,
                     Arc::clone(&startup_execution_state),
-                )
-                .with_task_scheduler(task_scheduler)
-                .with_app_handle(reconcile_app_handle);
+                    Some(reconcile_app_handle),
+                );
 
                 reconcile_runner.reconcile_stuck_tasks().await;
 
