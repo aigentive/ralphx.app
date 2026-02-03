@@ -47,7 +47,7 @@ import {
   type NodeMode,
   type GraphFilters,
   type LayoutDirection,
-  type GroupingOption,
+  type GroupingState,
 } from "./controls/GraphControls";
 import { GraphSplitLayout } from "@/components/layout/GraphSplitLayout";
 import type { TaskGraphNode, TaskGraphEdge, PlanGroupInfo } from "@/api/task-graph.types";
@@ -383,15 +383,17 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     new Set()
   );
 
+  const [grouping, setGrouping] = useState<GroupingState>(DEFAULT_GROUPING);
+
   // Compute and apply collapsed state: first non-100% expanded, rest collapsed
-  // Applies to ALL groups: plan groups, ungrouped, and tier groups
+  // Applies to ALL groups: plan groups, uncategorized, and tier groups
   useEffect(() => {
     if (!graphData) return;
 
     const planGroups = graphData.planGroups ?? [];
     const allNodes = graphData.nodes ?? [];
 
-    // Find ungrouped tasks (not in any plan group)
+    // Find uncategorized tasks (not in any plan group)
     const groupedTaskIds = new Set<string>();
     for (const pg of planGroups) {
       for (const taskId of pg.taskIds) {
@@ -408,53 +410,63 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     }
     const allGroups: GroupInfo[] = [];
 
-    // Add plan groups
-    for (const pg of planGroups) {
-      allGroups.push({
-        id: pg.planArtifactId,
-        total: pg.taskIds.length,
-        completed: pg.statusSummary.completed,
-      });
-    }
+    if (grouping.byPlan) {
+      // Add plan groups
+      for (const pg of planGroups) {
+        allGroups.push({
+          id: pg.planArtifactId,
+          total: pg.taskIds.length,
+          completed: pg.statusSummary.completed,
+        });
+      }
 
-    // Add ungrouped if it has tasks
-    if (ungroupedTasks.length > 0) {
-      const completedCount = ungroupedTasks.filter((t) =>
-        ["approved", "merged", "completed"].includes(t.internalStatus)
-      ).length;
-      allGroups.push({
-        id: UNGROUPED_PLAN_ID,
-        total: ungroupedTasks.length,
-        completed: completedCount,
-      });
-    }
-
-    // No groups? Nothing to do
-    if (allGroups.length === 0) return;
-
-    // Find first group that is NOT 100% complete - that one stays expanded
-    let expandedGroupId: string | null = null;
-    for (const g of allGroups) {
-      if (g.total === 0 || g.completed < g.total) {
-        expandedGroupId = g.id;
-        break;
+      // Add uncategorized if it has tasks
+      if (grouping.showUncategorized && ungroupedTasks.length > 0) {
+        const completedCount = ungroupedTasks.filter((t) =>
+          ["approved", "merged", "completed"].includes(t.internalStatus)
+        ).length;
+        allGroups.push({
+          id: UNGROUPED_PLAN_ID,
+          total: ungroupedTasks.length,
+          completed: completedCount,
+        });
       }
     }
-    // If all are 100%, keep the last one expanded
-    if (!expandedGroupId) {
-      expandedGroupId = allGroups[allGroups.length - 1]?.id ?? null;
+
+    if (allGroups.length > 0) {
+      // Find first group that is NOT 100% complete - that one stays expanded
+      let expandedGroupId: string | null = null;
+      for (const g of allGroups) {
+        if (g.total === 0 || g.completed < g.total) {
+          expandedGroupId = g.id;
+          break;
+        }
+      }
+      // If all are 100%, keep the last one expanded
+      if (!expandedGroupId) {
+        expandedGroupId = allGroups[allGroups.length - 1]?.id ?? null;
+      }
+
+      // Collapse all groups except the expanded one
+      const toCollapse = new Set(
+        allGroups
+          .filter((g) => g.id !== expandedGroupId)
+          .map((g) => g.id)
+      );
+
+      setCollapsedPlanIds(toCollapse);
+    } else {
+      setCollapsedPlanIds(new Set());
     }
 
-    // Collapse all groups except the expanded one
-    const toCollapse = new Set(
-      allGroups
-        .filter((g) => g.id !== expandedGroupId)
-        .map((g) => g.id)
-    );
-
-    setCollapsedPlanIds(toCollapse);
-
-    const tierGroups = buildTierGroups(allNodes, planGroups);
+    if (!grouping.byTier) {
+      setCollapsedTierIds(new Set());
+      return;
+    }
+    const tierGroups = buildTierGroups(allNodes, planGroups, {
+      enabled: grouping.byTier,
+      includeUngrouped: grouping.showUncategorized || !grouping.byPlan,
+    });
     if (tierGroups.length === 0) {
       setCollapsedTierIds(new Set());
       return;
@@ -510,12 +522,11 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     }
 
     setCollapsedTierIds(toCollapseTiers);
-  }, [graphData]);
+  }, [graphData, grouping.byPlan, grouping.byTier, grouping.showUncategorized]);
 
   // GraphControls state
   const [filters, setFilters] = useState<GraphFilters>(DEFAULT_GRAPH_FILTERS);
   const [layoutDirection, setLayoutDirection] = useState<LayoutDirection>(DEFAULT_LAYOUT_DIRECTION);
-  const [grouping, setGrouping] = useState<GroupingOption>(DEFAULT_GROUPING);
 
   // Node mode state (standard or compact)
   // null means "auto" - will be determined by task count
@@ -646,8 +657,17 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   }, [graphData, filters]);
 
   const tierGroups = useMemo(
-    () => buildTierGroups(filteredGraphData.nodes, filteredGraphData.planGroups),
-    [filteredGraphData.nodes, filteredGraphData.planGroups]
+    () => buildTierGroups(filteredGraphData.nodes, filteredGraphData.planGroups, {
+      enabled: grouping.byTier,
+      includeUngrouped: grouping.showUncategorized || !grouping.byPlan,
+    }),
+    [
+      filteredGraphData.nodes,
+      filteredGraphData.planGroups,
+      grouping.byPlan,
+      grouping.byTier,
+      grouping.showUncategorized,
+    ]
   );
 
   const tierGroupsByPlan = useMemo(() => {
@@ -792,6 +812,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     filteredGraphData.edges,
     graphData?.criticalPath ?? [],
     filteredGraphData.planGroups,
+    grouping,
     layoutConfig,
     collapsedPlanIds,
     collapsedTierIds,

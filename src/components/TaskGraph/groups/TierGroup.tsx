@@ -18,7 +18,7 @@ export interface TierGroupData extends Record<string, unknown> {
   isCollapsed: boolean;
   width: number;
   height: number;
-  onToggleCollapse?: ((tierGroupId: string) => void) | undefined;
+  onToggleCollapse?: (tierGroupId: string) => void;
 }
 
 export type TierGroupNode = Node<TierGroupData, "tierGroup">;
@@ -104,7 +104,7 @@ export function createTierGroupNode(
       isCollapsed,
       width,
       height,
-      onToggleCollapse,
+      ...(onToggleCollapse && { onToggleCollapse }),
     },
     style: {
       width,

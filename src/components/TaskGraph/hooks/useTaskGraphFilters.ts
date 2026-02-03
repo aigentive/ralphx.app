@@ -3,7 +3,7 @@
  *
  * Manages:
  * - Filter state (status, plan, show completed)
- * - Grouping state (by plan, tier, status, none)
+ * - Grouping state (plan, tier, uncategorized)
  * - Layout direction (TB ↔ LR)
  * - Functions to filter nodes/edges based on selections
  *
@@ -15,7 +15,7 @@ import type { Node, Edge } from "@xyflow/react";
 import type {
   GraphFilters,
   LayoutDirection,
-  GroupingOption,
+  GroupingState,
 } from "../controls/GraphControls";
 import {
   DEFAULT_GRAPH_FILTERS,
@@ -67,9 +67,9 @@ export interface UseTaskGraphFiltersReturn {
   toggleLayoutDirection: () => void;
 
   /** Current grouping option */
-  grouping: GroupingOption;
+  grouping: GroupingState;
   /** Update grouping option */
-  setGrouping: (grouping: GroupingOption) => void;
+  setGrouping: (grouping: GroupingState) => void;
 
   /** Check if a node passes all filters */
   nodePassesFilters: (node: TaskGraphNode) => boolean;
@@ -124,7 +124,7 @@ export function useTaskGraphFilters(): UseTaskGraphFiltersReturn {
   );
 
   // Grouping state
-  const [grouping, setGrouping] = useState<GroupingOption>(DEFAULT_GROUPING);
+  const [grouping, setGrouping] = useState<GroupingState>(DEFAULT_GROUPING);
 
   // ============================================================================
   // Filter State Management

@@ -47,7 +47,11 @@ import type { InternalStatus } from "@/types/status";
 
 export type LayoutDirection = "TB" | "LR";
 
-export type GroupingOption = "plan" | "tier" | "status" | "none";
+export type GroupingState = {
+  byPlan: boolean;
+  byTier: boolean;
+  showUncategorized: boolean;
+};
 
 export interface GraphFilters {
   /** Selected status values (empty = show all) */
@@ -70,9 +74,9 @@ export interface GraphControlsProps {
   /** Callback when layout direction changes */
   onLayoutDirectionChange: (direction: LayoutDirection) => void;
   /** Current grouping option */
-  grouping: GroupingOption;
+  grouping: GroupingState;
   /** Callback when grouping changes */
-  onGroupingChange: (grouping: GroupingOption) => void;
+  onGroupingChange: (grouping: GroupingState) => void;
   /** Current node display mode */
   nodeMode: NodeMode;
   /** Callback when node mode changes */
@@ -100,12 +104,19 @@ const STATUS_CATEGORIES: StatusCategory[] = [
   "terminal",
 ];
 
-const GROUPING_OPTIONS: { value: GroupingOption; label: string; description: string }[] = [
-  { value: "plan", label: "By Plan", description: "Group tasks by originating plan" },
-  { value: "tier", label: "By Tier", description: "Group by dependency tier" },
-  { value: "status", label: "By Status", description: "Group by current status" },
-  { value: "none", label: "No Grouping", description: "Flat dependency graph" },
-];
+const GROUPING_OPTIONS = [
+  { key: "byPlan", label: "By Plan", description: "Group tasks by originating plan" },
+  { key: "byTier", label: "By Tier", description: "Group by dependency tier" },
+  { key: "showUncategorized", label: "Uncategorized", description: "Include uncategorized tasks" },
+] as const;
+
+const getGroupingLabel = (grouping: GroupingState): string => {
+  const active: string[] = [];
+  if (grouping.byPlan) active.push("Plan");
+  if (grouping.byTier) active.push("Tier");
+  if (!grouping.byPlan && !grouping.byTier) return "None";
+  return active.join(" + ");
+};
 
 // ============================================================================
 // Sub-components
@@ -335,8 +346,8 @@ const PlanFilterContent = memo(function PlanFilterContent({
 });
 
 interface GroupingDropdownProps {
-  grouping: GroupingOption;
-  onGroupingChange: (grouping: GroupingOption) => void;
+  grouping: GroupingState;
+  onGroupingChange: (grouping: GroupingState) => void;
 }
 
 const GroupingDropdown = memo(function GroupingDropdown({
@@ -345,7 +356,7 @@ const GroupingDropdown = memo(function GroupingDropdown({
 }: GroupingDropdownProps) {
   const [open, setOpen] = useState(false);
 
-  const currentOption = GROUPING_OPTIONS.find((opt) => opt.value === grouping);
+  const currentOption = getGroupingLabel(grouping);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -358,7 +369,7 @@ const GroupingDropdown = memo(function GroupingDropdown({
           )}
         >
           <Layers className="w-3.5 h-3.5 text-[hsl(220_10%_50%)]" />
-          <span className="text-[hsl(220_10%_70%)]">{currentOption?.label ?? "Grouping"}</span>
+          <span className="text-[hsl(220_10%_70%)]">{currentOption}</span>
           <ChevronDown className="w-3 h-3 text-[hsl(220_10%_50%)]" />
         </button>
       </PopoverTrigger>
@@ -366,24 +377,48 @@ const GroupingDropdown = memo(function GroupingDropdown({
         className="w-56 p-1 bg-[hsl(220_10%_10%)] border-[hsl(220_10%_25%)]"
         align="start"
       >
-        {GROUPING_OPTIONS.map((option) => (
+        <div className="flex items-center justify-between px-2 py-1.5">
+          <span className="text-[10px] text-[hsl(220_10%_50%)] uppercase tracking-wide">
+            Grouping
+          </span>
           <button
-            key={option.value}
-            onClick={() => {
-              onGroupingChange(option.value);
-              setOpen(false);
-            }}
-            className={cn(
-              "w-full flex flex-col items-start px-3 py-2 rounded text-left transition-colors",
-              grouping === option.value
-                ? "bg-[hsl(220_10%_18%)]"
-                : "hover:bg-[hsl(220_10%_15%)]"
-            )}
+            onClick={() => onGroupingChange({ byPlan: false, byTier: false, showUncategorized: false })}
+            className="text-[10px] text-[hsl(220_10%_60%)] hover:text-[hsl(220_10%_80%)]"
           >
-            <span className="text-xs text-[hsl(220_10%_80%)]">{option.label}</span>
-            <span className="text-[10px] text-[hsl(220_10%_50%)]">{option.description}</span>
+            None
           </button>
-        ))}
+        </div>
+        <div className="space-y-1 px-1 pb-1">
+          {GROUPING_OPTIONS.map((option) => {
+            const isChecked = grouping[option.key];
+            const isDisabled = option.key === "showUncategorized" && !grouping.byPlan;
+            return (
+              <label
+                key={option.key}
+                className={cn(
+                  "flex items-start gap-2 px-2 py-2 rounded transition-colors cursor-pointer",
+                  "hover:bg-[hsl(220_10%_15%)]",
+                  isDisabled && "opacity-50 cursor-not-allowed"
+                )}
+              >
+                <Checkbox
+                  checked={isChecked}
+                  onCheckedChange={(checked) => {
+                    if (isDisabled) return;
+                    onGroupingChange({
+                      ...grouping,
+                      [option.key]: Boolean(checked),
+                    });
+                  }}
+                />
+                <div className="flex-1">
+                  <div className="text-xs text-[hsl(220_10%_80%)]">{option.label}</div>
+                  <div className="text-[10px] text-[hsl(220_10%_50%)]">{option.description}</div>
+                </div>
+              </label>
+            );
+          })}
+        </div>
       </PopoverContent>
     </Popover>
   );
@@ -577,7 +612,11 @@ export const DEFAULT_LAYOUT_DIRECTION: LayoutDirection = "TB";
 /**
  * Default grouping option
  */
-export const DEFAULT_GROUPING: GroupingOption = "plan";
+export const DEFAULT_GROUPING: GroupingState = {
+  byPlan: true,
+  byTier: true,
+  showUncategorized: true,
+};
 
 /**
  * Default node display mode

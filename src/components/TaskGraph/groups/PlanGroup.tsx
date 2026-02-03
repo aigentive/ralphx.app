@@ -42,15 +42,15 @@ export interface PlanGroupData extends Record<string, unknown> {
   /** Height of the group region */
   height: number;
   /** Tier group IDs within this plan (if any) */
-  tierGroupIds?: string[] | undefined;
+  tierGroupIds?: string[];
   /** Whether any tiers are collapsed */
-  anyTierCollapsed?: boolean | undefined;
+  anyTierCollapsed?: boolean;
   /** Whether all tiers are collapsed */
-  allTiersCollapsed?: boolean | undefined;
+  allTiersCollapsed?: boolean;
   /** Toggle all tiers expand/collapse */
-  onToggleAllTiers?: ((planArtifactId: string, action: "expand" | "collapse") => void) | undefined;
+  onToggleAllTiers?: (planArtifactId: string, action: "expand" | "collapse") => void;
   /** Callback to toggle collapse state */
-  onToggleCollapse?: ((planArtifactId: string) => void) | undefined;
+  onToggleCollapse?: (planArtifactId: string) => void;
 }
 
 export type PlanGroupNode = Node<PlanGroupData, "planGroup">;
@@ -109,6 +109,14 @@ export const PlanGroup = memo(function PlanGroup({
   const hasTierControls = Boolean(
     tierGroupIds && tierGroupIds.length > 0 && onToggleAllTiers
   );
+  const tierControls = hasTierControls
+    ? {
+        tierGroupIds: tierGroupIds ?? [],
+        anyTierCollapsed: Boolean(anyTierCollapsed),
+        allTiersCollapsed: Boolean(allTiersCollapsed),
+        onToggleAllTiers: onToggleAllTiers!,
+      }
+    : null;
 
   // When collapsed, show only the header (minimal padding)
   const displayHeight = isCollapsed ? HEADER_HEIGHT + 8 : height;
@@ -149,12 +157,7 @@ export const PlanGroup = memo(function PlanGroup({
         taskCount={taskIds.length}
         statusSummary={statusSummary}
         isCollapsed={isCollapsed}
-        {...(hasTierControls && {
-          tierGroupIds,
-          anyTierCollapsed,
-          allTiersCollapsed,
-          onToggleAllTiers,
-        })}
+        {...(tierControls ?? {})}
         onToggleCollapse={() => onToggleCollapse?.(planArtifactId)}
       />
 
@@ -237,11 +240,11 @@ export function createPlanGroupNode(
       height,
       ...(tierGroupIds && tierGroupIds.length > 0 && onToggleAllTiers && {
         tierGroupIds,
-        anyTierCollapsed,
-        allTiersCollapsed,
+        anyTierCollapsed: Boolean(anyTierCollapsed),
+        allTiersCollapsed: Boolean(allTiersCollapsed),
         onToggleAllTiers,
       }),
-      onToggleCollapse,
+      ...(onToggleCollapse && { onToggleCollapse }),
     },
     // Group node properties
     style: {

@@ -39,13 +39,13 @@ export interface PlanGroupHeaderProps {
   /** Whether the group is collapsed */
   isCollapsed: boolean;
   /** Tier group IDs within this plan */
-  tierGroupIds?: string[] | undefined;
+  tierGroupIds?: string[];
   /** Whether any tiers are collapsed */
-  anyTierCollapsed?: boolean | undefined;
+  anyTierCollapsed?: boolean;
   /** Whether all tiers are collapsed */
-  allTiersCollapsed?: boolean | undefined;
+  allTiersCollapsed?: boolean;
   /** Toggle all tiers expand/collapse */
-  onToggleAllTiers?: ((planArtifactId: string, action: "expand" | "collapse") => void) | undefined;
+  onToggleAllTiers?: (planArtifactId: string, action: "expand" | "collapse") => void;
   /** Toggle collapse state */
   onToggleCollapse: () => void;
   /** Optional: Open context menu */
