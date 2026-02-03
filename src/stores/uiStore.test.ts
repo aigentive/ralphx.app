@@ -15,6 +15,8 @@ describe("uiStore", () => {
       loading: {},
       confirmation: null,
       activeQuestion: null,
+      selectedTaskId: null,
+      graphSelection: null,
       executionStatus: {
         isPaused: false,
         runningCount: 0,
@@ -373,6 +375,32 @@ describe("uiStore", () => {
       expect(state.executionStatus.isPaused).toBe(false);
       expect(state.executionStatus.runningCount).toBe(1);
       expect(state.executionStatus.queuedCount).toBe(10);
+    });
+  });
+
+  describe("graphSelection", () => {
+    it("sets and clears non-task selection", () => {
+      useUiStore.getState().setGraphSelection({ kind: "planGroup", id: "plan-1" });
+      expect(useUiStore.getState().graphSelection).toEqual({ kind: "planGroup", id: "plan-1" });
+      expect(useUiStore.getState().selectedTaskId).toBeNull();
+
+      useUiStore.getState().clearGraphSelection();
+      expect(useUiStore.getState().graphSelection).toBeNull();
+    });
+
+    it("syncs task selection to graph selection", () => {
+      useUiStore.getState().setSelectedTaskId("task-1");
+      expect(useUiStore.getState().graphSelection).toEqual({ kind: "task", id: "task-1" });
+    });
+
+    it("clears only task graph selection when deselecting tasks", () => {
+      useUiStore.getState().setGraphSelection({ kind: "planGroup", id: "plan-1" });
+      useUiStore.getState().setSelectedTaskId(null);
+      expect(useUiStore.getState().graphSelection).toEqual({ kind: "planGroup", id: "plan-1" });
+
+      useUiStore.getState().setSelectedTaskId("task-2");
+      useUiStore.getState().setSelectedTaskId(null);
+      expect(useUiStore.getState().graphSelection).toBeNull();
     });
   });
 });

@@ -3,6 +3,7 @@ export { TaskGraphView } from "./TaskGraphView";
 export { useTaskGraph, taskGraphKeys } from "./hooks/useTaskGraph";
 export { useTaskGraphLayout, DEFAULT_CONFIG as DEFAULT_LAYOUT_CONFIG } from "./hooks/useTaskGraphLayout";
 export type { LayoutConfig, LayoutResult } from "./hooks/useTaskGraphLayout";
+export { useTaskGraphViewport } from "./hooks/useTaskGraphViewport";
 
 // Node components
 export { TaskNode } from "./nodes/TaskNode";
@@ -49,6 +50,16 @@ export {
   PLAN_GROUP_NODE_TYPE,
 } from "./groups/PlanGroup";
 export type { PlanGroupData, PlanGroupNode, PlanGroupProps } from "./groups/PlanGroup";
+
+export {
+  buildPlanGroupNodes,
+  buildTierGroupNodes,
+  COLLAPSED_GROUP_HEIGHT,
+  COLLAPSED_GROUP_WIDTH,
+  COLLAPSED_TIER_HEIGHT,
+  COLLAPSED_TIER_WIDTH,
+} from "./groups/groupBuilder";
+export { getGroupNodeId, getPlanGroupNodeId, getTierGroupNodeId } from "./groups/groupTypes";
 
 // Group utilities
 export {

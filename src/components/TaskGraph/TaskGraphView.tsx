@@ -17,7 +17,6 @@ import {
   ReactFlowProvider,
   Background,
   Controls,
-  useReactFlow,
   type Node,
   type Edge,
   type NodeTypes,
@@ -30,12 +29,14 @@ import "@xyflow/react/dist/style.css";
 
 import { useTaskGraph } from "./hooks/useTaskGraph";
 import { useTaskGraphLayout } from "./hooks/useTaskGraphLayout";
+import { useTaskGraphViewport } from "./hooks/useTaskGraphViewport";
 import { TaskNode, type TaskNodeHandlers } from "./nodes/TaskNode";
 import { TaskNodeCompact } from "./nodes/TaskNodeCompact";
 import { DependencyEdge } from "./edges/DependencyEdge";
 import { MARKER_IDS, NORMAL_STROKE, CRITICAL_STROKE, EDGE_FADE_COLOR } from "./edges/edgeStyles";
 import { PlanGroup, PLAN_GROUP_NODE_TYPE, type PlanGroupData } from "./groups/PlanGroup";
 import { TierGroup, TIER_GROUP_NODE_TYPE, type TierGroupData } from "./groups/TierGroup";
+import { getPlanGroupNodeId, getTierGroupNodeId, parseGroupNodeId } from "./groups/groupTypes";
 import { FloatingTimeline } from "./timeline/FloatingTimeline";
 import { GraphLegend } from "./controls/GraphLegend";
 import { FloatingGraphFilters } from "./controls/FloatingGraphFilters";
@@ -363,11 +364,14 @@ interface TaskGraphViewInnerProps {
 
 function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   const { data: graphData, isLoading, error } = useTaskGraph(projectId);
-  const { setCenter, getNodes, fitView } = useReactFlow();
+  const { fitNodeInView, centerOnNode, fitViewDefault } = useTaskGraphViewport();
 
   // UI Store for task selection
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
+  const graphSelection = useUiStore((s) => s.graphSelection);
+  const setGraphSelection = useUiStore((s) => s.setGraphSelection);
+  const clearGraphSelection = useUiStore((s) => s.clearGraphSelection);
 
   // Highlighted task state (for timeline-to-node interaction)
   const [highlightedTaskId, setHighlightedTaskId] = useState<string | null>(null);
@@ -559,112 +563,16 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     }
   }, [isAutoCompact]);
 
-  const fitNodeInView = useCallback(
-    (nodeId: string, duration = 220, padding = 0.18, maxZoom = 0.95): boolean => {
-      const node = getNodes().find((item) => item.id === nodeId);
-      if (!node) return false;
-      fitView({ nodes: [node], duration, padding, maxZoom });
-      return true;
-    },
-    [fitView, getNodes]
-  );
-
   const centerOnPlanGroup = useCallback(
-    (planArtifactId: string, duration = 200, zoom = 0.9): boolean => {
-      const planNodeId = `group-${planArtifactId}`;
-      const planNode = getNodes().find((node) => node.id === planNodeId);
-      if (!planNode) return false;
-      const width =
-        planNode.measured?.width ??
-        (typeof planNode.width === "number" ? planNode.width : undefined) ??
-        (planNode.data as PlanGroupData | undefined)?.width ??
-        320;
-      const height =
-        planNode.measured?.height ??
-        (typeof planNode.height === "number" ? planNode.height : undefined) ??
-        (planNode.data as PlanGroupData | undefined)?.height ??
-        120;
-      const x = planNode.position.x + width / 2;
-      const y = planNode.position.y + height / 2;
-      setCenter(x, y, { duration, zoom });
-      return true;
-    },
-    [getNodes, setCenter]
+    (planArtifactId: string, duration = 200, zoom = 0.9): boolean =>
+      centerOnNode(getPlanGroupNodeId(planArtifactId), {
+        duration,
+        zoom,
+        fallbackWidth: 320,
+        fallbackHeight: 120,
+      }),
+    [centerOnNode]
   );
-
-  // Toggle collapse state for a plan group
-  const handleToggleCollapse = useCallback((planArtifactId: string) => {
-    setCollapsedPlanIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(planArtifactId)) {
-        next.delete(planArtifactId);
-      } else {
-        next.add(planArtifactId);
-      }
-      return next;
-    });
-    // Auto-fit view after layout updates - focus on this group only
-    setTimeout(() => {
-      if (fitNodeInView(`group-${planArtifactId}`, 220, 0.18, 0.95)) return;
-      if (centerOnPlanGroup(planArtifactId, 200, 0.9)) return;
-      fitView({ padding: 0.2, duration: 200 });
-    }, 50);
-  }, [centerOnPlanGroup, fitNodeInView, fitView]);
-
-  const handleToggleTierCollapse = useCallback((tierGroupId: string) => {
-    let shouldCenterTier = false;
-    let shouldCenterPlan = false;
-    let planArtifactId: string | null = null;
-    setCollapsedTierIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(tierGroupId)) {
-        next.delete(tierGroupId);
-        shouldCenterTier = true;
-      } else {
-        next.add(tierGroupId);
-        shouldCenterPlan = true;
-      }
-      return next;
-    });
-    setTimeout(() => {
-      if (shouldCenterTier) {
-        const tierNode = getNodes().find((node) => node.id === tierGroupId);
-        if (tierNode) {
-          planArtifactId =
-            (tierNode.data as TierGroupData | undefined)?.planArtifactId ?? null;
-          if (fitNodeInView(tierGroupId, 220, 0.18, 0.95)) return;
-          const width =
-            tierNode.measured?.width ??
-            (typeof tierNode.width === "number" ? tierNode.width : undefined) ??
-            (tierNode.data as TierGroupData | undefined)?.width ??
-            320;
-          const height =
-            tierNode.measured?.height ??
-            (typeof tierNode.height === "number" ? tierNode.height : undefined) ??
-            (tierNode.data as TierGroupData | undefined)?.height ??
-            80;
-          const x = tierNode.position.x + width / 2;
-          const y = tierNode.position.y + height / 2;
-          setCenter(x, y, { duration: 200, zoom: 0.95 });
-          return;
-        }
-      }
-      if (shouldCenterPlan) {
-        if (!planArtifactId) {
-          const tierNode = getNodes().find((node) => node.id === tierGroupId);
-          planArtifactId =
-            (tierNode?.data as TierGroupData | undefined)?.planArtifactId ?? null;
-        }
-        if (planArtifactId && fitNodeInView(`group-${planArtifactId}`, 220, 0.18, 0.95)) {
-          return;
-        }
-        if (planArtifactId && centerOnPlanGroup(planArtifactId, 200, 0.9)) {
-          return;
-        }
-      }
-      fitView({ padding: 0.2, duration: 200 });
-    }, 50);
-  }, [centerOnPlanGroup, fitNodeInView, fitView, getNodes, setCenter]);
 
   // Apply filters to graph data before layout computation
   const filteredGraphData = useMemo(() => {
@@ -692,6 +600,74 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
       grouping.showUncategorized,
     ]
   );
+
+  const tierGroupsById = useMemo(() => {
+    const map = new Map<string, (typeof tierGroups)[number]>();
+    for (const tierGroup of tierGroups) {
+      map.set(tierGroup.id, tierGroup);
+    }
+    return map;
+  }, [tierGroups]);
+
+  // Toggle collapse state for a plan group
+  const handleToggleCollapse = useCallback((planArtifactId: string) => {
+    setCollapsedPlanIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(planArtifactId)) {
+        next.delete(planArtifactId);
+      } else {
+        next.add(planArtifactId);
+      }
+      return next;
+    });
+    // Auto-fit view after layout updates - focus on this group only
+    setTimeout(() => {
+      if (fitNodeInView(getPlanGroupNodeId(planArtifactId), { duration: 220, padding: 0.18, maxZoom: 0.95 })) return;
+      if (centerOnPlanGroup(planArtifactId, 200, 0.9)) return;
+      fitViewDefault({ padding: 0.2, duration: 200 });
+    }, 50);
+  }, [centerOnPlanGroup, fitNodeInView, fitViewDefault]);
+
+  const handleToggleTierCollapse = useCallback((tierGroupId: string) => {
+    let shouldCenterTier = false;
+    let shouldCenterPlan = false;
+    const planArtifactId = tierGroupsById.get(tierGroupId)?.planArtifactId ?? null;
+    setCollapsedTierIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(tierGroupId)) {
+        next.delete(tierGroupId);
+        shouldCenterTier = true;
+      } else {
+        next.add(tierGroupId);
+        shouldCenterPlan = true;
+      }
+      return next;
+    });
+    setTimeout(() => {
+      if (shouldCenterTier) {
+        if (fitNodeInView(getTierGroupNodeId(tierGroupId), { duration: 220, padding: 0.18, maxZoom: 0.95 })) return;
+        if (
+          centerOnNode(getTierGroupNodeId(tierGroupId), {
+            duration: 200,
+            zoom: 0.95,
+            fallbackWidth: 320,
+            fallbackHeight: 80,
+          })
+        ) {
+          return;
+        }
+      }
+      if (shouldCenterPlan) {
+        if (planArtifactId && fitNodeInView(getPlanGroupNodeId(planArtifactId), { duration: 220, padding: 0.18, maxZoom: 0.95 })) {
+          return;
+        }
+        if (planArtifactId && centerOnPlanGroup(planArtifactId, 200, 0.9)) {
+          return;
+        }
+      }
+      fitViewDefault({ padding: 0.2, duration: 200 });
+    }, 50);
+  }, [centerOnNode, centerOnPlanGroup, fitNodeInView, fitViewDefault, tierGroupsById]);
 
   const tierGroupsByPlan = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -724,12 +700,12 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
         return next;
       });
       setTimeout(() => {
-        if (fitNodeInView(`group-${planArtifactId}`, 220, 0.18, 0.95)) return;
+        if (fitNodeInView(getPlanGroupNodeId(planArtifactId), { duration: 220, padding: 0.18, maxZoom: 0.95 })) return;
         if (centerOnPlanGroup(planArtifactId, 200, 0.9)) return;
-        fitView({ padding: 0.2, duration: 200 });
+        fitViewDefault({ padding: 0.2, duration: 200 });
       }, 50);
     },
-    [centerOnPlanGroup, fitNodeInView, fitView, tierGroupsByPlan]
+    [centerOnPlanGroup, fitNodeInView, fitViewDefault, tierGroupsByPlan]
   );
 
   // Task mutations for context menu actions
@@ -851,6 +827,29 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   // Inject handlers for context menu actions
   // Combine group nodes and visible task nodes - groups first for proper z-ordering
   const nodes = useMemo<Node[]>(() => {
+    const groupNodesWithSelection = groupNodes.map((node) => {
+      if (node.type === PLAN_GROUP_NODE_TYPE) {
+        const planArtifactId = (node.data as PlanGroupData | undefined)?.planArtifactId;
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            isSelected: graphSelection?.kind === "planGroup" && graphSelection.id === planArtifactId,
+          },
+        };
+      }
+      if (node.type === TIER_GROUP_NODE_TYPE) {
+        const tierGroupId = (node.data as TierGroupData | undefined)?.tierGroupId;
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            isSelected: graphSelection?.kind === "tierGroup" && graphSelection.id === tierGroupId,
+          },
+        };
+      }
+      return node;
+    });
     const taskNodesWithData = layoutNodes.map((node) => ({
       ...node,
       data: {
@@ -859,9 +858,10 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
         isFocused: node.id === focusedNodeId,
         handlers: nodeHandlers,
       },
+      selected: graphSelection?.kind === "task" && graphSelection.id === node.id,
     }));
-    return [...groupNodes, ...taskNodesWithData];
-  }, [layoutNodes, groupNodes, highlightedTaskId, focusedNodeId, nodeHandlers]);
+    return [...groupNodesWithSelection, ...taskNodesWithData];
+  }, [layoutNodes, groupNodes, graphSelection, highlightedTaskId, focusedNodeId, nodeHandlers]);
 
   // Edges are already filtered in useTaskGraphLayout (lazy loading)
   const edges = useMemo<Edge[]>(() => layoutEdges, [layoutEdges]);
@@ -888,20 +888,14 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
 
       // Set the highlighted task
       setHighlightedTaskId(taskId);
+      setGraphSelection({ kind: "task", id: taskId });
 
-      // Find the node's position and center the view on it
-      const allNodes = getNodes();
-      const targetNode = allNodes.find((n) => n.id === taskId);
-      if (targetNode && targetNode.position) {
-        // Get node dimensions (default to standard task node size)
-        const nodeWidth = targetNode.measured?.width ?? 180;
-        const nodeHeight = targetNode.measured?.height ?? 60;
-        // Center on the node's center point
-        const x = targetNode.position.x + nodeWidth / 2;
-        const y = targetNode.position.y + nodeHeight / 2;
-        // Use setCenter with zoom level 1.2 for good visibility
-        setCenter(x, y, { duration: 500, zoom: 1.2 });
-      }
+      centerOnNode(taskId, {
+        duration: 500,
+        zoom: 1.2,
+        fallbackWidth: 180,
+        fallbackHeight: 60,
+      });
 
       // Set timeout to clear highlight
       highlightTimeoutRef.current = setTimeout(() => {
@@ -909,7 +903,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
         highlightTimeoutRef.current = null;
       }, HIGHLIGHT_TIMEOUT_MS);
     },
-    [getNodes, setCenter]
+    [centerOnNode, setGraphSelection]
   );
 
   // Single click on node - focus/highlight and center view (consistent with timeline behavior)
@@ -920,11 +914,18 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
         if (event.detail > 1) {
           return;
         }
+        const parsed = parseGroupNodeId(node.id);
+        const planArtifactId =
+          (node.data as PlanGroupData | undefined)?.planArtifactId ??
+          (parsed?.kind === "plan" ? parsed.id : undefined);
+        if (planArtifactId) {
+          setGraphSelection({ kind: "planGroup", id: planArtifactId });
+        }
         if (groupClickTimeoutRef.current) {
           clearTimeout(groupClickTimeoutRef.current);
         }
         groupClickTimeoutRef.current = setTimeout(() => {
-          fitNodeInView(node.id, 220, 0.18, 0.95);
+          fitNodeInView(node.id, { duration: 220, padding: 0.18, maxZoom: 0.95 });
           groupClickTimeoutRef.current = null;
         }, DOUBLE_CLICK_DELAY_MS);
         return;
@@ -933,11 +934,18 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
         if (event.detail > 1) {
           return;
         }
+        const parsed = parseGroupNodeId(node.id);
+        const tierGroupId =
+          (node.data as TierGroupData | undefined)?.tierGroupId ??
+          (parsed?.kind === "tier" ? parsed.id : undefined);
+        if (tierGroupId) {
+          setGraphSelection({ kind: "tierGroup", id: tierGroupId });
+        }
         if (groupClickTimeoutRef.current) {
           clearTimeout(groupClickTimeoutRef.current);
         }
         groupClickTimeoutRef.current = setTimeout(() => {
-          fitNodeInView(node.id, 220, 0.18, 0.95);
+          fitNodeInView(node.id, { duration: 220, padding: 0.18, maxZoom: 0.95 });
           groupClickTimeoutRef.current = null;
         }, DOUBLE_CLICK_DELAY_MS);
         return;
@@ -949,18 +957,13 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
         highlightTimeoutRef.current = null;
       }
 
+      setGraphSelection({ kind: "task", id: node.id });
       // Set the highlighted task (focus the node)
       setHighlightedTaskId(node.id);
       setFocusedNodeId(node.id);
 
       // Center the view on the clicked node (same behavior as timeline click)
-      if (node.position) {
-        const nodeWidth = node.measured?.width ?? 180;
-        const nodeHeight = node.measured?.height ?? 60;
-        const x = node.position.x + nodeWidth / 2;
-        const y = node.position.y + nodeHeight / 2;
-        setCenter(x, y, { duration: 300, zoom: 1.2 });
-      }
+      centerOnNode(node.id, { duration: 300, zoom: 1.2, fallbackWidth: 180, fallbackHeight: 60 });
 
       // Auto-clear highlight after timeout
       highlightTimeoutRef.current = setTimeout(() => {
@@ -968,7 +971,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
         highlightTimeoutRef.current = null;
       }, HIGHLIGHT_TIMEOUT_MS);
     },
-    [fitNodeInView, setCenter]
+    [centerOnNode, fitNodeInView, setGraphSelection]
   );
 
   // Double-click on nodes - open task detail (for tasks) or collapse/expand (for groups)
@@ -987,14 +990,20 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
 
       // Handle group nodes - collapse/expand
       if (node.type === PLAN_GROUP_NODE_TYPE) {
-        const planArtifactId = (node.data as PlanGroupData | undefined)?.planArtifactId;
+        const parsed = parseGroupNodeId(node.id);
+        const planArtifactId =
+          (node.data as PlanGroupData | undefined)?.planArtifactId ??
+          (parsed?.kind === "plan" ? parsed.id : undefined);
         if (planArtifactId) {
           handleToggleCollapse(planArtifactId);
         }
         return;
       }
       if (node.type === TIER_GROUP_NODE_TYPE) {
-        const tierGroupId = (node.data as TierGroupData | undefined)?.tierGroupId ?? node.id;
+        const parsed = parseGroupNodeId(node.id);
+        const tierGroupId =
+          (node.data as TierGroupData | undefined)?.tierGroupId ??
+          (parsed?.kind === "tier" ? parsed.id : node.id);
         handleToggleTierCollapse(tierGroupId);
         return;
       }
@@ -1014,7 +1023,8 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     setHighlightedTaskId(null);
     // Also clear focus on pane click
     setFocusedNodeId(null);
-  }, []);
+    clearGraphSelection();
+  }, [clearGraphSelection]);
 
   // Handle keyboard navigation
   const handleKeyDown = useCallback(
@@ -1032,6 +1042,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
         setSelectedTaskId(null);
         setFocusedNodeId(null);
         setHighlightedTaskId(null);
+        clearGraphSelection();
         if (highlightTimeoutRef.current) {
           clearTimeout(highlightTimeoutRef.current);
           highlightTimeoutRef.current = null;
@@ -1050,11 +1061,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
         if (firstNode) {
           setFocusedNodeId(firstNode.id);
           // Center on the focused node
-          const nodeWidth = firstNode.measured?.width ?? 180;
-          const nodeHeight = firstNode.measured?.height ?? 60;
-          const x = firstNode.position.x + nodeWidth / 2;
-          const y = firstNode.position.y + nodeHeight / 2;
-          setCenter(x, y, { duration: 300, zoom: 1.2 });
+          centerOnNode(firstNode.id, { duration: 300, zoom: 1.2, fallbackWidth: 180, fallbackHeight: 60 });
         }
         return;
       }
@@ -1074,17 +1081,10 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
       if (nextNodeId) {
         setFocusedNodeId(nextNodeId);
         // Center on the newly focused node
-        const targetNode = nodes.find((n) => n.id === nextNodeId);
-        if (targetNode && targetNode.position) {
-          const nodeWidth = targetNode.measured?.width ?? 180;
-          const nodeHeight = targetNode.measured?.height ?? 60;
-          const x = targetNode.position.x + nodeWidth / 2;
-          const y = targetNode.position.y + nodeHeight / 2;
-          setCenter(x, y, { duration: 300, zoom: 1.2 });
-        }
+        centerOnNode(nextNodeId, { duration: 300, zoom: 1.2, fallbackWidth: 180, fallbackHeight: 60 });
       }
     },
-    [nodes, edges, focusedNodeId, selectedTaskId, setSelectedTaskId, setCenter]
+    [centerOnNode, clearGraphSelection, edges, focusedNodeId, nodes, selectedTaskId, setSelectedTaskId]
   );
 
   // Cleanup timeout on unmount

@@ -14,6 +14,12 @@ import type { RecoveryPromptEvent } from "@/types/events";
 import type { ViewType } from "@/types/chat";
 import type { InternalStatus } from "@/types/status";
 
+export type GraphSelection =
+  | { kind: "task"; id: string }
+  | { kind: "planGroup"; id: string }
+  | { kind: "tierGroup"; id: string }
+  | { kind: "customGroup"; id: string };
+
 // ============================================================================
 // Chat Visibility Persistence
 // ============================================================================
@@ -40,6 +46,22 @@ function loadChatVisibility(): Record<ViewType, boolean> {
     /* ignore parse errors */
   }
   return { ...DEFAULT_CHAT_VISIBILITY };
+}
+
+function applyTaskSelection(
+  state: { selectedTaskId: string | null; taskHistoryState: UiState["taskHistoryState"]; chatVisibleByView: Record<ViewType, boolean> },
+  taskId: string | null
+): void {
+  state.selectedTaskId = taskId;
+  // Auto-open chat when a task is selected in kanban view
+  if (taskId !== null) {
+    state.chatVisibleByView.kanban = true;
+    saveChatVisibility(state.chatVisibleByView);
+  }
+  // Clear history state when task is deselected
+  if (taskId === null) {
+    state.taskHistoryState = null;
+  }
 }
 
 function saveChatVisibility(visibility: Record<ViewType, boolean>): void {
@@ -124,6 +146,8 @@ interface UiState {
   isSearching: boolean;
   /** ID of selected task for split-screen overlay (kanban view only) */
   selectedTaskId: string | null;
+  /** Active selection in the task graph (single selection across types) */
+  graphSelection: GraphSelection | null;
   /** History state for time-travel feature - shared between TaskDetailOverlay and IntegratedChatPanel */
   taskHistoryState: {
     status: InternalStatus;
@@ -202,6 +226,10 @@ interface UiActions {
   setIsSearching: (searching: boolean) => void;
   /** Set selected task ID for split-screen overlay */
   setSelectedTaskId: (taskId: string | null) => void;
+  /** Set active graph selection */
+  setGraphSelection: (selection: GraphSelection | null) => void;
+  /** Clear active graph selection */
+  clearGraphSelection: () => void;
   /** Set task history state for time-travel feature */
   setTaskHistoryState: (state: {
     status: InternalStatus;
@@ -256,6 +284,7 @@ export const useUiStore = create<UiState & UiActions>()(
     boardSearchQuery: null,
     isSearching: false,
     selectedTaskId: null,
+    graphSelection: null,
     taskHistoryState: null,
     taskCreationContext: null,
     chatVisibleByView: loadChatVisibility(),
@@ -410,16 +439,22 @@ export const useUiStore = create<UiState & UiActions>()(
 
     setSelectedTaskId: (taskId) =>
       set((state) => {
-        state.selectedTaskId = taskId;
-        // Auto-open chat when a task is selected in kanban view
+        applyTaskSelection(state, taskId);
         if (taskId !== null) {
-          state.chatVisibleByView.kanban = true;
-          saveChatVisibility(state.chatVisibleByView);
+          state.graphSelection = { kind: "task", id: taskId };
+        } else if (state.graphSelection?.kind === "task") {
+          state.graphSelection = null;
         }
-        // Clear history state when task is deselected
-        if (taskId === null) {
-          state.taskHistoryState = null;
-        }
+      }),
+
+    setGraphSelection: (selection) =>
+      set((state) => {
+        state.graphSelection = selection;
+      }),
+
+    clearGraphSelection: () =>
+      set((state) => {
+        state.graphSelection = null;
       }),
 
     setTaskHistoryState: (historyState) =>

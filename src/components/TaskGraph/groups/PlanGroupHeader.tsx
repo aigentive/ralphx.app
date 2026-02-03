@@ -169,13 +169,7 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
   // Collapsed: two-row layout with text count
   if (isCollapsed) {
     return (
-      <div
-        className="flex flex-col gap-1.5 px-3 py-2 bg-[hsl(var(--bg-elevated)/0.8)] rounded-lg cursor-pointer"
-        onDoubleClick={(e) => {
-          e.stopPropagation();
-          onToggleCollapse();
-        }}
-      >
+      <div className="flex flex-col gap-1.5 px-3 py-2 bg-[hsl(var(--bg-elevated)/0.8)] rounded-lg cursor-pointer">
         {/* Row 1: toggle + title + count */}
         <div className="flex items-center gap-2">
           <CollapseToggle isCollapsed={true} onClick={onToggleCollapse} />
@@ -197,13 +191,7 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
 
   // Expanded: single-row inline layout
   return (
-    <div
-      className="flex items-center justify-between gap-3 px-3 py-2 bg-[hsl(var(--bg-elevated)/0.8)] rounded-t-lg cursor-pointer"
-      onDoubleClick={(e) => {
-        e.stopPropagation();
-        onToggleCollapse();
-      }}
-    >
+    <div className="flex items-center justify-between gap-3 px-3 py-2 bg-[hsl(var(--bg-elevated)/0.8)] rounded-t-lg cursor-pointer">
       {/* Left: toggle + title */}
       <div className="flex items-center gap-2 min-w-0 flex-1">
         <CollapseToggle isCollapsed={false} onClick={onToggleCollapse} />
