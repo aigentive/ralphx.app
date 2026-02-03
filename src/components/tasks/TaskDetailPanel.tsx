@@ -52,6 +52,8 @@ interface TaskDetailPanelProps {
   useViewRegistry?: boolean;
   /** Override status for view registry lookup (used in history mode) */
   viewAsStatus?: InternalStatus;
+  /** Timestamp for historical view context */
+  viewTimestamp?: string;
 }
 
 /**
@@ -61,6 +63,8 @@ interface TaskDetailProps {
   task: Task;
   /** True when viewing a historical state - disables action buttons */
   isHistorical?: boolean;
+  /** Status override for historical view rendering */
+  viewStatus?: InternalStatus | undefined;
 }
 
 /**
@@ -324,6 +328,7 @@ export function TaskDetailPanel({
   showHistory: showHistoryProp = true,
   useViewRegistry = false,
   viewAsStatus,
+  viewTimestamp,
 }: TaskDetailPanelProps) {
   const [showContext, setShowContext] = useState(showContextProp);
 
@@ -342,7 +347,22 @@ export function TaskDetailPanel({
       TASK_DETAIL_VIEWS[statusForView] ?? BasicTaskDetail;
     // Pass isHistorical when viewing a historical state (viewAsStatus is set)
     const isHistorical = viewAsStatus !== undefined;
-    return <ViewComponent task={task} isHistorical={isHistorical} />;
+    if (statusForView === "reviewing") {
+      return (
+        <ReviewingTaskDetail
+          task={task}
+          isHistorical={isHistorical}
+          viewTimestamp={viewTimestamp}
+        />
+      );
+    }
+    return (
+      <ViewComponent
+        task={task}
+        isHistorical={isHistorical}
+        viewStatus={statusForView}
+      />
+    );
   }
 
   const hasReviews = reviews.length > 0;

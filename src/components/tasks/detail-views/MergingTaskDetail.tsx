@@ -21,6 +21,7 @@ import type { Task } from "@/types/task";
 interface MergingTaskDetailProps {
   task: Task;
   isHistorical?: boolean;
+  viewStatus?: string | undefined;
 }
 
 /**
@@ -56,17 +57,26 @@ function ConflictFilesList({ files }: { files: string[] }) {
 function MergeProgressSteps({
   isProgrammaticPhase,
   isHistorical,
+  historicalMode,
 }: {
   isProgrammaticPhase: boolean;
-  isHistorical?: boolean;
+  isHistorical?: boolean | undefined;
+  historicalMode?: "attempted" | "resolving" | undefined;
 }) {
   const steps = isHistorical
-    ? ([
-        { label: "Fetching latest changes", status: "completed" },
-        { label: "Rebasing onto base branch", status: "completed" },
-        { label: "Resolving conflicts", status: "completed" },
-        { label: "Completing merge", status: "completed" },
-      ] as const)
+    ? historicalMode === "attempted"
+      ? ([
+          { label: "Fetching latest changes", status: "completed" },
+          { label: "Rebasing onto base branch", status: "completed" },
+          { label: "Resolving conflicts", status: "pending" },
+          { label: "Completing merge", status: "pending" },
+        ] as const)
+      : ([
+          { label: "Fetching latest changes", status: "completed" },
+          { label: "Rebasing onto base branch", status: "completed" },
+          { label: "Resolving conflicts", status: "active" },
+          { label: "Completing merge", status: "pending" },
+        ] as const)
     : ([
         {
           label: "Fetching latest changes",
@@ -108,7 +118,16 @@ function MergeProgressSteps({
                 />
               </div>
             )}
-            {(step.status === "pending" || (step.status === "active" && isHistorical)) && (
+            {step.status === "active" && isHistorical && (
+              <div
+                className="w-5 h-5 rounded-full border-2"
+                style={{
+                  borderColor: "rgba(255,255,255,0.2)",
+                  backgroundColor: "rgba(255, 159, 10, 0.35)",
+                }}
+              />
+            )}
+            {step.status === "pending" && (
               <div
                 className="w-5 h-5 rounded-full border-2"
                 style={{ borderColor: "rgba(255,255,255,0.2)" }}
@@ -136,9 +155,20 @@ function MergeProgressSteps({
   );
 }
 
-export function MergingTaskDetail({ task, isHistorical }: MergingTaskDetailProps) {
-  const isProgrammaticPhase = task.internalStatus === "pending_merge";
-  const isAgentPhase = task.internalStatus === "merging";
+export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTaskDetailProps) {
+  const status = isHistorical && viewStatus ? viewStatus : task.internalStatus;
+  const isProgrammaticPhase = status === "pending_merge";
+  const isAgentPhase = status === "merging";
+  const historicalOutcome = isHistorical
+    ? task.internalStatus === "merged" || task.internalStatus === "merge_conflict"
+      ? task.internalStatus
+      : null
+    : null;
+  const historicalMode = isHistorical
+    ? isProgrammaticPhase
+      ? "attempted"
+      : "resolving"
+    : undefined;
 
   // Parse conflict files from task metadata if available
   const conflictFiles: string[] = (() => {
@@ -150,6 +180,28 @@ export function MergingTaskDetail({ task, isHistorical }: MergingTaskDetailProps
   })();
 
   const branchName = task.taskBranch ?? "task branch";
+  const statusLabel = historicalOutcome
+    ? historicalOutcome === "merged"
+      ? "Merged"
+      : "Conflict"
+    : isHistorical
+    ? isProgrammaticPhase
+      ? "Attempted"
+      : "Resolving"
+    : isProgrammaticPhase
+    ? "Merging"
+    : "Resolving";
+  const statusIcon = historicalOutcome
+    ? historicalOutcome === "merged"
+      ? CheckCircle2
+      : AlertTriangle
+    : isHistorical
+    ? isProgrammaticPhase
+      ? GitMerge
+      : AlertTriangle
+    : isProgrammaticPhase
+    ? GitMerge
+    : AlertTriangle;
 
   return (
     <TwoColumnLayout
@@ -158,34 +210,76 @@ export function MergingTaskDetail({ task, isHistorical }: MergingTaskDetailProps
     >
       {/* Status Banner */}
       <StatusBanner
-        icon={isHistorical ? CheckCircle2 : isProgrammaticPhase ? GitMerge : Bot}
+        icon={
+          historicalOutcome
+            ? historicalOutcome === "merged"
+              ? CheckCircle2
+              : AlertTriangle
+            : isHistorical
+            ? isProgrammaticPhase
+              ? GitMerge
+              : AlertTriangle
+            : isProgrammaticPhase
+            ? GitMerge
+            : Bot
+        }
         title={
-          isHistorical
-            ? "Merge Completed"
+          historicalOutcome
+            ? historicalOutcome === "merged"
+              ? "Merge Completed"
+              : "Merge Conflict"
+            : isHistorical
+            ? isProgrammaticPhase
+              ? "Merge Attempted"
+              : "Resolving Conflicts"
             : isProgrammaticPhase
             ? "Merging Changes..."
             : "Resolving Merge Conflicts"
         }
         subtitle={
-          isHistorical
-            ? "Branch has been merged successfully"
+          historicalOutcome
+            ? historicalOutcome === "merged"
+              ? "Final outcome: merged into base branch"
+              : "Final outcome: manual resolution required"
+            : isHistorical
+            ? isProgrammaticPhase
+              ? "Merge attempt captured in history"
+              : "Agent was resolving conflicts"
             : isProgrammaticPhase
             ? `Attempting to merge ${branchName}`
             : "AI agent is resolving conflicts"
         }
-        variant={isHistorical ? "success" : isProgrammaticPhase ? "accent" : "warning"}
+        variant={
+          historicalOutcome
+            ? historicalOutcome === "merged"
+              ? "success"
+              : "warning"
+            : isHistorical
+            ? isProgrammaticPhase
+              ? "info"
+              : "warning"
+            : isProgrammaticPhase
+            ? "accent"
+            : "warning"
+        }
         animated={!isHistorical}
         badge={
           <StatusPill
-            icon={isHistorical ? CheckCircle2 : isProgrammaticPhase ? GitMerge : AlertTriangle}
-            label={
-              isHistorical
-                ? "Done"
+            icon={statusIcon}
+            label={statusLabel}
+            variant={
+              historicalOutcome
+                ? historicalOutcome === "merged"
+                  ? "success"
+                  : "warning"
+                : isHistorical
+                ? isProgrammaticPhase
+                  ? "info"
+                  : "warning"
                 : isProgrammaticPhase
-                ? "Merging"
-                : "Resolving"
+                ? "accent"
+                : "warning"
             }
-            variant={isHistorical ? "success" : isProgrammaticPhase ? "accent" : "warning"}
             animated={!isHistorical}
             size="md"
           />
@@ -194,11 +288,23 @@ export function MergingTaskDetail({ task, isHistorical }: MergingTaskDetailProps
 
       {/* Merge Progress */}
       <section data-testid="merge-progress-section">
-        <SectionTitle>Merge Progress</SectionTitle>
-        <DetailCard variant={isHistorical ? "success" : isAgentPhase ? "warning" : "info"}>
+        <SectionTitle>{isHistorical ? "Process Details" : "Merge Progress"}</SectionTitle>
+        <DetailCard variant="default">
+          <p className="text-[12px] text-white/50 mb-3">
+            {historicalOutcome
+              ? "Process context captured during the merge lifecycle."
+              : isHistorical
+              ? historicalMode === "attempted"
+                ? "Programmatic merge attempt captured in history."
+                : "Agent was resolving conflicts at this point."
+              : isProgrammaticPhase
+              ? "Programmatic merge attempt in progress."
+              : "Agent is resolving conflicts; manual resolution may be required."}
+          </p>
           <MergeProgressSteps
             isProgrammaticPhase={isProgrammaticPhase}
             isHistorical={isHistorical}
+            historicalMode={historicalMode}
           />
         </DetailCard>
       </section>

@@ -647,6 +647,9 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
                   showHistory={true}
                   useViewRegistry={true}
                   {...(isHistoryMode && viewStatus ? { viewAsStatus: viewStatus } : {})}
+                  {...(isHistoryMode && historyState?.timestamp
+                    ? { viewTimestamp: historyState.timestamp }
+                    : {})}
                 />
               </div>
             </ScrollArea>
