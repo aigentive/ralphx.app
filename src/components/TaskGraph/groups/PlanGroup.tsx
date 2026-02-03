@@ -41,6 +41,14 @@ export interface PlanGroupData extends Record<string, unknown> {
   width: number;
   /** Height of the group region */
   height: number;
+  /** Tier group IDs within this plan (if any) */
+  tierGroupIds?: string[] | undefined;
+  /** Whether any tiers are collapsed */
+  anyTierCollapsed?: boolean | undefined;
+  /** Whether all tiers are collapsed */
+  allTiersCollapsed?: boolean | undefined;
+  /** Toggle all tiers expand/collapse */
+  onToggleAllTiers?: ((planArtifactId: string, action: "expand" | "collapse") => void) | undefined;
   /** Callback to toggle collapse state */
   onToggleCollapse?: ((planArtifactId: string) => void) | undefined;
 }
@@ -92,8 +100,15 @@ export const PlanGroup = memo(function PlanGroup({
     isCollapsed,
     width,
     height,
+    tierGroupIds,
+    anyTierCollapsed,
+    allTiersCollapsed,
+    onToggleAllTiers,
     onToggleCollapse,
   } = data;
+  const hasTierControls = Boolean(
+    tierGroupIds && tierGroupIds.length > 0 && onToggleAllTiers
+  );
 
   // When collapsed, show only the header (minimal padding)
   const displayHeight = isCollapsed ? HEADER_HEIGHT + 8 : height;
@@ -134,6 +149,12 @@ export const PlanGroup = memo(function PlanGroup({
         taskCount={taskIds.length}
         statusSummary={statusSummary}
         isCollapsed={isCollapsed}
+        {...(hasTierControls && {
+          tierGroupIds,
+          anyTierCollapsed,
+          allTiersCollapsed,
+          onToggleAllTiers,
+        })}
         onToggleCollapse={() => onToggleCollapse?.(planArtifactId)}
       />
 
@@ -195,7 +216,11 @@ export function createPlanGroupNode(
   width: number,
   height: number,
   isCollapsed = false,
-  onToggleCollapse?: (planArtifactId: string) => void
+  onToggleCollapse?: (planArtifactId: string) => void,
+  tierGroupIds?: string[],
+  anyTierCollapsed?: boolean,
+  allTiersCollapsed?: boolean,
+  onToggleAllTiers?: (planArtifactId: string, action: "expand" | "collapse") => void
 ): PlanGroupNode {
   return {
     id: `group-${planArtifactId}`,
@@ -210,6 +235,12 @@ export function createPlanGroupNode(
       isCollapsed,
       width,
       height,
+      ...(tierGroupIds && tierGroupIds.length > 0 && onToggleAllTiers && {
+        tierGroupIds,
+        anyTierCollapsed,
+        allTiersCollapsed,
+        onToggleAllTiers,
+      }),
       onToggleCollapse,
     },
     // Group node properties
