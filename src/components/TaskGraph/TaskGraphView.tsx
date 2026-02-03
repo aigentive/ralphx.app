@@ -540,6 +540,29 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     }
   }, [isAutoCompact]);
 
+  const centerOnPlanGroup = useCallback(
+    (planArtifactId: string, duration = 200, zoom = 0.9): boolean => {
+      const planNodeId = `group-${planArtifactId}`;
+      const planNode = getNodes().find((node) => node.id === planNodeId);
+      if (!planNode) return false;
+      const width =
+        planNode.measured?.width ??
+        (typeof planNode.width === "number" ? planNode.width : undefined) ??
+        (planNode.data as PlanGroupData | undefined)?.width ??
+        320;
+      const height =
+        planNode.measured?.height ??
+        (typeof planNode.height === "number" ? planNode.height : undefined) ??
+        (planNode.data as PlanGroupData | undefined)?.height ??
+        120;
+      const x = planNode.position.x + width / 2;
+      const y = planNode.position.y + height / 2;
+      setCenter(x, y, { duration, zoom });
+      return true;
+    },
+    [getNodes, setCenter]
+  );
+
   // Toggle collapse state for a plan group
   const handleToggleCollapse = useCallback((planArtifactId: string) => {
     setCollapsedPlanIds((prev) => {
@@ -553,27 +576,10 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     });
     // Auto-fit view after layout updates - focus on this group only
     setTimeout(() => {
-      const groupId = `group-${planArtifactId}`;
-      const groupNode = getNodes().find((node) => node.id === groupId);
-      if (groupNode) {
-        const width =
-          groupNode.measured?.width ??
-          (typeof groupNode.width === "number" ? groupNode.width : undefined) ??
-          (groupNode.data as PlanGroupData | undefined)?.width ??
-          320;
-        const height =
-          groupNode.measured?.height ??
-          (typeof groupNode.height === "number" ? groupNode.height : undefined) ??
-          (groupNode.data as PlanGroupData | undefined)?.height ??
-          120;
-        const x = groupNode.position.x + width / 2;
-        const y = groupNode.position.y + height / 2;
-        setCenter(x, y, { duration: 200, zoom: 0.9 });
-        return;
-      }
+      if (centerOnPlanGroup(planArtifactId, 200, 0.9)) return;
       fitView({ padding: 0.2, duration: 200 });
     }, 50);
-  }, [fitView, getNodes, setCenter]);
+  }, [centerOnPlanGroup, fitView]);
 
   const handleToggleTierCollapse = useCallback((tierGroupId: string) => {
     let shouldCenterTier = false;
@@ -618,30 +624,69 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
           planArtifactId =
             (tierNode?.data as TierGroupData | undefined)?.planArtifactId ?? null;
         }
-        if (planArtifactId) {
-          const planNodeId = `group-${planArtifactId}`;
-          const planNode = getNodes().find((node) => node.id === planNodeId);
-          if (planNode) {
-            const width =
-              planNode.measured?.width ??
-              (typeof planNode.width === "number" ? planNode.width : undefined) ??
-              (planNode.data as PlanGroupData | undefined)?.width ??
-              320;
-            const height =
-              planNode.measured?.height ??
-              (typeof planNode.height === "number" ? planNode.height : undefined) ??
-              (planNode.data as PlanGroupData | undefined)?.height ??
-              120;
-            const x = planNode.position.x + width / 2;
-            const y = planNode.position.y + height / 2;
-            setCenter(x, y, { duration: 200, zoom: 0.9 });
-            return;
-          }
+        if (planArtifactId && centerOnPlanGroup(planArtifactId, 200, 0.9)) {
+          return;
         }
       }
       fitView({ padding: 0.2, duration: 200 });
     }, 50);
-  }, [fitView, getNodes, setCenter]);
+  }, [centerOnPlanGroup, fitView, getNodes, setCenter]);
+
+  // Apply filters to graph data before layout computation
+  const filteredGraphData = useMemo(() => {
+    if (!graphData) {
+      return { nodes: [], edges: [], planGroups: [] };
+    }
+    return applyGraphFilters(
+      graphData.nodes,
+      graphData.edges,
+      graphData.planGroups,
+      filters
+    );
+  }, [graphData, filters]);
+
+  const tierGroups = useMemo(
+    () => buildTierGroups(filteredGraphData.nodes, filteredGraphData.planGroups),
+    [filteredGraphData.nodes, filteredGraphData.planGroups]
+  );
+
+  const tierGroupsByPlan = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const tierGroup of tierGroups) {
+      const existing = map.get(tierGroup.planArtifactId);
+      if (existing) {
+        existing.push(tierGroup.id);
+      } else {
+        map.set(tierGroup.planArtifactId, [tierGroup.id]);
+      }
+    }
+    return map;
+  }, [tierGroups]);
+
+  const handleToggleAllTiers = useCallback(
+    (planArtifactId: string, action: "expand" | "collapse") => {
+      const tierIds = tierGroupsByPlan.get(planArtifactId) ?? [];
+      if (tierIds.length === 0) return;
+      setCollapsedTierIds((prev) => {
+        const next = new Set(prev);
+        if (action === "expand") {
+          for (const tierId of tierIds) {
+            next.delete(tierId);
+          }
+        } else {
+          for (const tierId of tierIds) {
+            next.add(tierId);
+          }
+        }
+        return next;
+      });
+      setTimeout(() => {
+        if (centerOnPlanGroup(planArtifactId, 200, 0.9)) return;
+        fitView({ padding: 0.2, duration: 200 });
+      }, 50);
+    },
+    [centerOnPlanGroup, fitView, tierGroupsByPlan]
+  );
 
   // Task mutations for context menu actions
   const {
@@ -736,19 +781,6 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     handleMarkResolved,
   ]);
 
-  // Apply filters to graph data before layout computation
-  const filteredGraphData = useMemo(() => {
-    if (!graphData) {
-      return { nodes: [], edges: [], planGroups: [] };
-    }
-    return applyGraphFilters(
-      graphData.nodes,
-      graphData.edges,
-      graphData.planGroups,
-      filters
-    );
-  }, [graphData, filters]);
-
   // Layout config with compact mode flag
   const layoutConfig = useMemo(() => ({
     isCompact: effectiveNodeMode === "compact",
@@ -764,7 +796,8 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     collapsedPlanIds,
     collapsedTierIds,
     handleToggleCollapse,
-    handleToggleTierCollapse
+    handleToggleTierCollapse,
+    handleToggleAllTiers
   );
 
   // Compute visible nodes and edges (controlled mode - no useEffect sync needed)

@@ -15,6 +15,8 @@ import {
   AlertTriangle,
   Eye,
   GitMerge,
+  ChevronsDownUp,
+  ChevronsUpDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { StatusSummary } from "@/api/task-graph.types";
@@ -36,6 +38,14 @@ export interface PlanGroupHeaderProps {
   statusSummary: StatusSummary;
   /** Whether the group is collapsed */
   isCollapsed: boolean;
+  /** Tier group IDs within this plan */
+  tierGroupIds?: string[] | undefined;
+  /** Whether any tiers are collapsed */
+  anyTierCollapsed?: boolean | undefined;
+  /** Whether all tiers are collapsed */
+  allTiersCollapsed?: boolean | undefined;
+  /** Toggle all tiers expand/collapse */
+  onToggleAllTiers?: ((planArtifactId: string, action: "expand" | "collapse") => void) | undefined;
   /** Toggle collapse state */
   onToggleCollapse: () => void;
   /** Optional: Open context menu */
@@ -129,10 +139,15 @@ const StatusBadge = memo(function StatusBadge({
 // ============================================================================
 
 export const PlanGroupHeader = memo(function PlanGroupHeader({
+  planArtifactId,
   sessionTitle,
   taskCount,
   statusSummary,
   isCollapsed,
+  tierGroupIds,
+  anyTierCollapsed,
+  allTiersCollapsed,
+  onToggleAllTiers,
   onToggleCollapse,
   onNavigateToSession,
 }: PlanGroupHeaderProps) {
@@ -146,6 +161,10 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
   }), [statusSummary, taskCount]);
 
   const displayTitle = sessionTitle || "Unnamed Plan";
+  const hasTiers = (tierGroupIds?.length ?? 0) > 0;
+  const shouldExpandAll = Boolean(anyTierCollapsed);
+  const disableExpand = !anyTierCollapsed;
+  const disableCollapse = Boolean(allTiersCollapsed);
 
   // Collapsed: two-row layout with text count
   if (isCollapsed) {
@@ -203,6 +222,66 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
 
       {/* Middle: progress bar */}
       <ProgressBar completed={counts.done} total={counts.total} />
+
+      {/* Tier controls */}
+      {hasTiers && (
+        <div className="flex items-center gap-1.5">
+          <button
+            className={cn(
+              "p-1 rounded transition-colors",
+              "hover:bg-[hsl(var(--bg-surface))]",
+              disableExpand && "opacity-50 pointer-events-none"
+            )}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleAllTiers?.(
+                planArtifactId,
+                shouldExpandAll ? "expand" : "collapse"
+              );
+            }}
+            aria-label={shouldExpandAll ? "Expand all tiers" : "Collapse all tiers"}
+            title={shouldExpandAll ? "Expand all tiers" : "Collapse all tiers"}
+          >
+            {shouldExpandAll ? (
+              <ChevronsDownUp className="w-3.5 h-3.5 text-[hsl(var(--text-muted))]" />
+            ) : (
+              <ChevronsUpDown className="w-3.5 h-3.5 text-[hsl(var(--text-muted))]" />
+            )}
+          </button>
+          <button
+            className={cn(
+              "flex items-center gap-1 px-2 py-1 rounded text-[11px] text-[hsl(var(--text-muted))] transition-colors",
+              "hover:bg-[hsl(var(--bg-surface))]",
+              disableExpand && "opacity-50 pointer-events-none"
+            )}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleAllTiers?.(planArtifactId, "expand");
+            }}
+            aria-label="Expand all tiers"
+            title="Expand all tiers"
+          >
+            <ChevronsDownUp className="w-3 h-3" />
+            Expand tiers
+          </button>
+          <button
+            className={cn(
+              "flex items-center gap-1 px-2 py-1 rounded text-[11px] text-[hsl(var(--text-muted))] transition-colors",
+              "hover:bg-[hsl(var(--bg-surface))]",
+              disableCollapse && "opacity-50 pointer-events-none"
+            )}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleAllTiers?.(planArtifactId, "collapse");
+            }}
+            aria-label="Collapse all tiers"
+            title="Collapse all tiers"
+          >
+            <ChevronsUpDown className="w-3 h-3" />
+            Collapse tiers
+          </button>
+        </div>
+      )}
 
       {/* Right: status badges */}
       <div className="flex items-center gap-1.5">

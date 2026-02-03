@@ -156,11 +156,14 @@ function createGroupNodes(
   taskNodes: Node[],
   planGroups: PlanGroupInfo[],
   collapsedPlanIds: Set<string>,
+  tierGroups: TierGroupInfo[],
+  collapsedTierIds: Set<string>,
   positions: Map<string, { x: number; y: number }>,
   graphNodes: TaskGraphNode[],
   nodeWidth: number,
   nodeHeight: number,
-  onToggleCollapse?: (planArtifactId: string) => void
+  onToggleCollapse?: (planArtifactId: string) => void,
+  onToggleAllTiers?: (planArtifactId: string, action: "expand" | "collapse") => void
 ): PlanGroupNode[] {
   if (planGroups.length === 0) {
     return [];
@@ -196,8 +199,26 @@ function createGroupNodes(
     planGroupInfoMap.set(pg.planArtifactId, pg);
   }
 
+  const tiersByPlan = new Map<string, string[]>();
+  for (const tg of tierGroups) {
+    const existing = tiersByPlan.get(tg.planArtifactId);
+    if (existing) {
+      existing.push(tg.id);
+    } else {
+      tiersByPlan.set(tg.planArtifactId, [tg.id]);
+    }
+  }
+
   for (const pg of planGroups) {
     const isCollapsed = collapsedPlanIds.has(pg.planArtifactId);
+    const tierGroupIds = tiersByPlan.get(pg.planArtifactId) ?? [];
+    const hasTierGroups = tierGroupIds.length > 0;
+    const anyTierCollapsed = hasTierGroups
+      ? tierGroupIds.some((id) => collapsedTierIds.has(id))
+      : false;
+    const allTiersCollapsed = hasTierGroups
+      ? tierGroupIds.every((id) => collapsedTierIds.has(id))
+      : false;
 
     let position: { x: number; y: number };
     let width: number;
@@ -242,7 +263,11 @@ function createGroupNodes(
       width,
       height,
       isCollapsed,
-      onToggleCollapse
+      onToggleCollapse,
+      hasTierGroups ? tierGroupIds : undefined,
+      anyTierCollapsed,
+      allTiersCollapsed,
+      hasTierGroups && onToggleAllTiers ? onToggleAllTiers : undefined
     );
 
     groupNodes.push(groupNode);
@@ -251,6 +276,14 @@ function createGroupNodes(
   // Create "Ungrouped" region for standalone tasks (if any)
   if (ungroupedTaskIds.length > 0) {
     const isUngroupedCollapsed = collapsedPlanIds.has(UNGROUPED_PLAN_ID);
+    const ungroupedTierIds = tiersByPlan.get(UNGROUPED_PLAN_ID) ?? [];
+    const hasTierGroups = ungroupedTierIds.length > 0;
+    const anyTierCollapsed = hasTierGroups
+      ? ungroupedTierIds.some((id) => collapsedTierIds.has(id))
+      : false;
+    const allTiersCollapsed = hasTierGroups
+      ? ungroupedTierIds.every((id) => collapsedTierIds.has(id))
+      : false;
 
     let position: { x: number; y: number };
     let width: number;
@@ -327,7 +360,11 @@ function createGroupNodes(
       width!,
       height!,
       isUngroupedCollapsed,
-      onToggleCollapse
+      onToggleCollapse,
+      hasTierGroups ? ungroupedTierIds : undefined,
+      anyTierCollapsed,
+      allTiersCollapsed,
+      hasTierGroups && onToggleAllTiers ? onToggleAllTiers : undefined
     );
 
     groupNodes.push(groupNode);
@@ -667,6 +704,7 @@ function computeLayoutWithCache(
   collapsedTierIds: Set<string>,
   onToggleCollapse: ((planArtifactId: string) => void) | undefined,
   onToggleTierCollapse: ((tierGroupId: string) => void) | undefined,
+  onToggleAllTiers: ((planArtifactId: string, action: "expand" | "collapse") => void) | undefined,
   cache: React.MutableRefObject<CachedLayout | null>
 ): LayoutResult {
   // Use correct node dimensions based on compact mode
@@ -919,11 +957,14 @@ function computeLayoutWithCache(
     allPositionedNodes,
     planGroups,
     collapsedPlanIds,
+    tierGroups,
+    collapsedTierIds,
     positions,
     graphNodes,
     nodeWidth,
     nodeHeight,
-    onToggleCollapse
+    onToggleCollapse,
+    onToggleAllTiers
   );
 
   const planGroupBounds = new Map<string, { position: { x: number; y: number }; width: number }>();
@@ -1131,7 +1172,8 @@ export function useTaskGraphLayout(
   collapsedPlanIds: Set<string> = new Set(),
   collapsedTierIds: Set<string> = new Set(),
   onToggleCollapse?: (planArtifactId: string) => void,
-  onToggleTierCollapse?: (tierGroupId: string) => void
+  onToggleTierCollapse?: (tierGroupId: string) => void,
+  onToggleAllTiers?: (planArtifactId: string, action: "expand" | "collapse") => void
 ): LayoutResult {
   // Merge with default config
   const fullConfig = useMemo(
@@ -1157,6 +1199,7 @@ export function useTaskGraphLayout(
       collapsedTierIds,
       onToggleCollapse,
       onToggleTierCollapse,
+      onToggleAllTiers,
       layoutCache
     );
   }, [
@@ -1169,6 +1212,7 @@ export function useTaskGraphLayout(
     collapsedTierIds,
     onToggleCollapse,
     onToggleTierCollapse,
+    onToggleAllTiers,
   ]);
 
   return layout;
