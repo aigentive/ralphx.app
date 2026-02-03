@@ -1,7 +1,7 @@
 /**
  * useApplyProposals hook - TanStack Query wrapper for applying proposals to Kanban
  *
- * Provides a mutation for converting selected proposals to tasks on the Kanban board.
+ * Provides a mutation for converting proposals to tasks on the Kanban board.
  */
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";

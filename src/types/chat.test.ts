@@ -72,18 +72,6 @@ describe("ChatContextSchema", () => {
     expect(result.ideationSessionId).toBe("session-789");
   });
 
-  it("should parse ideation context with selected proposals", () => {
-    const context = {
-      view: "ideation" as const,
-      projectId: "project-123",
-      ideationSessionId: "session-789",
-      selectedProposalIds: ["prop-1", "prop-2"],
-    };
-    expect(() => ChatContextSchema.parse(context)).not.toThrow();
-    const result = ChatContextSchema.parse(context);
-    expect(result.selectedProposalIds).toEqual(["prop-1", "prop-2"]);
-  });
-
   it("should parse task_detail context", () => {
     const context = {
       view: "task_detail" as const,
@@ -183,11 +171,6 @@ describe("Context factory functions", () => {
       expect(ctx.view).toBe("ideation");
       expect(ctx.projectId).toBe("project-123");
       expect(ctx.ideationSessionId).toBe("session-456");
-    });
-
-    it("should create ideation context with selected proposals", () => {
-      const ctx = createIdeationContext("project-123", "session-456", ["prop-1"]);
-      expect(ctx.selectedProposalIds).toEqual(["prop-1"]);
     });
   });
 

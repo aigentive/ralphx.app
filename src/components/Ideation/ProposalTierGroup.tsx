@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * ProposalTierGroup - macOS Tahoe styled collapsible tier section
  *
@@ -87,17 +88,7 @@ export const ProposalTierGroup = React.memo(function ProposalTierGroup({
               "focus:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(14_100%_60%)]/50"
             )}
             style={{
-              background: isOpen ? "hsla(220 10% 100% / 0.02)" : "transparent",
-            }}
-            onMouseEnter={(e) => {
-              if (!isOpen) {
-                e.currentTarget.style.background = "hsla(220 10% 100% / 0.02)";
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!isOpen) {
-                e.currentTarget.style.background = "transparent";
-              }
+              background: "hsla(220 10% 100% / 0.02)",
             }}
           >
             {/* Accent bar - flat, no glow */}

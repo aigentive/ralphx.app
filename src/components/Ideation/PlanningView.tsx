@@ -52,11 +52,11 @@ interface PlanningViewProps {
   session: IdeationSession | null;
   sessions: IdeationSession[];
   proposals: TaskProposal[];
+  isSessionLoading?: boolean;
   onNewSession: () => void;
   onSelectSession: (sessionId: string) => void;
   onArchiveSession: (sessionId: string) => void;
   onDeleteSession?: (sessionId: string) => void;
-  onSelectProposal: (proposalId: string) => void;
   onEditProposal: (proposalId: string) => void;
   onRemoveProposal: (proposalId: string) => void;
   onReorderProposals: (proposalIds: string[]) => void;
@@ -83,11 +83,11 @@ export function PlanningView({
   session,
   sessions,
   proposals,
+  isSessionLoading = false,
   onNewSession,
   onSelectSession,
   onArchiveSession,
   onDeleteSession,
-  onSelectProposal,
   onEditProposal,
   onRemoveProposal,
   onReorderProposals,
@@ -121,6 +121,9 @@ export function PlanningView({
   const lastDependencyFetchRef = useRef<boolean>(false);
   const lastDependencyToastAtRef = useRef<number | null>(null);
   const lastDependencyRefreshRequestedAt = useProposalStore((state) => state.lastDependencyRefreshRequestedAt);
+  const lastProposalUpdatedAt = useProposalStore((state) => state.lastProposalUpdatedAt);
+  const lastUpdatedProposalId = useProposalStore((state) => state.lastUpdatedProposalId);
+  const autoOpenedPlanRef = useRef(false);
 
   // Read-only mode: plans that are not active are read-only
   const isReadOnly = session?.status !== "active";
@@ -285,7 +288,6 @@ export function PlanningView({
     setImportStatus,
     fileInputRef,
     handleArchive,
-    handleSelectProposal,
     handleClearAll,
     handleReviewSync,
     handleUndoSync,
@@ -296,7 +298,6 @@ export function PlanningView({
   } = useIdeationHandlers(
     session,
     proposals,
-    onSelectProposal,
     onRemoveProposal,
     onReorderProposals,
     onArchiveSession,
@@ -323,18 +324,30 @@ export function PlanningView({
 
   // Auto-expand plan when there are no proposals
   useEffect(() => {
+    if (isSessionLoading) return;
     if (planArtifact && proposals.length === 0 && !isPlanExpanded) {
+      autoOpenedPlanRef.current = true;
       setIsPlanExpanded(true);
     }
-  }, [planArtifact, proposals.length, isPlanExpanded, setIsPlanExpanded]);
+  }, [planArtifact, proposals.length, isPlanExpanded, setIsPlanExpanded, isSessionLoading]);
 
   // Auto-collapse plan when new proposal arrives
   const lastProposalAddedAt = useProposalStore((state) => state.lastProposalAddedAt);
   useEffect(() => {
     if (lastProposalAddedAt !== null && isPlanExpanded) {
+      autoOpenedPlanRef.current = false;
       setIsPlanExpanded(false);
     }
   }, [lastProposalAddedAt, isPlanExpanded, setIsPlanExpanded]);
+
+  // If proposals load after an auto-open, collapse the plan
+  useEffect(() => {
+    if (isSessionLoading) return;
+    if (proposals.length > 0 && isPlanExpanded && autoOpenedPlanRef.current) {
+      autoOpenedPlanRef.current = false;
+      setIsPlanExpanded(false);
+    }
+  }, [proposals.length, isPlanExpanded, isSessionLoading, setIsPlanExpanded]);
 
   // Reset plan expansion when switching sessions
   const lastSessionIdRef = useRef<string | null>(null);
@@ -342,13 +355,21 @@ export function PlanningView({
     if (!session?.id) return;
     if (lastSessionIdRef.current !== session.id) {
       lastSessionIdRef.current = session.id;
-      setIsPlanExpanded(proposals.length === 0);
+      autoOpenedPlanRef.current = false;
+      setIsPlanExpanded(false);
     }
-  }, [session?.id, proposals.length, setIsPlanExpanded]);
+  }, [session?.id, proposals.length, setIsPlanExpanded, isSessionLoading]);
+
+  const handlePlanExpandedChange = useCallback((expanded: boolean) => {
+    autoOpenedPlanRef.current = false;
+    setIsPlanExpanded(expanded);
+  }, [setIsPlanExpanded]);
 
   // Auto-scroll to bottom only when a new proposal is added
   const lastScrollSessionIdRef = useRef<string | null>(null);
   const lastScrollProposalAddedAtRef = useRef<number | null>(null);
+  const lastScrollProposalUpdatedAtRef = useRef<number | null>(null);
+  const [recentlyUpdatedProposalId, setRecentlyUpdatedProposalId] = useState<string | null>(null);
   useLayoutEffect(() => {
     const currentSessionId = session?.id ?? null;
     if (lastScrollSessionIdRef.current !== currentSessionId) {
@@ -372,6 +393,46 @@ export function PlanningView({
     }
     lastScrollProposalAddedAtRef.current = lastProposalAddedAt;
   }, [lastProposalAddedAt, session?.id]);
+
+  // Auto-scroll to updated proposal (from chat updates or edits)
+  useLayoutEffect(() => {
+    if (!lastProposalUpdatedAt || lastProposalUpdatedAt === lastScrollProposalUpdatedAtRef.current) {
+      return;
+    }
+
+    if (!lastUpdatedProposalId) {
+      return;
+    }
+
+    if (!proposals.some((p) => p.id === lastUpdatedProposalId)) {
+      return;
+    }
+
+    if (proposalsScrollRef.current) {
+      const target = proposalsScrollRef.current.querySelector(
+        `[data-testid="proposal-card-${lastUpdatedProposalId}"]`
+      );
+      if (target instanceof HTMLElement) {
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }
+
+    setRecentlyUpdatedProposalId(lastUpdatedProposalId);
+    lastScrollProposalUpdatedAtRef.current = lastProposalUpdatedAt;
+  }, [lastProposalUpdatedAt, lastUpdatedProposalId, proposals]);
+
+  useEffect(() => {
+    if (!recentlyUpdatedProposalId) return;
+    const timeout = setTimeout(() => setRecentlyUpdatedProposalId(null), 2400);
+    return () => clearTimeout(timeout);
+  }, [recentlyUpdatedProposalId]);
+
+  const highlightedProposalIdsWithUpdates = useMemo(() => {
+    if (!recentlyUpdatedProposalId) return highlightedProposalIds;
+    const updated = new Set(highlightedProposalIds);
+    updated.add(recentlyUpdatedProposalId);
+    return updated;
+  }, [highlightedProposalIds, recentlyUpdatedProposalId]);
 
   const activePlans = useMemo(() => sessions.filter((s) => s.status === "active"), [sessions]);
   const historyPlans = useMemo(() => sessions.filter((s) => s.status !== "active"), [sessions]);
@@ -549,7 +610,7 @@ export function PlanningView({
                         linkedProposalsCount={proposals.filter((p) => p.planArtifactId === planArtifact.id).length}
                         onEdit={() => {}}
                         isExpanded={isPlanExpanded}
-                        onExpandedChange={setIsPlanExpanded}
+                        onExpandedChange={handlePlanExpandedChange}
                       />
                     </div>
                   )}
@@ -578,9 +639,8 @@ export function PlanningView({
                     <TieredProposalList
                       proposals={proposals}
                       dependencyGraph={dependencyGraph}
-                      highlightedIds={highlightedProposalIds}
+                      highlightedIds={highlightedProposalIdsWithUpdates}
                       criticalPathIds={criticalPathSet}
-                      onSelect={handleSelectProposal}
                       onEdit={onEditProposal}
                       onRemove={onRemoveProposal}
                       {...(planArtifact?.metadata.version !== undefined && {

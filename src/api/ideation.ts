@@ -278,28 +278,6 @@ export const ideationApi = {
     },
 
     /**
-     * Toggle proposal selection state
-     * @param proposalId The proposal ID
-     * @returns The new selection state
-     */
-    toggleSelection: async (proposalId: string): Promise<boolean> => {
-      return typedInvoke(
-        "toggle_proposal_selection",
-        { id: proposalId },
-        z.boolean()
-      );
-    },
-
-    /**
-     * Set proposal selection state
-     * @param proposalId The proposal ID
-     * @param selected Whether the proposal should be selected
-     */
-    setSelection: async (proposalId: string, selected: boolean): Promise<void> => {
-      await invoke("set_proposal_selection", { id: proposalId, selected });
-    },
-
-    /**
      * Reorder proposals within a session
      * @param sessionId The session ID
      * @param proposalIds Array of proposal IDs in desired order
@@ -414,7 +392,7 @@ export const ideationApi = {
    */
   apply: {
     /**
-     * Apply selected proposals to the Kanban board as tasks
+     * Apply proposals to the Kanban board as tasks
      * @param input Apply options
      * @returns Result with created task IDs and warnings
      */

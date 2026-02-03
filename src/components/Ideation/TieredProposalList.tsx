@@ -56,9 +56,9 @@ const TierConnector = React.memo(function TierConnector({
             y1="0"
             x2="12"
             y2="16"
-            stroke={isOnCriticalPath ? "#ff6b35" : "rgba(255,255,255,0.1)"}
+            stroke={isOnCriticalPath ? "#ff6b35" : "rgba(255,255,255,0.08)"}
             strokeWidth={isOnCriticalPath ? "2" : "1"}
-            strokeDasharray={isOnCriticalPath ? "none" : "4 3"}
+            strokeDasharray={isOnCriticalPath ? "none" : "3 4"}
             strokeLinecap="round"
             style={{
               filter: isOnCriticalPath ? "drop-shadow(0 0 4px rgba(255,107,53,0.5))" : "none",
@@ -67,8 +67,8 @@ const TierConnector = React.memo(function TierConnector({
           {/* Downward chevron */}
           <path
             d="M8 14L12 20L16 14"
-            stroke={isOnCriticalPath ? "#ff6b35" : "rgba(255,255,255,0.15)"}
-            strokeWidth={isOnCriticalPath ? "2" : "1.5"}
+            stroke={isOnCriticalPath ? "#ff6b35" : "rgba(255,255,255,0.1)"}
+            strokeWidth={isOnCriticalPath ? "2" : "1"}
             strokeLinecap="round"
             strokeLinejoin="round"
             fill="none"
@@ -98,7 +98,6 @@ export interface TieredProposalListProps {
   /** Current plan version for historical link display */
   currentPlanVersion?: number;
   /** Callback when a proposal is selected */
-  onSelect: (proposalId: string) => void;
   /** Callback when a proposal is edited */
   onEdit: (proposalId: string) => void;
   /** Callback when a proposal is removed */
@@ -214,7 +213,6 @@ export const TieredProposalList = React.memo(function TieredProposalList({
   highlightedIds,
   criticalPathIds,
   currentPlanVersion,
-  onSelect,
   onEdit,
   onRemove,
   onViewHistoricalPlan,
@@ -373,7 +371,6 @@ export const TieredProposalList = React.memo(function TieredProposalList({
                     >
                       <ProposalCard
                         proposal={proposal}
-                        onSelect={onSelect}
                         onEdit={onEdit}
                         onRemove={onRemove}
                         {...optionalProps}

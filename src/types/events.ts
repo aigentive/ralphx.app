@@ -242,7 +242,6 @@ const ProposalEventPayloadSchema = z.object({
   user_priority: z.string().nullable(),
   user_modified: z.boolean(),
   status: z.string(),
-  selected: z.boolean(),
   created_task_id: z.string().nullable(),
   plan_artifact_id: z.string().nullable(),
   plan_version_at_creation: z.number().nullable(),

@@ -10,7 +10,6 @@ import { ideationApi } from "@/api/ideation";
 export function useIdeationHandlers(
   session: IdeationSession | null,
   proposals: TaskProposal[],
-  onSelectProposal: (proposalId: string) => void,
   onRemoveProposal: (proposalId: string) => void,
   onReorderProposals: (proposalIds: string[]) => void,
   onArchiveSession: (sessionId: string) => void,
@@ -24,26 +23,11 @@ export function useIdeationHandlers(
   const fileInputRef = useRef<HTMLInputElement>(null);
   const updateSession = useIdeationStore((state) => state.updateSession);
 
-  const collapsePlan = useCallback(() => {
-    setIsPlanExpanded(false);
-  }, []);
-
   const handleArchive = useCallback(() => {
     if (session) onArchiveSession(session.id);
   }, [session, onArchiveSession]);
 
-  const handleSelectAll = useCallback(() => {
-    collapsePlan();
-    proposals.forEach((p) => { if (!p.selected) onSelectProposal(p.id); });
-  }, [proposals, onSelectProposal, collapsePlan]);
-
-  const handleDeselectAll = useCallback(() => {
-    collapsePlan();
-    proposals.forEach((p) => { if (p.selected) onSelectProposal(p.id); });
-  }, [proposals, onSelectProposal, collapsePlan]);
-
   const handleSortByPriority = useCallback(() => {
-    collapsePlan();
     // Sort by suggestedPriority (critical > high > medium > low)
     // PRIORITY_VALUES is ordered by importance, so lower index = higher priority
     const sorted = [...proposals].sort((a, b) => {
@@ -52,12 +36,7 @@ export function useIdeationHandlers(
       return aIndex - bIndex;
     });
     onReorderProposals(sorted.map((p) => p.id));
-  }, [proposals, onReorderProposals, collapsePlan]);
-
-  const handleSelectProposal = useCallback((proposalId: string) => {
-    collapsePlan();
-    onSelectProposal(proposalId);
-  }, [onSelectProposal, collapsePlan]);
+  }, [proposals, onReorderProposals]);
 
   const handleClearAll = useCallback(() => {
     proposals.forEach((p) => onRemoveProposal(p.id));
@@ -169,10 +148,7 @@ export function useIdeationHandlers(
     setImportStatus,
     fileInputRef,
     handleArchive,
-    handleSelectAll,
-    handleDeselectAll,
     handleSortByPriority,
-    handleSelectProposal,
     handleClearAll,
     handleReviewSync,
     handleUndoSync,

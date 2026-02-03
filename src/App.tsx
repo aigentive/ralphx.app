@@ -205,13 +205,13 @@ function AppContent() {
   const { submitAnswer } = useAskUserQuestion();
 
   // Ideation hooks
-  const { data: sessionData } = useIdeationSession(activeSession?.id ?? "");
+  const { data: sessionData, isLoading: isSessionLoading } = useIdeationSession(activeSession?.id ?? "");
   const { data: allSessions = [] } = useIdeationSessions(currentProjectId);
   const createSession = useCreateIdeationSession();
   const archiveSession = useArchiveIdeationSession();
   const deleteSession = useDeleteIdeationSession();
   const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
-  const { toggleSelection, deleteProposal, reorder, updateProposal } = useProposalMutations();
+  const { deleteProposal, reorder, updateProposal } = useProposalMutations();
   const { apply: applyProposalsMutation } = useApplyProposals();
 
   /**
@@ -360,7 +360,6 @@ function AppContent() {
           view: "ideation",
           projectId: currentProjectId,
           ideationSessionId: activeSession.id,
-          selectedProposalIds: proposals.filter((p) => p.selected).map((p) => p.id),
         };
       }
       // No session yet - fall back to project context for chat
@@ -373,7 +372,7 @@ function AppContent() {
       view: currentView,
       projectId: currentProjectId,
     };
-  }, [selectedTask, currentView, activeSession, proposals, currentProjectId]);
+  }, [selectedTask, currentView, activeSession, currentProjectId]);
 
   const handlePauseToggle = async () => {
     setIsExecutionLoading(true);
@@ -480,10 +479,6 @@ function AppContent() {
       selectSession(session);
     }
   }, [allSessions, selectSession]);
-
-  const handleSelectProposal = useCallback((proposalId: string) => {
-    toggleSelection.mutate(proposalId);
-  }, [toggleSelection]);
 
   const handleEditProposal = useCallback((proposalId: string) => {
     setEditingProposalId(proposalId);
@@ -824,11 +819,11 @@ function AppContent() {
                   session={resolvedSession}
                   sessions={allSessions}
                   proposals={proposals}
+                  isSessionLoading={isSessionLoading}
                   onNewSession={handleNewSession}
                   onSelectSession={handleSelectSession}
                   onArchiveSession={handleArchiveSession}
                   onDeleteSession={handleDeleteSession}
-                  onSelectProposal={handleSelectProposal}
                   onEditProposal={handleEditProposal}
                   onRemoveProposal={handleRemoveProposal}
                   onReorderProposals={handleReorderProposals}

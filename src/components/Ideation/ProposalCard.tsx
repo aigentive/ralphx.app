@@ -30,7 +30,6 @@ export interface DependencyDetail {
 
 export interface ProposalCardProps {
   proposal: TaskProposal;
-  onSelect: (proposalId: string) => void;
   onEdit: (proposalId: string) => void;
   onRemove: (proposalId: string) => void;
   isHighlighted?: boolean;
@@ -54,7 +53,6 @@ const MAX_INLINE_DEPS = 2;
 
 export const ProposalCard = React.memo(function ProposalCard({
   proposal,
-  onSelect,
   onEdit,
   onRemove,
   isHighlighted = false,
@@ -70,7 +68,6 @@ export const ProposalCard = React.memo(function ProposalCard({
   const [isDepsExpanded, setIsDepsExpanded] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const effectivePriority = proposal.userPriority ?? proposal.suggestedPriority;
-  const isSelected = proposal.selected;
   const config = PRIORITY_CONFIG[effectivePriority];
 
   const hasDependencies = dependsOnDetails && dependsOnDetails.length > 0;
@@ -104,42 +101,27 @@ export const ProposalCard = React.memo(function ProposalCard({
     <div
       data-testid={`proposal-card-${proposal.id}`}
       className={cn(
-        "group relative rounded-xl cursor-pointer",
+        "group relative rounded-xl",
         "transition-all duration-200 ease-out"
       )}
       style={{
         padding: "14px 16px",
-        background: isSelected
-          ? "hsla(14 100% 60% / 0.08)"
-          : isHovered
-            ? "hsla(220 10% 100% / 0.04)"
-            : "hsla(220 10% 100% / 0.02)",
+        background: isHovered
+          ? "hsla(220 10% 100% / 0.04)"
+          : "hsla(220 10% 100% / 0.02)",
         border: isHighlighted
           ? "1px solid hsla(45 93% 50% / 0.4)"
-          : isSelected
-            ? "1px solid hsla(14 100% 60% / 0.3)"
-            : "1px solid hsla(220 10% 100% / 0.06)",
-        boxShadow: isSelected
-          ? "0 2px 8px hsla(220 10% 0% / 0.25)"
-          : isHovered
-            ? "0 2px 8px hsla(220 10% 0% / 0.2)"
-            : "0 1px 2px hsla(220 10% 0% / 0.1)",
+          : "1px solid hsla(220 10% 100% / 0.06)",
+        boxShadow: isHovered
+          ? "0 2px 8px hsla(220 10% 0% / 0.2)"
+          : "0 1px 2px hsla(220 10% 0% / 0.1)",
         ...(isOnCriticalPath && {
           borderBottom: "2px solid hsla(14 100% 60% / 0.4)",
         }),
       }}
-      onClick={() => onSelect(proposal.id)}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Selection indicator - flat, no glow */}
-      <div
-        className="absolute left-0 top-3 bottom-3 w-[3px] rounded-full transition-all duration-200"
-        style={{
-          background: isSelected ? "hsl(14 100% 60%)" : "transparent",
-        }}
-      />
-
       <div className="flex items-start gap-3 pl-2">
         {/* Content */}
         <div className="flex-1 min-w-0">

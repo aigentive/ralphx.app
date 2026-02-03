@@ -34,7 +34,6 @@ const createMockProposalRaw = (overrides = {}) => ({
   user_priority: null,
   user_modified: false,
   status: "pending",
-  selected: true,
   created_task_id: null,
   sort_order: 0,
   created_at: "2026-01-24T12:00:00Z",
@@ -405,40 +404,6 @@ describe("ideationApi.proposals", () => {
 
       expect(mockInvoke).toHaveBeenCalledWith("delete_task_proposal", {
         id: "proposal-1",
-      });
-    });
-  });
-
-  describe("toggleSelection", () => {
-    it("should call toggle_proposal_selection with id", async () => {
-      mockInvoke.mockResolvedValue(true);
-
-      const result = await ideationApi.proposals.toggleSelection("proposal-1");
-
-      expect(mockInvoke).toHaveBeenCalledWith("toggle_proposal_selection", {
-        id: "proposal-1",
-      });
-      expect(result).toBe(true);
-    });
-
-    it("should return new selection state", async () => {
-      mockInvoke.mockResolvedValue(false);
-
-      const result = await ideationApi.proposals.toggleSelection("proposal-1");
-
-      expect(result).toBe(false);
-    });
-  });
-
-  describe("setSelection", () => {
-    it("should call set_proposal_selection with id and selected", async () => {
-      mockInvoke.mockResolvedValue(undefined);
-
-      await ideationApi.proposals.setSelection("proposal-1", true);
-
-      expect(mockInvoke).toHaveBeenCalledWith("set_proposal_selection", {
-        id: "proposal-1",
-        selected: true,
       });
     });
   });

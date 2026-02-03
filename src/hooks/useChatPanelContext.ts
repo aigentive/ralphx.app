@@ -259,7 +259,7 @@ export function useChatPanelContext({
         setActiveConversation(mostRecent.id);
       }
     }
-  }, [activeConversationId, isMergeMode, isExecutionMode, isReviewMode, isHistoryMode, ideationSessionId, selectedTaskId, contextKey, setActiveConversation]);
+  }, [activeConversationId, isMergeMode, isExecutionMode, isReviewMode, isHistoryMode, setActiveConversation]);
 
   return {
     chatContext,

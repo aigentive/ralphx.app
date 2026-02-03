@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * useResizePanel - Hook for panel resize functionality
  */

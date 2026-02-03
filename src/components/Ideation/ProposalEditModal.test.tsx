@@ -24,7 +24,6 @@ const mockProposal: TaskProposal = {
   userPriority: null,
   userModified: false,
   status: "pending",
-  selected: false,
   createdTaskId: null,
   sortOrder: 0,
   createdAt: "2026-01-24T00:00:00Z",

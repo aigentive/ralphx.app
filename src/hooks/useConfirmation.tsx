@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useState, useRef, useCallback, useMemo } from "react";
 import {
   AlertDialog,

@@ -2,8 +2,6 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   useProposalStore,
   selectProposalsBySession,
-  selectSelectedProposals,
-  selectSelectedProposalIds,
   selectProposalsByPriority,
   selectSortedProposals,
 } from "./proposalStore";
@@ -25,7 +23,6 @@ const createTestProposal = (overrides: Partial<TaskProposal> = {}): TaskProposal
   userPriority: null,
   userModified: false,
   status: "pending",
-  selected: true,
   createdTaskId: null,
   sortOrder: 0,
   createdAt: "2026-01-24T12:00:00Z",
@@ -41,6 +38,9 @@ describe("proposalStore", () => {
       isLoading: false,
       error: null,
       lastProposalAddedAt: null,
+      lastDependencyRefreshRequestedAt: null,
+      lastProposalUpdatedAt: null,
+      lastUpdatedProposalId: null,
     });
   });
 
@@ -78,21 +78,6 @@ describe("proposalStore", () => {
       expect(state.proposals["proposal-3"]?.title).toBe("Proposal 3");
     });
 
-    it("preserves selected field on proposals", () => {
-      const proposals = [
-        createTestProposal({ id: "proposal-1", selected: true }),
-        createTestProposal({ id: "proposal-2", selected: false }),
-        createTestProposal({ id: "proposal-3", selected: true }),
-      ];
-
-      useProposalStore.getState().setProposals(proposals);
-
-      const state = useProposalStore.getState();
-      expect(state.proposals["proposal-1"]?.selected).toBe(true);
-      expect(state.proposals["proposal-2"]?.selected).toBe(false);
-      expect(state.proposals["proposal-3"]?.selected).toBe(true);
-    });
-
     it("replaces existing proposals", () => {
       useProposalStore.setState({
         proposals: {
@@ -125,24 +110,6 @@ describe("proposalStore", () => {
       const state = useProposalStore.getState();
       expect(state.proposals["proposal-1"]).toBeDefined();
       expect(state.proposals["proposal-1"]?.title).toBe("Test Proposal");
-    });
-
-    it("preserves selected field when selected is true", () => {
-      const proposal = createTestProposal({ id: "proposal-1", selected: true });
-
-      useProposalStore.getState().addProposal(proposal);
-
-      const state = useProposalStore.getState();
-      expect(state.proposals["proposal-1"]?.selected).toBe(true);
-    });
-
-    it("preserves selected field when selected is false", () => {
-      const proposal = createTestProposal({ id: "proposal-1", selected: false });
-
-      useProposalStore.getState().addProposal(proposal);
-
-      const state = useProposalStore.getState();
-      expect(state.proposals["proposal-1"]?.selected).toBe(false);
     });
 
     it("overwrites proposal with same id", () => {
@@ -217,26 +184,6 @@ describe("proposalStore", () => {
       expect(updated?.priorityScore).toBe(75);
     });
 
-    it("updates selected field to true", () => {
-      const proposal = createTestProposal({ id: "proposal-1", selected: false });
-      useProposalStore.setState({ proposals: { "proposal-1": proposal } });
-
-      useProposalStore.getState().updateProposal("proposal-1", { selected: true });
-
-      const state = useProposalStore.getState();
-      expect(state.proposals["proposal-1"]?.selected).toBe(true);
-    });
-
-    it("updates selected field to false", () => {
-      const proposal = createTestProposal({ id: "proposal-1", selected: true });
-      useProposalStore.setState({ proposals: { "proposal-1": proposal } });
-
-      useProposalStore.getState().updateProposal("proposal-1", { selected: false });
-
-      const state = useProposalStore.getState();
-      expect(state.proposals["proposal-1"]?.selected).toBe(false);
-    });
-
     it("does nothing if proposal not found", () => {
       const proposal = createTestProposal({ id: "proposal-1" });
       useProposalStore.setState({ proposals: { "proposal-1": proposal } });
@@ -286,92 +233,6 @@ describe("proposalStore", () => {
 
       const state = useProposalStore.getState();
       expect(Object.keys(state.proposals)).toHaveLength(1);
-    });
-  });
-
-  describe("toggleSelection", () => {
-    it("selects unselected proposal", () => {
-      const proposal = createTestProposal({ id: "proposal-1", selected: false });
-      useProposalStore.setState({ proposals: { "proposal-1": proposal } });
-
-      useProposalStore.getState().toggleSelection("proposal-1");
-
-      const state = useProposalStore.getState();
-      expect(state.proposals["proposal-1"]?.selected).toBe(true);
-    });
-
-    it("deselects selected proposal", () => {
-      const proposal = createTestProposal({ id: "proposal-1", selected: true });
-      useProposalStore.setState({ proposals: { "proposal-1": proposal } });
-
-      useProposalStore.getState().toggleSelection("proposal-1");
-
-      const state = useProposalStore.getState();
-      expect(state.proposals["proposal-1"]?.selected).toBe(false);
-    });
-
-    it("does nothing if proposal not found", () => {
-      useProposalStore.getState().toggleSelection("nonexistent");
-
-      const state = useProposalStore.getState();
-      expect(Object.keys(state.proposals)).toHaveLength(0);
-    });
-  });
-
-  describe("selectAll", () => {
-    it("selects all proposals in session", () => {
-      const proposals = [
-        createTestProposal({ id: "proposal-1", sessionId: "session-1", selected: false }),
-        createTestProposal({ id: "proposal-2", sessionId: "session-1", selected: false }),
-        createTestProposal({ id: "proposal-3", sessionId: "session-2", selected: false }),
-      ];
-      useProposalStore.getState().setProposals(proposals);
-
-      useProposalStore.getState().selectAll("session-1");
-
-      const state = useProposalStore.getState();
-      expect(state.proposals["proposal-1"]?.selected).toBe(true);
-      expect(state.proposals["proposal-2"]?.selected).toBe(true);
-      expect(state.proposals["proposal-3"]?.selected).toBe(false); // Different session
-    });
-
-    it("handles empty session", () => {
-      useProposalStore.getState().selectAll("nonexistent-session");
-
-      const state = useProposalStore.getState();
-      expect(Object.keys(state.proposals)).toHaveLength(0);
-    });
-  });
-
-  describe("deselectAll", () => {
-    it("deselects all proposals", () => {
-      const proposals = [
-        createTestProposal({ id: "proposal-1", selected: true }),
-        createTestProposal({ id: "proposal-2", selected: true }),
-        createTestProposal({ id: "proposal-3", selected: true }),
-      ];
-      useProposalStore.getState().setProposals(proposals);
-
-      useProposalStore.getState().deselectAll();
-
-      const state = useProposalStore.getState();
-      expect(state.proposals["proposal-1"]?.selected).toBe(false);
-      expect(state.proposals["proposal-2"]?.selected).toBe(false);
-      expect(state.proposals["proposal-3"]?.selected).toBe(false);
-    });
-
-    it("handles already deselected proposals", () => {
-      const proposals = [
-        createTestProposal({ id: "proposal-1", selected: false }),
-        createTestProposal({ id: "proposal-2", selected: false }),
-      ];
-      useProposalStore.getState().setProposals(proposals);
-
-      useProposalStore.getState().deselectAll();
-
-      const state = useProposalStore.getState();
-      expect(state.proposals["proposal-1"]?.selected).toBe(false);
-      expect(state.proposals["proposal-2"]?.selected).toBe(false);
     });
   });
 
@@ -462,6 +323,10 @@ describe("selectors", () => {
       proposals: {},
       isLoading: false,
       error: null,
+      lastProposalAddedAt: null,
+      lastDependencyRefreshRequestedAt: null,
+      lastProposalUpdatedAt: null,
+      lastUpdatedProposalId: null,
     });
   });
 
@@ -496,64 +361,6 @@ describe("selectors", () => {
       const result = selector(useProposalStore.getState());
 
       expect(result).toHaveLength(0);
-    });
-  });
-
-  describe("selectSelectedProposals", () => {
-    it("returns all selected proposals", () => {
-      const proposals = [
-        createTestProposal({ id: "proposal-1", selected: true }),
-        createTestProposal({ id: "proposal-2", selected: false }),
-        createTestProposal({ id: "proposal-3", selected: true }),
-      ];
-      useProposalStore.getState().setProposals(proposals);
-
-      const result = selectSelectedProposals(useProposalStore.getState());
-
-      expect(result).toHaveLength(2);
-      expect(result.map((p) => p.id).sort()).toEqual(["proposal-1", "proposal-3"]);
-    });
-
-    it("returns empty array when no proposals selected", () => {
-      const proposals = [
-        createTestProposal({ id: "proposal-1", selected: false }),
-        createTestProposal({ id: "proposal-2", selected: false }),
-      ];
-      useProposalStore.getState().setProposals(proposals);
-
-      const result = selectSelectedProposals(useProposalStore.getState());
-
-      expect(result).toHaveLength(0);
-    });
-  });
-
-  describe("selectSelectedProposalIds", () => {
-    it("returns set of selected proposal IDs", () => {
-      const proposals = [
-        createTestProposal({ id: "proposal-1", selected: true }),
-        createTestProposal({ id: "proposal-2", selected: false }),
-        createTestProposal({ id: "proposal-3", selected: true }),
-      ];
-      useProposalStore.getState().setProposals(proposals);
-
-      const result = selectSelectedProposalIds(useProposalStore.getState());
-
-      expect(result.size).toBe(2);
-      expect(result.has("proposal-1")).toBe(true);
-      expect(result.has("proposal-2")).toBe(false);
-      expect(result.has("proposal-3")).toBe(true);
-    });
-
-    it("returns empty set when no proposals selected", () => {
-      const proposals = [
-        createTestProposal({ id: "proposal-1", selected: false }),
-        createTestProposal({ id: "proposal-2", selected: false }),
-      ];
-      useProposalStore.getState().setProposals(proposals);
-
-      const result = selectSelectedProposalIds(useProposalStore.getState());
-
-      expect(result.size).toBe(0);
     });
   });
 

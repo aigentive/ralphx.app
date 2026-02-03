@@ -7,7 +7,7 @@
  * - Category badge
  * - Dependency info
  * - Edit and Remove actions
- * - Selected/modified states
+ * - Modified state
  */
 
 import { render, screen } from "@testing-library/react";
@@ -36,7 +36,6 @@ function createMockProposal(overrides: Partial<TaskProposal> = {}): TaskProposal
     userPriority: null,
     userModified: false,
     status: "pending",
-    selected: false,
     createdTaskId: null,
     sortOrder: 0,
     createdAt: "2026-01-24T10:00:00Z",
@@ -48,7 +47,6 @@ function createMockProposal(overrides: Partial<TaskProposal> = {}): TaskProposal
 describe("ProposalCard", () => {
   const defaultProps = {
     proposal: createMockProposal(),
-    onSelect: vi.fn(),
     onEdit: vi.fn(),
     onRemove: vi.fn(),
   };
@@ -337,27 +335,6 @@ describe("ProposalCard", () => {
       render(<ProposalCard {...defaultProps} />);
       const actions = screen.getByTestId("proposal-actions");
       expect(actions).toHaveClass("opacity-0", "group-hover:opacity-100");
-    });
-  });
-
-  // ============================================================================
-  // Selected State Tests
-  // ============================================================================
-
-  describe("selected state", () => {
-    it("applies orange border when selected", () => {
-      const proposal = createMockProposal({ selected: true });
-      render(<ProposalCard {...defaultProps} proposal={proposal} />);
-      const card = screen.getByTestId("proposal-card-proposal-1");
-      expect(card).toHaveStyle({ borderColor: "#ff6b35" });
-    });
-
-    it("applies subtle border when not selected", () => {
-      const proposal = createMockProposal({ selected: false });
-      render(<ProposalCard {...defaultProps} proposal={proposal} />);
-      const card = screen.getByTestId("proposal-card-proposal-1");
-      // When not selected, borderWidth is 1px (not 2px like selected)
-      expect(card).toHaveStyle({ borderWidth: "1px" });
     });
   });
 

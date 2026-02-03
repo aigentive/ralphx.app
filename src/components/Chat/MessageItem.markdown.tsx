@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * MessageItem.markdown - Markdown rendering components for MessageItem
  *

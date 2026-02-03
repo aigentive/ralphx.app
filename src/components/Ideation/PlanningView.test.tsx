@@ -62,7 +62,6 @@ const mockProposals: TaskProposal[] = [
     userPriority: null,
     userModified: false,
     status: "pending",
-    selected: true,
     createdTaskId: null,
     sortOrder: 0,
     createdAt: "2026-01-24T00:00:00Z",
@@ -83,7 +82,6 @@ const mockProposals: TaskProposal[] = [
     userPriority: null,
     userModified: false,
     status: "pending",
-    selected: false,
     createdTaskId: null,
     sortOrder: 1,
     createdAt: "2026-01-24T00:00:00Z",
@@ -101,7 +99,6 @@ describe("PlanningView", () => {
     onNewSession: vi.fn(),
     onSelectSession: vi.fn(),
     onArchiveSession: vi.fn(),
-    onSelectProposal: vi.fn(),
     onEditProposal: vi.fn(),
     onRemoveProposal: vi.fn(),
     onReorderProposals: vi.fn(),
@@ -287,28 +284,6 @@ describe("PlanningView", () => {
       expect(emptyState.querySelector("svg")).toBeInTheDocument();
     });
 
-    it("renders toolbar with select/sort actions", () => {
-      render(<PlanningView {...defaultProps} />);
-      expect(screen.getByText(/1 of 2 selected/i)).toBeInTheDocument();
-    });
-
-    it("calls onSelectProposal when proposal card clicked", async () => {
-      const onSelectProposal = vi.fn();
-      const user = userEvent.setup();
-      render(<PlanningView {...defaultProps} onSelectProposal={onSelectProposal} />);
-
-      const card = screen.getByTestId("proposal-card-proposal-2");
-      await user.click(card);
-
-      expect(onSelectProposal).toHaveBeenCalledWith("proposal-2");
-    });
-
-    it("selected proposals have orange border", () => {
-      render(<PlanningView {...defaultProps} />);
-      const selectedCard = screen.getByTestId("proposal-card-proposal-1");
-      expect(selectedCard).toHaveClass("border-[var(--accent-primary)]");
-    });
-
     it("proposal cards show priority badges", () => {
       render(<PlanningView {...defaultProps} />);
       expect(screen.getByText("High")).toBeInTheDocument();
@@ -328,21 +303,9 @@ describe("PlanningView", () => {
       expect(screen.getByTestId("apply-section")).toBeInTheDocument();
     });
 
-    it("shows selected count", () => {
-      render(<PlanningView {...defaultProps} />);
-      const applySection = screen.getByTestId("apply-section");
-      expect(within(applySection).getByText(/1 selected/i)).toBeInTheDocument();
-    });
-
     it("renders apply dropdown button with icon", () => {
       render(<PlanningView {...defaultProps} />);
       expect(screen.getByRole("button", { name: /Apply to/i })).toBeInTheDocument();
-    });
-
-    it("apply button is disabled when no proposals selected", () => {
-      const noSelection = mockProposals.map((p) => ({ ...p, selected: false }));
-      render(<PlanningView {...defaultProps} proposals={noSelection} />);
-      expect(screen.getByRole("button", { name: /Apply to/i })).toBeDisabled();
     });
 
     it("shows target column options when dropdown clicked", async () => {

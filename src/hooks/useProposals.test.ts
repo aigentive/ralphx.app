@@ -26,7 +26,6 @@ vi.mock("@/api/ideation", () => ({
       create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
-      toggleSelection: vi.fn(),
       reorder: vi.fn(),
     },
   },
@@ -48,7 +47,6 @@ const mockProposal1: TaskProposalResponse = {
   userPriority: null,
   userModified: false,
   status: "pending",
-  selected: true,
   createdTaskId: null,
   sortOrder: 0,
   createdAt: "2026-01-24T10:00:00Z",
@@ -70,7 +68,6 @@ const mockProposal2: TaskProposalResponse = {
   userPriority: null,
   userModified: false,
   status: "pending",
-  selected: false,
   createdTaskId: null,
   sortOrder: 1,
   createdAt: "2026-01-24T10:05:00Z",
@@ -319,47 +316,6 @@ describe("useProposalMutations", () => {
           await result.current.deleteProposal.mutateAsync("proposal-1");
         })
       ).rejects.toThrow("Failed to delete proposal");
-    });
-  });
-
-  describe("toggleSelection", () => {
-    beforeEach(() => {
-      vi.clearAllMocks();
-    });
-
-    afterEach(() => {
-      vi.resetAllMocks();
-    });
-
-    it("should toggle selection successfully", async () => {
-      vi.mocked(ideationApi.proposals.toggleSelection).mockResolvedValueOnce(true);
-
-      const { result } = renderHook(() => useProposalMutations(), {
-        wrapper: createWrapper(),
-      });
-
-      let newState: boolean | undefined;
-      await act(async () => {
-        newState = await result.current.toggleSelection.mutateAsync("proposal-1");
-      });
-
-      expect(newState).toBe(true);
-      expect(ideationApi.proposals.toggleSelection).toHaveBeenCalledWith("proposal-1");
-    });
-
-    it("should handle toggle error", async () => {
-      const error = new Error("Failed to toggle selection");
-      vi.mocked(ideationApi.proposals.toggleSelection).mockRejectedValueOnce(error);
-
-      const { result } = renderHook(() => useProposalMutations(), {
-        wrapper: createWrapper(),
-      });
-
-      await expect(
-        act(async () => {
-          await result.current.toggleSelection.mutateAsync("proposal-1");
-        })
-      ).rejects.toThrow("Failed to toggle selection");
     });
   });
 

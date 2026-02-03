@@ -33,7 +33,6 @@ const createProposal = (overrides: Partial<TaskProposal> = {}): TaskProposal => 
   userPriority: null,
   userModified: false,
   status: "pending",
-  selected: false,
   createdTaskId: null,
   planArtifactId: null,
   planVersionAtCreation: null,
@@ -60,7 +59,6 @@ const defaultProps = {
   dependencyGraph: null,
   highlightedIds: new Set<string>(),
   criticalPathIds: new Set<string>(),
-  onSelect: vi.fn(),
   onEdit: vi.fn(),
   onRemove: vi.fn(),
 };
@@ -347,20 +345,6 @@ describe("TieredProposalList", () => {
   // ============================================================================
 
   describe("callbacks", () => {
-    it("calls onSelect when proposal is selected", async () => {
-      const onSelect = vi.fn();
-      const proposals = [createProposal({ id: "p1" })];
-
-      render(
-        <TieredProposalList {...defaultProps} proposals={proposals} onSelect={onSelect} />
-      );
-
-      const card = screen.getByTestId("proposal-card-p1");
-      card.click();
-
-      expect(onSelect).toHaveBeenCalledWith("p1");
-    });
-
     it("calls onEdit when edit button is clicked", async () => {
       const onEdit = vi.fn();
       const proposals = [createProposal({ id: "p1" })];

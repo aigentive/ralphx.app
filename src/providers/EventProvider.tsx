@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * EventProvider - Global event listener setup and event bus context
  *

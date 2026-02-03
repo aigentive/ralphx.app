@@ -4,7 +4,6 @@ import {
   createTaskProposal,
   updateTaskProposal,
   deleteTaskProposal,
-  toggleProposalSelection,
   reorderProposals,
   assessProposalPriority,
   assessAllPriorities,
@@ -34,7 +33,6 @@ const createMockProposalRaw = (overrides = {}) => ({
   user_priority: null,
   user_modified: false,
   status: "pending",
-  selected: true,
   created_task_id: null,
   sort_order: 0,
   created_at: "2026-01-24T12:00:00Z",
@@ -216,31 +214,6 @@ describe("deleteTaskProposal", () => {
     await expect(deleteTaskProposal("nonexistent")).rejects.toThrow(
       "Proposal not found"
     );
-  });
-});
-
-describe("toggleProposalSelection", () => {
-  beforeEach(() => {
-    mockInvoke.mockReset();
-  });
-
-  it("should call toggle_proposal_selection with proposalId", async () => {
-    mockInvoke.mockResolvedValue(true);
-
-    const result = await toggleProposalSelection("proposal-1");
-
-    expect(mockInvoke).toHaveBeenCalledWith("toggle_proposal_selection", {
-      id: "proposal-1",
-    });
-    expect(result).toBe(true);
-  });
-
-  it("should return new selection state (false)", async () => {
-    mockInvoke.mockResolvedValue(false);
-
-    const result = await toggleProposalSelection("proposal-1");
-
-    expect(result).toBe(false);
   });
 });
 
@@ -552,7 +525,6 @@ describe("proposalApi namespace", () => {
     expect(proposalApi.createTaskProposal).toBe(createTaskProposal);
     expect(proposalApi.updateTaskProposal).toBe(updateTaskProposal);
     expect(proposalApi.deleteTaskProposal).toBe(deleteTaskProposal);
-    expect(proposalApi.toggleProposalSelection).toBe(toggleProposalSelection);
     expect(proposalApi.reorderProposals).toBe(reorderProposals);
     expect(proposalApi.assessProposalPriority).toBe(assessProposalPriority);
     expect(proposalApi.assessAllPriorities).toBe(assessAllPriorities);

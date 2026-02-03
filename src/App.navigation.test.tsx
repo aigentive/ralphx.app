@@ -210,17 +210,6 @@ describe("Chat context logic", () => {
     expect(context.ideationSessionId).toBe("session-123");
   });
 
-  it("chat context can include selected proposal ids", () => {
-    useChatStore.getState().setContext({
-      view: "ideation",
-      projectId: "demo-project",
-      ideationSessionId: "session-123",
-      selectedProposalIds: ["prop-1", "prop-2"],
-    });
-
-    const context = useChatStore.getState().context;
-    expect(context.selectedProposalIds).toEqual(["prop-1", "prop-2"]);
-  });
 });
 
 // ============================================================================

@@ -11,7 +11,7 @@
  * - Empty state when no proposals
  */
 
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import {
   DndContext,
   closestCenter,
@@ -45,24 +45,16 @@ export interface DependencyCounts {
 export interface ProposalListProps {
   /** List of proposals to display */
   proposals: TaskProposal[];
-  /** Callback when a single proposal is selected/deselected */
-  onSelect: (proposalId: string) => void;
   /** Callback when edit is clicked */
   onEdit: (proposalId: string) => void;
   /** Callback when remove is clicked */
   onRemove: (proposalId: string) => void;
   /** Callback when proposals are reordered */
   onReorder: (proposalIds: string[]) => void;
-  /** Callback for select all */
-  onSelectAll: () => void;
-  /** Callback for deselect all */
-  onDeselectAll: () => void;
   /** Callback for sort by priority */
   onSortByPriority: () => void;
   /** Callback for clear all */
   onClearAll: () => void;
-  /** Callback for multi-select (shift+click range) */
-  onMultiSelect?: (proposalIds: string[]) => void;
   /** Dependency counts for each proposal */
   dependencyCounts?: DependencyCounts;
 }
@@ -70,45 +62,6 @@ export interface ProposalListProps {
 // ============================================================================
 // Icons
 // ============================================================================
-
-function SelectAllIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <rect
-        x="1"
-        y="1"
-        width="12"
-        height="12"
-        rx="2"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      />
-      <path
-        d="M4 7L6 9L10 5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function DeselectAllIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <rect
-        x="1"
-        y="1"
-        width="12"
-        height="12"
-        rx="2"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      />
-    </svg>
-  );
-}
 
 function SortIcon() {
   return (
@@ -144,7 +97,6 @@ function ClearIcon() {
 
 interface SortableProposalCardProps {
   proposal: TaskProposal;
-  onSelect: (proposalId: string) => void;
   onEdit: (proposalId: string) => void;
   onRemove: (proposalId: string) => void;
   dependsOnCount?: number;
@@ -153,7 +105,6 @@ interface SortableProposalCardProps {
 
 const SortableProposalCard = React.memo(function SortableProposalCard({
   proposal,
-  onSelect,
   onEdit,
   onRemove,
   dependsOnCount,
@@ -190,7 +141,6 @@ const SortableProposalCard = React.memo(function SortableProposalCard({
     >
       <ProposalCard
         proposal={proposal}
-        onSelect={onSelect}
         onEdit={onEdit}
         onRemove={onRemove}
         {...optionalProps}
@@ -252,19 +202,13 @@ function EmptyState() {
 // ============================================================================
 
 interface ToolbarProps {
-  selectedCount: number;
   totalCount: number;
-  onSelectAll: () => void;
-  onDeselectAll: () => void;
   onSortByPriority: () => void;
   onClearAll: () => void;
 }
 
 function Toolbar({
-  selectedCount,
   totalCount,
-  onSelectAll,
-  onDeselectAll,
   onSortByPriority,
   onClearAll,
 }: ToolbarProps) {
@@ -274,46 +218,12 @@ function Toolbar({
       className="flex items-center justify-between mb-3 px-1"
     >
       <div className="flex items-center gap-2">
-        <span
-          data-testid="selected-count"
-          className="text-sm"
-          style={{ color: "var(--text-secondary)" }}
-        >
-          {selectedCount} selected
-        </span>
         <span className="text-sm" style={{ color: "var(--text-muted)" }}>
           of {totalCount}
         </span>
       </div>
 
       <div className="flex items-center gap-1">
-        <button
-          data-testid="select-all-btn"
-          onClick={onSelectAll}
-          aria-label="Select all"
-          className="p-1.5 rounded hover:bg-white/10 transition-colors"
-          style={{ color: "var(--text-secondary)" }}
-          title="Select all"
-        >
-          <SelectAllIcon />
-        </button>
-
-        <button
-          data-testid="deselect-all-btn"
-          onClick={onDeselectAll}
-          aria-label="Deselect all"
-          className="p-1.5 rounded hover:bg-white/10 transition-colors"
-          style={{ color: "var(--text-secondary)" }}
-          title="Deselect all"
-        >
-          <DeselectAllIcon />
-        </button>
-
-        <div
-          className="w-px h-4 mx-1"
-          style={{ backgroundColor: "var(--border-subtle)" }}
-        />
-
         <button
           data-testid="sort-priority-btn"
           onClick={onSortByPriority}
@@ -346,19 +256,13 @@ function Toolbar({
 
 export function ProposalList({
   proposals,
-  onSelect,
   onEdit,
   onRemove,
   onReorder,
-  onSelectAll,
-  onDeselectAll,
   onSortByPriority,
   onClearAll,
-  onMultiSelect,
   dependencyCounts,
 }: ProposalListProps) {
-  const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
-
   // Sort proposals by sortOrder
   const sortedProposals = useMemo(
     () => [...proposals].sort((a, b) => a.sortOrder - b.sortOrder),
@@ -368,11 +272,6 @@ export function ProposalList({
   const proposalIds = useMemo(
     () => sortedProposals.map((p) => p.id),
     [sortedProposals]
-  );
-
-  const selectedCount = useMemo(
-    () => proposals.filter((p) => p.selected).length,
-    [proposals]
   );
 
   // DnD sensors
@@ -402,39 +301,6 @@ export function ProposalList({
     [proposalIds, onReorder]
   );
 
-  // Handle selection with shift+click support
-  const handleSelect = useCallback(
-    (proposalId: string, event?: React.MouseEvent) => {
-      if (event?.shiftKey && lastSelectedId && onMultiSelect) {
-        // Calculate range between lastSelectedId and proposalId
-        const startIndex = proposalIds.indexOf(lastSelectedId);
-        const endIndex = proposalIds.indexOf(proposalId);
-
-        if (startIndex !== -1 && endIndex !== -1) {
-          const start = Math.min(startIndex, endIndex);
-          const end = Math.max(startIndex, endIndex);
-          const rangeIds = proposalIds.slice(start, end + 1);
-          onMultiSelect(rangeIds);
-        }
-      } else {
-        onSelect(proposalId);
-        setLastSelectedId(proposalId);
-      }
-    },
-    [lastSelectedId, proposalIds, onSelect, onMultiSelect]
-  );
-
-  // Wrap onSelect to capture shift key
-  const handleCardSelect = useCallback(
-    (proposalId: string) => {
-      // Note: We can't access the event directly from ProposalCard
-      // For shift+click, we'll use a custom handler at the list level
-      onSelect(proposalId);
-      setLastSelectedId(proposalId);
-    },
-    [onSelect]
-  );
-
   if (proposals.length === 0) {
     return (
       <div data-testid="proposal-list">
@@ -446,10 +312,7 @@ export function ProposalList({
   return (
     <div data-testid="proposal-list">
       <Toolbar
-        selectedCount={selectedCount}
         totalCount={proposals.length}
-        onSelectAll={onSelectAll}
-        onDeselectAll={onDeselectAll}
         onSortByPriority={onSortByPriority}
         onClearAll={onClearAll}
       />
@@ -467,20 +330,7 @@ export function ProposalList({
             data-testid="proposal-list-sortable"
             role="list"
             className="space-y-2"
-            onClick={(e) => {
-              // Handle shift+click at list level
-              const target = e.target as HTMLElement;
-              const card = target.closest('[data-testid^="proposal-card-"]');
-              if (card) {
-                const proposalId = card
-                  .getAttribute("data-testid")
-                  ?.replace("proposal-card-", "");
-                if (proposalId && e.shiftKey) {
-                  e.preventDefault();
-                  handleSelect(proposalId, e);
-                }
-              }
-            }}
+            onClick={(e) => e.stopPropagation()}
           >
             {sortedProposals.map((proposal) => {
               const deps = dependencyCounts?.[proposal.id];
@@ -492,7 +342,6 @@ export function ProposalList({
                 <SortableProposalCard
                   key={proposal.id}
                   proposal={proposal}
-                  onSelect={handleCardSelect}
                   onEdit={onEdit}
                   onRemove={onRemove}
                   {...depProps}

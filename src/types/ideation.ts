@@ -106,7 +106,6 @@ export const TaskProposalSchema = z.object({
   userPriority: PrioritySchema.nullable(),
   userModified: z.boolean(),
   status: ProposalStatusSchema,
-  selected: z.boolean(),
   createdTaskId: z.string().nullable(),
   planArtifactId: z.string().nullable(),
   planVersionAtCreation: z.number().int().nullable(),
