@@ -23,6 +23,8 @@ interface ProposalState {
   error: string | null;
   /** Timestamp when last proposal was added (for triggering UI effects) */
   lastProposalAddedAt: number | null;
+  /** Timestamp when proposal content changed (dependency refresh hint) */
+  lastDependencyRefreshRequestedAt: number | null;
 }
 
 // ============================================================================
@@ -65,6 +67,7 @@ export const useProposalStore = create<ProposalState & ProposalActions>()(
     isLoading: false,
     error: null,
     lastProposalAddedAt: null,
+    lastDependencyRefreshRequestedAt: null,
 
     // Actions
     setProposals: (proposals) =>
@@ -76,19 +79,31 @@ export const useProposalStore = create<ProposalState & ProposalActions>()(
       set((state) => {
         state.proposals[proposal.id] = proposal;
         state.lastProposalAddedAt = Date.now();
+        state.lastDependencyRefreshRequestedAt = Date.now();
       }),
 
     updateProposal: (proposalId, changes) =>
       set((state) => {
         const proposal = state.proposals[proposalId];
         if (proposal) {
+          const contentFieldsChanged = [
+            "title",
+            "description",
+            "steps",
+            "acceptanceCriteria",
+            "category",
+          ].some((field) => Object.prototype.hasOwnProperty.call(changes, field));
           Object.assign(proposal, changes);
+          if (contentFieldsChanged) {
+            state.lastDependencyRefreshRequestedAt = Date.now();
+          }
         }
       }),
 
     removeProposal: (proposalId) =>
       set((state) => {
         delete state.proposals[proposalId];
+        state.lastDependencyRefreshRequestedAt = Date.now();
       }),
 
     toggleSelection: (proposalId) =>

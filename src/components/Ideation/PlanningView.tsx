@@ -106,7 +106,7 @@ export function PlanningView({
   const dismissSyncNotification = useIdeationStore((state) => state.dismissSyncNotification);
 
   // Fetch dependency graph for the session
-  const { data: dependencyGraph } = useDependencyGraph(session?.id ?? "");
+  const { data: dependencyGraph, isFetching: isDependencyUpdating } = useDependencyGraph(session?.id ?? "");
 
   // Build critical path set from the graph (TieredProposalList handles other computations)
   const criticalPathSet = useMemo(() => {
@@ -118,6 +118,9 @@ export function PlanningView({
 
   // Dependency analysis loading state
   const [isAnalyzingDependencies, setIsAnalyzingDependencies] = useState(false);
+  const lastDependencyFetchRef = useRef<boolean>(false);
+  const lastDependencyToastAtRef = useRef<number | null>(null);
+  const lastDependencyRefreshRequestedAt = useProposalStore((state) => state.lastDependencyRefreshRequestedAt);
 
   // Read-only mode: plans that are not active are read-only
   const isReadOnly = session?.status !== "active";
@@ -162,6 +165,33 @@ export function PlanningView({
     };
   }, [eventBus, session?.id]);
 
+  // Small UX hint when dependency graph refreshes automatically
+  useEffect(() => {
+    if (!session?.id || proposals.length === 0) {
+      lastDependencyFetchRef.current = false;
+      return;
+    }
+
+    if (
+      !lastDependencyRefreshRequestedAt
+      || lastDependencyRefreshRequestedAt === lastDependencyToastAtRef.current
+    ) {
+      lastDependencyFetchRef.current = false;
+      return;
+    }
+
+    if (isDependencyUpdating) {
+      lastDependencyFetchRef.current = true;
+      return;
+    }
+
+    if (lastDependencyFetchRef.current) {
+      toast.success("Dependencies updated");
+      lastDependencyFetchRef.current = false;
+      lastDependencyToastAtRef.current = lastDependencyRefreshRequestedAt;
+    }
+  }, [isDependencyUpdating, session?.id, proposals.length, lastDependencyRefreshRequestedAt]);
+
   // Manual re-trigger dependency analysis
   const handleReanalyzeDependencies = useCallback(async () => {
     if (!session || isAnalyzingDependencies || proposals.length < 2) return;
@@ -174,10 +204,11 @@ export function PlanningView({
   }, [session, isAnalyzingDependencies, proposals.length]);
 
   useEffect(() => {
-    if (session?.planArtifactId) {
+    if (!session?.planArtifactId) return;
+    if (!planArtifact || planArtifact.id !== session.planArtifactId) {
       fetchPlanArtifact(session.planArtifactId);
     }
-  }, [session?.planArtifactId, fetchPlanArtifact]);
+  }, [session?.planArtifactId, planArtifact, fetchPlanArtifact]);
 
   useEffect(() => {
     const unsubProposalsUpdate = eventBus.subscribe<{ artifact_id: string; proposal_ids: string[] }>(

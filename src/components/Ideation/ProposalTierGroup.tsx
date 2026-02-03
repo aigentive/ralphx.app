@@ -44,8 +44,6 @@ export function getTierLabel(tier: number): string {
   }
 }
 
-const AUTO_COLLAPSE_THRESHOLD = 5;
-
 // ============================================================================
 // Component
 // ============================================================================
@@ -60,17 +58,17 @@ export const ProposalTierGroup = React.memo(function ProposalTierGroup({
   children,
   className,
 }: ProposalTierGroupProps) {
-  const shouldAutoCollapse = defaultCollapsed ?? proposalCount >= AUTO_COLLAPSE_THRESHOLD;
-  const [internalIsOpen, setInternalIsOpen] = useState(!shouldAutoCollapse);
+  const shouldCollapse = defaultCollapsed ?? false;
+  const [internalIsOpen, setInternalIsOpen] = useState(!shouldCollapse);
 
   const isOpen = isExpanded !== undefined ? isExpanded : internalIsOpen;
   const setIsOpen = onExpandedChange ?? setInternalIsOpen;
 
   useEffect(() => {
     if (isExpanded === undefined) {
-      setInternalIsOpen(!shouldAutoCollapse);
+      setInternalIsOpen(!shouldCollapse);
     }
-  }, [shouldAutoCollapse, isExpanded]);
+  }, [shouldCollapse, isExpanded]);
 
   const displayLabel = label ?? getTierLabel(tier);
 
