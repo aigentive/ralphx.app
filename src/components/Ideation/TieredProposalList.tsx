@@ -290,6 +290,8 @@ export const TieredProposalList = React.memo(function TieredProposalList({
     return null;
   }
 
+  const firstTier = tierNumbers[0];
+
   return (
     <div data-testid="tiered-proposal-list" className="space-y-1">
       {tierNumbers.map((tier, tierIndex) => {
@@ -307,6 +309,7 @@ export const TieredProposalList = React.memo(function TieredProposalList({
             <ProposalTierGroup
               tier={tier}
               proposalCount={tierProposals.length}
+              {...(firstTier !== undefined && tier === firstTier && { defaultCollapsed: false })}
             >
               <div className="space-y-2">
                 {tierProposals.map((proposal, index) => {

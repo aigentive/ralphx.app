@@ -305,16 +305,42 @@ export function PlanningView({
     }
   }, [lastProposalAddedAt, isPlanExpanded, setIsPlanExpanded]);
 
-  // Auto-scroll to bottom when new proposals arrive
-  const proposalCount = proposals.length;
+  // Reset plan expansion when switching sessions
+  const lastSessionIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!session?.id) return;
+    if (lastSessionIdRef.current !== session.id) {
+      lastSessionIdRef.current = session.id;
+      setIsPlanExpanded(proposals.length === 0);
+    }
+  }, [session?.id, proposals.length, setIsPlanExpanded]);
+
+  // Auto-scroll to bottom only when a new proposal is added
+  const lastScrollSessionIdRef = useRef<string | null>(null);
+  const lastScrollProposalAddedAtRef = useRef<number | null>(null);
   useLayoutEffect(() => {
-    if (proposalCount > 0 && proposalsScrollRef.current) {
+    const currentSessionId = session?.id ?? null;
+    if (lastScrollSessionIdRef.current !== currentSessionId) {
+      lastScrollSessionIdRef.current = currentSessionId;
+      lastScrollProposalAddedAtRef.current = null;
+      if (proposalsScrollRef.current) {
+        proposalsScrollRef.current.scrollTo({ top: 0, behavior: "auto" });
+      }
+      return;
+    }
+
+    if (!lastProposalAddedAt || lastProposalAddedAt === lastScrollProposalAddedAtRef.current) {
+      return;
+    }
+
+    if (proposalsScrollRef.current) {
       proposalsScrollRef.current.scrollTo({
         top: proposalsScrollRef.current.scrollHeight,
         behavior: "smooth",
       });
     }
-  }, [proposalCount]);
+    lastScrollProposalAddedAtRef.current = lastProposalAddedAt;
+  }, [lastProposalAddedAt, session?.id]);
 
   const activePlans = useMemo(() => sessions.filter((s) => s.status === "active"), [sessions]);
   const historyPlans = useMemo(() => sessions.filter((s) => s.status !== "active"), [sessions]);
