@@ -5,8 +5,9 @@
  * Fallback for when @git-diff-view/react has issues.
  */
 
-import { useMemo } from "react";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { useMemo, useState } from "react";
+import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area";
+import { Button } from "@/components/ui/button";
 
 interface SimpleDiffViewProps {
   oldContent: string;
@@ -20,6 +21,17 @@ interface DiffLine {
   oldLineNum: number | null;
   newLineNum: number | null;
 }
+
+interface DiffHunk {
+  id: string;
+  start: number;
+  end: number;
+  header: string;
+  lines: DiffLine[];
+}
+
+const CONTEXT_LINES = 3;
+const LARGE_DIFF_LINE_LIMIT = 4000;
 
 /**
  * Simple diff algorithm - generates unified diff lines
@@ -194,18 +206,213 @@ function getPrefixColor(type: DiffLine["type"]): string {
       return "#34c759";
     case "deletion":
       return "#ff453a";
+    case "header":
+      return "rgba(255,255,255,0.45)";
     default:
       return "transparent";
   }
 }
 
+function hasChanges(lines: DiffLine[]): boolean {
+  return lines.some((line) => line.type === "addition" || line.type === "deletion");
+}
+
+function buildHunks(lines: DiffLine[]): DiffHunk[] {
+  if (!hasChanges(lines)) {
+    return [
+      {
+        id: "all",
+        start: 0,
+        end: Math.max(0, lines.length - 1),
+        header: "@@ 0,0 +0,0 @@",
+        lines,
+      },
+    ];
+  }
+
+  const include = new Array(lines.length).fill(false);
+  lines.forEach((line, index) => {
+    if (line.type === "addition" || line.type === "deletion") {
+      const start = Math.max(0, index - CONTEXT_LINES);
+      const end = Math.min(lines.length - 1, index + CONTEXT_LINES);
+      for (let i = start; i <= end; i++) {
+        include[i] = true;
+      }
+    }
+  });
+
+  const hunks: DiffHunk[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (!include[i]) {
+      i++;
+      continue;
+    }
+
+    const start = i;
+    while (i < lines.length && include[i]) {
+      i++;
+    }
+    const end = i - 1;
+    const hunkLines = lines.slice(start, end + 1);
+
+    const firstLine = hunkLines.find(
+      (line) => line.oldLineNum !== null || line.newLineNum !== null
+    );
+    const oldStart = firstLine?.oldLineNum ?? 0;
+    const newStart = firstLine?.newLineNum ?? 0;
+    const oldCount = hunkLines.filter((line) => line.oldLineNum !== null).length;
+    const newCount = hunkLines.filter((line) => line.newLineNum !== null).length;
+    const header = `@@ -${oldStart},${oldCount} +${newStart},${newCount} @@`;
+
+    hunks.push({
+      id: `${start}-${end}`,
+      start,
+      end,
+      header,
+      lines: hunkLines,
+    });
+  }
+
+  return hunks;
+}
+
+function renderHeader(content: string) {
+  return (
+    <div
+      className="px-3 py-1 text-[11px] font-mono"
+      style={{
+        backgroundColor: "rgba(255,255,255,0.06)",
+        color: "rgba(255,255,255,0.6)",
+        borderTop: "1px solid rgba(255,255,255,0.06)",
+        borderBottom: "1px solid rgba(255,255,255,0.06)",
+      }}
+    >
+      {content}
+    </div>
+  );
+}
+
+function renderLine(line: DiffLine, index: number, wrapLines: boolean) {
+
+  return (
+    <div
+      key={index}
+      className="flex"
+      style={{
+        backgroundColor: getLineBackground(line.type),
+        minHeight: "20px",
+      }}
+    >
+      <div
+        className="w-12 shrink-0 text-right pr-2 select-none z-10"
+        style={{
+          position: "sticky",
+          left: 0,
+          color: getLineNumColor(line.type),
+          backgroundColor: "hsl(220 10% 10%)",
+        }}
+      >
+        {line.oldLineNum ?? ""}
+      </div>
+
+      <div
+        className="w-12 shrink-0 text-right pr-2 select-none border-r z-10"
+        style={{
+          position: "sticky",
+          left: 48,
+          color: getLineNumColor(line.type),
+          backgroundColor: "hsl(220 10% 10%)",
+          borderColor: "hsl(220 10% 15%)",
+        }}
+      >
+        {line.newLineNum ?? ""}
+      </div>
+
+      <div
+        className="w-6 shrink-0 text-center select-none font-bold z-10"
+        style={{
+          position: "sticky",
+          left: 96,
+          color: getPrefixColor(line.type),
+          backgroundColor: "hsl(220 10% 10%)",
+        }}
+      >
+        {getLinePrefix(line.type)}
+      </div>
+
+      <div
+        className={`flex-1 pr-4 min-w-0 ${
+          wrapLines ? "whitespace-pre-wrap break-all" : "whitespace-pre"
+        }`}
+        style={{
+          color:
+            line.type === "deletion"
+              ? "hsl(220 10% 60%)"
+              : "hsl(220 10% 80%)",
+        }}
+      >
+        {line.content || " "}
+      </div>
+    </div>
+  );
+}
+
 export function SimpleDiffView({ oldContent, newContent }: SimpleDiffViewProps) {
-  const diffLines = useMemo(
-    () => computeDiff(oldContent, newContent),
-    [oldContent, newContent]
+  const [renderLargeDiff, setRenderLargeDiff] = useState(false);
+  const [expandedGaps, setExpandedGaps] = useState<Set<string>>(() => new Set());
+  const [wrapLines, setWrapLines] = useState(true);
+  const totalLines = useMemo(() => {
+    const oldLines = oldContent.split("\n").length;
+    const newLines = newContent.split("\n").length;
+    return oldLines + newLines;
+  }, [oldContent, newContent]);
+  const isLargeDiff = totalLines > LARGE_DIFF_LINE_LIMIT;
+  const allowRender = !isLargeDiff || renderLargeDiff;
+
+  const diffLines = useMemo(() => {
+    if (!allowRender) return [];
+    return computeDiff(oldContent, newContent);
+  }, [allowRender, oldContent, newContent]);
+  const hunks = useMemo(
+    () => (allowRender && hasChanges(diffLines) ? buildHunks(diffLines) : []),
+    [allowRender, diffLines]
   );
 
-  if (diffLines.length === 0) {
+  const toggleGap = (gapId: string) => {
+    setExpandedGaps((prev) => {
+      const next = new Set(prev);
+      if (next.has(gapId)) {
+        next.delete(gapId);
+      } else {
+        next.add(gapId);
+      }
+      return next;
+    });
+  };
+
+  if (!allowRender) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center h-full gap-3 px-6"
+        style={{ color: "hsl(220 10% 55%)" }}
+      >
+        <div className="text-sm">Diff too large to render quickly</div>
+        <div className="text-xs text-white/50">
+          {totalLines.toLocaleString()} total lines in this file.
+        </div>
+        <Button
+          variant="ghost"
+          className="h-8 px-3 text-xs"
+          onClick={() => setRenderLargeDiff(true)}
+        >
+          Render anyway
+        </Button>
+      </div>
+    );
+  }
+
+  if (diffLines.length === 0 || !hasChanges(diffLines)) {
     return (
       <div
         className="flex items-center justify-center h-full"
@@ -217,66 +424,85 @@ export function SimpleDiffView({ oldContent, newContent }: SimpleDiffViewProps) 
   }
 
   return (
-    <ScrollArea className="h-full">
+    <div className="h-full overflow-y-auto">
       <div
         className="font-mono text-[13px] leading-[20px]"
         style={{ backgroundColor: "hsl(220 10% 8%)" }}
       >
-        {diffLines.map((line, index) => (
-          <div
-            key={index}
-            className="flex"
-            style={{
-              backgroundColor: getLineBackground(line.type),
-              minHeight: "20px",
-            }}
+        <div className="px-3 py-2 border-b" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+          <Button
+            variant="ghost"
+            className="h-7 px-2 text-[11px]"
+            onClick={() => setWrapLines((prev) => !prev)}
           >
-            {/* Old line number */}
-            <div
-              className="w-12 shrink-0 text-right pr-2 select-none"
-              style={{
-                color: getLineNumColor(line.type),
-                backgroundColor: "hsl(220 10% 10%)",
-              }}
-            >
-              {line.oldLineNum ?? ""}
-            </div>
+            {wrapLines ? "Disable wrap" : "Wrap lines"}
+          </Button>
+        </div>
+        {hunks.map((hunk, index) => {
+          const prev = hunks[index - 1];
+          const gapStart = prev ? prev.end + 1 : 0;
+          const gapEnd = hunk.start - 1;
+          const gapId = `${gapStart}-${gapEnd}`;
+          const gapHasLines = gapEnd >= gapStart;
+          const gapLines = gapHasLines ? diffLines.slice(gapStart, gapEnd + 1) : [];
+          const isExpanded = expandedGaps.has(gapId);
 
-            {/* New line number */}
-            <div
-              className="w-12 shrink-0 text-right pr-2 select-none border-r"
-              style={{
-                color: getLineNumColor(line.type),
-                backgroundColor: "hsl(220 10% 10%)",
-                borderColor: "hsl(220 10% 15%)",
-              }}
-            >
-              {line.newLineNum ?? ""}
-            </div>
+          return (
+            <div key={hunk.id} className="border-b" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
+              {gapHasLines && (
+                <div className="px-3 py-2">
+                  {isExpanded ? (
+                    <>
+                      {gapLines.map((line, gapIndex) =>
+                        renderLine(
+                          {
+                            ...line,
+                            type: "context",
+                          },
+                          gapStart + gapIndex,
+                          wrapLines
+                        )
+                      )}
+                      <button
+                        type="button"
+                        className="mt-2 text-[11px] text-white/50 hover:text-white/70"
+                        onClick={() => toggleGap(gapId)}
+                      >
+                        Hide unchanged lines
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="text-[11px] text-white/50 hover:text-white/70"
+                      onClick={() => toggleGap(gapId)}
+                    >
+                      Show {gapLines.length} unchanged lines
+                    </button>
+                  )}
+                </div>
+              )}
 
-            {/* Prefix (+/-/ ) */}
-            <div
-              className="w-6 shrink-0 text-center select-none font-bold"
-              style={{ color: getPrefixColor(line.type) }}
-            >
-              {getLinePrefix(line.type)}
+              {renderHeader(hunk.header)}
+              <ScrollAreaPrimitive.Root className="w-full overflow-hidden">
+                <ScrollAreaPrimitive.Viewport className="w-full overflow-x-auto">
+                  <div style={{ minWidth: wrapLines ? "auto" : "max-content" }}>
+                    {hunk.lines.map((line, lineIndex) =>
+                      renderLine(line, hunk.start + lineIndex, wrapLines)
+                    )}
+                  </div>
+                </ScrollAreaPrimitive.Viewport>
+                <ScrollAreaPrimitive.ScrollAreaScrollbar
+                  orientation="horizontal"
+                  className="h-2.5 flex-col border-t border-t-transparent p-[1px]"
+                >
+                  <ScrollAreaPrimitive.ScrollAreaThumb className="relative flex-1 rounded-full bg-border" />
+                </ScrollAreaPrimitive.ScrollAreaScrollbar>
+              </ScrollAreaPrimitive.Root>
             </div>
-
-            {/* Content */}
-            <div
-              className="flex-1 pr-4 whitespace-pre overflow-x-auto"
-              style={{
-                color:
-                  line.type === "deletion"
-                    ? "hsl(220 10% 60%)"
-                    : "hsl(220 10% 80%)",
-              }}
-            >
-              {line.content || " "}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
-    </ScrollArea>
+    </div>
   );
 }
