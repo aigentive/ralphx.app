@@ -223,6 +223,7 @@ export function CompletedTaskDetail({ task, isHistorical = false }: CompletedTas
         <ReviewDetailModal
           taskId={task.id}
           history={history}
+          showActions={false}
           onClose={() => setShowReviewModal(false)}
         />
       )}

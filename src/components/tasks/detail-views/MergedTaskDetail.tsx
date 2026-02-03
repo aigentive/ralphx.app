@@ -4,12 +4,15 @@
  * Shows completion info, merge commit SHA, and read-only historical chat.
  */
 
+import { useState } from "react";
 import {
   CheckCircle2,
   GitMerge,
   GitCommit,
   Loader2,
+  Code,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   SectionTitle,
   DetailCard,
@@ -21,6 +24,7 @@ import { ReviewTimeline } from "./shared/ReviewTimeline";
 import { useTaskStateHistory } from "@/hooks/useReviews";
 import { useGitDiff } from "@/hooks/useGitDiff";
 import type { Task } from "@/types/task";
+import { ReviewDetailModal } from "@/components/reviews/ReviewDetailModal";
 
 interface MergedTaskDetailProps {
   task: Task;
@@ -165,6 +169,7 @@ function CommitSummaryCard({ taskId }: { taskId: string }) {
 
 export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: MergedTaskDetailProps) {
   const { data: history, isLoading } = useTaskStateHistory(task.id);
+  const [showReviewModal, setShowReviewModal] = useState(false);
 
   // Use completedAt as mergedAt (merge happens after approval which sets completedAt)
   const mergedAt = task.completedAt ?? task.updatedAt;
@@ -181,10 +186,11 @@ export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: 
   }
 
   return (
-    <TwoColumnLayout
-      description={task.description}
-      testId="merged-task-detail"
-    >
+    <>
+      <TwoColumnLayout
+        description={task.description}
+        testId="merged-task-detail"
+      >
       {/* Status Banner */}
       <StatusBanner
         icon={CheckCircle2}
@@ -221,11 +227,33 @@ export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: 
 
       {/* Review History */}
       <section data-testid="review-history-section">
-        <SectionTitle>Review History</SectionTitle>
+        <div className="flex items-center justify-between mb-3">
+          <SectionTitle>Review History</SectionTitle>
+          <Button
+            data-testid="review-code-button"
+            onClick={() => setShowReviewModal(true)}
+            variant="ghost"
+            className="h-8 px-3 gap-2 rounded-lg font-medium text-[12px]"
+            style={{ color: "hsl(217 90% 60%)" }}
+          >
+            <Code className="w-4 h-4" />
+            Review Code
+          </Button>
+        </div>
         <DetailCard>
           <ReviewTimeline history={history ?? []} />
         </DetailCard>
       </section>
-    </TwoColumnLayout>
+      </TwoColumnLayout>
+
+      {showReviewModal && (
+        <ReviewDetailModal
+          taskId={task.id}
+          history={history}
+          showActions={false}
+          onClose={() => setShowReviewModal(false)}
+        />
+      )}
+    </>
   );
 }

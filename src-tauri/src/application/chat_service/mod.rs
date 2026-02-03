@@ -370,7 +370,10 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         // This links the conversation_id and agent_run_id to the state history entry,
         // enabling history navigation to show the correct conversation for each state.
         // Best-effort: don't fail send_message if metadata update fails.
-        if matches!(context_type, ChatContextType::TaskExecution | ChatContextType::Review) {
+        if matches!(
+            context_type,
+            ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge
+        ) {
             let task_id = TaskId::from_string(context_id.to_string());
             let metadata = StateHistoryMetadata {
                 conversation_id: conversation_id.as_str().to_string(),
