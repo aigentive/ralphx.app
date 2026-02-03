@@ -45,17 +45,17 @@ const createMockTask = (overrides: Partial<Task> = {}): Task => ({
 });
 
 describe("useTaskEvents", () => {
-  let eventCallback: ((event: { payload: unknown }) => void) | null = null;
+  const eventCallbacks: Record<string, (event: { payload: unknown }) => void> = {};
 
   beforeEach(() => {
-    eventCallback = null;
+    Object.keys(eventCallbacks).forEach(key => delete eventCallbacks[key]);
     mockListen.mockReset();
     mockUnlisten.mockReset();
 
     // Setup mock to capture the callback and return an unlisten function
     mockListen.mockImplementation(
       (eventName: string, callback: (event: { payload: unknown }) => void) => {
-        eventCallback = callback;
+        eventCallbacks[eventName] = callback;
         return Promise.resolve(mockUnlisten as unknown as UnlistenFn);
       }
     );
@@ -65,14 +65,15 @@ describe("useTaskEvents", () => {
   });
 
   afterEach(() => {
-    eventCallback = null;
+    Object.keys(eventCallbacks).forEach(key => delete eventCallbacks[key]);
   });
 
   it("should set up event listener on mount", () => {
     renderHook(() => useTaskEvents());
 
-    expect(mockListen).toHaveBeenCalledTimes(1);
+    expect(mockListen).toHaveBeenCalledTimes(2);
     expect(mockListen).toHaveBeenCalledWith("task:event", expect.any(Function));
+    expect(mockListen).toHaveBeenCalledWith("task:status_changed", expect.any(Function));
   });
 
   it("should clean up listener on unmount", async () => {
@@ -82,7 +83,7 @@ describe("useTaskEvents", () => {
 
     // Wait for the cleanup to be called
     await waitFor(() => {
-      expect(mockUnlisten).toHaveBeenCalled();
+      expect(mockUnlisten).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -92,7 +93,7 @@ describe("useTaskEvents", () => {
     const newTask = createMockTask({ id: NEW_TASK_UUID });
 
     await act(async () => {
-      eventCallback?.({
+      eventCallbacks["task:event"]?.({
         payload: {
           type: "created",
           task: newTask,
@@ -115,7 +116,7 @@ describe("useTaskEvents", () => {
     renderHook(() => useTaskEvents());
 
     await act(async () => {
-      eventCallback?.({
+      eventCallbacks["task:event"]?.({
         payload: {
           type: "updated",
           taskId: TASK_UUID,
@@ -139,7 +140,7 @@ describe("useTaskEvents", () => {
     renderHook(() => useTaskEvents());
 
     await act(async () => {
-      eventCallback?.({
+      eventCallbacks["task:event"]?.({
         payload: {
           type: "deleted",
           taskId: TASK_UUID,
@@ -162,7 +163,7 @@ describe("useTaskEvents", () => {
     renderHook(() => useTaskEvents());
 
     await act(async () => {
-      eventCallback?.({
+      eventCallbacks["task:event"]?.({
         payload: {
           type: "status_changed",
           taskId: TASK_UUID,
@@ -177,13 +178,36 @@ describe("useTaskEvents", () => {
     expect(state.tasks[TASK_UUID]?.internalStatus).toBe("ready");
   });
 
+  it("should handle task:status_changed event by updating task status", async () => {
+    useTaskStore.setState({
+      tasks: {
+        [TASK_UUID]: createMockTask({ id: TASK_UUID, internalStatus: "pending_merge" }),
+      },
+    });
+
+    renderHook(() => useTaskEvents());
+
+    await act(async () => {
+      eventCallbacks["task:status_changed"]?.({
+        payload: {
+          task_id: TASK_UUID,
+          old_status: "pending_merge",
+          new_status: "merged",
+        },
+      });
+    });
+
+    const state = useTaskStore.getState();
+    expect(state.tasks[TASK_UUID]?.internalStatus).toBe("merged");
+  });
+
   it("should log error for invalid event payload", async () => {
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     renderHook(() => useTaskEvents());
 
     await act(async () => {
-      eventCallback?.({
+      eventCallbacks["task:event"]?.({
         payload: {
           type: "invalid_type",
           someField: "value",
@@ -201,7 +225,7 @@ describe("useTaskEvents", () => {
     renderHook(() => useTaskEvents());
 
     await act(async () => {
-      eventCallback?.({
+      eventCallbacks["task:event"]?.({
         payload: "not an object",
       });
     });
@@ -220,7 +244,7 @@ describe("useTaskEvents", () => {
     const nonExistentUuid = "123e4567-e89b-12d3-a456-426614174099";
 
     await act(async () => {
-      eventCallback?.({
+      eventCallbacks["task:event"]?.({
         payload: {
           type: "updated",
           taskId: nonExistentUuid,

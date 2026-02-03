@@ -6,6 +6,7 @@ use axum::{
     Router,
 };
 use std::sync::Arc;
+use std::time::Duration;
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::application::AppState;
@@ -93,9 +94,7 @@ pub async fn start_http_server(app_state: Arc<AppState>, execution_state: Arc<Ex
             .allow_methods(Any)
             .allow_headers(Any));
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:3847")
-        .await
-        .map_err(|e| crate::error::AppError::Infrastructure(format!("Failed to bind HTTP server to port 3847: {}", e)))?;
+    let listener = bind_with_retry("127.0.0.1:3847", 5, Duration::from_millis(250)).await?;
 
     tracing::info!("MCP HTTP server listening on http://127.0.0.1:3847");
 
@@ -104,4 +103,37 @@ pub async fn start_http_server(app_state: Arc<AppState>, execution_state: Arc<Ex
         .map_err(|e| crate::error::AppError::Infrastructure(format!("HTTP server crashed: {}", e)))?;
 
     Ok(())
+}
+
+async fn bind_with_retry(
+    address: &str,
+    attempts: usize,
+    delay: Duration,
+) -> AppResult<tokio::net::TcpListener> {
+    for attempt in 1..=attempts {
+        match tokio::net::TcpListener::bind(address).await {
+            Ok(listener) => return Ok(listener),
+            Err(e) if attempt < attempts => {
+                tracing::warn!(
+                    "Failed to bind HTTP server to {} (attempt {}/{}): {}",
+                    address,
+                    attempt,
+                    attempts,
+                    e
+                );
+                tokio::time::sleep(delay).await;
+            }
+            Err(e) => {
+                return Err(crate::error::AppError::Infrastructure(format!(
+                    "Failed to bind HTTP server to {} after {} attempts: {}",
+                    address, attempts, e
+                )));
+            }
+        }
+    }
+
+    Err(crate::error::AppError::Infrastructure(format!(
+        "Failed to bind HTTP server to {} after {} attempts",
+        address, attempts
+    )))
 }

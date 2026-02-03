@@ -148,7 +148,20 @@ pub async fn complete_merge(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // 8. Create transition service and transition to Merged
+    // 8. Persist merge commit SHA before transitioning status
+    if task.merge_commit_sha.as_deref() != Some(&req.commit_sha) {
+        let mut updated_task = task.clone();
+        updated_task.merge_commit_sha = Some(req.commit_sha.clone());
+        updated_task.touch();
+        state
+            .app_state
+            .task_repo
+            .update(&updated_task)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    }
+
+    // 9. Create transition service and transition to Merged
     let task_scheduler: Arc<dyn TaskScheduler> = Arc::new(TaskSchedulerService::new(
         Arc::clone(&state.execution_state),
         Arc::clone(&state.app_state.project_repo),
@@ -185,7 +198,7 @@ pub async fn complete_merge(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // 9. Cleanup branch/worktree
+    // 10. Cleanup branch/worktree
     if let Some(task_branch) = &task.task_branch {
         // repo_path already defined in step 6
 
@@ -198,7 +211,7 @@ pub async fn complete_merge(
         let _ = GitService::delete_branch(&repo_path, task_branch, true);
     }
 
-    // 10. Emit events
+    // 11. Emit events
     if let Some(app_handle) = &state.app_state.app_handle {
         let _ = app_handle.emit(
             "merge:completed",

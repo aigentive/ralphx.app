@@ -14,11 +14,11 @@ import { type VirtuosoHandle } from "react-virtuoso";
 import { useChat, chatKeys } from "@/hooks/useChat";
 import { useChatStore, selectQueuedMessages, selectIsAgentRunning } from "@/stores/chatStore";
 import { useUiStore } from "@/stores/uiStore";
-import { useTasks } from "@/hooks/useTasks";
+import { useTasks, taskKeys } from "@/hooks/useTasks";
 import { useChatPanelContext } from "@/hooks/useChatPanelContext";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
-import { EXECUTION_STATUSES, HUMAN_REVIEW_STATUSES, MERGE_STATUSES } from "@/types/status";
+import { ALL_REVIEW_STATUSES, EXECUTION_STATUSES, MERGE_STATUSES } from "@/types/status";
 import { StatusActivityBadge, type AgentType } from "./StatusActivityBadge";
 import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
@@ -32,6 +32,7 @@ import {
 } from "./IntegratedChatPanel.components";
 import { useIntegratedChatHandlers } from "@/hooks/useIntegratedChatHandlers";
 import { useIntegratedChatEvents } from "@/hooks/useIntegratedChatEvents";
+import { useAgentEvents } from "@/hooks/useAgentEvents";
 
 // ============================================================================
 // Main Component
@@ -63,6 +64,7 @@ export function IntegratedChatPanel({
   headerContent,
   onClose,
 }: IntegratedChatPanelProps) {
+  const queryClient = useQueryClient();
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   // History state from store - shared with TaskDetailOverlay for time-travel feature
   const taskHistoryState = useUiStore((s) => s.taskHistoryState);
@@ -83,10 +85,8 @@ export function IntegratedChatPanel({
     : false;
 
   // Review states: reviewer agent conversation (only when NOT in ideation mode)
-  // Note: Uses HUMAN_REVIEW_STATUSES (review_passed, escalated) + "reviewing" (AI review in progress)
   const isReviewMode = !ideationSessionId && effectiveStatus
-    ? (HUMAN_REVIEW_STATUSES as readonly string[]).includes(effectiveStatus) ||
-      effectiveStatus === "reviewing"
+    ? (ALL_REVIEW_STATUSES as readonly string[]).includes(effectiveStatus)
     : false;
 
   // Merge states: merger agent conversation (only when NOT in ideation mode)
@@ -117,11 +117,15 @@ export function IntegratedChatPanel({
     overrideAgentRunId: taskHistoryState?.agentRunId,
   });
 
+  // Listen for agent lifecycle events so chat stays live during reviews/merges
+  useAgentEvents(activeConversationId);
+
   // Use context-aware selectors - unified queue works for all modes
   const queuedMessagesSelector = useMemo(() => selectQueuedMessages(storeContextKey), [storeContextKey]);
   const queuedMessages = useChatStore(queuedMessagesSelector);
   const isAgentRunningSelector = useMemo(() => selectIsAgentRunning(storeContextKey), [storeContextKey]);
   const isAgentRunning = useChatStore(isAgentRunningSelector);
+  const setAgentRunning = useChatStore((s) => s.setAgentRunning);
 
   // For execution/review mode, fetch conversations directly with specific context type
   const regularChatData = useChat(chatContext);
@@ -174,6 +178,104 @@ export function IntegratedChatPanel({
     staleTime: 5000,
   });
 
+  // Recovery fallback: if agent is running but events were missed, reflect it in UI
+  useEffect(() => {
+    if (agentRunQuery.data?.status === "running") {
+      setAgentRunning(storeContextKey, true);
+    }
+  }, [agentRunQuery.data?.status, setAgentRunning, storeContextKey]);
+
+  // Recovery fallback: clear stuck "running" state when backend says run finished
+  useEffect(() => {
+    if (!activeConversationId) {
+      return;
+    }
+    if (!agentRunQuery.data || agentRunQuery.data.status !== "running") {
+      setAgentRunning(storeContextKey, false);
+    }
+  }, [activeConversationId, agentRunQuery.data, setAgentRunning, storeContextKey]);
+
+  // Recovery fallback: poll conversation while agent is running to show live updates
+  useEffect(() => {
+    if (!activeConversationId || agentRunQuery.data?.status !== "running") {
+      return undefined;
+    }
+
+    const intervalId = setInterval(() => {
+      queryClient.invalidateQueries({
+        queryKey: chatKeys.conversation(activeConversationId),
+      });
+    }, 2000);
+
+    return () => clearInterval(intervalId);
+  }, [activeConversationId, agentRunQuery.data?.status, queryClient]);
+
+  // Live updates: poll active conversation while agent is running (store state)
+  useEffect(() => {
+    if (!activeConversationId || !isAgentRunning) {
+      return undefined;
+    }
+
+    const intervalId = setInterval(() => {
+      queryClient.invalidateQueries({
+        queryKey: chatKeys.conversation(activeConversationId),
+      });
+    }, 2000);
+
+    return () => clearInterval(intervalId);
+  }, [activeConversationId, isAgentRunning, queryClient]);
+
+  // If a run is active but no conversation is selected, keep refreshing the list
+  useEffect(() => {
+    if (ideationSessionId || !selectedTaskId) {
+      return undefined;
+    }
+
+    if (!isAgentRunning || activeConversationId) {
+      return undefined;
+    }
+
+    if (!isExecutionMode && !isReviewMode && !isMergeMode) {
+      return undefined;
+    }
+
+    const intervalId = setInterval(() => {
+      queryClient.invalidateQueries({
+        queryKey: chatKeys.conversationList(currentContextType, selectedTaskId),
+      });
+    }, 2000);
+
+    return () => clearInterval(intervalId);
+  }, [
+    activeConversationId,
+    currentContextType,
+    ideationSessionId,
+    isAgentRunning,
+    isExecutionMode,
+    isMergeMode,
+    isReviewMode,
+    queryClient,
+    selectedTaskId,
+  ]);
+
+  // Merge watchdog: keep polling task status while in merge flow
+  useEffect(() => {
+    if (ideationSessionId || !selectedTaskId) {
+      return undefined;
+    }
+
+    if (!effectiveStatus || !(MERGE_STATUSES as readonly string[]).includes(effectiveStatus)) {
+      return undefined;
+    }
+
+    const intervalId = setInterval(() => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.list(projectId) });
+      queryClient.invalidateQueries({ queryKey: taskKeys.detail(selectedTaskId) });
+    }, 2000);
+
+    return () => clearInterval(intervalId);
+  }, [effectiveStatus, ideationSessionId, projectId, queryClient, selectedTaskId]);
+
   // Track dismissed error banners by run ID
   const [dismissedErrorId, setDismissedErrorId] = useState<string | null>(null);
   const failedRun = agentRunQuery.data?.status === "failed" ? agentRunQuery.data : null;
@@ -192,6 +294,54 @@ export function IntegratedChatPanel({
   // Track scroll settling period - hide messages until scroll animation completes
   const [isScrollSettling, setIsScrollSettling] = useState(false);
   const prevConversationIdRef = useRef<string | null>(null);
+
+  // Recovery window: brief polling on startup for agent contexts
+  useEffect(() => {
+    if (ideationSessionId) {
+      return undefined;
+    }
+
+    if (!selectedTaskId || !(isExecutionMode || isReviewMode || isMergeMode)) {
+      return undefined;
+    }
+
+    const intervalId = setInterval(() => {
+      queryClient.invalidateQueries({
+        queryKey: taskKeys.list(projectId),
+      });
+      if (selectedTaskId) {
+        queryClient.invalidateQueries({
+          queryKey: taskKeys.detail(selectedTaskId),
+        });
+      }
+      queryClient.invalidateQueries({
+        queryKey: chatKeys.conversationList(currentContextType, selectedTaskId),
+      });
+      if (activeConversationId) {
+        queryClient.invalidateQueries({
+          queryKey: chatKeys.conversation(activeConversationId),
+        });
+      }
+    }, 2000);
+
+    const timeoutId = setTimeout(() => {
+      clearInterval(intervalId);
+    }, 10000);
+
+    return () => {
+      clearInterval(intervalId);
+      clearTimeout(timeoutId);
+    };
+  }, [
+    activeConversationId,
+    currentContextType,
+    ideationSessionId,
+    isExecutionMode,
+    isMergeMode,
+    isReviewMode,
+    queryClient,
+    selectedTaskId,
+  ]);
 
   // When conversation changes, enter settling mode until scroll completes
   useEffect(() => {

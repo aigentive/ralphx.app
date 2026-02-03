@@ -45,6 +45,17 @@ export const TaskStatusEventSchema = z.object({
 
 export type TaskStatusEvent = z.infer<typeof TaskStatusEventSchema>;
 
+/**
+ * Schema for legacy task:status_changed events (snake_case payload)
+ */
+export const TaskStatusChangedEventSchema = z.object({
+  task_id: z.string().uuid(),
+  old_status: InternalStatusSchema,
+  new_status: InternalStatusSchema,
+});
+
+export type TaskStatusChangedEvent = z.infer<typeof TaskStatusChangedEventSchema>;
+
 // ============================================================================
 // Supervisor Alert Events
 // ============================================================================
