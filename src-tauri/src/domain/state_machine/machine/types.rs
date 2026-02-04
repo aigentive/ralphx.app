@@ -50,14 +50,20 @@ pub enum State {
     // Terminal states
     Failed(FailedData),
     Cancelled,
+    Stopped, // Stopped by user, requires manual restart
+
+    // Suspended states (not terminal)
+    Paused, // Can resume to previous agent-active state
 }
 
 impl State {
     /// Returns true if this is a terminal state
+    /// Terminal: Merged, Failed, Cancelled, Stopped
+    /// NOT terminal: Paused (can resume to previous state)
     pub fn is_terminal(&self) -> bool {
         matches!(
             self,
-            State::Merged | State::Failed(_) | State::Cancelled
+            State::Merged | State::Failed(_) | State::Cancelled | State::Stopped
         )
     }
 
@@ -66,9 +72,14 @@ impl State {
         matches!(self, State::Backlog | State::Ready | State::Blocked)
     }
 
-    /// Returns true if this is an active (non-idle, non-terminal) state
+    /// Returns true if this is an active (non-idle, non-terminal, non-paused) state
     pub fn is_active(&self) -> bool {
-        !self.is_idle() && !self.is_terminal()
+        !self.is_idle() && !self.is_terminal() && !self.is_paused()
+    }
+
+    /// Returns true if this is the paused state
+    pub fn is_paused(&self) -> bool {
+        matches!(self, State::Paused)
     }
 
     /// Returns true if this is a merge state
@@ -127,6 +138,8 @@ impl TaskStateMachine {
             State::Merged => self.merged(event),
             State::Failed(data) => self.failed(event, data),
             State::Cancelled => self.cancelled(event),
+            State::Stopped => self.stopped(event),
+            State::Paused => self.paused(event),
         };
 
         // Log transition at info level if a transition occurred
@@ -190,6 +203,8 @@ impl State {
             State::Merged => "Merged",
             State::Failed(_) => "Failed",
             State::Cancelled => "Cancelled",
+            State::Stopped => "Stopped",
+            State::Paused => "Paused",
         }
     }
 
@@ -220,6 +235,8 @@ impl State {
             State::Merged => "merged",
             State::Failed(_) => "failed",
             State::Cancelled => "cancelled",
+            State::Stopped => "stopped",
+            State::Paused => "paused",
         }
     }
 }
@@ -274,6 +291,8 @@ impl FromStr for State {
             "merged" => Ok(State::Merged),
             "failed" => Ok(State::Failed(FailedData::default())),
             "cancelled" => Ok(State::Cancelled),
+            "stopped" => Ok(State::Stopped),
+            "paused" => Ok(State::Paused),
             _ => Err(ParseStateError {
                 invalid_value: s.to_string(),
             }),

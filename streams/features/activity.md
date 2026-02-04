@@ -4,6 +4,43 @@
 
 ---
 
+### 2026-02-04 18:30:00 - Phase 80 Task 1: Add Paused and Stopped status variants
+**What:**
+- Added `Paused` and `Stopped` variants to `InternalStatus` enum (backend + frontend)
+- Backend: Updated `status.rs` with new variants, `all_variants()`, `as_str()`, `FromStr`
+- Backend: Updated `valid_transitions()` - Stopped→Ready (terminal), Paused→{agent-active states}
+- Backend: Updated `Task::is_terminal()` to include Stopped (not Paused)
+- Backend: Updated state machine `State` enum in `types.rs` with handlers
+- Backend: Updated conversion functions in `task_transition_service.rs`
+- Backend: Updated `status_to_label()` in task command helpers
+- Backend: Updated `categorize_status()` in query.rs
+- Backend: Added tests for Paused/Stopped serialization, parsing, transitions
+- Frontend: Updated `status.ts` Zod schema with `paused` and `stopped`
+- Frontend: Updated `TERMINAL_STATUSES` to include `stopped`
+- Frontend: Updated `NON_DRAGGABLE_STATUSES` to include both
+
+**Files:**
+- MODIFIED: src-tauri/src/domain/entities/status.rs (enum + all methods + tests)
+- MODIFIED: src-tauri/src/domain/entities/task.rs (is_terminal + tests)
+- MODIFIED: src-tauri/src/domain/state_machine/machine/types.rs (State enum + methods)
+- MODIFIED: src-tauri/src/domain/state_machine/machine/transitions.rs (handlers)
+- MODIFIED: src-tauri/src/application/task_transition_service.rs (conversion fns)
+- MODIFIED: src-tauri/src/commands/task_commands/helpers.rs (status_to_label)
+- MODIFIED: src-tauri/src/commands/task_commands/query.rs (categorize_status)
+- MODIFIED: src/types/status.ts (Zod schema + status lists)
+- MODIFIED: specs/phases/prd_phase_80_execution_stop_pause.md (passes: true)
+
+**Visual Verification:** N/A - backend types + frontend type definitions only
+
+**Commands:**
+- `cargo test --lib` - 3452 tests pass
+- `npx eslint src/types/status.ts` - passes
+- `npm run typecheck` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-02-04 16:45:00 - Phase 79 Gap Verification P0 Fix: Mock Parity
 **What:**
 - Added `mockGetGitDefaultBranch` function to `src/api-mock/projects.ts`

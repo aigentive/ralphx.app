@@ -101,7 +101,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(status): add Paused and Stopped status variants"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,

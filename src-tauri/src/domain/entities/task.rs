@@ -130,11 +130,17 @@ impl Task {
         self.touch();
     }
 
-    /// Returns true if this task is in a terminal state (Approved, Failed, or Cancelled)
+    /// Returns true if this task is in a terminal state
+    /// Terminal: Approved, Merged, Failed, Cancelled, Stopped
+    /// NOT terminal: Paused (can resume to previous state)
     pub fn is_terminal(&self) -> bool {
         matches!(
             self.internal_status,
-            InternalStatus::Approved | InternalStatus::Failed | InternalStatus::Cancelled
+            InternalStatus::Approved
+                | InternalStatus::Merged
+                | InternalStatus::Failed
+                | InternalStatus::Cancelled
+                | InternalStatus::Stopped
         )
     }
 
@@ -352,6 +358,20 @@ mod tests {
         let mut task = Task::new(ProjectId::new(), "Test".to_string());
         task.internal_status = InternalStatus::Cancelled;
         assert!(task.is_terminal());
+    }
+
+    #[test]
+    fn task_is_terminal_for_stopped() {
+        let mut task = Task::new(ProjectId::new(), "Test".to_string());
+        task.internal_status = InternalStatus::Stopped;
+        assert!(task.is_terminal());
+    }
+
+    #[test]
+    fn task_is_not_terminal_for_paused() {
+        let mut task = Task::new(ProjectId::new(), "Test".to_string());
+        task.internal_status = InternalStatus::Paused;
+        assert!(!task.is_terminal());
     }
 
     #[test]

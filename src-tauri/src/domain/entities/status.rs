@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
-/// The 21 internal statuses that a task can be in.
+/// The 23 internal statuses that a task can be in.
 /// These map to external Kanban columns via WorkflowSchema (Phase 11).
 ///
 /// State machine transitions are validated - not all transitions are allowed.
@@ -55,6 +55,10 @@ pub enum InternalStatus {
     Failed,
     /// Task was cancelled by user
     Cancelled,
+    /// Task was paused (non-terminal, can resume to previous state)
+    Paused,
+    /// Task was stopped (terminal, requires manual restart)
+    Stopped,
 }
 
 impl InternalStatus {
@@ -97,6 +101,13 @@ impl InternalStatus {
             Merged => &[Ready],
             Failed => &[Ready],
             Cancelled => &[Ready],
+            Stopped => &[Ready], // Terminal: requires manual restart
+
+            // Paused: can resume to previous agent-active state
+            // Resume uses status history to restore to the pre-pause state
+            Paused => &[
+                Executing, ReExecuting, QaRefining, QaTesting, Reviewing, Merging,
+            ],
         }
     }
 
@@ -131,6 +142,8 @@ impl InternalStatus {
             Merged,
             Failed,
             Cancelled,
+            Paused,
+            Stopped,
         ]
     }
 
@@ -158,6 +171,8 @@ impl InternalStatus {
             InternalStatus::Merged => "merged",
             InternalStatus::Failed => "failed",
             InternalStatus::Cancelled => "cancelled",
+            InternalStatus::Paused => "paused",
+            InternalStatus::Stopped => "stopped",
         }
     }
 }
@@ -208,6 +223,8 @@ impl FromStr for InternalStatus {
             "merged" => Ok(InternalStatus::Merged),
             "failed" => Ok(InternalStatus::Failed),
             "cancelled" => Ok(InternalStatus::Cancelled),
+            "paused" => Ok(InternalStatus::Paused),
+            "stopped" => Ok(InternalStatus::Stopped),
             _ => Err(ParseInternalStatusError {
                 value: s.to_string(),
             }),
@@ -219,11 +236,11 @@ impl FromStr for InternalStatus {
 mod tests {
     use super::*;
 
-    // ===== All 14 Variants Exist Tests =====
+    // ===== All 23 Variants Exist Tests =====
 
     #[test]
-    fn internal_status_has_21_variants() {
-        assert_eq!(InternalStatus::all_variants().len(), 21);
+    fn internal_status_has_23_variants() {
+        assert_eq!(InternalStatus::all_variants().len(), 23);
     }
 
     #[test]
@@ -251,6 +268,8 @@ mod tests {
             Merged,
             Failed,
             Cancelled,
+            Paused,
+            Stopped,
         ];
         assert_eq!(InternalStatus::all_variants(), expected.as_slice());
     }
@@ -312,6 +331,8 @@ mod tests {
             ("merged", InternalStatus::Merged),
             ("failed", InternalStatus::Failed),
             ("cancelled", InternalStatus::Cancelled),
+            ("paused", InternalStatus::Paused),
+            ("stopped", InternalStatus::Stopped),
         ];
 
         for (expected_str, status) in expected_serializations {
@@ -538,7 +559,8 @@ mod tests {
 
         // Terminal states can only go to Ready (re-open)
         // Note: Approved now also transitions to PendingMerge, so it's not purely terminal
-        for terminal in &[Merged, Failed, Cancelled] {
+        // Note: Stopped is also terminal (requires manual restart)
+        for terminal in &[Merged, Failed, Cancelled, Stopped] {
             assert!(terminal.can_transition_to(Ready));
 
             // But can't go anywhere else
@@ -860,5 +882,58 @@ mod tests {
     fn equality_works() {
         assert_eq!(InternalStatus::Ready, InternalStatus::Ready);
         assert_ne!(InternalStatus::Ready, InternalStatus::Executing);
+    }
+
+    // ===== Paused and Stopped State Tests =====
+
+    #[test]
+    fn stopped_is_terminal() {
+        use InternalStatus::*;
+        // Stopped can only go to Ready (re-open, like other terminals)
+        let transitions = Stopped.valid_transitions();
+        assert_eq!(transitions, &[Ready]);
+    }
+
+    #[test]
+    fn stopped_to_ready() {
+        use InternalStatus::*;
+        assert!(Stopped.can_transition_to(Ready));
+    }
+
+    #[test]
+    fn paused_can_resume_to_agent_active_states() {
+        use InternalStatus::*;
+        // Paused can resume to any agent-active state (via status history lookup)
+        let transitions = Paused.valid_transitions();
+        assert_eq!(
+            transitions,
+            &[Executing, ReExecuting, QaRefining, QaTesting, Reviewing, Merging]
+        );
+    }
+
+    #[test]
+    fn paused_serializes_correctly() {
+        let json = serde_json::to_string(&InternalStatus::Paused).unwrap();
+        assert_eq!(json, "\"paused\"");
+    }
+
+    #[test]
+    fn stopped_serializes_correctly() {
+        let json = serde_json::to_string(&InternalStatus::Stopped).unwrap();
+        assert_eq!(json, "\"stopped\"");
+    }
+
+    #[test]
+    fn paused_parses_correctly() {
+        use InternalStatus::*;
+        let parsed = InternalStatus::from_str("paused").unwrap();
+        assert_eq!(parsed, Paused);
+    }
+
+    #[test]
+    fn stopped_parses_correctly() {
+        use InternalStatus::*;
+        let parsed = InternalStatus::from_str("stopped").unwrap();
+        assert_eq!(parsed, Stopped);
     }
 }

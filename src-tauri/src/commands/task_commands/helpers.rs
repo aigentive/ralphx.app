@@ -79,5 +79,7 @@ pub fn status_to_label(status: InternalStatus) -> String {
         InternalStatus::Merged => "Merged".to_string(),
         InternalStatus::Failed => "Mark as Failed".to_string(),
         InternalStatus::Cancelled => "Cancel".to_string(),
+        InternalStatus::Paused => "Paused".to_string(),
+        InternalStatus::Stopped => "Stopped".to_string(),
     }
 }
