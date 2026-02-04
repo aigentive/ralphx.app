@@ -3,6 +3,23 @@
 > Log entries for PRD task completion and P0 gap fixes.
 
 ---
+### 2026-02-04 06:42:47 - Phase 80 Task 5: Prevent auto-unblock for Paused/Stopped blockers
+**What:**
+- Moved startup/reconciliation/dependency tests into dedicated test modules
+- Added Paused/Stopped blocker coverage for startup unblocking and dependency checks
+- Verified stop recovery ignores Paused/Stopped tasks
+
+**Commands:**
+- `cargo test blocked_task_remains_blocked_when_blocker`
+- `cargo test dependency_manager_treats`
+- `cargo test recover_execution_stop_noops_for`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
 ### 2026-02-04 06:29:43 - Phase 80 Task 3: Pause transitions tasks to Paused status
 **What:**
 - Verified pause_execution transitions agent-active tasks to Paused

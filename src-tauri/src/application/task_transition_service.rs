@@ -122,7 +122,8 @@ impl<R: Runtime> RepoBackedDependencyManager<R> {
         }
     }
 
-    /// Check if a blocking task is complete (Approved, Merged, Failed, or Cancelled)
+    /// Check if a blocking task is complete (Approved, Merged, Failed, or Cancelled).
+    /// Paused/Stopped are NOT treated as complete blockers.
     async fn is_blocker_complete(&self, blocker_id: &TaskId) -> bool {
         if let Ok(Some(task)) = self.task_repo.get_by_id(blocker_id).await {
             matches!(
@@ -710,24 +711,4 @@ impl<R: Runtime> TaskTransitionService<R> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_tauri_event_emitter_creation() {
-        let emitter: TauriEventEmitter<tauri::Wry> = TauriEventEmitter::new(None);
-        assert!(emitter.app_handle.is_none());
-    }
-
-    #[test]
-    fn test_logging_notifier() {
-        let _notifier = LoggingNotifier;
-        // Just verify it can be created
-    }
-
-    #[test]
-    fn test_no_op_review_starter() {
-        let _starter = NoOpReviewStarter;
-        // Just verify it can be created
-    }
-}
+mod tests;
