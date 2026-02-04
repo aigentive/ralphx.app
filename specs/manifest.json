@@ -583,6 +583,13 @@
       "prd": "specs/phases/prd_phase_81_graph_toolbar_compact.md",
       "status": "pending",
       "description": "Responsive graph toolbar compact mode and right panel toggle with auto-hide"
+    },
+    {
+      "phase": 82,
+      "name": "Project-Scoped Execution Control",
+      "prd": "specs/phases/prd_phase_82_project_scoped_execution.md",
+      "status": "pending",
+      "description": "Per-project execution state, scheduler scoping, global concurrency cap"
     }
   ]
 }
