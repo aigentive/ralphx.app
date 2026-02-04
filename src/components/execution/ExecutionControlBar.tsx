@@ -187,8 +187,8 @@ export function ExecutionControlBar({
             <TooltipContent side="top">
               <p>
                 {isPaused
-                  ? "Resume execution from queue ⌘P"
-                  : "Pause execution (tasks in progress will complete) ⌘P"}
+                  ? "Resume paused tasks and queue ⌘P"
+                  : "Pause execution (running tasks will pause) ⌘P"}
               </p>
             </TooltipContent>
           </Tooltip>
@@ -220,7 +220,7 @@ export function ExecutionControlBar({
             <TooltipContent side="top">
               <p>
                 {canStop
-                  ? "Stop all running tasks immediately ⌘⇧S"
+                  ? "Stop all running tasks (manual restart required) ⌘⇧S"
                   : "No tasks currently running"}
               </p>
             </TooltipContent>

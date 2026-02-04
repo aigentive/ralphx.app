@@ -128,7 +128,7 @@ export function createTaskInStatus(
     "failed",
   ];
   // Terminal statuses
-  const terminalStatuses: InternalStatus[] = ["approved", "failed", "cancelled"];
+  const terminalStatuses: InternalStatus[] = ["approved", "merged", "failed", "cancelled", "stopped"];
 
   return createMockTask({
     internalStatus: status,

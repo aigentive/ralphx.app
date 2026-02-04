@@ -3,6 +3,22 @@
 > Log entries for PRD task completion and P0 gap fixes.
 
 ---
+### 2026-02-04 06:53:25 - Phase 80 Task 6: Paused/Stopped UI and terminal counts
+**What:**
+- Updated execution bar tooltip copy to distinguish Pause vs Stop semantics
+- Counted Paused as blocked and Stopped as terminal in graph group summaries
+- Aligned terminal status test coverage and mock data with Stopped/merged semantics
+
+**Commands:**
+- `npm run test:run -- src/types/status.test.ts src/hooks/useTaskExecutionState.test.tsx`
+- `npm run lint` (fails: pre-existing react-hooks/refs + memoization warnings in TaskGraph hooks)
+- `npm run typecheck`
+
+**Visual Verification:** N/A - copy/status mapping only
+
+**Result:** Success (lint errors pre-existing)
+
+---
 ### 2026-02-04 06:42:47 - Phase 80 Task 5: Prevent auto-unblock for Paused/Stopped blockers
 **What:**
 - Moved startup/reconciliation/dependency tests into dedicated test modules

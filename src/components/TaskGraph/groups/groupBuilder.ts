@@ -217,7 +217,7 @@ export function buildPlanGroupNodes({
       const status = node.internalStatus;
       if (status === "backlog") ungroupedSummary.backlog++;
       else if (status === "ready") ungroupedSummary.ready++;
-      else if (status === "blocked") ungroupedSummary.blocked++;
+      else if (status === "blocked" || status === "paused") ungroupedSummary.blocked++;
       else if (status === "executing" || status === "re_executing") ungroupedSummary.executing++;
       else if (status.startsWith("qa_")) ungroupedSummary.qa++;
       else if (
@@ -230,7 +230,8 @@ export function buildPlanGroupNodes({
         ungroupedSummary.review++;
       } else if (status === "approved") ungroupedSummary.merge++;
       else if (status === "merged") ungroupedSummary.completed++;
-      else if (status === "failed" || status === "cancelled") ungroupedSummary.terminal++;
+      else if (status === "failed" || status === "cancelled" || status === "stopped")
+        ungroupedSummary.terminal++;
     }
 
     const groupNode = createPlanGroupNode(
