@@ -286,6 +286,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     zoomBy,
   } = useTaskGraphViewport();
   const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
+  const graphRightPanelUserOpen = useUiStore((s) => s.graphRightPanelUserOpen);
   const { isNavCompact } = useNavCompactBreakpoint();
 
   const graphReady = Boolean(graphData && graphData.nodes.length > 0);
@@ -866,6 +867,8 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     filters.planIds.length > 0 ||
     !filters.showCompleted;
 
+  const graphRightPanelVisible = graphRightPanelUserOpen && !isNavCompact;
+
   return (
     <GraphSplitLayout
       projectId={projectId}
@@ -877,6 +880,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
           highlightedTaskId={highlightedTaskId}
         />
       }
+      rightPanelVisible={graphRightPanelVisible}
     >
       {/* Graph canvas container */}
       <div

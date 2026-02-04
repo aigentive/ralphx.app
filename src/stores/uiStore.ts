@@ -148,6 +148,8 @@ interface UiState {
   selectedTaskId: string | null;
   /** Active selection in the task graph (single selection across types) */
   graphSelection: GraphSelection | null;
+  /** User toggle for graph right panel visibility */
+  graphRightPanelUserOpen: boolean;
   /** History state for time-travel feature - shared between TaskDetailOverlay and IntegratedChatPanel */
   taskHistoryState: {
     status: InternalStatus;
@@ -230,6 +232,10 @@ interface UiActions {
   setGraphSelection: (selection: GraphSelection | null) => void;
   /** Clear active graph selection */
   clearGraphSelection: () => void;
+  /** Toggle graph right panel visibility */
+  toggleGraphRightPanel: () => void;
+  /** Set graph right panel visibility */
+  setGraphRightPanelUserOpen: (open: boolean) => void;
   /** Set task history state for time-travel feature */
   setTaskHistoryState: (state: {
     status: InternalStatus;
@@ -285,6 +291,7 @@ export const useUiStore = create<UiState & UiActions>()(
     isSearching: false,
     selectedTaskId: null,
     graphSelection: null,
+    graphRightPanelUserOpen: true,
     taskHistoryState: null,
     taskCreationContext: null,
     chatVisibleByView: loadChatVisibility(),
@@ -455,6 +462,16 @@ export const useUiStore = create<UiState & UiActions>()(
     clearGraphSelection: () =>
       set((state) => {
         state.graphSelection = null;
+      }),
+
+    toggleGraphRightPanel: () =>
+      set((state) => {
+        state.graphRightPanelUserOpen = !state.graphRightPanelUserOpen;
+      }),
+
+    setGraphRightPanelUserOpen: (open) =>
+      set((state) => {
+        state.graphRightPanelUserOpen = open;
       }),
 
     setTaskHistoryState: (historyState) =>
