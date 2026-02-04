@@ -156,7 +156,7 @@ pub async fn process_message_queue<R: Runtime + 'static>(
                 Ok(child) => {
                     eprintln!(
                         "[STREAM_DEBUG] queue spawn ok (context_type={}, context_id={}, conversation_id={})",
-                        context_type.to_string(),
+                        context_type,
                         context_id,
                         conversation_id.as_str()
                     );

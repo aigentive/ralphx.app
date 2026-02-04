@@ -290,7 +290,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             transition_service,
             execution_state,
             app_handle,
-            policy: RecoveryPolicy::default(),
+            policy: RecoveryPolicy,
             prompt_tracker: Arc::new(Mutex::new(HashSet::new())),
         }
     }
@@ -660,9 +660,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .find(|transition| transition.to == status && transition.agent_run_id.is_some());
 
         let run = if let Some(transition) = latest_transition {
-            let Some(agent_run_id) = transition.agent_run_id.as_ref() else {
-                return None;
-            };
+            let agent_run_id = transition.agent_run_id.as_ref()?;
 
             match self
                 .agent_run_repo
@@ -782,7 +780,7 @@ mod tests {
 
     #[test]
     fn execution_policy_advances_on_completed_run() {
-        let policy = RecoveryPolicy::default();
+        let policy = RecoveryPolicy;
         let evidence = RecoveryEvidence {
             run_status: Some(AgentRunStatus::Completed),
             registry_running: false,
@@ -799,7 +797,7 @@ mod tests {
 
     #[test]
     fn execution_policy_restarts_when_run_missing() {
-        let policy = RecoveryPolicy::default();
+        let policy = RecoveryPolicy;
         let evidence = RecoveryEvidence {
             run_status: None,
             registry_running: false,
@@ -813,7 +811,7 @@ mod tests {
 
     #[test]
     fn execution_policy_prompts_on_conflict() {
-        let policy = RecoveryPolicy::default();
+        let policy = RecoveryPolicy;
         let evidence = RecoveryEvidence {
             run_status: Some(AgentRunStatus::Running),
             registry_running: false,
@@ -827,7 +825,7 @@ mod tests {
 
     #[test]
     fn review_policy_restarts_on_completed_run() {
-        let policy = RecoveryPolicy::default();
+        let policy = RecoveryPolicy;
         let evidence = RecoveryEvidence {
             run_status: Some(AgentRunStatus::Completed),
             registry_running: false,
@@ -841,7 +839,7 @@ mod tests {
 
     #[test]
     fn merge_policy_verifies_on_completed_run() {
-        let policy = RecoveryPolicy::default();
+        let policy = RecoveryPolicy;
         let evidence = RecoveryEvidence {
             run_status: Some(AgentRunStatus::Completed),
             registry_running: false,
@@ -855,7 +853,7 @@ mod tests {
 
     #[test]
     fn qa_policy_retries_when_stale() {
-        let policy = RecoveryPolicy::default();
+        let policy = RecoveryPolicy;
         let evidence = RecoveryEvidence {
             run_status: None,
             registry_running: false,
@@ -869,7 +867,7 @@ mod tests {
 
     #[test]
     fn stop_policy_resets_when_not_completed() {
-        let policy = RecoveryPolicy::default();
+        let policy = RecoveryPolicy;
         let evidence = RecoveryEvidence {
             run_status: Some(AgentRunStatus::Running),
             registry_running: true,
