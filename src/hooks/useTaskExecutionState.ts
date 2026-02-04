@@ -45,7 +45,13 @@ function getExecutionPhase(status: string): ExecutionPhase {
   if (status === "pending_review" || status === "revision_needed") {
     return "review";
   }
-  if (status === "approved" || status === "failed" || status === "cancelled") {
+  if (
+    status === "approved" ||
+    status === "merged" ||
+    status === "failed" ||
+    status === "cancelled" ||
+    status === "stopped"
+  ) {
     return "done";
   }
   return "idle";

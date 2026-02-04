@@ -20,7 +20,13 @@ function getExecutionPhaseForTest(status: string): ExecutionPhase {
   if (status === "pending_review" || status === "revision_needed") {
     return "review";
   }
-  if (status === "approved" || status === "failed" || status === "cancelled") {
+  if (
+    status === "approved" ||
+    status === "merged" ||
+    status === "failed" ||
+    status === "cancelled" ||
+    status === "stopped"
+  ) {
     return "done";
   }
   return "idle";
@@ -60,8 +66,10 @@ describe("getExecutionPhase", () => {
 
   it("should return done for terminal statuses", () => {
     expect(getExecutionPhaseForTest("approved")).toBe("done");
+    expect(getExecutionPhaseForTest("merged")).toBe("done");
     expect(getExecutionPhaseForTest("failed")).toBe("done");
     expect(getExecutionPhaseForTest("cancelled")).toBe("done");
+    expect(getExecutionPhaseForTest("stopped")).toBe("done");
   });
 });
 

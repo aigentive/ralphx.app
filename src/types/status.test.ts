@@ -11,8 +11,8 @@ import {
 } from "./status";
 
 describe("InternalStatusSchema", () => {
-  it("should have exactly 13 status values", () => {
-    expect(INTERNAL_STATUS_VALUES.length).toBe(13);
+  it("should have exactly 23 status values", () => {
+    expect(INTERNAL_STATUS_VALUES.length).toBe(23);
   });
 
   it("should parse all valid status values", () => {
@@ -71,20 +71,28 @@ describe("Status Categories", () => {
     expect(IDLE_STATUSES).toContain("blocked");
   });
 
-  it("should have 5 active statuses", () => {
-    expect(ACTIVE_STATUSES.length).toBe(5);
+  it("should have 11 active statuses", () => {
+    expect(ACTIVE_STATUSES.length).toBe(11);
     expect(ACTIVE_STATUSES).toContain("executing");
+    expect(ACTIVE_STATUSES).toContain("re_executing");
     expect(ACTIVE_STATUSES).toContain("qa_refining");
     expect(ACTIVE_STATUSES).toContain("qa_testing");
     expect(ACTIVE_STATUSES).toContain("pending_review");
+    expect(ACTIVE_STATUSES).toContain("reviewing");
+    expect(ACTIVE_STATUSES).toContain("review_passed");
+    expect(ACTIVE_STATUSES).toContain("escalated");
     expect(ACTIVE_STATUSES).toContain("revision_needed");
+    expect(ACTIVE_STATUSES).toContain("pending_merge");
+    expect(ACTIVE_STATUSES).toContain("merging");
   });
 
-  it("should have 3 terminal statuses", () => {
-    expect(TERMINAL_STATUSES.length).toBe(3);
+  it("should have 5 terminal statuses", () => {
+    expect(TERMINAL_STATUSES.length).toBe(5);
     expect(TERMINAL_STATUSES).toContain("approved");
+    expect(TERMINAL_STATUSES).toContain("merged");
     expect(TERMINAL_STATUSES).toContain("failed");
     expect(TERMINAL_STATUSES).toContain("cancelled");
+    expect(TERMINAL_STATUSES).toContain("stopped");
   });
 
   it("should have no overlap between categories", () => {
@@ -108,7 +116,7 @@ describe("Status Categories", () => {
     }
   });
 
-  it("should cover all 13 statuses between categories plus qa_passed and qa_failed", () => {
+  it("should cover all 21 statuses between categories plus qa_passed and qa_failed", () => {
     const allCategorized = [
       ...IDLE_STATUSES,
       ...ACTIVE_STATUSES,
@@ -116,7 +124,7 @@ describe("Status Categories", () => {
       "qa_passed",
       "qa_failed",
     ];
-    expect(allCategorized.length).toBe(13);
+    expect(allCategorized.length).toBe(21);
   });
 });
 
@@ -124,14 +132,17 @@ describe("Status Helper Functions", () => {
   describe("isTerminalStatus", () => {
     it("should return true for terminal statuses", () => {
       expect(isTerminalStatus("approved")).toBe(true);
+      expect(isTerminalStatus("merged")).toBe(true);
       expect(isTerminalStatus("failed")).toBe(true);
       expect(isTerminalStatus("cancelled")).toBe(true);
+      expect(isTerminalStatus("stopped")).toBe(true);
     });
 
     it("should return false for non-terminal statuses", () => {
       expect(isTerminalStatus("backlog")).toBe(false);
       expect(isTerminalStatus("executing")).toBe(false);
       expect(isTerminalStatus("qa_testing")).toBe(false);
+      expect(isTerminalStatus("paused")).toBe(false);
     });
   });
 
