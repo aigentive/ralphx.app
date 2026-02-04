@@ -78,6 +78,8 @@ export interface FloatingGraphFiltersProps {
   onGroupingChange: (grouping: GroupingState) => void;
   /** Available plan groups for filtering */
   planGroups: PlanGroupInfo[];
+  /** Whether toolbar should be icon-only */
+  isCompact: boolean;
 }
 
 // ============================================================================
@@ -373,6 +375,7 @@ interface FilterButtonProps {
   isPopover?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  isCompact?: boolean;
 }
 
 const FilterButton = memo(function FilterButton({
@@ -385,6 +388,7 @@ const FilterButton = memo(function FilterButton({
   isPopover,
   open,
   onOpenChange,
+  isCompact,
 }: FilterButtonProps) {
   const buttonContent = (
     <button
@@ -392,24 +396,27 @@ const FilterButton = memo(function FilterButton({
       className={cn(
         "flex items-center gap-1.5 w-full px-2.5 py-2 rounded-md text-xs transition-colors",
         "bg-[hsl(220_10%_14%)] hover:bg-[hsl(220_10%_18%)]",
+        isCompact && "w-9 h-9 p-0 justify-center",
         activeCount && activeCount > 0 && "ring-1 ring-[hsl(14_100%_55%_/_0.5)]"
       )}
     >
       <span className="text-[hsl(220_10%_50%)]">{icon}</span>
-      <span className="text-[hsl(220_10%_70%)] flex-1 text-left">{label}</span>
-      {activeCount !== undefined && activeCount > 0 && (
+      {!isCompact && (
+        <span className="text-[hsl(220_10%_70%)] flex-1 text-left">{label}</span>
+      )}
+      {activeCount !== undefined && activeCount > 0 && !isCompact && (
         <span className="text-[10px] text-[hsl(14_100%_55%)]">
           {activeCount}
         </span>
       )}
-      {isPopover && (
+      {isPopover && !isCompact && (
         <ChevronDown className="w-3 h-3 text-[hsl(220_10%_50%)]" />
       )}
     </button>
   );
 
   if (isPopover && children && open !== undefined && onOpenChange) {
-    return (
+    const popoverContent = (
       <Popover open={open} onOpenChange={onOpenChange}>
         <PopoverTrigger asChild>{buttonContent}</PopoverTrigger>
         <PopoverContent
@@ -422,6 +429,21 @@ const FilterButton = memo(function FilterButton({
         </PopoverContent>
       </Popover>
     );
+
+    if (tooltip || isCompact) {
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>{popoverContent}</TooltipTrigger>
+            <TooltipContent side="right" className="text-xs">
+              {tooltip ?? label}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    }
+
+    return popoverContent;
   }
 
   if (tooltip) {
@@ -455,6 +477,7 @@ function FloatingGraphFiltersComponent({
   grouping,
   onGroupingChange,
   planGroups,
+  isCompact,
 }: FloatingGraphFiltersProps) {
   const [statusFilterOpen, setStatusFilterOpen] = useState(false);
   const [planFilterOpen, setPlanFilterOpen] = useState(false);
@@ -484,7 +507,12 @@ function FloatingGraphFiltersComponent({
       data-testid="floating-graph-filters"
     >
       <div className="p-2" style={GLASS_STYLE}>
-        <div className="flex flex-col gap-1.5 w-[120px]">
+        <div
+          className={cn(
+            "flex flex-col gap-1.5",
+            isCompact ? "w-[44px]" : "w-[120px]"
+          )}
+        >
           {/* Status Filter */}
           <FilterButton
             icon={<Filter className="w-3.5 h-3.5" />}
@@ -493,6 +521,7 @@ function FloatingGraphFiltersComponent({
             isPopover
             open={statusFilterOpen}
             onOpenChange={setStatusFilterOpen}
+            isCompact={isCompact}
           >
             <StatusFilterContent
               filters={filters}
@@ -509,6 +538,7 @@ function FloatingGraphFiltersComponent({
               isPopover
               open={planFilterOpen}
               onOpenChange={setPlanFilterOpen}
+              isCompact={isCompact}
             >
               <PlanFilterContent
                 filters={filters}
@@ -537,6 +567,7 @@ function FloatingGraphFiltersComponent({
                 ? "Switch to horizontal layout"
                 : "Switch to vertical layout"
             }
+            isCompact={isCompact}
           />
 
           {/* Node Mode Toggle */}
@@ -558,23 +589,40 @@ function FloatingGraphFiltersComponent({
                   ? "Auto-compacted (50+ tasks)"
                   : "Switch to standard nodes"
             }
+            isCompact={isCompact}
           />
 
           {/* Grouping Dropdown */}
           <Popover open={groupingOpen} onOpenChange={setGroupingOpen}>
             <PopoverTrigger asChild>
-              <button
-                className={cn(
-                  "flex items-center gap-1.5 w-full px-2.5 py-2 rounded-md text-xs transition-colors",
-                  "bg-[hsl(220_10%_14%)] hover:bg-[hsl(220_10%_18%)]"
-                )}
-              >
-                <Layers className="w-3.5 h-3.5 text-[hsl(220_10%_50%)]" />
-                <span className="text-[hsl(220_10%_70%)] flex-1 text-left">
-                  {currentGroupingLabel}
-                </span>
-                <ChevronDown className="w-3 h-3 text-[hsl(220_10%_50%)]" />
-              </button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      className={cn(
+                        "flex items-center gap-1.5 w-full px-2.5 py-2 rounded-md text-xs transition-colors",
+                        "bg-[hsl(220_10%_14%)] hover:bg-[hsl(220_10%_18%)]",
+                        isCompact && "w-9 h-9 p-0 justify-center"
+                      )}
+                    >
+                      <Layers className="w-3.5 h-3.5 text-[hsl(220_10%_50%)]" />
+                      {!isCompact && (
+                        <span className="text-[hsl(220_10%_70%)] flex-1 text-left">
+                          {currentGroupingLabel}
+                        </span>
+                      )}
+                      {!isCompact && (
+                        <ChevronDown className="w-3 h-3 text-[hsl(220_10%_50%)]" />
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  {isCompact && (
+                    <TooltipContent side="right" className="text-xs">
+                      Grouping
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </TooltipProvider>
             </PopoverTrigger>
             <PopoverContent
               className="w-36 p-1 bg-[hsl(220_10%_10%)] border-[hsl(220_10%_25%)]"
