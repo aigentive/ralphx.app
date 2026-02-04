@@ -54,7 +54,7 @@ import { useProposalMutations } from "@/hooks/useProposals";
 import { useApplyProposals } from "@/hooks/useApplyProposals";
 import { useAppKeyboardShortcuts } from "@/hooks/useAppKeyboardShortcuts";
 import { useAskUserQuestion } from "@/hooks/useAskUserQuestion";
-import { api, getGitBranches } from "@/lib/tauri";
+import { api, getGitBranches, getGitDefaultBranch } from "@/lib/tauri";
 import { executionApi } from "@/api/execution";
 import type { ProjectSettings } from "@/types/settings";
 import { DEFAULT_PROJECT_SETTINGS } from "@/types/settings";
@@ -570,6 +570,11 @@ function AppContent() {
     }
   }, []);
 
+  const handleDetectDefaultBranch = useCallback(async (workingDirectory: string): Promise<string> => {
+    // Use backend detection with fallback chain (origin/HEAD -> main -> master -> first branch)
+    return getGitDefaultBranch(workingDirectory);
+  }, []);
+
   // Handler for closing manually-opened welcome screen
   const handleCloseWelcomeOverlay = useCallback(() => {
     if (welcomeOverlayReturnView) {
@@ -905,6 +910,7 @@ function AppContent() {
         onCreate={handleCreateProject}
         onBrowseFolder={handleBrowseFolder}
         onFetchBranches={handleFetchBranches}
+        onDetectDefaultBranch={handleDetectDefaultBranch}
         isCreating={isCreatingProject}
         error={projectCreationError}
         isFirstRun={hasNoProjects}

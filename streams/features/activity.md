@@ -4,6 +4,30 @@
 
 ---
 
+### 2026-02-04 01:31:23 - Phase 79 Task 4: Use default-branch detection in project creation wizard
+**What:**
+- Added `onDetectDefaultBranch` prop to `ProjectCreationWizardProps` interface
+- Updated `ProjectCreationWizard` to accept new prop and use it in the working directory change effect
+- Modified useEffect to fetch branches and detect default branch in parallel
+- Prioritizes detected default branch over simple `main`/`master` fallback
+- Falls back to `main`/`master` if detection fails or detected branch not in list
+- Added `handleDetectDefaultBranch` handler in `App.tsx` calling `getGitDefaultBranch`
+- Wired `onDetectDefaultBranch` prop to wizard in `App.tsx`
+
+**Files:**
+- MODIFIED: src/components/projects/ProjectCreationWizard/ProjectCreationWizard.tsx (added prop, updated effect)
+- MODIFIED: src/App.tsx (added import, handler, and prop wiring)
+
+**Visual Verification:** N/A - wizard modal is conditional UI; changes are to detection logic
+
+**Commands:**
+- `npm run typecheck` - passes
+- `npx eslint src/components/projects/ProjectCreationWizard/ProjectCreationWizard.tsx src/App.tsx` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-02-04 11:45:00 - Phase 79 Task 3: Make base branch and worktree directory editable in settings UI
 **What:**
 - Exported `getGitDefaultBranch` from `src/lib/tauri.ts` for component access
