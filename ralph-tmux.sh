@@ -175,7 +175,7 @@ create_session() {
     # Start commands in each pane (conditionally based on streams list)
     tmux send-keys -t "$SESSION_NAME:0.0" "./ralph-tmux-status.sh" C-m
 
-    local guard_env="CLAUDE_MAX_PROCS=\${CLAUDE_MAX_PROCS:-6} CLAUDE_GUARD_MODE=\${CLAUDE_GUARD_MODE:-block}"
+    local guard_env="CLAUDE_MAX_PROCS=\${CLAUDE_MAX_PROCS:-1} CLAUDE_GUARD_MODE=\${CLAUDE_GUARD_MODE:-block}"
 
     if should_start_stream "features" "${streams[@]}"; then
         tmux send-keys -t "$SESSION_NAME:0.1" "$guard_env ./scripts/stream-watch-features.sh" C-m

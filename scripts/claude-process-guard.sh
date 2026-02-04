@@ -7,6 +7,7 @@ MAX_CLAUDE=4
 MODE="warn" # warn | block | kill
 MATCH="claude"
 MATCH_MODE="exact" # exact | full
+ANCESTOR_MATCH=""
 VERBOSE=false
 
 usage() {
@@ -18,6 +19,7 @@ Options:
   --mode MODE       warn | block | kill (default: warn)
   --match PATTERN   Process match string (default: "claude")
   --match-mode MODE exact | full (default: exact)
+  --ancestor-match P Match ancestor command (optional)
   --verbose          Print matched PIDs and commands
   -h, --help        Show this help
 
@@ -44,6 +46,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --match-mode)
       MATCH_MODE="${2:-}"
+      shift 2
+      ;;
+    --ancestor-match)
+      ANCESTOR_MATCH="${2:-}"
       shift 2
       ;;
     --verbose)
@@ -86,6 +92,22 @@ else
   while IFS= read -r pid; do
     [[ -n "$pid" ]] && PIDS+=("$pid")
   done < <(pgrep -f "$MATCH" 2>/dev/null || true)
+fi
+
+if [[ -n "$ANCESTOR_MATCH" && ${#PIDS[@]} -gt 0 ]]; then
+  FILTERED=()
+  for pid in "${PIDS[@]}"; do
+    ppid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+    while [[ -n "$ppid" && "$ppid" -gt 1 ]]; do
+      cmd=$(ps -o command= -p "$ppid" 2>/dev/null || echo "")
+      if [[ "$cmd" == *"$ANCESTOR_MATCH"* ]]; then
+        FILTERED+=("$pid")
+        break
+      fi
+      ppid=$(ps -o ppid= -p "$ppid" 2>/dev/null | tr -d ' ')
+    done
+  done
+  PIDS=("${FILTERED[@]}")
 fi
 
 COUNT=${#PIDS[@]}
