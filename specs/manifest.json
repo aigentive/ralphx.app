@@ -588,7 +588,7 @@
       "phase": 82,
       "name": "Project-Scoped Execution Control",
       "prd": "specs/phases/prd_phase_82_project_scoped_execution.md",
-      "status": "active",
+      "status": "complete",
       "description": "Per-project execution state, scheduler scoping, global concurrency cap"
     }
   ]

@@ -3,6 +3,28 @@
 > Log entries for PRD task completion and P0 gap fixes.
 
 ---
+### 2026-02-05 01:23:45 - Phase 82 Complete - Project-Scoped Execution Control
+**What:**
+- Ran code gap verification - found 1 P0 gap
+- Fixed P0: Settings API calls missing projectId in App.tsx:305,343
+- Added currentProjectId as dependency to loadSettings useEffect and handleSettingsChange useCallback
+- Ran visual gap verification - GlobalExecutionSection renders correctly with data
+- All 4 PRD tasks completed with passes: true
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Visual Verification:**
+- Mock-check: screenshots/features/2026-02-05_phase82_verification_mock-check.md
+- Screenshot: screenshots/features/2026-02-05_phase82_settings_full_page.png
+- PRD content check: ✅ Global Max Concurrent value visible (20), description matches PRD
+
+**Phase Transition:**
+- Phase 82 status: complete
+
+**Result:** Success - Phase 82 Complete
+
+---
 ### 2026-02-05 00:15:32 - Phase 82 Task 4: Per-project execution scoping tests
 **What:**
 - Created new test file: tests/per_project_execution_scoping.rs with 13 tests
