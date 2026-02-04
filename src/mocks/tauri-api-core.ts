@@ -11,6 +11,7 @@ import { mockTaskGraphApi } from "@/api-mock/task-graph";
 import { mockListConversations, mockGetConversation } from "@/api-mock/chat";
 import { mockReviewsApi } from "@/api-mock/reviews";
 import { mockIdeationApi } from "@/api-mock/ideation";
+import { mockExecutionApi } from "@/api-mock/execution";
 import type { ContextType } from "@/types/chat-conversation";
 
 /**
@@ -221,6 +222,103 @@ const commandHandlers: Record<
       (args.limit as number | undefined) ?? 50,
       (args.offset as number | undefined) ?? 0
     ),
+
+  // Execution commands (Phase 82)
+  get_execution_status: async (args) => {
+    const status = await mockExecutionApi.getStatus(args.project_id as string | undefined);
+    // Transform to snake_case as backend would return
+    return {
+      is_paused: status.isPaused,
+      running_count: status.runningCount,
+      max_concurrent: status.maxConcurrent,
+      global_max_concurrent: status.globalMaxConcurrent,
+      queued_count: status.queuedCount,
+      can_start_task: status.canStartTask,
+    };
+  },
+  pause_execution: async (args) => {
+    const response = await mockExecutionApi.pause(args.project_id as string | undefined);
+    return {
+      success: response.success,
+      status: {
+        is_paused: response.status.isPaused,
+        running_count: response.status.runningCount,
+        max_concurrent: response.status.maxConcurrent,
+        global_max_concurrent: response.status.globalMaxConcurrent,
+        queued_count: response.status.queuedCount,
+        can_start_task: response.status.canStartTask,
+      },
+    };
+  },
+  resume_execution: async (args) => {
+    const response = await mockExecutionApi.resume(args.project_id as string | undefined);
+    return {
+      success: response.success,
+      status: {
+        is_paused: response.status.isPaused,
+        running_count: response.status.runningCount,
+        max_concurrent: response.status.maxConcurrent,
+        global_max_concurrent: response.status.globalMaxConcurrent,
+        queued_count: response.status.queuedCount,
+        can_start_task: response.status.canStartTask,
+      },
+    };
+  },
+  stop_execution: async (args) => {
+    const response = await mockExecutionApi.stop(args.project_id as string | undefined);
+    return {
+      success: response.success,
+      status: {
+        is_paused: response.status.isPaused,
+        running_count: response.status.runningCount,
+        max_concurrent: response.status.maxConcurrent,
+        global_max_concurrent: response.status.globalMaxConcurrent,
+        queued_count: response.status.queuedCount,
+        can_start_task: response.status.canStartTask,
+      },
+    };
+  },
+  get_execution_settings: async (args) => {
+    const settings = await mockExecutionApi.getSettings(args.project_id as string | undefined);
+    // Transform to snake_case as backend would return
+    return {
+      max_concurrent_tasks: settings.maxConcurrentTasks,
+      auto_commit: settings.autoCommit,
+      pause_on_failure: settings.pauseOnFailure,
+    };
+  },
+  update_execution_settings: async (args) => {
+    const input = args.input as { max_concurrent_tasks: number; auto_commit: boolean; pause_on_failure: boolean };
+    const settings = await mockExecutionApi.updateSettings({
+      maxConcurrentTasks: input.max_concurrent_tasks,
+      autoCommit: input.auto_commit,
+      pauseOnFailure: input.pause_on_failure,
+    }, args.project_id as string | undefined);
+    return {
+      max_concurrent_tasks: settings.maxConcurrentTasks,
+      auto_commit: settings.autoCommit,
+      pause_on_failure: settings.pauseOnFailure,
+    };
+  },
+  set_active_project: async (args) => {
+    await mockExecutionApi.setActiveProject(args.project_id as string | undefined);
+  },
+  get_global_execution_settings: async () => {
+    const settings = await mockExecutionApi.getGlobalSettings();
+    // Transform to snake_case as backend would return
+    return {
+      global_max_concurrent: settings.globalMaxConcurrent,
+    };
+  },
+  update_global_execution_settings: async (args) => {
+    const input = args.input as { global_max_concurrent: number };
+    const settings = await mockExecutionApi.updateGlobalSettings({
+      globalMaxConcurrent: input.global_max_concurrent,
+    });
+    return {
+      global_max_concurrent: settings.globalMaxConcurrent,
+    };
+  },
 
   // Health check
   health_check: async () => ({ status: "ok" }),
