@@ -3,6 +3,17 @@
 > Log entries for PRD task completion and P0 gap fixes.
 
 ---
+### 2026-02-04 08:19:41 - Phase 81 Graph toolbar grouping popover
+**What:**
+- Fixed grouping dropdown trigger so popover opens in compact mode
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
+
+**Result:** Success (lint errors pre-existing in TaskGraph hooks)
+
+---
 ### 2026-02-04 08:17:10 - Phase 81 Execution settings null fallback
 **What:**
 - Defaulted execution settings to project defaults when backend returns null
