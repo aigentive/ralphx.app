@@ -303,6 +303,8 @@ export const mockTasksApi = {
       merged: ["ready", "executing", "pending_review", "reviewing", "review_passed", "approved", "pending_merge", "merged"],
       cancelled: ["ready", "cancelled"],
       failed: ["ready", "executing", "failed"],
+      paused: ["ready", "executing", "paused"],
+      stopped: ["ready", "executing", "stopped"],
     };
 
     const progression = statusProgression[task.internalStatus] ?? [];

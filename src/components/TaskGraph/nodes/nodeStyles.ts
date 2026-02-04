@@ -1,7 +1,7 @@
 /**
  * nodeStyles.ts - Status color mapping for Task Graph nodes
  *
- * Defines border and background colors for all 21 internal status states.
+ * Defines border and background colors for all 23 internal status states.
  * Colors are grouped by status category per the visual design spec.
  *
  * Status Groups:
@@ -213,7 +213,10 @@ export function getStatusCategory(status: InternalStatus): StatusCategory {
       return "complete";
     case "failed":
     case "cancelled":
+    case "stopped":
       return "terminal";
+    case "paused":
+      return "blocked";
   }
 }
 
@@ -302,9 +305,17 @@ export function getNodeStyle(status: InternalStatus | string): NodeStyle {
     // Terminal
     case "failed":
     case "cancelled":
+    case "stopped":
       return {
         borderColor: TERMINAL_COLORS.border,
         backgroundColor: TERMINAL_COLORS.background,
+      };
+
+    // Paused (like blocked, amber)
+    case "paused":
+      return {
+        borderColor: BLOCKED_COLORS.border,
+        backgroundColor: BLOCKED_COLORS.background,
       };
 
     // Fallback for unknown statuses
@@ -349,7 +360,10 @@ export const STATUS_LEGEND_GROUPS: Record<StatusCategory, LegendItem[]> = {
     { status: "backlog", label: "Backlog", category: "idle" },
     { status: "ready", label: "Ready", category: "idle" },
   ],
-  blocked: [{ status: "blocked", label: "Blocked", category: "blocked" }],
+  blocked: [
+    { status: "blocked", label: "Blocked", category: "blocked" },
+    { status: "paused", label: "Paused", category: "blocked" },
+  ],
   executing: [
     { status: "executing", label: "Executing", category: "executing" },
     { status: "re_executing", label: "Re-executing", category: "executing" },
@@ -379,6 +393,7 @@ export const STATUS_LEGEND_GROUPS: Record<StatusCategory, LegendItem[]> = {
   terminal: [
     { status: "failed", label: "Failed", category: "terminal" },
     { status: "cancelled", label: "Cancelled", category: "terminal" },
+    { status: "stopped", label: "Stopped", category: "terminal" },
   ],
 };
 

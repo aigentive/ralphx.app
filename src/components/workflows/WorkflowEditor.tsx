@@ -61,6 +61,8 @@ const STATUS_LABELS: Record<InternalStatus, string> = {
   merging: "Merging",
   merge_conflict: "Merge Conflict",
   merged: "Merged",
+  paused: "Paused",
+  stopped: "Stopped",
 };
 
 // ============================================================================

@@ -342,6 +342,15 @@ export const defaultWorkflow: WorkflowSchema = {
           canDragFrom: true,
           canDropTo: true,
         },
+        {
+          id: "paused",
+          label: "Paused",
+          statuses: ["paused"],
+          icon: "Pause",
+          accentColor: "hsl(var(--warning))",
+          canDragFrom: false, // User must resume via execution bar
+          canDropTo: false,
+        },
       ],
     },
     {
@@ -455,6 +464,15 @@ export const defaultWorkflow: WorkflowSchema = {
           icon: "XOctagon",
           accentColor: "hsl(var(--destructive))",
           canDragFrom: false,
+          canDropTo: false,
+        },
+        {
+          id: "stopped",
+          label: "Stopped",
+          statuses: ["stopped"],
+          icon: "StopCircle",
+          accentColor: "hsl(var(--destructive))",
+          canDragFrom: false, // Requires manual restart
           canDropTo: false,
         },
       ],

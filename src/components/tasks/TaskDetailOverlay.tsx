@@ -172,6 +172,16 @@ const STATUS_CONFIG: Record<
     bg: "hsla(145 60% 45% / 0.15)",
     text: "hsl(145 60% 50%)",
   },
+  paused: {
+    label: "Paused",
+    bg: "hsla(45 90% 55% / 0.15)",
+    text: "hsl(45 90% 55%)",
+  },
+  stopped: {
+    label: "Stopped",
+    bg: "hsla(0 70% 55% / 0.15)",
+    text: "hsl(0 70% 60%)",
+  },
 };
 
 // ============================================================================
