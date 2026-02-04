@@ -14,14 +14,28 @@ use crate::infrastructure::sqlite::migrations::helpers;
 
 /// Migration v11: Add per-project execution settings and global concurrency cap
 pub fn migrate(conn: &Connection) -> AppResult<()> {
-    // Step 1: Add project_id column to execution_settings
-    // NULL means global defaults (the existing row with id=1)
-    helpers::add_column_if_not_exists(
-        conn,
-        "execution_settings",
-        "project_id",
-        "TEXT DEFAULT NULL",
-    )?;
+    // Step 1: Recreate execution_settings WITHOUT the CHECK(id=1) constraint.
+    // The v10 table used a singleton pattern; v11 needs multiple rows (one per project).
+    // SQLite doesn't support DROP CONSTRAINT, so we recreate the table.
+    let has_project_id = helpers::column_exists(conn, "execution_settings", "project_id");
+    if !has_project_id {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS execution_settings_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                max_concurrent_tasks INTEGER NOT NULL DEFAULT 2,
+                auto_commit INTEGER NOT NULL DEFAULT 1,
+                pause_on_failure INTEGER NOT NULL DEFAULT 1,
+                updated_at TEXT NOT NULL,
+                project_id TEXT DEFAULT NULL
+            );
+            INSERT OR IGNORE INTO execution_settings_new (id, max_concurrent_tasks, auto_commit, pause_on_failure, updated_at, project_id)
+                SELECT id, max_concurrent_tasks, auto_commit, pause_on_failure, updated_at, NULL
+                FROM execution_settings;
+            DROP TABLE IF EXISTS execution_settings;
+            ALTER TABLE execution_settings_new RENAME TO execution_settings;",
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+    }
 
     // Step 2: Create global_execution_settings table for cross-project settings
     // Singleton pattern with id=1 constraint

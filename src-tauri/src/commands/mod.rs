@@ -46,6 +46,7 @@ pub use diff_commands::{get_file_diff, get_task_file_changes};
 pub use execution_commands::{
     get_execution_status, pause_execution, recover_task_execution, resolve_recovery_prompt,
     resume_execution, set_active_project, get_active_project, stop_execution,
+    get_global_execution_settings, update_global_execution_settings,
     ActiveProjectState, ExecutionState,
 };
 pub use health::health_check;

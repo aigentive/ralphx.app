@@ -103,8 +103,9 @@ pub fn run() {
             // This must happen before HTTP server starts to ensure consistent configuration
             let init_execution_state = app.state::<Arc<commands::ExecutionState>>().inner().clone();
             let init_settings_repo = Arc::clone(&app_state.execution_settings_repo);
+            let init_global_settings_repo = Arc::clone(&app_state.global_execution_settings_repo);
             tauri::async_runtime::block_on(async move {
-                // Phase 82: Load global default settings (project_id = None)
+                // Load per-project default settings (project_id = None)
                 match init_settings_repo.get_settings(None).await {
                     Ok(settings) => {
                         init_execution_state.set_max_concurrent(settings.max_concurrent_tasks);
@@ -116,6 +117,23 @@ pub fn run() {
                     Err(e) => {
                         warn!(
                             "Failed to load execution settings from database, using defaults: {}",
+                            e
+                        );
+                    }
+                }
+
+                // Phase 82: Load global execution settings (global_max_concurrent cap)
+                match init_global_settings_repo.get_settings().await {
+                    Ok(global_settings) => {
+                        init_execution_state.set_global_max_concurrent(global_settings.global_max_concurrent);
+                        info!(
+                            "Initialized global execution settings from database: global_max_concurrent={}",
+                            global_settings.global_max_concurrent
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            "Failed to load global execution settings from database, using defaults: {}",
                             e
                         );
                     }
@@ -165,6 +183,7 @@ pub fn run() {
             let startup_message_queue = Arc::clone(&app_state.message_queue);
             let startup_running_agent_registry = Arc::clone(&app_state.running_agent_registry);
             let startup_execution_state = app.state::<Arc<commands::ExecutionState>>().inner().clone();
+            let startup_active_project_state = app.state::<Arc<commands::ActiveProjectState>>().inner().clone();
             // Clone app handle to enable event emission in startup tasks
             let startup_app_handle = app.handle().clone();
 
@@ -258,6 +277,7 @@ pub fn run() {
                     startup_agent_run_repo,
                     Arc::clone(&transition_service),
                     Arc::clone(&startup_execution_state),
+                    Arc::clone(&startup_active_project_state),
                 )
                 .with_task_scheduler(Arc::clone(&task_scheduler))
                 .with_app_handle(startup_runner_app_handle);
@@ -417,6 +437,8 @@ pub fn run() {
             commands::execution_commands::update_execution_settings,
             commands::execution_commands::set_active_project,
             commands::execution_commands::get_active_project,
+            commands::execution_commands::get_global_execution_settings,
+            commands::execution_commands::update_global_execution_settings,
             // Ideation session commands
             commands::ideation_commands::create_ideation_session,
             commands::ideation_commands::get_ideation_session,

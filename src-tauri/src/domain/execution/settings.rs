@@ -46,7 +46,7 @@ impl GlobalExecutionSettings {
     /// Validate and clamp global_max_concurrent to allowed range
     pub fn validate(&self) -> Self {
         Self {
-            global_max_concurrent: self.global_max_concurrent.min(Self::MAX_ALLOWED).max(1),
+            global_max_concurrent: self.global_max_concurrent.clamp(1, Self::MAX_ALLOWED),
         }
     }
 }

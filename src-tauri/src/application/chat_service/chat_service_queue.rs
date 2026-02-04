@@ -145,7 +145,7 @@ pub async fn process_message_queue<R: Runtime + 'static>(
                         "[STREAM_DEBUG] queue spawn blocked: {} (context_type={}, context_id={})",
                         err, context_type, context_id
                     );
-                    return;
+                    return total_processed;
                 }
             };
             cmd.env("RALPHX_AGENT_TYPE", agent_name);

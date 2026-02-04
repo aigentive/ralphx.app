@@ -2,9 +2,6 @@ use crate::domain::entities::ProjectId;
 use crate::domain::execution::{ExecutionSettings, GlobalExecutionSettings};
 use async_trait::async_trait;
 
-// Re-export GlobalExecutionSettings for convenience from domain layer
-pub use crate::domain::execution::GlobalExecutionSettings;
-
 /// Repository for per-project execution settings
 /// Phase 82: Extended to support project-specific settings with optional project_id
 #[async_trait]
