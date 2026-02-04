@@ -4,6 +4,31 @@
 
 ---
 
+### 2026-02-04 11:45:00 - Phase 79 Task 3: Make base branch and worktree directory editable in settings UI
+**What:**
+- Exported `getGitDefaultBranch` from `src/lib/tauri.ts` for component access
+- Updated `GitSettingsSection.tsx` to make base branch editable with text input
+- Added "Detect" button that calls `getGitDefaultBranch` to auto-detect repo default branch
+- Wired base branch changes to persist via `projectsApi.update` on blur
+- Wired worktree directory changes to persist via `projectsApi.update` on blur
+- Added `useEffect` to reset pending state when project changes
+- Enhanced `TextSettingRow` component with optional action button support
+
+**Files:**
+- MODIFIED: src/lib/tauri.ts (added getGitDefaultBranch export)
+- MODIFIED: src/components/settings/GitSettingsSection.tsx (complete rewrite for editable fields)
+
+**Visual Verification:** N/A - this is a UI task but the visual verification workflow requires a running app; the component uses existing SettingRow/SectionCard patterns
+
+**Commands:**
+- `npm run typecheck` - passes
+- `npm run lint` - pre-existing errors in unrelated files (useGraphSelectionController.ts)
+- `npx eslint src/components/settings/GitSettingsSection.tsx src/lib/tauri.ts` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-02-04 10:30:00 - Phase 79 Task 2: Add getGitDefaultBranch to projectsApi
 **What:**
 - Added `getGitDefaultBranch` function to `src/api/projects.ts`

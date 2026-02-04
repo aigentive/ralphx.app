@@ -3,17 +3,18 @@
  *
  * Features:
  * - Git Mode selector: Worktree (Recommended) / Local Branches
- * - Base Branch display (read-only)
- * - Worktree Location setting (when in worktree mode)
+ * - Editable Base Branch with "Detect Default" action
+ * - Worktree Location setting (when in worktree mode), persisted per project
  *
  * Follows SettingsView pattern using shared components.
  */
 
-import { useState, useCallback } from "react";
-import { GitBranch, AlertTriangle, Loader2 } from "lucide-react";
+import { useState, useCallback, useEffect } from "react";
+import { GitBranch, AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
-import { api } from "@/lib/tauri";
+import { Button } from "@/components/ui/button";
+import { api, getGitDefaultBranch } from "@/lib/tauri";
 import { useProjectStore, selectActiveProject } from "@/stores/projectStore";
 import type { GitMode, Project } from "@/types/project";
 import { SectionCard, SelectSettingRow, SettingRow } from "./SettingsView.shared";
@@ -39,30 +40,7 @@ const GIT_MODE_OPTIONS: {
 ];
 
 /**
- * Display row for read-only values (like base branch)
- */
-function DisplayRow({
-  id,
-  label,
-  description,
-  value,
-}: {
-  id: string;
-  label: string;
-  description: string;
-  value: string | null;
-}) {
-  return (
-    <SettingRow id={id} label={label} description={description}>
-      <span className="text-sm text-[var(--text-secondary)]">
-        {value || "Not set"}
-      </span>
-    </SettingRow>
-  );
-}
-
-/**
- * Text input row for editable settings
+ * Text input row for editable settings with optional action button
  */
 function TextSettingRow({
   id,
@@ -72,6 +50,11 @@ function TextSettingRow({
   placeholder,
   disabled,
   onChange,
+  onBlur,
+  actionLabel,
+  actionIcon,
+  onAction,
+  actionLoading,
 }: {
   id: string;
   label: string;
@@ -80,18 +63,43 @@ function TextSettingRow({
   placeholder?: string;
   disabled: boolean;
   onChange: (value: string) => void;
+  onBlur?: () => void;
+  actionLabel?: string;
+  actionIcon?: React.ReactNode;
+  onAction?: () => void;
+  actionLoading?: boolean;
 }) {
   return (
     <SettingRow id={id} label={label} description={description} isDisabled={disabled}>
-      <Input
-        id={id}
-        data-testid={id}
-        value={value}
-        placeholder={placeholder}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-[280px] bg-[var(--bg-surface)] border-[var(--border-default)] focus:border-[var(--accent-primary)] focus:ring-[var(--accent-primary)] text-sm"
-      />
+      <div className="flex items-center gap-2">
+        <Input
+          id={id}
+          data-testid={id}
+          value={value}
+          placeholder={placeholder}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={onBlur}
+          className="w-[200px] bg-[var(--bg-surface)] border-[var(--border-default)] focus:border-[var(--accent-primary)] focus:ring-[var(--accent-primary)] text-sm"
+        />
+        {onAction && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onAction}
+            disabled={disabled || actionLoading}
+            className="h-8 px-2 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]"
+            title={actionLabel}
+          >
+            {actionLoading ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              actionIcon
+            )}
+            {actionLabel && <span className="ml-1">{actionLabel}</span>}
+          </Button>
+        )}
+      </div>
     </SettingRow>
   );
 }
@@ -99,7 +107,7 @@ function TextSettingRow({
 /**
  * GitSettingsSection component
  *
- * Allows users to configure git mode and worktree location for the active project.
+ * Allows users to configure git mode, base branch, and worktree location for the active project.
  */
 export function GitSettingsSection() {
   const project = useProjectStore(selectActiveProject);
@@ -107,9 +115,17 @@ export function GitSettingsSection() {
 
   // Local state for pending changes
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isDetectingDefault, setIsDetectingDefault] = useState(false);
+  const [pendingBaseBranch, setPendingBaseBranch] = useState<string | null>(null);
   const [pendingWorktreeDir, setPendingWorktreeDir] = useState<string | null>(null);
 
-  // Handlers must be defined before early return to follow rules of hooks
+  // Reset pending state when project changes
+  useEffect(() => {
+    setPendingBaseBranch(null);
+    setPendingWorktreeDir(null);
+  }, [project?.id]);
+
+  // Handler for git mode change
   const handleGitModeChange = useCallback(
     async (newMode: GitMode, currentProject: Project | null) => {
       if (!currentProject || newMode === currentProject.gitMode) return;
@@ -136,9 +152,100 @@ export function GitSettingsSection() {
     [pendingWorktreeDir, updateProject]
   );
 
+  // Handler for base branch change (local state)
+  const handleBaseBranchChange = useCallback((value: string) => {
+    setPendingBaseBranch(value);
+  }, []);
+
+  // Handler for persisting base branch on blur
+  const handleBaseBranchBlur = useCallback(async () => {
+    if (!project || pendingBaseBranch === null) return;
+
+    const newValue = pendingBaseBranch.trim();
+    // Only persist if value changed
+    if (newValue === (project.baseBranch ?? "")) {
+      setPendingBaseBranch(null);
+      return;
+    }
+
+    setIsUpdating(true);
+    try {
+      await api.projects.update(project.id, {
+        baseBranch: newValue || null,
+      });
+      updateProject(project.id, { baseBranch: newValue || null });
+      setPendingBaseBranch(null);
+      toast.success("Base branch updated");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update base branch"
+      );
+    } finally {
+      setIsUpdating(false);
+    }
+  }, [project, pendingBaseBranch, updateProject]);
+
+  // Handler for detecting default branch
+  const handleDetectDefaultBranch = useCallback(async () => {
+    if (!project?.workingDirectory) {
+      toast.error("No working directory set for this project");
+      return;
+    }
+
+    setIsDetectingDefault(true);
+    try {
+      const defaultBranch = await getGitDefaultBranch(project.workingDirectory);
+
+      // Update both local state and persist to backend
+      setIsUpdating(true);
+      await api.projects.update(project.id, {
+        baseBranch: defaultBranch,
+      });
+      updateProject(project.id, { baseBranch: defaultBranch });
+      setPendingBaseBranch(null);
+      toast.success(`Detected default branch: ${defaultBranch}`);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to detect default branch"
+      );
+    } finally {
+      setIsDetectingDefault(false);
+      setIsUpdating(false);
+    }
+  }, [project, updateProject]);
+
+  // Handler for worktree directory change (local state)
   const handleWorktreeDirChange = useCallback((value: string) => {
     setPendingWorktreeDir(value);
   }, []);
+
+  // Handler for persisting worktree directory on blur
+  const handleWorktreeDirBlur = useCallback(async () => {
+    if (!project || pendingWorktreeDir === null) return;
+
+    const newValue = pendingWorktreeDir.trim();
+    // Only persist if value changed
+    if (newValue === (project.worktreeParentDirectory ?? "~/ralphx-worktrees")) {
+      setPendingWorktreeDir(null);
+      return;
+    }
+
+    setIsUpdating(true);
+    try {
+      await api.projects.update(project.id, {
+        worktreeParentDirectory: newValue || null,
+      });
+      updateProject(project.id, { worktreeParentDirectory: newValue || null });
+      setPendingWorktreeDir(null);
+      toast.success("Worktree location updated");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update worktree location"
+      );
+    } finally {
+      setIsUpdating(false);
+    }
+  }, [project, pendingWorktreeDir, updateProject]);
 
   // Early return if no project selected (after all hooks)
   if (!project) {
@@ -146,7 +253,7 @@ export function GitSettingsSection() {
   }
 
   const currentGitMode = project.gitMode;
-  const baseBranch = project.baseBranch;
+  const baseBranch = pendingBaseBranch ?? project.baseBranch ?? "";
   const worktreeParentDirectory =
     pendingWorktreeDir ?? project.worktreeParentDirectory ?? "~/ralphx-worktrees";
 
@@ -183,11 +290,19 @@ export function GitSettingsSection() {
         </div>
       )}
 
-      <DisplayRow
+      <TextSettingRow
         id="base-branch"
         label="Base Branch"
         description="The branch tasks are merged into"
         value={baseBranch}
+        placeholder="main"
+        disabled={isUpdating || isDetectingDefault}
+        onChange={handleBaseBranchChange}
+        onBlur={handleBaseBranchBlur}
+        actionLabel="Detect"
+        actionIcon={<RefreshCw className="w-3.5 h-3.5" />}
+        onAction={handleDetectDefaultBranch}
+        actionLoading={isDetectingDefault}
       />
 
       {currentGitMode === "worktree" && (
@@ -199,6 +314,7 @@ export function GitSettingsSection() {
           placeholder="~/ralphx-worktrees"
           disabled={isUpdating}
           onChange={handleWorktreeDirChange}
+          onBlur={handleWorktreeDirBlur}
         />
       )}
 
