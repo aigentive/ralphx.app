@@ -396,7 +396,7 @@ const FilterButton = memo(function FilterButton({
       className={cn(
         "flex items-center gap-1.5 w-full px-2.5 py-2 rounded-md text-xs transition-colors",
         "bg-[hsl(220_10%_14%)] hover:bg-[hsl(220_10%_18%)]",
-        isCompact && "w-9 h-9 p-0 justify-center",
+        isCompact && "w-full h-8 p-0 justify-center",
         activeCount && activeCount > 0 && "ring-1 ring-[hsl(14_100%_55%_/_0.5)]"
       )}
     >
@@ -506,11 +506,12 @@ function FloatingGraphFiltersComponent({
       }}
       data-testid="floating-graph-filters"
     >
-      <div className="p-2" style={GLASS_STYLE}>
+      <div className={cn("p-2", isCompact && "p-1.5")} style={GLASS_STYLE}>
         <div
           className={cn(
             "flex flex-col gap-1.5",
-            isCompact ? "w-[44px]" : "w-[120px]"
+            isCompact && "gap-1",
+            isCompact ? "w-[36px]" : "w-[120px]"
           )}
         >
           {/* Status Filter */}
@@ -549,7 +550,12 @@ function FloatingGraphFiltersComponent({
           )}
 
           {/* Separator */}
-          <div className="h-px bg-[hsl(220_10%_25%)] my-1" />
+          <div
+            className={cn(
+              "h-px bg-[hsl(220_10%_25%)] my-1",
+              isCompact && "my-0.5"
+            )}
+          />
 
           {/* Layout Direction Toggle */}
           <FilterButton
@@ -602,7 +608,7 @@ function FloatingGraphFiltersComponent({
                       className={cn(
                         "flex items-center gap-1.5 w-full px-2.5 py-2 rounded-md text-xs transition-colors",
                         "bg-[hsl(220_10%_14%)] hover:bg-[hsl(220_10%_18%)]",
-                        isCompact && "w-9 h-9 p-0 justify-center"
+                        isCompact && "w-full h-8 p-0 justify-center"
                       )}
                     >
                       <Layers className="w-3.5 h-3.5 text-[hsl(220_10%_50%)]" />
