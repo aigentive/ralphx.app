@@ -3,6 +3,19 @@
 > Log entries for PRD task completion and P0 gap fixes.
 
 ---
+### 2026-02-04 07:33:38 - Phase 81 Task 2: Graph toolbar compact mode
+**What:**
+- Added compact rendering for FloatingGraphFilters with icon-only controls
+- Wired nav compact breakpoint into TaskGraphView to drive toolbar mode
+- Marked Phase 81 Task 2 as passing
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
+
+**Result:** Success (lint errors pre-existing in TaskGraph hooks)
+
+---
 ### 2026-02-04 07:18:09 - Phase 81 Task 1: Nav compact breakpoint hook
 **What:**
 - Added useNavCompactBreakpoint hook for xl breakpoint detection

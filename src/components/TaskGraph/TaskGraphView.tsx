@@ -56,6 +56,7 @@ import type { TaskGraphNode, TaskGraphEdge, PlanGroupInfo } from "@/api/task-gra
 import type { InternalStatus } from "@/types/status";
 import { useUiStore } from "@/stores/uiStore";
 import { useTaskMutation } from "@/hooks/useTaskMutation";
+import { useNavCompactBreakpoint } from "@/hooks";
 import { api } from "@/lib/tauri";
 import { toast } from "sonner";
 import { Filter, Loader2, X } from "lucide-react";
@@ -285,6 +286,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     zoomBy,
   } = useTaskGraphViewport();
   const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
+  const { isNavCompact } = useNavCompactBreakpoint();
 
   const graphReady = Boolean(graphData && graphData.nodes.length > 0);
 
@@ -896,6 +898,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
           grouping={grouping}
           onGroupingChange={setGrouping}
           planGroups={graphData?.planGroups ?? []}
+          isCompact={isNavCompact}
         />
 
         {/* Show empty state when filters hide all tasks */}
