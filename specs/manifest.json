@@ -576,6 +576,13 @@
       "prd": "specs/phases/prd_phase_80_execution_stop_pause.md",
       "status": "pending",
       "description": "Definitive stop/pause semantics with Paused and Stopped statuses"
+    },
+    {
+      "phase": 81,
+      "name": "Graph Toolbar Compact + Timeline Toggle",
+      "prd": "specs/phases/prd_phase_81_graph_toolbar_compact.md",
+      "status": "pending",
+      "description": "Responsive graph toolbar compact mode and right panel toggle with auto-hide"
     }
   ]
 }
