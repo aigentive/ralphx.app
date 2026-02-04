@@ -11,6 +11,7 @@ interface UseAppKeyboardShortcutsProps {
   setCurrentView: (view: ViewType) => void;
   toggleChatVisible: (view: ViewType) => void;
   toggleReviewsPanel?: () => void;
+  toggleGraphRightPanel?: () => void;
   openProjectWizard?: () => void;
   hasProjects?: boolean;
   showWelcomeOverlay?: boolean;
@@ -24,6 +25,7 @@ export function useAppKeyboardShortcuts({
   setCurrentView,
   toggleChatVisible,
   toggleReviewsPanel,
+  toggleGraphRightPanel,
   openProjectWizard,
   hasProjects,
   showWelcomeOverlay,
@@ -159,13 +161,29 @@ export function useAppKeyboardShortcuts({
             toggleReviewsPanel();
             break;
           }
+          case "l":
+          case "L": {
+            if (!toggleGraphRightPanel || currentView !== "graph") {
+              return;
+            }
+            const activeEl = document.activeElement;
+            if (
+              activeEl instanceof HTMLInputElement ||
+              activeEl instanceof HTMLTextAreaElement
+            ) {
+              return;
+            }
+            e.preventDefault();
+            toggleGraphRightPanel();
+            break;
+          }
         }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [setCurrentView, toggleChatVisible, toggleReviewsPanel, currentView, openProjectWizard, hasProjects, showWelcomeOverlay, openWelcomeOverlay, closeWelcomeOverlay, welcomeOverlayReturnView]);
+  }, [setCurrentView, toggleChatVisible, toggleReviewsPanel, toggleGraphRightPanel, currentView, openProjectWizard, hasProjects, showWelcomeOverlay, openWelcomeOverlay, closeWelcomeOverlay, welcomeOverlayReturnView]);
 
   // Global shortcut for Cmd+, (registered at OS level to bypass DevTools interception)
   const setCurrentViewRef = useRef(setCurrentView);
