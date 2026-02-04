@@ -1,0 +1,8 @@
+---
+description: Git workflow rules and recovery check
+alwaysApply: true
+---
+
+# Git Workflow Rules
+
+When this rule is active, read `@.claude/rules/git-workflow.md` and follow it.

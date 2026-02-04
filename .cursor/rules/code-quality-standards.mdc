@@ -1,0 +1,8 @@
+---
+description: Code quality standards and file size limits
+alwaysApply: true
+---
+
+# Code Quality Standards
+
+When this rule is active, read `@.claude/rules/code-quality-standards.md` and follow it.

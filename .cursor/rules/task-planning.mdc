@@ -1,0 +1,8 @@
+---
+description: Task planning and compilation unit rules
+alwaysApply: true
+---
+
+# Task Planning Rules
+
+When this rule is active, read `@.claude/rules/task-planning.md` and follow it.

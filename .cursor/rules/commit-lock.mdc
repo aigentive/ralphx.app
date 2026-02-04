@@ -1,0 +1,8 @@
+---
+description: Commit lock protocol for parallel work
+alwaysApply: true
+---
+
+# Commit Lock Protocol
+
+When this rule is active, read `@.claude/rules/commit-lock.md` and follow it.

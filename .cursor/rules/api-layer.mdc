@@ -1,0 +1,8 @@
+---
+description: API layer patterns and Tauri mapping rules
+alwaysApply: true
+---
+
+# API Layer Patterns
+
+When this rule is active, read `@.claude/rules/api-layer.md` and follow it.
