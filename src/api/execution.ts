@@ -2,6 +2,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
+import { DEFAULT_PROJECT_SETTINGS } from "@/types/settings";
 import {
   ExecutionStatusResponseSchema,
   ExecutionCommandResponseSchema,
@@ -119,13 +120,21 @@ export const executionApi = {
    * Get execution settings from database
    * @returns Execution settings with max concurrent tasks, auto-commit, pause on failure
    */
-  getSettings: (): Promise<ExecutionSettingsResponse> =>
-    typedInvokeWithTransform(
-      "get_execution_settings",
-      {},
-      ExecutionSettingsResponseSchema,
-      transformExecutionSettings
-    ),
+  getSettings: async (): Promise<ExecutionSettingsResponse> => {
+    const result = await invoke("get_execution_settings", {});
+
+    if (!result) {
+      const defaults = DEFAULT_PROJECT_SETTINGS.execution;
+      return transformExecutionSettings({
+        max_concurrent_tasks: defaults.max_concurrent_tasks,
+        auto_commit: defaults.auto_commit,
+        pause_on_failure: defaults.pause_on_failure,
+      });
+    }
+
+    const validated = ExecutionSettingsResponseSchema.parse(result);
+    return transformExecutionSettings(validated);
+  },
 
   /**
    * Update execution settings in database
