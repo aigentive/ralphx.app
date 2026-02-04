@@ -152,7 +152,7 @@ run_cycle() {
 
     # Optional guard to cap concurrent Claude processes
     if [ -n "${CLAUDE_MAX_PROCS:-}" ] && [ -x "$ROOT_DIR/scripts/claude-process-guard.sh" ]; then
-        if ! "$ROOT_DIR/scripts/claude-process-guard.sh" --max "$CLAUDE_MAX_PROCS" --mode "${CLAUDE_GUARD_MODE:-block}"; then
+        if ! "$ROOT_DIR/scripts/claude-process-guard.sh" --max "$CLAUDE_MAX_PROCS" --mode "${CLAUDE_GUARD_MODE:-block}" --ancestor-match "ralph-streams.sh $STREAM"; then
             echo -e "${PAD}${YELLOW}[$STREAM] Claude guard blocked cycle (max=${CLAUDE_MAX_PROCS})${NC}"
             rm -f "$LOCK_FILE"
             return 0
