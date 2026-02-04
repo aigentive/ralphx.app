@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 78,
+  "currentPhase": 80,
   "phases": [
     {
       "phase": 0,
@@ -567,14 +567,14 @@
       "phase": 79,
       "name": "Git Settings Per-Project",
       "prd": "specs/phases/prd_phase_79_git_settings_per_project.md",
-      "status": "pending",
+      "status": "complete",
       "description": "Make Git settings editable per project with automatic default-branch detection"
     },
     {
       "phase": 80,
       "name": "Execution Stop/Pause Semantics",
       "prd": "specs/phases/prd_phase_80_execution_stop_pause.md",
-      "status": "pending",
+      "status": "active",
       "description": "Definitive stop/pause semantics with Paused and Stopped statuses"
     },
     {
