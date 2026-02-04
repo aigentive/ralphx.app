@@ -5,6 +5,13 @@
 
 <!-- All P0 items from Phase 20-22 have been resolved. New P0s from verify stream go here. -->
 
+## From Phase 80 Verification (2026-02-04)
+
+- [x] [Visual/Coverage] ExecutionControlBar - no visual verification screenshot
+- [x] [Visual/Coverage] TaskDetailView/TaskDetailPanel - no visual verification screenshot
+- [x] [Visual/Coverage] TaskGraph status nodes - no visual verification screenshot
+- [x] [Visual/Mock] TaskGraph - web mode fails to load graph (invalid input null) - src/components/TaskGraph/TaskGraphView.tsx
+
 ## From Phase 24 Verification (2026-01-28)
 
 - [x] [Infrastructure] Regex pattern error in fswatch cleanup: pkill pattern uses invalid regex - ralph-tmux.sh:185

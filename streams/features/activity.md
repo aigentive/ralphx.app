@@ -3,6 +3,91 @@
 > Log entries for PRD task completion and P0 gap fixes.
 
 ---
+### 2026-02-04 07:10:24 - Phase 80 Complete → Activate Phase 81
+**What:**
+- Marked Phase 80 complete after successful gap + visual verification
+- Activated Phase 81 in manifest
+
+**Result:** Success
+
+---
+### 2026-02-04 07:09:58 - Phase 80 Gap Verification (Retry)
+**What:**
+- Re-verified wiring, API surface, state flow, events, and type consistency for Phase 80
+- Confirmed Paused/Stopped semantics are fully wired across backend + frontend
+- No gaps found
+
+**Result:** Success
+
+---
+### 2026-02-04 07:09:58 - Phase 80 Visual Verification (Retry)
+**What:**
+- Confirmed ExecutionControlBar, TaskDetailView, and TaskGraph render correctly in web mode
+- Re-used existing ExecutionControlBar + TaskDetailView screenshots, updated TaskGraph mock fix
+
+**Visual Verification:**
+- Mock-check: screenshots/features/2026-02-04_07-01-30_execution-control-bar_mock-check.md
+- Screenshot: screenshots/features/2026-02-04_07-01-30_execution-control-bar.png
+- Mock-check: screenshots/features/2026-02-04_07-01-53_task-detail-view_mock-check.md
+- Screenshot: screenshots/features/2026-02-04_07-01-53_task-detail-view.png
+- Mock-check: screenshots/features/2026-02-04_07-08-07_task-graph-status-nodes_mock-check.md
+- Screenshot: screenshots/features/2026-02-04_07-08-07_task-graph-status-nodes.png
+
+**Result:** Success
+
+---
+### 2026-02-04 07:08:17 - Phase 80 P0 Fix: TaskGraph mock data in web mode
+**What:**
+- Added mock task graph API responses for dependency graph and timeline events
+- Wired mock handlers for get_task_dependency_graph and get_task_timeline_events
+- Verified graph renders in web mode without invalid input errors
+
+**Commands:**
+- `agent-browser reload`
+- `agent-browser screenshot ...`
+
+**Visual Verification:**
+- Mock-check: screenshots/features/2026-02-04_07-08-07_task-graph-status-nodes_mock-check.md
+- Screenshot: screenshots/features/2026-02-04_07-08-07_task-graph-status-nodes.png
+
+**Result:** Success
+
+---
+### 2026-02-04 07:02:33 - Phase 80 Visual Verification
+**What:**
+- Captured visual verification screenshots for ExecutionControlBar, TaskDetailView, and TaskGraph
+- Completed mock-check notes for each UI surface in web mode
+- Observed TaskGraph failure in web mode (invalid input null) and logged new P0
+
+**Commands:**
+- `agent-browser open http://localhost:5173`
+- `agent-browser screenshot ...`
+
+**Visual Verification:**
+- Mock-check: screenshots/features/2026-02-04_07-01-30_execution-control-bar_mock-check.md
+- Screenshot: screenshots/features/2026-02-04_07-01-30_execution-control-bar.png
+- Mock-check: screenshots/features/2026-02-04_07-01-53_task-detail-view_mock-check.md
+- Screenshot: screenshots/features/2026-02-04_07-01-53_task-detail-view.png
+- Mock-check: screenshots/features/2026-02-04_07-02-13_task-graph-status-nodes_mock-check.md
+- Screenshot: screenshots/features/2026-02-04_07-02-13_task-graph-status-nodes.png
+
+**Result:** Failed (TaskGraph load error in web mode; P0 logged)
+
+---
+### 2026-02-04 06:58:59 - Phase 80 Gap Verification
+**What:**
+- Completed code gap verification for pause/stop/resume wiring and status flow
+- Found visual verification coverage gaps for Phase 80 UI components
+- Logged P0 visual coverage items in streams/features/backlog.md
+
+**Commands:**
+- N/A (manual verification + file inspection)
+
+**Visual Verification:** Pending - P0 coverage gaps logged
+
+**Result:** Failed (P0 visual gaps added)
+
+---
 ### 2026-02-04 06:53:25 - Phase 80 Task 6: Paused/Stopped UI and terminal counts
 **What:**
 - Updated execution bar tooltip copy to distinguish Pause vs Stop semantics

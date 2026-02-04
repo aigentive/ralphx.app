@@ -7,6 +7,7 @@
 
 import { mockWorkflowsApi, mockProjectsApi, mockGetGitBranches, mockGetGitDefaultBranch } from "@/api-mock/projects";
 import { mockTasksApi } from "@/api-mock/tasks";
+import { mockTaskGraphApi } from "@/api-mock/task-graph";
 import { mockListConversations, mockGetConversation } from "@/api-mock/chat";
 import { mockReviewsApi } from "@/api-mock/reviews";
 import { mockIdeationApi } from "@/api-mock/ideation";
@@ -210,6 +211,16 @@ const commandHandlers: Record<
 
   // Review commands
   list_reviews: async (args) => mockReviewsApi.getPending(args.projectId as string),
+
+  // Task graph commands
+  get_task_dependency_graph: async (args) =>
+    mockTaskGraphApi.getDependencyGraph(args.projectId as string),
+  get_task_timeline_events: async (args) =>
+    mockTaskGraphApi.getTimelineEvents(
+      args.projectId as string,
+      (args.limit as number | undefined) ?? 50,
+      (args.offset as number | undefined) ?? 0
+    ),
 
   // Health check
   health_check: async () => ({ status: "ok" }),
