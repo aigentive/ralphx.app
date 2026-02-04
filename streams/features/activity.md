@@ -3,6 +3,18 @@
 > Log entries for PRD task completion and P0 gap fixes.
 
 ---
+### 2026-02-04 08:07:51 - Phase 81 Graph panel floating sizing
+**What:**
+- Matched compact overlay size/position to chat panel (fixed top/bottom, width + margin)
+- Applied chat-style glass container for timeline overlay
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
+
+**Result:** Success (lint errors pre-existing in TaskGraph hooks)
+
+---
 ### 2026-02-04 08:05:58 - Phase 81 Graph panel floating polish
 **What:**
 - Updated compact overlay timeline to use floating presentation (no solid backdrop)
