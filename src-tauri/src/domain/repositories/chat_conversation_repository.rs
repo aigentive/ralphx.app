@@ -132,6 +132,10 @@ mod tests {
             Ok(())
         }
 
+        async fn clear_claude_session_id(&self, _id: &ChatConversationId) -> AppResult<()> {
+            Ok(())
+        }
+
         async fn update_title(&self, _id: &ChatConversationId, _title: &str) -> AppResult<()> {
             Ok(())
         }
