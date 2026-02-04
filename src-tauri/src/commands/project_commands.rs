@@ -482,4 +482,169 @@ mod tests {
         assert!(json.contains("\"working_directory\":\"/test/path\""));
         assert!(json.contains("\"git_mode\":\"local\""));
     }
+
+    // ===== get_git_default_branch tests =====
+
+    /// Helper to create a temp dir with git initialized
+    fn create_git_repo() -> tempfile::TempDir {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path();
+
+        // Initialize git repo
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(path)
+            .output()
+            .expect("Failed to init git repo");
+
+        // Configure git user for commits
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(path)
+            .output()
+            .expect("Failed to set git email");
+
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(path)
+            .output()
+            .expect("Failed to set git name");
+
+        temp_dir
+    }
+
+    /// Helper to create an initial commit on a branch
+    fn create_commit_on_branch(path: &std::path::Path, branch_name: &str) {
+        // Create and checkout branch
+        std::process::Command::new("git")
+            .args(["checkout", "-b", branch_name])
+            .current_dir(path)
+            .output()
+            .expect("Failed to create branch");
+
+        // Create a file and commit
+        std::fs::write(path.join("README.md"), "# Test").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(path)
+            .output()
+            .expect("Failed to stage files");
+
+        std::process::Command::new("git")
+            .args(["commit", "-m", "Initial commit"])
+            .current_dir(path)
+            .output()
+            .expect("Failed to commit");
+    }
+
+    #[tokio::test]
+    async fn test_get_git_default_branch_nonexistent_directory() {
+        let result = get_git_default_branch("/nonexistent/path/that/does/not/exist".to_string()).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("does not exist"));
+    }
+
+    #[tokio::test]
+    async fn test_get_git_default_branch_not_a_git_repo() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().to_str().unwrap().to_string();
+
+        let result = get_git_default_branch(path).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Not a git repository"));
+    }
+
+    #[tokio::test]
+    async fn test_get_git_default_branch_empty_repo_no_branches() {
+        let temp_dir = create_git_repo();
+        let path = temp_dir.path().to_str().unwrap().to_string();
+
+        // Empty repo with no commits = no branches
+        let result = get_git_default_branch(path).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("No branches found"));
+    }
+
+    #[tokio::test]
+    async fn test_get_git_default_branch_returns_main() {
+        let temp_dir = create_git_repo();
+        let path = temp_dir.path();
+
+        // Create main branch with a commit
+        create_commit_on_branch(path, "main");
+
+        let result = get_git_default_branch(path.to_str().unwrap().to_string()).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "main");
+    }
+
+    #[tokio::test]
+    async fn test_get_git_default_branch_returns_master() {
+        let temp_dir = create_git_repo();
+        let path = temp_dir.path();
+
+        // Create master branch with a commit (not main)
+        create_commit_on_branch(path, "master");
+
+        let result = get_git_default_branch(path.to_str().unwrap().to_string()).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "master");
+    }
+
+    #[tokio::test]
+    async fn test_get_git_default_branch_prefers_main_over_master() {
+        let temp_dir = create_git_repo();
+        let path = temp_dir.path();
+
+        // Create main branch first
+        create_commit_on_branch(path, "main");
+
+        // Create master branch
+        std::process::Command::new("git")
+            .args(["checkout", "-b", "master"])
+            .current_dir(path)
+            .output()
+            .expect("Failed to create master branch");
+
+        let result = get_git_default_branch(path.to_str().unwrap().to_string()).await;
+        assert!(result.is_ok());
+        // Should prefer main (checked before master in fallback chain)
+        assert_eq!(result.unwrap(), "main");
+    }
+
+    #[tokio::test]
+    async fn test_get_git_default_branch_falls_back_to_first_branch() {
+        let temp_dir = create_git_repo();
+        let path = temp_dir.path();
+
+        // Create a branch that's NOT main or master
+        create_commit_on_branch(path, "develop");
+
+        let result = get_git_default_branch(path.to_str().unwrap().to_string()).await;
+        assert!(result.is_ok());
+        // Should fall back to the only branch available
+        assert_eq!(result.unwrap(), "develop");
+    }
+
+    #[tokio::test]
+    async fn test_get_git_default_branch_first_branch_alphabetically() {
+        let temp_dir = create_git_repo();
+        let path = temp_dir.path();
+
+        // Create feature-z branch first
+        create_commit_on_branch(path, "feature-z");
+
+        // Create feature-a branch
+        std::process::Command::new("git")
+            .args(["checkout", "-b", "feature-a"])
+            .current_dir(path)
+            .output()
+            .expect("Failed to create feature-a branch");
+
+        let result = get_git_default_branch(path.to_str().unwrap().to_string()).await;
+        assert!(result.is_ok());
+        // The function gets first line from `git branch --format=%(refname:short)`
+        // which lists branches alphabetically, so feature-a comes first
+        assert_eq!(result.unwrap(), "feature-a");
+    }
 }

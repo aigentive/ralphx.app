@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-02-04 14:22:00 - Phase 79 Task 5: Add tests for default-branch detection
+**What:**
+- Added 8 integration tests for `get_git_default_branch` command in `project_commands.rs`
+- Tests cover: nonexistent directory, not a git repo, empty repo with no branches
+- Tests cover: returns main, returns master, prefers main over master
+- Tests cover: falls back to first branch, first branch alphabetically
+- Added helper functions `create_git_repo()` and `create_commit_on_branch()` for test setup
+- Fixed pre-existing missing trait method `clear_claude_session_id` in `MockChatConversationRepository` that was blocking test compilation
+
+**Files:**
+- MODIFIED: src-tauri/src/commands/project_commands.rs (added 8 tests + 2 helper functions)
+- MODIFIED: src-tauri/src/domain/repositories/chat_conversation_repository.rs (fixed missing trait impl)
+
+**Visual Verification:** N/A - backend only, no UI changes
+
+**Commands:**
+- `cargo test commands::project_commands::tests --lib` - 15 tests pass (8 new)
+- `cargo clippy` - no errors in modified files (pre-existing errors in other files)
+
+**Result:** Success
+
+---
+
 ### 2026-02-04 01:31:23 - Phase 79 Task 4: Use default-branch detection in project creation wizard
 **What:**
 - Added `onDetectDefaultBranch` prop to `ProjectCreationWizardProps` interface
