@@ -93,6 +93,11 @@
 - [x] [Visual/Mock] Mock update method missing worktreeParentDirectory handler - changes don't persist in web mode - src/api-mock/projects.ts:43-60
   - Fixed by adding worktreeParentDirectory to mock update() method
 
+## From Phase 82 Verification (2026-02-05)
+
+- [x] [Frontend] Orphaned API: Settings API calls missing projectId - per-project execution settings never saved - src/App.tsx:305,343
+  - Fixed by passing currentProjectId to getSettings() and updateSettings(), added currentProjectId as dependency
+
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)

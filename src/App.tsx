@@ -296,13 +296,14 @@ function AppContent() {
     localStorage.setItem(CHAT_WIDTH_STORAGE_KEY, chatWidth.toString());
   }, [chatWidth]);
 
-  // Load execution settings from database on mount
+  // Load execution settings from database when project changes
   useEffect(() => {
     async function loadSettings() {
       try {
         setIsLoadingSettings(true);
         setSettingsError(null);
-        const response = await executionApi.getSettings();
+        // Phase 82: Pass currentProjectId for per-project settings
+        const response = await executionApi.getSettings(currentProjectId || undefined);
         // Map API response (camelCase) to settings type (snake_case)
         setExecutionSettings({
           ...DEFAULT_PROJECT_SETTINGS,
@@ -323,7 +324,7 @@ function AppContent() {
       }
     }
     loadSettings();
-  }, []);
+  }, [currentProjectId]);
 
   // Debounced handler for execution settings changes (300ms)
   const handleSettingsChange = useCallback((newSettings: ProjectSettings) => {
@@ -340,11 +341,12 @@ function AppContent() {
     saveTimeoutRef.current = setTimeout(async () => {
       try {
         setIsSavingSettings(true);
+        // Phase 82: Pass currentProjectId for per-project settings
         await executionApi.updateSettings({
           maxConcurrentTasks: newSettings.execution.max_concurrent_tasks,
           autoCommit: newSettings.execution.auto_commit,
           pauseOnFailure: newSettings.execution.pause_on_failure,
-        });
+        }, currentProjectId || undefined);
       } catch (err) {
         console.error("Failed to save execution settings:", err);
         setSettingsError(err instanceof Error ? err.message : "Failed to save settings");
@@ -352,7 +354,7 @@ function AppContent() {
         setIsSavingSettings(false);
       }
     }, 300);
-  }, []);
+  }, [currentProjectId]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
