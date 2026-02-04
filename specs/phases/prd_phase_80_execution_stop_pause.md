@@ -183,7 +183,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy && cargo test",
       "Commit: fix(recovery): prevent auto-unblock for Paused/Stopped blockers"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 6,
