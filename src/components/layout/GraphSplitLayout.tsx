@@ -36,8 +36,17 @@ const overlayAnimationStyles = `
   to { transform: translateX(0); opacity: 1; }
 }
 
+@keyframes graphPanelSlideOut {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(12px); opacity: 0; }
+}
+
 .graph-panel-enter {
   animation: graphPanelSlideIn 220ms ease-out forwards;
+}
+
+.graph-panel-exit {
+  animation: graphPanelSlideOut 200ms ease-in forwards;
 }
 `;
 
@@ -81,12 +90,44 @@ export function GraphSplitLayout({
   });
 
   const [isResizing, setIsResizing] = useState(false);
+  const [overlayVisible, setOverlayVisible] = useState(false);
+  const [overlayExiting, setOverlayExiting] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const overlayExitTimeoutRef = useRef<number | null>(null);
 
   // Persist chat panel width
   useEffect(() => {
     localStorage.setItem(CHAT_WIDTH_STORAGE_KEY, chatPanelWidth.toString());
   }, [chatPanelWidth]);
+
+  useEffect(() => {
+    if (rightPanelMode === "overlay") {
+      if (overlayExitTimeoutRef.current) {
+        window.clearTimeout(overlayExitTimeoutRef.current);
+        overlayExitTimeoutRef.current = null;
+      }
+      setOverlayVisible(true);
+      setOverlayExiting(false);
+      return;
+    }
+
+    if (!overlayVisible || overlayExiting) return;
+
+    setOverlayExiting(true);
+    overlayExitTimeoutRef.current = window.setTimeout(() => {
+      setOverlayVisible(false);
+      setOverlayExiting(false);
+      overlayExitTimeoutRef.current = null;
+    }, 200);
+  }, [rightPanelMode, overlayVisible, overlayExiting]);
+
+  useEffect(() => {
+    return () => {
+      if (overlayExitTimeoutRef.current) {
+        window.clearTimeout(overlayExitTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Handle resize
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -188,10 +229,12 @@ export function GraphSplitLayout({
         </>
       )}
 
-      {rightPanelMode === "overlay" && (
+      {overlayVisible && (
         <div
           data-testid="graph-split-right-overlay"
-          className="fixed top-14 right-0 flex flex-col pointer-events-auto graph-panel-enter"
+          className={`fixed top-14 right-0 flex flex-col pointer-events-auto ${
+            overlayExiting ? "graph-panel-exit" : "graph-panel-enter"
+          }`}
           style={{
             width: `${panelWidthPx + 16}px`,
             minWidth: showChat

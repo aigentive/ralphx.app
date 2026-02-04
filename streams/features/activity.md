@@ -3,6 +3,18 @@
 > Log entries for PRD task completion and P0 gap fixes.
 
 ---
+### 2026-02-04 08:08:51 - Phase 81 Graph panel exit animation
+**What:**
+- Added slide-out animation for compact overlay closing
+- Kept overlay mounted briefly to allow exit motion
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
+
+**Result:** Success (lint errors pre-existing in TaskGraph hooks)
+
+---
 ### 2026-02-04 08:07:51 - Phase 81 Graph panel floating sizing
 **What:**
 - Matched compact overlay size/position to chat panel (fixed top/bottom, width + margin)
