@@ -1,3 +1,3 @@
 pub mod settings;
 
-pub use settings::ExecutionSettings;
+pub use settings::{ExecutionSettings, GlobalExecutionSettings};

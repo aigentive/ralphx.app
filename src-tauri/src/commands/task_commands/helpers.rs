@@ -31,10 +31,12 @@ pub async fn emit_queue_changed(
         }
     };
 
+    // Phase 82: Include projectId in queue_changed event for per-project scoping
     let _ = app.emit(
         "execution:queue_changed",
         serde_json::json!({
             "queuedCount": queued_count,
+            "projectId": project_id.as_str(),
             "timestamp": chrono::Utc::now().to_rfc3339(),
         }),
     );

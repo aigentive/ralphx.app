@@ -239,6 +239,29 @@ pub struct UpdateExecutionSettingsInput {
     pub pause_on_failure: bool,
 }
 
+/// Response for global execution settings queries
+/// Phase 82: Global concurrency cap across all projects
+#[derive(Debug, Serialize)]
+pub struct GlobalExecutionSettingsResponse {
+    /// Maximum total concurrent tasks across ALL projects
+    pub global_max_concurrent: u32,
+}
+
+impl From<crate::domain::execution::GlobalExecutionSettings> for GlobalExecutionSettingsResponse {
+    fn from(settings: crate::domain::execution::GlobalExecutionSettings) -> Self {
+        Self {
+            global_max_concurrent: settings.global_max_concurrent,
+        }
+    }
+}
+
+/// Input for updating global execution settings
+#[derive(Debug, Deserialize)]
+pub struct UpdateGlobalExecutionSettingsInput {
+    /// Maximum total concurrent tasks across ALL projects (max: 50)
+    pub global_max_concurrent: u32,
+}
+
 /// Get current execution status
 /// Phase 82: Optional project_id for per-project scoping.
 /// If project_id is None, falls back to active project or aggregates across all projects.
@@ -883,13 +906,18 @@ pub async fn set_max_concurrent(
 }
 
 /// Get execution settings from database
+/// Phase 82: Optional project_id for per-project settings
+/// - project_id = Some(id): returns settings for that project (falls back to global if none exist)
+/// - project_id = None: returns global default settings
 #[tauri::command]
 pub async fn get_execution_settings(
+    project_id: Option<String>,
     app_state: State<'_, AppState>,
 ) -> Result<ExecutionSettingsResponse, String> {
+    let project_id = project_id.map(|id| ProjectId::from_string(id));
     let settings = app_state
         .execution_settings_repo
-        .get_settings()
+        .get_settings(project_id.as_ref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -897,16 +925,21 @@ pub async fn get_execution_settings(
 }
 
 /// Update execution settings in database and sync ExecutionState
+/// Phase 82: Optional project_id for per-project settings
+/// - project_id = Some(id): updates/creates settings for that project
+/// - project_id = None: updates global default settings
 /// When max_concurrent_tasks changes:
 /// - Updates the in-memory ExecutionState
 /// - If capacity increased, triggers scheduler to pick up waiting Ready tasks
 /// Emits settings:execution:updated event for UI updates
 #[tauri::command]
 pub async fn update_execution_settings(
+    project_id: Option<String>,
     input: UpdateExecutionSettingsInput,
     execution_state: State<'_, Arc<ExecutionState>>,
     app_state: State<'_, AppState>,
 ) -> Result<ExecutionSettingsResponse, String> {
+    let project_id = project_id.map(|id| ProjectId::from_string(id));
     let old_max = execution_state.max_concurrent();
     let new_max = input.max_concurrent_tasks;
 
@@ -920,7 +953,7 @@ pub async fn update_execution_settings(
     // Persist to database
     let updated = app_state
         .execution_settings_repo
-        .update_settings(&settings)
+        .update_settings(project_id.as_ref(), &settings)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -948,11 +981,12 @@ pub async fn update_execution_settings(
         }
     }
 
-    // Emit settings:execution:updated event for UI updates
+    // Emit settings:execution:updated event for UI updates (include projectId for per-project)
     if let Some(ref handle) = app_state.app_handle {
         let _ = handle.emit(
             "settings:execution:updated",
             serde_json::json!({
+                "project_id": project_id.as_ref().map(|p| p.as_str()),
                 "max_concurrent_tasks": updated.max_concurrent_tasks,
                 "auto_commit": updated.auto_commit,
                 "pause_on_failure": updated.pause_on_failure,
@@ -1022,6 +1056,80 @@ pub async fn get_active_project(
 ) -> Result<Option<String>, String> {
     let project_id = active_project_state.get().await;
     Ok(project_id.map(|p| p.as_str().to_string()))
+}
+
+// ========================================
+// Phase 82: Global Execution Settings
+// ========================================
+
+/// Response for global execution settings queries
+#[derive(Debug, Serialize)]
+pub struct GlobalExecutionSettingsResponse {
+    /// Maximum total concurrent tasks across ALL projects
+    pub global_max_concurrent: u32,
+}
+
+impl From<crate::domain::execution::GlobalExecutionSettings> for GlobalExecutionSettingsResponse {
+    fn from(settings: crate::domain::execution::GlobalExecutionSettings) -> Self {
+        Self {
+            global_max_concurrent: settings.global_max_concurrent,
+        }
+    }
+}
+
+/// Input for updating global execution settings
+#[derive(Debug, Deserialize)]
+pub struct UpdateGlobalExecutionSettingsInput {
+    /// Maximum total concurrent tasks across ALL projects (capped at 50)
+    pub global_max_concurrent: u32,
+}
+
+/// Get global execution settings (cross-project limits)
+/// Returns the global_max_concurrent cap that limits total tasks across all projects
+#[tauri::command]
+pub async fn get_global_execution_settings(
+    app_state: State<'_, AppState>,
+) -> Result<GlobalExecutionSettingsResponse, String> {
+    let settings = app_state
+        .global_execution_settings_repo
+        .get_settings()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(GlobalExecutionSettingsResponse::from(settings))
+}
+
+/// Update global execution settings (cross-project limits)
+/// global_max_concurrent is capped at 50 (enforced by repository)
+#[tauri::command]
+pub async fn update_global_execution_settings(
+    input: UpdateGlobalExecutionSettingsInput,
+    app_state: State<'_, AppState>,
+) -> Result<GlobalExecutionSettingsResponse, String> {
+    use crate::domain::execution::GlobalExecutionSettings;
+
+    let settings = GlobalExecutionSettings {
+        global_max_concurrent: input.global_max_concurrent,
+    };
+
+    let updated = app_state
+        .global_execution_settings_repo
+        .update_settings(&settings)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Emit event for UI sync
+    if let Some(ref handle) = app_state.app_handle {
+        let _ = handle.emit(
+            "settings:global_execution:updated",
+            serde_json::json!({
+                "global_max_concurrent": updated.global_max_concurrent,
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+            }),
+        );
+    }
+
+    Ok(GlobalExecutionSettingsResponse::from(updated))
 }
 
 #[cfg(test)]

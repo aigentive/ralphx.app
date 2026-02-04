@@ -19,7 +19,7 @@ use tauri::{AppHandle, Emitter, Runtime};
 use tracing::info;
 
 use crate::commands::execution_commands::{
-    ExecutionState, AGENT_ACTIVE_STATUSES, AUTO_TRANSITION_STATES,
+    ActiveProjectState, ExecutionState, AGENT_ACTIVE_STATUSES, AUTO_TRANSITION_STATES,
 };
 use crate::application::ReconciliationRunner;
 use crate::domain::entities::InternalStatus;
@@ -36,6 +36,9 @@ use super::TaskTransitionService;
 /// Finds all tasks that were in agent-active states when the app shut down
 /// and re-triggers their entry actions to respawn worker agents.
 /// Also cleans up orphaned agent runs from previous sessions.
+/// Phase 82: Supports optional project scoping via `active_project_state`.
+/// When active project is set, only tasks from that project will be resumed.
+/// When no active project is set, resumption is skipped entirely.
 pub struct StartupJobRunner<R: Runtime = tauri::Wry> {
     task_repo: Arc<dyn TaskRepository>,
     task_dep_repo: Arc<dyn TaskDependencyRepository>,
@@ -43,6 +46,8 @@ pub struct StartupJobRunner<R: Runtime = tauri::Wry> {
     agent_run_repo: Arc<dyn AgentRunRepository>,
     transition_service: Arc<TaskTransitionService<R>>,
     execution_state: Arc<ExecutionState>,
+    /// Phase 82: Active project state for per-project scoping
+    active_project_state: Arc<ActiveProjectState>,
     reconciler: ReconciliationRunner<R>,
     /// Optional task scheduler for auto-starting Ready tasks on startup.
     /// When provided, Ready tasks will be scheduled after resuming agent-active tasks.
@@ -53,6 +58,7 @@ pub struct StartupJobRunner<R: Runtime = tauri::Wry> {
 
 impl<R: Runtime> StartupJobRunner<R> {
     /// Create a new StartupJobRunner with all required dependencies.
+    /// Phase 82: Now requires active_project_state for per-project scoping.
     pub fn new(
         task_repo: Arc<dyn TaskRepository>,
         task_dep_repo: Arc<dyn TaskDependencyRepository>,
@@ -66,6 +72,7 @@ impl<R: Runtime> StartupJobRunner<R> {
         agent_run_repo: Arc<dyn AgentRunRepository>,
         transition_service: Arc<TaskTransitionService<R>>,
         execution_state: Arc<ExecutionState>,
+        active_project_state: Arc<ActiveProjectState>,
     ) -> Self {
         let reconciler = ReconciliationRunner::new(
             Arc::clone(&task_repo),
@@ -90,6 +97,7 @@ impl<R: Runtime> StartupJobRunner<R> {
             agent_run_repo,
             transition_service,
             execution_state,
+            active_project_state,
             reconciler,
             task_scheduler: None,
             app_handle: None,
@@ -145,20 +153,56 @@ impl<R: Runtime> StartupJobRunner<R> {
         }
         eprintln!("[STARTUP] Execution NOT paused, continuing...");
 
-        // Get all projects
-        let projects = match self.project_repo.get_all().await {
-            Ok(projects) => projects,
-            Err(e) => {
-                tracing::error!(error = %e, "Failed to get projects for startup resumption");
-                return;
+        // Phase 82: Check active project - skip resumption if no active project
+        let active_project_id = self.active_project_state.get().await;
+        if active_project_id.is_none() {
+            eprintln!("[STARTUP] No active project set, skipping task resumption");
+            info!("No active project set, skipping task resumption (Phase 82 scoping)");
+            // Still try to schedule Ready tasks if scheduler is set
+            if let Some(ref scheduler) = self.task_scheduler {
+                info!("Scheduling Ready tasks (no resumption)");
+                scheduler.try_schedule_ready_tasks().await;
+            }
+            return;
+        }
+
+        // Get projects to process (scoped to active project in Phase 82)
+        let projects = if let Some(ref active_pid) = active_project_id {
+            // Scope to active project only
+            match self.project_repo.get_by_id(active_pid).await {
+                Ok(Some(project)) => vec![project],
+                Ok(None) => {
+                    tracing::warn!(
+                        project_id = active_pid.as_str(),
+                        "Active project not found, skipping resumption"
+                    );
+                    return;
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "Failed to get active project for startup resumption");
+                    return;
+                }
+            }
+        } else {
+            // Fallback to all projects (shouldn't reach here due to check above)
+            match self.project_repo.get_all().await {
+                Ok(projects) => projects,
+                Err(e) => {
+                    tracing::error!(error = %e, "Failed to get projects for startup resumption");
+                    return;
+                }
             }
         };
 
         let mut resumed = 0u32;
 
-        eprintln!("[STARTUP] Found {} projects", projects.len());
+        eprintln!(
+            "[STARTUP] Found {} project(s) (scoped to active: {:?})",
+            projects.len(),
+            active_project_id.as_ref().map(|p| p.as_str())
+        );
 
-        // Iterate through all projects and their tasks in agent-active states
+        // Iterate through projects and their tasks in agent-active states
         for project in &projects {
             eprintln!("[STARTUP] Checking project: {}", project.id.as_str());
             for status in AGENT_ACTIVE_STATUSES {

@@ -104,7 +104,8 @@ pub fn run() {
             let init_execution_state = app.state::<Arc<commands::ExecutionState>>().inner().clone();
             let init_settings_repo = Arc::clone(&app_state.execution_settings_repo);
             tauri::async_runtime::block_on(async move {
-                match init_settings_repo.get_settings().await {
+                // Phase 82: Load global default settings (project_id = None)
+                match init_settings_repo.get_settings(None).await {
                     Ok(settings) => {
                         init_execution_state.set_max_concurrent(settings.max_concurrent_tasks);
                         info!(
