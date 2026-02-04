@@ -73,28 +73,28 @@ impl InternalStatus {
             Blocked => &[Ready, Cancelled],
 
             // Execution states
-            Executing => &[QaRefining, PendingReview, Failed, Blocked],
+            Executing => &[QaRefining, PendingReview, Failed, Blocked, Stopped, Paused],
 
             // QA states
-            QaRefining => &[QaTesting],
-            QaTesting => &[QaPassed, QaFailed],
+            QaRefining => &[QaTesting, Stopped, Paused],
+            QaTesting => &[QaPassed, QaFailed, Stopped, Paused],
             QaPassed => &[PendingReview],
             QaFailed => &[RevisionNeeded],
 
             // Review states
             PendingReview => &[Reviewing],
-            Reviewing => &[ReviewPassed, RevisionNeeded, Escalated],
+            Reviewing => &[ReviewPassed, RevisionNeeded, Escalated, Stopped, Paused],
             ReviewPassed => &[Approved, RevisionNeeded],
             Escalated => &[Approved, RevisionNeeded],
             RevisionNeeded => &[ReExecuting, Cancelled],
-            ReExecuting => &[PendingReview, Failed, Blocked],
+            ReExecuting => &[PendingReview, Failed, Blocked, Stopped, Paused],
 
             // Approval leads to merge workflow
             Approved => &[PendingMerge, Ready],
 
             // Merge states
             PendingMerge => &[Merged, Merging], // Success → Merged, Conflict → Merging (agent)
-            Merging => &[Merged, MergeConflict], // Agent success → Merged, Agent failure → MergeConflict
+            Merging => &[Merged, MergeConflict, Stopped, Paused], // Agent success → Merged, Agent failure → MergeConflict
             MergeConflict => &[Merged], // Manual resolution → Merged
 
             // Terminal states (can be re-opened)
@@ -427,7 +427,7 @@ mod tests {
     fn executing_transitions() {
         use InternalStatus::*;
         let transitions = Executing.valid_transitions();
-        assert_eq!(transitions, &[QaRefining, PendingReview, Failed, Blocked]);
+        assert_eq!(transitions, &[QaRefining, PendingReview, Failed, Blocked, Stopped, Paused]);
     }
 
 
@@ -435,14 +435,14 @@ mod tests {
     fn qa_refining_transitions() {
         use InternalStatus::*;
         let transitions = QaRefining.valid_transitions();
-        assert_eq!(transitions, &[QaTesting]);
+        assert_eq!(transitions, &[QaTesting, Stopped, Paused]);
     }
 
     #[test]
     fn qa_testing_transitions() {
         use InternalStatus::*;
         let transitions = QaTesting.valid_transitions();
-        assert_eq!(transitions, &[QaPassed, QaFailed]);
+        assert_eq!(transitions, &[QaPassed, QaFailed, Stopped, Paused]);
     }
 
     #[test]
@@ -745,7 +745,7 @@ mod tests {
     fn merging_transitions() {
         use InternalStatus::*;
         let transitions = Merging.valid_transitions();
-        assert_eq!(transitions, &[Merged, MergeConflict]);
+        assert_eq!(transitions, &[Merged, MergeConflict, Stopped, Paused]);
     }
 
     #[test]
