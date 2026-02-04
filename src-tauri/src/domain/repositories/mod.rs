@@ -37,7 +37,9 @@ pub use artifact_flow_repository::ArtifactFlowRepository;
 pub use artifact_repository::{ArtifactRepository, ArtifactVersionSummary};
 pub use chat_conversation_repository::ChatConversationRepository;
 pub use chat_message_repository::ChatMessageRepository;
-pub use execution_settings_repository::ExecutionSettingsRepository;
+pub use execution_settings_repository::{
+    ExecutionSettingsRepository, GlobalExecutionSettingsRepository,
+};
 pub use ideation_session_repository::IdeationSessionRepository;
 pub use ideation_settings_repository::IdeationSettingsRepository;
 pub use methodology_repo::MethodologyRepository;

@@ -35,7 +35,9 @@ pub use memory_artifact_flow_repo::MemoryArtifactFlowRepository;
 pub use memory_artifact_repo::MemoryArtifactRepository;
 pub use memory_chat_conversation_repo::MemoryChatConversationRepository;
 pub use memory_chat_message_repo::MemoryChatMessageRepository;
-pub use memory_execution_settings_repo::MemoryExecutionSettingsRepository;
+pub use memory_execution_settings_repo::{
+    MemoryExecutionSettingsRepository, MemoryGlobalExecutionSettingsRepository,
+};
 pub use memory_ideation_session_repo::MemoryIdeationSessionRepository;
 pub use memory_ideation_settings_repo::MemoryIdeationSettingsRepository;
 pub use memory_methodology_repo::MemoryMethodologyRepository;

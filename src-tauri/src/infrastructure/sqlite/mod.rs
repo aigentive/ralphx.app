@@ -42,7 +42,9 @@ pub use sqlite_artifact_flow_repo::SqliteArtifactFlowRepository;
 pub use sqlite_artifact_repo::SqliteArtifactRepository;
 pub use sqlite_chat_conversation_repo::SqliteChatConversationRepository;
 pub use sqlite_chat_message_repo::SqliteChatMessageRepository;
-pub use sqlite_execution_settings_repo::SqliteExecutionSettingsRepository;
+pub use sqlite_execution_settings_repo::{
+    SqliteExecutionSettingsRepository, SqliteGlobalExecutionSettingsRepository,
+};
 pub use sqlite_ideation_session_repo::SqliteIdeationSessionRepository;
 pub use sqlite_ideation_settings_repo::SqliteIdeationSettingsRepository;
 pub use sqlite_methodology_repo::SqliteMethodologyRepository;
