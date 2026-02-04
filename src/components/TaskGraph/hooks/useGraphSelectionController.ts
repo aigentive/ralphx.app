@@ -54,6 +54,7 @@ interface GraphSelectionControllerResult {
   focusedNodeId: string | null;
   highlightedTaskId: string | null;
   graphSelection: GraphSelection | null;
+  focusSelectionInView: (selection: GraphSelection) => void;
   containerRef: React.RefObject<HTMLDivElement | null>;
   onNodeClick: (event: React.MouseEvent, node: Node) => void;
   onNodeDoubleClick: (event: React.MouseEvent, node: Node) => void;
@@ -361,7 +362,8 @@ export function useGraphSelectionController({
   );
 
   const focusSelectionInView = useCallback(
-    (selection: { kind: "task" | "planGroup" | "tierGroup"; id: string }): void => {
+    (selection: GraphSelection): void => {
+      if (selection.kind === "customGroup") return;
       const nodeId =
         selection.kind === "planGroup"
           ? getPlanGroupNodeId(selection.id)
@@ -924,6 +926,7 @@ export function useGraphSelectionController({
     focusedNodeId,
     highlightedTaskId,
     graphSelection,
+    focusSelectionInView,
     containerRef,
     onNodeClick: handleNodeClick,
     onNodeDoubleClick: handleNodeDoubleClick,

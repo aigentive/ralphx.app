@@ -771,6 +771,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     focusedNodeId,
     highlightedTaskId,
     graphSelection,
+    focusSelectionInView,
     containerRef,
     onNodeClick,
     onNodeDoubleClick,
@@ -862,6 +863,20 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   }, []);
 
 
+  const graphRightPanelVisible = isNavCompact
+    ? graphRightPanelCompactOpen
+    : graphRightPanelUserOpen;
+  const rightPanelMode = !graphRightPanelVisible
+    ? "hidden"
+    : isNavCompact
+      ? "overlay"
+      : "split";
+
+  useEffect(() => {
+    if (!graphSelection) return;
+    focusSelectionInView(graphSelection);
+  }, [focusSelectionInView, graphSelection, graphRightPanelVisible, isNavCompact]);
+
   // Loading state
   if (isLoading) {
     return (
@@ -902,16 +917,6 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     filters.statuses.length > 0 ||
     filters.planIds.length > 0 ||
     !filters.showCompleted;
-
-  const graphRightPanelVisible = isNavCompact
-    ? graphRightPanelCompactOpen
-    : graphRightPanelUserOpen;
-  const rightPanelMode = !graphRightPanelVisible
-    ? "hidden"
-    : isNavCompact
-      ? "overlay"
-      : "split";
-
 
   return (
     <GraphSplitLayout
