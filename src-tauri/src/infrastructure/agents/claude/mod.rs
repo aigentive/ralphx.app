@@ -26,7 +26,42 @@ use tracing::{info, warn};
 /// When `agent_type` is provided, creates a dynamic MCP config that passes
 /// the agent type as a CLI argument to the MCP server. This is necessary because
 /// Claude CLI does NOT pass its environment variables to MCP servers it spawns.
-pub fn build_base_cli_command(cli_path: &Path, plugin_dir: &Path, agent_type: Option<&str>) -> Command {
+fn is_test_environment() -> bool {
+    if cfg!(test) {
+        return true;
+    }
+
+    if std::env::var("RUST_TEST_THREADS").is_ok() {
+        return true;
+    }
+
+    if let Ok(value) = std::env::var("RALPHX_TEST_MODE") {
+        return value == "1" || value.eq_ignore_ascii_case("true");
+    }
+
+    false
+}
+
+pub fn ensure_claude_spawn_allowed() -> Result<(), String> {
+    if is_test_environment() {
+        return Err("Claude spawn disabled in tests".to_string());
+    }
+
+    if let Ok(value) = std::env::var("RALPHX_DISABLE_CLAUDE_SPAWN") {
+        if value == "1" || value.eq_ignore_ascii_case("true") {
+            return Err("Claude spawn disabled by RALPHX_DISABLE_CLAUDE_SPAWN".to_string());
+        }
+    }
+
+    Ok(())
+}
+
+pub fn build_base_cli_command(
+    cli_path: &Path,
+    plugin_dir: &Path,
+    agent_type: Option<&str>,
+) -> Result<Command, String> {
+    ensure_claude_spawn_allowed()?;
     let mut cmd = Command::new(cli_path);
 
     // Plugin directory for agent/skill discovery
@@ -66,7 +101,7 @@ pub fn build_base_cli_command(cli_path: &Path, plugin_dir: &Path, agent_type: Op
         }
     }
 
-    cmd
+    Ok(cmd)
 }
 
 /// Add prompt-related args to a CLI command

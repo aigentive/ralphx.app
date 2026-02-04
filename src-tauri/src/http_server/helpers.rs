@@ -529,11 +529,20 @@ pub async fn maybe_trigger_dependency_analysis(
 
         // Build command using the established pattern (creates dynamic MCP config with --agent-type)
         let agent_name = "dependency-suggester";
-        let mut cmd = crate::infrastructure::agents::claude::build_base_cli_command(
+        let mut cmd = match crate::infrastructure::agents::claude::build_base_cli_command(
             &cli_path,
             &plugin_dir,
             Some(agent_name),
-        );
+        ) {
+            Ok(cmd) => cmd,
+            Err(err) => {
+                tracing::warn!(
+                    "Dependency suggester spawn blocked: {}",
+                    err
+                );
+                return;
+            }
+        };
 
         // Add agent and prompt args
         crate::infrastructure::agents::claude::add_prompt_args(

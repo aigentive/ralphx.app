@@ -138,7 +138,16 @@ pub async fn process_message_queue<R: Runtime + 'static>(
 
             // Build and spawn resume command
             let agent_name = get_agent_name(&context_type);
-            let mut cmd = build_base_cli_command(cli_path, plugin_dir, Some(agent_name));
+            let mut cmd = match build_base_cli_command(cli_path, plugin_dir, Some(agent_name)) {
+                Ok(cmd) => cmd,
+                Err(err) => {
+                    eprintln!(
+                        "[STREAM_DEBUG] queue spawn blocked: {} (context_type={}, context_id={})",
+                        err, context_type, context_id
+                    );
+                    return;
+                }
+            };
             cmd.env("RALPHX_AGENT_TYPE", agent_name);
 
             // Add task scope for task-related contexts
