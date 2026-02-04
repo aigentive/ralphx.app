@@ -3,6 +3,20 @@
 > Log entries for PRD task completion and P0 gap fixes.
 
 ---
+### 2026-02-04 07:56:04 - Phase 81 Task 3: Graph right-panel toggle + auto-hide
+**What:**
+- Added graph right-panel user toggle state to uiStore
+- Auto-hide right panel at nav compact breakpoint in TaskGraphView
+- Hid graph right panel and resize handle when not visible
+- Marked Phase 81 Task 3 as passing
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
+
+**Result:** Success (lint errors pre-existing in TaskGraph hooks)
+
+---
 ### 2026-02-04 07:33:38 - Phase 81 Task 2: Graph toolbar compact mode
 **What:**
 - Added compact rendering for FloatingGraphFilters with icon-only controls

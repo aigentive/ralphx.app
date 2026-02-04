@@ -43,6 +43,8 @@ interface GraphSplitLayoutProps {
   footer?: React.ReactNode;
   /** Timeline content to show when no task is selected */
   timelineContent: React.ReactNode;
+  /** Whether right panel should be visible */
+  rightPanelVisible: boolean;
 }
 
 export function GraphSplitLayout({
@@ -50,6 +52,7 @@ export function GraphSplitLayout({
   projectId,
   footer,
   timelineContent,
+  rightPanelVisible,
 }: GraphSplitLayoutProps) {
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   const taskCreationContext = useUiStore((s) => s.taskCreationContext);
@@ -139,32 +142,36 @@ export function GraphSplitLayout({
         {taskCreationContext && <TaskCreationOverlay projectId={projectId} />}
       </div>
 
-      {/* Resize Handle - interactive when chat is shown, static separator for timeline */}
-      {showChat ? (
-        <ResizeHandle
-          isResizing={isResizing}
-          onMouseDown={handleResizeStart}
-          testId="graph-split-resize-handle"
-        />
-      ) : (
-        <SeparatorLine />
-      )}
+      {rightPanelVisible && (
+        <>
+          {/* Resize Handle - interactive when chat is shown, static separator for timeline */}
+          {showChat ? (
+            <ResizeHandle
+              isResizing={isResizing}
+              onMouseDown={handleResizeStart}
+              testId="graph-split-resize-handle"
+            />
+          ) : (
+            <SeparatorLine />
+          )}
 
-      {/* Right Section - Timeline (fixed 320px) or Chat (resizable) */}
-      <div
-        data-testid="graph-split-right"
-        className="flex flex-col overflow-hidden shrink-0"
-        style={{
-          width: showChat ? `${chatPanelWidth}px` : `${TIMELINE_SIDEBAR_WIDTH}px`,
-          transition: isResizing ? "none" : "width 150ms ease-out",
-        }}
-      >
-        {showChat ? (
-          <IntegratedChatPanel projectId={projectId} />
-        ) : (
-          timelineContent
-        )}
-      </div>
+          {/* Right Section - Timeline (fixed 320px) or Chat (resizable) */}
+          <div
+            data-testid="graph-split-right"
+            className="flex flex-col overflow-hidden shrink-0"
+            style={{
+              width: showChat ? `${chatPanelWidth}px` : `${TIMELINE_SIDEBAR_WIDTH}px`,
+              transition: isResizing ? "none" : "width 150ms ease-out",
+            }}
+          >
+            {showChat ? (
+              <IntegratedChatPanel projectId={projectId} />
+            ) : (
+              timelineContent
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
