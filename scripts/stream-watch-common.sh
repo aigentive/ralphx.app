@@ -150,6 +150,15 @@ run_cycle() {
         trigger_file="$changed"
     fi
 
+    # Optional guard to cap concurrent Claude processes
+    if [ -n "${CLAUDE_MAX_PROCS:-}" ] && [ -x "$ROOT_DIR/scripts/claude-process-guard.sh" ]; then
+        if ! "$ROOT_DIR/scripts/claude-process-guard.sh" --max "$CLAUDE_MAX_PROCS" --mode "${CLAUDE_GUARD_MODE:-block}"; then
+            echo -e "${PAD}${YELLOW}[$STREAM] Claude guard blocked cycle (max=${CLAUDE_MAX_PROCS})${NC}"
+            rm -f "$LOCK_FILE"
+            return 0
+        fi
+    fi
+
     # Print banner
     echo ""
     echo -e "${PAD}${CYAN}┌─────────────────────────────────────────────────────────────────${NC}"
@@ -169,7 +178,7 @@ run_cycle() {
     ANTHROPIC_MODEL=$MODEL ./ralph-streams.sh $STREAM 50 </dev/null
     local exit_code=$?
 
-    # Snapshot mtimes AFTER running (so we can detect if cycle itself changed files)
+    # Snapshot mtimes AFTER running (reset baseline)
     snapshot_mtimes
 
     # Release lock

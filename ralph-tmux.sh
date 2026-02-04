@@ -175,23 +175,25 @@ create_session() {
     # Start commands in each pane (conditionally based on streams list)
     tmux send-keys -t "$SESSION_NAME:0.0" "./ralph-tmux-status.sh" C-m
 
+    local guard_env="CLAUDE_MAX_PROCS=\${CLAUDE_MAX_PROCS:-6} CLAUDE_GUARD_MODE=\${CLAUDE_GUARD_MODE:-block}"
+
     if should_start_stream "features" "${streams[@]}"; then
-        tmux send-keys -t "$SESSION_NAME:0.1" "./scripts/stream-watch-features.sh" C-m
+        tmux send-keys -t "$SESSION_NAME:0.1" "$guard_env ./scripts/stream-watch-features.sh" C-m
     fi
     if should_start_stream "refactor" "${streams[@]}"; then
-        tmux send-keys -t "$SESSION_NAME:0.2" "./scripts/stream-watch-refactor.sh" C-m
+        tmux send-keys -t "$SESSION_NAME:0.2" "$guard_env ./scripts/stream-watch-refactor.sh" C-m
     fi
     if should_start_stream "polish" "${streams[@]}"; then
-        tmux send-keys -t "$SESSION_NAME:0.3" "./scripts/stream-watch-polish.sh" C-m
+        tmux send-keys -t "$SESSION_NAME:0.3" "$guard_env ./scripts/stream-watch-polish.sh" C-m
     fi
     if should_start_stream "verify" "${streams[@]}"; then
-        tmux send-keys -t "$SESSION_NAME:0.4" "./scripts/stream-watch-verify.sh" C-m
+        tmux send-keys -t "$SESSION_NAME:0.4" "$guard_env ./scripts/stream-watch-verify.sh" C-m
     fi
     if should_start_stream "hygiene" "${streams[@]}"; then
-        tmux send-keys -t "$SESSION_NAME:0.5" "./scripts/stream-watch-hygiene.sh" C-m
+        tmux send-keys -t "$SESSION_NAME:0.5" "$guard_env ./scripts/stream-watch-hygiene.sh" C-m
     fi
     if should_start_stream "visual-qa" "${streams[@]}"; then
-        tmux send-keys -t "$SESSION_NAME:0.6" "./scripts/stream-watch-visual-qa.sh" C-m
+        tmux send-keys -t "$SESSION_NAME:0.6" "$guard_env ./scripts/stream-watch-visual-qa.sh" C-m
     fi
 
     # Select the appropriate pane as default (first specified stream, or features)
