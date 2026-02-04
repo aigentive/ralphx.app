@@ -310,6 +310,8 @@ fn internal_status_to_state(status: InternalStatus) -> crate::domain::state_mach
         InternalStatus::Merged => State::Merged,
         InternalStatus::Failed => State::Failed(Default::default()),
         InternalStatus::Cancelled => State::Cancelled,
+        InternalStatus::Paused => State::Paused,
+        InternalStatus::Stopped => State::Stopped,
     }
 }
 
@@ -339,6 +341,8 @@ fn state_to_internal_status(state: &crate::domain::state_machine::machine::State
         State::Merged => InternalStatus::Merged,
         State::Failed(_) => InternalStatus::Failed,
         State::Cancelled => InternalStatus::Cancelled,
+        State::Paused => InternalStatus::Paused,
+        State::Stopped => InternalStatus::Stopped,
     }
 }
 

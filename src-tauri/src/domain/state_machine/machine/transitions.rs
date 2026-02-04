@@ -292,4 +292,23 @@ impl TaskStateMachine {
             _ => Response::NotHandled,
         }
     }
+
+    /// Stopped state - terminal, requires manual restart
+    /// User explicitly stopped execution; task won't auto-resume
+    pub fn stopped(&mut self, event: &TaskEvent) -> Response {
+        match event {
+            TaskEvent::Retry => Response::Transition(State::Ready),
+            _ => Response::NotHandled,
+        }
+    }
+
+    /// Paused state - non-terminal, can resume to previous state
+    /// Resume uses status history to restore to the pre-pause agent-active state
+    pub fn paused(&mut self, _event: &TaskEvent) -> Response {
+        // Paused tasks are resumed via resume_execution command which uses
+        // status history to restore to the pre-pause state.
+        // The state machine doesn't handle resume directly - it's done at
+        // the command layer via direct status transition.
+        Response::NotHandled
+    }
 }

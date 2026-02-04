@@ -1,10 +1,10 @@
 // Internal status types and Zod schema
-// Must match the 21 internal statuses from the Rust backend
+// Must match the 23 internal statuses from the Rust backend
 
 import { z } from "zod";
 
 /**
- * All 21 internal status values matching the Rust backend
+ * All 23 internal status values matching the Rust backend
  * Uses snake_case to match Rust serde serialization
  */
 export const InternalStatusSchema = z.enum([
@@ -29,6 +29,8 @@ export const InternalStatusSchema = z.enum([
   "merged",
   "failed",
   "cancelled",
+  "paused",
+  "stopped",
 ]);
 
 export type InternalStatus = z.infer<typeof InternalStatusSchema>;
@@ -66,12 +68,15 @@ export const ACTIVE_STATUSES: readonly InternalStatus[] = [
 
 /**
  * Terminal statuses where tasks are complete
+ * Note: 'stopped' is terminal (requires manual restart)
+ * Note: 'paused' is NOT terminal (can resume to previous state)
  */
 export const TERMINAL_STATUSES: readonly InternalStatus[] = [
   "approved",
   "merged",
   "failed",
   "cancelled",
+  "stopped",
 ] as const;
 
 /**
@@ -182,6 +187,8 @@ export const NON_DRAGGABLE_STATUSES = [
   "merge_conflict",
   "approved",
   "merged",
+  "paused",
+  "stopped",
 ] as const satisfies readonly InternalStatus[];
 
 // ============================================================================
