@@ -11,6 +11,8 @@ import { ExecutionTimeline, type ExecutionTimelineProps } from "./ExecutionTimel
 export interface FloatingTimelineProps extends Omit<ExecutionTimelineProps, "className" | "defaultCollapsed" | "embedded"> {
   /** Additional className for the outer container */
   className?: string;
+  /** Presentation variant */
+  variant?: "panel" | "overlay";
 }
 
 export const FloatingTimeline = memo(function FloatingTimeline({
@@ -18,14 +20,15 @@ export const FloatingTimeline = memo(function FloatingTimeline({
   onTaskClick,
   highlightedTaskId,
   className,
+  variant = "panel",
 }: FloatingTimelineProps) {
   return (
     <div
       className={className}
       style={{
         height: "100%",
-        padding: "8px",
-        backgroundColor: "hsl(220 10% 8%)",
+        padding: variant === "overlay" ? "0" : "8px",
+        backgroundColor: variant === "overlay" ? "transparent" : "hsl(220 10% 8%)",
       }}
     >
       <div
