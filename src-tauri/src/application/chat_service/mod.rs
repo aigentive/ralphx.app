@@ -337,7 +337,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
     ) -> Result<SendResult, ChatServiceError> {
         eprintln!(
             "[STREAM_DEBUG] chat_service.send_message start (context_type={}, context_id={}, message_len={})",
-            context_type.to_string(),
+            context_type,
             context_id,
             message.len()
         );

@@ -65,6 +65,7 @@ impl DiffService {
     }
 
     /// Get line additions/deletions for a file compared to base branch
+    #[allow(dead_code)]
     fn get_file_line_counts(
         &self,
         file_path: &str,

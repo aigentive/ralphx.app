@@ -4,6 +4,69 @@
 
 ---
 
+### 2026-02-04 19:45:00 - Phase 80 Task 2: Update stop_execution to transition to Stopped status
+**What:**
+- Modified `stop_execution` command in `execution_commands.rs` to transition agent-active tasks to `Stopped` instead of `Failed`
+- Added `app_state.running_agent_registry.stop_all().await;` to kill all running agent processes immediately
+- Updated all related tests to use `Stopped` instead of `Failed`
+- Fixed clippy warnings in chat_service files (unnecessary `.to_string()` calls)
+- Fixed clippy warnings in reconciliation.rs and startup_jobs.rs (unit struct syntax)
+- Added `#[allow(dead_code)]` to unused `get_file_line_counts` in diff_service.rs
+
+**Files:**
+- MODIFIED: src-tauri/src/commands/execution_commands.rs (stop_execution + tests)
+- MODIFIED: src-tauri/src/application/chat_service/chat_service_queue.rs (clippy fix)
+- MODIFIED: src-tauri/src/application/chat_service/chat_service_send_background.rs (clippy fix)
+- MODIFIED: src-tauri/src/application/chat_service/chat_service_streaming.rs (clippy fix)
+- MODIFIED: src-tauri/src/application/chat_service/mod.rs (clippy fix)
+- MODIFIED: src-tauri/src/application/reconciliation.rs (clippy fix)
+- MODIFIED: src-tauri/src/application/startup_jobs.rs (clippy fix)
+- MODIFIED: src-tauri/src/application/diff_service.rs (allow dead_code)
+- MODIFIED: specs/phases/prd_phase_80_execution_stop_pause.md (passes: true)
+
+**Visual Verification:** N/A - backend-only changes
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` - passes
+- `cargo test --lib` - 3452 tests pass
+
+**Result:** Success
+
+---
+
+### 2026-02-04 02:08:08 - Phase 80 Task 6: Update frontend UI for Paused/Stopped statuses
+**What:**
+- Added status icons for `paused` (Clock) and `stopped` (XOctagon) in status-icons.ts
+- Added STATUS_CONFIG entries for paused/stopped in TaskDetailView, TaskDetailPanel, TaskDetailOverlay, StateTimelineNav, and TaskDetailModal.constants
+- Added paused/stopped to TASK_DETAIL_VIEWS mapping (using BasicTaskDetail)
+- Updated nodeStyles.ts with colors and legend entries (paused→blocked category, stopped→terminal category)
+- Added paused/stopped to STATUS_LABELS in WorkflowEditor
+- Added paused/stopped groups to defaultWorkflow in workflow.ts (paused in Ready column, stopped in Done column)
+- Added paused/stopped to mock status progression in api-mock/tasks.ts
+
+**Files:**
+- MODIFIED: src/types/status-icons.ts (icon configs)
+- MODIFIED: src/types/workflow.ts (defaultWorkflow groups)
+- MODIFIED: src/components/tasks/TaskDetailView.tsx (STATUS_CONFIG)
+- MODIFIED: src/components/tasks/TaskDetailPanel.tsx (TASK_DETAIL_VIEWS + STATUS_CONFIG)
+- MODIFIED: src/components/tasks/TaskDetailOverlay.tsx (STATUS_CONFIG)
+- MODIFIED: src/components/tasks/StateTimelineNav.tsx (STATUS_CONFIG)
+- MODIFIED: src/components/tasks/TaskDetailModal.constants.ts (STATUS_CONFIG)
+- MODIFIED: src/components/TaskGraph/nodes/nodeStyles.ts (getStatusCategory + getNodeStyle + STATUS_LEGEND_GROUPS)
+- MODIFIED: src/components/workflows/WorkflowEditor.tsx (STATUS_LABELS)
+- MODIFIED: src/api-mock/tasks.ts (statusProgression)
+- MODIFIED: specs/phases/prd_phase_80_execution_stop_pause.md (passes: true)
+
+**Visual Verification:** N/A - status display configuration only, no new UI components to capture
+
+**Commands:**
+- `npm run typecheck` - passes
+- `npx eslint [modified files]` - passes
+
+**Result:** Success
+
+---
+
 ### 2026-02-04 18:30:00 - Phase 80 Task 1: Add Paused and Stopped status variants
 **What:**
 - Added `Paused` and `Stopped` variants to `InternalStatus` enum (backend + frontend)

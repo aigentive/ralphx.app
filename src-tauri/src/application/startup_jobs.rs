@@ -178,9 +178,7 @@ impl<R: Runtime> StartupJobRunner<R> {
 
                 eprintln!("[STARTUP] Found {} tasks in {:?} status", tasks.len(), status);
                 for task in tasks {
-                    let reconciled = match *status {
-                        _ => self.reconciler.reconcile_task(&task, *status).await,
-                    };
+                    let reconciled = self.reconciler.reconcile_task(&task, *status).await;
 
                     if reconciled {
                         continue;

@@ -122,7 +122,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy && cargo test",
       "Commit: feat(execution): transition to Stopped status on stop_execution"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 3,
@@ -205,7 +205,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(ui): add Paused/Stopped status display and execution bar messaging"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

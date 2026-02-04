@@ -252,16 +252,77 @@ pub async fn get_execution_status(
     })
 }
 
-/// Pause execution (stops picking up new tasks)
-/// Currently running tasks will continue until completion
+/// Pause execution (stops picking up new tasks and transitions running tasks to Paused)
+/// This transitions all agent-active tasks to Paused status via TransitionHandler.
+/// Paused is NOT terminal - tasks can be auto-restored on resume using status history.
+/// The on_exit handlers will decrement the running count for each task.
 #[tauri::command]
 pub async fn pause_execution(
     execution_state: State<'_, Arc<ExecutionState>>,
     app_state: State<'_, AppState>,
 ) -> Result<ExecutionCommandResponse, String> {
+    // First pause to prevent new tasks from starting
     execution_state.pause();
 
+    // Kill all running agent processes immediately via registry
+    // This ensures agents are terminated even if transition fails
+    app_state.running_agent_registry.stop_all().await;
+
+    // Build transition service for proper state machine transitions
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&app_state.task_repo),
+        Arc::clone(&app_state.task_dependency_repo),
+        Arc::clone(&app_state.project_repo),
+        Arc::clone(&app_state.chat_message_repo),
+        Arc::clone(&app_state.chat_conversation_repo),
+        Arc::clone(&app_state.agent_run_repo),
+        Arc::clone(&app_state.ideation_session_repo),
+        Arc::clone(&app_state.activity_event_repo),
+        Arc::clone(&app_state.message_queue),
+        Arc::clone(&app_state.running_agent_registry),
+        Arc::clone(&execution_state),
+        app_state.app_handle.clone(),
+    );
+
+    // Find all tasks in agent-active states across all projects
+    let all_projects = app_state
+        .project_repo
+        .get_all()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    for project in all_projects {
+        let tasks = app_state
+            .task_repo
+            .get_by_project(&project.id)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        for task in tasks {
+            // Check if task is in an agent-active state
+            if AGENT_ACTIVE_STATUSES.contains(&task.internal_status) {
+                // Use TransitionHandler to transition to Paused
+                // Paused is NOT terminal - can be restored on resume
+                // This triggers on_exit handlers which decrement running count
+                if let Err(e) = transition_service
+                    .transition_task(&task.id, InternalStatus::Paused)
+                    .await
+                {
+                    tracing::warn!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Failed to transition task to Paused during pause"
+                    );
+                }
+            }
+        }
+    }
+
+    // Note: running_count is decremented by on_exit handlers in TransitionHandler
+    // No manual reset needed here
+
     // Emit status_changed event for real-time UI update
+    // This reflects the final state after all tasks have been paused
     if let Some(ref handle) = app_state.app_handle {
         execution_state.emit_status_changed(handle, "paused");
     }
@@ -316,7 +377,8 @@ pub async fn resume_execution(
 }
 
 /// Stop execution (cancels current tasks and pauses)
-/// This transitions all agent-active tasks to Failed status via TransitionHandler.
+/// This transitions all agent-active tasks to Stopped status via TransitionHandler.
+/// Stopped is a terminal state requiring manual restart - tasks won't auto-resume.
 /// The on_exit handlers will decrement the running count for each task.
 #[tauri::command]
 pub async fn stop_execution(
@@ -325,6 +387,10 @@ pub async fn stop_execution(
 ) -> Result<ExecutionCommandResponse, String> {
     // First pause to prevent new tasks from starting
     execution_state.pause();
+
+    // Kill all running agent processes immediately via registry
+    // This ensures agents are terminated even if transition fails
+    app_state.running_agent_registry.stop_all().await;
 
     // Build transition service for proper state machine transitions
     let transition_service = TaskTransitionService::new(
@@ -359,16 +425,17 @@ pub async fn stop_execution(
         for task in tasks {
             // Check if task is in an agent-active state
             if AGENT_ACTIVE_STATUSES.contains(&task.internal_status) {
-                // Use TransitionHandler to transition to Failed
+                // Use TransitionHandler to transition to Stopped
+                // Stopped is terminal - requires manual restart via Ready transition
                 // This triggers on_exit handlers which decrement running count
                 if let Err(e) = transition_service
-                    .transition_task(&task.id, InternalStatus::Failed)
+                    .transition_task(&task.id, InternalStatus::Stopped)
                     .await
                 {
                     tracing::warn!(
                         task_id = task.id.as_str(),
                         error = %e,
-                        "Failed to transition task to Failed during stop"
+                        "Failed to transition task to Stopped during stop"
                     );
                 }
             }
@@ -950,29 +1017,29 @@ mod tests {
         let projects = app_state.project_repo.get_all().await.unwrap();
         let project = &projects[0];
 
-        // Find the executing task and cancel it
+        // Find the executing task and stop it (simulating stop_execution behavior)
         let tasks = app_state.task_repo.get_by_project(&project.id).await.unwrap();
         for mut task in tasks {
             if task.internal_status == InternalStatus::Executing {
-                task.internal_status = InternalStatus::Failed;
+                task.internal_status = InternalStatus::Stopped;
                 task.touch();
                 app_state.task_repo.update(&task).await.unwrap();
             }
         }
 
-        // Verify the task is now failed
+        // Verify the task is now stopped (not failed)
         let tasks = app_state.task_repo.get_by_project(&project.id).await.unwrap();
         let executing_count = tasks
             .iter()
             .filter(|t| t.internal_status == InternalStatus::Executing)
             .count();
-        let failed_count = tasks
+        let stopped_count = tasks
             .iter()
-            .filter(|t| t.internal_status == InternalStatus::Failed)
+            .filter(|t| t.internal_status == InternalStatus::Stopped)
             .count();
 
         assert_eq!(executing_count, 0);
-        assert_eq!(failed_count, 1);
+        assert_eq!(stopped_count, 1);
     }
 
     #[tokio::test]
@@ -1022,22 +1089,22 @@ mod tests {
         // Pause execution (as stop_execution would)
         execution_state.pause();
 
-        // Transition all agent-active tasks to Failed
+        // Transition all agent-active tasks to Stopped (as stop_execution does)
         let tasks = app_state.task_repo.get_by_project(&project.id).await.unwrap();
         for task in tasks {
             if AGENT_ACTIVE_STATUSES.contains(&task.internal_status) {
                 let _ = transition_service
-                    .transition_task(&task.id, InternalStatus::Failed)
+                    .transition_task(&task.id, InternalStatus::Stopped)
                     .await;
             }
         }
 
-        // Verify: All agent-active tasks should now be Failed
+        // Verify: All agent-active tasks should now be Stopped
         let tasks = app_state.task_repo.get_by_project(&project.id).await.unwrap();
 
-        let failed_count = tasks
+        let stopped_count = tasks
             .iter()
-            .filter(|t| t.internal_status == InternalStatus::Failed)
+            .filter(|t| t.internal_status == InternalStatus::Stopped)
             .count();
 
         let ready_count = tasks
@@ -1045,8 +1112,8 @@ mod tests {
             .filter(|t| t.internal_status == InternalStatus::Ready)
             .count();
 
-        // 3 agent-active tasks should be Failed
-        assert_eq!(failed_count, 3);
+        // 3 agent-active tasks should be Stopped
+        assert_eq!(stopped_count, 3);
         // 1 Ready task should remain Ready
         assert_eq!(ready_count, 1);
         // Execution should be paused
@@ -1067,6 +1134,8 @@ mod tests {
         assert!(!AGENT_ACTIVE_STATUSES.contains(&InternalStatus::Ready));
         assert!(!AGENT_ACTIVE_STATUSES.contains(&InternalStatus::Backlog));
         assert!(!AGENT_ACTIVE_STATUSES.contains(&InternalStatus::Failed));
+        assert!(!AGENT_ACTIVE_STATUSES.contains(&InternalStatus::Stopped));
+        assert!(!AGENT_ACTIVE_STATUSES.contains(&InternalStatus::Paused));
     }
 
     #[test]
@@ -1169,24 +1238,24 @@ mod tests {
             None,
         );
 
-        // Execute stop: pause and transition all agent-active tasks to Failed
+        // Execute stop: pause and transition all agent-active tasks to Stopped
         execution_state.pause();
 
         let tasks = app_state.task_repo.get_by_project(&project.id).await.unwrap();
         for task in tasks {
             if AGENT_ACTIVE_STATUSES.contains(&task.internal_status) {
                 let _ = transition_service
-                    .transition_task(&task.id, InternalStatus::Failed)
+                    .transition_task(&task.id, InternalStatus::Stopped)
                     .await;
             }
         }
 
-        // Verify: Running count should be 0 after all tasks transitioned
+        // Verify: Running count should be 0 after all tasks transitioned to Stopped
         // (on_exit handlers decrement for each agent-active state exit)
         assert_eq!(
             execution_state.running_count(),
             0,
-            "Running count should be 0 after stop cancels all tasks"
+            "Running count should be 0 after stop transitions all tasks to Stopped"
         );
 
         // Verify execution is paused
