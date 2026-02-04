@@ -7,14 +7,17 @@
  * - Ambient orange glow background
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   Settings,
   Zap,
   Brain,
   FileSearch,
   Shield,
+  Globe,
 } from "lucide-react";
+import { executionApi } from "@/api/execution";
+import type { GlobalExecutionSettingsResponse } from "@/api/execution";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type {
   ProjectSettings,
@@ -275,6 +278,115 @@ function SupervisorSection({
 }
 
 // ============================================================================
+// Global Execution Settings Section (Phase 82)
+// ============================================================================
+
+/**
+ * GlobalExecutionSection - Manage global concurrency cap across all projects
+ * Phase 82: Separate section with its own loading/saving state
+ */
+function GlobalExecutionSection() {
+  const [globalSettings, setGlobalSettings] = useState<GlobalExecutionSettingsResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Load global settings on mount
+  useEffect(() => {
+    async function loadGlobalSettings() {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const settings = await executionApi.getGlobalSettings();
+        setGlobalSettings(settings);
+      } catch (err) {
+        console.error("Failed to load global execution settings:", err);
+        setError(err instanceof Error ? err.message : "Failed to load global settings");
+        // Default to 20 if load fails
+        setGlobalSettings({ globalMaxConcurrent: 20 });
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    loadGlobalSettings();
+  }, []);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleGlobalMaxChange = useCallback((value: number) => {
+    // Update local state immediately
+    setGlobalSettings({ globalMaxConcurrent: value });
+    setError(null);
+
+    // Clear any pending save
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    // Debounce the API call (300ms)
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        setIsSaving(true);
+        await executionApi.updateGlobalSettings({ globalMaxConcurrent: value });
+      } catch (err) {
+        console.error("Failed to save global execution settings:", err);
+        setError(err instanceof Error ? err.message : "Failed to save global settings");
+      } finally {
+        setIsSaving(false);
+      }
+    }, 300);
+  }, []);
+
+  if (isLoading) {
+    return (
+      <SectionCard
+        icon={<Globe className="w-[18px] h-[18px] text-[var(--accent-primary)]" />}
+        title="Global Execution"
+        description="Cross-project concurrency limits"
+      >
+        <div className="py-4 flex items-center justify-center">
+          <div className="w-4 h-4 border-2 border-[var(--accent-primary)] border-t-transparent rounded-full animate-spin" />
+        </div>
+      </SectionCard>
+    );
+  }
+
+  return (
+    <SectionCard
+      icon={<Globe className="w-[18px] h-[18px] text-[var(--accent-primary)]" />}
+      title="Global Execution"
+      description="Cross-project concurrency limits"
+    >
+      {error && (
+        <div className="mb-3 px-3 py-2 rounded-md bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+          {error}
+        </div>
+      )}
+      <NumberSettingRow
+        id="global-max-concurrent"
+        label={isSaving ? "Global Max Concurrent (Saving...)" : "Global Max Concurrent"}
+        description="Maximum total tasks running across ALL projects (1-50). This cap applies system-wide regardless of per-project settings."
+        value={globalSettings?.globalMaxConcurrent ?? 20}
+        min={1}
+        max={50}
+        step={1}
+        unit=""
+        disabled={isSaving}
+        onChange={handleGlobalMaxChange}
+      />
+    </SectionCard>
+  );
+}
+
+// ============================================================================
 // Main Component
 // ============================================================================
 
@@ -442,6 +554,7 @@ export function SettingsView({
             onChange={handleSupervisorChange}
             disabled={isSaving}
           />
+          <GlobalExecutionSection />
           <GitSettingsSection />
           <IdeationSettingsPanel />
         </div>

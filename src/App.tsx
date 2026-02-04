@@ -271,6 +271,15 @@ function AppContent() {
     }
   }, [fetchedProjects, setProjects, activeProjectId, selectProject]);
 
+  // Phase 82: Notify backend of active project changes for scoped execution
+  useEffect(() => {
+    // Call set_active_project whenever activeProjectId changes
+    // This enables per-project execution scoping on the backend
+    executionApi.setActiveProject(activeProjectId ?? undefined).catch((err) => {
+      console.error("Failed to set active project:", err);
+    });
+  }, [activeProjectId]);
+
   // Load persisted chat width from localStorage on mount
   useEffect(() => {
     const savedWidth = localStorage.getItem(CHAT_WIDTH_STORAGE_KEY);
@@ -383,12 +392,13 @@ function AppContent() {
     };
   }, [selectedTask, currentView, activeSession, currentProjectId]);
 
+  // Phase 82: Pass currentProjectId to execution API calls for per-project scoping
   const handlePauseToggle = async () => {
     setIsExecutionLoading(true);
     try {
       const response = executionStatus.isPaused
-        ? await api.execution.resume()
-        : await api.execution.pause();
+        ? await api.execution.resume(currentProjectId || undefined)
+        : await api.execution.pause(currentProjectId || undefined);
       setExecutionStatus(response.status);
     } catch {
       toast.error(
@@ -404,7 +414,7 @@ function AppContent() {
   const handleStop = async () => {
     setIsExecutionLoading(true);
     try {
-      const response = await api.execution.stop();
+      const response = await api.execution.stop(currentProjectId || undefined);
       setExecutionStatus(response.status);
     } catch {
       toast.error("Failed to stop execution");
