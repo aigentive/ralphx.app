@@ -600,38 +600,46 @@ function FloatingGraphFiltersComponent({
 
           {/* Grouping Dropdown */}
           <Popover open={groupingOpen} onOpenChange={setGroupingOpen}>
-            <PopoverTrigger asChild>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      className={cn(
-                        "flex items-center gap-1.5 w-full px-2.5 py-2 rounded-md text-xs transition-colors",
-                        "bg-[hsl(220_10%_14%)] hover:bg-[hsl(220_10%_18%)]",
-                        isCompact && "w-full h-8 p-0 justify-center"
-                      )}
-                    >
-                      <Layers className="w-3.5 h-3.5 text-[hsl(220_10%_50%)]" />
-                      {!isCompact && (
-                        <span className="text-[hsl(220_10%_70%)] flex-1 text-left">
-                          {currentGroupingLabel}
-                        </span>
-                      )}
-                      {!isCompact && (
-                        <ChevronDown className="w-3 h-3 text-[hsl(220_10%_50%)]" />
-                      )}
-                    </button>
-                  </TooltipTrigger>
-                  {isCompact && (
+            {(() => {
+              const groupingButton = (
+                <button
+                  className={cn(
+                    "flex items-center gap-1.5 w-full px-2.5 py-2 rounded-md text-xs transition-colors",
+                    "bg-[hsl(220_10%_14%)] hover:bg-[hsl(220_10%_18%)]",
+                    isCompact && "w-full h-8 p-0 justify-center"
+                  )}
+                >
+                  <Layers className="w-3.5 h-3.5 text-[hsl(220_10%_50%)]" />
+                  {!isCompact && (
+                    <span className="text-[hsl(220_10%_70%)] flex-1 text-left">
+                      {currentGroupingLabel}
+                    </span>
+                  )}
+                  {!isCompact && (
+                    <ChevronDown className="w-3 h-3 text-[hsl(220_10%_50%)]" />
+                  )}
+                </button>
+              );
+
+              if (!isCompact) {
+                return <PopoverTrigger asChild>{groupingButton}</PopoverTrigger>;
+              }
+
+              return (
+                <TooltipProvider>
+                  <Tooltip>
+                    <PopoverTrigger asChild>
+                      <TooltipTrigger asChild>{groupingButton}</TooltipTrigger>
+                    </PopoverTrigger>
                     <TooltipContent side="right" className="text-xs">
                       Grouping
                     </TooltipContent>
-                  )}
-                </Tooltip>
-              </TooltipProvider>
-            </PopoverTrigger>
+                  </Tooltip>
+                </TooltipProvider>
+              );
+            })()}
             <PopoverContent
-              className="w-36 p-1 bg-[hsl(220_10%_10%)] border-[hsl(220_10%_25%)]"
+              className="w-36 p-1 bg-[hsl(220_10%_10%)] border-[hsl(220_10%_25%)] z-50"
               align="start"
               side="right"
               sideOffset={8}
