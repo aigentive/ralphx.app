@@ -3,6 +3,17 @@
 > Log entries for PRD task completion and P0 gap fixes.
 
 ---
+### 2026-02-04 08:15:28 - Phase 81 Graph toolbar compact spacing
+**What:**
+- Tightened compact floating toolbar width and button sizing
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
+
+**Result:** Success (lint errors pre-existing in TaskGraph hooks)
+
+---
 ### 2026-02-04 08:12:00 - Phase 81 Chat toggle compact spacing
 **What:**
 - Kept chat toggle padding fixed in compact nav to avoid width shift on active
