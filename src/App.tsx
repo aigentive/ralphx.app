@@ -712,14 +712,14 @@ function AppContent() {
                       <MessageSquare className="w-[18px] h-[18px] flex-shrink-0" />
                       <span className={cn(
                         "text-sm font-medium whitespace-nowrap",
-                        isExpanded ? "inline" : "hidden xl:inline"
+                        isNavCompact ? "hidden" : isExpanded ? "inline" : "hidden xl:inline"
                       )}>
                         Chat
                       </span>
                       <kbd
                         className={cn(
                           "ml-1 px-1.5 py-0.5 text-xs rounded",
-                          isExpanded ? "inline" : "hidden xl:inline"
+                          isNavCompact ? "hidden" : isExpanded ? "inline" : "hidden xl:inline"
                         )}
                         style={{
                           backgroundColor: "rgba(255,255,255,0.05)",
