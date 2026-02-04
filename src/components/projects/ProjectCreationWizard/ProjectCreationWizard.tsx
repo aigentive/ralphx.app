@@ -64,6 +64,8 @@ export interface ProjectCreationWizardProps {
   onBrowseFolder?: () => Promise<string | null>;
   /** Callback to fetch available branches for base branch dropdown */
   onFetchBranches?: (workingDirectory: string) => Promise<string[]>;
+  /** Callback to detect the default branch for a repository */
+  onDetectDefaultBranch?: (workingDirectory: string) => Promise<string>;
   /** Whether creation is in progress */
   isCreating?: boolean;
   /** Error message to display */
@@ -82,6 +84,7 @@ export function ProjectCreationWizard({
   onCreate,
   onBrowseFolder,
   onFetchBranches,
+  onDetectDefaultBranch,
   isCreating = false,
   error = null,
   isFirstRun = false,
@@ -134,26 +137,45 @@ export function ProjectCreationWizard({
     }
   }, [form.name, form.gitMode]);
 
-  // Fetch branches when working directory changes
+  // Fetch branches and detect default branch when working directory changes
   useEffect(() => {
-    if (form.workingDirectory && onFetchBranches) {
+    if (!form.workingDirectory) return;
+
+    const fetchData = async () => {
       setLoadingBranches(true);
-      onFetchBranches(form.workingDirectory)
-        .then((fetchedBranches) => {
-          if (fetchedBranches.length > 0) {
-            setBranches(fetchedBranches);
-            // Set default base branch
-            const defaultBranch = fetchedBranches.find(
-              (b) => b === "main" || b === "master"
-            );
-            if (defaultBranch) {
-              setForm((prev) => ({ ...prev, baseBranch: defaultBranch }));
-            }
+
+      try {
+        // Fetch branches and detect default branch in parallel
+        const [fetchedBranches, detectedDefault] = await Promise.all([
+          onFetchBranches?.(form.workingDirectory) ?? Promise.resolve([]),
+          onDetectDefaultBranch?.(form.workingDirectory).catch(() => null) ?? Promise.resolve(null),
+        ]);
+
+        if (fetchedBranches.length > 0) {
+          setBranches(fetchedBranches);
+
+          // Priority: detected default > main > master > first in list
+          let baseBranch: string | undefined;
+
+          if (detectedDefault && fetchedBranches.includes(detectedDefault)) {
+            // Use detected default branch if it exists in the branch list
+            baseBranch = detectedDefault;
+          } else {
+            // Fall back to main/master if detection failed or branch not in list
+            baseBranch = fetchedBranches.find((b) => b === "main" || b === "master");
           }
-        })
-        .finally(() => setLoadingBranches(false));
-    }
-  }, [form.workingDirectory, onFetchBranches]);
+
+          if (baseBranch) {
+            setForm((prev) => ({ ...prev, baseBranch }));
+          }
+        }
+      } finally {
+        setLoadingBranches(false);
+      }
+    };
+
+    fetchData();
+  }, [form.workingDirectory, onFetchBranches, onDetectDefaultBranch]);
 
   // Reset form when modal opens - defaults to Worktree mode (recommended)
   useEffect(() => {
