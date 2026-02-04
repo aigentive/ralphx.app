@@ -226,6 +226,81 @@ pub async fn delete_project(id: String, state: State<'_, AppState>) -> Result<()
         .map_err(|e| e.to_string())
 }
 
+/// Get the default branch for a git repository
+/// Fallback chain: origin/HEAD -> main -> master -> first branch
+#[tauri::command]
+pub async fn get_git_default_branch(working_directory: String) -> Result<String, String> {
+    // Check if directory exists
+    if !std::path::Path::new(&working_directory).exists() {
+        return Err(format!("Directory does not exist: {}", working_directory));
+    }
+
+    // Check if it's a git repo
+    if !is_git_initialized(&working_directory) {
+        return Err("Not a git repository".to_string());
+    }
+
+    // Try 1: origin/HEAD symbolic ref (most reliable for repos with a remote)
+    let output = Command::new("git")
+        .args(["symbolic-ref", "refs/remotes/origin/HEAD"])
+        .current_dir(&working_directory)
+        .output();
+
+    if let Ok(output) = output {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            // Output is like "refs/remotes/origin/main" -> extract "main"
+            if let Some(branch) = stdout.trim().strip_prefix("refs/remotes/origin/") {
+                return Ok(branch.to_string());
+            }
+        }
+    }
+
+    // Try 2: Check if main branch exists
+    let output = Command::new("git")
+        .args(["rev-parse", "--verify", "refs/heads/main"])
+        .current_dir(&working_directory)
+        .output();
+
+    if let Ok(output) = output {
+        if output.status.success() {
+            return Ok("main".to_string());
+        }
+    }
+
+    // Try 3: Check if master branch exists
+    let output = Command::new("git")
+        .args(["rev-parse", "--verify", "refs/heads/master"])
+        .current_dir(&working_directory)
+        .output();
+
+    if let Ok(output) = output {
+        if output.status.success() {
+            return Ok("master".to_string());
+        }
+    }
+
+    // Try 4: Get the first branch alphabetically
+    let output = Command::new("git")
+        .args(["branch", "--format=%(refname:short)"])
+        .current_dir(&working_directory)
+        .output()
+        .map_err(|e| format!("Failed to list branches: {}", e))?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if let Some(first_branch) = stdout.lines().next() {
+            let branch = first_branch.trim();
+            if !branch.is_empty() {
+                return Ok(branch.to_string());
+            }
+        }
+    }
+
+    // No branches found (empty repo with no commits)
+    Err("No branches found in repository".to_string())
+}
+
 /// Get git branches for a working directory
 /// Executes `git branch -a` in the specified directory and parses the output
 #[tauri::command]
