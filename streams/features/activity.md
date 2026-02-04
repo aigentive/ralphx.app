@@ -3,6 +3,16 @@
 > Log entries for PRD task completion and P0 gap fixes.
 
 ---
+### 2026-02-04 08:12:00 - Phase 81 Chat toggle compact spacing
+**What:**
+- Kept chat toggle padding fixed in compact nav to avoid width shift on active
+
+**Commands:**
+- `date "+%Y-%m-%d %H:%M:%S"`
+
+**Result:** Success
+
+---
 ### 2026-02-04 08:11:21 - Phase 81 Graph panel exit overlay polish
 **What:**
 - Kept overlay timeline styling during exit to avoid container flash
