@@ -147,7 +147,7 @@ pub fn build_command(
     user_message: &str,
     working_directory: &Path,
     entity_status: Option<&str>,
-) -> Command {
+) -> Result<Command, String> {
     // Compute agent_name using the resolution system (context type + optional status)
     let agent_name = resolve_agent(&conversation.context_type, entity_status);
     eprintln!(
@@ -157,7 +157,7 @@ pub fn build_command(
 
     // Pass agent_type to build_base_cli_command so it can create dynamic MCP config
     // with the agent type as CLI arg (env vars don't propagate to MCP servers)
-    let mut cmd = build_base_cli_command(cli_path, plugin_dir, Some(agent_name));
+    let mut cmd = build_base_cli_command(cli_path, plugin_dir, Some(agent_name))?;
     cmd.env("RALPHX_AGENT_TYPE", agent_name);
 
     // Add task scope for task-related contexts
@@ -194,7 +194,7 @@ pub fn build_command(
     add_prompt_args(&mut cmd, &prompt, agent, resume_session);
     configure_spawn(&mut cmd, working_directory);
 
-    cmd
+    Ok(cmd)
 }
 
 /// Create a user message based on context type

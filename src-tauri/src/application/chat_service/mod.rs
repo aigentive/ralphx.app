@@ -287,7 +287,7 @@ impl<R: Runtime> ClaudeChatService<R> {
         user_message: &str,
         working_directory: &Path,
         entity_status: Option<&str>,
-    ) -> Command {
+    ) -> Result<Command, ChatServiceError> {
         chat_service_context::build_command(
             &self.cli_path,
             &self.plugin_dir,
@@ -296,6 +296,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             working_directory,
             entity_status,
         )
+        .map_err(ChatServiceError::SpawnFailed)
     }
 
     /// Fetch entity status for context types that support it
@@ -507,7 +508,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             message,
             &working_directory,
             entity_status.as_deref(),
-        );
+        )?;
         eprintln!("[STREAM_DEBUG] chat_service.send_message command built");
         eprintln!("[STREAM_DEBUG] chat_service.send_message spawning CLI");
         let child = match cmd.spawn() {

@@ -155,48 +155,17 @@ async fn test_claude_client_with_nonexistent_cli() {
 }
 
 // ============================================================================
-// Cost-Optimized Real Agent Test (ignored by default)
+// Claude Spawn Policy (tests must not spawn real agents)
 // ============================================================================
 
-/// Test spawning a real Claude agent with minimal cost prompt
-///
-/// Run with: cargo test test_real_claude_agent_echo -- --ignored
-///
-/// Cost estimate: ~$0.001 (minimal prompt, minimal response)
 #[tokio::test]
-#[ignore]
-async fn test_real_claude_agent_echo() {
+async fn test_claude_spawn_blocked_in_tests() {
     let client = ClaudeCodeClient::new();
+    let config = AgentConfig::worker("test");
 
-    // Check if CLI is available
-    if !client.is_available().await.unwrap() {
-        println!("Claude CLI not available, skipping real agent test");
-        return;
-    }
-
-    // Use minimal echo prompt
-    let config = AgentConfig {
-        role: AgentRole::Worker,
-        prompt: test_prompts::ECHO_MARKER.to_string(),
-        working_directory: std::env::current_dir().unwrap(),
-        plugin_dir: Some(std::path::PathBuf::from("./ralphx-plugin")),
-        agent: None,
-        model: None,
-        max_tokens: Some(50),
-        timeout_secs: Some(30),
-        env: std::collections::HashMap::new(),
-    };
-
-    let handle = client.spawn_agent(config).await.expect("Failed to spawn agent");
-    let output = client.wait_for_completion(&handle).await.expect("Failed to wait for completion");
-
-    // Verify the response contains the expected marker
-    assert!(
-        test_prompts::contains_marker(&output.content, test_prompts::expected::ECHO_OK),
-        "Expected output to contain '{}', got: {}",
-        test_prompts::expected::ECHO_OK,
-        &output.content[..output.content.len().min(200)]
-    );
+    let result = client.spawn_agent(config).await;
+    assert!(result.is_err());
+    assert!(matches!(result, Err(ralphx_lib::domain::agents::AgentError::SpawnNotAllowed(_))));
 }
 
 // ============================================================================

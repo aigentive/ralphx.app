@@ -14,6 +14,10 @@ pub enum AgentError {
     #[error("Agent spawn failed: {0}")]
     SpawnFailed(String),
 
+    /// Agent spawn disallowed by environment policy
+    #[error("Agent spawn not allowed: {0}")]
+    SpawnNotAllowed(String),
+
     /// Communication with the agent failed
     #[error("Agent communication failed: {0}")]
     CommunicationFailed(String),
@@ -49,6 +53,12 @@ mod tests {
     fn test_spawn_failed_error_displays_correctly() {
         let error = AgentError::SpawnFailed("permission denied".to_string());
         assert_eq!(error.to_string(), "Agent spawn failed: permission denied");
+    }
+
+    #[test]
+    fn test_spawn_not_allowed_error_displays_correctly() {
+        let error = AgentError::SpawnNotAllowed("test env".to_string());
+        assert_eq!(error.to_string(), "Agent spawn not allowed: test env");
     }
 
     #[test]
@@ -116,6 +126,7 @@ mod tests {
 
         assert_error(&AgentError::NotFound("test".to_string()));
         assert_error(&AgentError::SpawnFailed("test".to_string()));
+        assert_error(&AgentError::SpawnNotAllowed("test".to_string()));
         assert_error(&AgentError::CommunicationFailed("test".to_string()));
         assert_error(&AgentError::Timeout(1000));
         assert_error(&AgentError::CliNotAvailable("test".to_string()));

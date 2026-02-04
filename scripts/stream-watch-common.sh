@@ -21,6 +21,8 @@
 # Defaults
 COOLDOWN_SECONDS="${COOLDOWN_SECONDS:-5}"
 FSWATCH_LATENCY="${FSWATCH_LATENCY:-3}"
+CLAUDE_CLEANUP_MODE="${CLAUDE_CLEANUP_MODE:-stale}" # off | stale | all
+CLAUDE_CLEANUP_MIN_AGE="${CLAUDE_CLEANUP_MIN_AGE:-300}" # seconds
 
 # Project root (scripts/..)
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -49,6 +51,45 @@ PAD="  "
 # Check if a PID is still running
 is_pid_alive() {
     kill -0 "$1" 2>/dev/null
+}
+
+# Find Claude-run shell PIDs for this repo
+list_claude_shell_pids() {
+    ps -A -o pid= -o etimes= -o command= | awk \
+        -v root="$ROOT_DIR" \
+        -v mode="$CLAUDE_CLEANUP_MODE" \
+        -v min_age="$CLAUDE_CLEANUP_MIN_AGE" \
+        '
+        $0 ~ /(\/\.claude\/shell-snapshots\/|\/var\/folders\/.*\/claude-.*-cwd)/ && $0 ~ root {
+            pid=$1; age=$2;
+            if (mode == "all" || (mode == "stale" && age >= min_age)) {
+                print pid
+            }
+        }'
+}
+
+# Kill stale Claude-run shell processes to prevent runaway load
+cleanup_claude_shells() {
+    if [ "$CLAUDE_CLEANUP_MODE" = "off" ]; then
+        return 0
+    fi
+    local pids=()
+    while IFS= read -r pid; do
+        [[ -n "$pid" ]] && pids+=("$pid")
+    done < <(list_claude_shell_pids)
+
+    if (( ${#pids[@]} == 0 )); then
+        return 0
+    fi
+
+    echo -e "${PAD}${YELLOW}[$STREAM] Cleaning stale Claude shell processes: ${#pids[@]}${NC}"
+    kill -TERM "${pids[@]}" 2>/dev/null || true
+    sleep 0.5
+    for pid in "${pids[@]}"; do
+        if kill -0 "$pid" 2>/dev/null; then
+            kill -KILL "$pid" 2>/dev/null || true
+        fi
+    done
 }
 
 # Get file/directory mtime as epoch seconds (macOS compatible)
@@ -151,6 +192,7 @@ run_cycle() {
     fi
 
     # Optional guard to cap concurrent Claude processes
+    cleanup_claude_shells
     if [ -n "${CLAUDE_MAX_PROCS:-}" ] && [ -x "$ROOT_DIR/scripts/claude-process-guard.sh" ]; then
         if ! "$ROOT_DIR/scripts/claude-process-guard.sh" --max "$CLAUDE_MAX_PROCS" --mode "${CLAUDE_GUARD_MODE:-block}" --ancestor-match "ralph-streams.sh $STREAM"; then
             echo -e "${PAD}${YELLOW}[$STREAM] Claude guard blocked cycle (max=${CLAUDE_MAX_PROCS})${NC}"

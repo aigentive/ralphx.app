@@ -23,7 +23,7 @@ use crate::domain::agents::{
     ClientCapabilities, ClientType, ResponseChunk,
 };
 
-use super::get_allowed_mcp_tools;
+use super::{ensure_claude_spawn_allowed, get_allowed_mcp_tools};
 
 // ============================================================================
 // Streaming Event Types
@@ -121,6 +121,10 @@ impl Default for ClaudeCodeClient {
 #[async_trait]
 impl AgenticClient for ClaudeCodeClient {
     async fn spawn_agent(&self, config: AgentConfig) -> AgentResult<AgentHandle> {
+        if let Err(err) = ensure_claude_spawn_allowed() {
+            return Err(AgentError::SpawnNotAllowed(err));
+        }
+
         // Check if CLI is available first
         if !self.cli_path.exists() && which::which(&self.cli_path).is_err() {
             return Err(AgentError::CliNotAvailable(format!(
@@ -371,6 +375,10 @@ impl ClaudeCodeClient {
         config: AgentConfig,
         resume_session_id: Option<&str>,
     ) -> AgentResult<StreamingSpawnResult> {
+        if let Err(err) = ensure_claude_spawn_allowed() {
+            return Err(AgentError::SpawnNotAllowed(err));
+        }
+
         // Check if CLI is available first
         if !self.cli_path.exists() && which::which(&self.cli_path).is_err() {
             return Err(AgentError::CliNotAvailable(format!(
@@ -472,14 +480,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_spawn_agent_fails_with_nonexistent_cli() {
+    async fn test_spawn_agent_blocked_in_tests() {
         let client =
             ClaudeCodeClient::new().with_cli_path("/nonexistent/path/to/claude_binary_12345");
         let config = AgentConfig::worker("test");
 
         let result = client.spawn_agent(config).await;
         assert!(result.is_err());
-        assert!(matches!(result, Err(AgentError::CliNotAvailable(_))));
+        assert!(matches!(result, Err(AgentError::SpawnNotAllowed(_))));
     }
 
     #[tokio::test]
@@ -569,14 +577,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_spawn_agent_streaming_fails_with_nonexistent_cli() {
+    async fn test_spawn_agent_streaming_blocked_in_tests() {
         let client =
             ClaudeCodeClient::new().with_cli_path("/nonexistent/path/to/claude_binary_12345");
         let config = AgentConfig::worker("test");
 
         let result = client.spawn_agent_streaming(config, None).await;
         assert!(result.is_err());
-        assert!(matches!(result, Err(AgentError::CliNotAvailable(_))));
+        assert!(matches!(result, Err(AgentError::SpawnNotAllowed(_))));
     }
 
     #[test]
