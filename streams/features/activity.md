@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-02-04 16:45:00 - Phase 79 Gap Verification P0 Fix: Mock Parity
+**What:**
+- Added `mockGetGitDefaultBranch` function to `src/api-mock/projects.ts`
+- Added `worktreeParentDirectory` handler to mock `update()` method
+- Exported `mockGetGitDefaultBranch` from `src/api-mock/index.ts`
+- Added `get_git_branches` and `get_git_default_branch` command handlers to `src/mocks/tauri-api-core.ts`
+
+**Files:**
+- MODIFIED: src/api-mock/projects.ts (added mock function + worktreeParentDirectory handler)
+- MODIFIED: src/api-mock/index.ts (added export)
+- MODIFIED: src/mocks/tauri-api-core.ts (added command handlers)
+- MODIFIED: streams/features/backlog.md (marked P0 items as fixed)
+
+**Visual Verification:** N/A - these are mock implementations for web mode testing infrastructure
+
+**Commands:**
+- `npm run typecheck` - passes
+- `npx eslint src/api-mock/projects.ts src/api-mock/index.ts src/mocks/tauri-api-core.ts` - passes
+
+**Result:** Success - P0 items resolved, Phase 79 can now proceed to completion
+
+---
+
 ### 2026-02-04 14:22:00 - Phase 79 Task 5: Add tests for default-branch detection
 **What:**
 - Added 8 integration tests for `get_git_default_branch` command in `project_commands.rs`

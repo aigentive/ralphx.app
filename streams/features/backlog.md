@@ -79,6 +79,13 @@
 - [x] [Frontend] Orphaned Implementation: GraphLegend component created but never imported or rendered in TaskGraphView - src/components/TaskGraph/controls/GraphLegend.tsx:1
   - Fixed by adding import and render in TaskGraphView, positioned bottom-left inside ReactFlow canvas
 
+## From Phase 79 Verification (2026-02-04)
+
+- [x] [Visual/Mock] Missing mock for getGitDefaultBranch - prevents web mode testing in ProjectCreationWizard and GitSettingsSection - src/api-mock/projects.ts
+  - Fixed by adding mockGetGitDefaultBranch function and command handler in tauri-api-core.ts
+- [x] [Visual/Mock] Mock update method missing worktreeParentDirectory handler - changes don't persist in web mode - src/api-mock/projects.ts:43-60
+  - Fixed by adding worktreeParentDirectory to mock update() method
+
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)

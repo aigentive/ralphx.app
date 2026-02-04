@@ -25,7 +25,7 @@ import { mockTestDataApi } from "./test-data";
 
 // Re-export for direct imports
 export { mockTasksApi, mockStepsApi } from "./tasks";
-export { mockProjectsApi, mockWorkflowsApi, mockGetGitBranches } from "./projects";
+export { mockProjectsApi, mockWorkflowsApi, mockGetGitBranches, mockGetGitDefaultBranch } from "./projects";
 export { mockMethodologiesApi } from "./methodologies";
 export { mockArtifactsApi } from "./artifact";
 export { mockResearchApi } from "./research";
