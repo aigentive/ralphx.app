@@ -172,7 +172,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo test && npm run test",
       "Commit: test(execution): add per-project execution scoping tests"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

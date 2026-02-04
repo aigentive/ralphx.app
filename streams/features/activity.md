@@ -3,6 +3,26 @@
 > Log entries for PRD task completion and P0 gap fixes.
 
 ---
+### 2026-02-05 00:15:32 - Phase 82 Task 4: Per-project execution scoping tests
+**What:**
+- Created new test file: tests/per_project_execution_scoping.rs with 13 tests
+- Backend tests for per-project queued count scoping
+- Backend tests for scheduler task ordering and limit enforcement
+- Backend tests for agent-active task filtering by project
+- Backend tests for project-scoped pause behavior
+- Backend tests for event payload projectId inclusion
+- Backend tests for global cap clamping and enforcement
+- Frontend tests not applicable (no frontend unit test infrastructure in place)
+
+**Commands:**
+- `cargo test --test per_project_execution_scoping` (13 passed)
+- `cargo test` (all tests pass)
+
+**Visual Verification:** N/A - backend tests only
+
+**Result:** Success
+
+---
 ### 2026-02-04 23:45:12 - Phase 82 Task 3: Per-project execution status and API integration
 **What:**
 - Updated execution API wrappers to pass optional projectId parameter
