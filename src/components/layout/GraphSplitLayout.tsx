@@ -119,7 +119,8 @@ export function GraphSplitLayout({
   // Show chat (resizable) when task selected, timeline (fixed) otherwise
   const showChat = !!selectedTaskId;
 
-  const panelWidth = showChat ? `${chatPanelWidth}px` : `${TIMELINE_SIDEBAR_WIDTH}px`;
+  const panelWidthPx = showChat ? chatPanelWidth : TIMELINE_SIDEBAR_WIDTH;
+  const panelWidth = `${panelWidthPx}px`;
 
   return (
     <div
@@ -190,19 +191,33 @@ export function GraphSplitLayout({
       {rightPanelMode === "overlay" && (
         <div
           data-testid="graph-split-right-overlay"
-          className="absolute top-0 right-0 bottom-0 flex flex-col overflow-hidden z-20 pointer-events-auto graph-panel-enter"
+          className="fixed top-14 right-0 flex flex-col pointer-events-auto graph-panel-enter"
           style={{
-            width: panelWidth,
-            padding: "8px",
-            right: "8px",
-            top: "8px",
-            bottom: "8px",
+            width: `${panelWidthPx + 16}px`,
+            minWidth: showChat
+              ? `${CHAT_PANEL_MIN_WIDTH + 16}px`
+              : `${TIMELINE_SIDEBAR_WIDTH + 16}px`,
+            bottom: "76px",
+            zIndex: 40,
           }}
         >
           {showChat ? (
             <IntegratedChatPanel projectId={projectId} />
           ) : (
-            timelineContent
+            <div
+              className="flex flex-col flex-1 overflow-hidden rounded-[10px]"
+              style={{
+                margin: "8px",
+                background: "hsla(220 10% 10% / 0.92)",
+                backdropFilter: "blur(20px) saturate(180%)",
+                WebkitBackdropFilter: "blur(20px) saturate(180%)",
+                border: "1px solid hsla(220 20% 100% / 0.08)",
+                boxShadow:
+                  "0 4px 16px hsla(220 20% 0% / 0.4), 0 12px 32px hsla(220 20% 0% / 0.3)",
+              }}
+            >
+              {timelineContent}
+            </div>
           )}
         </div>
       )}
