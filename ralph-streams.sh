@@ -265,6 +265,22 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
     fi
   done || true
   exec 3<&-  # Close file descriptor
+
+  # Ensure claude process is fully terminated before next iteration
+  if [ -n "$CLAUDE_PID" ] && kill -0 "$CLAUDE_PID" 2>/dev/null; then
+    for _ in {1..10}; do
+      if ! kill -0 "$CLAUDE_PID" 2>/dev/null; then
+        break
+      fi
+      sleep 0.2
+    done
+    if kill -0 "$CLAUDE_PID" 2>/dev/null; then
+      kill -9 "$CLAUDE_PID" 2>/dev/null || true
+    fi
+    wait "$CLAUDE_PID" 2>/dev/null || true
+  fi
+  CLAUDE_PID=""
+
   result=$(cat $LOG_FILE 2>/dev/null || echo "")
   echo ""
 

@@ -22,9 +22,13 @@
 COOLDOWN_SECONDS="${COOLDOWN_SECONDS:-5}"
 FSWATCH_LATENCY="${FSWATCH_LATENCY:-3}"
 
-# Derived paths
-LOCK_FILE=".stream-${STREAM}-lock"
-MTIME_FILE=".stream-${STREAM}-mtimes"
+# Project root (scripts/..)
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Derived paths (absolute to avoid cwd mismatches)
+LOCK_FILE="$ROOT_DIR/.stream-${STREAM}-lock"
+WATCHER_LOCK_FILE="$ROOT_DIR/.stream-${STREAM}-watcher-lock"
+MTIME_FILE="$ROOT_DIR/.stream-${STREAM}-mtimes"
 
 # Colors for output
 RED='\033[0;31m'
@@ -104,13 +108,17 @@ get_changed_files() {
 cleanup() {
     echo ""
     echo -e "${PAD}${YELLOW}[$STREAM] Shutting down...${NC}"
-    # Remove lock file and mtime file
-    rm -f "$LOCK_FILE" "$MTIME_FILE"
+    # Remove lock files and mtime file
+    rm -f "$LOCK_FILE" "$WATCHER_LOCK_FILE" "$MTIME_FILE"
     # Kill ralph-streams processes for this stream first (they have their own cleanup)
     pkill -INT -f "ralph-streams.sh $STREAM" 2>/dev/null || true
-    sleep 0.3
+    sleep 0.5
     # Force kill if still running
     pkill -9 -f "ralph-streams.sh $STREAM" 2>/dev/null || true
+    # Kill any remaining descendants of this watcher
+    pkill -9 -P $$ 2>/dev/null || true
+    # Safety net: kill claude processes tied to this stream's prompt
+    pkill -9 -f "claude.*streams/${STREAM}/PROMPT.md" 2>/dev/null || true
     exit 0
 }
 
@@ -176,7 +184,26 @@ run_cycle() {
 # Main Loop Setup
 #------------------------------------------------------------------------------
 
-# Check for stale lock and clean up if needed
+# Acquire a watcher-wide lock so only one watcher runs per stream
+acquire_watcher_lock() {
+    if ! ( set -o noclobber; echo $$ > "$WATCHER_LOCK_FILE" ) 2>/dev/null; then
+        local old_pid=$(cat "$WATCHER_LOCK_FILE" 2>/dev/null)
+        if [ -n "$old_pid" ] && is_pid_alive "$old_pid"; then
+            echo -e "${PAD}${RED}[$STREAM] Watcher already running (PID $old_pid)${NC}"
+            echo -e "${PAD}${RED}[$STREAM] Stop it first to avoid duplicate cycles${NC}"
+            exit 1
+        else
+            echo -e "${PAD}${YELLOW}[$STREAM] Removing stale watcher lock (PID $old_pid is dead)${NC}"
+            rm -f "$WATCHER_LOCK_FILE"
+            if ! ( set -o noclobber; echo $$ > "$WATCHER_LOCK_FILE" ) 2>/dev/null; then
+                echo -e "${PAD}${RED}[$STREAM] Failed to acquire watcher lock${NC}"
+                exit 1
+            fi
+        fi
+    fi
+}
+
+# Check for stale cycle lock and clean up if needed
 check_stale_lock() {
     if [ -f "$LOCK_FILE" ]; then
         local old_pid=$(cat "$LOCK_FILE" 2>/dev/null)
@@ -211,11 +238,17 @@ start_watch_loop() {
     # Set up cleanup trap
     trap cleanup SIGINT SIGTERM EXIT
 
-    # Check for stale locks
+    # Ensure only one watcher instance per stream
+    acquire_watcher_lock
+
+    # Check for stale cycle locks
     check_stale_lock
 
     # Print startup info
     print_startup_banner
+
+    # Ensure consistent working directory for relative watch paths
+    cd "$ROOT_DIR"
 
     # Take initial mtime snapshot
     snapshot_mtimes
