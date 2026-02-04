@@ -11,7 +11,7 @@
  * - Footer: Optional ExecutionControlBar
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -289,6 +289,8 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   const graphRightPanelUserOpen = useUiStore((s) => s.graphRightPanelUserOpen);
   const graphRightPanelCompactOpen = useUiStore((s) => s.graphRightPanelCompactOpen);
   const { isNavCompact } = useNavCompactBreakpoint();
+  const [overlayClosing, setOverlayClosing] = useState(false);
+  const overlayCloseTimeoutRef = useRef<number | null>(null);
 
   const graphReady = Boolean(graphData && graphData.nodes.length > 0);
 
@@ -446,6 +448,39 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
 
     setCollapsedTierIds(toCollapseTiers);
   }, [graphData, grouping.byPlan, grouping.byTier, grouping.showUncategorized]);
+
+  useEffect(() => {
+    if (!isNavCompact) {
+      if (overlayCloseTimeoutRef.current) {
+        window.clearTimeout(overlayCloseTimeoutRef.current);
+        overlayCloseTimeoutRef.current = null;
+      }
+      setOverlayClosing(false);
+      return;
+    }
+
+    if (graphRightPanelCompactOpen) {
+      if (overlayCloseTimeoutRef.current) {
+        window.clearTimeout(overlayCloseTimeoutRef.current);
+        overlayCloseTimeoutRef.current = null;
+      }
+      setOverlayClosing(false);
+      return;
+    }
+
+    setOverlayClosing(true);
+    overlayCloseTimeoutRef.current = window.setTimeout(() => {
+      setOverlayClosing(false);
+      overlayCloseTimeoutRef.current = null;
+    }, 200);
+
+    return () => {
+      if (overlayCloseTimeoutRef.current) {
+        window.clearTimeout(overlayCloseTimeoutRef.current);
+        overlayCloseTimeoutRef.current = null;
+      }
+    };
+  }, [isNavCompact, graphRightPanelCompactOpen]);
 
   // GraphControls state
   const [filters, setFilters] = useState<GraphFilters>(DEFAULT_GRAPH_FILTERS);
@@ -877,6 +912,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
       ? "overlay"
       : "split";
 
+
   return (
     <GraphSplitLayout
       projectId={projectId}
@@ -886,7 +922,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
           projectId={projectId}
           onTaskClick={onTimelineTaskClick}
           highlightedTaskId={highlightedTaskId}
-          variant={rightPanelMode === "overlay" ? "overlay" : "panel"}
+          variant={rightPanelMode === "overlay" || overlayClosing ? "overlay" : "panel"}
         />
       }
       rightPanelMode={rightPanelMode}

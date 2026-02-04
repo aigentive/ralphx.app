@@ -3,6 +3,17 @@
 > Log entries for PRD task completion and P0 gap fixes.
 
 ---
+### 2026-02-04 08:11:21 - Phase 81 Graph panel exit overlay polish
+**What:**
+- Kept overlay timeline styling during exit to avoid container flash
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
+
+**Result:** Success (lint errors pre-existing in TaskGraph hooks)
+
+---
 ### 2026-02-04 08:09:32 - Phase 81 Chat toggle compact label
 **What:**
 - Hid chat toggle label and shortcut in compact nav to prevent width shift
