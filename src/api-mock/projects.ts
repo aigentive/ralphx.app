@@ -57,6 +57,7 @@ export const mockProjectsApi = {
     if (input.worktreePath !== undefined) updated.worktreePath = input.worktreePath;
     if (input.worktreeBranch !== undefined) updated.worktreeBranch = input.worktreeBranch;
     if (input.baseBranch !== undefined) updated.baseBranch = input.baseBranch;
+    if (input.worktreeParentDirectory !== undefined) updated.worktreeParentDirectory = input.worktreeParentDirectory;
     return updated;
   },
 
@@ -220,4 +221,9 @@ export const mockWorkflowsApi = {
 
 export async function mockGetGitBranches(_workingDirectory: string): Promise<string[]> {
   return ["main", "develop", "feature/mock-branch"];
+}
+
+export async function mockGetGitDefaultBranch(_workingDirectory: string): Promise<string> {
+  // Return "main" as the default branch for mock purposes
+  return "main";
 }
