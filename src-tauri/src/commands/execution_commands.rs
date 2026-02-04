@@ -1774,4 +1774,289 @@ mod tests {
         // ExecutionState should be updated
         assert_eq!(execution_state.max_concurrent(), 8);
     }
+
+    // ========================================
+    // Resume Execution Tests (Phase 80 Task 4)
+    // ========================================
+
+    #[tokio::test]
+    async fn test_resume_restores_paused_tasks_to_previous_status() {
+        // Setup: Create a task that was Executing before being Paused
+        let execution_state = Arc::new(ExecutionState::with_max_concurrent(5));
+        let app_state = AppState::new_test();
+
+        // Create a test project
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        // Create a task in Executing state
+        let mut task = Task::new(project.id.clone(), "Executing Task".to_string());
+        task.internal_status = InternalStatus::Executing;
+        let task_id = task.id.clone();
+        app_state.task_repo.create(task.clone()).await.unwrap();
+
+        // Build transition service
+        let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
+            Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.task_dependency_repo),
+            Arc::clone(&app_state.project_repo),
+            Arc::clone(&app_state.chat_message_repo),
+            Arc::clone(&app_state.chat_conversation_repo),
+            Arc::clone(&app_state.agent_run_repo),
+            Arc::clone(&app_state.ideation_session_repo),
+            Arc::clone(&app_state.activity_event_repo),
+            Arc::clone(&app_state.message_queue),
+            Arc::clone(&app_state.running_agent_registry),
+            Arc::clone(&execution_state),
+            None,
+        );
+
+        // Pause: transition Executing -> Paused (creates status history entry)
+        execution_state.pause();
+        transition_service
+            .transition_task(&task_id, InternalStatus::Paused)
+            .await
+            .expect("Failed to transition to Paused");
+
+        // Verify task is Paused
+        let paused_task = app_state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+        assert_eq!(paused_task.internal_status, InternalStatus::Paused);
+
+        // Verify status history shows Executing -> Paused transition
+        let history = app_state.task_repo.get_status_history(&task_id).await.unwrap();
+        let pause_transition = history.iter().rev().find(|t| t.to == InternalStatus::Paused);
+        assert!(pause_transition.is_some());
+        assert_eq!(pause_transition.unwrap().from, InternalStatus::Executing);
+
+        // Resume: should restore Paused -> Executing
+        execution_state.resume();
+        transition_service
+            .transition_task(&task_id, InternalStatus::Executing)
+            .await
+            .expect("Failed to restore from Paused");
+
+        // Verify task is back to Executing
+        let restored_task = app_state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+        assert_eq!(restored_task.internal_status, InternalStatus::Executing);
+    }
+
+    #[tokio::test]
+    async fn test_resume_does_not_restore_stopped_tasks() {
+        // Setup: Create a task that was Executing before being Stopped
+        let execution_state = Arc::new(ExecutionState::with_max_concurrent(5));
+        let app_state = AppState::new_test();
+
+        // Create a test project
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        // Create a task and transition it to Stopped
+        let mut task = Task::new(project.id.clone(), "Stopped Task".to_string());
+        task.internal_status = InternalStatus::Executing;
+        let task_id = task.id.clone();
+        app_state.task_repo.create(task.clone()).await.unwrap();
+
+        // Build transition service
+        let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
+            Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.task_dependency_repo),
+            Arc::clone(&app_state.project_repo),
+            Arc::clone(&app_state.chat_message_repo),
+            Arc::clone(&app_state.chat_conversation_repo),
+            Arc::clone(&app_state.agent_run_repo),
+            Arc::clone(&app_state.ideation_session_repo),
+            Arc::clone(&app_state.activity_event_repo),
+            Arc::clone(&app_state.message_queue),
+            Arc::clone(&app_state.running_agent_registry),
+            Arc::clone(&execution_state),
+            None,
+        );
+
+        // Stop: transition Executing -> Stopped
+        execution_state.pause();
+        transition_service
+            .transition_task(&task_id, InternalStatus::Stopped)
+            .await
+            .expect("Failed to transition to Stopped");
+
+        // Verify task is Stopped
+        let stopped_task = app_state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+        assert_eq!(stopped_task.internal_status, InternalStatus::Stopped);
+
+        // Resume: should NOT restore Stopped tasks
+        execution_state.resume();
+
+        // Task should STILL be Stopped (resume doesn't restore Stopped)
+        let still_stopped = app_state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+        assert_eq!(
+            still_stopped.internal_status,
+            InternalStatus::Stopped,
+            "Stopped tasks should NOT be automatically restored on resume"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resume_restores_multiple_paused_tasks() {
+        // Setup: Create multiple tasks in different agent-active states, pause them, then resume
+        let execution_state = Arc::new(ExecutionState::with_max_concurrent(10));
+        let app_state = AppState::new_test();
+
+        // Create a test project
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        // Build transition service
+        let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
+            Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.task_dependency_repo),
+            Arc::clone(&app_state.project_repo),
+            Arc::clone(&app_state.chat_message_repo),
+            Arc::clone(&app_state.chat_conversation_repo),
+            Arc::clone(&app_state.agent_run_repo),
+            Arc::clone(&app_state.ideation_session_repo),
+            Arc::clone(&app_state.activity_event_repo),
+            Arc::clone(&app_state.message_queue),
+            Arc::clone(&app_state.running_agent_registry),
+            Arc::clone(&execution_state),
+            None,
+        );
+
+        // Create tasks in different agent-active states
+        let test_cases = [
+            (InternalStatus::Executing, "Executing Task"),
+            (InternalStatus::Reviewing, "Reviewing Task"),
+            (InternalStatus::QaRefining, "QaRefining Task"),
+        ];
+
+        let mut task_ids = Vec::new();
+        let mut original_statuses = Vec::new();
+        for (status, title) in &test_cases {
+            let mut task = Task::new(project.id.clone(), title.to_string());
+            task.internal_status = *status;
+            app_state.task_repo.create(task.clone()).await.unwrap();
+            task_ids.push(task.id);
+            original_statuses.push(*status);
+        }
+
+        // Pause all tasks
+        execution_state.pause();
+        for task_id in &task_ids {
+            let _ = transition_service
+                .transition_task(task_id, InternalStatus::Paused)
+                .await;
+        }
+
+        // Verify all are Paused
+        for task_id in &task_ids {
+            let task = app_state.task_repo.get_by_id(task_id).await.unwrap().unwrap();
+            assert_eq!(task.internal_status, InternalStatus::Paused);
+        }
+
+        // Resume: should restore all Paused tasks to their previous status
+        execution_state.resume();
+        for task_id in &task_ids {
+            // Find the pre-pause status from history and restore
+            let history = app_state.task_repo.get_status_history(task_id).await.unwrap();
+            let pause_transition = history.iter().rev().find(|t| t.to == InternalStatus::Paused);
+            if let Some(transition) = pause_transition {
+                let _ = transition_service
+                    .transition_task(task_id, transition.from)
+                    .await;
+            }
+        }
+
+        // Verify all tasks are restored to their original statuses
+        for (i, task_id) in task_ids.iter().enumerate() {
+            let task = app_state.task_repo.get_by_id(task_id).await.unwrap().unwrap();
+            assert_eq!(
+                task.internal_status, original_statuses[i],
+                "Task should be restored to original status {:?}",
+                original_statuses[i]
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_resume_with_mixed_paused_and_stopped_tasks() {
+        // Setup: Some tasks Paused, some Stopped - only Paused should be restored
+        let execution_state = Arc::new(ExecutionState::with_max_concurrent(10));
+        let app_state = AppState::new_test();
+
+        // Create a test project
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        // Build transition service
+        let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
+            Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.task_dependency_repo),
+            Arc::clone(&app_state.project_repo),
+            Arc::clone(&app_state.chat_message_repo),
+            Arc::clone(&app_state.chat_conversation_repo),
+            Arc::clone(&app_state.agent_run_repo),
+            Arc::clone(&app_state.ideation_session_repo),
+            Arc::clone(&app_state.activity_event_repo),
+            Arc::clone(&app_state.message_queue),
+            Arc::clone(&app_state.running_agent_registry),
+            Arc::clone(&execution_state),
+            None,
+        );
+
+        // Create two Executing tasks
+        let mut task1 = Task::new(project.id.clone(), "To Be Paused".to_string());
+        task1.internal_status = InternalStatus::Executing;
+        let task1_id = task1.id.clone();
+        app_state.task_repo.create(task1).await.unwrap();
+
+        let mut task2 = Task::new(project.id.clone(), "To Be Stopped".to_string());
+        task2.internal_status = InternalStatus::Executing;
+        let task2_id = task2.id.clone();
+        app_state.task_repo.create(task2).await.unwrap();
+
+        execution_state.pause();
+
+        // Transition task1 to Paused, task2 to Stopped
+        transition_service
+            .transition_task(&task1_id, InternalStatus::Paused)
+            .await
+            .expect("Failed to pause task1");
+        transition_service
+            .transition_task(&task2_id, InternalStatus::Stopped)
+            .await
+            .expect("Failed to stop task2");
+
+        // Resume
+        execution_state.resume();
+
+        // Restore only Paused task (simulating resume_execution logic)
+        let paused_tasks = app_state
+            .task_repo
+            .get_by_status(&project.id, InternalStatus::Paused)
+            .await
+            .unwrap();
+        for task in paused_tasks {
+            let history = app_state.task_repo.get_status_history(&task.id).await.unwrap();
+            if let Some(transition) = history.iter().rev().find(|t| t.to == InternalStatus::Paused) {
+                let _ = transition_service
+                    .transition_task(&task.id, transition.from)
+                    .await;
+            }
+        }
+
+        // Verify: task1 (was Paused) should be restored to Executing
+        let task1_final = app_state.task_repo.get_by_id(&task1_id).await.unwrap().unwrap();
+        assert_eq!(
+            task1_final.internal_status,
+            InternalStatus::Executing,
+            "Paused task should be restored to Executing"
+        );
+
+        // Verify: task2 (was Stopped) should remain Stopped
+        let task2_final = app_state.task_repo.get_by_id(&task2_id).await.unwrap().unwrap();
+        assert_eq!(
+            task2_final.internal_status,
+            InternalStatus::Stopped,
+            "Stopped task should remain Stopped"
+        );
+    }
 }

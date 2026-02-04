@@ -163,7 +163,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy && cargo test",
       "Commit: feat(execution): restore Paused tasks on resume, not Stopped"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 5,

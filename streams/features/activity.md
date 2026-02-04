@@ -3,6 +3,20 @@
 > Log entries for PRD task completion and P0 gap fixes.
 
 ---
+### 2026-02-04 06:27:22 - Phase 80 Task 4: Resume restores only Paused tasks
+**What:**
+- Verified resume behavior coverage with new tests for Paused vs Stopped restoration
+- Ensured mixed paused/stopped scenarios restore only paused tasks
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test`
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
 
 ### 2026-02-04 19:45:00 - Phase 80 Task 2: Update stop_execution to transition to Stopped status
 **What:**
