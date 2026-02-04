@@ -13,9 +13,10 @@
 use std::sync::Arc;
 use async_trait::async_trait;
 use tauri::{AppHandle, Runtime};
+use tokio::sync::RwLock;
 
 use crate::commands::ExecutionState;
-use crate::domain::entities::{GitMode, InternalStatus, Task};
+use crate::domain::entities::{GitMode, InternalStatus, ProjectId, Task};
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
     IdeationSessionRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
@@ -38,6 +39,9 @@ use super::TaskTransitionService;
 ///
 /// This service queries for the oldest Ready task across all projects and
 /// transitions it to Executing when execution slots are available.
+///
+/// Phase 82: Supports optional project scoping via `active_project_id` filter.
+/// When set, only tasks from that project will be scheduled.
 pub struct TaskSchedulerService<R: Runtime = tauri::Wry> {
     execution_state: Arc<ExecutionState>,
     project_repo: Arc<dyn ProjectRepository>,
@@ -51,6 +55,9 @@ pub struct TaskSchedulerService<R: Runtime = tauri::Wry> {
     message_queue: Arc<MessageQueue>,
     running_agent_registry: Arc<RunningAgentRegistry>,
     app_handle: Option<AppHandle<R>>,
+    /// Phase 82: Optional project ID to scope scheduling to a single project.
+    /// When set, only Ready tasks from this project are considered.
+    active_project_id: RwLock<Option<ProjectId>>,
 }
 
 impl<R: Runtime> TaskSchedulerService<R> {
@@ -83,11 +90,25 @@ impl<R: Runtime> TaskSchedulerService<R> {
             message_queue,
             running_agent_registry,
             app_handle,
+            active_project_id: RwLock::new(None),
         }
     }
 
-    /// Find the oldest schedulable task across all projects.
+    /// Set the active project ID for scoped scheduling (Phase 82).
+    /// When set, only Ready tasks from this project will be scheduled.
+    /// Set to None to schedule across all projects.
+    pub async fn set_active_project(&self, project_id: Option<ProjectId>) {
+        *self.active_project_id.write().await = project_id;
+    }
+
+    /// Get the current active project ID, if any.
+    pub async fn get_active_project(&self) -> Option<ProjectId> {
+        self.active_project_id.read().await.clone()
+    }
+
+    /// Find the oldest schedulable task across all projects (or scoped to active project).
     ///
+    /// Phase 82: When active_project_id is set, only tasks from that project are considered.
     /// For Worktree-mode projects, any Ready task is schedulable.
     /// For Local-mode projects, a task is only schedulable if no other task
     /// in the same project is in a "running" state (Executing, ReExecuting,
@@ -95,6 +116,9 @@ impl<R: Runtime> TaskSchedulerService<R> {
     ///
     /// Returns None if no schedulable tasks exist or if there's an error querying.
     async fn find_oldest_schedulable_task(&self) -> Option<Task> {
+        // Phase 82: Get active project filter
+        let active_project = self.active_project_id.read().await.clone();
+
         // Get a batch of oldest Ready tasks to evaluate
         let ready_tasks = match self.task_repo.get_oldest_ready_tasks(50).await {
             Ok(tasks) => tasks,
@@ -105,6 +129,19 @@ impl<R: Runtime> TaskSchedulerService<R> {
         };
 
         for task in ready_tasks {
+            // Phase 82: If active project is set, skip tasks from other projects
+            if let Some(ref active_pid) = active_project {
+                if task.project_id != *active_pid {
+                    tracing::debug!(
+                        task_id = task.id.as_str(),
+                        task_project = task.project_id.as_str(),
+                        active_project = active_pid.as_str(),
+                        "Skipping task: not in active project"
+                    );
+                    continue;
+                }
+            }
+
             // Get the project to check its git mode
             let project = match self.project_repo.get_by_id(&task.project_id).await {
                 Ok(Some(p)) => p,

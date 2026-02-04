@@ -1,16 +1,18 @@
 // Tauri commands for execution control
-// Manages global execution state: pause, resume, stop
+// Manages per-project execution state: pause, resume, stop
+// Phase 82: Project-scoped execution with optional project_id parameters
 
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime, State};
+use tokio::sync::RwLock;
 
 use crate::application::{
     AppState, ReconciliationRunner, TaskSchedulerService, TaskTransitionService,
 };
 use crate::application::reconciliation::UserRecoveryAction;
-use crate::domain::entities::InternalStatus;
+use crate::domain::entities::{InternalStatus, ProjectId};
 use crate::domain::execution::ExecutionSettings;
 use crate::domain::state_machine::services::TaskScheduler;
 
@@ -42,6 +44,37 @@ pub const AUTO_TRANSITION_STATES: &[InternalStatus] = &[
     InternalStatus::RevisionNeeded, // → ReExecuting (spawns worker)
     InternalStatus::Approved,       // → PendingMerge (programmatic merge)
 ];
+
+// ========================================
+// Phase 82: Active Project State
+// ========================================
+
+/// Tracks the currently active project for execution scoping.
+/// Commands without explicit project_id use the active project.
+#[derive(Debug, Default)]
+pub struct ActiveProjectState {
+    /// The currently active project, if any
+    current: RwLock<Option<ProjectId>>,
+}
+
+impl ActiveProjectState {
+    /// Create a new ActiveProjectState with no active project
+    pub fn new() -> Self {
+        Self {
+            current: RwLock::new(None),
+        }
+    }
+
+    /// Get the current active project ID
+    pub async fn get(&self) -> Option<ProjectId> {
+        self.current.read().await.clone()
+    }
+
+    /// Set the active project
+    pub async fn set(&self, project_id: Option<ProjectId>) {
+        *self.current.write().await = project_id;
+    }
+}
 
 /// Global execution state managed atomically for thread safety
 pub struct ExecutionState {
@@ -207,31 +240,56 @@ pub struct UpdateExecutionSettingsInput {
 }
 
 /// Get current execution status
+/// Phase 82: Optional project_id for per-project scoping.
+/// If project_id is None, falls back to active project or aggregates across all projects.
 #[tauri::command]
 pub async fn get_execution_status(
+    project_id: Option<String>,
+    active_project_state: State<'_, Arc<ActiveProjectState>>,
     execution_state: State<'_, Arc<ExecutionState>>,
     app_state: State<'_, AppState>,
 ) -> Result<ExecutionStatusResponse, String> {
-    // Count queued tasks (tasks in Ready status)
-    let all_projects = app_state
-        .project_repo
-        .get_all()
-        .await
-        .map_err(|e| e.to_string())?;
+    // Determine effective project_id: explicit param > active project > all projects
+    let effective_project_id = match project_id {
+        Some(id) => Some(ProjectId::from_string(id)),
+        None => active_project_state.get().await,
+    };
 
+    // Count queued tasks (tasks in Ready status)
     let mut queued_count = 0u32;
-    for project in &all_projects {
+
+    if let Some(pid) = &effective_project_id {
+        // Scoped to single project
         let tasks = app_state
             .task_repo
-            .get_by_project(&project.id)
+            .get_by_project(pid)
             .await
             .map_err(|e| e.to_string())?;
 
-        queued_count += tasks
+        queued_count = tasks
             .iter()
             .filter(|t| t.internal_status == InternalStatus::Ready)
             .count() as u32;
+    } else {
+        // Aggregate across all projects
+        let all_projects = app_state
+            .project_repo
+            .get_all()
+            .await
+            .map_err(|e| e.to_string())?;
 
+        for project in &all_projects {
+            let tasks = app_state
+                .task_repo
+                .get_by_project(&project.id)
+                .await
+                .map_err(|e| e.to_string())?;
+
+            queued_count += tasks
+                .iter()
+                .filter(|t| t.internal_status == InternalStatus::Ready)
+                .count() as u32;
+        }
     }
 
     // Use running agent registry as source of truth for active processes.
@@ -256,11 +314,20 @@ pub async fn get_execution_status(
 /// This transitions all agent-active tasks to Paused status via TransitionHandler.
 /// Paused is NOT terminal - tasks can be auto-restored on resume using status history.
 /// The on_exit handlers will decrement the running count for each task.
+/// Phase 82: Optional project_id for per-project scoping.
 #[tauri::command]
 pub async fn pause_execution(
+    project_id: Option<String>,
+    active_project_state: State<'_, Arc<ActiveProjectState>>,
     execution_state: State<'_, Arc<ExecutionState>>,
     app_state: State<'_, AppState>,
 ) -> Result<ExecutionCommandResponse, String> {
+    // Determine effective project_id: explicit param > active project > all projects
+    let effective_project_id = match project_id {
+        Some(id) => Some(ProjectId::from_string(id)),
+        None => active_project_state.get().await,
+    };
+
     // First pause to prevent new tasks from starting
     execution_state.pause();
 
@@ -284,14 +351,22 @@ pub async fn pause_execution(
         app_state.app_handle.clone(),
     );
 
-    // Find all tasks in agent-active states across all projects
-    let all_projects = app_state
-        .project_repo
-        .get_all()
-        .await
-        .map_err(|e| e.to_string())?;
+    // Find all tasks in agent-active states (scoped to project if specified)
+    let projects_to_process = if let Some(ref pid) = effective_project_id {
+        match app_state.project_repo.get_by_id(pid).await {
+            Ok(Some(project)) => vec![project],
+            Ok(None) => return Err(format!("Project not found: {}", pid.as_str())),
+            Err(e) => return Err(e.to_string()),
+        }
+    } else {
+        app_state
+            .project_repo
+            .get_all()
+            .await
+            .map_err(|e| e.to_string())?
+    };
 
-    for project in all_projects {
+    for project in projects_to_process {
         let tasks = app_state
             .task_repo
             .get_by_project(&project.id)
@@ -321,14 +396,30 @@ pub async fn pause_execution(
     // Note: running_count is decremented by on_exit handlers in TransitionHandler
     // No manual reset needed here
 
-    // Emit status_changed event for real-time UI update
+    // Emit status_changed event for real-time UI update with projectId
     // This reflects the final state after all tasks have been paused
     if let Some(ref handle) = app_state.app_handle {
-        execution_state.emit_status_changed(handle, "paused");
+        let _ = handle.emit(
+            "execution:status_changed",
+            serde_json::json!({
+                "isPaused": execution_state.is_paused(),
+                "runningCount": execution_state.running_count(),
+                "maxConcurrent": execution_state.max_concurrent(),
+                "reason": "paused",
+                "projectId": effective_project_id.as_ref().map(|p| p.as_str()),
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+            }),
+        );
     }
 
     // Get current status
-    let status = get_execution_status(execution_state, app_state).await?;
+    let status = get_execution_status(
+        effective_project_id.map(|p| p.as_str().to_string()),
+        active_project_state,
+        execution_state,
+        app_state,
+    )
+    .await?;
 
     Ok(ExecutionCommandResponse {
         success: true,
@@ -340,11 +431,20 @@ pub async fn pause_execution(
 /// This restores only Paused tasks (NOT Stopped) to their previous agent-active state.
 /// Uses status history to find the pre-pause state and re-runs entry actions.
 /// After restoring, triggers the scheduler to pick up waiting Ready tasks.
+/// Phase 82: Optional project_id for per-project scoping.
 #[tauri::command]
 pub async fn resume_execution(
+    project_id: Option<String>,
+    active_project_state: State<'_, Arc<ActiveProjectState>>,
     execution_state: State<'_, Arc<ExecutionState>>,
     app_state: State<'_, AppState>,
 ) -> Result<ExecutionCommandResponse, String> {
+    // Determine effective project_id: explicit param > active project > all projects
+    let effective_project_id = match project_id {
+        Some(id) => Some(ProjectId::from_string(id)),
+        None => active_project_state.get().await,
+    };
+
     // Clear the pause flag first
     execution_state.resume();
 
@@ -364,15 +464,23 @@ pub async fn resume_execution(
         app_state.app_handle.clone(),
     );
 
-    // Find all Paused tasks across all projects and restore them
+    // Find all Paused tasks (scoped to project if specified) and restore them
     // Note: Stopped tasks are NOT restored - they require manual restart
-    let all_projects = app_state
-        .project_repo
-        .get_all()
-        .await
-        .map_err(|e| e.to_string())?;
+    let projects_to_process = if let Some(ref pid) = effective_project_id {
+        match app_state.project_repo.get_by_id(pid).await {
+            Ok(Some(project)) => vec![project],
+            Ok(None) => return Err(format!("Project not found: {}", pid.as_str())),
+            Err(e) => return Err(e.to_string()),
+        }
+    } else {
+        app_state
+            .project_repo
+            .get_all()
+            .await
+            .map_err(|e| e.to_string())?
+    };
 
-    for project in all_projects {
+    for project in projects_to_process {
         let tasks = app_state
             .task_repo
             .get_by_status(&project.id, InternalStatus::Paused)
@@ -460,9 +568,19 @@ pub async fn resume_execution(
         }
     }
 
-    // Emit status_changed event for real-time UI update
+    // Emit status_changed event for real-time UI update with projectId
     if let Some(ref handle) = app_state.app_handle {
-        execution_state.emit_status_changed(handle, "resumed");
+        let _ = handle.emit(
+            "execution:status_changed",
+            serde_json::json!({
+                "isPaused": execution_state.is_paused(),
+                "runningCount": execution_state.running_count(),
+                "maxConcurrent": execution_state.max_concurrent(),
+                "reason": "resumed",
+                "projectId": effective_project_id.as_ref().map(|p| p.as_str()),
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+            }),
+        );
     }
 
     // Trigger scheduler to pick up waiting Ready tasks
@@ -483,7 +601,13 @@ pub async fn resume_execution(
     scheduler.try_schedule_ready_tasks().await;
 
     // Get current status
-    let status = get_execution_status(execution_state, app_state).await?;
+    let status = get_execution_status(
+        effective_project_id.map(|p| p.as_str().to_string()),
+        active_project_state,
+        execution_state,
+        app_state,
+    )
+    .await?;
 
     Ok(ExecutionCommandResponse {
         success: true,
@@ -495,11 +619,20 @@ pub async fn resume_execution(
 /// This transitions all agent-active tasks to Stopped status via TransitionHandler.
 /// Stopped is a terminal state requiring manual restart - tasks won't auto-resume.
 /// The on_exit handlers will decrement the running count for each task.
+/// Phase 82: Optional project_id for per-project scoping.
 #[tauri::command]
 pub async fn stop_execution(
+    project_id: Option<String>,
+    active_project_state: State<'_, Arc<ActiveProjectState>>,
     execution_state: State<'_, Arc<ExecutionState>>,
     app_state: State<'_, AppState>,
 ) -> Result<ExecutionCommandResponse, String> {
+    // Determine effective project_id: explicit param > active project > all projects
+    let effective_project_id = match project_id {
+        Some(id) => Some(ProjectId::from_string(id)),
+        None => active_project_state.get().await,
+    };
+
     // First pause to prevent new tasks from starting
     execution_state.pause();
 
@@ -523,14 +656,22 @@ pub async fn stop_execution(
         app_state.app_handle.clone(),
     );
 
-    // Find all tasks in agent-active states across all projects
-    let all_projects = app_state
-        .project_repo
-        .get_all()
-        .await
-        .map_err(|e| e.to_string())?;
+    // Find all tasks in agent-active states (scoped to project if specified)
+    let projects_to_process = if let Some(ref pid) = effective_project_id {
+        match app_state.project_repo.get_by_id(pid).await {
+            Ok(Some(project)) => vec![project],
+            Ok(None) => return Err(format!("Project not found: {}", pid.as_str())),
+            Err(e) => return Err(e.to_string()),
+        }
+    } else {
+        app_state
+            .project_repo
+            .get_all()
+            .await
+            .map_err(|e| e.to_string())?
+    };
 
-    for project in all_projects {
+    for project in projects_to_process {
         let tasks = app_state
             .task_repo
             .get_by_project(&project.id)
@@ -560,14 +701,30 @@ pub async fn stop_execution(
     // Note: running_count is decremented by on_exit handlers in TransitionHandler
     // No manual reset needed here
 
-    // Emit status_changed event for real-time UI update
+    // Emit status_changed event for real-time UI update with projectId
     // This reflects the final state after all tasks have been stopped
     if let Some(ref handle) = app_state.app_handle {
-        execution_state.emit_status_changed(handle, "stopped");
+        let _ = handle.emit(
+            "execution:status_changed",
+            serde_json::json!({
+                "isPaused": execution_state.is_paused(),
+                "runningCount": execution_state.running_count(),
+                "maxConcurrent": execution_state.max_concurrent(),
+                "reason": "stopped",
+                "projectId": effective_project_id.as_ref().map(|p| p.as_str()),
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+            }),
+        );
     }
 
     // Get current status
-    let status = get_execution_status(execution_state, app_state).await?;
+    let status = get_execution_status(
+        effective_project_id.map(|p| p.as_str().to_string()),
+        active_project_state,
+        execution_state,
+        app_state,
+    )
+    .await?;
 
     Ok(ExecutionCommandResponse {
         success: true,
@@ -685,6 +842,7 @@ pub async fn resolve_recovery_prompt(
 #[tauri::command]
 pub async fn set_max_concurrent(
     max: u32,
+    active_project_state: State<'_, Arc<ActiveProjectState>>,
     execution_state: State<'_, Arc<ExecutionState>>,
     app_state: State<'_, AppState>,
 ) -> Result<ExecutionCommandResponse, String> {
@@ -716,7 +874,7 @@ pub async fn set_max_concurrent(
     }
 
     // Get current status
-    let status = get_execution_status(execution_state, app_state).await?;
+    let status = get_execution_status(None, active_project_state, execution_state, app_state).await?;
 
     Ok(ExecutionCommandResponse {
         success: true,
@@ -804,6 +962,66 @@ pub async fn update_execution_settings(
     }
 
     Ok(ExecutionSettingsResponse::from(updated))
+}
+
+// ========================================
+// Phase 82: Active Project Management
+// ========================================
+
+/// Set the active project for execution scoping.
+/// Frontend should call this when switching projects.
+/// Commands without explicit project_id will use this active project.
+#[tauri::command]
+pub async fn set_active_project(
+    project_id: Option<String>,
+    active_project_state: State<'_, Arc<ActiveProjectState>>,
+    app_state: State<'_, AppState>,
+) -> Result<(), String> {
+    let project_id = project_id.map(|id| ProjectId::from_string(id));
+
+    // Validate project exists if ID provided
+    if let Some(ref pid) = project_id {
+        let exists = app_state
+            .project_repo
+            .get_by_id(pid)
+            .await
+            .map_err(|e| e.to_string())?
+            .is_some();
+
+        if !exists {
+            return Err(format!("Project not found: {}", pid.as_str()));
+        }
+    }
+
+    active_project_state.set(project_id.clone()).await;
+
+    tracing::info!(
+        project_id = ?project_id.as_ref().map(|p| p.as_str()),
+        "Active project set"
+    );
+
+    // Emit event for UI sync
+    if let Some(ref handle) = app_state.app_handle {
+        let _ = handle.emit(
+            "execution:active_project_changed",
+            serde_json::json!({
+                "projectId": project_id.as_ref().map(|p| p.as_str()),
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+            }),
+        );
+    }
+
+    Ok(())
+}
+
+/// Get the current active project ID.
+/// Returns None if no project is active.
+#[tauri::command]
+pub async fn get_active_project(
+    active_project_state: State<'_, Arc<ActiveProjectState>>,
+) -> Result<Option<String>, String> {
+    let project_id = active_project_state.get().await;
+    Ok(project_id.map(|p| p.as_str().to_string()))
 }
 
 #[cfg(test)]

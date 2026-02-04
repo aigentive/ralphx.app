@@ -54,6 +54,8 @@ fn greet(name: &str) -> String {
 pub fn run() {
     // Create execution state for global execution control
     let execution_state = Arc::new(commands::ExecutionState::new());
+    // Create active project state for per-project execution scoping (Phase 82)
+    let active_project_state = Arc::new(commands::ActiveProjectState::new());
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -330,6 +332,7 @@ pub fn run() {
             Ok(())
         })
         .manage(execution_state)
+        .manage(active_project_state)
         .invoke_handler(tauri::generate_handler![
             greet,
             commands::health::health_check,
@@ -411,6 +414,8 @@ pub fn run() {
             commands::execution_commands::set_max_concurrent,
             commands::execution_commands::get_execution_settings,
             commands::execution_commands::update_execution_settings,
+            commands::execution_commands::set_active_project,
+            commands::execution_commands::get_active_project,
             // Ideation session commands
             commands::ideation_commands::create_ideation_session,
             commands::ideation_commands::get_ideation_session,
