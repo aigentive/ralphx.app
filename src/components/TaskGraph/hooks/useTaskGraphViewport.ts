@@ -1,12 +1,14 @@
 import type { Node } from "@xyflow/react";
 import { useReactFlow } from "@xyflow/react";
 
+/** Options for fitting a node into view. */
 export interface FitNodeOptions {
   duration?: number;
   padding?: number;
   maxZoom?: number;
 }
 
+/** Options for centering a node in the viewport. */
 export interface CenterNodeOptions {
   duration?: number;
   zoom?: number;
@@ -22,6 +24,7 @@ interface ViewportApi {
   setViewport: (viewport: { x: number; y: number; zoom: number }, options?: { duration?: number }) => void;
 }
 
+/** Resolve node dimensions from measured values, node props, or data fallback. */
 export function resolveNodeDimensions(
   node: Node,
   fallback: { width: number; height: number }
@@ -59,6 +62,7 @@ function createNodeCenter(
   };
 }
 
+/** Create viewport actions from React Flow primitives. */
 export function createViewportActions({
   getNodes,
   fitView,
@@ -134,6 +138,7 @@ export function createViewportActions({
   return { fitNodeInView, fitNode, centerOnNode, centerOnNodeObject, fitViewDefault, zoomBy };
 }
 
+/** Hook exposing viewport actions for the task graph. */
 export function useTaskGraphViewport() {
   const { getNodes, fitView, setCenter, getViewport, setViewport } = useReactFlow();
   return createViewportActions({ getNodes, fitView, setCenter, getViewport, setViewport });
