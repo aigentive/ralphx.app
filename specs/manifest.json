@@ -562,6 +562,13 @@
       "prd": "specs/phases/prd_phase_78_git_merge_verification.md",
       "status": "complete",
       "description": "Fix merge auto-completion to verify merge on main branch, handle empty repo"
+    },
+    {
+      "phase": 79,
+      "name": "Git Settings Per-Project",
+      "prd": "specs/phases/prd_phase_79_git_settings_per_project.md",
+      "status": "pending",
+      "description": "Make Git settings editable per project with automatic default-branch detection"
     }
   ]
 }
