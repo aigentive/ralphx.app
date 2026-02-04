@@ -93,6 +93,7 @@ export {
   projectsApi,
   workflowsApi,
   getGitBranches,
+  getGitDefaultBranch,
 } from "@/api/projects";
 
 // Methodologies API

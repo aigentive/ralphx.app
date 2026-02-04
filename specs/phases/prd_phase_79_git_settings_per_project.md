@@ -131,7 +131,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(settings): add editable base branch and worktree directory"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 4,
