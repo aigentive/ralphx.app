@@ -160,12 +160,19 @@ async fn test_claude_client_with_nonexistent_cli() {
 
 #[tokio::test]
 async fn test_claude_spawn_blocked_in_tests() {
+    // NOTE: Integration tests don't have cfg!(test) = true, so we must
+    // explicitly enable test mode via environment variable
+    std::env::set_var("RALPHX_TEST_MODE", "1");
+
     let client = ClaudeCodeClient::new();
     let config = AgentConfig::worker("test");
 
     let result = client.spawn_agent(config).await;
     assert!(result.is_err());
     assert!(matches!(result, Err(ralphx_lib::domain::agents::AgentError::SpawnNotAllowed(_))));
+
+    // Clean up
+    std::env::remove_var("RALPHX_TEST_MODE");
 }
 
 // ============================================================================

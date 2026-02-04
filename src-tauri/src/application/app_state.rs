@@ -171,7 +171,7 @@ impl AppState {
                 Arc::clone(&shared_conn),
             )),
             global_execution_settings_repo: Arc::new(
-                crate::infrastructure::sqlite::SqliteGlobalExecutionSettingsRepository::from_shared(
+                SqliteGlobalExecutionSettingsRepository::from_shared(
                     Arc::clone(&shared_conn),
                 ),
             ),
@@ -268,7 +268,7 @@ impl AppState {
                 Arc::clone(&shared_conn),
             )),
             global_execution_settings_repo: Arc::new(
-                crate::infrastructure::sqlite::SqliteGlobalExecutionSettingsRepository::from_shared(
+                SqliteGlobalExecutionSettingsRepository::from_shared(
                     Arc::clone(&shared_conn),
                 ),
             ),

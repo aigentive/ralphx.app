@@ -3,6 +3,27 @@
 > Log entries for PRD task completion and P0 gap fixes.
 
 ---
+### 2026-02-04 22:57:02 - Phase 82 Task 2: Per-project execution settings and global cap
+**What:**
+- Added global_max_concurrent field to ExecutionState with clamp [1, 50]
+- Added global_execution_settings table via v11 migration
+- Updated execution_settings table to allow per-project rows (removed CHECK(id=1) constraint)
+- Added get_global_execution_settings and update_global_execution_settings Tauri commands
+- Added HTTP endpoints for global settings (GET/POST /api/execution/global-settings)
+- Enforced global cap in can_start_task() and ExecutionStatusResponse
+- Updated tests for new v11 migration behavior
+- Fixed compilation error in chat_service_queue.rs (return value in error path)
+- Fixed integration test for spawn blocking (explicit RALPHX_TEST_MODE)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test`
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
 ### 2026-02-04 08:31:01 - Phase 81 Complete - Graph Toolbar Compact + Timeline Toggle
 **What:**
 - All 5 PRD tasks completed with passes: true

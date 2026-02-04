@@ -1,4 +1,5 @@
 pub mod artifacts;
+pub mod execution;
 pub mod git;
 pub mod ideation;
 pub mod permissions;
@@ -9,6 +10,7 @@ pub mod tasks;
 pub mod worker;
 
 pub use artifacts::*;
+pub use execution::*;
 pub use git::*;
 pub use ideation::*;
 pub use permissions::*;

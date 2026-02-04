@@ -10,11 +10,11 @@ async fn setup_test_state() -> (Arc<ExecutionState>, AppState) {
     (execution_state, app_state)
 }
 
-/// Helper to build a StartupJobRunner from test state
+/// Helper to build a StartupJobRunner from test state.
 fn build_runner(
     app_state: &AppState,
     execution_state: &Arc<ExecutionState>,
-) -> StartupJobRunner<tauri::Wry> {
+) -> (StartupJobRunner<tauri::Wry>, Arc<crate::commands::ActiveProjectState>) {
     let transition_service = Arc::new(TaskTransitionService::new(
         Arc::clone(&app_state.task_repo),
         Arc::clone(&app_state.task_dependency_repo),
@@ -32,7 +32,8 @@ fn build_runner(
 
     let agent_run_repo = Arc::clone(&app_state.agent_run_repo);
 
-    StartupJobRunner::new(
+    let active_project_state = Arc::new(crate::commands::ActiveProjectState::new());
+    let runner = StartupJobRunner::new(
         Arc::clone(&app_state.task_repo),
         Arc::clone(&app_state.task_dependency_repo),
         Arc::clone(&app_state.project_repo),
@@ -45,7 +46,9 @@ fn build_runner(
         agent_run_repo,
         transition_service,
         Arc::clone(execution_state),
-    )
+        Arc::clone(&active_project_state),
+    );
+    (runner, active_project_state)
 }
 
 #[tokio::test]
@@ -63,7 +66,7 @@ async fn test_resumption_skipped_when_paused() {
     // Pause execution
     execution_state.pause();
 
-    let runner = build_runner(&app_state, &execution_state);
+    let (runner, _) = build_runner(&app_state, &execution_state);
 
     // Run should skip because paused
     runner.run().await;
@@ -96,7 +99,8 @@ async fn test_resumption_spawns_agents() {
     // Set high max_concurrent to allow resumption
     execution_state.set_max_concurrent(10);
 
-    let runner = build_runner(&app_state, &execution_state);
+    let (runner, active_project_state) = build_runner(&app_state, &execution_state);
+    active_project_state.set(Some(project.id.clone())).await;
 
     // Run should trigger entry actions for the Executing task
     runner.run().await;
@@ -125,9 +129,9 @@ async fn test_resumption_spawns_agents() {
 async fn test_resumption_handles_empty_projects() {
     let (execution_state, app_state) = setup_test_state().await;
 
-    let runner = build_runner(&app_state, &execution_state);
+    let (runner, _) = build_runner(&app_state, &execution_state);
 
-    // Run should complete without panic
+    // Run should complete without panic (no active project set, early return)
     runner.run().await;
 
     // Running count should be 0
@@ -151,7 +155,8 @@ async fn test_resumption_respects_max_concurrent() {
         app_state.task_repo.create(task).await.unwrap();
     }
 
-    let runner = build_runner(&app_state, &execution_state);
+    let (runner, active_project_state) = build_runner(&app_state, &execution_state);
+    active_project_state.set(Some(project.id.clone())).await;
 
     // Run should stop after 2 tasks due to max_concurrent
     runner.run().await;
@@ -196,7 +201,8 @@ async fn test_resumption_handles_multiple_statuses() {
     // Set high max_concurrent so all tasks can be resumed
     execution_state.set_max_concurrent(10);
 
-    let runner = build_runner(&app_state, &execution_state);
+    let (runner, active_project_state) = build_runner(&app_state, &execution_state);
+    active_project_state.set(Some(project.id.clone())).await;
 
     // Run should complete
     runner.run().await;
@@ -234,8 +240,8 @@ async fn test_startup_schedules_ready_tasks_when_scheduler_configured() {
     // Create a mock scheduler to verify it gets called
     let scheduler = Arc::new(MockTaskScheduler::new());
 
-    let runner = build_runner(&app_state, &execution_state)
-        .with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
+    let (runner, _) = build_runner(&app_state, &execution_state);
+    let runner = runner.with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
 
     // Run startup (no agent-active tasks, but should still call scheduler)
     runner.run().await;
@@ -258,8 +264,8 @@ async fn test_startup_does_not_schedule_when_paused() {
     // Create a mock scheduler
     let scheduler = Arc::new(MockTaskScheduler::new());
 
-    let runner = build_runner(&app_state, &execution_state)
-        .with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
+    let (runner, _) = build_runner(&app_state, &execution_state);
+    let runner = runner.with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
 
     // Run startup while paused
     runner.run().await;
@@ -290,8 +296,9 @@ async fn test_startup_schedules_after_resuming_agent_tasks() {
     // Create a mock scheduler
     let scheduler = Arc::new(MockTaskScheduler::new());
 
-    let runner = build_runner(&app_state, &execution_state)
-        .with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
+    let (runner, active_project_state) = build_runner(&app_state, &execution_state);
+    active_project_state.set(Some(project.id.clone())).await;
+    let runner = runner.with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
 
     // Run startup - should resume the Executing task AND call scheduler
     runner.run().await;
@@ -327,7 +334,8 @@ async fn test_merging_state_resumed_on_startup() {
     // Set high max_concurrent to allow resumption
     execution_state.set_max_concurrent(10);
 
-    let runner = build_runner(&app_state, &execution_state);
+    let (runner, active_project_state) = build_runner(&app_state, &execution_state);
+    active_project_state.set(Some(project.id.clone())).await;
 
     // Run startup
     runner.run().await;
@@ -369,7 +377,8 @@ async fn test_pending_review_auto_transitions_on_startup() {
     // Set high max_concurrent to allow auto-transition
     execution_state.set_max_concurrent(10);
 
-    let runner = build_runner(&app_state, &execution_state);
+    let (runner, active_project_state) = build_runner(&app_state, &execution_state);
+    active_project_state.set(Some(project.id.clone())).await;
 
     // Run startup - should trigger auto-transition to Reviewing
     runner.run().await;
@@ -420,7 +429,8 @@ async fn test_revision_needed_auto_transitions_on_startup() {
     // Set high max_concurrent to allow auto-transition
     execution_state.set_max_concurrent(10);
 
-    let runner = build_runner(&app_state, &execution_state);
+    let (runner, active_project_state) = build_runner(&app_state, &execution_state);
+    active_project_state.set(Some(project.id.clone())).await;
 
     // Run startup - should trigger auto-transition to ReExecuting
     runner.run().await;
@@ -471,7 +481,8 @@ async fn test_approved_auto_transitions_on_startup() {
     // Set high max_concurrent to allow auto-transition
     execution_state.set_max_concurrent(10);
 
-    let runner = build_runner(&app_state, &execution_state);
+    let (runner, active_project_state) = build_runner(&app_state, &execution_state);
+    active_project_state.set(Some(project.id.clone())).await;
 
     // Run startup - should trigger auto-transition to PendingMerge
     runner.run().await;
@@ -513,7 +524,8 @@ async fn test_qa_passed_auto_transitions_on_startup() {
     // Set high max_concurrent to allow auto-transition
     execution_state.set_max_concurrent(10);
 
-    let runner = build_runner(&app_state, &execution_state);
+    let (runner, active_project_state) = build_runner(&app_state, &execution_state);
+    active_project_state.set(Some(project.id.clone())).await;
 
     // Run startup - should trigger auto-transition chain
     runner.run().await;
@@ -565,7 +577,8 @@ async fn test_auto_transition_respects_max_concurrent() {
         app_state.task_repo.create(task).await.unwrap();
     }
 
-    let runner = build_runner(&app_state, &execution_state);
+    let (runner, active_project_state) = build_runner(&app_state, &execution_state);
+    active_project_state.set(Some(project.id.clone())).await;
 
     // Run startup - should stop after max_concurrent is reached
     runner.run().await;
@@ -610,7 +623,7 @@ async fn test_blocked_task_unblocked_when_blocker_is_merged() {
         .await
         .unwrap();
 
-    let runner = build_runner(&app_state, &execution_state);
+    let (runner, _) = build_runner(&app_state, &execution_state);
 
     // Run startup - should unblock the blocked task
     runner.run().await;
@@ -653,7 +666,7 @@ async fn test_blocked_task_unblocked_when_blocker_is_approved() {
         .await
         .unwrap();
 
-    let runner = build_runner(&app_state, &execution_state);
+    let (runner, _) = build_runner(&app_state, &execution_state);
 
     // Run startup
     runner.run().await;
@@ -696,7 +709,7 @@ async fn test_blocked_task_remains_blocked_when_blocker_incomplete() {
     // Pause execution to skip agent resumption (we only want to test unblocking)
     execution_state.pause();
 
-    let runner = build_runner(&app_state, &execution_state);
+    let (runner, _) = build_runner(&app_state, &execution_state);
 
     // Run startup
     runner.run().await;
@@ -743,7 +756,7 @@ async fn test_blocked_task_remains_blocked_when_blocker_paused() {
     // Pause execution to skip agent resumption (we only want to test unblocking)
     execution_state.pause();
 
-    let runner = build_runner(&app_state, &execution_state);
+    let (runner, _) = build_runner(&app_state, &execution_state);
 
     // Run startup
     runner.run().await;
@@ -790,7 +803,7 @@ async fn test_blocked_task_remains_blocked_when_blocker_stopped() {
     // Pause execution to skip agent resumption (we only want to test unblocking)
     execution_state.pause();
 
-    let runner = build_runner(&app_state, &execution_state);
+    let (runner, _) = build_runner(&app_state, &execution_state);
 
     // Run startup
     runner.run().await;
@@ -842,7 +855,7 @@ async fn test_blocked_task_with_multiple_blockers_all_complete() {
         .await
         .unwrap();
 
-    let runner = build_runner(&app_state, &execution_state);
+    let (runner, _) = build_runner(&app_state, &execution_state);
 
     // Run startup
     runner.run().await;
@@ -893,7 +906,7 @@ async fn test_blocked_task_with_multiple_blockers_one_incomplete() {
     // Pause execution to skip agent resumption
     execution_state.pause();
 
-    let runner = build_runner(&app_state, &execution_state);
+    let (runner, _) = build_runner(&app_state, &execution_state);
 
     // Run startup
     runner.run().await;
@@ -936,7 +949,7 @@ async fn test_unblock_runs_even_when_paused() {
         .await
         .unwrap();
 
-    let runner = build_runner(&app_state, &execution_state);
+    let (runner, _) = build_runner(&app_state, &execution_state);
 
     // Run startup while paused
     runner.run().await;

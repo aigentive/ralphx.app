@@ -82,8 +82,11 @@ pub struct ExecutionState {
     is_paused: AtomicBool,
     /// Number of currently running tasks
     running_count: AtomicU32,
-    /// Maximum concurrent tasks allowed
+    /// Maximum concurrent tasks allowed (per-project)
     max_concurrent: AtomicU32,
+    /// Global maximum concurrent tasks across ALL projects (Phase 82)
+    /// Default 20, hard cap 50. Enforced alongside per-project max.
+    global_max_concurrent: AtomicU32,
 }
 
 impl ExecutionState {
@@ -93,6 +96,7 @@ impl ExecutionState {
             is_paused: AtomicBool::new(false),
             running_count: AtomicU32::new(0),
             max_concurrent: AtomicU32::new(2),
+            global_max_concurrent: AtomicU32::new(20),
         }
     }
 
@@ -102,6 +106,7 @@ impl ExecutionState {
             is_paused: AtomicBool::new(false),
             running_count: AtomicU32::new(0),
             max_concurrent: AtomicU32::new(max),
+            global_max_concurrent: AtomicU32::new(20),
         }
     }
 
@@ -147,19 +152,36 @@ impl ExecutionState {
         self.running_count.store(count, Ordering::SeqCst);
     }
 
-    /// Get max concurrent tasks
+    /// Get max concurrent tasks (per-project)
     pub fn max_concurrent(&self) -> u32 {
         self.max_concurrent.load(Ordering::SeqCst)
     }
 
-    /// Set max concurrent tasks
+    /// Set max concurrent tasks (per-project)
     pub fn set_max_concurrent(&self, max: u32) {
         self.max_concurrent.store(max, Ordering::SeqCst);
     }
 
+    /// Get global max concurrent tasks (Phase 82)
+    pub fn global_max_concurrent(&self) -> u32 {
+        self.global_max_concurrent.load(Ordering::SeqCst)
+    }
+
+    /// Set global max concurrent tasks (Phase 82)
+    /// Clamped to [1, 50] range
+    pub fn set_global_max_concurrent(&self, max: u32) {
+        let clamped = max.clamp(1, 50);
+        self.global_max_concurrent.store(clamped, Ordering::SeqCst);
+    }
+
     /// Check if we can start a new task
+    /// Enforces both per-project max and global cap (Phase 82)
     pub fn can_start_task(&self) -> bool {
-        !self.is_paused() && self.running_count() < self.max_concurrent()
+        if self.is_paused() {
+            return false;
+        }
+        let running = self.running_count();
+        running < self.max_concurrent() && running < self.global_max_concurrent()
     }
 
     /// Emit execution:status_changed event with current state
@@ -170,6 +192,7 @@ impl ExecutionState {
                 "isPaused": self.is_paused(),
                 "runningCount": self.running_count(),
                 "maxConcurrent": self.max_concurrent(),
+                "globalMaxConcurrent": self.global_max_concurrent(),
                 "reason": reason,
                 "timestamp": chrono::Utc::now().to_rfc3339(),
             }),
@@ -190,8 +213,10 @@ pub struct ExecutionStatusResponse {
     pub is_paused: bool,
     /// Number of currently running tasks
     pub running_count: u32,
-    /// Maximum concurrent tasks allowed
+    /// Maximum concurrent tasks allowed (per-project)
     pub max_concurrent: u32,
+    /// Global maximum concurrent tasks across all projects (Phase 82)
+    pub global_max_concurrent: u32,
     /// Number of tasks queued (ready to execute)
     pub queued_count: u32,
     /// Whether new tasks can be started
@@ -324,12 +349,16 @@ pub async fn get_execution_status(
 
     let running_count = registry_count;
 
+    let max_concurrent = execution_state.max_concurrent();
+    let global_max = execution_state.global_max_concurrent();
+
     Ok(ExecutionStatusResponse {
         is_paused: execution_state.is_paused(),
         running_count,
-        max_concurrent: execution_state.max_concurrent(),
+        max_concurrent,
+        global_max_concurrent: global_max,
         queued_count,
-        can_start_task: !execution_state.is_paused() && running_count < execution_state.max_concurrent(),
+        can_start_task: !execution_state.is_paused() && running_count < max_concurrent && running_count < global_max,
     })
 }
 
@@ -1062,28 +1091,6 @@ pub async fn get_active_project(
 // Phase 82: Global Execution Settings
 // ========================================
 
-/// Response for global execution settings queries
-#[derive(Debug, Serialize)]
-pub struct GlobalExecutionSettingsResponse {
-    /// Maximum total concurrent tasks across ALL projects
-    pub global_max_concurrent: u32,
-}
-
-impl From<crate::domain::execution::GlobalExecutionSettings> for GlobalExecutionSettingsResponse {
-    fn from(settings: crate::domain::execution::GlobalExecutionSettings) -> Self {
-        Self {
-            global_max_concurrent: settings.global_max_concurrent,
-        }
-    }
-}
-
-/// Input for updating global execution settings
-#[derive(Debug, Deserialize)]
-pub struct UpdateGlobalExecutionSettingsInput {
-    /// Maximum total concurrent tasks across ALL projects (capped at 50)
-    pub global_max_concurrent: u32,
-}
-
 /// Get global execution settings (cross-project limits)
 /// Returns the global_max_concurrent cap that limits total tasks across all projects
 #[tauri::command]
@@ -1101,12 +1108,16 @@ pub async fn get_global_execution_settings(
 
 /// Update global execution settings (cross-project limits)
 /// global_max_concurrent is capped at 50 (enforced by repository)
+/// Syncs in-memory ExecutionState and triggers scheduler if capacity increased
 #[tauri::command]
 pub async fn update_global_execution_settings(
     input: UpdateGlobalExecutionSettingsInput,
+    execution_state: State<'_, Arc<ExecutionState>>,
     app_state: State<'_, AppState>,
 ) -> Result<GlobalExecutionSettingsResponse, String> {
     use crate::domain::execution::GlobalExecutionSettings;
+
+    let old_global_max = execution_state.global_max_concurrent();
 
     let settings = GlobalExecutionSettings {
         global_max_concurrent: input.global_max_concurrent,
@@ -1117,6 +1128,28 @@ pub async fn update_global_execution_settings(
         .update_settings(&settings)
         .await
         .map_err(|e| e.to_string())?;
+
+    // Sync in-memory global cap
+    execution_state.set_global_max_concurrent(updated.global_max_concurrent);
+
+    // If global capacity increased, trigger scheduler to pick up waiting tasks
+    if updated.global_max_concurrent > old_global_max {
+        let scheduler = TaskSchedulerService::new(
+            Arc::clone(&execution_state),
+            Arc::clone(&app_state.project_repo),
+            Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.task_dependency_repo),
+            Arc::clone(&app_state.chat_message_repo),
+            Arc::clone(&app_state.chat_conversation_repo),
+            Arc::clone(&app_state.agent_run_repo),
+            Arc::clone(&app_state.ideation_session_repo),
+            Arc::clone(&app_state.activity_event_repo),
+            Arc::clone(&app_state.message_queue),
+            Arc::clone(&app_state.running_agent_registry),
+            app_state.app_handle.clone(),
+        );
+        scheduler.try_schedule_ready_tasks().await;
+    }
 
     // Emit event for UI sync
     if let Some(ref handle) = app_state.app_handle {
@@ -1231,6 +1264,60 @@ mod tests {
     }
 
     #[test]
+    fn test_execution_state_global_max_concurrent() {
+        let state = ExecutionState::new();
+
+        // Default global max is 20
+        assert_eq!(state.global_max_concurrent(), 20);
+
+        // Set global max
+        state.set_global_max_concurrent(10);
+        assert_eq!(state.global_max_concurrent(), 10);
+
+        // Clamped to max 50
+        state.set_global_max_concurrent(100);
+        assert_eq!(state.global_max_concurrent(), 50);
+
+        // Clamped to min 1
+        state.set_global_max_concurrent(0);
+        assert_eq!(state.global_max_concurrent(), 1);
+    }
+
+    #[test]
+    fn test_execution_state_can_start_task_respects_global_cap() {
+        let state = ExecutionState::with_max_concurrent(10);
+        // Set global cap lower than per-project max
+        state.set_global_max_concurrent(3);
+
+        assert!(state.can_start_task());
+
+        // Fill up to global cap
+        state.increment_running();
+        state.increment_running();
+        state.increment_running();
+
+        // At global cap (3), per-project max (10) still has room, but global blocks
+        assert!(!state.can_start_task());
+
+        // Free a slot
+        state.decrement_running();
+        assert!(state.can_start_task());
+    }
+
+    #[test]
+    fn test_execution_state_can_start_task_per_project_cap_lower() {
+        let state = ExecutionState::with_max_concurrent(2);
+        // Global cap is higher than per-project max
+        state.set_global_max_concurrent(20);
+
+        state.increment_running();
+        state.increment_running();
+
+        // At per-project cap (2), global cap (20) still has room, but per-project blocks
+        assert!(!state.can_start_task());
+    }
+
+    #[test]
     fn test_execution_state_thread_safe() {
         use std::thread;
 
@@ -1276,6 +1363,7 @@ mod tests {
             is_paused: true,
             running_count: 1,
             max_concurrent: 2,
+            global_max_concurrent: 20,
             queued_count: 5,
             can_start_task: false,
         };
@@ -1286,6 +1374,7 @@ mod tests {
         assert!(json.contains("\"is_paused\":true"));
         assert!(json.contains("\"running_count\":1"));
         assert!(json.contains("\"max_concurrent\":2"));
+        assert!(json.contains("\"global_max_concurrent\":20"));
         assert!(json.contains("\"queued_count\":5"));
         assert!(json.contains("\"can_start_task\":false"));
     }
@@ -1298,6 +1387,7 @@ mod tests {
                 is_paused: false,
                 running_count: 0,
                 max_concurrent: 2,
+                global_max_concurrent: 20,
                 queued_count: 3,
                 can_start_task: true,
             },
@@ -2031,7 +2121,7 @@ mod tests {
 
         let settings = app_state
             .execution_settings_repo
-            .get_settings()
+            .get_settings(None)
             .await
             .expect("Failed to get execution settings");
 
@@ -2053,7 +2143,7 @@ mod tests {
 
         let updated = app_state
             .execution_settings_repo
-            .update_settings(&new_settings)
+            .update_settings(None, &new_settings)
             .await
             .expect("Failed to update execution settings");
 
@@ -2064,7 +2154,7 @@ mod tests {
         // Verify persistence
         let retrieved = app_state
             .execution_settings_repo
-            .get_settings()
+            .get_settings(None)
             .await
             .expect("Failed to get execution settings");
 
@@ -2090,7 +2180,7 @@ mod tests {
 
         app_state
             .execution_settings_repo
-            .update_settings(&new_settings)
+            .update_settings(None, &new_settings)
             .await
             .expect("Failed to update execution settings");
 

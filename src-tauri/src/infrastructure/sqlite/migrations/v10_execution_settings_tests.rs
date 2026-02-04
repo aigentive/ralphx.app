@@ -52,17 +52,26 @@ fn test_v10_updated_at_is_set() {
 }
 
 #[test]
-fn test_v10_only_allows_id_1() {
+fn test_v10_v11_allows_multiple_rows() {
+    // NOTE: v10 originally had CHECK(id=1) constraint for singleton pattern.
+    // v11 removes this constraint to allow per-project execution settings.
+    // This test verifies the post-v11 behavior where multiple rows are allowed.
     let conn = open_memory_connection().unwrap();
     run_migrations(&conn).unwrap();
 
-    // Attempting to insert with id=2 should fail due to CHECK constraint
+    // After v11 migration, inserting additional rows should succeed (no CHECK constraint)
     let result = conn.execute(
-        "INSERT INTO execution_settings (id, max_concurrent_tasks, auto_commit, pause_on_failure, updated_at)
-         VALUES (2, 4, 0, 0, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+        "INSERT INTO execution_settings (max_concurrent_tasks, auto_commit, pause_on_failure, updated_at, project_id)
+         VALUES (4, 0, 0, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), 'project-123')",
         [],
     );
-    assert!(result.is_err());
+    assert!(result.is_ok());
+
+    // Verify we now have 2 rows
+    let count: i32 = conn
+        .query_row("SELECT COUNT(*) FROM execution_settings", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(count, 2);
 }
 
 #[test]
