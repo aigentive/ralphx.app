@@ -3,6 +3,25 @@
 > Log entries for PRD task completion and P0 gap fixes.
 
 ---
+### 2026-02-04 23:45:12 - Phase 82 Task 3: Per-project execution status and API integration
+**What:**
+- Updated execution API wrappers to pass optional projectId parameter
+- Added setActiveProject, getGlobalSettings, updateGlobalSettings API methods
+- Updated useExecutionStatus/usePauseExecution/useStopExecution hooks to accept projectId
+- Updated useExecutionEvents to filter events by active project
+- Added globalMaxConcurrent to executionStatus in uiStore
+- Added GlobalExecutionSection to SettingsView for global cap setting (1-50)
+- Call set_active_project on project switch in App.tsx
+- Updated mock API with full execution command support
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Visual Verification:** N/A - API/hooks layer changes, UI uses existing components
+
+**Result:** Success
+
+---
 ### 2026-02-04 22:57:02 - Phase 82 Task 2: Per-project execution settings and global cap
 **What:**
 - Added global_max_concurrent field to ExecutionState with clamp [1, 50]
