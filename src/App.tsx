@@ -69,6 +69,7 @@ import {
 import {
   MessageSquare,
   CheckCircle,
+  PanelRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/sonner";
@@ -123,6 +124,8 @@ function AppContent() {
   // Unified chat visibility per view (replaces chatCollapsed and chatStore.isOpen)
   const chatVisibleByView = useUiStore((s) => s.chatVisibleByView);
   const toggleChatVisible = useUiStore((s) => s.toggleChatVisible);
+  const graphRightPanelUserOpen = useUiStore((s) => s.graphRightPanelUserOpen);
+  const toggleGraphRightPanel = useUiStore((s) => s.toggleGraphRightPanel);
   // Welcome screen overlay state
   const showWelcomeOverlay = useUiStore((s) => s.showWelcomeOverlay);
   const welcomeOverlayReturnView = useUiStore((s) => s.welcomeOverlayReturnView);
@@ -596,6 +599,7 @@ function AppContent() {
     setCurrentView: handleViewChange,
     toggleChatVisible,
     toggleReviewsPanel,
+    toggleGraphRightPanel,
     openProjectWizard: handleOpenProjectWizard,
     hasProjects: !hasNoProjects,
     showWelcomeOverlay,
@@ -765,6 +769,33 @@ function AppContent() {
                 Toggle Reviews <kbd className="ml-1 opacity-70">⌘⇧R</kbd>
               </TooltipContent>
             </Tooltip>
+
+            {/* Graph Right Panel Toggle (graph view only) */}
+            {currentView === "graph" && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={toggleGraphRightPanel}
+                    className="h-8 w-8 p-0 transition-all duration-150 active:scale-[0.98]"
+                    style={{
+                      background: graphRightPanelUserOpen
+                        ? "rgba(255,107,53,0.1)"
+                        : "transparent",
+                      border: graphRightPanelUserOpen ? "1px solid rgba(255,107,53,0.15)" : "1px solid transparent",
+                      color: graphRightPanelUserOpen ? "#ff6b35" : "rgba(255,255,255,0.5)",
+                    }}
+                    data-testid="graph-panel-toggle"
+                  >
+                    <PanelRight className="w-[18px] h-[18px]" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-xs">
+                  Toggle Graph Panel <kbd className="ml-1 opacity-70">⌘L</kbd>
+                </TooltipContent>
+              </Tooltip>
+            )}
           </div>
         </header>
       </TooltipProvider>

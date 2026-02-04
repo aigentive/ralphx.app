@@ -3,6 +3,19 @@
 > Log entries for PRD task completion and P0 gap fixes.
 
 ---
+### 2026-02-04 07:58:20 - Phase 81 Task 4: Graph panel toggle + Cmd+L
+**What:**
+- Added graph-only navbar icon to toggle right panel
+- Wired Cmd+L shortcut to toggle graph panel (graph view only)
+- Marked Phase 81 Task 4 as passing
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
+
+**Result:** Success (lint errors pre-existing in TaskGraph hooks)
+
+---
 ### 2026-02-04 07:56:04 - Phase 81 Task 3: Graph right-panel toggle + auto-hide
 **What:**
 - Added graph right-panel user toggle state to uiStore

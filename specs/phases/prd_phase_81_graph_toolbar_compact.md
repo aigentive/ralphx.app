@@ -148,7 +148,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(graph): add navbar toggle icon and Cmd+L shortcut"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 5,
