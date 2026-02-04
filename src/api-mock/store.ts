@@ -64,6 +64,8 @@ function seedMockData(): void {
   ];
 
   statuses.forEach(({ status, title }, idx) => {
+    const planArtifactId =
+      idx < 4 ? (idx % 2 === 0 ? "plan-mock-1" : "plan-mock-2") : null;
     const task = createMockTask({
       id: `task-mock-${idx + 1}`,
       projectId: project.id,
@@ -72,6 +74,7 @@ function seedMockData(): void {
       internalStatus: status,
       priority: idx,
       blockedReason: status === "blocked" ? "Waiting for dependencies" : null,
+      planArtifactId,
     });
     store.tasks.set(task.id, task);
 
@@ -138,6 +141,7 @@ function seedMockData(): void {
       internalStatus: "backlog",
       priority: 10 + i,
       blockedReason: null,
+      planArtifactId: i === 0 ? "plan-mock-2" : null,
     });
     store.tasks.set(task.id, task);
   }

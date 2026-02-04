@@ -3,6 +3,18 @@
 > Log entries for PRD task completion and P0 gap fixes.
 
 ---
+### 2026-02-04 08:26:29 - Phase 81 Task graph mock plan groups
+**What:**
+- Added mock plan group data with status summaries
+- Seeded mock tasks with plan artifacts for grouping and tier tests
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
+
+**Result:** Success (lint errors pre-existing in TaskGraph hooks)
+
+---
 ### 2026-02-04 08:22:27 - Phase 81 Graph recenter on layout change
 **What:**
 - Exposed selection recenter helper from graph controller
