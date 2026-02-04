@@ -196,6 +196,20 @@ export const STATUS_ICON_CONFIG: Record<InternalStatus, StatusIconConfig> = {
     bgOpacity: "0.15",
     label: "Cancelled",
   },
+  stopped: {
+    icon: XOctagon,
+    color: "hsl(0 70% 55%)",
+    bgOpacity: "0.2",
+    label: "Stopped",
+  },
+
+  // === Suspended States ===
+  paused: {
+    icon: Clock,
+    color: "hsl(45 90% 55%)",
+    bgOpacity: "0.2",
+    label: "Paused",
+  },
 };
 
 // ============================================================================

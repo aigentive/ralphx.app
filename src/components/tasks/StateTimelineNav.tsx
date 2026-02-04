@@ -130,6 +130,16 @@ const STATUS_CONFIG: Record<
     color: "#34c759",
     bgColor: "rgba(52, 199, 89, 0.15)",
   },
+  paused: {
+    label: "Paused",
+    color: "#ff9f0a",
+    bgColor: "rgba(255, 159, 10, 0.15)",
+  },
+  stopped: {
+    label: "Stopped",
+    color: "#ff453a",
+    bgColor: "rgba(255, 69, 58, 0.15)",
+  },
 };
 
 interface TimelineEntry {

@@ -43,6 +43,8 @@ const STATUS_CONFIG: Record<InternalStatus, { label: string; color: string }> = 
   merging: { label: "Merging", color: "var(--accent-primary)" },
   merge_conflict: { label: "Merge Conflict", color: "var(--status-warning)" },
   merged: { label: "Merged", color: "var(--status-success)" },
+  paused: { label: "Paused", color: "var(--status-warning)" },
+  stopped: { label: "Stopped", color: "var(--status-error)" },
 };
 
 function StatusBadge({ status }: { status: InternalStatus }) {

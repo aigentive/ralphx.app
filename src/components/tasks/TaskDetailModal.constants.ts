@@ -122,6 +122,16 @@ export const STATUS_CONFIG: Record<
     bg: "rgba(16, 185, 129, 0.15)",
     text: "var(--status-success)",
   },
+  paused: {
+    label: "Paused",
+    bg: "rgba(245, 158, 11, 0.15)",
+    text: "var(--status-warning)",
+  },
+  stopped: {
+    label: "Stopped",
+    bg: "rgba(239, 68, 68, 0.15)",
+    text: "var(--status-error)",
+  },
 };
 
 export const DEFAULT_PRIORITY_COLOR = { bg: "var(--bg-hover)", text: "var(--text-secondary)" };

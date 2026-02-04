@@ -111,6 +111,9 @@ const TASK_DETAIL_VIEWS: Record<
   merged: MergedTaskDetail,
   failed: BasicTaskDetail,
   cancelled: BasicTaskDetail,
+  // Suspended states
+  paused: BasicTaskDetail,
+  stopped: BasicTaskDetail,
 };
 
 // Priority colors matching design spec
@@ -230,6 +233,16 @@ const STATUS_CONFIG: Record<
     label: "Merged",
     bg: "rgba(16, 185, 129, 0.15)",
     text: "var(--status-success)",
+  },
+  paused: {
+    label: "Paused",
+    bg: "rgba(245, 158, 11, 0.15)",
+    text: "var(--status-warning)",
+  },
+  stopped: {
+    label: "Stopped",
+    bg: "rgba(239, 68, 68, 0.15)",
+    text: "var(--status-error)",
   },
 };
 
