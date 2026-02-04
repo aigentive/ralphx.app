@@ -100,7 +100,29 @@ For each task/step found, analyze:
 3. What files it modifies (for deriving commit scope)
 4. **Whether it forms a compilation unit with adjacent tasks** (see task-planning.md)
 
-### Step 3: Validate Compilation Units
+### Step 3: Read Files Mentioned in Plan (MANDATORY)
+
+**Before annotating dependencies, you MUST read the actual files referenced in the plan.**
+
+This step is MANDATORY because:
+1. Plans may describe changes to code that has evolved since the plan was written
+2. Dependency analysis requires understanding current file structure and imports
+3. Compilation unit validation requires knowing what symbols are exported/imported
+
+**Process:**
+1. Extract all file paths from the plan (look for `Key files:`, `Files:`, markdown links, code paths)
+2. Read each file using the Read tool (parallelize where possible)
+3. For each file, note:
+   - What it exports (functions, types, structs)
+   - What it imports from other files in the plan
+   - Current function signatures that the plan proposes to change
+4. Build a mental model of the dependency graph between files
+
+**If a file doesn't exist yet:** Note it as "new file" — no reading needed, but verify the plan describes creating it.
+
+**If a file has changed significantly from what the plan describes:** Flag this to the user before proceeding.
+
+### Step 4: Validate Compilation Units
 
 **Before adding dependency annotations, check for the chicken-egg problem:**
 
@@ -124,7 +146,7 @@ This is WRONG. Task 1 alone breaks compilation. Merge them:
 
 See `.claude/rules/task-planning.md` for full compilation unit rules.
 
-### Step 5: Add Dependency Annotations
+### Step 5: Add Dependency Annotations (Informed by File Analysis)
 
 For each task that doesn't already have dependency annotations, add:
 
