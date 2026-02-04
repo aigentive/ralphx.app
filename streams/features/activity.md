@@ -3,6 +3,31 @@
 > Log entries for PRD task completion and P0 gap fixes.
 
 ---
+### 2026-02-04 08:05:58 - Phase 81 Graph panel floating polish
+**What:**
+- Updated compact overlay timeline to use floating presentation (no solid backdrop)
+- Added slide-in animation for compact overlay panel
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
+
+**Result:** Success (lint errors pre-existing in TaskGraph hooks)
+
+---
+### 2026-02-04 08:02:32 - Phase 81 Graph panel compact overlay
+**What:**
+- Added compact-mode overlay state for graph right panel
+- Rendered overlay panel on small screens when user toggles it on
+- Kept split panel behavior for non-compact layouts
+
+**Commands:**
+- `npm run lint`
+- `npm run typecheck`
+
+**Result:** Success (lint errors pre-existing in TaskGraph hooks)
+
+---
 ### 2026-02-04 07:58:20 - Phase 81 Task 4: Graph panel toggle + Cmd+L
 **What:**
 - Added graph-only navbar icon to toggle right panel

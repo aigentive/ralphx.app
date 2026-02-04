@@ -150,6 +150,8 @@ interface UiState {
   graphSelection: GraphSelection | null;
   /** User toggle for graph right panel visibility */
   graphRightPanelUserOpen: boolean;
+  /** Compact-mode toggle for graph right panel visibility */
+  graphRightPanelCompactOpen: boolean;
   /** History state for time-travel feature - shared between TaskDetailOverlay and IntegratedChatPanel */
   taskHistoryState: {
     status: InternalStatus;
@@ -236,6 +238,10 @@ interface UiActions {
   toggleGraphRightPanel: () => void;
   /** Set graph right panel visibility */
   setGraphRightPanelUserOpen: (open: boolean) => void;
+  /** Toggle compact-mode graph right panel visibility */
+  toggleGraphRightPanelCompactOpen: () => void;
+  /** Set compact-mode graph right panel visibility */
+  setGraphRightPanelCompactOpen: (open: boolean) => void;
   /** Set task history state for time-travel feature */
   setTaskHistoryState: (state: {
     status: InternalStatus;
@@ -292,6 +298,7 @@ export const useUiStore = create<UiState & UiActions>()(
     selectedTaskId: null,
     graphSelection: null,
     graphRightPanelUserOpen: true,
+    graphRightPanelCompactOpen: false,
     taskHistoryState: null,
     taskCreationContext: null,
     chatVisibleByView: loadChatVisibility(),
@@ -472,6 +479,16 @@ export const useUiStore = create<UiState & UiActions>()(
     setGraphRightPanelUserOpen: (open) =>
       set((state) => {
         state.graphRightPanelUserOpen = open;
+      }),
+
+    toggleGraphRightPanelCompactOpen: () =>
+      set((state) => {
+        state.graphRightPanelCompactOpen = !state.graphRightPanelCompactOpen;
+      }),
+
+    setGraphRightPanelCompactOpen: (open) =>
+      set((state) => {
+        state.graphRightPanelCompactOpen = open;
       }),
 
     setTaskHistoryState: (historyState) =>

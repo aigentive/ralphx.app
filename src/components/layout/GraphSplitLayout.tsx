@@ -30,6 +30,17 @@ const TIMELINE_SIDEBAR_WIDTH = 320;
 const MAX_CHAT_WIDTH = 600; // Maximum chat panel width
 const CHAT_WIDTH_STORAGE_KEY = "ralphx-graph-chat-width";
 
+const overlayAnimationStyles = `
+@keyframes graphPanelSlideIn {
+  from { transform: translateX(12px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.graph-panel-enter {
+  animation: graphPanelSlideIn 220ms ease-out forwards;
+}
+`;
+
 // ============================================================================
 // Main Component
 // ============================================================================
@@ -43,8 +54,8 @@ interface GraphSplitLayoutProps {
   footer?: React.ReactNode;
   /** Timeline content to show when no task is selected */
   timelineContent: React.ReactNode;
-  /** Whether right panel should be visible */
-  rightPanelVisible: boolean;
+  /** Right panel mode */
+  rightPanelMode: "split" | "overlay" | "hidden";
 }
 
 export function GraphSplitLayout({
@@ -52,7 +63,7 @@ export function GraphSplitLayout({
   projectId,
   footer,
   timelineContent,
-  rightPanelVisible,
+  rightPanelMode,
 }: GraphSplitLayoutProps) {
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   const taskCreationContext = useUiStore((s) => s.taskCreationContext);
@@ -108,6 +119,8 @@ export function GraphSplitLayout({
   // Show chat (resizable) when task selected, timeline (fixed) otherwise
   const showChat = !!selectedTaskId;
 
+  const panelWidth = showChat ? `${chatPanelWidth}px` : `${TIMELINE_SIDEBAR_WIDTH}px`;
+
   return (
     <div
       ref={containerRef}
@@ -115,6 +128,7 @@ export function GraphSplitLayout({
       className="flex h-full overflow-hidden"
       style={{ backgroundColor: "hsl(220 10% 8%)" }}
     >
+      <style>{overlayAnimationStyles}</style>
       {/* Left Section - Graph canvas */}
       <div
         data-testid="graph-split-left"
@@ -142,7 +156,7 @@ export function GraphSplitLayout({
         {taskCreationContext && <TaskCreationOverlay projectId={projectId} />}
       </div>
 
-      {rightPanelVisible && (
+      {rightPanelMode === "split" && (
         <>
           {/* Resize Handle - interactive when chat is shown, static separator for timeline */}
           {showChat ? (
@@ -160,7 +174,7 @@ export function GraphSplitLayout({
             data-testid="graph-split-right"
             className="flex flex-col overflow-hidden shrink-0"
             style={{
-              width: showChat ? `${chatPanelWidth}px` : `${TIMELINE_SIDEBAR_WIDTH}px`,
+              width: panelWidth,
               transition: isResizing ? "none" : "width 150ms ease-out",
             }}
           >
@@ -171,6 +185,26 @@ export function GraphSplitLayout({
             )}
           </div>
         </>
+      )}
+
+      {rightPanelMode === "overlay" && (
+        <div
+          data-testid="graph-split-right-overlay"
+          className="absolute top-0 right-0 bottom-0 flex flex-col overflow-hidden z-20 pointer-events-auto graph-panel-enter"
+          style={{
+            width: panelWidth,
+            padding: "8px",
+            right: "8px",
+            top: "8px",
+            bottom: "8px",
+          }}
+        >
+          {showChat ? (
+            <IntegratedChatPanel projectId={projectId} />
+          ) : (
+            timelineContent
+          )}
+        </div>
       )}
     </div>
   );

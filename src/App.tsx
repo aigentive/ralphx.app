@@ -53,6 +53,7 @@ import { useConfirmation } from "@/hooks/useConfirmation";
 import { useProposalMutations } from "@/hooks/useProposals";
 import { useApplyProposals } from "@/hooks/useApplyProposals";
 import { useAppKeyboardShortcuts } from "@/hooks/useAppKeyboardShortcuts";
+import { useNavCompactBreakpoint } from "@/hooks";
 import { useAskUserQuestion } from "@/hooks/useAskUserQuestion";
 import { api, getGitBranches, getGitDefaultBranch } from "@/lib/tauri";
 import { executionApi } from "@/api/execution";
@@ -125,7 +126,12 @@ function AppContent() {
   const chatVisibleByView = useUiStore((s) => s.chatVisibleByView);
   const toggleChatVisible = useUiStore((s) => s.toggleChatVisible);
   const graphRightPanelUserOpen = useUiStore((s) => s.graphRightPanelUserOpen);
-  const toggleGraphRightPanel = useUiStore((s) => s.toggleGraphRightPanel);
+  const graphRightPanelCompactOpen = useUiStore((s) => s.graphRightPanelCompactOpen);
+  const toggleGraphRightPanelUserOpen = useUiStore((s) => s.toggleGraphRightPanel);
+  const toggleGraphRightPanelCompactOpen = useUiStore(
+    (s) => s.toggleGraphRightPanelCompactOpen
+  );
+  const { isNavCompact } = useNavCompactBreakpoint();
   // Welcome screen overlay state
   const showWelcomeOverlay = useUiStore((s) => s.showWelcomeOverlay);
   const welcomeOverlayReturnView = useUiStore((s) => s.welcomeOverlayReturnView);
@@ -594,12 +600,20 @@ function AppContent() {
   }, [setSelectedTaskId, setCurrentView]);
 
   // Keyboard shortcuts for view switching, chat toggle, reviews toggle, and project creation
+  const handleToggleGraphRightPanel = useCallback(() => {
+    if (isNavCompact) {
+      toggleGraphRightPanelCompactOpen();
+    } else {
+      toggleGraphRightPanelUserOpen();
+    }
+  }, [isNavCompact, toggleGraphRightPanelCompactOpen, toggleGraphRightPanelUserOpen]);
+
   useAppKeyboardShortcuts({
     currentView,
     setCurrentView: handleViewChange,
     toggleChatVisible,
     toggleReviewsPanel,
-    toggleGraphRightPanel,
+    toggleGraphRightPanel: handleToggleGraphRightPanel,
     openProjectWizard: handleOpenProjectWizard,
     hasProjects: !hasNoProjects,
     showWelcomeOverlay,
@@ -777,14 +791,18 @@ function AppContent() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={toggleGraphRightPanel}
+                    onClick={handleToggleGraphRightPanel}
                     className="h-8 w-8 p-0 transition-all duration-150 active:scale-[0.98]"
                     style={{
-                      background: graphRightPanelUserOpen
+                      background: (isNavCompact ? graphRightPanelCompactOpen : graphRightPanelUserOpen)
                         ? "rgba(255,107,53,0.1)"
                         : "transparent",
-                      border: graphRightPanelUserOpen ? "1px solid rgba(255,107,53,0.15)" : "1px solid transparent",
-                      color: graphRightPanelUserOpen ? "#ff6b35" : "rgba(255,255,255,0.5)",
+                      border: (isNavCompact ? graphRightPanelCompactOpen : graphRightPanelUserOpen)
+                        ? "1px solid rgba(255,107,53,0.15)"
+                        : "1px solid transparent",
+                      color: (isNavCompact ? graphRightPanelCompactOpen : graphRightPanelUserOpen)
+                        ? "#ff6b35"
+                        : "rgba(255,255,255,0.5)",
                     }}
                     data-testid="graph-panel-toggle"
                   >
