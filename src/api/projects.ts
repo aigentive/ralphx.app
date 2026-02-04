@@ -61,6 +61,17 @@ export async function getGitBranches(workingDirectory: string): Promise<string[]
 }
 
 /**
+ * Get the default branch for a git repository
+ * Uses fallback chain: origin/HEAD -> main -> master -> first branch
+ * @param workingDirectory The path to the git repository
+ * @returns The default branch name
+ */
+export async function getGitDefaultBranch(workingDirectory: string): Promise<string> {
+  const result = await invoke<string>("get_git_default_branch", { workingDirectory });
+  return result;
+}
+
+/**
  * Projects API object containing all typed Tauri command wrappers for projects
  */
 export const projectsApi = {

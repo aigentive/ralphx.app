@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-02-04 10:30:00 - Phase 79 Task 2: Add getGitDefaultBranch to projectsApi
+**What:**
+- Added `getGitDefaultBranch` function to `src/api/projects.ts`
+- Follows same pattern as existing `getGitBranches` function
+- Calls `get_git_default_branch` Tauri command with `workingDirectory` parameter
+- Returns `Promise<string>` with detected default branch name
+
+**Files:**
+- MODIFIED: src/api/projects.ts (added getGitDefaultBranch function)
+
+**Visual Verification:** N/A - API layer only
+
+**Commands:**
+- `npm run typecheck` - passes
+- `npm run lint` - pre-existing errors in unrelated files (useGraphSelectionController.ts, useTaskGraphLayout.ts)
+
+**Result:** Success
+
+---
+
 ### 2026-02-04 09:15:00 - Phase 79 Task 1: Add get_git_default_branch command
 **What:**
 - Added `get_git_default_branch` Tauri command to `src-tauri/src/commands/project_commands.rs`
