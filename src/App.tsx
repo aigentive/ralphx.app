@@ -698,7 +698,7 @@ function AppContent() {
                       onClick={handleToggle}
                       className={cn(
                         "gap-2 h-8 transition-all duration-150 active:scale-[0.98]",
-                        isExpanded ? "px-3" : "px-2 xl:px-3"
+                        isNavCompact ? "px-2" : isExpanded ? "px-3" : "px-2 xl:px-3"
                       )}
                       style={{
                         background: isExpanded
