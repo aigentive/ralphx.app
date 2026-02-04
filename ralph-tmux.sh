@@ -267,6 +267,9 @@ stop_all() {
     # Uses word boundary: fswatch preceded by start, space, or path separator
     pkill -f "(^|[/ ])fswatch .*(streams/|specs/)" 2>/dev/null || true
 
+    # Kill any leftover Claude tool helpers from this repo (stale /private/tmp tasks)
+    pkill -f "/private/tmp/claude-.*/-Users-lazabogdan-Code-ralphx/tasks" 2>/dev/null || true
+
     # Kill the tmux session
     tmux kill-session -t "$SESSION_NAME" 2>/dev/null || true
 
