@@ -104,7 +104,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(execution): add per-project execution state registry and active project context"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,
