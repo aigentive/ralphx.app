@@ -569,6 +569,13 @@
       "prd": "specs/phases/prd_phase_79_git_settings_per_project.md",
       "status": "pending",
       "description": "Make Git settings editable per project with automatic default-branch detection"
+    },
+    {
+      "phase": 80,
+      "name": "Execution Stop/Pause Semantics",
+      "prd": "specs/phases/prd_phase_80_execution_stop_pause.md",
+      "status": "pending",
+      "description": "Definitive stop/pause semantics with Paused and Stopped statuses"
     }
   ]
 }
