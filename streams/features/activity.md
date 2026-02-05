@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-06 13:30:00 - Add report_incomplete MCP Tool (Phase 83, Task 10)
+**What:**
+- Added `report_incomplete` tool definition in `tools.ts` with `task_id` (required), `reason` (required), and `diagnostic_info` (optional) parameters
+- Added handler in `index.ts` routing to `POST /api/git/tasks/{task_id}/report-incomplete`
+- Added `report_incomplete` to `ralphx-merger` agent allowlist in `TOOL_ALLOWLIST`
+- Added `report_incomplete` to task-scoped tools list in `validateTaskScope`
+
+**Commands:**
+- `npm run build` in ralphx-mcp-server (clean)
+
+**Visual Verification:** N/A - MCP server only
+
+**Result:** Success
+
+---
+
 ### 2026-02-06 12:00:00 - Add report_incomplete HTTP Endpoint (Phase 83, Task 9)
 **What:**
 - Added `ReportIncompleteRequest` struct with `reason` (required) and `diagnostic_info` (optional) fields
