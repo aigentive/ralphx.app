@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 84,
+  "currentPhase": 85,
   "phases": [
     {
       "phase": 0,
@@ -604,6 +604,13 @@
       "prd": "specs/phases/prd_phase_84_merge_dependency_unblock_fix.md",
       "status": "complete",
       "description": "Fix blocked tasks incorrectly promoted to Ready when merge fails"
+    },
+    {
+      "phase": 85,
+      "name": "Feature Branch for Plan Groups",
+      "prd": "specs/phases/prd_phase_85_feature_branch_for_plan_groups.md",
+      "status": "active",
+      "description": "Isolate plan work in feature branches with auto-merge task on plan completion"
     }
   ]
 }
