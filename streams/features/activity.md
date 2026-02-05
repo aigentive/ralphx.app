@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-06 18:00:00 - Add create_feature_branch and delete_feature_branch to GitService (Phase 85, Task 3)
+**What:**
+- Added `GitService::create_feature_branch(repo_path, branch_name, source_branch)` — creates branch without checkout using `git branch`
+- Added `GitService::delete_feature_branch(repo_path, branch_name)` — safe delete (`-d`) for cleanup after merge
+- Added 6 unit tests: success, from-specific-source, already-exists error, invalid-source error, delete success, delete-nonexistent error
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (clean)
+- `cargo test feature_branch` (6 new tests pass, 8 total feature_branch tests)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-06 17:15:00 - Add PlanBranchRepository Trait + SQLite Implementation (Phase 85, Task 2)
 **What:**
 - Created PlanBranchRepository async trait in domain/repositories with 7 methods: create, get_by_plan_artifact_id, get_by_merge_task_id, get_by_project_id, update_status, set_merge_task_id, set_merged

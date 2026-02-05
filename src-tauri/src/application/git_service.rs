@@ -165,6 +165,75 @@ impl GitService {
         Ok(())
     }
 
+    /// Create a feature branch without checking it out.
+    /// Used for plan group feature branches that isolate plan work.
+    ///
+    /// # Arguments
+    /// * `repo_path` - Path to the git repository
+    /// * `branch_name` - Name of the feature branch (e.g., "ralphx/my-app/plan-abc123")
+    /// * `source_branch` - Branch to create from (e.g., "main")
+    pub fn create_feature_branch(
+        repo_path: &Path,
+        branch_name: &str,
+        source_branch: &str,
+    ) -> AppResult<()> {
+        debug!(
+            "Creating feature branch '{}' from '{}' in {:?}",
+            branch_name, source_branch, repo_path
+        );
+
+        let output = Command::new("git")
+            .args(["branch", branch_name, source_branch])
+            .current_dir(repo_path)
+            .output()
+            .map_err(|e| {
+                AppError::GitOperation(format!("Failed to run git branch: {}", e))
+            })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AppError::GitOperation(format!(
+                "Failed to create feature branch '{}': {}",
+                branch_name, stderr
+            )));
+        }
+
+        debug!("Feature branch '{}' created successfully", branch_name);
+        Ok(())
+    }
+
+    /// Delete a feature branch after it has been merged.
+    /// Uses safe delete (-d) to prevent deleting unmerged branches.
+    ///
+    /// # Arguments
+    /// * `repo_path` - Path to the git repository
+    /// * `branch_name` - Name of the feature branch to delete
+    pub fn delete_feature_branch(repo_path: &Path, branch_name: &str) -> AppResult<()> {
+        debug!(
+            "Deleting feature branch '{}' in {:?}",
+            branch_name, repo_path
+        );
+
+        let output = Command::new("git")
+            .args(["branch", "-d", branch_name])
+            .current_dir(repo_path)
+            .output()
+            .map_err(|e| {
+                AppError::GitOperation(format!("Failed to run git branch -d: {}", e))
+            })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AppError::GitOperation(format!(
+                "Failed to delete feature branch '{}': {}",
+                branch_name, stderr
+            )));
+        }
+
+        debug!("Feature branch '{}' deleted successfully", branch_name);
+        Ok(())
+    }
+
     /// Get the current branch name
     ///
     /// # Arguments
@@ -1903,5 +1972,161 @@ mod tests {
             is_merged_after,
             "Task branch HEAD should be on main after merge"
         );
+    }
+
+    // =========================================================================
+    // Feature Branch Operations Tests (Phase 85)
+    // =========================================================================
+
+    #[test]
+    fn test_create_feature_branch_success() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Initialize repo with initial commit
+        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.email", "test@test.com"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.name", "Test"]).current_dir(repo).output().unwrap();
+        std::fs::write(repo.join("file.txt"), "content").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
+
+        // Create feature branch
+        let result = GitService::create_feature_branch(repo, "ralphx/my-app/plan-abc123", "main");
+        assert!(result.is_ok(), "create_feature_branch should succeed: {:?}", result.err());
+
+        // Verify branch exists
+        let output = Command::new("git")
+            .args(["branch", "--list", "ralphx/my-app/plan-abc123"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        let branches = String::from_utf8_lossy(&output.stdout);
+        assert!(branches.contains("ralphx/my-app/plan-abc123"), "Feature branch should exist");
+
+        // Verify we didn't checkout the branch (still on main)
+        let current = GitService::get_current_branch(repo).unwrap();
+        assert_eq!(current, "main", "Should still be on main after creating feature branch");
+    }
+
+    #[test]
+    fn test_create_feature_branch_from_specific_source() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Initialize repo with initial commit on main
+        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.email", "test@test.com"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.name", "Test"]).current_dir(repo).output().unwrap();
+        std::fs::write(repo.join("file.txt"), "initial").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
+
+        // Add another commit on main
+        std::fs::write(repo.join("file2.txt"), "second").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "second"]).current_dir(repo).output().unwrap();
+
+        let main_sha = GitService::get_head_sha(repo).unwrap();
+
+        // Create feature branch from main
+        let result = GitService::create_feature_branch(repo, "feature/plan-test", "main");
+        assert!(result.is_ok());
+
+        // Verify feature branch points to same commit as main
+        let output = Command::new("git")
+            .args(["rev-parse", "feature/plan-test"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        let feature_sha = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        assert_eq!(feature_sha, main_sha, "Feature branch should point to main HEAD");
+    }
+
+    #[test]
+    fn test_create_feature_branch_already_exists() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Initialize repo
+        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.email", "test@test.com"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.name", "Test"]).current_dir(repo).output().unwrap();
+        std::fs::write(repo.join("file.txt"), "content").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
+
+        // Create branch first time
+        GitService::create_feature_branch(repo, "feature/dup", "main").unwrap();
+
+        // Try to create again — should fail
+        let result = GitService::create_feature_branch(repo, "feature/dup", "main");
+        assert!(result.is_err(), "Creating duplicate feature branch should fail");
+    }
+
+    #[test]
+    fn test_create_feature_branch_invalid_source() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Initialize repo
+        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.email", "test@test.com"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.name", "Test"]).current_dir(repo).output().unwrap();
+        std::fs::write(repo.join("file.txt"), "content").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
+
+        // Create from non-existent source branch
+        let result = GitService::create_feature_branch(repo, "feature/bad", "nonexistent-branch");
+        assert!(result.is_err(), "Creating from non-existent source should fail");
+    }
+
+    #[test]
+    fn test_delete_feature_branch_success() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Initialize repo
+        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.email", "test@test.com"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.name", "Test"]).current_dir(repo).output().unwrap();
+        std::fs::write(repo.join("file.txt"), "content").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
+
+        // Create feature branch, then merge it back so -d works
+        GitService::create_feature_branch(repo, "feature/to-delete", "main").unwrap();
+
+        // Delete it (safe delete — branch is fully merged since it's at same commit as main)
+        let result = GitService::delete_feature_branch(repo, "feature/to-delete");
+        assert!(result.is_ok(), "delete_feature_branch should succeed: {:?}", result.err());
+
+        // Verify branch no longer exists
+        let output = Command::new("git")
+            .args(["branch", "--list", "feature/to-delete"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        let branches = String::from_utf8_lossy(&output.stdout);
+        assert!(!branches.contains("feature/to-delete"), "Feature branch should be deleted");
+    }
+
+    #[test]
+    fn test_delete_feature_branch_nonexistent() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Initialize repo
+        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.email", "test@test.com"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.name", "Test"]).current_dir(repo).output().unwrap();
+        std::fs::write(repo.join("file.txt"), "content").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
+
+        // Delete non-existent branch — should fail
+        let result = GitService::delete_feature_branch(repo, "feature/nonexistent");
+        assert!(result.is_err(), "Deleting non-existent branch should fail");
     }
 }
