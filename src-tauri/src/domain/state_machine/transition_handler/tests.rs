@@ -331,9 +331,10 @@ async fn test_review_passed_human_approve_transitions_to_pending_merge() {
     // Should emit task_completed event (during Approved entry)
     assert!(emitter.has_event("task_completed"));
 
-    // Should unblock dependents (during Approved entry)
+    // Should NOT unblock dependents at Approved - only at Merged (after successful merge)
     let calls = dep_manager.get_calls();
-    assert!(calls.iter().any(|c| c.method == "unblock_dependents"));
+    assert!(!calls.iter().any(|c| c.method == "unblock_dependents"),
+        "unblock_dependents should NOT be called at Approved - only at Merged");
 }
 
 #[tokio::test]
