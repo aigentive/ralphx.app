@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-02-06 17:15:00 - Add PlanBranchRepository Trait + SQLite Implementation (Phase 85, Task 2)
+**What:**
+- Created PlanBranchRepository async trait in domain/repositories with 7 methods: create, get_by_plan_artifact_id, get_by_merge_task_id, get_by_project_id, update_status, set_merge_task_id, set_merged
+- Created SqlitePlanBranchRepository implementing the trait with rusqlite queries
+- Registered modules in domain/repositories/mod.rs (pub mod + pub use) and infrastructure/sqlite/mod.rs (pub mod + pub use)
+- Added 15 repository unit tests covering all CRUD operations, not-found cases, unique constraint enforcement, and merge task lifecycle
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (clean)
+- `cargo test` (3546 tests, all pass; 38 plan_branch tests specifically)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-06 16:30:00 - Add plan_branches Migration + PlanBranch Entity (Phase 85, Task 1)
 **What:**
 - Created migration v13 with `plan_branches` table (id, plan_artifact_id UNIQUE, session_id, project_id, branch_name, source_branch, status, merge_task_id, created_at, merged_at)
