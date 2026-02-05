@@ -785,9 +785,9 @@ async fn attempt_merge_auto_complete<R: Runtime>(
             tracing::error!(
                 task_id = task_id_str,
                 error = %e,
-                "attempt_merge_auto_complete: failed to check conflict markers, transitioning to MergeConflict"
+                "attempt_merge_auto_complete: failed to check conflict markers, transitioning to MergeIncomplete"
             );
-            transition_to_merge_conflict(
+            transition_to_merge_incomplete(
                 &task_id,
                 &format!("Auto-complete failed: {}", e),
                 task_repo,
@@ -818,7 +818,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
                 error = %e,
                 "attempt_merge_auto_complete: failed to get task branch HEAD SHA"
             );
-            transition_to_merge_conflict(
+            transition_to_merge_incomplete(
                 &task_id,
                 &format!("Auto-complete failed: could not get task branch HEAD SHA: {}", e),
                 task_repo,
@@ -853,9 +853,9 @@ async fn attempt_merge_auto_complete<R: Runtime>(
                 task_id = task_id_str,
                 task_branch_head = %task_branch_head,
                 base_branch = %base_branch,
-                "attempt_merge_auto_complete: task branch not merged to main, transitioning to MergeConflict"
+                "attempt_merge_auto_complete: task branch not merged to main, transitioning to MergeIncomplete"
             );
-            transition_to_merge_conflict(
+            transition_to_merge_incomplete(
                 &task_id,
                 &format!("Agent exited but task branch {} not merged to {}", task_branch_head, base_branch),
                 task_repo,
@@ -880,7 +880,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
                 error = %e,
                 "attempt_merge_auto_complete: failed to verify merge on main"
             );
-            transition_to_merge_conflict(
+            transition_to_merge_incomplete(
                 &task_id,
                 &format!("Auto-complete failed: could not verify merge: {}", e),
                 task_repo,
@@ -910,7 +910,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
                 error = %e,
                 "attempt_merge_auto_complete: failed to get main branch HEAD SHA"
             );
-            transition_to_merge_conflict(
+            transition_to_merge_incomplete(
                 &task_id,
                 &format!("Auto-complete failed: could not get main branch HEAD SHA: {}", e),
                 task_repo,
@@ -1048,6 +1048,57 @@ async fn transition_to_merge_conflict<R: Runtime>(
             task_id = task_id.as_str(),
             error = %e,
             "transition_to_merge_conflict: failed to transition"
+        );
+    }
+}
+
+/// Helper to transition task to MergeIncomplete state (non-conflict failures)
+#[allow(clippy::too_many_arguments)]
+async fn transition_to_merge_incomplete<R: Runtime>(
+    task_id: &TaskId,
+    reason: &str,
+    task_repo: &Arc<dyn TaskRepository>,
+    task_dependency_repo: &Arc<dyn TaskDependencyRepository>,
+    project_repo: &Arc<dyn ProjectRepository>,
+    chat_message_repo: &Arc<dyn ChatMessageRepository>,
+    conversation_repo: &Arc<dyn ChatConversationRepository>,
+    agent_run_repo: &Arc<dyn AgentRunRepository>,
+    ideation_session_repo: &Arc<dyn IdeationSessionRepository>,
+    activity_event_repo: &Arc<dyn ActivityEventRepository>,
+    message_queue: &Arc<MessageQueue>,
+    running_agent_registry: &Arc<RunningAgentRegistry>,
+    execution_state: &Arc<ExecutionState>,
+    app_handle: Option<&AppHandle<R>>,
+) {
+    tracing::info!(
+        task_id = task_id.as_str(),
+        reason = reason,
+        "transition_to_merge_incomplete: transitioning task"
+    );
+
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(task_repo),
+        Arc::clone(task_dependency_repo),
+        Arc::clone(project_repo),
+        Arc::clone(chat_message_repo),
+        Arc::clone(conversation_repo),
+        Arc::clone(agent_run_repo),
+        Arc::clone(ideation_session_repo),
+        Arc::clone(activity_event_repo),
+        Arc::clone(message_queue),
+        Arc::clone(running_agent_registry),
+        Arc::clone(execution_state),
+        app_handle.cloned(),
+    );
+
+    if let Err(e) = transition_service
+        .transition_task(task_id, InternalStatus::MergeIncomplete)
+        .await
+    {
+        tracing::error!(
+            task_id = task_id.as_str(),
+            error = %e,
+            "transition_to_merge_incomplete: failed to transition"
         );
     }
 }

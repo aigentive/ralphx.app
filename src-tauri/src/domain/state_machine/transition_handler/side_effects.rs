@@ -963,15 +963,15 @@ impl<'a> super::TransitionHandler<'a> {
                     task_branch = ?task.task_branch,
                     base_branch = %base_branch,
                     repo_path = %repo_path.display(),
-                    "Programmatic merge failed due to error, transitioning to Merging"
+                    "Programmatic merge failed due to error, transitioning to MergeIncomplete"
                 );
 
-                // Still transition to Merging - agent might be able to handle it
-                task.internal_status = InternalStatus::Merging;
+                // Transition to MergeIncomplete - distinguishes non-conflict errors from actual conflicts
+                task.internal_status = InternalStatus::MergeIncomplete;
                 task.touch();
 
                 if let Err(e) = task_repo.update(&task).await {
-                    tracing::error!(error = %e, "Failed to update task to Merging status");
+                    tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
                     return;
                 }
 
@@ -979,14 +979,14 @@ impl<'a> super::TransitionHandler<'a> {
                 if let Err(e) = task_repo.persist_status_change(
                     &task_id,
                     InternalStatus::PendingMerge,
-                    InternalStatus::Merging,
-                    "merge_error",
+                    InternalStatus::MergeIncomplete,
+                    "merge_incomplete",
                 ).await {
-                    tracing::warn!(error = %e, "Failed to record merge error transition (non-fatal)");
+                    tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
                 }
 
-                // Spawn merger agent directly (same as conflict case)
-                let prompt = format!("Resolve merge conflicts for task: {}", task_id_str);
+                // Spawn merger agent with diagnostic prompt
+                let prompt = format!("Merge failed for task: {}. Error: {}. Diagnose and fix.", task_id_str, e);
                 tracing::info!(
                     task_id = task_id_str,
                     "Spawning merger agent for error recovery (from attempt_programmatic_merge)"
