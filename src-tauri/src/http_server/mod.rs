@@ -86,6 +86,7 @@ pub async fn start_http_server(app_state: Arc<AppState>, execution_state: Arc<Ex
         // Git merge endpoints (merger agent)
         .route("/api/git/tasks/:id/complete-merge", post(complete_merge))
         .route("/api/git/tasks/:id/report-conflict", post(report_conflict))
+        .route("/api/git/tasks/:id/report-incomplete", post(report_incomplete))
         .route("/api/git/tasks/:id/commits", get(get_task_commits))
         .route("/api/git/tasks/:id/diff-stats", get(get_task_diff_stats))
         // Execution settings endpoints (Phase 82)

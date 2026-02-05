@@ -35,6 +35,15 @@ pub struct ReportConflictRequest {
     pub conflict_files: Vec<String>,
 }
 
+/// Request to report a non-conflict merge failure
+#[derive(Debug, serde::Deserialize)]
+pub struct ReportIncompleteRequest {
+    /// Detailed explanation of why merge failed
+    pub reason: String,
+    /// Optional diagnostic info (git status, logs, etc.)
+    pub diagnostic_info: Option<String>,
+}
+
 /// Response for merge operations
 #[derive(Debug, serde::Serialize)]
 pub struct MergeOperationResponse {
@@ -320,6 +329,86 @@ pub async fn report_conflict(
         success: true,
         message: "Conflict reported. Task requires manual resolution.".to_string(),
         new_status: "merge_conflict".to_string(),
+    }))
+}
+
+/// POST /api/git/tasks/{id}/report-incomplete
+///
+/// Called by merger agent when merge cannot be completed due to non-conflict errors
+/// (e.g., git operation failures, missing configuration).
+/// Transitions task from Merging → MergeIncomplete.
+pub async fn report_incomplete(
+    State(state): State<HttpServerState>,
+    Path(task_id): Path<String>,
+    Json(req): Json<ReportIncompleteRequest>,
+) -> Result<Json<MergeOperationResponse>, JsonError> {
+    let task_id = TaskId::from_string(task_id);
+
+    // 1. Get task and validate state is Merging
+    let task = state
+        .app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?
+        .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Task not found", None))?;
+
+    if task.internal_status != InternalStatus::Merging {
+        return Err(json_error(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Task must be in 'merging' status to report incomplete. Current status: {}",
+                task.internal_status.as_str()
+            ),
+            None,
+        ));
+    }
+
+    // 2. Transition to MergeIncomplete
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&state.app_state.task_repo),
+        Arc::clone(&state.app_state.task_dependency_repo),
+        Arc::clone(&state.app_state.project_repo),
+        Arc::clone(&state.app_state.chat_message_repo),
+        Arc::clone(&state.app_state.chat_conversation_repo),
+        Arc::clone(&state.app_state.agent_run_repo),
+        Arc::clone(&state.app_state.ideation_session_repo),
+        Arc::clone(&state.app_state.activity_event_repo),
+        Arc::clone(&state.app_state.message_queue),
+        Arc::clone(&state.app_state.running_agent_registry),
+        Arc::clone(&state.execution_state),
+        state.app_state.app_handle.as_ref().cloned(),
+    );
+
+    transition_service
+        .transition_task(&task_id, InternalStatus::MergeIncomplete)
+        .await
+        .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?;
+
+    // 3. Emit events
+    if let Some(app_handle) = &state.app_state.app_handle {
+        let _ = app_handle.emit(
+            "merge:incomplete",
+            serde_json::json!({
+                "task_id": task_id.as_str(),
+                "reason": req.reason,
+                "diagnostic_info": req.diagnostic_info,
+            }),
+        );
+        let _ = app_handle.emit(
+            "task:status_changed",
+            serde_json::json!({
+                "task_id": task_id.as_str(),
+                "old_status": "merging",
+                "new_status": "merge_incomplete",
+            }),
+        );
+    }
+
+    Ok(Json(MergeOperationResponse {
+        success: true,
+        message: "Merge incomplete reported. Task marked for investigation.".to_string(),
+        new_status: "merge_incomplete".to_string(),
     }))
 }
 
