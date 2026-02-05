@@ -3,6 +3,20 @@
 > Log entries for PRD task completion and P0 gap fixes.
 
 ---
+### 2026-02-05 04:15:00 - Phase 83 Task 5: Add diagnostic logging for merge failures
+**What:**
+- Enhanced `attempt_programmatic_merge` error path in side_effects.rs with additional fields: worktree_path, task_branch, base_branch, repo_path
+- Added step-by-step debug logging to `try_rebase_and_merge` in git_service.rs: fetch result, base commit check, checkout steps, rebase result, merge result
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (clean)
+- `cargo test` (3494 unit + 221 integration, all pass)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
 ### 2026-02-05 03:45:00 - Phase 83 Task 4: Handle both JSON and plain text error responses in MCP client
 **What:**
 - Updated `callTauri` error handling: when `response.json()` fails, fall back to `response.text()` to capture plain text error messages

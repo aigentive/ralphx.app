@@ -959,6 +959,10 @@ impl<'a> super::TransitionHandler<'a> {
                 tracing::error!(
                     task_id = task_id_str,
                     error = %e,
+                    worktree_path = ?task.worktree_path,
+                    task_branch = ?task.task_branch,
+                    base_branch = %base_branch,
+                    repo_path = %repo_path.display(),
                     "Programmatic merge failed due to error, transitioning to Merging"
                 );
 
