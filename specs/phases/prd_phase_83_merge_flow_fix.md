@@ -154,7 +154,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run build in ralphx-plugin/ralphx-mcp-server to verify",
       "Commit: fix(mcp): handle both JSON and plain text error responses"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 5,
