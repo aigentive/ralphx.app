@@ -286,7 +286,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run build in ralphx-plugin/ralphx-mcp-server to verify",
       "Commit: feat(mcp): add report_incomplete tool for merge failures"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

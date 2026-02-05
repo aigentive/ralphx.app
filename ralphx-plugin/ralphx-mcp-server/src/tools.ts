@@ -438,6 +438,31 @@ export const ALL_TOOLS: Tool[] = [
       required: ["task_id", "conflict_files", "reason"],
     },
   },
+  {
+    name: "report_incomplete",
+    description:
+      "Report that merge cannot be completed due to non-conflict errors (e.g., git operation failures, missing configuration). " +
+      "Use this instead of report_conflict when there are no actual merge conflicts but the merge still failed. " +
+      "This transitions the task from Merging to MergeIncomplete state.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        task_id: {
+          type: "string",
+          description: "The task ID where merge failed",
+        },
+        reason: {
+          type: "string",
+          description: "Detailed explanation of why the merge failed",
+        },
+        diagnostic_info: {
+          type: "string",
+          description: "Git status, logs, or other diagnostic output to help debug the issue",
+        },
+      },
+      required: ["task_id", "reason"],
+    },
+  },
 
   // ========================================================================
   // REVIEW TOOLS (reviewer agent)
@@ -633,6 +658,7 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     // merge tools
     "complete_merge",
     "report_conflict",
+    "report_incomplete",
     // common context tools
     "get_task_context",
   ],
