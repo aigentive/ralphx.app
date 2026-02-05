@@ -3,6 +3,21 @@
 > Log entries for PRD task completion and P0 gap fixes.
 
 ---
+
+### 2026-02-05 - Improve complete_merge Tool Description (Phase 83, Task 6)
+**What:**
+- Updated `complete_merge` MCP tool description to clarify SHA requirements
+- Added explicit step-by-step instructions: checkout main, merge task branch, get SHA from main
+- Updated `commit_sha` parameter description to specify it must be from main branch
+
+**Commands:**
+- `npm run build` (ralphx-mcp-server) - passed
+
+**Visual Verification:** N/A - MCP tool definition only
+
+**Result:** Success
+
+---
 ### 2026-02-05 04:15:00 - Phase 83 Task 5: Add diagnostic logging for merge failures
 **What:**
 - Enhanced `attempt_programmatic_merge` error path in side_effects.rs with additional fields: worktree_path, task_branch, base_branch, repo_path

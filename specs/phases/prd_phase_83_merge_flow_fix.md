@@ -198,7 +198,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run build in ralphx-plugin/ralphx-mcp-server to verify",
       "Commit: docs(mcp): clarify complete_merge tool requirements"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 7,
