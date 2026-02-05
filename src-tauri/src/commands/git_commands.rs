@@ -389,7 +389,22 @@ pub async fn change_project_git_mode(
     // Update project
     project.git_mode = new_mode;
     if let Some(worktree_parent) = input.worktree_parent_directory {
-        project.worktree_path = Some(worktree_parent);
+        project.worktree_parent_directory = Some(worktree_parent);
+    }
+
+    // Ensure defaults when switching to worktree mode
+    if new_mode == GitMode::Worktree {
+        if project.base_branch.as_deref().unwrap_or("").is_empty() {
+            project.base_branch = Some("main".to_string());
+        }
+        if project
+            .worktree_parent_directory
+            .as_deref()
+            .unwrap_or("")
+            .is_empty()
+        {
+            project.worktree_parent_directory = Some("~/ralphx-worktrees".to_string());
+        }
     }
     project.touch();
 

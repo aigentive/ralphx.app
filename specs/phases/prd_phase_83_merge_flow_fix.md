@@ -220,7 +220,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: fix(project): add fallback defaults for git mode settings and migration"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 8,

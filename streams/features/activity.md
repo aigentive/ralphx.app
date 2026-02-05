@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-02-05 - Fix Project Settings with Fallback Defaults and Migration (Phase 83, Task 7)
+**What:**
+- Added `base_branch_or_default()` and `worktree_parent_or_default()` methods to Project entity
+- Created migration v12 to fix worktree projects with NULL/empty base_branch and worktree_parent_directory
+- Fixed bug in `change_project_git_mode`: was setting `worktree_path` instead of `worktree_parent_directory`
+- Added validation to ensure base_branch and worktree_parent_directory are populated when switching to worktree mode
+- Added 7 tests for fallback methods, 8 tests for migration
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (clean)
+- `cargo test` (3508 unit + 221 integration, all pass)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-05 - Improve complete_merge Tool Description (Phase 83, Task 6)
 **What:**
 - Updated `complete_merge` MCP tool description to clarify SHA requirements

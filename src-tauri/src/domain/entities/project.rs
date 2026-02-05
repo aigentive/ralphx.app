@@ -133,6 +133,22 @@ impl Project {
         self.git_mode == GitMode::Worktree
     }
 
+    /// Returns the base branch, falling back to "main" if None or empty
+    pub fn base_branch_or_default(&self) -> &str {
+        self.base_branch
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .unwrap_or("main")
+    }
+
+    /// Returns the worktree parent directory, falling back to "~/ralphx-worktrees" if None or empty
+    pub fn worktree_parent_or_default(&self) -> &str {
+        self.worktree_parent_directory
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .unwrap_or("~/ralphx-worktrees")
+    }
+
     /// Updates the updated_at timestamp to now
     pub fn touch(&mut self) {
         self.updated_at = Utc::now();
@@ -435,6 +451,48 @@ mod tests {
 
         // Original should be unchanged
         assert_ne!(original.updated_at, cloned.updated_at);
+    }
+
+    // ===== Fallback Default Method Tests =====
+
+    #[test]
+    fn base_branch_or_default_returns_value_when_set() {
+        let mut project = Project::new("Test".to_string(), "/test".to_string());
+        project.base_branch = Some("develop".to_string());
+        assert_eq!(project.base_branch_or_default(), "develop");
+    }
+
+    #[test]
+    fn base_branch_or_default_returns_main_when_none() {
+        let project = Project::new("Test".to_string(), "/test".to_string());
+        assert_eq!(project.base_branch_or_default(), "main");
+    }
+
+    #[test]
+    fn base_branch_or_default_returns_main_when_empty() {
+        let mut project = Project::new("Test".to_string(), "/test".to_string());
+        project.base_branch = Some("".to_string());
+        assert_eq!(project.base_branch_or_default(), "main");
+    }
+
+    #[test]
+    fn worktree_parent_or_default_returns_value_when_set() {
+        let mut project = Project::new("Test".to_string(), "/test".to_string());
+        project.worktree_parent_directory = Some("/custom/worktrees".to_string());
+        assert_eq!(project.worktree_parent_or_default(), "/custom/worktrees");
+    }
+
+    #[test]
+    fn worktree_parent_or_default_returns_default_when_none() {
+        let project = Project::new("Test".to_string(), "/test".to_string());
+        assert_eq!(project.worktree_parent_or_default(), "~/ralphx-worktrees");
+    }
+
+    #[test]
+    fn worktree_parent_or_default_returns_default_when_empty() {
+        let mut project = Project::new("Test".to_string(), "/test".to_string());
+        project.worktree_parent_directory = Some("".to_string());
+        assert_eq!(project.worktree_parent_or_default(), "~/ralphx-worktrees");
     }
 
     // ===== GitMode FromStr Tests =====
