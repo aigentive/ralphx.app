@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-02-06 12:00:00 - Add report_incomplete HTTP Endpoint (Phase 83, Task 9)
+**What:**
+- Added `ReportIncompleteRequest` struct with `reason` (required) and `diagnostic_info` (optional) fields
+- Added `report_incomplete` handler at `POST /api/git/tasks/{id}/report-incomplete`
+- Handler validates task is in `Merging` status, transitions to `MergeIncomplete` via `TaskTransitionService`
+- Emits `merge:incomplete` and `task:status_changed` events with reason and diagnostic info
+- Registered route in HTTP server router (`src-tauri/src/http_server/mod.rs`)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (clean)
+- `cargo test` (3508 unit + 221 integration, all pass)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-05 - Use MergeIncomplete Status for Non-Conflict Failures (Phase 83, Task 8)
 **What:**
 - Changed side_effects.rs `attempt_programmatic_merge` error path to transition to `MergeIncomplete` instead of `Merging`
