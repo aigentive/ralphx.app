@@ -629,13 +629,9 @@ impl<'a> super::TransitionHandler<'a> {
                     .event_emitter
                     .emit("task_completed", &self.machine.context.task_id)
                     .await;
-                // Unblock dependent tasks
-                self.machine
-                    .context
-                    .services
-                    .dependency_manager
-                    .unblock_dependents(&self.machine.context.task_id)
-                    .await;
+                // NOTE: Do NOT unblock dependents here. Approved auto-transitions to
+                // PendingMerge (Phase 66). Unblocking happens at on_enter(Merged) after
+                // the task's work is actually on main.
             }
             State::Failed(_) => {
                 // Emit task failed event

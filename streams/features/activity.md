@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-06 15:00:00 - Fix Dependency Unblocking to Require Merged (Phase 84, Task 1)
+**What:**
+- Removed premature `unblock_dependents()` call from `on_enter(Approved)` in side_effects.rs — dependents now only unblocked at `Merged`
+- Removed `Approved` from `is_blocker_complete()` and `get_incomplete_blocker_names()` in task_transition_service.rs — only `Merged`, `Failed`, `Cancelled` are terminal
+- Updated existing test to assert `unblock_dependents` is NOT called when entering Approved
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (clean)
+- `cargo test` (3508 unit + integration, all pass)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-06 13:30:00 - Add report_incomplete MCP Tool (Phase 83, Task 10)
 **What:**
 - Added `report_incomplete` tool definition in `tools.ts` with `task_id` (required), `reason` (required), and `diagnostic_info` (optional) parameters
