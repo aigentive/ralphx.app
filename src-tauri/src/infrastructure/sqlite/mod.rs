@@ -17,6 +17,7 @@ pub mod sqlite_execution_settings_repo;
 pub mod sqlite_ideation_session_repo;
 pub mod sqlite_ideation_settings_repo;
 pub mod sqlite_methodology_repo;
+pub mod sqlite_plan_branch_repo;
 pub mod sqlite_process_repo;
 pub mod sqlite_project_repo;
 pub mod sqlite_proposal_dependency_repo;
@@ -48,6 +49,7 @@ pub use sqlite_execution_settings_repo::{
 pub use sqlite_ideation_session_repo::SqliteIdeationSessionRepository;
 pub use sqlite_ideation_settings_repo::SqliteIdeationSettingsRepository;
 pub use sqlite_methodology_repo::SqliteMethodologyRepository;
+pub use sqlite_plan_branch_repo::SqlitePlanBranchRepository;
 pub use sqlite_process_repo::SqliteProcessRepository;
 pub use sqlite_project_repo::SqliteProjectRepository;
 pub use sqlite_proposal_dependency_repo::SqliteProposalDependencyRepository;

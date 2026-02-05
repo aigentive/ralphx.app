@@ -13,6 +13,7 @@ pub mod execution_settings_repository;
 pub mod ideation_session_repository;
 pub mod ideation_settings_repository;
 pub mod methodology_repo;
+pub mod plan_branch_repository;
 pub mod process_repo;
 pub mod project_repository;
 pub mod proposal_dependency_repository;
@@ -43,6 +44,7 @@ pub use execution_settings_repository::{
 pub use ideation_session_repository::IdeationSessionRepository;
 pub use ideation_settings_repository::IdeationSettingsRepository;
 pub use methodology_repo::MethodologyRepository;
+pub use plan_branch_repository::PlanBranchRepository;
 pub use process_repo::ProcessRepository;
 pub use project_repository::ProjectRepository;
 pub use proposal_dependency_repository::ProposalDependencyRepository;
