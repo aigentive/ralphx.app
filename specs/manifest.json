@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 83,
+  "currentPhase": 84,
   "phases": [
     {
       "phase": 0,
@@ -595,14 +595,14 @@
       "phase": 83,
       "name": "Merge Flow Fix",
       "prd": "specs/phases/prd_phase_83_merge_flow_fix.md",
-      "status": "active",
+      "status": "complete",
       "description": "Fix worktree merge, add MergeIncomplete status, standardize error responses"
     },
     {
       "phase": 84,
       "name": "Merge Dependency Unblock Fix",
       "prd": "specs/phases/prd_phase_84_merge_dependency_unblock_fix.md",
-      "status": "pending",
+      "status": "active",
       "description": "Fix blocked tasks incorrectly promoted to Ready when merge fails"
     }
   ]
