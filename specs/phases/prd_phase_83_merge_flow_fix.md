@@ -92,7 +92,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: fix(git): delete worktree before programmatic merge to unlock branch"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,

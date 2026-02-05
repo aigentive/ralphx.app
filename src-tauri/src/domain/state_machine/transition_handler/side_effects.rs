@@ -824,6 +824,31 @@ impl<'a> super::TransitionHandler<'a> {
             "Attempting programmatic rebase and merge (Phase 1)"
         );
 
+        // In worktree mode, delete the worktree first to unlock the branch.
+        // Git refuses to checkout a branch that's checked out in another worktree,
+        // so we must remove the worktree before try_rebase_and_merge can checkout the task branch.
+        if project.git_mode == GitMode::Worktree {
+            if let Some(ref worktree_path) = task.worktree_path {
+                let worktree_path_buf = PathBuf::from(worktree_path);
+                if worktree_path_buf.exists() {
+                    tracing::info!(
+                        task_id = task_id_str,
+                        worktree_path = %worktree_path,
+                        "Deleting worktree before programmatic merge to unlock branch"
+                    );
+                    if let Err(e) = GitService::delete_worktree(repo_path, &worktree_path_buf) {
+                        tracing::error!(
+                            task_id = task_id_str,
+                            error = %e,
+                            worktree_path = %worktree_path,
+                            "Failed to delete worktree before merge"
+                        );
+                        // Continue anyway - try_rebase_and_merge will fail with a clear error
+                    }
+                }
+            }
+        }
+
         // Attempt the rebase and merge
         match GitService::try_rebase_and_merge(repo_path, task_branch, base_branch) {
             Ok(MergeAttemptResult::Success { commit_sha }) => {

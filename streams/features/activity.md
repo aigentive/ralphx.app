@@ -3,6 +3,21 @@
 > Log entries for PRD task completion and P0 gap fixes.
 
 ---
+### 2026-02-05 02:15:00 - Phase 83 Task 1: Fix programmatic merge for worktree mode
+**What:**
+- Added worktree deletion before programmatic merge in side_effects.rs
+- In attempt_programmatic_merge, before try_rebase_and_merge: check if GitMode::Worktree, delete worktree to unlock the branch
+- This allows normal git checkout flow during merge (git refuses checkout of branch checked out in worktree)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (clean)
+- `cargo test` (3484+ tests pass)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
 ### 2026-02-05 01:23:45 - Phase 82 Complete - Project-Scoped Execution Control
 **What:**
 - Ran code gap verification - found 1 P0 gap
