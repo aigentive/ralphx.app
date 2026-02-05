@@ -698,7 +698,10 @@ impl GitService {
         );
 
         // Step 1: Fetch latest from origin (non-fatal if fails)
-        let _ = Self::fetch_origin(repo);
+        match Self::fetch_origin(repo) {
+            Ok(_) => debug!("Fetch from origin succeeded for {:?}", repo),
+            Err(e) => debug!("Fetch from origin failed (non-fatal): {}", e),
+        }
 
         // Step 2: Check if base branch is empty (0 or 1 commits)
         // For first task on empty repo, rebase fails due to unrelated histories.
@@ -711,9 +714,12 @@ impl GitService {
             );
 
             // Checkout base and merge task branch directly
+            debug!("Checking out base branch '{}' for direct merge (empty repo path)", base);
             Self::checkout_branch(repo, base)?;
 
-            match Self::merge_branch(repo, task_branch, base)? {
+            let merge_result = Self::merge_branch(repo, task_branch, base)?;
+            debug!("Direct merge result for '{}': {:?}", task_branch, merge_result);
+            match merge_result {
                 MergeResult::Success { commit_sha } | MergeResult::FastForward { commit_sha } => {
                     return Ok(MergeAttemptResult::Success { commit_sha });
                 }
@@ -727,14 +733,20 @@ impl GitService {
         }
 
         // Step 3: Checkout task branch and rebase onto base (normal case)
+        debug!("Checking out task branch '{}' for rebase", task_branch);
         Self::checkout_branch(repo, task_branch)?;
 
-        match Self::rebase_onto(repo, base)? {
+        let rebase_result = Self::rebase_onto(repo, base)?;
+        debug!("Rebase result for '{}' onto '{}': {:?}", task_branch, base, rebase_result);
+        match rebase_result {
             RebaseResult::Success => {
                 // Step 4: Checkout base and merge task branch (should be fast-forward)
+                debug!("Checking out base branch '{}' for fast-forward merge", base);
                 Self::checkout_branch(repo, base)?;
 
-                match Self::merge_branch(repo, task_branch, base)? {
+                let merge_result = Self::merge_branch(repo, task_branch, base)?;
+                debug!("Post-rebase merge result for '{}': {:?}", task_branch, merge_result);
+                match merge_result {
                     MergeResult::Success { commit_sha } | MergeResult::FastForward { commit_sha } => {
                         Ok(MergeAttemptResult::Success { commit_sha })
                     }
