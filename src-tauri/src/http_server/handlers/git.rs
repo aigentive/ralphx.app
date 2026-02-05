@@ -74,12 +74,13 @@ pub async fn complete_merge(
     State(state): State<HttpServerState>,
     Path(task_id): Path<String>,
     Json(req): Json<CompleteMergeRequest>,
-) -> Result<Json<MergeOperationResponse>, (StatusCode, String)> {
+) -> Result<Json<MergeOperationResponse>, JsonError> {
     // 1. Validate SHA format (must be 40 hex characters)
     if !is_valid_git_sha(&req.commit_sha) {
-        return Err((
+        return Err(json_error(
             StatusCode::BAD_REQUEST,
-            "commit_sha must be a full 40-character SHA (use `git rev-parse HEAD`)".to_string(),
+            "commit_sha must be a full 40-character SHA (use `git rev-parse HEAD`)",
+            None,
         ));
     }
 
@@ -91,8 +92,8 @@ pub async fn complete_merge(
         .task_repo
         .get_by_id(&task_id)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, "Task not found".to_string()))?;
+        .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?
+        .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Task not found", None))?;
 
     // 3. Idempotent: if already merged, return success
     if task.internal_status == InternalStatus::Merged {
@@ -105,12 +106,13 @@ pub async fn complete_merge(
 
     // 4. Validate state is Merging
     if task.internal_status != InternalStatus::Merging {
-        return Err((
+        return Err(json_error(
             StatusCode::BAD_REQUEST,
             format!(
                 "Task must be in 'merging' status to complete merge. Current status: {}",
                 task.internal_status.as_str()
             ),
+            None,
         ));
     }
 
@@ -120,22 +122,26 @@ pub async fn complete_merge(
         .project_repo
         .get_by_id(&task.project_id)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, "Project not found".to_string()))?;
+        .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?
+        .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Project not found", None))?;
 
     // 6. Verify commit is on main branch (not just in worktree)
     let base_branch = project.base_branch.as_deref().unwrap_or("main");
     let repo_path = PathBuf::from(&project.working_directory);
 
     if !GitService::is_commit_on_branch(&repo_path, &req.commit_sha, base_branch)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?
     {
-        return Err((
+        return Err(json_error(
             StatusCode::BAD_REQUEST,
             format!(
                 "Commit {} is not on {} branch. The merge may not have completed successfully.",
                 req.commit_sha, base_branch
             ),
+            Some(format!(
+                "Ensure you merged the task branch INTO {} and obtained the SHA from {} (git rev-parse HEAD on {})",
+                base_branch, base_branch, base_branch
+            )),
         ));
     }
 
@@ -146,7 +152,7 @@ pub async fn complete_merge(
         .task_repo
         .update(&task)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?;
 
     // 8. Persist merge commit SHA before transitioning status
     if task.merge_commit_sha.as_deref() != Some(&req.commit_sha) {
@@ -158,7 +164,7 @@ pub async fn complete_merge(
             .task_repo
             .update(&updated_task)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?;
     }
 
     // 9. Create transition service and transition to Merged
@@ -196,7 +202,7 @@ pub async fn complete_merge(
     transition_service
         .transition_task(&task_id, InternalStatus::Merged)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?;
 
     // 10. Cleanup branch/worktree
     if let Some(task_branch) = &task.task_branch {
@@ -245,7 +251,7 @@ pub async fn report_conflict(
     State(state): State<HttpServerState>,
     Path(task_id): Path<String>,
     Json(req): Json<ReportConflictRequest>,
-) -> Result<Json<MergeOperationResponse>, (StatusCode, String)> {
+) -> Result<Json<MergeOperationResponse>, JsonError> {
     let task_id = TaskId::from_string(task_id);
 
     // 1. Get task and validate state is Merging
@@ -254,16 +260,17 @@ pub async fn report_conflict(
         .task_repo
         .get_by_id(&task_id)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, "Task not found".to_string()))?;
+        .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?
+        .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Task not found", None))?;
 
     if task.internal_status != InternalStatus::Merging {
-        return Err((
+        return Err(json_error(
             StatusCode::BAD_REQUEST,
             format!(
                 "Task must be in 'merging' status to report conflict. Current status: {}",
                 task.internal_status.as_str()
             ),
+            None,
         ));
     }
 
@@ -288,7 +295,7 @@ pub async fn report_conflict(
     transition_service
         .transition_task(&task_id, InternalStatus::MergeConflict)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?;
 
     // 4. Emit events
     if let Some(app_handle) = &state.app_state.app_handle {
@@ -439,6 +446,18 @@ pub async fn get_task_diff_stats(
 // Helpers
 // ============================================================================
 
+/// JSON error response type for git handlers
+pub type JsonError = (StatusCode, Json<serde_json::Value>);
+
+/// Create a JSON error response with an error message and optional details
+fn json_error(status: StatusCode, error: impl Into<String>, details: Option<String>) -> JsonError {
+    let mut body = serde_json::json!({ "error": error.into() });
+    if let Some(d) = details {
+        body["details"] = serde_json::Value::String(d);
+    }
+    (status, Json(body))
+}
+
 /// Validates that a string is a valid full git SHA (40 hexadecimal characters)
 fn is_valid_git_sha(sha: &str) -> bool {
     sha.len() == 40 && sha.chars().all(|c| c.is_ascii_hexdigit())
@@ -451,6 +470,47 @@ fn is_valid_git_sha(sha: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    mod json_error_format {
+        use super::*;
+
+        #[test]
+        fn error_without_details() {
+            let (status, Json(body)) =
+                json_error(StatusCode::BAD_REQUEST, "Invalid input", None);
+            assert_eq!(status, StatusCode::BAD_REQUEST);
+            assert_eq!(body["error"], "Invalid input");
+            assert!(body.get("details").is_none());
+        }
+
+        #[test]
+        fn error_with_details() {
+            let (status, Json(body)) = json_error(
+                StatusCode::BAD_REQUEST,
+                "Commit not on branch",
+                Some("Use git rev-parse HEAD on main".to_string()),
+            );
+            assert_eq!(status, StatusCode::BAD_REQUEST);
+            assert_eq!(body["error"], "Commit not on branch");
+            assert_eq!(body["details"], "Use git rev-parse HEAD on main");
+        }
+
+        #[test]
+        fn internal_server_error_status() {
+            let (status, Json(body)) =
+                json_error(StatusCode::INTERNAL_SERVER_ERROR, "Database error", None);
+            assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+            assert_eq!(body["error"], "Database error");
+        }
+
+        #[test]
+        fn not_found_error_status() {
+            let (status, Json(body)) =
+                json_error(StatusCode::NOT_FOUND, "Task not found", None);
+            assert_eq!(status, StatusCode::NOT_FOUND);
+            assert_eq!(body["error"], "Task not found");
+        }
+    }
 
     mod sha_validation {
         use super::*;

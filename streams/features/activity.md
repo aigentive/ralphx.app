@@ -3,6 +3,24 @@
 > Log entries for PRD task completion and P0 gap fixes.
 
 ---
+### 2026-02-05 03:15:00 - Phase 83 Task 3: Standardize HTTP error responses to JSON format
+**What:**
+- Created `json_error` helper function returning `(StatusCode, Json<serde_json::Value>)` with error/details fields
+- Changed `complete_merge` return type from `(StatusCode, String)` to `JsonError` (JSON responses)
+- Changed `report_conflict` return type from `(StatusCode, String)` to `JsonError` (JSON responses)
+- Added helpful `details` field for "commit not on branch" error explaining SHA requirements
+- Added 4 unit tests for json_error helper (with/without details, different status codes)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (clean)
+- `cargo test` (all pass)
+- `cargo test --lib json_error_format` (4/4 pass)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
 ### 2026-02-05 02:45:00 - Phase 83 Task 2: Add MergeIncomplete status with transitions
 **What:**
 - Added MergeIncomplete variant to InternalStatus enum (24th status) with valid transitions: Merging→MergeIncomplete, MergeIncomplete→[Merging, Merged]
