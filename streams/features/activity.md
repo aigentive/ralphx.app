@@ -4,6 +4,30 @@
 
 ---
 
+### 2026-02-05 - Use MergeIncomplete Status for Non-Conflict Failures (Phase 83, Task 8)
+**What:**
+- Changed side_effects.rs `attempt_programmatic_merge` error path to transition to `MergeIncomplete` instead of `Merging`
+- Updated persist_status_change reason from `merge_error` to `merge_incomplete`
+- Changed agent prompt from "Resolve merge conflicts" to "Merge failed... Diagnose and fix"
+- Added `transition_to_merge_incomplete` helper in chat_service_send_background.rs
+- Changed 5 non-conflict failure cases in `attempt_merge_auto_complete` from `MergeConflict` to `MergeIncomplete`:
+  - Failed to check conflict markers
+  - Failed to get task branch HEAD SHA
+  - Task branch not merged to main
+  - Failed to verify merge on main
+  - Failed to get main branch HEAD SHA
+- Kept genuine conflict cases (rebase in progress, conflict markers found) as `MergeConflict`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (clean)
+- `cargo test` (3508 unit + 221 integration, all pass)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-05 - Fix Project Settings with Fallback Defaults and Migration (Phase 83, Task 7)
 **What:**
 - Added `base_branch_or_default()` and `worktree_parent_or_default()` methods to Project entity
