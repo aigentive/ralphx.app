@@ -61,6 +61,10 @@ impl FromStr for GitMode {
     }
 }
 
+fn default_use_feature_branches() -> bool {
+    true
+}
+
 /// A development project managed by RalphX
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
@@ -80,6 +84,9 @@ pub struct Project {
     pub base_branch: Option<String>,
     /// Parent directory for task worktrees (default: ~/ralphx-worktrees)
     pub worktree_parent_directory: Option<String>,
+    /// Whether to use feature branches for plan groups (default: true)
+    #[serde(default = "default_use_feature_branches")]
+    pub use_feature_branches: bool,
     /// When the project was created
     pub created_at: DateTime<Utc>,
     /// When the project was last updated
@@ -100,6 +107,7 @@ impl Project {
             worktree_branch: None,
             base_branch: None,
             worktree_parent_directory: None,
+            use_feature_branches: true,
             created_at: now,
             updated_at: now,
         }
@@ -123,6 +131,7 @@ impl Project {
             worktree_branch: Some(worktree_branch),
             base_branch,
             worktree_parent_directory: None,
+            use_feature_branches: true,
             created_at: now,
             updated_at: now,
         }
@@ -170,6 +179,7 @@ impl Project {
             worktree_branch: row.get("worktree_branch")?,
             base_branch: row.get("base_branch")?,
             worktree_parent_directory: row.get("worktree_parent_directory")?,
+            use_feature_branches: row.get::<_, i64>("use_feature_branches").unwrap_or(1) != 0,
             created_at: Self::parse_datetime(row.get("created_at")?),
             updated_at: Self::parse_datetime(row.get("updated_at")?),
         })
@@ -560,6 +570,7 @@ mod tests {
                 worktree_branch TEXT,
                 base_branch TEXT,
                 worktree_parent_directory TEXT,
+                use_feature_branches INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )"#,
