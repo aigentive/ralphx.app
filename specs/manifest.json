@@ -597,6 +597,13 @@
       "prd": "specs/phases/prd_phase_83_merge_flow_fix.md",
       "status": "active",
       "description": "Fix worktree merge, add MergeIncomplete status, standardize error responses"
+    },
+    {
+      "phase": 84,
+      "name": "Merge Dependency Unblock Fix",
+      "prd": "specs/phases/prd_phase_84_merge_dependency_unblock_fix.md",
+      "status": "pending",
+      "description": "Fix blocked tasks incorrectly promoted to Ready when merge fails"
     }
   ]
 }
