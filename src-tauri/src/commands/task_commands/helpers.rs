@@ -77,6 +77,7 @@ pub fn status_to_label(status: InternalStatus) -> String {
         InternalStatus::Approved => "Approve".to_string(),
         InternalStatus::PendingMerge => "Merging...".to_string(),
         InternalStatus::Merging => "Resolving Conflicts".to_string(),
+        InternalStatus::MergeIncomplete => "Merge Incomplete".to_string(),
         InternalStatus::MergeConflict => "Merge Conflict".to_string(),
         InternalStatus::Merged => "Merged".to_string(),
         InternalStatus::Failed => "Mark as Failed".to_string(),

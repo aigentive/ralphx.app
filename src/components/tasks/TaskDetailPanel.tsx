@@ -106,6 +106,7 @@ const TASK_DETAIL_VIEWS: Record<
   // Merge states - specialized views
   pending_merge: MergingTaskDetail,
   merging: MergingTaskDetail,
+  merge_incomplete: MergingTaskDetail,
   merge_conflict: MergeConflictTaskDetail,
   // Terminal states
   merged: MergedTaskDetail,
@@ -223,6 +224,11 @@ const STATUS_CONFIG: Record<
     label: "Merging",
     bg: "rgba(255, 107, 53, 0.15)",
     text: "var(--accent-primary)",
+  },
+  merge_incomplete: {
+    label: "Merge Incomplete",
+    bg: "rgba(245, 158, 11, 0.15)",
+    text: "var(--status-warning)",
   },
   merge_conflict: {
     label: "Merge Conflict",

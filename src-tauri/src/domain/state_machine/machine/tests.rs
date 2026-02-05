@@ -46,6 +46,7 @@ fn test_state_is_active() {
     assert!(State::Approved.is_active());
     assert!(State::PendingMerge.is_active());
     assert!(State::Merging.is_active());
+    assert!(State::MergeIncomplete.is_active());
     assert!(State::MergeConflict.is_active());
 
     assert!(!State::Backlog.is_active());

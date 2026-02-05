@@ -162,6 +162,11 @@ const STATUS_CONFIG: Record<
     bg: "hsla(14 100% 60% / 0.15)",
     text: "hsl(14 100% 60%)",
   },
+  merge_incomplete: {
+    label: "Merge Incomplete",
+    bg: "hsla(45 90% 55% / 0.15)",
+    text: "hsl(45 90% 55%)",
+  },
   merge_conflict: {
     label: "Merge Conflict",
     bg: "hsla(45 90% 55% / 0.15)",

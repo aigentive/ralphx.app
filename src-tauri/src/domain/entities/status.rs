@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
-/// The 23 internal statuses that a task can be in.
+/// The 24 internal statuses that a task can be in.
 /// These map to external Kanban columns via WorkflowSchema (Phase 11).
 ///
 /// State machine transitions are validated - not all transitions are allowed.
@@ -47,6 +47,8 @@ pub enum InternalStatus {
     PendingMerge,
     /// Merge agent attempting to resolve conflicts
     Merging,
+    /// Merge failed due to non-conflict errors (agent/git operation failure)
+    MergeIncomplete,
     /// Merge failed, needs manual resolution
     MergeConflict,
     /// Successfully merged to base branch
@@ -94,7 +96,8 @@ impl InternalStatus {
 
             // Merge states
             PendingMerge => &[Merged, Merging], // Success → Merged, Conflict → Merging (agent)
-            Merging => &[Merged, MergeConflict, Stopped, Paused], // Agent success → Merged, Agent failure → MergeConflict
+            Merging => &[Merged, MergeConflict, MergeIncomplete, Stopped, Paused], // Agent success → Merged, Agent failure → MergeConflict, Non-conflict error → MergeIncomplete
+            MergeIncomplete => &[Merging, Merged], // Retry → Merging, Manual resolution → Merged
             MergeConflict => &[Merged], // Manual resolution → Merged
 
             // Terminal states (can be re-opened)
@@ -138,6 +141,7 @@ impl InternalStatus {
             Approved,
             PendingMerge,
             Merging,
+            MergeIncomplete,
             MergeConflict,
             Merged,
             Failed,
@@ -167,6 +171,7 @@ impl InternalStatus {
             InternalStatus::Approved => "approved",
             InternalStatus::PendingMerge => "pending_merge",
             InternalStatus::Merging => "merging",
+            InternalStatus::MergeIncomplete => "merge_incomplete",
             InternalStatus::MergeConflict => "merge_conflict",
             InternalStatus::Merged => "merged",
             InternalStatus::Failed => "failed",
@@ -219,6 +224,7 @@ impl FromStr for InternalStatus {
             "approved" => Ok(InternalStatus::Approved),
             "pending_merge" => Ok(InternalStatus::PendingMerge),
             "merging" => Ok(InternalStatus::Merging),
+            "merge_incomplete" => Ok(InternalStatus::MergeIncomplete),
             "merge_conflict" => Ok(InternalStatus::MergeConflict),
             "merged" => Ok(InternalStatus::Merged),
             "failed" => Ok(InternalStatus::Failed),
@@ -236,11 +242,11 @@ impl FromStr for InternalStatus {
 mod tests {
     use super::*;
 
-    // ===== All 23 Variants Exist Tests =====
+    // ===== All 24 Variants Exist Tests =====
 
     #[test]
-    fn internal_status_has_23_variants() {
-        assert_eq!(InternalStatus::all_variants().len(), 23);
+    fn internal_status_has_24_variants() {
+        assert_eq!(InternalStatus::all_variants().len(), 24);
     }
 
     #[test]
@@ -264,6 +270,7 @@ mod tests {
             Approved,
             PendingMerge,
             Merging,
+            MergeIncomplete,
             MergeConflict,
             Merged,
             Failed,
@@ -327,6 +334,7 @@ mod tests {
             ("approved", InternalStatus::Approved),
             ("pending_merge", InternalStatus::PendingMerge),
             ("merging", InternalStatus::Merging),
+            ("merge_incomplete", InternalStatus::MergeIncomplete),
             ("merge_conflict", InternalStatus::MergeConflict),
             ("merged", InternalStatus::Merged),
             ("failed", InternalStatus::Failed),
@@ -745,7 +753,7 @@ mod tests {
     fn merging_transitions() {
         use InternalStatus::*;
         let transitions = Merging.valid_transitions();
-        assert_eq!(transitions, &[Merged, MergeConflict, Stopped, Paused]);
+        assert_eq!(transitions, &[Merged, MergeConflict, MergeIncomplete, Stopped, Paused]);
     }
 
     #[test]
@@ -760,6 +768,47 @@ mod tests {
         use InternalStatus::*;
         // Agent couldn't resolve - needs manual intervention
         assert!(Merging.can_transition_to(MergeConflict));
+    }
+
+    #[test]
+    fn merging_to_merge_incomplete() {
+        use InternalStatus::*;
+        // Non-conflict failure → MergeIncomplete
+        assert!(Merging.can_transition_to(MergeIncomplete));
+    }
+
+    #[test]
+    fn merge_incomplete_transitions() {
+        use InternalStatus::*;
+        let transitions = MergeIncomplete.valid_transitions();
+        assert_eq!(transitions, &[Merging, Merged]);
+    }
+
+    #[test]
+    fn merge_incomplete_to_merging() {
+        use InternalStatus::*;
+        // Retry merge
+        assert!(MergeIncomplete.can_transition_to(Merging));
+    }
+
+    #[test]
+    fn merge_incomplete_to_merged() {
+        use InternalStatus::*;
+        // Manual resolution
+        assert!(MergeIncomplete.can_transition_to(Merged));
+    }
+
+    #[test]
+    fn serializes_to_snake_case_merge_incomplete() {
+        let json = serde_json::to_string(&InternalStatus::MergeIncomplete).unwrap();
+        assert_eq!(json, "\"merge_incomplete\"");
+    }
+
+    #[test]
+    fn merge_incomplete_parses_correctly() {
+        use InternalStatus::*;
+        let parsed = InternalStatus::from_str("merge_incomplete").unwrap();
+        assert_eq!(parsed, MergeIncomplete);
     }
 
     #[test]

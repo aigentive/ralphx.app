@@ -1,10 +1,10 @@
 // Internal status types and Zod schema
-// Must match the 23 internal statuses from the Rust backend
+// Must match the 24 internal statuses from the Rust backend
 
 import { z } from "zod";
 
 /**
- * All 23 internal status values matching the Rust backend
+ * All 24 internal status values matching the Rust backend
  * Uses snake_case to match Rust serde serialization
  */
 export const InternalStatusSchema = z.enum([
@@ -25,6 +25,7 @@ export const InternalStatusSchema = z.enum([
   "approved",
   "pending_merge",
   "merging",
+  "merge_incomplete",
   "merge_conflict",
   "merged",
   "failed",
@@ -64,6 +65,7 @@ export const ACTIVE_STATUSES: readonly InternalStatus[] = [
   "revision_needed",
   "pending_merge",
   "merging",
+  "merge_incomplete",
 ] as const;
 
 /**
@@ -85,6 +87,7 @@ export const TERMINAL_STATUSES: readonly InternalStatus[] = [
 export const MERGE_STATUSES: readonly InternalStatus[] = [
   "pending_merge",
   "merging",
+  "merge_incomplete",
   "merge_conflict",
   "merged",
 ] as const;
@@ -184,6 +187,7 @@ export const NON_DRAGGABLE_STATUSES = [
   "revision_needed",
   "pending_merge",
   "merging",
+  "merge_incomplete",
   "merge_conflict",
   "approved",
   "merged",

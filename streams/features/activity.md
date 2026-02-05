@@ -3,6 +3,26 @@
 > Log entries for PRD task completion and P0 gap fixes.
 
 ---
+### 2026-02-05 02:45:00 - Phase 83 Task 2: Add MergeIncomplete status with transitions
+**What:**
+- Added MergeIncomplete variant to InternalStatus enum (24th status) with valid transitions: Merging→MergeIncomplete, MergeIncomplete→[Merging, Merged]
+- Added State::MergeIncomplete to state machine with dispatch, is_merge, name, as_str, FromStr
+- Added merge_incomplete transition handler: MergeConflict→Merging, ConflictResolved→Merged, Retry→Merging
+- Added MergeAgentError event variant for triggering Merging→MergeIncomplete transition
+- Updated task_transition_service bidirectional mapping, helpers, query, git_commands retry states
+- Updated all frontend Record<InternalStatus, ...> exhaustive maps (compilation unit): status.ts, status-icons.ts, TaskDetailPanel.tsx, StateTimelineNav.tsx, TaskDetailModal.constants.ts, TaskDetailOverlay.tsx, TaskDetailView.tsx, WorkflowEditor.tsx, workflow.ts, mock tasks/task-graph, status tests
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (clean)
+- `cargo test` (all pass)
+- `npm run typecheck` (clean - only pre-existing nodeStyles.ts error)
+- `npm run lint` (clean - only pre-existing errors in useGraphSelectionController/useTaskGraphLayout)
+
+**Visual Verification:** N/A - backend + frontend type updates only
+
+**Result:** Success
+
+---
 ### 2026-02-05 02:15:00 - Phase 83 Task 1: Fix programmatic merge for worktree mode
 **What:**
 - Added worktree deletion before programmatic merge in side_effects.rs

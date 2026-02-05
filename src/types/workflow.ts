@@ -434,7 +434,7 @@ export const defaultWorkflow: WorkflowSchema = {
         {
           id: "needs_attention",
           label: "Needs Attention",
-          statuses: ["merge_conflict"],
+          statuses: ["merge_incomplete", "merge_conflict"],
           icon: "AlertTriangle",
           accentColor: "hsl(var(--warning))",
           canDragFrom: false, // User interacts via action buttons

@@ -44,6 +44,7 @@ pub enum State {
     // Merge states
     PendingMerge,
     Merging,
+    MergeIncomplete,
     MergeConflict,
     Merged,
 
@@ -86,7 +87,7 @@ impl State {
     pub fn is_merge(&self) -> bool {
         matches!(
             self,
-            State::PendingMerge | State::Merging | State::MergeConflict | State::Merged
+            State::PendingMerge | State::Merging | State::MergeIncomplete | State::MergeConflict | State::Merged
         )
     }
 }
@@ -134,6 +135,7 @@ impl TaskStateMachine {
             State::Approved => self.approved(event),
             State::PendingMerge => self.pending_merge(event),
             State::Merging => self.merging(event),
+            State::MergeIncomplete => self.merge_incomplete(event),
             State::MergeConflict => self.merge_conflict(event),
             State::Merged => self.merged(event),
             State::Failed(data) => self.failed(event, data),
@@ -199,6 +201,7 @@ impl State {
             State::Approved => "Approved",
             State::PendingMerge => "PendingMerge",
             State::Merging => "Merging",
+            State::MergeIncomplete => "MergeIncomplete",
             State::MergeConflict => "MergeConflict",
             State::Merged => "Merged",
             State::Failed(_) => "Failed",
@@ -231,6 +234,7 @@ impl State {
             State::Approved => "approved",
             State::PendingMerge => "pending_merge",
             State::Merging => "merging",
+            State::MergeIncomplete => "merge_incomplete",
             State::MergeConflict => "merge_conflict",
             State::Merged => "merged",
             State::Failed(_) => "failed",
@@ -287,6 +291,7 @@ impl FromStr for State {
             "approved" => Ok(State::Approved),
             "pending_merge" => Ok(State::PendingMerge),
             "merging" => Ok(State::Merging),
+            "merge_incomplete" => Ok(State::MergeIncomplete),
             "merge_conflict" => Ok(State::MergeConflict),
             "merged" => Ok(State::Merged),
             "failed" => Ok(State::Failed(FailedData::default())),
