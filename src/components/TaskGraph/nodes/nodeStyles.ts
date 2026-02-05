@@ -207,6 +207,7 @@ export function getStatusCategory(status: InternalStatus): StatusCategory {
     case "pending_merge":
     case "merging":
     case "merge_conflict":
+    case "merge_incomplete":
       return "merge";
     case "approved":
     case "merged":
@@ -217,6 +218,10 @@ export function getStatusCategory(status: InternalStatus): StatusCategory {
       return "terminal";
     case "paused":
       return "blocked";
+    default: {
+      const exhaustiveCheck: never = status;
+      return exhaustiveCheck;
+    }
   }
 }
 
