@@ -392,7 +392,12 @@ export const ALL_TOOLS: Tool[] = [
   {
     name: "complete_merge",
     description:
-      "Signal successful merge completion after resolving all conflicts. Call this after staging changes, completing the rebase/merge, and getting the commit SHA. This transitions the task from Merging to Merged state and triggers cleanup of the task branch/worktree.",
+      "Signal successful merge completion. IMPORTANT: Call this AFTER you have:" +
+      "\n1. Resolved all conflicts (if any)" +
+      "\n2. Merged the task branch INTO main (git checkout main && git merge <task-branch>)" +
+      "\n3. Obtained the merge commit SHA from main (git rev-parse HEAD on main)" +
+      "\n\nThe commit_sha MUST be a commit ON the main branch, not the task branch." +
+      "\nThis transitions the task from Merging to Merged state and triggers cleanup of the task branch/worktree.",
     inputSchema: {
       type: "object",
       properties: {
@@ -402,7 +407,8 @@ export const ALL_TOOLS: Tool[] = [
         },
         commit_sha: {
           type: "string",
-          description: "The commit SHA of the merge commit",
+          description:
+            "The SHA of the merge commit ON the main branch (run: git rev-parse HEAD after merging into main)",
         },
       },
       required: ["task_id", "commit_sha"],
