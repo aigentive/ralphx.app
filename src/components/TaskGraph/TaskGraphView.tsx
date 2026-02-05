@@ -83,6 +83,14 @@ export interface TaskGraphViewProps {
 /** Status categories considered "completed" for filtering */
 const COMPLETED_STATUSES: InternalStatus[] = ["approved", "merged"];
 
+function areSetsEqual(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const value of a) {
+    if (!b.has(value)) return false;
+  }
+  return true;
+}
+
 /**
  * Apply filters to graph data
  * Filters nodes based on status, plan, and showCompleted settings.
@@ -291,6 +299,8 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   const { isNavCompact } = useNavCompactBreakpoint();
   const [overlayClosing, setOverlayClosing] = useState(false);
   const overlayCloseTimeoutRef = useRef<number | null>(null);
+  const pendingTierAutoCenterRef = useRef<string | null>(null);
+  const lastAutoCenteredPlanRef = useRef<string | null>(null);
 
   const graphReady = Boolean(graphData && graphData.nodes.length > 0);
 
@@ -378,6 +388,17 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
 
   }, [graphData]);
 
+  const centerOnPlanGroup = useCallback(
+    (planArtifactId: string, duration = 200, zoom = 0.9): boolean =>
+      centerOnNode(getPlanGroupNodeId(planArtifactId), {
+        duration,
+        zoom,
+        fallbackWidth: 320,
+        fallbackHeight: 120,
+      }),
+    [centerOnNode]
+  );
+
   // Compute tier collapse defaults when tier grouping is active
   useEffect(() => {
     if (!graphData) return;
@@ -411,8 +432,51 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     }
 
     const toCollapseTiers = new Set<string>();
+    let expandedPlanGroupId: string | null = null;
+    if (planGroups.length > 0 || allNodes.length > 0) {
+      const groupedTaskIds = new Set<string>();
+      for (const pg of planGroups) {
+        for (const taskId of pg.taskIds) {
+          groupedTaskIds.add(taskId);
+        }
+      }
+      const ungroupedTasks = allNodes.filter((n) => !groupedTaskIds.has(n.taskId));
+      const allGroups: Array<{ id: string; total: number; completed: number }> = [];
+      for (const pg of planGroups) {
+        allGroups.push({
+          id: pg.planArtifactId,
+          total: pg.taskIds.length,
+          completed: pg.statusSummary.completed,
+        });
+      }
+      if (ungroupedTasks.length > 0) {
+        const completedCount = ungroupedTasks.filter((t) =>
+          ["approved", "merged", "completed"].includes(t.internalStatus)
+        ).length;
+        allGroups.push({
+          id: UNGROUPED_PLAN_ID,
+          total: ungroupedTasks.length,
+          completed: completedCount,
+        });
+      }
+      if (allGroups.length > 0) {
+        for (const g of allGroups) {
+          if (g.total === 0 || g.completed < g.total) {
+            expandedPlanGroupId = g.id;
+            break;
+          }
+        }
+        if (!expandedPlanGroupId) {
+          expandedPlanGroupId = allGroups[allGroups.length - 1]?.id ?? null;
+        }
+      }
+    }
 
-    for (const [, tiers] of tiersByPlan) {
+    for (const [planArtifactId, tiers] of tiersByPlan) {
+      // Match "Expand tiers" behavior for the default active plan group.
+      if (planArtifactId === expandedPlanGroupId) {
+        continue;
+      }
       const tierInfos = tiers.map((tg) => {
         let completed = 0;
         for (const taskId of tg.taskIds) {
@@ -446,8 +510,27 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
       }
     }
 
-    setCollapsedTierIds(toCollapseTiers);
-  }, [graphData, grouping.byPlan, grouping.byTier, grouping.showUncategorized]);
+    const shouldUpdate = !areSetsEqual(collapsedTierIds, toCollapseTiers);
+    if (shouldUpdate) {
+      setCollapsedTierIds(toCollapseTiers);
+    }
+    if (
+      expandedPlanGroupId &&
+      tiersByPlan.has(expandedPlanGroupId) &&
+      expandedPlanGroupId !== lastAutoCenteredPlanRef.current
+    ) {
+      pendingTierAutoCenterRef.current = expandedPlanGroupId;
+    }
+  }, [
+    centerOnPlanGroup,
+    fitNodeInView,
+    fitViewDefault,
+    graphData,
+    grouping.byPlan,
+    grouping.byTier,
+    grouping.showUncategorized,
+    collapsedTierIds,
+  ]);
 
   useEffect(() => {
     if (!isNavCompact) {
@@ -508,17 +591,6 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
       setNodeModeOverride(mode);
     }
   }, [isAutoCompact]);
-
-  const centerOnPlanGroup = useCallback(
-    (planArtifactId: string, duration = 200, zoom = 0.9): boolean =>
-      centerOnNode(getPlanGroupNodeId(planArtifactId), {
-        duration,
-        zoom,
-        fallbackWidth: 320,
-        fallbackHeight: 120,
-      }),
-    [centerOnNode]
-  );
 
   // Apply filters to graph data before layout computation
   const filteredGraphData = useMemo(() => {
@@ -766,6 +838,33 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     handleToggleTierCollapse,
     handleToggleAllTiers
   );
+
+  useEffect(() => {
+    const pendingPlanId = pendingTierAutoCenterRef.current;
+    if (!pendingPlanId) return;
+    if (isLoading || !graphReady) return;
+    if (!groupNodes.some((node) => node.id === getPlanGroupNodeId(pendingPlanId))) {
+      return;
+    }
+    const attemptCenter = (attempt: number) => {
+      if (attempt > 10) {
+        pendingTierAutoCenterRef.current = null;
+        return;
+      }
+      const nodeId = getPlanGroupNodeId(pendingPlanId);
+      if (!fitNodeInView(nodeId, { duration: 220, padding: 0.18, maxZoom: 0.95 })) {
+        requestAnimationFrame(() => attemptCenter(attempt + 1));
+        return;
+      }
+      lastAutoCenteredPlanRef.current = pendingPlanId;
+      pendingTierAutoCenterRef.current = null;
+      if (centerOnPlanGroup(pendingPlanId, 200, 0.9)) return;
+      fitViewDefault({ padding: 0.2, duration: 200 });
+    };
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => attemptCenter(0));
+    });
+  }, [centerOnPlanGroup, fitNodeInView, fitViewDefault, graphReady, groupNodes, isLoading]);
 
   const {
     focusedNodeId,
