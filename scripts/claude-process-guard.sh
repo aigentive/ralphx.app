@@ -83,7 +83,8 @@ if [[ "$MATCH_MODE" != "exact" && "$MATCH_MODE" != "full" ]]; then
   exit 3
 fi
 
-PIDS=()
+declare -a PIDS=()
+declare -a FILTERED=()
 if [[ "$MATCH_MODE" == "exact" ]]; then
   while IFS= read -r pid; do
     [[ -n "$pid" ]] && PIDS+=("$pid")
@@ -95,7 +96,6 @@ else
 fi
 
 if [[ -n "$ANCESTOR_MATCH" && ${#PIDS[@]} -gt 0 ]]; then
-  FILTERED=()
   for pid in "${PIDS[@]}"; do
     ppid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
     while [[ -n "$ppid" && "$ppid" -gt 1 ]]; do
@@ -107,7 +107,11 @@ if [[ -n "$ANCESTOR_MATCH" && ${#PIDS[@]} -gt 0 ]]; then
       ppid=$(ps -o ppid= -p "$ppid" 2>/dev/null | tr -d ' ')
     done
   done
-  PIDS=("${FILTERED[@]}")
+  if (( ${#FILTERED[@]} > 0 )); then
+    PIDS=("${FILTERED[@]}")
+  else
+    PIDS=()
+  fi
 fi
 
 COUNT=${#PIDS[@]}
@@ -133,9 +137,31 @@ fi
 
 # mode = kill: terminate newest processes first to preserve long-running work
 PID_AGES=()
-while IFS= read -r row; do
-  [[ -n "$row" ]] && PID_AGES+=("$row")
-done < <(ps -o pid= -o etimes= -p "${PIDS[@]}" | awk '{print $1" "$2}' | sort -k2,2n)
+if (( COUNT > 0 )); then
+  etimes_test="$(ps -o etimes= -p "${PIDS[0]}" 2>/dev/null | awk 'NF{print; exit}')"
+  if [[ -n "$etimes_test" ]]; then
+    while IFS= read -r row; do
+      [[ -n "$row" ]] && PID_AGES+=("$row")
+    done < <(ps -o pid= -o etimes= -p "${PIDS[@]}" | awk '{print $1" "$2}' | sort -k2,2n)
+  else
+    while IFS= read -r row; do
+      [[ -n "$row" ]] && PID_AGES+=("$row")
+    done < <(ps -o pid= -o etime= -p "${PIDS[@]}" | awk '
+      {
+        pid=$1;
+        et=$2;
+        n=split(et,a,":");
+        days=0; hours=0; mins=0; secs=0;
+        if (n==3) { hours=a[1]; mins=a[2]; secs=a[3]; }
+        else if (n==2) { mins=a[1]; secs=a[2]; }
+        else { secs=a[1]; }
+        if (hours ~ /-/) { split(hours,b,"-"); days=b[1]; hours=b[2]; }
+        total=(((days*24)+hours)*60+mins)*60+secs;
+        print pid, total;
+      }
+    ' | sort -k2,2n)
+  fi
+fi
 EXCESS=$((COUNT - MAX_CLAUDE))
 
 for ((i=0; i<EXCESS && i<${#PID_AGES[@]}; i++)); do
