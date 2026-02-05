@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 82,
+  "currentPhase": 83,
   "phases": [
     {
       "phase": 0,
@@ -590,6 +590,13 @@
       "prd": "specs/phases/prd_phase_82_project_scoped_execution.md",
       "status": "complete",
       "description": "Per-project execution state, scheduler scoping, global concurrency cap"
+    },
+    {
+      "phase": 83,
+      "name": "Merge Flow Fix",
+      "prd": "specs/phases/prd_phase_83_merge_flow_fix.md",
+      "status": "active",
+      "description": "Fix worktree merge, add MergeIncomplete status, standardize error responses"
     }
   ]
 }
