@@ -8,6 +8,7 @@ pub mod artifact_flow;
 pub mod chat_conversation;
 pub mod ideation;
 pub mod methodology;
+pub mod plan_branch;
 pub mod research;
 pub mod project;
 pub mod review;
@@ -30,6 +31,7 @@ pub use ideation::{
     PriorityAssessmentFactors, PriorityFactors, ProposalStatus, TaskCategory, TaskProposal,
     UserHintFactor,
 };
+pub use plan_branch::{ParsePlanBranchStatusError, PlanBranch, PlanBranchId, PlanBranchStatus};
 pub use project::{GitMode, Project};
 pub use review::{
     ParseReviewActionTypeError, ParseReviewOutcomeError, ParseReviewStatusError,

@@ -38,6 +38,7 @@ mod v9_project_git_fields;
 mod v10_execution_settings;
 mod v11_per_project_execution_settings;
 mod v12_fix_worktree_project_settings;
+mod v13_plan_branches;
 
 #[cfg(test)]
 mod tests;
@@ -63,9 +64,11 @@ mod v10_execution_settings_tests;
 mod v11_per_project_execution_settings_tests;
 #[cfg(test)]
 mod v12_fix_worktree_project_settings_tests;
+#[cfg(test)]
+mod v13_plan_branches_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 12;
+pub const SCHEMA_VERSION: i32 = 13;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -139,6 +142,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 12,
         name: "fix_worktree_project_settings",
         migrate: v12_fix_worktree_project_settings::migrate,
+    },
+    Migration {
+        version: 13,
+        name: "plan_branches",
+        migrate: v13_plan_branches::migrate,
     },
 ];
 

@@ -42,6 +42,7 @@ pub struct ProjectResponse {
     pub worktree_path: Option<String>,
     pub worktree_branch: Option<String>,
     pub base_branch: Option<String>,
+    pub use_feature_branches: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -56,6 +57,7 @@ impl From<Project> for ProjectResponse {
             worktree_path: project.worktree_path,
             worktree_branch: project.worktree_branch,
             base_branch: project.base_branch,
+            use_feature_branches: project.use_feature_branches,
             created_at: project.created_at.to_rfc3339(),
             updated_at: project.updated_at.to_rfc3339(),
         }
