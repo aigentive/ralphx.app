@@ -602,7 +602,7 @@
       "phase": 84,
       "name": "Merge Dependency Unblock Fix",
       "prd": "specs/phases/prd_phase_84_merge_dependency_unblock_fix.md",
-      "status": "active",
+      "status": "complete",
       "description": "Fix blocked tasks incorrectly promoted to Ready when merge fails"
     }
   ]
