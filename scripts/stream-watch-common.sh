@@ -55,17 +55,43 @@ is_pid_alive() {
 
 # Find Claude-run shell PIDs for this repo
 list_claude_shell_pids() {
-    ps -A -o pid= -o etimes= -o command= | awk \
-        -v root="$ROOT_DIR" \
-        -v mode="$CLAUDE_CLEANUP_MODE" \
-        -v min_age="$CLAUDE_CLEANUP_MIN_AGE" \
-        '
-        $0 ~ /(\/\.claude\/shell-snapshots\/|\/var\/folders\/.*\/claude-.*-cwd)/ && $0 ~ root {
-            pid=$1; age=$2;
-            if (mode == "all" || (mode == "stale" && age >= min_age)) {
-                print pid
+    local etimes_test
+    etimes_test="$(ps -o etimes= -p $$ 2>/dev/null | awk 'NF{print; exit}')"
+    if [[ -n "$etimes_test" ]]; then
+        ps -A -o pid= -o etimes= -o command= | awk \
+            -v root="$ROOT_DIR" \
+            -v mode="$CLAUDE_CLEANUP_MODE" \
+            -v min_age="$CLAUDE_CLEANUP_MIN_AGE" \
+            '
+            $0 ~ /(\/\.claude\/shell-snapshots\/|\/var\/folders\/.*\/claude-.*-cwd)/ && $0 ~ root {
+                pid=$1; age=$2;
+                if (mode == "all" || (mode == "stale" && age >= min_age)) {
+                    print pid
+                }
+            }'
+    else
+        ps -A -o pid= -o etime= -o command= | awk \
+            -v root="$ROOT_DIR" \
+            -v mode="$CLAUDE_CLEANUP_MODE" \
+            -v min_age="$CLAUDE_CLEANUP_MIN_AGE" \
+            '
+            function etime_to_seconds(et,    a,b,n,days,hours,mins,secs,total) {
+                n=split(et,a,":");
+                days=0; hours=0; mins=0; secs=0;
+                if (n==3) { hours=a[1]; mins=a[2]; secs=a[3]; }
+                else if (n==2) { mins=a[1]; secs=a[2]; }
+                else { secs=a[1]; }
+                if (hours ~ /-/) { split(hours,b,"-"); days=b[1]; hours=b[2]; }
+                total=(((days*24)+hours)*60+mins)*60+secs;
+                return total;
             }
-        }'
+            $0 ~ /(\/\.claude\/shell-snapshots\/|\/var\/folders\/.*\/claude-.*-cwd)/ && $0 ~ root {
+                pid=$1; age=etime_to_seconds($2);
+                if (mode == "all" || (mode == "stale" && age >= min_age)) {
+                    print pid
+                }
+            }'
+    fi
 }
 
 # Kill stale Claude-run shell processes to prevent runaway load
