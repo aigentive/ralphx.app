@@ -280,6 +280,7 @@ pub async fn retry_merge(
     // Validate task is in a mergeable retry state
     let valid_retry_states = [
         InternalStatus::MergeConflict,
+        InternalStatus::MergeIncomplete,
         InternalStatus::Merging,
     ];
     if !valid_retry_states.contains(&task.internal_status) {

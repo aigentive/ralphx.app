@@ -120,6 +120,11 @@ const STATUS_CONFIG: Record<
     color: "#ff6b35",
     bgColor: "rgba(255, 107, 53, 0.15)",
   },
+  merge_incomplete: {
+    label: "Merge Incomplete",
+    color: "#ff9f0a",
+    bgColor: "rgba(255, 159, 10, 0.15)",
+  },
   merge_conflict: {
     label: "Merge Conflict",
     color: "#ff9f0a",

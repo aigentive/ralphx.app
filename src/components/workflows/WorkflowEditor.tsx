@@ -59,6 +59,7 @@ const STATUS_LABELS: Record<InternalStatus, string> = {
   re_executing: "Re-executing",
   pending_merge: "Pending Merge",
   merging: "Merging",
+  merge_incomplete: "Merge Incomplete",
   merge_conflict: "Merge Conflict",
   merged: "Merged",
   paused: "Paused",

@@ -299,6 +299,7 @@ export const mockTasksApi = {
       approved: ["ready", "executing", "pending_review", "reviewing", "review_passed", "approved"],
       pending_merge: ["ready", "executing", "pending_review", "reviewing", "review_passed", "approved", "pending_merge"],
       merging: ["ready", "executing", "pending_review", "reviewing", "review_passed", "approved", "pending_merge", "merging"],
+      merge_incomplete: ["ready", "executing", "pending_review", "reviewing", "review_passed", "approved", "pending_merge", "merging", "merge_incomplete"],
       merge_conflict: ["ready", "executing", "pending_review", "reviewing", "review_passed", "approved", "pending_merge", "merging", "merge_conflict"],
       merged: ["ready", "executing", "pending_review", "reviewing", "review_passed", "approved", "pending_merge", "merged"],
       cancelled: ["ready", "cancelled"],

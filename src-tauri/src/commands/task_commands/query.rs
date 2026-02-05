@@ -610,7 +610,7 @@ fn categorize_status(status: &InternalStatus, summary: &mut StatusSummary) {
         InternalStatus::Executing | InternalStatus::ReExecuting => summary.executing += 1,
         InternalStatus::QaRefining | InternalStatus::QaTesting | InternalStatus::QaPassed | InternalStatus::QaFailed => summary.qa += 1,
         InternalStatus::PendingReview | InternalStatus::Reviewing | InternalStatus::ReviewPassed | InternalStatus::Escalated | InternalStatus::RevisionNeeded => summary.review += 1,
-        InternalStatus::PendingMerge | InternalStatus::Merging | InternalStatus::MergeConflict => summary.merge += 1,
+        InternalStatus::PendingMerge | InternalStatus::Merging | InternalStatus::MergeIncomplete | InternalStatus::MergeConflict => summary.merge += 1,
         InternalStatus::Approved | InternalStatus::Merged => summary.completed += 1,
         InternalStatus::Failed | InternalStatus::Cancelled | InternalStatus::Stopped => summary.terminal += 1,
         // Paused tasks are in a suspended state (not terminal, can resume)

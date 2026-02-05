@@ -162,6 +162,12 @@ export const STATUS_ICON_CONFIG: Record<InternalStatus, StatusIconConfig> = {
     label: "Merging",
     animate: true,
   },
+  merge_incomplete: {
+    icon: AlertTriangle,
+    color: "hsl(45 90% 55%)",
+    bgOpacity: "0.2",
+    label: "Incomplete",
+  },
   merge_conflict: {
     icon: AlertCircle,
     color: "hsl(0 70% 55%)",

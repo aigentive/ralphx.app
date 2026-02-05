@@ -250,6 +250,18 @@ impl TaskStateMachine {
         match event {
             TaskEvent::MergeComplete => Response::Transition(State::Merged),
             TaskEvent::MergeAgentFailed => Response::Transition(State::MergeConflict),
+            TaskEvent::MergeAgentError => Response::Transition(State::MergeIncomplete),
+            _ => Response::NotHandled,
+        }
+    }
+
+    /// MergeIncomplete state - merge failed due to non-conflict errors
+    /// Can retry (→ Merging) or manually resolve (→ Merged)
+    pub fn merge_incomplete(&mut self, event: &TaskEvent) -> Response {
+        match event {
+            TaskEvent::MergeConflict => Response::Transition(State::Merging),
+            TaskEvent::ConflictResolved => Response::Transition(State::Merged),
+            TaskEvent::Retry => Response::Transition(State::Merging),
             _ => Response::NotHandled,
         }
     }

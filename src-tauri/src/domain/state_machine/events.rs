@@ -98,6 +98,9 @@ pub enum TaskEvent {
     /// Merge agent failed to resolve conflicts (Merging → MergeConflict)
     MergeAgentFailed,
 
+    /// Merge failed due to non-conflict errors (Merging → MergeIncomplete)
+    MergeAgentError,
+
     /// User manually resolved merge conflicts (MergeConflict → Merged)
     ConflictResolved,
 
@@ -142,6 +145,7 @@ impl TaskEvent {
                 | TaskEvent::QaTestsComplete { .. }
                 | TaskEvent::ReviewComplete { .. }
                 | TaskEvent::MergeAgentFailed
+                | TaskEvent::MergeAgentError
         )
     }
 
@@ -167,6 +171,7 @@ impl TaskEvent {
                 | TaskEvent::MergeComplete
                 | TaskEvent::MergeConflict
                 | TaskEvent::MergeAgentFailed
+                | TaskEvent::MergeAgentError
                 | TaskEvent::ConflictResolved
         )
     }
@@ -194,6 +199,7 @@ impl TaskEvent {
             TaskEvent::MergeComplete => "MergeComplete",
             TaskEvent::MergeConflict => "MergeConflict",
             TaskEvent::MergeAgentFailed => "MergeAgentFailed",
+            TaskEvent::MergeAgentError => "MergeAgentError",
             TaskEvent::ConflictResolved => "ConflictResolved",
             TaskEvent::BlockersResolved => "BlockersResolved",
             TaskEvent::BlockerDetected { .. } => "BlockerDetected",
@@ -516,6 +522,7 @@ mod tests {
                 approved: false,
                 feedback: Some("Needs work".to_string()),
             },
+            TaskEvent::MergeAgentError,
             TaskEvent::BlockersResolved,
             TaskEvent::BlockerDetected {
                 blocker_id: "id".to_string(),
