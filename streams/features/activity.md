@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-02-06 16:30:00 - Add plan_branches Migration + PlanBranch Entity (Phase 85, Task 1)
+**What:**
+- Created migration v13 with `plan_branches` table (id, plan_artifact_id UNIQUE, session_id, project_id, branch_name, source_branch, status, merge_task_id, created_at, merged_at)
+- Added `use_feature_branches INTEGER NOT NULL DEFAULT 1` column to projects table
+- Created PlanBranch entity with PlanBranchId newtype, PlanBranchStatus enum (Active/Merged/Abandoned), from_row deserialization
+- Updated Project struct: added `use_feature_branches: bool` field with `#[serde(default)]` for backward compatibility
+- Updated ProjectResponse to include `use_feature_branches`
+- Updated sqlite_project_repo INSERT/SELECT/UPDATE queries for new column
+- Added 8 migration tests (table creation, columns, defaults, uniqueness, idempotency)
+- Fixed SCHEMA_VERSION constant test assertion (12 → 13)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (clean)
+- `cargo test` (3531 tests, all pass)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-06 15:00:00 - Fix Dependency Unblocking to Require Merged (Phase 84, Task 1)
 **What:**
 - Removed premature `unblock_dependents()` call from `on_enter(Approved)` in side_effects.rs — dependents now only unblocked at `Merged`
