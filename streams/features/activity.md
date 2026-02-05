@@ -3,6 +3,20 @@
 > Log entries for PRD task completion and P0 gap fixes.
 
 ---
+### 2026-02-05 03:45:00 - Phase 83 Task 4: Handle both JSON and plain text error responses in MCP client
+**What:**
+- Updated `callTauri` error handling: when `response.json()` fails, fall back to `response.text()` to capture plain text error messages
+- Updated `callTauriGet` with same pattern for consistency
+- Ensures detailed error messages from backend (both JSON and plain text) reach the agent for diagnostics
+
+**Commands:**
+- `npm run build` in ralphx-mcp-server (clean)
+
+**Visual Verification:** N/A - MCP server code only
+
+**Result:** Success
+
+---
 ### 2026-02-05 03:15:00 - Phase 83 Task 3: Standardize HTTP error responses to JSON format
 **What:**
 - Created `json_error` helper function returning `(StatusCode, Json<serde_json::Value>)` with error/details fields

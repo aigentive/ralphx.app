@@ -54,7 +54,15 @@ export async function callTauri(
           details = errorData.details;
         }
       } catch {
-        // Failed to parse error response, use status text
+        // JSON parse failed — try plain text response
+        try {
+          const text = await response.text();
+          if (text) {
+            errorMessage = text;
+          }
+        } catch {
+          // Both JSON and text failed, use status text
+        }
       }
 
       throw new TauriClientError(errorMessage, response.status, details);
@@ -104,7 +112,15 @@ export async function callTauriGet(endpoint: string): Promise<unknown> {
           details = errorData.details;
         }
       } catch {
-        // Failed to parse error response, use status text
+        // JSON parse failed — try plain text response
+        try {
+          const text = await response.text();
+          if (text) {
+            errorMessage = text;
+          }
+        } catch {
+          // Both JSON and text failed, use status text
+        }
       }
 
       throw new TauriClientError(errorMessage, response.status, details);
