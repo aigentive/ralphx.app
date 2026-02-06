@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-07 22:45:00 - Remove Legacy Event Subscriptions from Frontend (Phase 88, Task 1)
+**What:**
+- Removed 7 legacy `bus.subscribe()` blocks from `useIntegratedChatEvents.ts`: `chat:tool_call`, `chat:chunk`, `chat:run_completed`, `chat:message_created`, `execution:message_created`, `execution:tool_call`, `execution:run_completed`
+- Kept only 4 unified `agent:*` subscriptions: `agent:tool_call`, `agent:chunk`, `agent:message_created`, `agent:run_completed`
+- Removed 3 legacy constants from `src/lib/events.ts`: `CHAT_CHUNK`, `CHAT_TOOL_CALL`, `CHAT_RUN_COMPLETED`
+- Grep confirms zero remaining references to removed constants in `src/`
+- Updated module docstring to reflect unified event architecture
+
+**Commands:**
+- `npm run lint` (0 new errors — all 32 pre-existing in TaskGraph)
+- `npm run typecheck` (clean)
+
+**Visual Verification:** N/A - backend event subscription refactor, no UI changes
+
+**Result:** Success
+
 ### 2026-02-07 20:30:00 - Display Streaming Assistant Text via agent:chunk Events (Phase 87, Task 3)
 **What:**
 - Added `streamingText` + `setStreamingText` state to `useChatPanelContext.ts`, cleared on context change
