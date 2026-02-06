@@ -105,8 +105,10 @@
 
 ## From Phase 85 Visual Gap Verification (2026-02-06)
 
-- [ ] [Visual/Coverage] PlanGroupSettings + FeatureBranchBadge - no visual verification screenshot - src/components/TaskGraph/groups/PlanGroupHeader.tsx
-- [ ] [Visual/Coverage] GitSettingsSection feature branch toggle - no visual verification screenshot - src/components/settings/GitSettingsSection.tsx
+- [x] [Visual/Coverage] PlanGroupSettings + FeatureBranchBadge - no visual verification screenshot - src/components/TaskGraph/groups/PlanGroupHeader.tsx
+  - Fixed by stabilizing React Flow node references (fingerprint comparison) to prevent StoreUpdater infinite loop, then captured visual verification screenshots
+- [x] [Visual/Coverage] GitSettingsSection feature branch toggle - no visual verification screenshot - src/components/settings/GitSettingsSection.tsx
+  - Captured visual verification screenshot showing Feature Branches toggle in Settings view
 
 ---
 

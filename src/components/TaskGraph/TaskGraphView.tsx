@@ -21,8 +21,6 @@ import {
   type Edge,
   type NodeTypes,
   type EdgeTypes,
-  type OnNodesChange,
-  type OnEdgesChange,
 } from "@xyflow/react";
 
 import "@xyflow/react/dist/style.css";
@@ -102,6 +100,14 @@ function applyGraphFilters(
   planGroups: PlanGroupInfo[],
   filters: GraphFilters
 ): { nodes: TaskGraphNode[]; edges: TaskGraphEdge[]; planGroups: PlanGroupInfo[] } {
+  // Short-circuit: if no filters are active, return original references
+  const noFilters = filters.showCompleted
+    && filters.statuses.length === 0
+    && filters.planIds.length === 0;
+  if (noFilters) {
+    return { nodes, edges, planGroups };
+  }
+
   // Filter nodes
   const filteredNodes = nodes.filter((node) => {
     const status = node.internalStatus as InternalStatus;
@@ -142,16 +148,21 @@ function applyGraphFilters(
     (edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)
   );
 
-  // Update plan groups with filtered task lists
-  const filteredPlanGroups = planGroups.map((group) => ({
-    ...group,
-    taskIds: group.taskIds.filter((taskId) => visibleNodeIds.has(taskId)),
-  }));
+  // Update plan groups with filtered task lists (preserve references when unchanged)
+  let planGroupsChanged = false;
+  const filteredPlanGroups = planGroups.map((group) => {
+    const filteredTaskIds = group.taskIds.filter((taskId) => visibleNodeIds.has(taskId));
+    if (filteredTaskIds.length === group.taskIds.length) {
+      return group; // No tasks removed - return original reference
+    }
+    planGroupsChanged = true;
+    return { ...group, taskIds: filteredTaskIds };
+  });
 
   return {
     nodes: filteredNodes,
     edges: filteredEdges,
-    planGroups: filteredPlanGroups,
+    planGroups: planGroupsChanged ? filteredPlanGroups : planGroups,
   };
 }
 
@@ -841,6 +852,18 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     handleViewDetails
   );
 
+  // Initial fitView when graph first renders (replaces fitView prop to avoid
+  // StoreUpdater infinite loop in React Flow v12 controlled mode)
+  const initialFitViewDone = useRef(false);
+  useEffect(() => {
+    if (!graphReady || isLoading || initialFitViewDone.current) return;
+    initialFitViewDone.current = true;
+    // Defer to let React Flow measure nodes first
+    requestAnimationFrame(() => {
+      fitViewDefault({ padding: 0.2, duration: 0 });
+    });
+  }, [graphReady, isLoading, fitViewDefault]);
+
   useEffect(() => {
     const pendingPlanId = pendingTierAutoCenterRef.current;
     if (!pendingPlanId) return;
@@ -904,11 +927,18 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     isLoading,
   });
 
-  // Compute visible nodes and edges (controlled mode - no useEffect sync needed)
-  // Note: Lazy loading is now handled in useTaskGraphLayout - collapsed group tasks
-  // are excluded from layout computation entirely, not just filtered after.
-  // Inject handlers for context menu actions
-  // Combine group nodes and visible task nodes - groups first for proper z-ordering
+  // Compute visible nodes and edges (controlled mode).
+  // IMPORTANT: React Flow v12 StoreUpdater enters an infinite loop if the nodes
+  // array reference changes on every render. The StoreUpdater uses reference
+  // equality (===) to detect changes. When the check fails, it calls setNodes()
+  // which updates the zustand store, triggers re-render, produces a new nodes
+  // reference, and loops. We stabilize the reference by comparing a fingerprint
+  // of the structural content and returning the previous array when unchanged.
+  const prevNodesRef = useRef<Node[]>([]);
+  const prevNodesFingerprintRef = useRef("");
+  const prevEdgesRef = useRef<Edge[]>([]);
+  const prevEdgesFingerprintRef = useRef("");
+
   const nodes = useMemo<Node[]>(() => {
     const groupNodesWithSelection = groupNodes.map((node) => {
       if (node.type === PLAN_GROUP_NODE_TYPE) {
@@ -945,23 +975,33 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
       },
       selected: graphSelection?.kind === "task" && graphSelection.id === node.id,
     }));
-    return [...groupNodesWithSelection, ...taskNodesWithData];
+    const next = [...groupNodesWithSelection, ...taskNodesWithData];
+
+    // Build a fingerprint of node structural data to detect actual changes.
+    // Excludes `handlers` (stable ref) and position internals managed by RF.
+    const fingerprint = next.map((n) => {
+      const { handlers: _h, ...dataWithoutHandlers } = (n.data ?? {}) as Record<string, unknown>;
+      return `${n.id}|${n.type}|${n.selected}|${Math.round(n.position?.x ?? 0)},${Math.round(n.position?.y ?? 0)}|${JSON.stringify(dataWithoutHandlers)}`;
+    }).join("\n");
+
+    if (fingerprint === prevNodesFingerprintRef.current) {
+      return prevNodesRef.current;
+    }
+    prevNodesFingerprintRef.current = fingerprint;
+    prevNodesRef.current = next;
+    return next;
   }, [layoutNodes, groupNodes, graphSelection, highlightedTaskId, focusedNodeId, nodeHandlers]);
 
-  // Edges are already filtered in useTaskGraphLayout (lazy loading)
-  const edges = useMemo<Edge[]>(() => layoutEdges, [layoutEdges]);
-
-
-  // Handle node changes (for selection, dragging etc.) in controlled mode
-  const onNodesChange: OnNodesChange = useCallback(() => {
-    // We don't allow user-driven node changes (positions come from dagre layout)
-    // Selection is handled via onNodeClick
-  }, []);
-
-  // Handle edge changes in controlled mode
-  const onEdgesChange: OnEdgesChange = useCallback(() => {
-    // We don't allow user-driven edge changes (edges are computed from dependencies)
-  }, []);
+  // Edges: stabilize reference with fingerprint comparison
+  const edges = useMemo<Edge[]>(() => {
+    const fingerprint = layoutEdges.map((e) => `${e.id}|${e.source}|${e.target}|${e.type}`).join("\n");
+    if (fingerprint === prevEdgesFingerprintRef.current) {
+      return prevEdgesRef.current;
+    }
+    prevEdgesFingerprintRef.current = fingerprint;
+    prevEdgesRef.current = layoutEdges;
+    return layoutEdges;
+  }, [layoutEdges]);
 
 
   const graphRightPanelVisible = isNavCompact
@@ -1078,13 +1118,9 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
             edges={edges}
             nodeTypes={activeNodeTypes}
             edgeTypes={edgeTypes}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
             onNodeClick={onNodeClick}
             onNodeDoubleClick={onNodeDoubleClick}
             onPaneClick={onPaneClick}
-            fitView
-            fitViewOptions={{ padding: 0.2 }}
             minZoom={0.6}
             maxZoom={1}
             zoomOnDoubleClick={false}
