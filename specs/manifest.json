@@ -632,6 +632,13 @@
       "prd": "specs/phases/prd_phase_88_consolidate_legacy_events.md",
       "status": "active",
       "description": "Remove legacy chat:*/execution:* event subscriptions and emissions, fix double-processing bug"
+    },
+    {
+      "phase": 89,
+      "name": "Fix ActiveProjectState Race Condition on Startup",
+      "prd": "specs/phases/prd_phase_89_startup_race_condition_fix.md",
+      "status": "pending",
+      "description": "Add Notify-based wait to ActiveProjectState so StartupJobRunner waits for frontend IPC"
     }
   ]
 }
