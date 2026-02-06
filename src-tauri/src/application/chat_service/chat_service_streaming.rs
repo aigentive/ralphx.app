@@ -128,15 +128,6 @@ pub async fn process_stream_background<R: Runtime>(
                                 },
                             );
 
-                            // Legacy event - unified to chat:* for all context types
-                            let _ = handle.emit(
-                                events::CHAT_CHUNK,
-                                serde_json::json!({
-                                    "text": text,
-                                    "conversation_id": conversation_id_str,
-                                }),
-                            );
-
                             // Activity stream event for task execution
                             if context_type == ChatContextType::TaskExecution {
                                 let _ = handle.emit(
@@ -226,17 +217,6 @@ pub async fn process_stream_background<R: Runtime>(
                                 },
                             );
 
-                            // Legacy event - unified to chat:* for all context types
-                            let _ = handle.emit(
-                                events::CHAT_TOOL_CALL,
-                                serde_json::json!({
-                                    "tool_name": name,
-                                    "tool_id": id,
-                                    "arguments": serde_json::Value::Null,
-                                    "result": null,
-                                    "conversation_id": conversation_id_str,
-                                }),
-                            );
                         }
                     }
                     StreamEvent::ToolCallCompleted(tool_call) => {
@@ -252,18 +232,6 @@ pub async fn process_stream_background<R: Runtime>(
                                     context_type: context_type_str.clone(),
                                     context_id: context_id_str.clone(),
                                 },
-                            );
-
-                            // Legacy event - unified to chat:* for all context types
-                            let _ = handle.emit(
-                                events::CHAT_TOOL_CALL,
-                                serde_json::json!({
-                                    "tool_name": tool_call.name,
-                                    "tool_id": tool_call.id,
-                                    "arguments": tool_call.arguments,
-                                    "result": null,
-                                    "conversation_id": conversation_id_str,
-                                }),
                             );
 
                             // Activity stream event for task execution
@@ -330,18 +298,6 @@ pub async fn process_stream_background<R: Runtime>(
                                     context_type: context_type_str.clone(),
                                     context_id: context_id_str.clone(),
                                 },
-                            );
-
-                            // Legacy event - unified to chat:* for all context types
-                            let _ = handle.emit(
-                                events::CHAT_TOOL_CALL,
-                                serde_json::json!({
-                                    "tool_name": format!("result:{}", tool_use_id),
-                                    "tool_id": tool_use_id,
-                                    "arguments": serde_json::Value::Null,
-                                    "result": result,
-                                    "conversation_id": conversation_id_str,
-                                }),
                             );
 
                             // Activity stream event for task execution

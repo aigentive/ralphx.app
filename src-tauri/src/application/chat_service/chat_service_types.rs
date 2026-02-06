@@ -30,11 +30,6 @@ pub mod events {
     pub const AGENT_QUEUE_SENT: &str = "agent:queue_sent";
     /// Activity stream message event (for execution bar)
     pub const AGENT_MESSAGE: &str = "agent:message";
-
-    /// Legacy events (unified - no longer context-type specific)
-    pub const CHAT_CHUNK: &str = "chat:chunk";
-    pub const CHAT_TOOL_CALL: &str = "chat:tool_call";
-    pub const CHAT_RUN_COMPLETED: &str = "chat:run_completed";
 }
 
 // ============================================================================
