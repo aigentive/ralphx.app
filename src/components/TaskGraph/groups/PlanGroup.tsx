@@ -52,8 +52,12 @@ export interface PlanGroupData extends Record<string, unknown> {
   onToggleAllTiers?: (planArtifactId: string, action: "expand" | "collapse") => void;
   /** Callback to toggle collapse state */
   onToggleCollapse?: (planArtifactId: string) => void;
+  /** Project ID for API calls (feature branch settings) */
+  projectId?: string;
   /** Selection state driven by graph selection */
   isSelected?: boolean;
+  /** Navigate to a specific task (merge task link) */
+  onNavigateToTask?: (taskId: string) => void;
 }
 
 export type PlanGroupNode = Node<PlanGroupData, "planGroup">;
@@ -108,7 +112,9 @@ export const PlanGroup = memo(function PlanGroup({
     allTiersCollapsed,
     onToggleAllTiers,
     onToggleCollapse,
+    projectId,
     isSelected,
+    onNavigateToTask,
   } = data;
   const hasTierControls = Boolean(
     tierGroupIds && tierGroupIds.length > 0 && onToggleAllTiers
@@ -151,12 +157,14 @@ export const PlanGroup = memo(function PlanGroup({
       <PlanGroupHeader
         planArtifactId={planArtifactId}
         sessionId={sessionId}
+        {...(projectId ? { projectId } : {})}
         sessionTitle={sessionTitle}
         taskCount={taskIds.length}
         statusSummary={statusSummary}
         isCollapsed={isCollapsed}
         {...(tierControls ?? {})}
         onToggleCollapse={() => onToggleCollapse?.(planArtifactId)}
+        {...(onNavigateToTask ? { onNavigateToTask } : {})}
       />
 
       {/* Content area - empty, task nodes are positioned inside by React Flow */}
@@ -221,7 +229,9 @@ export function createPlanGroupNode(
   tierGroupIds?: string[],
   anyTierCollapsed?: boolean,
   allTiersCollapsed?: boolean,
-  onToggleAllTiers?: (planArtifactId: string, action: "expand" | "collapse") => void
+  onToggleAllTiers?: (planArtifactId: string, action: "expand" | "collapse") => void,
+  projectId?: string,
+  onNavigateToTask?: (taskId: string) => void
 ): PlanGroupNode {
   return {
     id: getPlanGroupNodeId(planArtifactId),
@@ -243,6 +253,8 @@ export function createPlanGroupNode(
         onToggleAllTiers,
       }),
       ...(onToggleCollapse && { onToggleCollapse }),
+      ...(projectId && { projectId }),
+      ...(onNavigateToTask && { onNavigateToTask }),
     },
     // Group node properties
     style: {

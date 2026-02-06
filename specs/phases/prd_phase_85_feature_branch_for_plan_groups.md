@@ -238,7 +238,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(task-graph): add PlanGroupSettings panel and feature branch badge to PlanGroupHeader"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 9,

@@ -4,9 +4,12 @@
  * Two layouts:
  * - Collapsed: two rows (title + count, progress bar)
  * - Expanded: single row inline (toggle, title, progress, badges)
+ *
+ * Shows feature branch badge and settings gear when a plan branch exists.
  */
 
-import { memo, useMemo } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
   ChevronRight,
@@ -15,11 +18,17 @@ import {
   AlertTriangle,
   Eye,
   GitMerge,
+  GitBranch,
+  Settings,
+  X,
   ChevronsDownUp,
   ChevronsUpDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { StatusSummary } from "@/api/task-graph.types";
+import { api } from "@/lib/tauri";
+import { PlanGroupSettings } from "./PlanGroupSettings";
 
 // ============================================================================
 // Types
@@ -30,6 +39,8 @@ export interface PlanGroupHeaderProps {
   planArtifactId: string;
   /** Session ID for navigation */
   sessionId: string;
+  /** Project ID for API calls */
+  projectId?: string;
   /** Session/plan title to display */
   sessionTitle: string | null;
   /** Number of tasks in this plan group */
@@ -52,6 +63,8 @@ export interface PlanGroupHeaderProps {
   onContextMenu?: () => void;
   /** Optional: Navigate to planning session */
   onNavigateToSession?: () => void;
+  /** Optional: Navigate to a specific task (merge task link) */
+  onNavigateToTask?: (taskId: string) => void;
 }
 
 // ============================================================================
@@ -134,12 +147,50 @@ const StatusBadge = memo(function StatusBadge({
   );
 });
 
+/** Feature branch inline badge - compact indicator */
+const FeatureBranchBadge = memo(function FeatureBranchBadge({
+  branchName,
+  status,
+}: {
+  branchName: string;
+  status: "active" | "merged" | "abandoned";
+}) {
+  const statusColor = status === "active"
+    ? "hsl(145,60%,45%)"
+    : status === "merged"
+    ? "hsl(220,80%,60%)"
+    : "hsl(var(--text-muted))";
+
+  const statusIcon = status === "active"
+    ? <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: statusColor }} />
+    : status === "merged"
+    ? <Check className="w-2.5 h-2.5" />
+    : <X className="w-2.5 h-2.5" />;
+
+  // Show only the last segment of the branch name for compactness
+  const shortName = branchName.split("/").pop() ?? branchName;
+
+  return (
+    <div
+      className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-[hsl(var(--bg-surface))]"
+      style={{ color: statusColor }}
+      title={`Feature branch: ${branchName} (${status})`}
+    >
+      <GitBranch className="w-3 h-3" />
+      {statusIcon}
+      <span className="truncate max-w-[80px]">{shortName}</span>
+    </div>
+  );
+});
+
 // ============================================================================
 // Main Component
 // ============================================================================
 
 export const PlanGroupHeader = memo(function PlanGroupHeader({
   planArtifactId,
+  sessionId,
+  projectId,
   sessionTitle,
   taskCount,
   statusSummary,
@@ -150,7 +201,26 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
   onToggleAllTiers,
   onToggleCollapse,
   onNavigateToSession,
+  onNavigateToTask,
 }: PlanGroupHeaderProps) {
+  const queryClient = useQueryClient();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Fetch plan branch data
+  const { data: planBranch } = useQuery({
+    queryKey: ["plan-branch", planArtifactId],
+    queryFn: () => api.planBranches.getByPlan(planArtifactId),
+    enabled: Boolean(planArtifactId),
+    staleTime: 30_000,
+  });
+
+  const handleBranchChange = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["plan-branch", planArtifactId] });
+  }, [queryClient, planArtifactId]);
+
+  // Check if any tasks have been merged (merged status in summary)
+  const hasMergedTasks = statusSummary.completed > 0;
+
   const counts = useMemo(() => ({
     done: statusSummary.completed,
     executing: statusSummary.executing,
@@ -170,7 +240,7 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
   if (isCollapsed) {
     return (
       <div className="flex flex-col gap-1.5 px-3 py-2 bg-[hsl(var(--bg-elevated)/0.8)] rounded-lg cursor-pointer">
-        {/* Row 1: toggle + title + count */}
+        {/* Row 1: toggle + title + branch badge + count */}
         <div className="flex items-center gap-2">
           <CollapseToggle isCollapsed={true} onClick={onToggleCollapse} />
           <span
@@ -179,6 +249,12 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
           >
             {displayTitle}
           </span>
+          {planBranch && planBranch.status !== "abandoned" && (
+            <FeatureBranchBadge
+              branchName={planBranch.branchName}
+              status={planBranch.status}
+            />
+          )}
           <span className="text-xs text-[hsl(var(--text-muted))]">
             {counts.total} tasks
           </span>
@@ -192,7 +268,7 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
   // Expanded: single-row inline layout
   return (
     <div className="flex items-center justify-between gap-3 px-3 py-2 bg-[hsl(var(--bg-elevated)/0.8)] rounded-t-lg cursor-pointer">
-      {/* Left: toggle + title */}
+      {/* Left: toggle + title + branch badge */}
       <div className="flex items-center gap-2 min-w-0 flex-1">
         <CollapseToggle isCollapsed={false} onClick={onToggleCollapse} />
         <span
@@ -206,6 +282,12 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
         >
           {displayTitle}
         </span>
+        {planBranch && planBranch.status !== "abandoned" && (
+          <FeatureBranchBadge
+            branchName={planBranch.branchName}
+            status={planBranch.status}
+          />
+        )}
       </div>
 
       {/* Middle: progress bar */}
@@ -271,7 +353,7 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
         </div>
       )}
 
-      {/* Right: status badges */}
+      {/* Right: status badges + settings gear */}
       <div className="flex items-center gap-1.5">
         <StatusBadge
           icon={<Check className="w-3 h-3" />}
@@ -303,6 +385,45 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
           label={`${counts.merge} merging`}
           colorClass="bg-[hsla(180,60%,50%,0.15)] text-[hsl(180,60%,50%)]"
         />
+
+        {/* Settings gear - opens PlanGroupSettings popover */}
+        {projectId && (
+          <Popover open={settingsOpen} onOpenChange={setSettingsOpen}>
+            <PopoverTrigger asChild>
+              <button
+                className={cn(
+                  "p-1 rounded transition-colors",
+                  "hover:bg-[hsl(var(--bg-surface))]",
+                  settingsOpen && "bg-[hsl(var(--bg-surface))]"
+                )}
+                onClick={(event) => event.stopPropagation()}
+                aria-label="Plan group settings"
+                title="Feature branch settings"
+              >
+                <Settings className="w-3.5 h-3.5 text-[hsl(var(--text-muted))]" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              sideOffset={8}
+              className="w-auto p-3"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <PlanGroupSettings
+                planArtifactId={planArtifactId}
+                sessionId={sessionId}
+                projectId={projectId}
+                planBranch={planBranch ?? null}
+                hasMergedTasks={hasMergedTasks}
+                onBranchChange={handleBranchChange}
+                onNavigateToMergeTask={(taskId) => {
+                  setSettingsOpen(false);
+                  onNavigateToTask?.(taskId);
+                }}
+              />
+            </PopoverContent>
+          </Popover>
+        )}
       </div>
     </div>
   );

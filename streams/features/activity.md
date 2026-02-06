@@ -4,6 +4,30 @@
 
 ---
 
+### 2026-02-06 21:30:00 - Phase 85 Task 8: PlanGroupSettings Panel & Feature Branch Badge
+**What:**
+- Created `src/components/TaskGraph/groups/PlanGroupSettings.tsx`: settings popover with feature branch toggle (Switch), branch name display, status badge (active/merged/abandoned), merge task link
+- Modified `PlanGroupHeader.tsx`: added FeatureBranchBadge component (compact git branch icon + status dot + short name), settings gear icon with Popover, useQuery for plan branch data
+- Updated `PlanGroup.tsx`: added projectId and onNavigateToTask to PlanGroupData and factory function
+- Updated `groupBuilder.ts`: threaded projectId and onNavigateToTask through buildPlanGroupNodes
+- Updated `useTaskGraphLayout.ts`: threaded projectId and onNavigateToTask through computeLayoutWithCache and hook signature
+- Updated `TaskGraphView.tsx`: passes projectId and handleViewDetails to useTaskGraphLayout
+- Updated `src/api-mock/index.ts`: improved planBranches.enable mock to return valid PlanBranch object
+
+**Commands:**
+- `npm run lint` (pre-existing errors only, no new errors)
+- `npm run typecheck` (passes clean)
+
+**Visual Verification:**
+- Mock-check: screenshots/features/2026-02-06_plan-group-settings_mock-check.md
+- Screenshot: N/A - dev server not running (user-managed)
+- PRD content check: N/A - feature branch badge hidden when no branch (correct behavior in web mode with null mock)
+- Browser test: N/A - dev server not running
+
+**Result:** Success
+
+---
+
 ### 2026-02-06 21:00:00 - Phase 85 Task 7: Frontend API Layer for Plan Branches
 **What:**
 - Created `src/api/plan-branch.schemas.ts` with PlanBranchSchema (snake_case matching Rust PlanBranchResponse)
