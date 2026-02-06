@@ -23,7 +23,7 @@ use crate::domain::agents::{
     ClientCapabilities, ClientType, ResponseChunk,
 };
 
-use super::{ensure_claude_spawn_allowed, get_allowed_mcp_tools};
+use super::{ensure_claude_spawn_allowed, get_allowed_mcp_tools, get_allowed_tools};
 
 // ============================================================================
 // Streaming Event Types
@@ -147,6 +147,13 @@ impl AgenticClient for ClaudeCodeClient {
         // Add agent name if specified
         if let Some(agent) = &config.agent {
             args.extend(["--agent".to_string(), agent.clone()]);
+        }
+
+        // Apply CLI tool restrictions from agent_config
+        if let Some(agent_name) = &config.agent {
+            if let Some(allowed_tools) = get_allowed_tools(agent_name) {
+                args.extend(["--tools".to_string(), allowed_tools.to_string()]);
+            }
         }
 
         // Add model if specified
@@ -322,6 +329,17 @@ impl ClaudeCodeClient {
             }
         } else if let Some(agent) = &config.agent {
             args.extend(["--agent".to_string(), agent.clone()]);
+        }
+
+        // Apply CLI tool restrictions from agent_config
+        // Frontmatter tools/disallowedTools only work for subagent spawning,
+        // NOT for direct CLI invocations with --agent -p. We must pass --tools flag.
+        if let Some(agent_name) = &config.agent {
+            if let Some(allowed_tools) = get_allowed_tools(agent_name) {
+                args.extend(["--tools".to_string(), allowed_tools.to_string()]);
+                eprintln!("[CLI] Agent {} restricted to CLI tools: {:?}", agent_name,
+                    if allowed_tools.is_empty() { "(MCP only)" } else { allowed_tools });
+            }
         }
 
         // Model override
@@ -552,6 +570,40 @@ mod tests {
         // Agent MUST be present when resuming to enforce disallowedTools
         assert!(args.contains(&"--agent".to_string()));
         assert!(args.contains(&"worker".to_string()));
+    }
+
+    #[test]
+    fn test_build_cli_args_applies_tools_restriction() {
+        let client = ClaudeCodeClient::new();
+        let config = AgentConfig::worker("Test").with_agent("session-namer");
+
+        let args = client.build_cli_args(&config, None);
+
+        // session-namer has allowed_tools = Some("") meaning no CLI tools
+        let tools_idx = args.iter().position(|a| a == "--tools").expect("--tools flag must be present");
+        assert_eq!(args[tools_idx + 1], "", "session-namer should have empty tools (MCP only)");
+    }
+
+    #[test]
+    fn test_build_cli_args_no_tools_for_unknown_agent() {
+        let client = ClaudeCodeClient::new();
+        let config = AgentConfig::worker("Test").with_agent("unknown-agent-xyz");
+
+        let args = client.build_cli_args(&config, None);
+
+        // Unknown agent should NOT have --tools restriction
+        assert!(!args.contains(&"--tools".to_string()), "unknown agent should not have --tools flag");
+    }
+
+    #[test]
+    fn test_build_cli_args_restricted_agent_tools() {
+        let client = ClaudeCodeClient::new();
+        let config = AgentConfig::worker("Test").with_agent("orchestrator-ideation");
+
+        let args = client.build_cli_args(&config, None);
+
+        let tools_idx = args.iter().position(|a| a == "--tools").expect("--tools flag must be present");
+        assert_eq!(args[tools_idx + 1], "Read,Grep,Glob", "orchestrator-ideation should have Read,Grep,Glob");
     }
 
     #[test]
