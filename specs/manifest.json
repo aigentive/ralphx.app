@@ -618,6 +618,13 @@
       "prd": "specs/phases/prd_phase_86_rogue_agent_fix.md",
       "status": "complete",
       "description": "Close tool restriction gap in build_cli_args, XML-delineate agent prompts, per-task CWD"
+    },
+    {
+      "phase": 87,
+      "name": "Real-Time Message Persistence + Streaming Display",
+      "prd": "specs/phases/prd_phase_87_realtime_message_persistence.md",
+      "status": "pending",
+      "description": "Incremental assistant message persistence during streaming, real-time text display via agent:chunk events"
     }
   ]
 }
