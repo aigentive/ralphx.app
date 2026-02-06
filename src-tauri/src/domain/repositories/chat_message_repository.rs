@@ -51,6 +51,15 @@ pub trait ChatMessageRepository: Send + Sync {
         session_id: &IdeationSessionId,
         limit: u32,
     ) -> AppResult<Vec<ChatMessage>>;
+
+    /// Update message content, tool_calls, and content_blocks (for incremental persistence)
+    async fn update_content(
+        &self,
+        id: &ChatMessageId,
+        content: &str,
+        tool_calls: Option<&str>,
+        content_blocks: Option<&str>,
+    ) -> AppResult<()>;
 }
 
 #[cfg(test)]
@@ -183,6 +192,16 @@ mod tests {
             filtered.truncate(limit as usize);
             filtered.reverse(); // Return in ascending order
             Ok(filtered)
+        }
+
+        async fn update_content(
+            &self,
+            _id: &ChatMessageId,
+            _content: &str,
+            _tool_calls: Option<&str>,
+            _content_blocks: Option<&str>,
+        ) -> AppResult<()> {
+            Ok(())
         }
     }
 

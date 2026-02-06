@@ -154,6 +154,22 @@ impl ChatMessageRepository for MemoryChatMessageRepository {
         messages.reverse();
         Ok(messages)
     }
+
+    async fn update_content(
+        &self,
+        id: &ChatMessageId,
+        content: &str,
+        tool_calls: Option<&str>,
+        content_blocks: Option<&str>,
+    ) -> AppResult<()> {
+        let mut messages = self.messages.write().unwrap();
+        if let Some(msg) = messages.get_mut(&id.to_string()) {
+            msg.content = content.to_string();
+            msg.tool_calls = tool_calls.map(|s| s.to_string());
+            msg.content_blocks = content_blocks.map(|s| s.to_string());
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

@@ -240,4 +240,20 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
 
         Ok(messages)
     }
+
+    async fn update_content(
+        &self,
+        id: &ChatMessageId,
+        content: &str,
+        tool_calls: Option<&str>,
+        content_blocks: Option<&str>,
+    ) -> AppResult<()> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "UPDATE chat_messages SET content = ?1, tool_calls = ?2, content_blocks = ?3 WHERE id = ?4",
+            rusqlite::params![content, tool_calls, content_blocks, id.as_str()],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(())
+    }
 }
