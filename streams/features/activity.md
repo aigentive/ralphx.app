@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-07 16:30:00 - Add update_content to ChatMessageRepository (Phase 87, Task 1)
+**What:**
+- Added `update_content` method to `ChatMessageRepository` trait for incremental assistant message persistence
+- Implemented in `SqliteChatMessageRepository`: SQL UPDATE for content, tool_calls, content_blocks by ID
+- Implemented in `MemoryChatMessageRepository`: in-memory HashMap mutation by ID
+- Added to `MockChatMessageRepository` in trait tests (no-op return Ok)
+- Added to `MockMessageRepository` in ideation_service/tests.rs (no-op return Ok)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (clean)
+- `cargo test` (3580+ passed, 0 failed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-07 12:00:00 - Phase 86 Complete (Gap Verification)
 **What:**
 - Ran code gap verification for all 3 fixes (--tools restriction, XML delineation, per-task CWD)

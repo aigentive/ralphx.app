@@ -419,6 +419,16 @@ use std::sync::{Arc, Mutex};
             messages.reverse();
             Ok(messages)
         }
+
+        async fn update_content(
+            &self,
+            _id: &ChatMessageId,
+            _content: &str,
+            _tool_calls: Option<&str>,
+            _content_blocks: Option<&str>,
+        ) -> AppResult<()> {
+            Ok(())
+        }
     }
 
     struct MockDependencyRepository {
