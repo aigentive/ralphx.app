@@ -17,7 +17,3 @@ export const AGENT_ERROR = "agent:error";
 export const AGENT_QUEUE_SENT = "agent:queue_sent";
 export const AGENT_MESSAGE = "agent:message";
 
-// Legacy events (unified - no longer context-type specific)
-export const CHAT_CHUNK = "chat:chunk";
-export const CHAT_TOOL_CALL = "chat:tool_call";
-export const CHAT_RUN_COMPLETED = "chat:run_completed";
