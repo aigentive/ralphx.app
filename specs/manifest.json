@@ -616,7 +616,7 @@
       "phase": 86,
       "name": "Rogue Agent Tool Restriction Fix",
       "prd": "specs/phases/prd_phase_86_rogue_agent_fix.md",
-      "status": "active",
+      "status": "complete",
       "description": "Close tool restriction gap in build_cli_args, XML-delineate agent prompts, per-task CWD"
     }
   ]

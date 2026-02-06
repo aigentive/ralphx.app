@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-07 12:00:00 - Phase 86 Complete (Gap Verification)
+**What:**
+- Ran code gap verification for all 3 fixes (--tools restriction, XML delineation, per-task CWD)
+- Fix 1: Verified both spawn paths apply --tools restrictions, 3 tests cover positive/negative cases
+- Fix 3: Verified all 5 prompt sites (7 variants) use XML `<instructions>`/`<data>` delineation
+- Fix 4: Verified per-task CWD resolution wired from TaskTransitionService, 5 tests cover all paths
+- Visual gap verification: N/A (backend-only phase)
+- No gaps found — phase complete
+
+**Commands:**
+- Gap verification via Explore agent
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success — Phase 86 complete, manifest updated
+
 ### 2026-02-06 23:45:00 - Per-Task Working Directory Resolution (Phase 86, Task 3)
 **What:**
 - Added `task_repo` and `project_repo` (Optional) fields to `AgenticClientSpawner` struct
