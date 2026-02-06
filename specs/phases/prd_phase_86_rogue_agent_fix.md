@@ -113,7 +113,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: fix(agents): XML-delineate user content in agent prompts to prevent injection"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 3,
