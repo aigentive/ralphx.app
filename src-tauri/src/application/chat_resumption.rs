@@ -21,7 +21,7 @@ use crate::commands::execution_commands::{ExecutionState, AGENT_ACTIVE_STATUSES}
 use crate::domain::entities::{ChatContextType, InterruptedConversation, TaskId};
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
+    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 
@@ -41,6 +41,7 @@ pub struct ChatResumptionRunner<R: Runtime = tauri::Wry> {
     message_queue: Arc<MessageQueue>,
     running_agent_registry: Arc<RunningAgentRegistry>,
     execution_state: Arc<ExecutionState>,
+    plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
     app_handle: Option<AppHandle<R>>,
 }
 
@@ -72,8 +73,14 @@ impl<R: Runtime> ChatResumptionRunner<R> {
             message_queue,
             running_agent_registry,
             execution_state,
+            plan_branch_repo: None,
             app_handle: None,
         }
+    }
+
+    pub fn with_plan_branch_repo(mut self, repo: Arc<dyn PlanBranchRepository>) -> Self {
+        self.plan_branch_repo = Some(repo);
+        self
     }
 
     /// Set the Tauri app handle (builder pattern).
@@ -238,6 +245,9 @@ impl<R: Runtime> ChatResumptionRunner<R> {
 
         if let Some(ref handle) = self.app_handle {
             service = service.with_app_handle(handle.clone());
+        }
+        if let Some(ref repo) = self.plan_branch_repo {
+            service = service.with_plan_branch_repo(Arc::clone(repo));
         }
 
         service

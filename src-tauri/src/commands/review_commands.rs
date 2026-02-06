@@ -425,7 +425,8 @@ pub async fn approve_task_for_review(
         Arc::clone(&state.running_agent_registry),
         Arc::clone(&execution_state),
         Some(app.clone()),
-    );
+    )
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
 
     let old_status = task.internal_status.as_str().to_string();
     transition_service
@@ -502,7 +503,8 @@ pub async fn request_task_changes_for_review(
         Arc::clone(&state.running_agent_registry),
         Arc::clone(&execution_state),
         Some(app.clone()),
-    );
+    )
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
 
     let old_status = task.internal_status.as_str().to_string();
     transition_service

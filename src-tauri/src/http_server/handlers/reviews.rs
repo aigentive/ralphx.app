@@ -171,7 +171,8 @@ pub async fn complete_review(
         Arc::clone(&state.execution_state),
         state.app_state.app_handle.as_ref().cloned(),
     )
-    .with_task_scheduler(task_scheduler);
+    .with_task_scheduler(task_scheduler)
+    .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo));
 
     let new_status = match outcome {
         ReviewToolOutcome::Approved => {
@@ -363,7 +364,8 @@ pub async fn approve_task(
         Arc::clone(&state.app_state.running_agent_registry),
         Arc::clone(&state.execution_state),
         state.app_state.app_handle.as_ref().cloned(),
-    );
+    )
+    .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo));
 
     transition_service
         .transition_task(&task_id, InternalStatus::Approved)
@@ -448,7 +450,8 @@ pub async fn request_task_changes(
         Arc::clone(&state.app_state.running_agent_registry),
         Arc::clone(&state.execution_state),
         state.app_state.app_handle.as_ref().cloned(),
-    );
+    )
+    .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo));
 
     transition_service
         .transition_task(&task_id, InternalStatus::RevisionNeeded)

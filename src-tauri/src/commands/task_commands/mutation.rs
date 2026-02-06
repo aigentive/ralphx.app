@@ -197,7 +197,8 @@ pub async fn move_task(
         Arc::clone(&execution_state),
         Some(app.clone()),
     )
-    .with_task_scheduler(task_scheduler);
+    .with_task_scheduler(task_scheduler)
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
 
     // Transition the task - this triggers entry actions like spawning workers!
     let task = transition_service
@@ -587,7 +588,8 @@ pub async fn block_task(
         Arc::clone(&execution_state),
         Some(app.clone()),
     )
-    .with_task_scheduler(task_scheduler);
+    .with_task_scheduler(task_scheduler)
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
 
     // Transition to Blocked status
     let mut blocked_task = transition_service
@@ -688,7 +690,8 @@ pub async fn unblock_task(
         Arc::clone(&execution_state),
         Some(app.clone()),
     )
-    .with_task_scheduler(task_scheduler);
+    .with_task_scheduler(task_scheduler)
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
 
     // Transition to Ready status
     let mut unblocked_task = transition_service

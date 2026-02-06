@@ -401,7 +401,8 @@ pub async fn pause_execution(
         Arc::clone(&app_state.running_agent_registry),
         Arc::clone(&execution_state),
         app_state.app_handle.clone(),
-    );
+    )
+    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
 
     // Find all tasks in agent-active states (scoped to project if specified)
     let projects_to_process = if let Some(ref pid) = effective_project_id {
@@ -514,7 +515,8 @@ pub async fn resume_execution(
         Arc::clone(&app_state.running_agent_registry),
         Arc::clone(&execution_state),
         app_state.app_handle.clone(),
-    );
+    )
+    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
 
     // Find all Paused tasks (scoped to project if specified) and restore them
     // Note: Stopped tasks are NOT restored - they require manual restart
@@ -706,7 +708,8 @@ pub async fn stop_execution(
         Arc::clone(&app_state.running_agent_registry),
         Arc::clone(&execution_state),
         app_state.app_handle.clone(),
-    );
+    )
+    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
 
     // Find all tasks in agent-active states (scoped to project if specified)
     let projects_to_process = if let Some(ref pid) = effective_project_id {
@@ -812,7 +815,8 @@ pub async fn recover_task_execution(
         Arc::clone(&app_state.running_agent_registry),
         Arc::clone(&execution_state),
         app_state.app_handle.clone(),
-    ));
+    )
+    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)));
 
     let reconciler = ReconciliationRunner::new(
         Arc::clone(&app_state.task_repo),
@@ -828,7 +832,8 @@ pub async fn recover_task_execution(
         transition_service,
         Arc::clone(&execution_state),
         Some(app),
-    );
+    )
+    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
 
     Ok(reconciler.recover_execution_stop(&task_id).await)
 }
@@ -862,7 +867,8 @@ pub async fn resolve_recovery_prompt(
         Arc::clone(&app_state.running_agent_registry),
         Arc::clone(&execution_state),
         app_state.app_handle.clone(),
-    ));
+    )
+    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)));
 
     let reconciler = ReconciliationRunner::new(
         Arc::clone(&app_state.task_repo),
@@ -878,7 +884,8 @@ pub async fn resolve_recovery_prompt(
         transition_service,
         Arc::clone(&execution_state),
         Some(app),
-    );
+    )
+    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
 
     let task = match app_state.task_repo.get_by_id(&task_id).await {
         Ok(Some(task)) => task,

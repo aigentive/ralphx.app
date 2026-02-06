@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-02-06 12:30:00 - Phase 85 Task 4: Override branch creation and merge target for plan feature branches
+**What:**
+- Added `plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>` to `TaskServices` in `context.rs` with builder method
+- Added `MemoryPlanBranchRepository` for testing
+- Wired `plan_branch_repo` through all `TaskTransitionService` construction sites (~15 files)
+- Added `resolve_task_base_branch()` helper: resolves feature branch for plan tasks or falls back to project base
+- Added `resolve_merge_branches()` helper: returns (source, target) for merge tasks, plan tasks, and regular tasks
+- Modified `on_enter(Executing)` to use resolved base branch instead of hardcoded `project.base_branch`
+- Modified `attempt_programmatic_merge()` to use resolved source/target branches
+- Added post-merge cleanup for merge tasks: updates plan_branch status to Merged, deletes feature branch, emits `plan:merge_complete` event
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (clean)
+- `cargo test` (3552 passed, 0 failed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-06 18:00:00 - Add create_feature_branch and delete_feature_branch to GitService (Phase 85, Task 3)
 **What:**
 - Added `GitService::create_feature_branch(repo_path, branch_name, source_branch)` — creates branch without checkout using `git branch`

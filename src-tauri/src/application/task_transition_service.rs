@@ -19,7 +19,7 @@ use crate::commands::ExecutionState;
 use crate::domain::entities::{InternalStatus, Task, TaskId};
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
+    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::{
@@ -373,6 +373,9 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     /// Passed to TaskServices so TransitionHandler can trigger scheduling on
     /// state exits and Ready state entry.
     task_scheduler: Option<Arc<dyn TaskScheduler>>,
+    /// Plan branch repository for resolving feature branch targets.
+    /// Passed to TaskServices so TransitionHandler can override merge targets.
+    plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
 }
 
 impl<R: Runtime> TaskTransitionService<R> {
@@ -444,6 +447,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             execution_state,
             _app_handle: app_handle,
             task_scheduler: None,
+            plan_branch_repo: None,
         }
     }
 
@@ -453,6 +457,12 @@ impl<R: Runtime> TaskTransitionService<R> {
     /// can trigger scheduling when tasks exit agent-active states or enter Ready state.
     pub fn with_task_scheduler(mut self, scheduler: Arc<dyn TaskScheduler>) -> Self {
         self.task_scheduler = Some(scheduler);
+        self
+    }
+
+    /// Set the plan branch repository for feature branch resolution (builder pattern).
+    pub fn with_plan_branch_repo(mut self, repo: Arc<dyn PlanBranchRepository>) -> Self {
+        self.plan_branch_repo = Some(repo);
         self
     }
 
@@ -596,6 +606,11 @@ impl<R: Runtime> TaskTransitionService<R> {
             services = services.with_task_scheduler(Arc::clone(scheduler));
         }
 
+        // Pass plan branch repository for feature branch resolution
+        if let Some(ref plan_branch_repo) = self.plan_branch_repo {
+            services = services.with_plan_branch_repo(Arc::clone(plan_branch_repo));
+        }
+
         // Create TaskContext
         let context = TaskContext::new(
             task_id.as_str(),
@@ -693,6 +708,11 @@ impl<R: Runtime> TaskTransitionService<R> {
         // Pass task scheduler for auto-scheduling Ready tasks
         if let Some(ref scheduler) = self.task_scheduler {
             services = services.with_task_scheduler(Arc::clone(scheduler));
+        }
+
+        // Pass plan branch repository for feature branch resolution
+        if let Some(ref plan_branch_repo) = self.plan_branch_repo {
+            services = services.with_plan_branch_repo(Arc::clone(plan_branch_repo));
         }
 
         // Create TaskContext
