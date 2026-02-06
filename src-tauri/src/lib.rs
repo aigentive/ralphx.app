@@ -570,7 +570,13 @@ pub fn run() {
             commands::git_commands::resolve_merge_conflict,
             commands::git_commands::retry_merge,
             commands::git_commands::cleanup_task_branch,
-            commands::git_commands::change_project_git_mode
+            commands::git_commands::change_project_git_mode,
+            // Plan branch commands (Phase 85 - Feature branch for plan groups)
+            commands::plan_branch_commands::get_plan_branch,
+            commands::plan_branch_commands::get_project_plan_branches,
+            commands::plan_branch_commands::enable_feature_branch,
+            commands::plan_branch_commands::disable_feature_branch,
+            commands::plan_branch_commands::update_project_feature_branch_setting
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
