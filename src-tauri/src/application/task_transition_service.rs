@@ -398,8 +398,10 @@ impl<R: Runtime> TaskTransitionService<R> {
         let agent_client = Arc::new(ClaudeCodeClient::new());
 
         // Create the agent spawner with execution state for spawn gating
+        // and task/project repos for per-task CWD resolution (worktree-aware)
         let agent_spawner: Arc<dyn AgentSpawner> = Arc::new(
             AgenticClientSpawner::new(agent_client)
+                .with_repos(Arc::clone(&task_repo), Arc::clone(&project_repo))
                 .with_execution_state(Arc::clone(&execution_state)),
         );
 
