@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-02-06 19:30:00 - Phase 85 Task 5: Add plan branch Tauri commands and register in lib.rs
+**What:**
+- Created `plan_branch_commands.rs` with 5 commands: `get_plan_branch`, `get_project_plan_branches`, `enable_feature_branch`, `disable_feature_branch`, `update_project_feature_branch_setting`
+- `enable_feature_branch`: creates git branch, DB record, merge task with blockedBy dependencies on all unmerged plan tasks
+- `disable_feature_branch`: validates no merged tasks, removes merge task, git branch, updates status to Abandoned
+- `update_project_feature_branch_setting`: updates project.use_feature_branches
+- Registered module in `commands/mod.rs` and all 5 commands in `lib.rs` generate_handler macro
+- Added `PlanBranchResponse` serialization type and `slug_from_name` helper with tests
+- Fixed unused `TaskId` import caught by clippy
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (clean after fix)
+- `cargo test` (all passed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success (recovered from previous iteration)
+
 ### 2026-02-06 12:30:00 - Phase 85 Task 4: Override branch creation and merge target for plan feature branches
 **What:**
 - Added `plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>` to `TaskServices` in `context.rs` with builder method
