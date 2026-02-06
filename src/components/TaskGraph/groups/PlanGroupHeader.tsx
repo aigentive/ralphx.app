@@ -66,6 +66,8 @@ export interface PlanGroupHeaderProps {
   onNavigateToSession?: () => void;
   /** Optional: Navigate to a specific task (merge task link) */
   onNavigateToTask?: (taskId: string) => void;
+  /** Optional: Delete this plan */
+  onDeletePlan?: () => void;
 }
 
 // ============================================================================
@@ -203,6 +205,7 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
   onToggleCollapse,
   onNavigateToSession,
   onNavigateToTask,
+  onDeletePlan,
 }: PlanGroupHeaderProps) {
   const queryClient = useQueryClient();
   const eventBus = useEventBus();
@@ -430,6 +433,10 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
                   setSettingsOpen(false);
                   onNavigateToTask?.(taskId);
                 }}
+                {...(onDeletePlan ? { onDeletePlan: () => {
+                  setSettingsOpen(false);
+                  onDeletePlan();
+                }} : {})}
               />
             </PopoverContent>
           </Popover>

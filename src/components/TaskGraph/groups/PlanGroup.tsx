@@ -58,6 +58,8 @@ export interface PlanGroupData extends Record<string, unknown> {
   isSelected?: boolean;
   /** Navigate to a specific task (merge task link) */
   onNavigateToTask?: (taskId: string) => void;
+  /** Delete this plan group (shows confirmation) */
+  onDeletePlan?: (planArtifactId: string) => void;
 }
 
 export type PlanGroupNode = Node<PlanGroupData, "planGroup">;
@@ -115,6 +117,7 @@ export const PlanGroup = memo(function PlanGroup({
     projectId,
     isSelected,
     onNavigateToTask,
+    onDeletePlan,
   } = data;
   const hasTierControls = Boolean(
     tierGroupIds && tierGroupIds.length > 0 && onToggleAllTiers
@@ -165,6 +168,7 @@ export const PlanGroup = memo(function PlanGroup({
         {...(tierControls ?? {})}
         onToggleCollapse={() => onToggleCollapse?.(planArtifactId)}
         {...(onNavigateToTask ? { onNavigateToTask } : {})}
+        {...(onDeletePlan ? { onDeletePlan: () => onDeletePlan(planArtifactId) } : {})}
       />
 
       {/* Content area - empty, task nodes are positioned inside by React Flow */}
@@ -231,7 +235,8 @@ export function createPlanGroupNode(
   allTiersCollapsed?: boolean,
   onToggleAllTiers?: (planArtifactId: string, action: "expand" | "collapse") => void,
   projectId?: string,
-  onNavigateToTask?: (taskId: string) => void
+  onNavigateToTask?: (taskId: string) => void,
+  onDeletePlan?: (planArtifactId: string) => void
 ): PlanGroupNode {
   return {
     id: getPlanGroupNodeId(planArtifactId),
@@ -255,6 +260,7 @@ export function createPlanGroupNode(
       ...(onToggleCollapse && { onToggleCollapse }),
       ...(projectId && { projectId }),
       ...(onNavigateToTask && { onNavigateToTask }),
+      ...(onDeletePlan && { onDeletePlan }),
     },
     // Group node properties
     style: {
