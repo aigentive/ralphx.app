@@ -12,6 +12,8 @@ use tauri::{AppHandle, Wry};
 
 use crate::commands::ExecutionState;
 use crate::domain::agents::{AgentConfig, AgentHandle, AgenticClient, AgentRole};
+use crate::domain::entities::{GitMode, TaskId};
+use crate::domain::repositories::{ProjectRepository, TaskRepository};
 use crate::domain::state_machine::AgentSpawner;
 use crate::domain::supervisor::{ErrorInfo, SupervisorEvent, ToolCallInfo};
 use crate::infrastructure::supervisor::EventBus;
@@ -23,8 +25,12 @@ use crate::infrastructure::supervisor::EventBus;
 pub struct AgenticClientSpawner {
     /// The underlying agentic client
     client: Arc<dyn AgenticClient>,
-    /// Working directory for spawned agents
+    /// Working directory for spawned agents (fallback when task/project lookup fails)
     working_directory: PathBuf,
+    /// Task repository for per-task CWD resolution
+    task_repo: Option<Arc<dyn TaskRepository>>,
+    /// Project repository for per-task CWD resolution
+    project_repo: Option<Arc<dyn ProjectRepository>>,
     /// Event bus for supervisor events (optional)
     event_bus: Option<Arc<EventBus>>,
     /// Tracks active agent handles by task_id for wait/stop operations
@@ -48,6 +54,8 @@ impl AgenticClientSpawner {
         Self {
             client,
             working_directory,
+            task_repo: None,
+            project_repo: None,
             event_bus: None,
             handles: Arc::new(Mutex::new(HashMap::new())),
             execution_state: None,
@@ -58,6 +66,17 @@ impl AgenticClientSpawner {
     /// Create with a specific working directory
     pub fn with_working_dir(mut self, path: impl Into<PathBuf>) -> Self {
         self.working_directory = path.into();
+        self
+    }
+
+    /// Attach task and project repos for per-task CWD resolution
+    pub fn with_repos(
+        mut self,
+        task_repo: Arc<dyn TaskRepository>,
+        project_repo: Arc<dyn ProjectRepository>,
+    ) -> Self {
+        self.task_repo = Some(task_repo);
+        self.project_repo = Some(project_repo);
         self
     }
 
@@ -121,6 +140,30 @@ impl AgenticClientSpawner {
     pub fn event_bus(&self) -> Option<&Arc<EventBus>> {
         self.event_bus.as_ref()
     }
+
+    /// Resolve the working directory for a given task.
+    /// Uses task's worktree_path when project is in Worktree mode,
+    /// falls back to project working_directory, then self.working_directory.
+    async fn resolve_working_directory(&self, task_id: &str) -> PathBuf {
+        if let (Some(task_repo), Some(project_repo)) = (&self.task_repo, &self.project_repo) {
+            let task_id_typed = TaskId(task_id.to_string());
+            if let Ok(Some(task)) = task_repo.get_by_id(&task_id_typed).await {
+                let project_id = &task.project_id;
+                if let Ok(Some(project)) = project_repo.get_by_id(project_id).await {
+                    return match project.git_mode {
+                        GitMode::Worktree => task
+                            .worktree_path
+                            .as_ref()
+                            .map(|p| PathBuf::from(p))
+                            .unwrap_or_else(|| PathBuf::from(&project.working_directory)),
+                        _ => PathBuf::from(&project.working_directory),
+                    };
+                }
+            }
+        }
+        // Fallback to the spawner's default working directory
+        self.working_directory.clone()
+    }
 }
 
 #[async_trait]
@@ -152,13 +195,16 @@ impl AgentSpawner for AgenticClientSpawner {
 
         let role = Self::role_from_string(agent_type);
 
+        // Resolve working directory per-task (worktree-aware)
+        let working_dir = self.resolve_working_directory(task_id).await;
+
         // Plugin dir is relative to working directory (which is now project root)
-        let plugin_dir = self.working_directory.join("ralphx-plugin");
+        let plugin_dir = working_dir.join("ralphx-plugin");
 
         let config = AgentConfig {
             role,
             prompt: format!("Execute task {}", task_id),
-            working_directory: self.working_directory.clone(),
+            working_directory: working_dir,
             plugin_dir: Some(plugin_dir),
             agent: Some(agent_type.to_string()),
             model: None,
