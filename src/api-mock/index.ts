@@ -23,6 +23,7 @@ import { mockReviewsApi, mockFixTasksApi } from "./reviews";
 import { mockReviewIssuesApi } from "./review-issues";
 import { mockQaApi } from "./qa";
 import { mockTestDataApi } from "./test-data";
+import { mockPlanBranchApi } from "./plan-branch";
 
 // Re-export for direct imports
 export { mockTasksApi, mockStepsApi } from "./tasks";
@@ -42,6 +43,7 @@ export { mockQaApi } from "./qa";
 export { mockActivityEventsApi } from "./activity-events";
 export { mockArtifactApi } from "./artifact";
 export { mockTestDataApi } from "./test-data";
+export { mockPlanBranchApi } from "./plan-branch";
 export { getStore, resetStore } from "./store";
 
 /**
@@ -70,24 +72,7 @@ export const mockApi = {
   taskGraph: mockTaskGraphApi,
   steps: mockStepsApi,
   testData: mockTestDataApi,
-  planBranches: {
-    getByPlan: async () => null,
-    getByProject: async () => [],
-    enable: async () => ({
-      id: "mock-branch-1",
-      planArtifactId: "mock-plan",
-      sessionId: "mock-session",
-      projectId: "mock-project",
-      branchName: "feature/mock-plan",
-      sourceBranch: "main",
-      status: "active" as const,
-      mergeTaskId: null,
-      createdAt: new Date().toISOString(),
-      mergedAt: null,
-    }),
-    disable: async () => {},
-    updateProjectSetting: async () => {},
-  },
+  planBranches: mockPlanBranchApi,
 } as const;
 
 /**

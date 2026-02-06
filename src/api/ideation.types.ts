@@ -120,4 +120,5 @@ export interface ApplyProposalsInput {
   proposalIds: string[];
   targetColumn: string;
   preserveDependencies: boolean;
+  useFeatureBranch?: boolean;
 }

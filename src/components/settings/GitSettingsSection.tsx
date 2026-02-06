@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { api, getGitDefaultBranch } from "@/lib/tauri";
 import { useProjectStore, selectActiveProject } from "@/stores/projectStore";
 import type { GitMode, Project } from "@/types/project";
-import { SectionCard, SelectSettingRow, SettingRow } from "./SettingsView.shared";
+import { SectionCard, SelectSettingRow, SettingRow, ToggleSettingRow } from "./SettingsView.shared";
 
 /**
  * Git mode options for the select dropdown
@@ -247,6 +247,29 @@ export function GitSettingsSection() {
     }
   }, [project, pendingWorktreeDir, updateProject]);
 
+  // Handler for feature branch toggle
+  const handleFeatureBranchToggle = useCallback(async () => {
+    if (!project) return;
+
+    const newValue = !project.useFeatureBranches;
+    setIsUpdating(true);
+    try {
+      await api.planBranches.updateProjectSetting(project.id, newValue);
+      updateProject(project.id, { useFeatureBranches: newValue });
+      toast.success(
+        newValue
+          ? "Feature branches enabled for new plans"
+          : "Feature branches disabled for new plans"
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update feature branch setting"
+      );
+    } finally {
+      setIsUpdating(false);
+    }
+  }, [project, updateProject]);
+
   // Early return if no project selected (after all hooks)
   if (!project) {
     return null;
@@ -317,6 +340,15 @@ export function GitSettingsSection() {
           onBlur={handleWorktreeDirBlur}
         />
       )}
+
+      <ToggleSettingRow
+        id="feature-branches"
+        label="Feature Branches"
+        description="Isolate plan work in feature branches, merging into the base branch when complete"
+        checked={project.useFeatureBranches}
+        disabled={isUpdating}
+        onChange={handleFeatureBranchToggle}
+      />
 
       {/* Show saving indicator */}
       {isUpdating && (

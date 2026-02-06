@@ -405,6 +405,9 @@ export const ideationApi = {
             proposal_ids: input.proposalIds,
             target_column: input.targetColumn,
             preserve_dependencies: input.preserveDependencies,
+            ...(input.useFeatureBranch !== undefined && {
+              use_feature_branch: input.useFeatureBranch,
+            }),
           },
         },
         ApplyProposalsResultResponseSchema
