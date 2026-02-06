@@ -4,6 +4,30 @@
 
 ---
 
+### 2026-02-06 22:00:00 - Phase 85 Task 9: Mock Layer + Project Settings UI
+**What:**
+- Created `src/api-mock/plan-branch.ts`: full mock implementations for all planBranchApi methods (getByPlan, getByProject, enable, disable, updateProjectSetting) with camelCase data + toSnakeCasePlanBranch helper for tauri-api-core.ts
+- Updated `src/api-mock/index.ts`: imported and registered mockPlanBranchApi, replaced inline planBranches stub with proper mock module
+- Updated `src/mocks/tauri-api-core.ts`: added 5 plan branch command handlers (get_plan_branch, get_project_plan_branches, enable_feature_branch, disable_feature_branch, update_project_feature_branch_setting) with snake_case transforms
+- Added `useFeatureBranches: boolean` to Project type, schema (use_feature_branches), transform, and mock factory (src/types/project.ts, src/test/mock-data.ts)
+- Added Feature Branches toggle to `GitSettingsSection.tsx`: calls api.planBranches.updateProjectSetting, updates local store, shows toast
+- Added `useFeatureBranch?: boolean` to ApplyProposalsInput in ideation.types.ts, passes through as use_feature_branch in ideation.ts invoke call
+- Seeded mock plan branch data for plan-mock-1 (active branch with merge task)
+
+**Commands:**
+- `npm run typecheck` (passes clean)
+- `npx eslint [modified files]` (passes clean, pre-existing errors in unrelated files only)
+
+**Visual Verification:**
+- Mock-check: screenshots/features/2026-02-06_plan-branch-mock-settings_mock-check.md
+- Screenshot: N/A - dev server not running (user-managed)
+- PRD content check: N/A - dev server not running
+- Browser test: N/A - dev server not running
+
+**Result:** Success
+
+---
+
 ### 2026-02-06 21:30:00 - Phase 85 Task 8: PlanGroupSettings Panel & Feature Branch Badge
 **What:**
 - Created `src/components/TaskGraph/groups/PlanGroupSettings.tsx`: settings popover with feature branch toggle (Switch), branch name display, status badge (active/merged/abandoned), merge task link

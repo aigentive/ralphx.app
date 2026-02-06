@@ -164,6 +164,7 @@ export function createMockProject(overrides: Partial<Project> = {}): Project {
     worktreeBranch: null,
     baseBranch: null,
     worktreeParentDirectory: null,
+    useFeatureBranches: true,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     ...overrides,

@@ -258,7 +258,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(mock): add plan branch mock data and project feature branch toggle"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 10,

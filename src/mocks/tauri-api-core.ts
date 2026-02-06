@@ -12,6 +12,7 @@ import { mockListConversations, mockGetConversation } from "@/api-mock/chat";
 import { mockReviewsApi } from "@/api-mock/reviews";
 import { mockIdeationApi } from "@/api-mock/ideation";
 import { mockExecutionApi } from "@/api-mock/execution";
+import { mockPlanBranchApi, toSnakeCasePlanBranch } from "@/api-mock/plan-branch";
 import type { ContextType } from "@/types/chat-conversation";
 
 /**
@@ -319,6 +320,32 @@ const commandHandlers: Record<
       global_max_concurrent: settings.globalMaxConcurrent,
     };
   },
+
+  // Plan branch commands
+  get_plan_branch: async (args) => {
+    const branch = await mockPlanBranchApi.getByPlan(args.planArtifactId as string);
+    return branch ? toSnakeCasePlanBranch(branch) : null;
+  },
+  get_project_plan_branches: async (args) => {
+    const branches = await mockPlanBranchApi.getByProject(args.projectId as string);
+    return branches.map(toSnakeCasePlanBranch);
+  },
+  enable_feature_branch: async (args) => {
+    const input = args.input as { plan_artifact_id: string; session_id: string; project_id: string };
+    const branch = await mockPlanBranchApi.enable({
+      planArtifactId: input.plan_artifact_id,
+      sessionId: input.session_id,
+      projectId: input.project_id,
+    });
+    return toSnakeCasePlanBranch(branch);
+  },
+  disable_feature_branch: async (args) =>
+    mockPlanBranchApi.disable(args.planArtifactId as string),
+  update_project_feature_branch_setting: async (args) =>
+    mockPlanBranchApi.updateProjectSetting(
+      args.projectId as string,
+      args.enabled as boolean
+    ),
 
   // Health check
   health_check: async () => ({ status: "ok" }),

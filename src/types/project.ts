@@ -21,6 +21,7 @@ export const ProjectResponseSchema = z.object({
   worktree_branch: z.string().nullable(),
   base_branch: z.string().nullable(),
   worktree_parent_directory: z.string().nullish(),
+  use_feature_branches: z.boolean().default(true),
   // Accept RFC3339 timestamps with offset (e.g., +00:00) not just Z
   created_at: z.string().datetime({ offset: true }),
   updated_at: z.string().datetime({ offset: true }),
@@ -38,6 +39,7 @@ export interface Project {
   worktreeBranch: string | null;
   baseBranch: string | null;
   worktreeParentDirectory: string | null;
+  useFeatureBranches: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -57,6 +59,7 @@ export function transformProject(
     worktreeBranch: response.worktree_branch,
     baseBranch: response.base_branch,
     worktreeParentDirectory: response.worktree_parent_directory ?? null,
+    useFeatureBranches: response.use_feature_branches,
     createdAt: response.created_at,
     updatedAt: response.updated_at,
   };
