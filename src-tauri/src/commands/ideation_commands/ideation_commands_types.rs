@@ -235,6 +235,9 @@ pub struct ApplyProposalsInput {
     pub proposal_ids: Vec<String>,
     pub target_column: String,
     pub preserve_dependencies: bool,
+    /// Per-plan override for feature branch usage (None = use project default)
+    #[serde(default)]
+    pub use_feature_branch: Option<bool>,
 }
 
 /// Response for apply proposals

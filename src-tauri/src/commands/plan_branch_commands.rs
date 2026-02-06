@@ -330,7 +330,7 @@ pub async fn update_project_feature_branch_setting(
 // ============================================================================
 
 /// Generate a URL-safe slug from a project name
-fn slug_from_name(name: &str) -> String {
+pub fn slug_from_name(name: &str) -> String {
     name.to_lowercase()
         .chars()
         .map(|c| if c.is_alphanumeric() { c } else { '-' })
