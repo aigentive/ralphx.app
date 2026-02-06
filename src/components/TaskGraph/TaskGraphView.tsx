@@ -836,7 +836,9 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     collapsedTierIds,
     handleToggleCollapse,
     handleToggleTierCollapse,
-    handleToggleAllTiers
+    handleToggleAllTiers,
+    projectId,
+    handleViewDetails
   );
 
   useEffect(() => {

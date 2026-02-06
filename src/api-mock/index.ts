@@ -73,9 +73,18 @@ export const mockApi = {
   planBranches: {
     getByPlan: async () => null,
     getByProject: async () => [],
-    enable: async () => {
-      throw new Error("Not implemented in mock");
-    },
+    enable: async () => ({
+      id: "mock-branch-1",
+      planArtifactId: "mock-plan",
+      sessionId: "mock-session",
+      projectId: "mock-project",
+      branchName: "feature/mock-plan",
+      sourceBranch: "main",
+      status: "active" as const,
+      mergeTaskId: null,
+      createdAt: new Date().toISOString(),
+      mergedAt: null,
+    }),
     disable: async () => {},
     updateProjectSetting: async () => {},
   },

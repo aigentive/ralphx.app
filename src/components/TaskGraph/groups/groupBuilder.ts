@@ -34,6 +34,8 @@ interface PlanGroupBuilderArgs {
   onToggleCollapse?: (planArtifactId: string) => void;
   onToggleAllTiers?: (planArtifactId: string, action: "expand" | "collapse") => void;
   includeUncategorized?: boolean;
+  projectId?: string;
+  onNavigateToTask?: (taskId: string) => void;
 }
 
 interface TierGroupBuilderArgs {
@@ -61,6 +63,8 @@ export function buildPlanGroupNodes({
   onToggleCollapse,
   onToggleAllTiers,
   includeUncategorized = true,
+  projectId,
+  onNavigateToTask,
 }: PlanGroupBuilderArgs): PlanGroupNode[] {
   if (planGroups.length === 0 && !includeUncategorized) {
     return [];
@@ -148,7 +152,9 @@ export function buildPlanGroupNodes({
       hasTierGroups ? tierGroupIds : undefined,
       anyTierCollapsed,
       allTiersCollapsed,
-      hasTierGroups && onToggleAllTiers ? onToggleAllTiers : undefined
+      hasTierGroups && onToggleAllTiers ? onToggleAllTiers : undefined,
+      projectId,
+      onNavigateToTask
     );
 
     groupNodes.push(groupNode);
@@ -248,7 +254,9 @@ export function buildPlanGroupNodes({
       hasTierGroups ? ungroupedTierIds : undefined,
       anyTierCollapsed,
       allTiersCollapsed,
-      hasTierGroups && onToggleAllTiers ? onToggleAllTiers : undefined
+      hasTierGroups && onToggleAllTiers ? onToggleAllTiers : undefined,
+      projectId,
+      onNavigateToTask
     );
 
     groupNodes.push(groupNode);

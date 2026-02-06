@@ -168,7 +168,9 @@ function createGroupNodes(
   nodeHeight: number,
   onToggleCollapse?: (planArtifactId: string) => void,
   onToggleAllTiers?: (planArtifactId: string, action: "expand" | "collapse") => void,
-  includeUncategorized: boolean = true
+  includeUncategorized: boolean = true,
+  projectId?: string,
+  onNavigateToTask?: (taskId: string) => void
 ): PlanGroupNode[] {
   const args = {
     taskNodes,
@@ -183,6 +185,8 @@ function createGroupNodes(
     includeUncategorized,
     ...(onToggleCollapse && { onToggleCollapse }),
     ...(onToggleAllTiers && { onToggleAllTiers }),
+    ...(projectId && { projectId }),
+    ...(onNavigateToTask && { onNavigateToTask }),
   };
   return buildPlanGroupNodes(args);
 }
@@ -452,7 +456,9 @@ function computeLayoutWithCache(
   onToggleCollapse: ((planArtifactId: string) => void) | undefined,
   onToggleTierCollapse: ((tierGroupId: string) => void) | undefined,
   onToggleAllTiers: ((planArtifactId: string, action: "expand" | "collapse") => void) | undefined,
-  cache: React.MutableRefObject<CachedLayout | null>
+  cache: React.MutableRefObject<CachedLayout | null>,
+  projectId?: string,
+  onNavigateToTask?: (taskId: string) => void
 ): LayoutResult {
   // Use correct node dimensions based on compact mode
   const nodeWidth = config.isCompact ? COMPACT_NODE_WIDTH : NODE_WIDTH;
@@ -725,7 +731,9 @@ function computeLayoutWithCache(
     nodeHeight,
     onToggleCollapse,
     onToggleAllTiers,
-    includeUncategorized
+    includeUncategorized,
+    projectId,
+    onNavigateToTask
   );
 
   const planGroupBounds = new Map<string, { position: { x: number; y: number }; width: number }>();
@@ -935,7 +943,9 @@ export function useTaskGraphLayout(
   collapsedTierIds: Set<string> = new Set(),
   onToggleCollapse?: (planArtifactId: string) => void,
   onToggleTierCollapse?: (tierGroupId: string) => void,
-  onToggleAllTiers?: (planArtifactId: string, action: "expand" | "collapse") => void
+  onToggleAllTiers?: (planArtifactId: string, action: "expand" | "collapse") => void,
+  projectId?: string,
+  onNavigateToTask?: (taskId: string) => void
 ): LayoutResult {
   // Merge with default config
   const fullConfig = useMemo(
@@ -963,7 +973,9 @@ export function useTaskGraphLayout(
       onToggleCollapse,
       onToggleTierCollapse,
       onToggleAllTiers,
-      layoutCache
+      layoutCache,
+      projectId,
+      onNavigateToTask
     );
   }, [
     graphNodes,
@@ -977,6 +989,8 @@ export function useTaskGraphLayout(
     onToggleCollapse,
     onToggleTierCollapse,
     onToggleAllTiers,
+    projectId,
+    onNavigateToTask,
   ]);
 
   return layout;
