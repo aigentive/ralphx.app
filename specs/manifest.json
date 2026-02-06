@@ -609,7 +609,7 @@
       "phase": 85,
       "name": "Feature Branch for Plan Groups",
       "prd": "specs/phases/prd_phase_85_feature_branch_for_plan_groups.md",
-      "status": "active",
+      "status": "complete",
       "description": "Isolate plan work in feature branches with auto-merge task on plan completion"
     }
   ]
