@@ -169,6 +169,14 @@ pub async fn process_message_queue<R: Runtime + 'static>(
                         context_id,
                         conversation_id.as_str()
                     );
+
+                    // Create empty assistant message before queue stream
+                    let queue_assistant_msg = chat_service_context::create_assistant_message(
+                        context_type, context_id, "", conversation_id, &[], &[],
+                    );
+                    let queue_assistant_msg_id = queue_assistant_msg.id.as_str().to_string();
+                    let _ = chat_message_repo.create(queue_assistant_msg).await;
+
                     match process_stream_background(
                         child,
                         context_type,
@@ -177,29 +185,28 @@ pub async fn process_message_queue<R: Runtime + 'static>(
                         app_handle.clone(),
                         Some(Arc::clone(&activity_event_repo)),
                         Some(Arc::clone(&task_repo)),
+                        Some(Arc::clone(&chat_message_repo)),
+                        Some(queue_assistant_msg_id.clone()),
                     )
                     .await
                     {
                         Ok((response, tools, blocks, _)) => {
                             if !response.is_empty() || !tools.is_empty() {
-                                let assistant_msg =
-                                    chat_service_context::create_assistant_message(
-                                        context_type,
-                                        context_id,
-                                        &response,
-                                        conversation_id,
-                                        &tools,
-                                        &blocks,
-                                    );
-                                let assistant_msg_id = assistant_msg.id.as_str().to_string();
-                                let _ = chat_message_repo.create(assistant_msg).await;
+                                let tool_calls_json = serde_json::to_string(&tools).ok();
+                                let content_blocks_json = serde_json::to_string(&blocks).ok();
+                                let _ = chat_message_repo.update_content(
+                                    &crate::domain::entities::ChatMessageId::from_string(queue_assistant_msg_id.clone()),
+                                    &response,
+                                    tool_calls_json.as_deref(),
+                                    content_blocks_json.as_deref(),
+                                ).await;
 
                                 // Emit assistant message created
                                 if let Some(ref handle) = app_handle {
                                     let _ = handle.emit(
                                         "agent:message_created",
                                         super::chat_service_types::AgentMessageCreatedPayload {
-                                            message_id: assistant_msg_id,
+                                            message_id: queue_assistant_msg_id,
                                             conversation_id: conversation_id
                                                 .as_str()
                                                 .to_string(),
