@@ -8,7 +8,7 @@
  * Shows feature branch badge and settings gear when a plan branch exists.
  */
 
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { StatusSummary } from "@/api/task-graph.types";
 import { api } from "@/lib/tauri";
+import { useEventBus } from "@/providers/EventProvider";
 import { PlanGroupSettings } from "./PlanGroupSettings";
 
 // ============================================================================
@@ -204,6 +205,7 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
   onNavigateToTask,
 }: PlanGroupHeaderProps) {
   const queryClient = useQueryClient();
+  const eventBus = useEventBus();
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Fetch plan branch data
@@ -217,6 +219,14 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
   const handleBranchChange = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["plan-branch", planArtifactId] });
   }, [queryClient, planArtifactId]);
+
+  // Reactively update badge when plan merge completes
+  useEffect(() => {
+    const unsubscribe = eventBus.subscribe("plan:merge_complete", () => {
+      queryClient.invalidateQueries({ queryKey: ["plan-branch", planArtifactId] });
+    });
+    return unsubscribe;
+  }, [eventBus, queryClient, planArtifactId]);
 
   // Check if any tasks have been merged (merged status in summary)
   const hasMergedTasks = statusSummary.completed > 0;
