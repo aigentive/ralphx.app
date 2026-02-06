@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   ExternalLink,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
@@ -35,6 +36,8 @@ export interface PlanGroupSettingsProps {
   onBranchChange?: () => void;
   /** Navigate to merge task in graph */
   onNavigateToMergeTask?: (taskId: string) => void;
+  /** Delete this plan (shows confirmation dialog) */
+  onDeletePlan?: () => void;
 }
 
 // ============================================================================
@@ -83,6 +86,7 @@ export const PlanGroupSettings = memo(function PlanGroupSettings({
   hasMergedTasks,
   onBranchChange,
   onNavigateToMergeTask,
+  onDeletePlan,
 }: PlanGroupSettingsProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -204,6 +208,23 @@ export const PlanGroupSettings = memo(function PlanGroupSettings({
               View merge task
             </button>
           )}
+        </div>
+      )}
+
+      {/* Delete plan */}
+      {onDeletePlan && (
+        <div className="pt-2 border-t border-[hsl(var(--border-subtle))]">
+          <button
+            className={cn(
+              "flex items-center gap-1.5 w-full px-2 py-1.5 rounded text-[11px]",
+              "text-[hsl(0,70%,55%)] hover:bg-[hsla(0,70%,55%,0.1)]",
+              "transition-colors cursor-pointer"
+            )}
+            onClick={onDeletePlan}
+          >
+            <Trash2 className="w-3 h-3" />
+            Delete Plan
+          </button>
         </div>
       )}
     </div>

@@ -170,7 +170,8 @@ function createGroupNodes(
   onToggleAllTiers?: (planArtifactId: string, action: "expand" | "collapse") => void,
   includeUncategorized: boolean = true,
   projectId?: string,
-  onNavigateToTask?: (taskId: string) => void
+  onNavigateToTask?: (taskId: string) => void,
+  onDeletePlan?: (planArtifactId: string) => void
 ): PlanGroupNode[] {
   const args = {
     taskNodes,
@@ -187,6 +188,7 @@ function createGroupNodes(
     ...(onToggleAllTiers && { onToggleAllTiers }),
     ...(projectId && { projectId }),
     ...(onNavigateToTask && { onNavigateToTask }),
+    ...(onDeletePlan && { onDeletePlan }),
   };
   return buildPlanGroupNodes(args);
 }
@@ -458,7 +460,8 @@ function computeLayoutWithCache(
   onToggleAllTiers: ((planArtifactId: string, action: "expand" | "collapse") => void) | undefined,
   cache: React.MutableRefObject<CachedLayout | null>,
   projectId?: string,
-  onNavigateToTask?: (taskId: string) => void
+  onNavigateToTask?: (taskId: string) => void,
+  onDeletePlan?: (planArtifactId: string) => void
 ): LayoutResult {
   // Use correct node dimensions based on compact mode
   const nodeWidth = config.isCompact ? COMPACT_NODE_WIDTH : NODE_WIDTH;
@@ -733,7 +736,8 @@ function computeLayoutWithCache(
     onToggleAllTiers,
     includeUncategorized,
     projectId,
-    onNavigateToTask
+    onNavigateToTask,
+    onDeletePlan
   );
 
   const planGroupBounds = new Map<string, { position: { x: number; y: number }; width: number }>();
@@ -945,7 +949,8 @@ export function useTaskGraphLayout(
   onToggleTierCollapse?: (tierGroupId: string) => void,
   onToggleAllTiers?: (planArtifactId: string, action: "expand" | "collapse") => void,
   projectId?: string,
-  onNavigateToTask?: (taskId: string) => void
+  onNavigateToTask?: (taskId: string) => void,
+  onDeletePlan?: (planArtifactId: string) => void
 ): LayoutResult {
   // Merge with default config
   const fullConfig = useMemo(
@@ -975,7 +980,8 @@ export function useTaskGraphLayout(
       onToggleAllTiers,
       layoutCache,
       projectId,
-      onNavigateToTask
+      onNavigateToTask,
+      onDeletePlan
     );
   }, [
     graphNodes,
@@ -991,6 +997,7 @@ export function useTaskGraphLayout(
     onToggleAllTiers,
     projectId,
     onNavigateToTask,
+    onDeletePlan,
   ]);
 
   return layout;

@@ -25,6 +25,7 @@ import {
   type OnEdgesChange,
 } from "@xyflow/react";
 
+import { useQueryClient } from "@tanstack/react-query";
 import "@xyflow/react/dist/style.css";
 
 import { useTaskGraph } from "./hooks/useTaskGraph";
@@ -56,7 +57,12 @@ import type { TaskGraphNode, TaskGraphEdge, PlanGroupInfo } from "@/api/task-gra
 import type { InternalStatus } from "@/types/status";
 import { useUiStore } from "@/stores/uiStore";
 import { useTaskMutation } from "@/hooks/useTaskMutation";
+import { useDeleteIdeationSession } from "@/hooks/useIdeation";
+import { useConfirmation } from "@/hooks/useConfirmation";
 import { useNavCompactBreakpoint } from "@/hooks";
+import { useIdeationStore } from "@/stores/ideationStore";
+import { useChatStore } from "@/stores/chatStore";
+import { taskGraphKeys } from "./hooks/useTaskGraph";
 import { api } from "@/lib/tauri";
 import { toast } from "sonner";
 import { Filter, Loader2, X } from "lucide-react";
@@ -304,6 +310,12 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   const graphRightPanelUserOpen = useUiStore((s) => s.graphRightPanelUserOpen);
   const graphRightPanelCompactOpen = useUiStore((s) => s.graphRightPanelCompactOpen);
   const { isNavCompact } = useNavCompactBreakpoint();
+  const queryClient = useQueryClient();
+  const deleteSessionMutation = useDeleteIdeationSession();
+  const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
+  const removeSession = useIdeationStore((s) => s.removeSession);
+  const clearMessages = useChatStore((s) => s.clearMessages);
+  const clearGraphSelection = useUiStore((s) => s.clearGraphSelection);
   const [overlayClosing, setOverlayClosing] = useState(false);
   const overlayCloseTimeoutRef = useRef<number | null>(null);
   const pendingTierAutoCenterRef = useRef<string | null>(null);
@@ -796,6 +808,37 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     isCompact: effectiveNodeMode === "compact",
   }), [effectiveNodeMode]);
 
+  // Plan deletion handler (Backspace on plan group or Delete button in settings)
+  const handleDeletePlan = useCallback(
+    async (planArtifactId: string) => {
+      const planGroup = graphData?.planGroups.find(
+        (pg) => pg.planArtifactId === planArtifactId
+      );
+      if (!planGroup) return;
+
+      const confirmed = await confirm({
+        title: "Delete plan?",
+        description: `This will permanently delete "${planGroup.sessionTitle || "Unnamed plan"}" and all ${planGroup.taskIds.length} task${planGroup.taskIds.length === 1 ? "" : "s"}. This action cannot be undone.`,
+        confirmText: "Delete",
+        variant: "destructive",
+      });
+
+      if (!confirmed) return;
+
+      try {
+        await deleteSessionMutation.mutateAsync(planGroup.sessionId);
+        removeSession(planGroup.sessionId);
+        clearMessages(`session:${planGroup.sessionId}`);
+        clearGraphSelection();
+        queryClient.invalidateQueries({ queryKey: taskGraphKeys.graph(projectId) });
+        toast.success("Plan deleted");
+      } catch {
+        toast.error("Failed to delete plan");
+      }
+    },
+    [graphData?.planGroups, confirm, deleteSessionMutation, removeSession, clearMessages, clearGraphSelection, queryClient, projectId]
+  );
+
   // Compute layout using dagre (includes plan grouping)
   const { nodes: layoutNodes, edges: layoutEdges, groupNodes } = useTaskGraphLayout(
     filteredGraphData.nodes,
@@ -810,7 +853,8 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     handleToggleTierCollapse,
     handleToggleAllTiers,
     projectId,
-    handleViewDetails
+    handleViewDetails,
+    handleDeletePlan
   );
 
   useEffect(() => {
@@ -860,6 +904,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     graphReady,
     graphError: error ?? null,
     isLoading,
+    onDeletePlanGroup: handleDeletePlan,
   });
 
   // Compute visible nodes and edges (controlled mode).
@@ -1075,6 +1120,8 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     !filters.showCompleted;
 
   return (
+    <>
+    <ConfirmationDialog {...confirmationDialogProps} />
     <GraphSplitLayout
       projectId={projectId}
       footer={footer}
@@ -1163,6 +1210,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
         )}
       </div>
     </GraphSplitLayout>
+    </>
   );
 }
 
