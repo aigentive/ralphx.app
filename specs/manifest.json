@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 86,
+  "currentPhase": 87,
   "phases": [
     {
       "phase": 0,
@@ -623,7 +623,7 @@
       "phase": 87,
       "name": "Real-Time Message Persistence + Streaming Display",
       "prd": "specs/phases/prd_phase_87_realtime_message_persistence.md",
-      "status": "pending",
+      "status": "active",
       "description": "Incremental assistant message persistence during streaming, real-time text display via agent:chunk events"
     }
   ]
