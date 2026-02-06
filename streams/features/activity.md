@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-02-06 20:00:00 - Phase 85 Task 6: Accept Plan Integration (Transactional)
+**What:**
+- Added `use_feature_branch: Option<bool>` to `ApplyProposalsInput` (serde default None for backward compat)
+- Inserted Phase 2.5 in `apply_proposals_to_kanban` between dependency creation and status upgrade
+- Phase 2.5 propagates `plan_artifact_id` from proposals/session to all created tasks
+- Phase 2.5 resolves feature branch setting: `input.use_feature_branch ?? project.use_feature_branches`
+- If enabled + session has plan_artifact_id: creates git feature branch, DB record, merge task, blockedBy dependencies
+- Made `slug_from_name` public in `plan_branch_commands.rs` for reuse
+- Race-safe: all feature branch setup happens before Phase 3 status upgrade (tasks still Backlog)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (clean)
+- `cargo test` (all passed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-06 19:30:00 - Phase 85 Task 5: Add plan branch Tauri commands and register in lib.rs
 **What:**
 - Created `plan_branch_commands.rs` with 5 commands: `get_plan_branch`, `get_project_plan_branches`, `enable_feature_branch`, `disable_feature_branch`, `update_project_feature_branch_setting`
