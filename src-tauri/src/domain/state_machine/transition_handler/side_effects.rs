@@ -1148,3 +1148,282 @@ impl<'a> super::TransitionHandler<'a> {
     }
 
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::entities::{
+        ArtifactId, PlanBranch, PlanBranchStatus, ProjectId, TaskId,
+    };
+    use crate::domain::entities::types::IdeationSessionId;
+    use crate::infrastructure::memory::MemoryPlanBranchRepository;
+
+    fn make_project(base_branch: Option<&str>) -> Project {
+        let mut p = Project::new("test-project".into(), "/tmp/test".into());
+        p.base_branch = base_branch.map(|s| s.to_string());
+        p
+    }
+
+    fn make_task(plan_artifact_id: Option<&str>, task_branch: Option<&str>) -> Task {
+        let mut t = Task::new(ProjectId::from_string("proj-1".to_string()), "Test task".into());
+        t.plan_artifact_id = plan_artifact_id.map(|s| ArtifactId::from_string(s));
+        t.task_branch = task_branch.map(|s| s.to_string());
+        t
+    }
+
+    fn make_plan_branch(
+        plan_artifact_id: &str,
+        branch_name: &str,
+        status: PlanBranchStatus,
+        merge_task_id: Option<&str>,
+    ) -> PlanBranch {
+        let mut pb = PlanBranch::new(
+            ArtifactId::from_string(plan_artifact_id),
+            IdeationSessionId::from_string("sess-1"),
+            ProjectId::from_string("proj-1".to_string()),
+            branch_name.to_string(),
+            "main".to_string(),
+        );
+        pb.status = status;
+        pb.merge_task_id = merge_task_id.map(|s| TaskId::from_string(s.to_string()));
+        pb
+    }
+
+    // ==================
+    // resolve_task_base_branch tests
+    // ==================
+
+    #[tokio::test]
+    async fn resolve_task_base_branch_returns_project_base_when_no_repo() {
+        let project = make_project(Some("develop"));
+        let task = make_task(Some("art-1"), None);
+        let repo: Option<Arc<dyn PlanBranchRepository>> = None;
+
+        let result = resolve_task_base_branch(&task, &project, &repo).await;
+        assert_eq!(result, "develop");
+    }
+
+    #[tokio::test]
+    async fn resolve_task_base_branch_defaults_to_main_when_no_base_branch() {
+        let project = make_project(None);
+        let task = make_task(Some("art-1"), None);
+        let repo: Option<Arc<dyn PlanBranchRepository>> = None;
+
+        let result = resolve_task_base_branch(&task, &project, &repo).await;
+        assert_eq!(result, "main");
+    }
+
+    #[tokio::test]
+    async fn resolve_task_base_branch_returns_default_when_task_has_no_plan_artifact() {
+        let project = make_project(Some("develop"));
+        let task = make_task(None, None);
+        let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
+        let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
+
+        let result = resolve_task_base_branch(&task, &project, &repo).await;
+        assert_eq!(result, "develop");
+    }
+
+    #[tokio::test]
+    async fn resolve_task_base_branch_returns_feature_branch_when_active() {
+        let project = make_project(Some("main"));
+        let task = make_task(Some("art-1"), None);
+
+        let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
+        let pb = make_plan_branch("art-1", "ralphx/test/plan-abc123", PlanBranchStatus::Active, None);
+        mem_repo.create(pb).await.unwrap();
+
+        let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
+        let result = resolve_task_base_branch(&task, &project, &repo).await;
+        assert_eq!(result, "ralphx/test/plan-abc123");
+    }
+
+    #[tokio::test]
+    async fn resolve_task_base_branch_returns_default_when_branch_merged() {
+        let project = make_project(Some("main"));
+        let task = make_task(Some("art-1"), None);
+
+        let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
+        let pb = make_plan_branch("art-1", "ralphx/test/plan-abc123", PlanBranchStatus::Merged, None);
+        mem_repo.create(pb).await.unwrap();
+
+        let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
+        let result = resolve_task_base_branch(&task, &project, &repo).await;
+        assert_eq!(result, "main");
+    }
+
+    #[tokio::test]
+    async fn resolve_task_base_branch_returns_default_when_branch_abandoned() {
+        let project = make_project(Some("main"));
+        let task = make_task(Some("art-1"), None);
+
+        let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
+        let pb = make_plan_branch("art-1", "ralphx/test/plan-abc123", PlanBranchStatus::Abandoned, None);
+        mem_repo.create(pb).await.unwrap();
+
+        let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
+        let result = resolve_task_base_branch(&task, &project, &repo).await;
+        assert_eq!(result, "main");
+    }
+
+    #[tokio::test]
+    async fn resolve_task_base_branch_returns_default_when_no_matching_branch() {
+        let project = make_project(Some("main"));
+        let task = make_task(Some("art-nonexistent"), None);
+
+        let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
+        let pb = make_plan_branch("art-other", "ralphx/test/plan-abc123", PlanBranchStatus::Active, None);
+        mem_repo.create(pb).await.unwrap();
+
+        let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
+        let result = resolve_task_base_branch(&task, &project, &repo).await;
+        assert_eq!(result, "main");
+    }
+
+    // ==================
+    // resolve_merge_branches tests
+    // ==================
+
+    #[tokio::test]
+    async fn resolve_merge_branches_returns_default_when_no_repo() {
+        let project = make_project(Some("main"));
+        let mut task = make_task(None, Some("ralphx/test/task-123"));
+        task.id = TaskId::from_string("task-123".to_string());
+
+        let repo: Option<Arc<dyn PlanBranchRepository>> = None;
+        let (source, target) = resolve_merge_branches(&task, &project, &repo).await;
+        assert_eq!(source, "ralphx/test/task-123");
+        assert_eq!(target, "main");
+    }
+
+    #[tokio::test]
+    async fn resolve_merge_branches_merge_task_returns_feature_into_base() {
+        let project = make_project(Some("main"));
+        let mut task = make_task(None, None);
+        task.id = TaskId::from_string("merge-task-1".to_string());
+
+        let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
+        let pb = make_plan_branch(
+            "art-1",
+            "ralphx/test/plan-abc123",
+            PlanBranchStatus::Active,
+            Some("merge-task-1"),
+        );
+        mem_repo.create(pb).await.unwrap();
+
+        let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
+        let (source, target) = resolve_merge_branches(&task, &project, &repo).await;
+        assert_eq!(source, "ralphx/test/plan-abc123");
+        assert_eq!(target, "main");
+    }
+
+    #[tokio::test]
+    async fn resolve_merge_branches_plan_task_returns_task_into_feature() {
+        let project = make_project(Some("main"));
+        let mut task = make_task(Some("art-1"), Some("ralphx/test/task-456"));
+        task.id = TaskId::from_string("task-456".to_string());
+
+        let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
+        let pb = make_plan_branch("art-1", "ralphx/test/plan-abc123", PlanBranchStatus::Active, None);
+        mem_repo.create(pb).await.unwrap();
+
+        let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
+        let (source, target) = resolve_merge_branches(&task, &project, &repo).await;
+        assert_eq!(source, "ralphx/test/task-456");
+        assert_eq!(target, "ralphx/test/plan-abc123");
+    }
+
+    #[tokio::test]
+    async fn resolve_merge_branches_regular_task_returns_task_into_base() {
+        let project = make_project(Some("develop"));
+        let mut task = make_task(None, Some("ralphx/test/task-789"));
+        task.id = TaskId::from_string("task-789".to_string());
+
+        let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
+        let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
+
+        let (source, target) = resolve_merge_branches(&task, &project, &repo).await;
+        assert_eq!(source, "ralphx/test/task-789");
+        assert_eq!(target, "develop");
+    }
+
+    #[tokio::test]
+    async fn resolve_merge_branches_merge_task_with_merged_branch_returns_default() {
+        let project = make_project(Some("main"));
+        let mut task = make_task(None, Some("ralphx/test/task-merge"));
+        task.id = TaskId::from_string("merge-task-2".to_string());
+
+        let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
+        let pb = make_plan_branch(
+            "art-2",
+            "ralphx/test/plan-def456",
+            PlanBranchStatus::Merged,
+            Some("merge-task-2"),
+        );
+        mem_repo.create(pb).await.unwrap();
+
+        let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
+        let (source, target) = resolve_merge_branches(&task, &project, &repo).await;
+        // Merged branch is not Active, so falls through to default
+        assert_eq!(source, "ralphx/test/task-merge");
+        assert_eq!(target, "main");
+    }
+
+    #[tokio::test]
+    async fn resolve_merge_branches_plan_task_with_abandoned_branch_returns_default() {
+        let project = make_project(Some("main"));
+        let mut task = make_task(Some("art-3"), Some("ralphx/test/task-abandoned"));
+        task.id = TaskId::from_string("task-abandoned".to_string());
+
+        let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
+        let pb = make_plan_branch(
+            "art-3",
+            "ralphx/test/plan-ghi789",
+            PlanBranchStatus::Abandoned,
+            None,
+        );
+        mem_repo.create(pb).await.unwrap();
+
+        let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
+        let (source, target) = resolve_merge_branches(&task, &project, &repo).await;
+        // Abandoned branch is not Active, so falls through to default
+        assert_eq!(source, "ralphx/test/task-abandoned");
+        assert_eq!(target, "main");
+    }
+
+    #[tokio::test]
+    async fn resolve_merge_branches_defaults_to_main_when_no_base_branch() {
+        let project = make_project(None);
+        let mut task = make_task(None, Some("ralphx/test/task-no-base"));
+        task.id = TaskId::from_string("task-no-base".to_string());
+
+        let repo: Option<Arc<dyn PlanBranchRepository>> = None;
+        let (source, target) = resolve_merge_branches(&task, &project, &repo).await;
+        assert_eq!(source, "ralphx/test/task-no-base");
+        assert_eq!(target, "main");
+    }
+
+    #[tokio::test]
+    async fn resolve_merge_branches_merge_task_checked_before_plan_task() {
+        // If a task is both a merge task AND has plan_artifact_id,
+        // merge task check should take precedence
+        let project = make_project(Some("main"));
+        let mut task = make_task(Some("art-1"), Some("ralphx/test/task-dual"));
+        task.id = TaskId::from_string("dual-task".to_string());
+
+        let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
+        let pb = make_plan_branch(
+            "art-1",
+            "ralphx/test/plan-dual",
+            PlanBranchStatus::Active,
+            Some("dual-task"),
+        );
+        mem_repo.create(pb).await.unwrap();
+
+        let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
+        let (source, target) = resolve_merge_branches(&task, &project, &repo).await;
+        // Merge task path wins: feature branch into base
+        assert_eq!(source, "ralphx/test/plan-dual");
+        assert_eq!(target, "main");
+    }
+}

@@ -279,7 +279,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: test(plan_branch): add unit tests for entity, repository, side effects, and accept flow"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

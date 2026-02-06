@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-02-06 23:00:00 - Phase 85 Task 10: Backend Tests
+**What:**
+- Added 15 unit tests for `resolve_task_base_branch` and `resolve_merge_branches` helpers in `side_effects.rs`
+- Tests cover: no repo, no base branch, no plan artifact, active feature branch, merged branch, abandoned branch, no matching branch, merge task into base, plan task into feature, regular task into base, merge task precedence over plan task
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (clean)
+- `cargo test` (all pass)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-06 22:00:00 - Phase 85 Task 9: Mock Layer + Project Settings UI
 **What:**
 - Created `src/api-mock/plan-branch.ts`: full mock implementations for all planBranchApi methods (getByPlan, getByProject, enable, disable, updateProjectSetting) with camelCase data + toSnakeCasePlanBranch helper for tauri-api-core.ts
