@@ -6,7 +6,7 @@ use super::services::{AgentSpawner, DependencyManager, EventEmitter, Notifier, R
 use super::types::Blocker;
 use crate::application::ChatService;
 use crate::commands::ExecutionState;
-use crate::domain::repositories::{ProjectRepository, TaskRepository};
+use crate::domain::repositories::{PlanBranchRepository, ProjectRepository, TaskRepository};
 use std::sync::Arc;
 use std::any::Any;
 use tauri::{AppHandle, Runtime, Wry};
@@ -54,6 +54,10 @@ pub struct TaskServices {
     /// Project repository for fetching project settings during state transitions.
     /// Used by TransitionHandler to get git_mode and worktree_parent_directory.
     pub project_repo: Option<Arc<dyn ProjectRepository>>,
+
+    /// Plan branch repository for resolving feature branch targets during state transitions.
+    /// Used by TransitionHandler to check if a task belongs to a plan with a feature branch.
+    pub plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
 }
 
 impl TaskServices {
@@ -78,6 +82,7 @@ impl TaskServices {
             task_scheduler: None,
             task_repo: None,
             project_repo: None,
+            plan_branch_repo: None,
         }
     }
 
@@ -123,6 +128,12 @@ impl TaskServices {
         self
     }
 
+    /// Set the plan branch repository (builder pattern)
+    pub fn with_plan_branch_repo(mut self, repo: Arc<dyn PlanBranchRepository>) -> Self {
+        self.plan_branch_repo = Some(repo);
+        self
+    }
+
     /// Creates a TaskServices with all mock implementations for testing
     pub fn new_mock() -> Self {
         use crate::application::MockChatService;
@@ -139,6 +150,7 @@ impl TaskServices {
             task_scheduler: Some(Arc::new(MockTaskScheduler::new())),
             task_repo: None,
             project_repo: None,
+            plan_branch_repo: None,
         }
     }
 }
@@ -157,6 +169,7 @@ impl std::fmt::Debug for TaskServices {
             .field("task_scheduler", &self.task_scheduler.as_ref().map(|_| "<TaskScheduler>"))
             .field("task_repo", &self.task_repo.as_ref().map(|_| "<TaskRepository>"))
             .field("project_repo", &self.project_repo.as_ref().map(|_| "<ProjectRepository>"))
+            .field("plan_branch_repo", &self.plan_branch_repo.as_ref().map(|_| "<PlanBranchRepository>"))
             .finish()
     }
 }

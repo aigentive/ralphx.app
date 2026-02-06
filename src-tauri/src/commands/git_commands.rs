@@ -440,6 +440,7 @@ fn create_transition_service(
         Arc::clone(execution_state),
         state.app_handle.clone(),
     )
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
 }
 
 /// Clean up git resources (branch/worktree) for a task

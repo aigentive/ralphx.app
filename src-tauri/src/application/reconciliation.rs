@@ -17,7 +17,7 @@ use crate::domain::entities::{
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
+    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 
@@ -254,6 +254,7 @@ pub struct ReconciliationRunner<R: Runtime = tauri::Wry> {
     agent_run_repo: Arc<dyn AgentRunRepository>,
     transition_service: Arc<TaskTransitionService<R>>,
     execution_state: Arc<ExecutionState>,
+    plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
     app_handle: Option<AppHandle<R>>,
     policy: RecoveryPolicy,
     prompt_tracker: Arc<Mutex<HashSet<String>>>,
@@ -289,6 +290,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             agent_run_repo,
             transition_service,
             execution_state,
+            plan_branch_repo: None,
             app_handle,
             policy: RecoveryPolicy,
             prompt_tracker: Arc::new(Mutex::new(HashSet::new())),
@@ -297,6 +299,11 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
     pub fn with_app_handle(mut self, app_handle: AppHandle<R>) -> Self {
         self.app_handle = Some(app_handle);
+        self
+    }
+
+    pub fn with_plan_branch_repo(mut self, repo: Arc<dyn PlanBranchRepository>) -> Self {
+        self.plan_branch_repo = Some(repo);
         self
     }
 
@@ -600,6 +607,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
                     &self.message_queue,
                     &self.running_agent_registry,
                     &self.execution_state,
+                    &self.plan_branch_repo,
                     self.app_handle.as_ref(),
                 )
                 .await;

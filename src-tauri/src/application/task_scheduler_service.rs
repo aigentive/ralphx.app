@@ -19,7 +19,7 @@ use crate::commands::ExecutionState;
 use crate::domain::entities::{GitMode, InternalStatus, ProjectId, Task};
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
+    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::TaskScheduler;
@@ -55,6 +55,8 @@ pub struct TaskSchedulerService<R: Runtime = tauri::Wry> {
     message_queue: Arc<MessageQueue>,
     running_agent_registry: Arc<RunningAgentRegistry>,
     app_handle: Option<AppHandle<R>>,
+    /// Optional plan branch repository for feature branch resolution.
+    plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
     /// Phase 82: Optional project ID to scope scheduling to a single project.
     /// When set, only Ready tasks from this project are considered.
     active_project_id: RwLock<Option<ProjectId>>,
@@ -90,8 +92,15 @@ impl<R: Runtime> TaskSchedulerService<R> {
             message_queue,
             running_agent_registry,
             app_handle,
+            plan_branch_repo: None,
             active_project_id: RwLock::new(None),
         }
+    }
+
+    /// Set the plan branch repository for feature branch resolution (builder pattern).
+    pub fn with_plan_branch_repo(mut self, repo: Arc<dyn PlanBranchRepository>) -> Self {
+        self.plan_branch_repo = Some(repo);
+        self
     }
 
     /// Set the active project ID for scoped scheduling (Phase 82).
@@ -206,7 +215,7 @@ impl<R: Runtime> TaskSchedulerService<R> {
     where
         R: Runtime,
     {
-        TaskTransitionService::new(
+        let service = TaskTransitionService::new(
             Arc::clone(&self.task_repo),
             Arc::clone(&self.task_dependency_repo),
             Arc::clone(&self.project_repo),
@@ -219,7 +228,12 @@ impl<R: Runtime> TaskSchedulerService<R> {
             Arc::clone(&self.running_agent_registry),
             Arc::clone(&self.execution_state),
             self.app_handle.clone(),
-        )
+        );
+        if let Some(ref repo) = self.plan_branch_repo {
+            service.with_plan_branch_repo(Arc::clone(repo))
+        } else {
+            service
+        }
     }
 }
 

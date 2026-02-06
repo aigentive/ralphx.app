@@ -206,7 +206,8 @@ pub async fn complete_merge(
         Arc::clone(&state.execution_state),
         state.app_state.app_handle.as_ref().cloned(),
     )
-    .with_task_scheduler(task_scheduler);
+    .with_task_scheduler(task_scheduler)
+    .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo));
 
     transition_service
         .transition_task(&task_id, InternalStatus::Merged)
@@ -299,7 +300,8 @@ pub async fn report_conflict(
         Arc::clone(&state.app_state.running_agent_registry),
         Arc::clone(&state.execution_state),
         state.app_state.app_handle.as_ref().cloned(),
-    );
+    )
+    .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo));
 
     transition_service
         .transition_task(&task_id, InternalStatus::MergeConflict)
@@ -378,7 +380,8 @@ pub async fn report_incomplete(
         Arc::clone(&state.app_state.running_agent_registry),
         Arc::clone(&state.execution_state),
         state.app_state.app_handle.as_ref().cloned(),
-    );
+    )
+    .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo));
 
     transition_service
         .transition_task(&task_id, InternalStatus::MergeIncomplete)

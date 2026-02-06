@@ -13,6 +13,7 @@ pub mod memory_execution_settings_repo;
 pub mod memory_ideation_session_repo;
 pub mod memory_ideation_settings_repo;
 pub mod memory_methodology_repo;
+pub mod memory_plan_branch_repo;
 pub mod memory_process_repo;
 pub mod memory_project_repo;
 pub mod memory_proposal_dependency_repo;
@@ -41,6 +42,7 @@ pub use memory_execution_settings_repo::{
 pub use memory_ideation_session_repo::MemoryIdeationSessionRepository;
 pub use memory_ideation_settings_repo::MemoryIdeationSettingsRepository;
 pub use memory_methodology_repo::MemoryMethodologyRepository;
+pub use memory_plan_branch_repo::MemoryPlanBranchRepository;
 pub use memory_process_repo::MemoryProcessRepository;
 pub use memory_project_repo::MemoryProjectRepository;
 pub use memory_proposal_dependency_repo::MemoryProposalDependencyRepository;

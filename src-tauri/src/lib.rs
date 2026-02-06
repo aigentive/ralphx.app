@@ -175,6 +175,7 @@ pub fn run() {
             let startup_task_repo = Arc::clone(&app_state.task_repo);
             let startup_project_repo = Arc::clone(&app_state.project_repo);
             let startup_task_dependency_repo = Arc::clone(&app_state.task_dependency_repo);
+            let startup_plan_branch_repo = Arc::clone(&app_state.plan_branch_repo);
             let startup_chat_message_repo = Arc::clone(&app_state.chat_message_repo);
             let startup_conversation_repo = Arc::clone(&app_state.chat_conversation_repo);
             let startup_agent_run_repo = Arc::clone(&app_state.agent_run_repo);
@@ -262,7 +263,8 @@ pub fn run() {
                     Arc::clone(&startup_execution_state),
                     Some(startup_app_handle),
                 )
-                .with_task_scheduler(Arc::clone(&task_scheduler)));
+                .with_task_scheduler(Arc::clone(&task_scheduler))
+                .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo)));
 
                 let runner = StartupJobRunner::new(
                     startup_task_repo,
@@ -300,7 +302,8 @@ pub fn run() {
                     chat_resumption_running_agent_registry,
                     Arc::clone(&startup_execution_state),
                 )
-                .with_app_handle(chat_resumption_app_handle);
+                .with_app_handle(chat_resumption_app_handle)
+                .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo));
 
                 chat_resumption.run().await;
 
@@ -318,7 +321,8 @@ pub fn run() {
                         Arc::clone(&startup_execution_state),
                         Some(reconcile_app_handle.clone()),
                     )
-                    .with_task_scheduler(Arc::clone(&task_scheduler)));
+                    .with_task_scheduler(Arc::clone(&task_scheduler))
+                    .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo)));
 
                 let reconcile_runner = ReconciliationRunner::new(
                     reconcile_task_repo,
@@ -334,7 +338,8 @@ pub fn run() {
                     reconcile_transition_service,
                     Arc::clone(&startup_execution_state),
                     Some(reconcile_app_handle),
-                );
+                )
+                .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo));
 
                 reconcile_runner.reconcile_stuck_tasks().await;
 

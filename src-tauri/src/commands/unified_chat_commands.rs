@@ -166,6 +166,7 @@ fn create_chat_service(
     )
     .with_app_handle(app_handle)
     .with_execution_state(Arc::clone(execution_state))
+    .with_plan_branch_repo(state.plan_branch_repo.clone())
 }
 
 /// Parse context type string to enum

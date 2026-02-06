@@ -19,7 +19,7 @@ use crate::domain::entities::{
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
+    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentKey, RunningAgentRegistry};
 use crate::infrastructure::agents::claude::{
@@ -84,6 +84,7 @@ pub fn spawn_send_message_background<R: Runtime>(
     message_queue: Arc<MessageQueue>,
     running_agent_registry: Arc<RunningAgentRegistry>,
     execution_state: Option<Arc<ExecutionState>>,
+    plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
     app_handle: Option<AppHandle<R>>,
 ) {
     tokio::spawn(async move {
@@ -227,6 +228,11 @@ pub fn spawn_send_message_background<R: Runtime>(
                                     app_handle.clone(),
                                 )
                                 .with_task_scheduler(task_scheduler);
+                                let transition_service = if let Some(ref repo) = plan_branch_repo {
+                                    transition_service.with_plan_branch_repo(Arc::clone(repo))
+                                } else {
+                                    transition_service
+                                };
                                 if let Err(e) = transition_service
                                     .transition_task(&task_id, InternalStatus::PendingReview)
                                     .await
@@ -264,6 +270,7 @@ pub fn spawn_send_message_background<R: Runtime>(
                             &message_queue,
                             &running_agent_registry,
                             exec_state,
+                            &plan_branch_repo,
                             app_handle.as_ref(),
                         )
                         .await;
@@ -624,6 +631,7 @@ pub fn spawn_send_message_background<R: Runtime>(
                             &message_queue,
                             &running_agent_registry,
                             exec_state,
+                            &plan_branch_repo,
                             app_handle.as_ref(),
                         )
                         .await;
@@ -662,6 +670,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
     message_queue: &Arc<MessageQueue>,
     running_agent_registry: &Arc<RunningAgentRegistry>,
     execution_state: &Arc<ExecutionState>,
+    plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
     app_handle: Option<&AppHandle<R>>,
 ) {
     let task_id = TaskId::from_string(task_id_str.to_string());
@@ -747,6 +756,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
             message_queue,
             running_agent_registry,
             execution_state,
+            plan_branch_repo,
             app_handle,
         )
         .await;
@@ -773,6 +783,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
                 message_queue,
                 running_agent_registry,
                 execution_state,
+                plan_branch_repo,
                 app_handle,
             )
             .await;
@@ -801,6 +812,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
                 message_queue,
                 running_agent_registry,
                 execution_state,
+                plan_branch_repo,
                 app_handle,
             )
             .await;
@@ -832,6 +844,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
                 message_queue,
                 running_agent_registry,
                 execution_state,
+                plan_branch_repo,
                 app_handle,
             )
             .await;
@@ -869,6 +882,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
                 message_queue,
                 running_agent_registry,
                 execution_state,
+                plan_branch_repo,
                 app_handle,
             )
             .await;
@@ -894,6 +908,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
                 message_queue,
                 running_agent_registry,
                 execution_state,
+                plan_branch_repo,
                 app_handle,
             )
             .await;
@@ -924,6 +939,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
                 message_queue,
                 running_agent_registry,
                 execution_state,
+                plan_branch_repo,
                 app_handle,
             )
             .await;
@@ -981,6 +997,7 @@ pub(crate) async fn reconcile_merge_auto_complete<R: Runtime>(
     message_queue: &Arc<MessageQueue>,
     running_agent_registry: &Arc<RunningAgentRegistry>,
     execution_state: &Arc<ExecutionState>,
+    plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
     app_handle: Option<&AppHandle<R>>,
 ) {
     attempt_merge_auto_complete(
@@ -996,6 +1013,7 @@ pub(crate) async fn reconcile_merge_auto_complete<R: Runtime>(
         message_queue,
         running_agent_registry,
         execution_state,
+        plan_branch_repo,
         app_handle,
     )
     .await;
@@ -1017,6 +1035,7 @@ async fn transition_to_merge_conflict<R: Runtime>(
     message_queue: &Arc<MessageQueue>,
     running_agent_registry: &Arc<RunningAgentRegistry>,
     execution_state: &Arc<ExecutionState>,
+    plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
     app_handle: Option<&AppHandle<R>>,
 ) {
     tracing::info!(
@@ -1039,6 +1058,11 @@ async fn transition_to_merge_conflict<R: Runtime>(
         Arc::clone(execution_state),
         app_handle.cloned(),
     );
+    let transition_service = if let Some(ref repo) = plan_branch_repo {
+        transition_service.with_plan_branch_repo(Arc::clone(repo))
+    } else {
+        transition_service
+    };
 
     if let Err(e) = transition_service
         .transition_task(task_id, InternalStatus::MergeConflict)
@@ -1068,6 +1092,7 @@ async fn transition_to_merge_incomplete<R: Runtime>(
     message_queue: &Arc<MessageQueue>,
     running_agent_registry: &Arc<RunningAgentRegistry>,
     execution_state: &Arc<ExecutionState>,
+    plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
     app_handle: Option<&AppHandle<R>>,
 ) {
     tracing::info!(
@@ -1090,6 +1115,11 @@ async fn transition_to_merge_incomplete<R: Runtime>(
         Arc::clone(execution_state),
         app_handle.cloned(),
     );
+    let transition_service = if let Some(ref repo) = plan_branch_repo {
+        transition_service.with_plan_branch_repo(Arc::clone(repo))
+    } else {
+        transition_service
+    };
 
     if let Err(e) = transition_service
         .transition_task(task_id, InternalStatus::MergeIncomplete)

@@ -8,8 +8,8 @@ use tauri::{AppHandle, Emitter};
 
 use super::super::machine::State;
 use crate::application::{GitService, MergeAttemptResult};
-use crate::domain::entities::{GitMode, InternalStatus, Project, Task, TaskId, ProjectId};
-use crate::domain::repositories::TaskRepository;
+use crate::domain::entities::{GitMode, InternalStatus, PlanBranchStatus, Project, Task, TaskId, ProjectId};
+use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 use crate::error::{AppError, AppResult};
 
 /// Complete a merge operation by transitioning task to Merged and cleaning up.
@@ -203,6 +203,87 @@ fn slugify(name: &str) -> String {
         .to_string()
 }
 
+/// Resolve the base branch for a task's working branch.
+///
+/// If the task belongs to a plan with an active feature branch, returns the feature
+/// branch name so the task branch is created from it. Otherwise falls back to the
+/// project's base branch.
+async fn resolve_task_base_branch(
+    task: &Task,
+    project: &Project,
+    plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
+) -> String {
+    let default = project.base_branch.as_deref().unwrap_or("main").to_string();
+
+    let Some(ref plan_branch_repo) = plan_branch_repo else {
+        return default;
+    };
+    let Some(ref plan_artifact_id) = task.plan_artifact_id else {
+        return default;
+    };
+
+    match plan_branch_repo.get_by_plan_artifact_id(plan_artifact_id).await {
+        Ok(Some(pb)) if pb.status == PlanBranchStatus::Active => {
+            tracing::info!(
+                task_id = task.id.as_str(),
+                feature_branch = %pb.branch_name,
+                "Resolved task base branch to plan feature branch"
+            );
+            pb.branch_name
+        }
+        _ => default,
+    }
+}
+
+/// Resolve the source and target branches for a merge operation.
+///
+/// Returns `(source_branch, target_branch)`:
+/// - **Merge task** (task is `plan_branches.merge_task_id`): merge feature branch into project base
+/// - **Plan task with feature branch**: merge task branch into feature branch
+/// - **Regular task**: merge task branch into project base branch
+async fn resolve_merge_branches(
+    task: &Task,
+    project: &Project,
+    plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
+) -> (String, String) {
+    let base_branch = project.base_branch.as_deref().unwrap_or("main").to_string();
+    let task_branch = task.task_branch.clone().unwrap_or_default();
+
+    let Some(ref plan_branch_repo) = plan_branch_repo else {
+        return (task_branch, base_branch);
+    };
+
+    // Check if this task IS the merge task for a plan branch
+    if let Ok(Some(pb)) = plan_branch_repo.get_by_merge_task_id(&task.id).await {
+        if pb.status == PlanBranchStatus::Active {
+            tracing::info!(
+                task_id = task.id.as_str(),
+                feature_branch = %pb.branch_name,
+                base_branch = %base_branch,
+                "Merge task: merging feature branch into base"
+            );
+            return (pb.branch_name, base_branch);
+        }
+    }
+
+    // Check if this task belongs to a plan with a feature branch
+    if let Some(ref plan_artifact_id) = task.plan_artifact_id {
+        if let Ok(Some(pb)) = plan_branch_repo.get_by_plan_artifact_id(plan_artifact_id).await {
+            if pb.status == PlanBranchStatus::Active {
+                tracing::info!(
+                    task_id = task.id.as_str(),
+                    task_branch = %task_branch,
+                    feature_branch = %pb.branch_name,
+                    "Plan task: merging task branch into feature branch"
+                );
+                return (task_branch, pb.branch_name);
+            }
+        }
+    }
+
+    (task_branch, base_branch)
+}
+
 impl<'a> super::TransitionHandler<'a> {
     /// Execute on-enter action for a state
     ///
@@ -260,7 +341,10 @@ impl<'a> super::TransitionHandler<'a> {
                                 slugify(&project.name),
                                 task_id_str
                             );
-                            let base_branch = project.base_branch.as_deref().unwrap_or("main");
+                            // Resolve base branch: feature branch for plan tasks, project base otherwise
+                            let plan_branch_repo = &self.machine.context.services.plan_branch_repo;
+                            let resolved_base = resolve_task_base_branch(&task, &project, plan_branch_repo).await;
+                            let base_branch = resolved_base.as_str();
                             let repo_path = Path::new(&project.working_directory);
 
                             // Attempt branch/worktree setup. Only ExecutionBlocked errors
@@ -801,22 +885,28 @@ impl<'a> super::TransitionHandler<'a> {
             return;
         };
 
-        // Ensure task has a branch to merge
-        let Some(ref task_branch) = task.task_branch else {
-            tracing::warn!(
-                task_id = task_id_str,
-                "Skipping programmatic merge: task has no branch"
-            );
-            return;
-        };
+        // Resolve source and target branches (handles merge tasks and plan feature branches)
+        let plan_branch_repo = &self.machine.context.services.plan_branch_repo;
+        let (source_branch, target_branch) = resolve_merge_branches(&task, &project, plan_branch_repo).await;
 
-        let base_branch = project.base_branch.as_deref().unwrap_or("main");
+        // Ensure we have a source branch to merge
+        if source_branch.is_empty() {
+            // For regular tasks, source_branch comes from task_branch which may be None
+            if task.task_branch.is_none() {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    "Skipping programmatic merge: task has no branch"
+                );
+                return;
+            }
+        }
+
         let repo_path = Path::new(&project.working_directory);
 
         tracing::info!(
             task_id = task_id_str,
-            task_branch = %task_branch,
-            base_branch = %base_branch,
+            source_branch = %source_branch,
+            target_branch = %target_branch,
             "Attempting programmatic rebase and merge (Phase 1)"
         );
 
@@ -846,7 +936,7 @@ impl<'a> super::TransitionHandler<'a> {
         }
 
         // Attempt the rebase and merge
-        match GitService::try_rebase_and_merge(repo_path, task_branch, base_branch) {
+        match GitService::try_rebase_and_merge(repo_path, &source_branch, &target_branch) {
             Ok(MergeAttemptResult::Success { commit_sha }) => {
                 // Fast path success: merge completed without conflicts
                 tracing::info!(
@@ -866,6 +956,51 @@ impl<'a> super::TransitionHandler<'a> {
                 ).await {
                     tracing::error!(error = %e, task_id = task_id_str, "Failed to complete programmatic merge");
                 } else {
+                    // Post-merge cleanup for merge tasks: update plan_branch status,
+                    // delete feature branch, emit event
+                    if let Some(ref plan_branch_repo) = plan_branch_repo {
+                        if let Ok(Some(pb)) = plan_branch_repo.get_by_merge_task_id(&task_id).await {
+                            // Mark plan branch as merged
+                            if let Err(e) = plan_branch_repo.set_merged(&pb.id).await {
+                                tracing::warn!(
+                                    error = %e,
+                                    task_id = task_id_str,
+                                    plan_branch_id = pb.id.as_str(),
+                                    "Failed to mark plan branch as merged (non-fatal)"
+                                );
+                            }
+
+                            // Delete the feature branch from git
+                            if let Err(e) = GitService::delete_feature_branch(repo_path, &pb.branch_name) {
+                                tracing::warn!(
+                                    error = %e,
+                                    task_id = task_id_str,
+                                    branch = %pb.branch_name,
+                                    "Failed to delete feature branch after merge (non-fatal)"
+                                );
+                            } else {
+                                tracing::info!(
+                                    task_id = task_id_str,
+                                    branch = %pb.branch_name,
+                                    "Deleted feature branch after plan merge"
+                                );
+                            }
+
+                            // Emit plan-merge-complete event
+                            if let Some(handle) = app_handle {
+                                let _ = handle.emit(
+                                    "plan:merge_complete",
+                                    serde_json::json!({
+                                        "plan_artifact_id": pb.plan_artifact_id.as_str(),
+                                        "plan_branch_id": pb.id.as_str(),
+                                        "merge_task_id": task_id_str,
+                                        "branch_name": pb.branch_name,
+                                    }),
+                                );
+                            }
+                        }
+                    }
+
                     // Auto-unblock tasks that were waiting on this task
                     // (programmatic merge path - on_enter(Merged) won't be triggered)
                     self.machine
@@ -956,8 +1091,8 @@ impl<'a> super::TransitionHandler<'a> {
                     task_id = task_id_str,
                     error = %e,
                     worktree_path = ?task.worktree_path,
-                    task_branch = ?task.task_branch,
-                    base_branch = %base_branch,
+                    source_branch = %source_branch,
+                    target_branch = %target_branch,
                     repo_path = %repo_path.display(),
                     "Programmatic merge failed due to error, transitioning to MergeIncomplete"
                 );
