@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-02-06 21:00:00 - Phase 85 Task 7: Frontend API Layer for Plan Branches
+**What:**
+- Created `src/api/plan-branch.schemas.ts` with PlanBranchSchema (snake_case matching Rust PlanBranchResponse)
+- Created `src/api/plan-branch.types.ts` with PlanBranch interface (camelCase) and EnableFeatureBranchInput
+- Created `src/api/plan-branch.transforms.ts` with transformPlanBranch function
+- Created `src/api/plan-branch.ts` with planBranchApi: getByPlan, getByProject, enable, disable, updateProjectSetting
+- Re-exported planBranchApi in `src/lib/tauri.ts` (named exports + realApi aggregate)
+- Added stub planBranches mock in `src/api-mock/index.ts` for type parity (Task 9 will flesh out)
+
+**Commands:**
+- `npm run lint` (clean for modified files)
+- `npm run typecheck` (clean)
+
+**Visual Verification:** N/A - API layer only, no UI components
+
+**Result:** Success
+
 ### 2026-02-06 20:00:00 - Phase 85 Task 6: Accept Plan Integration (Transactional)
 **What:**
 - Added `use_feature_branch: Option<bool>` to `ApplyProposalsInput` (serde default None for backward compat)

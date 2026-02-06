@@ -70,6 +70,15 @@ export const mockApi = {
   taskGraph: mockTaskGraphApi,
   steps: mockStepsApi,
   testData: mockTestDataApi,
+  planBranches: {
+    getByPlan: async () => null,
+    getByProject: async () => [],
+    enable: async () => {
+      throw new Error("Not implemented in mock");
+    },
+    disable: async () => {},
+    updateProjectSetting: async () => {},
+  },
 } as const;
 
 /**
