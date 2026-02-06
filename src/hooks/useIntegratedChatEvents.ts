@@ -21,12 +21,14 @@ interface UseIntegratedChatEventsProps {
   activeConversationId: string | null;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
   setStreamingToolCalls: Dispatch<SetStateAction<ToolCall[]>>;
+  setStreamingText: Dispatch<SetStateAction<string>>;
 }
 
 export function useIntegratedChatEvents({
   activeConversationId,
   messagesEndRef,
   setStreamingToolCalls,
+  setStreamingText,
 }: UseIntegratedChatEventsProps) {
   const bus = useEventBus();
   const queryClient = useQueryClient();
@@ -95,14 +97,36 @@ export function useIntegratedChatEvents({
       })
     );
 
+    // Streaming text chunks - accumulate for real-time display
+    unsubscribes.push(
+      bus.subscribe<{ text: string; conversation_id: string }>(
+        "agent:chunk", (payload) => {
+          if (payload.conversation_id === activeConversationIdRef.current) {
+            setStreamingText((prev) => prev + payload.text);
+          }
+        }
+      )
+    );
+
+    unsubscribes.push(
+      bus.subscribe<{ text: string; conversation_id: string }>(
+        "chat:chunk", (payload) => {
+          if (payload.conversation_id === activeConversationIdRef.current) {
+            setStreamingText((prev) => prev + payload.text);
+          }
+        }
+      )
+    );
+
     // Listen for chat run completion - clear streaming state and refresh
     unsubscribes.push(
       bus.subscribe<{
         conversation_id: string;
       }>("chat:run_completed", (payload) => {
         const { conversation_id } = payload;
-        // Clear streaming tool calls
+        // Clear streaming state
         setStreamingToolCalls([]);
+        setStreamingText("");
         // Invalidate cache to get final messages
         if (conversation_id) {
           queryClient.invalidateQueries({
@@ -159,6 +183,7 @@ export function useIntegratedChatEvents({
       }>("agent:run_completed", (payload) => {
         const { conversation_id } = payload;
         setStreamingToolCalls([]);
+        setStreamingText("");
         if (conversation_id) {
           queryClient.invalidateQueries({
             queryKey: chatKeys.conversation(conversation_id),
@@ -204,8 +229,9 @@ export function useIntegratedChatEvents({
         conversation_id: string;
       }>("execution:run_completed", (payload) => {
         const { conversation_id } = payload;
-        // Clear streaming tool calls
+        // Clear streaming state
         setStreamingToolCalls([]);
+        setStreamingText("");
         // Invalidate cache to get final messages
         if (conversation_id) {
           queryClient.invalidateQueries({
@@ -223,7 +249,8 @@ export function useIntegratedChatEvents({
 
     return () => {
       setStreamingToolCalls([]); // Clear on cleanup to prevent context bleeding
+      setStreamingText("");
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [bus, queryClient, messagesEndRef, setStreamingToolCalls, activeConversationId]);
+  }, [bus, queryClient, messagesEndRef, setStreamingToolCalls, setStreamingText, activeConversationId]);
 }
