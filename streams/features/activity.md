@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-02-07 00:00:00 - Phase 85 Gap Verification
+**What:**
+- Ran full code gap verification (5 checks) for Phase 85 "Feature Branch for Plan Groups"
+- Wiring check: All 8 components/features properly connected (PlanGroupSettings, FeatureBranchBadge, GitSettingsSection toggle, planBranchApi, plan_branch_commands, resolve helpers, useFeatureBranch, plan:merge_complete event)
+- API surface check: All 5 Tauri commands registered and wired (Tauri auto-converts snake_case params to camelCase)
+- Event check: plan:merge_complete fully wired (emit → listen → query invalidation)
+- Type check: All Phase 85 types consistent across Rust, Zod, TypeScript layers
+- Visual gap verification: Mock-check evidence exists, but screenshots missing (dev server not running)
+- Logged 2 P0 visual coverage gaps to backlog
+
+**Commands:**
+- 4 parallel Explore agents for wiring, API, events, and types verification
+- Manual verification of Tauri parameter auto-conversion behavior
+
+**Visual Verification:** P0 gaps logged - screenshots required for PlanGroupSettings/FeatureBranchBadge and GitSettingsSection toggle
+
+**Result:** Code gaps clean, visual screenshots pending (P0 logged)
+
+---
+
 ### 2026-02-06 23:30:00 - P0 Fix: plan:merge_complete Event Listener
 **What:**
 - Gap verification found plan:merge_complete event emitted in side_effects.rs but no frontend listener

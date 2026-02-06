@@ -103,6 +103,11 @@
 - [x] [Frontend] Event not listened: plan:merge_complete emitted in side_effects.rs but no frontend listener to invalidate plan-branch query - PlanGroupHeader badge won't update reactively - src/components/TaskGraph/groups/PlanGroupHeader.tsx:210
   - Fixed by adding useEventBus subscription for plan:merge_complete in PlanGroupHeader
 
+## From Phase 85 Visual Gap Verification (2026-02-06)
+
+- [ ] [Visual/Coverage] PlanGroupSettings + FeatureBranchBadge - no visual verification screenshot - src/components/TaskGraph/groups/PlanGroupHeader.tsx
+- [ ] [Visual/Coverage] GitSettingsSection feature branch toggle - no visual verification screenshot - src/components/settings/GitSettingsSection.tsx
+
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)
