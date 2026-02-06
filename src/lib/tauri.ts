@@ -188,6 +188,19 @@ export {
   transformInjectTaskResponse,
 } from "@/api/tasks";
 
+// Plan Branch API
+export {
+  planBranchApi,
+  type PlanBranch,
+  type PlanBranchStatus,
+  type EnableFeatureBranchInput,
+  PlanBranchSchema,
+  PlanBranchStatusSchema,
+  PlanBranchListSchema,
+  PlanBranchNullableSchema,
+  transformPlanBranch,
+} from "@/api/plan-branch";
+
 // ============================================================================
 // Aggregate API Object
 // ============================================================================
@@ -203,6 +216,7 @@ import { permissionApi } from "@/api/permission";
 import { qaApi } from "@/api/qa-api";
 import { reviewsApi, fixTasksApi } from "@/api/reviews-api";
 import { tasksApi, stepsApi } from "@/api/tasks";
+import { planBranchApi } from "@/api/plan-branch";
 
 // Mock API imports for web mode
 import { mockApi } from "@/api-mock";
@@ -233,6 +247,7 @@ const realApi = {
   execution: executionApi,
   steps: stepsApi,
   testData: testDataApi,
+  planBranches: planBranchApi,
 } as const;
 
 /**
