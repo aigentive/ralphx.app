@@ -93,7 +93,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: fix(agents): add --tools restriction to build_cli_args for direct spawn path"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,

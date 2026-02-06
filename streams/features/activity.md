@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-02-07 01:30:00 - Phase 86 Task 1: Add --tools CLI restriction to build_cli_args()
+**What:**
+- Added `--tools` CLI flag restriction to both `build_cli_args()` and `spawn_agent()` in `claude_code_client.rs`
+- Both spawn paths (streaming via `build_cli_args` and non-streaming via `spawn_agent`) now apply tool restrictions from `agent_config.rs`
+- Added `get_allowed_tools` import to `claude_code_client.rs`
+- Added debug logging matching the pattern in `add_prompt_args()` (mod.rs)
+- Added 3 unit tests: `test_build_cli_args_applies_tools_restriction`, `test_build_cli_args_no_tools_for_unknown_agent`, `test_build_cli_args_restricted_agent_tools`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (clean)
+- `cargo test` (all pass)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-07 00:15:00 - P0: Visual Verify Phase 85 Components (PlanGroupSettings, FeatureBranchBadge, GitSettingsSection)
 **What:**
 - Fixed React Flow v12 StoreUpdater infinite loop crash in web mode
