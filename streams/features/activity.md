@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-02-08 00:15:00 - Remove Legacy Event Emissions from Backend (Phase 88, Task 2)
+**What:**
+- Removed legacy `CHAT_CHUNK` emission from `chat_service_streaming.rs` (after `AGENT_CHUNK` in TextChunk handler)
+- Removed 3 legacy `CHAT_TOOL_CALL` emissions from `chat_service_streaming.rs` (ToolCallStarted, ToolCallCompleted, ToolResultReceived handlers)
+- Removed legacy `execution:message_created`/`chat:message_created` emission from `chat_service_send_background.rs` (after assistant message update)
+- Removed 2 legacy `CHAT_RUN_COMPLETED` emissions from `chat_service_send_background.rs` (post-stream and post-queue)
+- Removed legacy `execution:error`/`chat:error` emission from `chat_service_send_background.rs` (error handler)
+- Removed legacy `execution:run_started`/`chat:run_started` emission from `chat_service/mod.rs`
+- Removed legacy `execution:message_created`/`chat:message_created` emission from `chat_service/mod.rs` (user message)
+- Removed 3 legacy constants from `chat_service_types.rs`: `CHAT_CHUNK`, `CHAT_TOOL_CALL`, `CHAT_RUN_COMPLETED`
+- Removed unused `events` import from `chat_service_send_background.rs`
+- Grep confirms zero remaining legacy event strings in `src-tauri/src/`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (clean)
+- `cargo test` (3580 passed, 0 failed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-07 22:45:00 - Remove Legacy Event Subscriptions from Frontend (Phase 88, Task 1)
 **What:**
 - Removed 7 legacy `bus.subscribe()` blocks from `useIntegratedChatEvents.ts`: `chat:tool_call`, `chat:chunk`, `chat:run_completed`, `chat:message_created`, `execution:message_created`, `execution:tool_call`, `execution:run_completed`

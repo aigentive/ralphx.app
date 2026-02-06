@@ -402,20 +402,6 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             },
         );
 
-        // Also emit legacy events for backwards compatibility
-        self.emit_event(
-            if context_type == ChatContextType::TaskExecution {
-                "execution:run_started"
-            } else {
-                "chat:run_started"
-            },
-            serde_json::json!({
-                "run_id": &agent_run_id,
-                "conversation_id": conversation_id.as_str(),
-                "task_id": if context_type == ChatContextType::TaskExecution { Some(context_id) } else { None },
-            }),
-        );
-
         // 4. Store user message
         let user_msg = chat_service_context::create_user_message(
             context_type,
@@ -444,21 +430,6 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 role: "user".to_string(),
                 content: message.to_string(),
             },
-        );
-
-        // Also emit legacy event
-        self.emit_event(
-            if context_type == ChatContextType::TaskExecution {
-                "execution:message_created"
-            } else {
-                "chat:message_created"
-            },
-            serde_json::json!({
-                "message_id": user_msg_id,
-                "conversation_id": conversation_id.as_str(),
-                "role": "user",
-                "content": message,
-            }),
         );
 
         // 6. Resolve working directory

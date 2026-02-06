@@ -30,7 +30,7 @@ use super::chat_service_context;
 use super::chat_service_helpers::{get_agent_name, get_assistant_role};
 use super::chat_service_streaming::process_stream_background;
 use super::chat_service_types::{
-    events, AgentErrorPayload, AgentMessageCreatedPayload, AgentQueueSentPayload,
+    AgentErrorPayload, AgentMessageCreatedPayload, AgentQueueSentPayload,
     AgentRunCompletedPayload, AgentRunStartedPayload,
 };
 
@@ -171,20 +171,6 @@ pub fn spawn_send_message_background<R: Runtime>(
                             },
                         );
 
-                        // Legacy event
-                        let _ = handle.emit(
-                            if context_type == ChatContextType::TaskExecution {
-                                "execution:message_created"
-                            } else {
-                                "chat:message_created"
-                            },
-                            serde_json::json!({
-                                "message_id": pre_assistant_msg_id,
-                                "conversation_id": conversation_id.as_str(),
-                                "role": get_assistant_role(&context_type).to_string(),
-                                "content": response_text,
-                            }),
-                        );
                     }
                 }
 
@@ -317,14 +303,6 @@ pub fn spawn_send_message_background<R: Runtime>(
                             },
                         );
 
-                        // Legacy event - unified to chat:* for all context types
-                        let _ = handle.emit(
-                            events::CHAT_RUN_COMPLETED,
-                            serde_json::json!({
-                                "conversation_id": conversation_id.as_str(),
-                                "claude_session_id": effective_session_id,
-                            }),
-                        );
                     }
                 } else {
                     tracing::info!(
@@ -562,14 +540,6 @@ pub fn spawn_send_message_background<R: Runtime>(
                                 },
                             );
 
-                            // Legacy event - unified to chat:* for all context types
-                            let _ = handle.emit(
-                                events::CHAT_RUN_COMPLETED,
-                                serde_json::json!({
-                                    "conversation_id": conversation_id.as_str(),
-                                    "claude_session_id": sess_id,
-                                }),
-                            );
                         }
                     }
                 } else {
@@ -613,18 +583,6 @@ pub fn spawn_send_message_background<R: Runtime>(
                         },
                     );
 
-                    // Legacy event
-                    let _ = handle.emit(
-                        if context_type == ChatContextType::TaskExecution {
-                            "execution:error"
-                        } else {
-                            "chat:error"
-                        },
-                        serde_json::json!({
-                            "conversation_id": conversation_id.as_str(),
-                            "error": e,
-                        }),
-                    );
                 }
 
                 // Handle merge auto-completion even on agent error
