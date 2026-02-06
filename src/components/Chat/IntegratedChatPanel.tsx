@@ -109,6 +109,8 @@ export function IntegratedChatPanel({
     activeConversationId,
     streamingToolCalls,
     setStreamingToolCalls,
+    streamingText,
+    setStreamingText,
     autoSelectConversation,
     // overrideAgentRunId is available but we use taskHistoryState.timestamp for scroll positioning
   } = useChatPanelContext({
@@ -475,16 +477,18 @@ export function IntegratedChatPanel({
     handleEditLastQueued(queuedMessages);
   };
 
-  // Handle stopping agent - clear streaming tool calls
+  // Handle stopping agent - clear streaming state
   const handleStopAgentWrapper = async () => {
     await handleStopAgent();
     setStreamingToolCalls([]);
+    setStreamingText("");
   };
 
   useIntegratedChatEvents({
     activeConversationId,
     messagesEndRef,
     setStreamingToolCalls,
+    setStreamingText,
   });
 
   // Handle Escape key to close panel
@@ -632,6 +636,7 @@ export function IntegratedChatPanel({
               isSending={isSending}
               isAgentRunning={isAgentRunning}
               streamingToolCalls={streamingToolCalls}
+              streamingText={streamingText}
               messagesEndRef={messagesEndRef}
               scrollToTimestamp={isHistoryMode ? taskHistoryState?.timestamp : null}
             />

@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-02-07 20:30:00 - Display Streaming Assistant Text via agent:chunk Events (Phase 87, Task 3)
+**What:**
+- Added `streamingText` + `setStreamingText` state to `useChatPanelContext.ts`, cleared on context change
+- Subscribed to `agent:chunk` + `chat:chunk` events in `useIntegratedChatEvents.ts` with conversation_id filtering
+- Cleared `streamingText` in all completion handlers (chat:run_completed, agent:run_completed, execution:run_completed) and cleanup
+- Rendered streaming text as `MessageItem` in `ChatMessageList.tsx` footer, before tool indicator; TypingIndicator hidden when streaming text present
+- Added scroll-to-bottom effect triggered by `streamingText` changes
+- Wired `streamingText`/`setStreamingText` through `IntegratedChatPanel.tsx` to events hook and message list
+- Cleared streaming text on stop agent action
+
+**Commands:**
+- `npm run lint` (0 new errors — all 32 pre-existing in TaskGraph)
+- `npm run typecheck` (clean)
+
+**Visual Verification:** N/A - events-based feature, requires live agent execution to verify visually
+
+**Result:** Success
+
 ### 2026-02-07 18:15:00 - Incremental Assistant Message Persistence During Streaming (Phase 87, Task 2)
 **What:**
 - Modified `process_stream_background` signature to accept optional `chat_message_repo` + `assistant_message_id` for incremental persistence

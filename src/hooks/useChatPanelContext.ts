@@ -60,6 +60,9 @@ export function useChatPanelContext({
   // Streaming tool calls - accumulated during agent execution
   const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCall[]>([]);
 
+  // Streaming text - accumulated from agent:chunk events for real-time display
+  const [streamingText, setStreamingText] = useState<string>("");
+
   // Build chat context based on selected task or ideation session
   const chatContext: ChatContext = useMemo(() => {
     if (ideationSessionId) {
@@ -132,8 +135,9 @@ export function useChatPanelContext({
       // Clear the active conversation immediately
       setActiveConversation(null);
 
-      // Clear streaming tool calls
+      // Clear streaming state
       setStreamingToolCalls([]);
+      setStreamingText("");
 
       // Clear the query cache for the old conversation to prevent stale data
       if (currentConversationId) {
@@ -270,6 +274,8 @@ export function useChatPanelContext({
     activeConversationId,
     streamingToolCalls,
     setStreamingToolCalls,
+    streamingText,
+    setStreamingText,
     autoSelectConversation,
     /** Override agent run ID for scroll positioning in history mode */
     overrideAgentRunId,

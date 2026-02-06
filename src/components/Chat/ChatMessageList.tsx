@@ -62,6 +62,8 @@ interface ChatMessageListProps {
   isAgentRunning: boolean;
   /** Streaming tool calls to display */
   streamingToolCalls: ToolCall[];
+  /** Streaming assistant text from agent:chunk events */
+  streamingText?: string;
   /** Ref to scroll to */
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
   /** Optional timestamp to scroll to (for history mode) - scrolls to first message at or after this time */
@@ -82,6 +84,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       isSending,
       isAgentRunning,
       streamingToolCalls,
+      streamingText,
       messagesEndRef,
       scrollToTimestamp,
     },
@@ -115,6 +118,14 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       const timeoutId = setTimeout(scrollToBottom, FOOTER_RENDER_DELAY_MS);
       return () => clearTimeout(timeoutId);
     }, [streamingToolCalls.length]);
+
+    // Scroll to bottom when streaming text changes (footer content expanding)
+    useEffect(() => {
+      if (!streamingText) return;
+
+      const timeoutId = setTimeout(scrollToBottom, FOOTER_RENDER_DELAY_MS);
+      return () => clearTimeout(timeoutId);
+    }, [streamingText]);
 
     // Scroll to specific timestamp for history mode (time-travel feature)
     // Finds the first message at or after the given timestamp and scrolls to it
@@ -166,13 +177,24 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             ),
             Footer: () => (
               <div className="px-3 pb-3 w-full" style={contentContainerStyle}>
+                {/* Show streaming assistant text from agent:chunk events */}
+                {streamingText && (
+                  <MessageItem
+                    key="streaming-assistant"
+                    role="assistant"
+                    content={streamingText}
+                    createdAt={new Date().toISOString()}
+                    toolCalls={null}
+                    contentBlocks={null}
+                  />
+                )}
                 {/* Show streaming tool calls or typing indicator while agent is working */}
                 {(isSending || isAgentRunning) && (
                   streamingToolCalls.length > 0 ? (
                     <StreamingToolIndicator toolCalls={streamingToolCalls} isActive={true} />
-                  ) : (
+                  ) : !streamingText ? (
                     <TypingIndicator />
-                  )
+                  ) : null
                 )}
                 <div ref={messagesEndRef} />
               </div>
