@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 85,
+  "currentPhase": 86,
   "phases": [
     {
       "phase": 0,
@@ -611,6 +611,13 @@
       "prd": "specs/phases/prd_phase_85_feature_branch_for_plan_groups.md",
       "status": "complete",
       "description": "Isolate plan work in feature branches with auto-merge task on plan completion"
+    },
+    {
+      "phase": 86,
+      "name": "Rogue Agent Tool Restriction Fix",
+      "prd": "specs/phases/prd_phase_86_rogue_agent_fix.md",
+      "status": "active",
+      "description": "Close tool restriction gap in build_cli_args, XML-delineate agent prompts, per-task CWD"
     }
   ]
 }
