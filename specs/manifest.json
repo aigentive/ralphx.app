@@ -623,7 +623,7 @@
       "phase": 87,
       "name": "Real-Time Message Persistence + Streaming Display",
       "prd": "specs/phases/prd_phase_87_realtime_message_persistence.md",
-      "status": "active",
+      "status": "complete",
       "description": "Incremental assistant message persistence during streaming, real-time text display via agent:chunk events"
     }
   ]
