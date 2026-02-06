@@ -98,6 +98,11 @@
 - [x] [Frontend] Orphaned API: Settings API calls missing projectId - per-project execution settings never saved - src/App.tsx:305,343
   - Fixed by passing currentProjectId to getSettings() and updateSettings(), added currentProjectId as dependency
 
+## From Phase 85 Verification (2026-02-06)
+
+- [x] [Frontend] Event not listened: plan:merge_complete emitted in side_effects.rs but no frontend listener to invalidate plan-branch query - PlanGroupHeader badge won't update reactively - src/components/TaskGraph/groups/PlanGroupHeader.tsx:210
+  - Fixed by adding useEventBus subscription for plan:merge_complete in PlanGroupHeader
+
 ---
 
 **Migrated from:** logs/code-quality.md (2026-01-28)

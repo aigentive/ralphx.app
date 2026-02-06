@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-06 23:30:00 - P0 Fix: plan:merge_complete Event Listener
+**What:**
+- Gap verification found plan:merge_complete event emitted in side_effects.rs but no frontend listener
+- Added useEventBus subscription in PlanGroupHeader.tsx to invalidate plan-branch query on event
+- Badge now updates reactively when plan merge completes
+
+**Commands:**
+- `npm run typecheck` (passes clean)
+- `npx eslint src/components/TaskGraph/groups/PlanGroupHeader.tsx` (passes clean)
+
+**Visual Verification:** N/A - event wiring fix, no visual changes
+
+**Result:** Success
+
+---
+
 ### 2026-02-06 23:00:00 - Phase 85 Task 10: Backend Tests
 **What:**
 - Added 15 unit tests for `resolve_task_base_branch` and `resolve_merge_branches` helpers in `side_effects.rs`
