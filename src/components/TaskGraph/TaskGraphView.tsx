@@ -21,6 +21,8 @@ import {
   type Edge,
   type NodeTypes,
   type EdgeTypes,
+  type OnNodesChange,
+  type OnEdgesChange,
 } from "@xyflow/react";
 
 import "@xyflow/react/dist/style.css";
@@ -148,21 +150,16 @@ function applyGraphFilters(
     (edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)
   );
 
-  // Update plan groups with filtered task lists (preserve references when unchanged)
-  let planGroupsChanged = false;
-  const filteredPlanGroups = planGroups.map((group) => {
-    const filteredTaskIds = group.taskIds.filter((taskId) => visibleNodeIds.has(taskId));
-    if (filteredTaskIds.length === group.taskIds.length) {
-      return group; // No tasks removed - return original reference
-    }
-    planGroupsChanged = true;
-    return { ...group, taskIds: filteredTaskIds };
-  });
+  // Update plan groups with filtered task lists
+  const filteredPlanGroups = planGroups.map((group) => ({
+    ...group,
+    taskIds: group.taskIds.filter((taskId) => visibleNodeIds.has(taskId)),
+  }));
 
   return {
     nodes: filteredNodes,
     edges: filteredEdges,
-    planGroups: planGroupsChanged ? filteredPlanGroups : planGroups,
+    planGroups: filteredPlanGroups,
   };
 }
 
@@ -298,7 +295,6 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   const { data: graphData, isLoading, error } = useTaskGraph(projectId);
   const {
     fitNodeInView,
-    fitNode,
     centerOnNode,
     centerOnNodeObject,
     fitViewDefault,
@@ -312,6 +308,8 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   const overlayCloseTimeoutRef = useRef<number | null>(null);
   const pendingTierAutoCenterRef = useRef<string | null>(null);
   const lastAutoCenteredPlanRef = useRef<string | null>(null);
+  const expandedPlanIdRef = useRef<string | null>(null);
+  const initialFitDoneRef = useRef(false);
 
   const graphReady = Boolean(graphData && graphData.nodes.length > 0);
 
@@ -325,41 +323,41 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
 
   const [grouping, setGrouping] = useState<GroupingState>(DEFAULT_GROUPING);
 
-  // Compute and apply collapsed state for plan groups on initial data load
-  // (avoid resetting on grouping toggles)
-  useEffect(() => {
-    if (!graphData) return;
+  // ---- Synchronous collapsed-state derivation --------------------------------
+  // React "adjust state during render" pattern: compute which plan/tier groups
+  // should be collapsed BEFORE children render.  This ensures dagre receives
+  // the correct collapsed set on the very first committed render, eliminating
+  // the visible "nodes flying into place" flash on initial load.
+  // See: react.dev/reference/react/useState#storing-information-from-previous-renders
 
-    const planGroups = graphData.planGroups ?? [];
+  // Shared: determine which plan group should be expanded by default
+  const { expandedPlanId, planGroupInfos } = useMemo(() => {
+    if (!graphData) {
+      return {
+        expandedPlanId: null as string | null,
+        planGroupInfos: [] as Array<{ id: string; total: number; completed: number }>,
+      };
+    }
+
+    const pgs = graphData.planGroups ?? [];
     const allNodes = graphData.nodes ?? [];
 
-    // Find uncategorized tasks (not in any plan group)
     const groupedTaskIds = new Set<string>();
-    for (const pg of planGroups) {
+    for (const pg of pgs) {
       for (const taskId of pg.taskIds) {
         groupedTaskIds.add(taskId);
       }
     }
     const ungroupedTasks = allNodes.filter((n) => !groupedTaskIds.has(n.taskId));
 
-    // Build combined list of all groups with their completion status
-    interface GroupInfo {
-      id: string;
-      total: number;
-      completed: number;
-    }
-    const allGroups: GroupInfo[] = [];
-
-    // Add plan groups
-    for (const pg of planGroups) {
+    const allGroups: Array<{ id: string; total: number; completed: number }> = [];
+    for (const pg of pgs) {
       allGroups.push({
         id: pg.planArtifactId,
         total: pg.taskIds.length,
         completed: pg.statusSummary.completed,
       });
     }
-
-    // Add uncategorized if it has tasks
     if (ungroupedTasks.length > 0) {
       const completedCount = ungroupedTasks.filter((t) =>
         ["approved", "merged", "completed"].includes(t.internalStatus)
@@ -371,33 +369,40 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
       });
     }
 
-    if (allGroups.length > 0) {
-      // Find first group that is NOT 100% complete - that one stays expanded
-      let expandedGroupId: string | null = null;
-      for (const g of allGroups) {
-        if (g.total === 0 || g.completed < g.total) {
-          expandedGroupId = g.id;
-          break;
-        }
-      }
-      // If all are 100%, keep the last one expanded
-      if (!expandedGroupId) {
-        expandedGroupId = allGroups[allGroups.length - 1]?.id ?? null;
-      }
+    if (allGroups.length === 0) {
+      return { expandedPlanId: null as string | null, planGroupInfos: allGroups };
+    }
 
-      // Collapse all groups except the expanded one
+    let expandedGroupId: string | null = null;
+    for (const g of allGroups) {
+      if (g.total === 0 || g.completed < g.total) {
+        expandedGroupId = g.id;
+        break;
+      }
+    }
+    if (!expandedGroupId) {
+      expandedGroupId = allGroups[allGroups.length - 1]?.id ?? null;
+    }
+
+    return { expandedPlanId: expandedGroupId, planGroupInfos: allGroups };
+  }, [graphData]);
+
+  // Keep ref in sync (used by initial-fit effect)
+  expandedPlanIdRef.current = expandedPlanId;
+
+  // Plan group collapse: recompute defaults synchronously when graphData changes
+  const [prevPlanCollapseData, setPrevPlanCollapseData] = useState<typeof graphData>(undefined);
+  if (graphData !== prevPlanCollapseData) {
+    setPrevPlanCollapseData(graphData);
+    if (planGroupInfos.length > 0 && expandedPlanId !== null) {
       const toCollapse = new Set(
-        allGroups
-          .filter((g) => g.id !== expandedGroupId)
-          .map((g) => g.id)
+        planGroupInfos.filter((g) => g.id !== expandedPlanId).map((g) => g.id)
       );
-
       setCollapsedPlanIds(toCollapse);
     } else {
       setCollapsedPlanIds(new Set());
     }
-
-  }, [graphData]);
+  }
 
   const centerOnPlanGroup = useCallback(
     (planArtifactId: string, duration = 200, zoom = 0.9): boolean =>
@@ -410,138 +415,105 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     [centerOnNode]
   );
 
-  // Compute tier collapse defaults when tier grouping is active
-  useEffect(() => {
-    if (!graphData) return;
-    if (!grouping.byTier) {
-      setCollapsedTierIds(new Set());
-      return;
-    }
+  // Tier group collapse: recompute defaults synchronously when inputs change
+  const [prevTierCollapseInputs, setPrevTierCollapseInputs] = useState<{
+    graphData: typeof graphData;
+    byPlan: boolean;
+    byTier: boolean;
+    showUncategorized: boolean;
+  } | null>(null);
 
-    const planGroups = graphData.planGroups ?? [];
-    const allNodes = graphData.nodes ?? [];
-    const tierGroups = buildTierGroups(allNodes, planGroups, {
-      enabled: grouping.byTier,
-      includeUngrouped: grouping.showUncategorized || !grouping.byPlan,
+  const tierInputsChanged = prevTierCollapseInputs === null
+    || graphData !== prevTierCollapseInputs.graphData
+    || grouping.byPlan !== prevTierCollapseInputs.byPlan
+    || grouping.byTier !== prevTierCollapseInputs.byTier
+    || grouping.showUncategorized !== prevTierCollapseInputs.showUncategorized;
+
+  if (tierInputsChanged) {
+    setPrevTierCollapseInputs({
+      graphData,
+      byPlan: grouping.byPlan,
+      byTier: grouping.byTier,
+      showUncategorized: grouping.showUncategorized,
     });
-    if (tierGroups.length === 0) {
-      setCollapsedTierIds(new Set());
-      return;
-    }
 
-    const completedStatuses = new Set(["approved", "merged", "completed"]);
-    const nodeMap = new Map(allNodes.map((node) => [node.taskId, node]));
-    const tiersByPlan = new Map<string, typeof tierGroups>();
-
-    for (const tg of tierGroups) {
-      const existing = tiersByPlan.get(tg.planArtifactId);
-      if (existing) {
-        existing.push(tg);
-      } else {
-        tiersByPlan.set(tg.planArtifactId, [tg]);
-      }
-    }
-
-    const toCollapseTiers = new Set<string>();
-    let expandedPlanGroupId: string | null = null;
-    if (planGroups.length > 0 || allNodes.length > 0) {
-      const groupedTaskIds = new Set<string>();
-      for (const pg of planGroups) {
-        for (const taskId of pg.taskIds) {
-          groupedTaskIds.add(taskId);
-        }
-      }
-      const ungroupedTasks = allNodes.filter((n) => !groupedTaskIds.has(n.taskId));
-      const allGroups: Array<{ id: string; total: number; completed: number }> = [];
-      for (const pg of planGroups) {
-        allGroups.push({
-          id: pg.planArtifactId,
-          total: pg.taskIds.length,
-          completed: pg.statusSummary.completed,
-        });
-      }
-      if (ungroupedTasks.length > 0) {
-        const completedCount = ungroupedTasks.filter((t) =>
-          ["approved", "merged", "completed"].includes(t.internalStatus)
-        ).length;
-        allGroups.push({
-          id: UNGROUPED_PLAN_ID,
-          total: ungroupedTasks.length,
-          completed: completedCount,
-        });
-      }
-      if (allGroups.length > 0) {
-        for (const g of allGroups) {
-          if (g.total === 0 || g.completed < g.total) {
-            expandedPlanGroupId = g.id;
-            break;
-          }
-        }
-        if (!expandedPlanGroupId) {
-          expandedPlanGroupId = allGroups[allGroups.length - 1]?.id ?? null;
-        }
-      }
-    }
-
-    for (const [planArtifactId, tiers] of tiersByPlan) {
-      // Match "Expand tiers" behavior for the default active plan group.
-      if (planArtifactId === expandedPlanGroupId) {
-        continue;
-      }
-      const tierInfos = tiers.map((tg) => {
-        let completed = 0;
-        for (const taskId of tg.taskIds) {
-          const node = nodeMap.get(taskId);
-          if (node && completedStatuses.has(node.internalStatus)) {
-            completed += 1;
-          }
-        }
-        return {
-          id: tg.id,
-          total: tg.taskIds.length,
-          completed,
-        };
+    if (!graphData || !grouping.byTier) {
+      setCollapsedTierIds((prev) => prev.size > 0 ? new Set<string>() : prev);
+    } else {
+      const pgs = graphData.planGroups ?? [];
+      const allNodes = graphData.nodes ?? [];
+      const computedTierGroups = buildTierGroups(allNodes, pgs, {
+        enabled: grouping.byTier,
+        includeUngrouped: grouping.showUncategorized || !grouping.byPlan,
       });
 
-      let expandedTierId: string | null = null;
-      for (const tier of tierInfos) {
-        if (tier.total === 0 || tier.completed < tier.total) {
-          expandedTierId = tier.id;
-          break;
+      if (computedTierGroups.length === 0) {
+        setCollapsedTierIds((prev) => prev.size > 0 ? new Set<string>() : prev);
+      } else {
+        const completedStatuses = new Set(["approved", "merged", "completed"]);
+        const nodeMap = new Map(allNodes.map((node) => [node.taskId, node]));
+        const tiersByPlanLocal = new Map<string, typeof computedTierGroups>();
+
+        for (const tg of computedTierGroups) {
+          const existing = tiersByPlanLocal.get(tg.planArtifactId);
+          if (existing) {
+            existing.push(tg);
+          } else {
+            tiersByPlanLocal.set(tg.planArtifactId, [tg]);
+          }
+        }
+
+        const toCollapseTiers = new Set<string>();
+        for (const [planArtifactId, tiers] of tiersByPlanLocal) {
+          // Match "Expand tiers" behavior for the default active plan group.
+          if (planArtifactId === expandedPlanId) continue;
+
+          const tierInfos = tiers.map((tg) => {
+            let completed = 0;
+            for (const taskId of tg.taskIds) {
+              const node = nodeMap.get(taskId);
+              if (node && completedStatuses.has(node.internalStatus)) {
+                completed += 1;
+              }
+            }
+            return { id: tg.id, total: tg.taskIds.length, completed };
+          });
+
+          let expandedTierId: string | null = null;
+          for (const tier of tierInfos) {
+            if (tier.total === 0 || tier.completed < tier.total) {
+              expandedTierId = tier.id;
+              break;
+            }
+          }
+          if (!expandedTierId) {
+            expandedTierId = tierInfos[tierInfos.length - 1]?.id ?? null;
+          }
+
+          for (const tier of tierInfos) {
+            if (tier.id !== expandedTierId) {
+              toCollapseTiers.add(tier.id);
+            }
+          }
+        }
+
+        setCollapsedTierIds((prev) => areSetsEqual(prev, toCollapseTiers) ? prev : toCollapseTiers);
+
+        // Only set pending auto-center AFTER initial fit has completed.
+        // On initial load, the initial-fit effect owns viewport positioning.
+        if (
+          initialFitDoneRef.current &&
+          expandedPlanId &&
+          tiersByPlanLocal.has(expandedPlanId) &&
+          expandedPlanId !== lastAutoCenteredPlanRef.current
+        ) {
+          pendingTierAutoCenterRef.current = expandedPlanId;
         }
       }
-      if (!expandedTierId) {
-        expandedTierId = tierInfos[tierInfos.length - 1]?.id ?? null;
-      }
+    }
+  }
 
-      for (const tier of tierInfos) {
-        if (tier.id !== expandedTierId) {
-          toCollapseTiers.add(tier.id);
-        }
-      }
-    }
-
-    const shouldUpdate = !areSetsEqual(collapsedTierIds, toCollapseTiers);
-    if (shouldUpdate) {
-      setCollapsedTierIds(toCollapseTiers);
-    }
-    if (
-      expandedPlanGroupId &&
-      tiersByPlan.has(expandedPlanGroupId) &&
-      expandedPlanGroupId !== lastAutoCenteredPlanRef.current
-    ) {
-      pendingTierAutoCenterRef.current = expandedPlanGroupId;
-    }
-  }, [
-    centerOnPlanGroup,
-    fitNodeInView,
-    fitViewDefault,
-    graphData,
-    grouping.byPlan,
-    grouping.byTier,
-    grouping.showUncategorized,
-    collapsedTierIds,
-  ]);
+  // ---- End synchronous collapsed-state derivation ----------------------------
 
   useEffect(() => {
     if (!isNavCompact) {
@@ -638,6 +610,16 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     return map;
   }, [tierGroups]);
 
+  // Shared viewport centering: try fitNodeInView → centerOnPlanGroup → fitViewDefault
+  const centerOnPlanGroupNode = useCallback(
+    (planArtifactId: string, duration = 200) => {
+      if (fitNodeInView(getPlanGroupNodeId(planArtifactId), { duration, padding: 0.18, maxZoom: 0.95 })) return;
+      if (centerOnPlanGroup(planArtifactId, duration, 0.9)) return;
+      fitViewDefault({ padding: 0.2, duration });
+    },
+    [centerOnPlanGroup, fitNodeInView, fitViewDefault]
+  );
+
   // Toggle collapse state for a plan group
   const handleToggleCollapse = useCallback((planArtifactId: string) => {
     setCollapsedPlanIds((prev) => {
@@ -649,54 +631,37 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
       }
       return next;
     });
-    // Auto-fit view after layout updates - focus on this group only
-    setTimeout(() => {
-      if (fitNodeInView(getPlanGroupNodeId(planArtifactId), { duration: 220, padding: 0.18, maxZoom: 0.95 })) return;
-      if (centerOnPlanGroup(planArtifactId, 200, 0.9)) return;
-      fitViewDefault({ padding: 0.2, duration: 200 });
-    }, 50);
-  }, [centerOnPlanGroup, fitNodeInView, fitViewDefault]);
+    setTimeout(() => centerOnPlanGroupNode(planArtifactId), 50);
+  }, [centerOnPlanGroupNode]);
 
   const handleToggleTierCollapse = useCallback((tierGroupId: string) => {
-    let shouldCenterTier = false;
-    let shouldCenterPlan = false;
+    let expanding = false;
     const planArtifactId = tierGroupsById.get(tierGroupId)?.planArtifactId ?? null;
     setCollapsedTierIds((prev) => {
       const next = new Set(prev);
       if (next.has(tierGroupId)) {
         next.delete(tierGroupId);
-        shouldCenterTier = true;
+        expanding = true;
       } else {
         next.add(tierGroupId);
-        shouldCenterPlan = true;
       }
       return next;
     });
     setTimeout(() => {
-      if (shouldCenterTier) {
-        if (fitNodeInView(getTierGroupNodeId(tierGroupId), { duration: 220, padding: 0.18, maxZoom: 0.95 })) return;
-        if (
-          centerOnNode(getTierGroupNodeId(tierGroupId), {
-            duration: 200,
-            zoom: 0.95,
-            fallbackWidth: 320,
-            fallbackHeight: 80,
-          })
-        ) {
-          return;
-        }
+      if (expanding) {
+        // Expanding tier → center on the tier group
+        const tierNodeId = getTierGroupNodeId(tierGroupId);
+        if (fitNodeInView(tierNodeId, { duration: 200, padding: 0.18, maxZoom: 0.95 })) return;
+        if (centerOnNode(tierNodeId, { duration: 200, zoom: 0.95, fallbackWidth: 320, fallbackHeight: 80 })) return;
       }
-      if (shouldCenterPlan) {
-        if (planArtifactId && fitNodeInView(getPlanGroupNodeId(planArtifactId), { duration: 220, padding: 0.18, maxZoom: 0.95 })) {
-          return;
-        }
-        if (planArtifactId && centerOnPlanGroup(planArtifactId, 200, 0.9)) {
-          return;
-        }
+      // Collapsing tier → center on parent plan group
+      if (planArtifactId) {
+        centerOnPlanGroupNode(planArtifactId);
+        return;
       }
       fitViewDefault({ padding: 0.2, duration: 200 });
     }, 50);
-  }, [centerOnNode, centerOnPlanGroup, fitNodeInView, fitViewDefault, tierGroupsById]);
+  }, [centerOnNode, centerOnPlanGroupNode, fitNodeInView, fitViewDefault, tierGroupsById]);
 
   const tierGroupsByPlan = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -728,13 +693,9 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
         }
         return next;
       });
-      setTimeout(() => {
-        if (fitNodeInView(getPlanGroupNodeId(planArtifactId), { duration: 220, padding: 0.18, maxZoom: 0.95 })) return;
-        if (centerOnPlanGroup(planArtifactId, 200, 0.9)) return;
-        fitViewDefault({ padding: 0.2, duration: 200 });
-      }, 50);
+      setTimeout(() => centerOnPlanGroupNode(planArtifactId), 50);
     },
-    [centerOnPlanGroup, fitNodeInView, fitViewDefault, tierGroupsByPlan]
+    [centerOnPlanGroupNode, tierGroupsByPlan]
   );
 
   // Task mutations for context menu actions
@@ -852,18 +813,6 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     handleViewDetails
   );
 
-  // Initial fitView when graph first renders (replaces fitView prop to avoid
-  // StoreUpdater infinite loop in React Flow v12 controlled mode)
-  const initialFitViewDone = useRef(false);
-  useEffect(() => {
-    if (!graphReady || isLoading || initialFitViewDone.current) return;
-    initialFitViewDone.current = true;
-    // Defer to let React Flow measure nodes first
-    requestAnimationFrame(() => {
-      fitViewDefault({ padding: 0.2, duration: 0 });
-    });
-  }, [graphReady, isLoading, fitViewDefault]);
-
   useEffect(() => {
     const pendingPlanId = pendingTierAutoCenterRef.current;
     if (!pendingPlanId) return;
@@ -871,30 +820,18 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     if (!groupNodes.some((node) => node.id === getPlanGroupNodeId(pendingPlanId))) {
       return;
     }
-    const attemptCenter = (attempt: number) => {
-      if (attempt > 10) {
-        pendingTierAutoCenterRef.current = null;
-        return;
-      }
-      const nodeId = getPlanGroupNodeId(pendingPlanId);
-      if (!fitNodeInView(nodeId, { duration: 220, padding: 0.18, maxZoom: 0.95 })) {
-        requestAnimationFrame(() => attemptCenter(attempt + 1));
-        return;
-      }
-      lastAutoCenteredPlanRef.current = pendingPlanId;
-      pendingTierAutoCenterRef.current = null;
-      if (centerOnPlanGroup(pendingPlanId, 200, 0.9)) return;
-      fitViewDefault({ padding: 0.2, duration: 200 });
-    };
+    pendingTierAutoCenterRef.current = null;
+    lastAutoCenteredPlanRef.current = pendingPlanId;
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => attemptCenter(0));
+      requestAnimationFrame(() => centerOnPlanGroupNode(pendingPlanId));
     });
-  }, [centerOnPlanGroup, fitNodeInView, fitViewDefault, graphReady, groupNodes, isLoading]);
+  }, [centerOnPlanGroupNode, graphReady, groupNodes, isLoading]);
 
   const {
     focusedNodeId,
     highlightedTaskId,
     graphSelection,
+    select,
     focusSelectionInView,
     containerRef,
     onNodeClick,
@@ -916,8 +853,6 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     onToggleTierCollapse: handleToggleTierCollapse,
     onToggleAllTiers: handleToggleAllTiers,
     centerOnPlanGroup,
-    fitNodeInView,
-    fitNode,
     centerOnNode,
     centerOnNodeObject,
     fitViewDefault,
@@ -928,16 +863,13 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   });
 
   // Compute visible nodes and edges (controlled mode).
-  // IMPORTANT: React Flow v12 StoreUpdater enters an infinite loop if the nodes
-  // array reference changes on every render. The StoreUpdater uses reference
-  // equality (===) to detect changes. When the check fails, it calls setNodes()
-  // which updates the zustand store, triggers re-render, produces a new nodes
-  // reference, and loops. We stabilize the reference by comparing a fingerprint
-  // of the structural content and returning the previous array when unchanged.
+  // React Flow v12 StoreUpdater triggers setNodes() whenever the nodes array
+  // reference changes. Upstream hooks produce new array references even when
+  // content is unchanged (web mode mock layer triggers this). We stabilize
+  // by comparing node IDs and visual state, returning the previous array ref
+  // when structurally unchanged to prevent infinite re-render loops.
   const prevNodesRef = useRef<Node[]>([]);
-  const prevNodesFingerprintRef = useRef("");
   const prevEdgesRef = useRef<Edge[]>([]);
-  const prevEdgesFingerprintRef = useRef("");
 
   const nodes = useMemo<Node[]>(() => {
     const groupNodesWithSelection = groupNodes.map((node) => {
@@ -977,32 +909,105 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     }));
     const next = [...groupNodesWithSelection, ...taskNodesWithData];
 
-    // Build a fingerprint of node structural data to detect actual changes.
-    // Excludes `handlers` (stable ref) and position internals managed by RF.
-    const fingerprint = next.map((n) => {
-      const { handlers: _h, ...dataWithoutHandlers } = (n.data ?? {}) as Record<string, unknown>;
-      return `${n.id}|${n.type}|${n.selected}|${Math.round(n.position?.x ?? 0)},${Math.round(n.position?.y ?? 0)}|${JSON.stringify(dataWithoutHandlers)}`;
-    }).join("\n");
-
-    if (fingerprint === prevNodesFingerprintRef.current) {
-      return prevNodesRef.current;
+    // Lightweight identity check — IDs, positions, visual state.
+    // Must include positions so dagre re-layout after expand/collapse propagates.
+    const prev = prevNodesRef.current;
+    if (next.length === prev.length) {
+      let same = true;
+      for (let i = 0; i < next.length; i++) {
+        const n = next[i]!;
+        const p = prev[i]!;
+        if (
+          n.id !== p.id
+          || n.position.x !== p.position.x
+          || n.position.y !== p.position.y
+          || n.selected !== p.selected
+          || n.type !== p.type
+          || (n.data as Record<string, unknown>)?.isSelected !== (p.data as Record<string, unknown>)?.isSelected
+          || (n.data as Record<string, unknown>)?.isHighlighted !== (p.data as Record<string, unknown>)?.isHighlighted
+          || (n.data as Record<string, unknown>)?.isFocused !== (p.data as Record<string, unknown>)?.isFocused
+        ) {
+          same = false;
+          break;
+        }
+      }
+      if (same) return prev;
     }
-    prevNodesFingerprintRef.current = fingerprint;
     prevNodesRef.current = next;
     return next;
   }, [layoutNodes, groupNodes, graphSelection, highlightedTaskId, focusedNodeId, nodeHandlers]);
 
-  // Edges: stabilize reference with fingerprint comparison
+  // Edges: stabilize reference with lightweight identity check
   const edges = useMemo<Edge[]>(() => {
-    const fingerprint = layoutEdges.map((e) => `${e.id}|${e.source}|${e.target}|${e.type}`).join("\n");
-    if (fingerprint === prevEdgesFingerprintRef.current) {
-      return prevEdgesRef.current;
+    const prev = prevEdgesRef.current;
+    if (layoutEdges.length === prev.length && layoutEdges.every((e, i) => e.id === prev[i]!.id)) {
+      return prev;
     }
-    prevEdgesFingerprintRef.current = fingerprint;
     prevEdgesRef.current = layoutEdges;
     return layoutEdges;
   }, [layoutEdges]);
 
+  // Handle node changes (for selection, dragging etc.) in controlled mode
+  const onNodesChange: OnNodesChange = useCallback(() => {
+    // We don't allow user-driven node changes (positions come from dagre layout)
+    // Selection is handled via onNodeClick
+  }, []);
+
+  // Handle edge changes in controlled mode
+  const onEdgesChange: OnEdgesChange = useCallback(() => {
+    // We don't allow user-driven edge changes (edges are computed from dependencies)
+  }, []);
+
+  // One-time initial select + center on expanded group after dagre layout is ready.
+  // Polls until the group node is measured by React Flow, then selects it via
+  // the controller's stable `select()` API. Falls back to fitViewDefault.
+  // Hide ReactFlow until initial viewport positioning is complete.
+  // Prevents visible flash of default viewport before centering on expanded group.
+  const [initialViewReady, setInitialViewReady] = useState(false);
+  useEffect(() => {
+    if (initialFitDoneRef.current) return;
+    if (!graphReady || layoutNodes.length === 0) return;
+    const hasPositions = layoutNodes.some((n) => n.position.x !== 0 || n.position.y !== 0);
+    if (!hasPositions && groupNodes.length === 0) return;
+    initialFitDoneRef.current = true;
+    // Cancel any pending tier auto-center — initial fit owns viewport positioning
+    pendingTierAutoCenterRef.current = null;
+
+    const expandedId = expandedPlanIdRef.current;
+    if (expandedId) {
+      lastAutoCenteredPlanRef.current = expandedId;
+    }
+
+    // Extra frame after positioning to let React Flow paint at correct viewport
+    const settle = () => {
+      requestAnimationFrame(() => setInitialViewReady(true));
+    };
+
+    const attemptFocus = (attempt: number) => {
+      if (attempt > 15) {
+        fitViewDefault({ padding: 0.2, duration: 0 });
+        settle();
+        return;
+      }
+      if (expandedId) {
+        const nodeId = getPlanGroupNodeId(expandedId);
+        if (fitNodeInView(nodeId, { duration: 0, padding: 0.18, maxZoom: 0.95 })) {
+          centerOnPlanGroup(expandedId, 0, 0.9);
+          select({ kind: "planGroup", id: expandedId }, { skipFocus: true });
+          settle();
+          return;
+        }
+      } else {
+        fitViewDefault({ padding: 0.2, duration: 0 });
+        settle();
+        return;
+      }
+      requestAnimationFrame(() => attemptFocus(attempt + 1));
+    };
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => attemptFocus(0));
+    });
+  }, [graphReady, layoutNodes, groupNodes, fitNodeInView, centerOnPlanGroup, fitViewDefault, select]);
 
   const graphRightPanelVisible = isNavCompact
     ? graphRightPanelCompactOpen
@@ -1013,10 +1018,20 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
       ? "overlay"
       : "split";
 
+  // Re-center current selection when selection or panel layout changes.
+  // Uses ref to avoid re-firing when focusSelectionInView ref changes.
+  // Skips on first graphSelection change (initial load handles its own positioning).
+  const focusInViewRef = useRef(focusSelectionInView);
+  focusInViewRef.current = focusSelectionInView;
+  const prevGraphSelectionRef = useRef<typeof graphSelection>(undefined);
+
   useEffect(() => {
     if (!graphSelection) return;
-    focusSelectionInView(graphSelection);
-  }, [focusSelectionInView, graphSelection, graphRightPanelVisible, isNavCompact]);
+    const isFirstSelection = prevGraphSelectionRef.current === undefined;
+    prevGraphSelectionRef.current = graphSelection;
+    if (isFirstSelection) return;
+    focusInViewRef.current(graphSelection);
+  }, [graphSelection, graphRightPanelVisible, isNavCompact]);
 
   // Loading state
   if (isLoading) {
@@ -1073,13 +1088,14 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
       }
       rightPanelMode={rightPanelMode}
     >
-      {/* Graph canvas container */}
+      {/* Graph canvas container — hidden until initial viewport positioning completes */}
       <div
         className="h-full w-full relative outline-none"
         data-testid="task-graph-view"
         tabIndex={0}
         ref={containerRef}
         onKeyDown={onKeyDown}
+        style={initialViewReady ? undefined : { visibility: "hidden" }}
       >
         {/* Floating filter controls - positioned over canvas */}
         <FloatingGraphFilters
@@ -1118,6 +1134,8 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
             edges={edges}
             nodeTypes={activeNodeTypes}
             edgeTypes={edgeTypes}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
             onNodeClick={onNodeClick}
             onNodeDoubleClick={onNodeDoubleClick}
             onPaneClick={onPaneClick}
