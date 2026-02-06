@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { Node } from "@xyflow/react";
 import { useReactFlow } from "@xyflow/react";
 
@@ -141,5 +142,8 @@ export function createViewportActions({
 /** Hook exposing viewport actions for the task graph. */
 export function useTaskGraphViewport() {
   const { getNodes, fitView, setCenter, getViewport, setViewport } = useReactFlow();
-  return createViewportActions({ getNodes, fitView, setCenter, getViewport, setViewport });
+  return useMemo(
+    () => createViewportActions({ getNodes, fitView, setCenter, getViewport, setViewport }),
+    [getNodes, fitView, setCenter, getViewport, setViewport]
+  );
 }

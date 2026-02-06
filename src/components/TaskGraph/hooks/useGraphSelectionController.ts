@@ -32,8 +32,6 @@ interface GraphSelectionControllerParams {
   onToggleTierCollapse: (tierGroupId: string) => void;
   onToggleAllTiers: (planArtifactId: string, action: "expand" | "collapse") => void;
   centerOnPlanGroup: (planArtifactId: string, duration?: number, zoom?: number) => boolean;
-  fitNodeInView: (nodeId: string, options?: { duration?: number; padding?: number; maxZoom?: number }) => boolean;
-  fitNode: (node: Node, options?: { duration?: number; padding?: number; maxZoom?: number }) => void;
   centerOnNode: (
     nodeId: string,
     options?: { duration?: number; zoom?: number; fallbackWidth?: number; fallbackHeight?: number }
@@ -54,6 +52,9 @@ interface GraphSelectionControllerResult {
   focusedNodeId: string | null;
   highlightedTaskId: string | null;
   graphSelection: GraphSelection | null;
+  /** Set selection + focus viewport in one call. Stable ref — safe in effects.
+   *  Pass `{ skipFocus: true }` to set selection without viewport animation. */
+  select: (selection: GraphSelection, options?: { skipFocus?: boolean }) => void;
   focusSelectionInView: (selection: GraphSelection) => void;
   containerRef: React.RefObject<HTMLDivElement | null>;
   onNodeClick: (event: React.MouseEvent, node: Node) => void;
@@ -219,8 +220,6 @@ export function useGraphSelectionController({
   onToggleTierCollapse,
   onToggleAllTiers,
   centerOnPlanGroup,
-  fitNodeInView,
-  fitNode,
   centerOnNode,
   centerOnNodeObject,
   fitViewDefault,
@@ -374,18 +373,15 @@ export function useGraphSelectionController({
       const runFocus = () => {
         const node = graphNodesById.get(nodeId);
         if (node) {
-          fitNode(node, { duration: 220, padding: 0.18, maxZoom: 0.95 });
           if (selection.kind === "planGroup") {
             centerOnNodeObject(node, { duration: 200, zoom: 0.9, fallbackWidth: 320, fallbackHeight: 120 });
-            return;
+          } else {
+            centerOnNodeObject(node, { duration: 200, zoom: 0.95, fallbackWidth: 180, fallbackHeight: 60 });
           }
-          centerOnNodeObject(node, { duration: 200, zoom: 0.95, fallbackWidth: 180, fallbackHeight: 60 });
           return;
         }
-        fitNodeInView(nodeId, { duration: 220, padding: 0.18, maxZoom: 0.95 });
         if (selection.kind === "planGroup") {
-          centerOnPlanGroup(selection.id, 200, 0.9);
-          return;
+          if (centerOnPlanGroup(selection.id, 200, 0.9)) return;
         }
         centerOnNode(nodeId, { duration: 200, zoom: 0.95, fallbackWidth: 180, fallbackHeight: 60 });
       };
@@ -398,10 +394,26 @@ export function useGraphSelectionController({
       centerOnNode,
       centerOnNodeObject,
       centerOnPlanGroup,
-      fitNode,
-      fitNodeInView,
       graphNodesById,
     ]
+  );
+
+  // Ref-stabilize focusSelectionInView so `select` has a stable identity.
+  // focusSelectionInView changes when graphNodesById changes (every layout),
+  // but select() must be safe to use in effects without causing re-fires.
+  const focusSelectionRef = useRef(focusSelectionInView);
+  focusSelectionRef.current = focusSelectionInView;
+
+  /** Set selection state AND focus viewport — stable callback, safe for effects.
+   *  Pass `skipFocus: true` to set selection without viewport animation. */
+  const select = useCallback(
+    (selection: GraphSelection, options?: { skipFocus?: boolean }): void => {
+      setGraphSelection(selection);
+      if (!options?.skipFocus) {
+        focusSelectionRef.current(selection);
+      }
+    },
+    [setGraphSelection]
   );
 
   const handleTimelineTaskClick = useCallback(
@@ -926,6 +938,7 @@ export function useGraphSelectionController({
     focusedNodeId,
     highlightedTaskId,
     graphSelection,
+    select,
     focusSelectionInView,
     containerRef,
     onNodeClick: handleNodeClick,
