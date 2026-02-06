@@ -76,10 +76,6 @@ pub struct Project {
     pub working_directory: String,
     /// Git workflow mode (local or worktree)
     pub git_mode: GitMode,
-    /// Path to worktree (only if git_mode is Worktree)
-    pub worktree_path: Option<String>,
-    /// Branch name for worktree (only if git_mode is Worktree)
-    pub worktree_branch: Option<String>,
     /// Base branch for comparisons (e.g., "main" or "master")
     pub base_branch: Option<String>,
     /// Parent directory for task worktrees (default: ~/ralphx-worktrees)
@@ -103,33 +99,7 @@ impl Project {
             name,
             working_directory,
             git_mode: GitMode::default(),
-            worktree_path: None,
-            worktree_branch: None,
             base_branch: None,
-            worktree_parent_directory: None,
-            use_feature_branches: true,
-            created_at: now,
-            updated_at: now,
-        }
-    }
-
-    /// Creates a new project configured for worktree mode
-    pub fn new_with_worktree(
-        name: String,
-        working_directory: String,
-        worktree_path: String,
-        worktree_branch: String,
-        base_branch: Option<String>,
-    ) -> Self {
-        let now = Utc::now();
-        Self {
-            id: ProjectId::new(),
-            name,
-            working_directory,
-            git_mode: GitMode::Worktree,
-            worktree_path: Some(worktree_path),
-            worktree_branch: Some(worktree_branch),
-            base_branch,
             worktree_parent_directory: None,
             use_feature_branches: true,
             created_at: now,
@@ -165,7 +135,7 @@ impl Project {
 
     /// Deserialize a Project from a SQLite row.
     /// Expects columns: id, name, working_directory, git_mode,
-    /// worktree_path, worktree_branch, base_branch, worktree_parent_directory, created_at, updated_at
+    /// base_branch, worktree_parent_directory, created_at, updated_at
     pub fn from_row(row: &Row) -> rusqlite::Result<Self> {
         Ok(Self {
             id: ProjectId::from_string(row.get("id")?),
@@ -175,8 +145,6 @@ impl Project {
                 .get::<_, String>("git_mode")?
                 .parse()
                 .unwrap_or(GitMode::Local),
-            worktree_path: row.get("worktree_path")?,
-            worktree_branch: row.get("worktree_branch")?,
             base_branch: row.get("base_branch")?,
             worktree_parent_directory: row.get("worktree_parent_directory")?,
             use_feature_branches: row.get::<_, i64>("use_feature_branches").unwrap_or(1) != 0,
@@ -263,8 +231,6 @@ mod tests {
         assert_eq!(project.name, "My Project");
         assert_eq!(project.working_directory, "/path/to/project");
         assert_eq!(project.git_mode, GitMode::Local);
-        assert!(project.worktree_path.is_none());
-        assert!(project.worktree_branch.is_none());
         assert!(project.base_branch.is_none());
         assert!(project.worktree_parent_directory.is_none());
     }
@@ -291,48 +257,24 @@ mod tests {
     }
 
     #[test]
-    fn project_new_with_worktree_sets_all_fields() {
-        let project = Project::new_with_worktree(
-            "Worktree Project".to_string(),
-            "/main/repo".to_string(),
-            "/worktrees/feature".to_string(),
-            "feature-branch".to_string(),
-            Some("main".to_string()),
-        );
+    fn project_worktree_mode_via_field_set() {
+        let mut project = Project::new("Worktree Project".to_string(), "/main/repo".to_string());
+        project.git_mode = GitMode::Worktree;
+        project.base_branch = Some("main".to_string());
 
         assert_eq!(project.name, "Worktree Project");
         assert_eq!(project.working_directory, "/main/repo");
         assert_eq!(project.git_mode, GitMode::Worktree);
-        assert_eq!(project.worktree_path, Some("/worktrees/feature".to_string()));
-        assert_eq!(project.worktree_branch, Some("feature-branch".to_string()));
         assert_eq!(project.base_branch, Some("main".to_string()));
         assert!(project.worktree_parent_directory.is_none());
-    }
-
-    #[test]
-    fn project_new_with_worktree_no_base_branch() {
-        let project = Project::new_with_worktree(
-            "No Base".to_string(),
-            "/repo".to_string(),
-            "/worktree".to_string(),
-            "branch".to_string(),
-            None,
-        );
-
-        assert!(project.base_branch.is_none());
     }
 
     // ===== Project Method Tests =====
 
     #[test]
     fn project_is_worktree_returns_true_for_worktree_mode() {
-        let project = Project::new_with_worktree(
-            "WT".to_string(),
-            "/repo".to_string(),
-            "/wt".to_string(),
-            "branch".to_string(),
-            None,
-        );
+        let mut project = Project::new("WT".to_string(), "/repo".to_string());
+        project.git_mode = GitMode::Worktree;
 
         assert!(project.is_worktree());
     }
@@ -391,8 +333,6 @@ mod tests {
         assert_eq!(project.name, "Deserialized");
         assert_eq!(project.working_directory, "/deser/path");
         assert_eq!(project.git_mode, GitMode::Worktree);
-        assert_eq!(project.worktree_path, Some("/wt/path".to_string()));
-        assert_eq!(project.worktree_branch, Some("feature".to_string()));
         assert_eq!(project.base_branch, Some("main".to_string()));
     }
 
@@ -403,8 +343,6 @@ mod tests {
             "name": "Minimal",
             "working_directory": "/path",
             "git_mode": "local",
-            "worktree_path": null,
-            "worktree_branch": null,
             "base_branch": null,
             "created_at": "2025-01-24T12:00:00Z",
             "updated_at": "2025-01-24T12:00:00Z"
@@ -412,20 +350,14 @@ mod tests {
 
         let project: Project = serde_json::from_str(json).expect("Should deserialize");
 
-        assert!(project.worktree_path.is_none());
-        assert!(project.worktree_branch.is_none());
         assert!(project.base_branch.is_none());
     }
 
     #[test]
     fn project_roundtrip_serialization() {
-        let original = Project::new_with_worktree(
-            "Roundtrip".to_string(),
-            "/original".to_string(),
-            "/wt".to_string(),
-            "branch".to_string(),
-            Some("main".to_string()),
-        );
+        let mut original = Project::new("Roundtrip".to_string(), "/original".to_string());
+        original.git_mode = GitMode::Worktree;
+        original.base_branch = Some("main".to_string());
 
         let json = serde_json::to_string(&original).expect("Should serialize");
         let restored: Project = serde_json::from_str(&json).expect("Should deserialize");
@@ -434,8 +366,6 @@ mod tests {
         assert_eq!(original.name, restored.name);
         assert_eq!(original.working_directory, restored.working_directory);
         assert_eq!(original.git_mode, restored.git_mode);
-        assert_eq!(original.worktree_path, restored.worktree_path);
-        assert_eq!(original.worktree_branch, restored.worktree_branch);
         assert_eq!(original.base_branch, restored.base_branch);
     }
 
@@ -602,8 +532,6 @@ mod tests {
         assert_eq!(project.name, "My Project");
         assert_eq!(project.working_directory, "/path/to/project");
         assert_eq!(project.git_mode, GitMode::Local);
-        assert!(project.worktree_path.is_none());
-        assert!(project.worktree_branch.is_none());
         assert!(project.base_branch.is_none());
         assert!(project.worktree_parent_directory.is_none());
     }
@@ -628,8 +556,6 @@ mod tests {
             .unwrap();
 
         assert_eq!(project.git_mode, GitMode::Worktree);
-        assert_eq!(project.worktree_path, Some("/worktrees/feature".to_string()));
-        assert_eq!(project.worktree_branch, Some("feature-branch".to_string()));
         assert_eq!(project.base_branch, Some("main".to_string()));
     }
 
@@ -697,6 +623,6 @@ mod tests {
             .unwrap();
 
         assert!(project.base_branch.is_none());
-        assert_eq!(project.worktree_path, Some("/wt".to_string()));
+        assert_eq!(project.git_mode, GitMode::Worktree);
     }
 }
