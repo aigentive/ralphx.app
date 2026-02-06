@@ -24,6 +24,7 @@ pub mod task_step_commands;
 pub mod task_step_commands_types;
 pub mod test_data_commands;
 pub mod unified_chat_commands;
+pub mod plan_branch_commands;
 pub mod workflow_commands;
 
 // Re-export commands for registration
@@ -121,6 +122,12 @@ pub use unified_chat_commands::{
     AgentMessageResponse, AgentRunStatusResponse, CreateAgentConversationInput,
     QueueAgentMessageInput, QueuedMessageResponse as UnifiedQueuedMessageResponse,
     SendAgentMessageInput, SendAgentMessageResponse,
+};
+// Plan branch commands (Phase 85 - Feature branch for plan groups)
+pub use plan_branch_commands::{
+    disable_feature_branch, enable_feature_branch, get_plan_branch,
+    get_project_plan_branches, update_project_feature_branch_setting,
+    EnableFeatureBranchInput, PlanBranchResponse,
 };
 // Git commands (Phase 66 - Per-task branch isolation)
 pub use git_commands::{
