@@ -4,6 +4,34 @@
 
 ---
 
+### 2026-02-07 00:15:00 - P0: Visual Verify Phase 85 Components (PlanGroupSettings, FeatureBranchBadge, GitSettingsSection)
+**What:**
+- Fixed React Flow v12 StoreUpdater infinite loop crash in web mode
+  - Root cause: `nodes` useMemo always creates new array references via `.map()` spread
+  - StoreUpdater uses reference equality (`===`) — new ref triggers `setNodes()` → zustand store update → re-render → new ref → infinite loop
+  - Fix: Added fingerprint-based reference stabilization — compares node IDs, positions, types, selection state, and data; returns previous array when unchanged
+  - Also stabilized edges reference with same fingerprint approach
+- Captured visual verification screenshots for both P0 items:
+  - PlanGroupSettings popover with Feature Branch toggle, branch name, status, source
+  - FeatureBranchBadge showing git branch icon + active status dot + branch name
+  - GitSettingsSection showing Feature Branches toggle enabled in Settings view
+
+**Commands:**
+- `npx tsc --noEmit --pretty` (clean)
+- `agent-browser` navigation + screenshots
+
+**Visual Verification:**
+- Mock-check: screenshots/features/2026-02-07_phase85-visual-verification_mock-check.md
+- Screenshot (PlanGroupHeader): screenshots/features/2026-02-07_phase85-plan-group-header.png
+- Screenshot (PlanGroupSettings popover): screenshots/features/2026-02-07_phase85-plan-group-settings-popover.png
+- Screenshot (GitSettingsSection): screenshots/features/2026-02-07_phase85-git-settings-feature-branch-toggle.png
+- PRD content check: Data visible in all screenshots
+- Browser test: Passed (no errors)
+
+**Result:** Success — both P0 visual coverage items resolved, graph crash fixed
+
+---
+
 ### 2026-02-07 00:00:00 - Phase 85 Gap Verification
 **What:**
 - Ran full code gap verification (5 checks) for Phase 85 "Feature Branch for Plan Groups"
