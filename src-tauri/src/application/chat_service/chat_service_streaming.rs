@@ -9,9 +9,9 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tracing::info;
 
 use crate::domain::entities::{
-    ActivityEvent, ActivityEventType, ChatContextType, ChatConversationId, TaskId,
+    ActivityEvent, ActivityEventType, ChatContextType, ChatConversationId, ChatMessageId, TaskId,
 };
-use crate::domain::repositories::{ActivityEventRepository, TaskRepository};
+use crate::domain::repositories::{ActivityEventRepository, ChatMessageRepository, TaskRepository};
 use crate::infrastructure::agents::claude::{ContentBlockItem, StreamEvent, StreamProcessor, ToolCall};
 
 use super::{events, AgentChunkPayload, AgentToolCallPayload};
@@ -30,6 +30,8 @@ use super::{events, AgentChunkPayload, AgentToolCallPayload};
 /// * `app_handle` - Tauri app handle for events
 /// * `activity_event_repo` - Repository for persisting activity events (optional)
 /// * `task_repo` - Task repository for fetching current status (optional)
+/// * `chat_message_repo` - Chat message repository for incremental persistence (optional)
+/// * `assistant_message_id` - Pre-created assistant message ID for incremental updates (optional)
 pub async fn process_stream_background<R: Runtime>(
     mut child: tokio::process::Child,
     context_type: ChatContextType,
@@ -38,6 +40,8 @@ pub async fn process_stream_background<R: Runtime>(
     app_handle: Option<AppHandle<R>>,
     activity_event_repo: Option<Arc<dyn ActivityEventRepository>>,
     task_repo: Option<Arc<dyn TaskRepository>>,
+    chat_message_repo: Option<Arc<dyn ChatMessageRepository>>,
+    assistant_message_id: Option<String>,
 ) -> Result<(String, Vec<ToolCall>, Vec<ContentBlockItem>, Option<String>), String> {
     eprintln!(
         "[STREAM_DEBUG] process_stream_background start (conversation_id={}, context_type={}, context_id={})",
@@ -95,6 +99,10 @@ pub async fn process_stream_background<R: Runtime>(
     let mut debug_lines: Vec<String> = Vec::new();
     let mut lines_seen: usize = 0;
     let mut lines_parsed: usize = 0;
+
+    // Debounced flush for incremental persistence (every 2 seconds)
+    let mut last_flush = std::time::Instant::now();
+    const FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
 
     while let Ok(Some(line)) = lines.next_line().await {
         lines_seen += 1;
@@ -382,6 +390,21 @@ pub async fn process_stream_background<R: Runtime>(
                     }
                 }
             }
+        }
+
+        // Debounced flush: persist accumulated content every 2s for crash recovery
+        if last_flush.elapsed() >= FLUSH_INTERVAL {
+            if let (Some(ref repo), Some(ref msg_id)) = (&chat_message_repo, &assistant_message_id) {
+                let current_text = processor.response_text.clone();
+                let current_tools = serde_json::to_string(&processor.tool_calls).ok();
+                let _ = repo.update_content(
+                    &ChatMessageId::from_string(msg_id.clone()),
+                    &current_text,
+                    current_tools.as_deref(),
+                    None, // content_blocks only on final update
+                ).await;
+            }
+            last_flush = std::time::Instant::now();
         }
 
         if lines_seen % 50 == 0 {

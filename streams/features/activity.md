@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-02-07 18:15:00 - Incremental Assistant Message Persistence During Streaming (Phase 87, Task 2)
+**What:**
+- Modified `process_stream_background` signature to accept optional `chat_message_repo` + `assistant_message_id` for incremental persistence
+- Added debounced 2s flush inside streaming loop: accumulates `response_text` + serialized `tool_calls`, updates DB every 2 seconds via `update_content`
+- Updated primary send path (`chat_service_send_background.rs`): create empty assistant message BEFORE streaming starts, pass repo+id to streaming, replace post-stream `create` with `update_content`
+- Updated inline queue processing path (`chat_service_send_background.rs`): same create-before-stream + update-after pattern
+- Updated standalone queue processing path (`chat_service_queue.rs`): same create-before-stream + update-after pattern
+- All 3 call sites of `process_stream_background` updated with new params
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (clean)
+- `cargo test` (3580+ passed, 0 failed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-07 16:30:00 - Add update_content to ChatMessageRepository (Phase 87, Task 1)
 **What:**
 - Added `update_content` method to `ChatMessageRepository` trait for incremental assistant message persistence
