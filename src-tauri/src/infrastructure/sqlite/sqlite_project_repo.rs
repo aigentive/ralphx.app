@@ -37,15 +37,13 @@ impl ProjectRepository for SqliteProjectRepository {
         let conn = self.conn.lock().await;
 
         conn.execute(
-            "INSERT INTO projects (id, name, working_directory, git_mode, worktree_path, worktree_branch, base_branch, worktree_parent_directory, use_feature_branches, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            "INSERT INTO projects (id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             rusqlite::params![
                 project.id.as_str(),
                 project.name,
                 project.working_directory,
                 project.git_mode.to_string(),
-                project.worktree_path,
-                project.worktree_branch,
                 project.base_branch,
                 project.worktree_parent_directory,
                 project.use_feature_branches as i64,
@@ -62,7 +60,7 @@ impl ProjectRepository for SqliteProjectRepository {
         let conn = self.conn.lock().await;
 
         let result = conn.query_row(
-            "SELECT id, name, working_directory, git_mode, worktree_path, worktree_branch, base_branch, worktree_parent_directory, use_feature_branches, created_at, updated_at
+            "SELECT id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, created_at, updated_at
              FROM projects WHERE id = ?1",
             [id.as_str()],
             |row| Project::from_row(row),
@@ -80,7 +78,7 @@ impl ProjectRepository for SqliteProjectRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, name, working_directory, git_mode, worktree_path, worktree_branch, base_branch, worktree_parent_directory, use_feature_branches, created_at, updated_at
+                "SELECT id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, created_at, updated_at
                  FROM projects ORDER BY name ASC",
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -98,15 +96,13 @@ impl ProjectRepository for SqliteProjectRepository {
         let conn = self.conn.lock().await;
 
         conn.execute(
-            "UPDATE projects SET name = ?2, working_directory = ?3, git_mode = ?4, worktree_path = ?5, worktree_branch = ?6, base_branch = ?7, worktree_parent_directory = ?8, use_feature_branches = ?9, updated_at = ?10
+            "UPDATE projects SET name = ?2, working_directory = ?3, git_mode = ?4, base_branch = ?5, worktree_parent_directory = ?6, use_feature_branches = ?7, updated_at = ?8
              WHERE id = ?1",
             rusqlite::params![
                 project.id.as_str(),
                 project.name,
                 project.working_directory,
                 project.git_mode.to_string(),
-                project.worktree_path,
-                project.worktree_branch,
                 project.base_branch,
                 project.worktree_parent_directory,
                 project.use_feature_branches as i64,
@@ -131,7 +127,7 @@ impl ProjectRepository for SqliteProjectRepository {
         let conn = self.conn.lock().await;
 
         let result = conn.query_row(
-            "SELECT id, name, working_directory, git_mode, worktree_path, worktree_branch, base_branch, worktree_parent_directory, use_feature_branches, created_at, updated_at
+            "SELECT id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, created_at, updated_at
              FROM projects WHERE working_directory = ?1",
             [path],
             |row| Project::from_row(row),
@@ -286,13 +282,9 @@ mod tests {
         let conn = setup_test_db();
         let repo = SqliteProjectRepository::new(conn);
 
-        let project = Project::new_with_worktree(
-            "Full Project".to_string(),
-            "/full/path".to_string(),
-            "/worktree/path".to_string(),
-            "feature-branch".to_string(),
-            Some("main".to_string()),
-        );
+        let mut project = Project::new("Full Project".to_string(), "/full/path".to_string());
+        project.git_mode = GitMode::Worktree;
+        project.base_branch = Some("main".to_string());
 
         repo.create(project.clone()).await.unwrap();
         let found = repo.get_by_id(&project.id).await.unwrap().unwrap();
@@ -301,8 +293,6 @@ mod tests {
         assert_eq!(found.name, project.name);
         assert_eq!(found.working_directory, project.working_directory);
         assert_eq!(found.git_mode, GitMode::Worktree);
-        assert_eq!(found.worktree_path, Some("/worktree/path".to_string()));
-        assert_eq!(found.worktree_branch, Some("feature-branch".to_string()));
         assert_eq!(found.base_branch, Some("main".to_string()));
     }
 

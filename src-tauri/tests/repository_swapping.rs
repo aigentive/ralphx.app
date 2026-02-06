@@ -15,7 +15,7 @@
 use std::sync::Arc;
 
 use ralphx_lib::application::AppState;
-use ralphx_lib::domain::entities::{InternalStatus, Project, Task};
+use ralphx_lib::domain::entities::{GitMode, InternalStatus, Project, Task};
 use ralphx_lib::infrastructure::sqlite::{
     open_memory_connection, run_migrations, SqliteProjectRepository, SqliteTaskRepository,
 };
@@ -134,13 +134,9 @@ async fn test_task_workflow(state: &AppState) {
 async fn test_project_workflow(state: &AppState) {
     // 1. Create projects
     let project1 = Project::new("Project 1".to_string(), "/path/1".to_string());
-    let project2 = Project::new_with_worktree(
-        "Project 2".to_string(),
-        "/main/repo".to_string(),
-        "/worktree/path".to_string(),
-        "feature-branch".to_string(),
-        Some("main".to_string()),
-    );
+    let mut project2 = Project::new("Project 2".to_string(), "/main/repo".to_string());
+    project2.git_mode = GitMode::Worktree;
+    project2.base_branch = Some("main".to_string());
 
     let project1 = state.project_repo.create(project1).await.unwrap();
     let project2 = state.project_repo.create(project2).await.unwrap();
