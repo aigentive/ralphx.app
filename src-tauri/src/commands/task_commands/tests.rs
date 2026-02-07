@@ -864,10 +864,11 @@ use super::*;
         // Test valid transitions from ready state
         let transitions = InternalStatus::Ready.valid_transitions();
 
-        // From ready, should be able to go to Executing, Blocked, or Cancelled
-        assert_eq!(transitions.len(), 3);
+        // From ready, should be able to go to Executing, Blocked, PendingMerge, or Cancelled
+        assert_eq!(transitions.len(), 4);
         assert!(transitions.iter().any(|t| *t == InternalStatus::Executing));
         assert!(transitions.iter().any(|t| *t == InternalStatus::Blocked));
+        assert!(transitions.iter().any(|t| *t == InternalStatus::PendingMerge));
         assert!(transitions.iter().any(|t| *t == InternalStatus::Cancelled));
 
         // Test labels
