@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 102,
+  "currentPhase": null,
   "phases": [
     {
       "phase": 0,
@@ -728,7 +728,7 @@
       "phase": 102,
       "name": "Fix Merge Task Display in Graph + Kanban",
       "prd": "specs/phases/prd_phase_102_fix_merge_task_display.md",
-      "status": "active",
+      "status": "complete",
       "description": "Filter merge tasks from graph tier groups and hide from Kanban with toggle"
     }
   ]
