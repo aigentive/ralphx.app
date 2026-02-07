@@ -191,7 +191,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: fix(graph): fix stale toggle after feature branch enable"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
