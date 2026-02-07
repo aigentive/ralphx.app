@@ -36,6 +36,7 @@ import { ChatMessages } from "./ChatMessages";
 import { ResizeablePanel } from "./ResizeablePanel";
 import { useResizePanel } from "./useResizePanel";
 import { useChatPanelHandlers } from "@/hooks/useChatPanelHandlers";
+import { useAskUserQuestion } from "@/hooks/useAskUserQuestion";
 
 // ============================================================================
 // Constants
@@ -313,6 +314,28 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     messagesEndRef,
   });
 
+  // Ask user question state
+  const { activeQuestion, submitAnswer, isLoading: isSubmittingAnswer } = useAskUserQuestion();
+  const [answeredQuestion, setAnsweredQuestion] = useState<string | undefined>();
+
+  const handleSubmitAnswer = useCallback(
+    async (response: import("@/types/ask-user-question").AskUserQuestionResponse) => {
+      const summary = response.selectedOptions.length > 0
+        ? response.selectedOptions.join(", ")
+        : response.customResponse ?? "";
+      await submitAnswer(response);
+      setAnsweredQuestion(summary);
+    },
+    [submitAnswer]
+  );
+
+  // Clear answered state when a new question comes in
+  useEffect(() => {
+    if (activeQuestion) {
+      setAnsweredQuestion(undefined);
+    }
+  }, [activeQuestion]);
+
   // Close with animation
   const handleClose = useCallback(() => {
     setIsExiting(true);
@@ -438,6 +461,10 @@ function ChatPanelContent({ context }: ChatPanelProps) {
           failedErrorMessage={showFailedBanner && failedRun?.errorMessage ? failedRun.errorMessage : undefined}
           onDismissError={failedRun ? () => setDismissedErrorId(failedRun.id) : undefined}
           messagesEndRef={messagesEndRef}
+          activeQuestion={activeQuestion}
+          onSubmitAnswer={handleSubmitAnswer}
+          isSubmittingAnswer={isSubmittingAnswer}
+          answeredQuestion={answeredQuestion}
         />
 
         {/* Input Area */}
