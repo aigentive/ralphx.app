@@ -455,7 +455,8 @@ impl<R: Runtime> StartupJobRunner<R> {
 
     /// Check if all blocker tasks are in a terminal state.
     ///
-    /// Terminal states are: Approved, Merged, Failed, Cancelled.
+    /// Terminal states are: Merged, Failed, Cancelled.
+    /// Approved is NOT terminal — the task still needs to be merged.
     /// Paused/Stopped are NOT treated as complete blockers.
     /// If a blocker doesn't exist (was deleted), it's considered complete.
     async fn all_blockers_complete(
@@ -467,8 +468,7 @@ impl<R: Runtime> StartupJobRunner<R> {
                 Ok(Some(task)) => {
                     if !matches!(
                         task.internal_status,
-                        InternalStatus::Approved
-                            | InternalStatus::Merged
+                        InternalStatus::Merged
                             | InternalStatus::Failed
                             | InternalStatus::Cancelled
                     ) {

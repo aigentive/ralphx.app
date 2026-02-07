@@ -94,7 +94,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings",
       "Commit: fix(startup): remove Approved from blocker terminal states"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,
