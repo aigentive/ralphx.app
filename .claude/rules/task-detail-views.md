@@ -21,8 +21,15 @@
 | `escalated` | EscalatedTaskDetail | AI escalated to human |
 | `revision_needed` | RevisionTaskDetail | Changes requested |
 | `approved` | CompletedTaskDetail | Task completed |
+| `pending_merge` | MergingTaskDetail | Programmatic merge in progress |
+| `merging` | MergingTaskDetail | Agent-assisted merge in progress |
+| `merge_incomplete` | MergeIncompleteTaskDetail | Non-conflict merge failure, retry/resolve |
+| `merge_conflict` | MergeConflictTaskDetail | Merge conflicts, manual resolution |
+| `merged` | MergedTaskDetail | Successfully merged |
 | `failed` | BasicTaskDetail | Execution failed |
 | `cancelled` | BasicTaskDetail | Task cancelled |
+| `paused` | BasicTaskDetail | Execution paused |
+| `stopped` | BasicTaskDetail | Execution stopped |
 
 ## File Locations
 
@@ -33,11 +40,11 @@
 | Entry point (Kanban) | `src/components/tasks/TaskDetailOverlay.tsx:628` |
 | View components | `src/components/tasks/detail-views/*.tsx` |
 
-## View Components (8 total)
+## View Components (12 total)
 
 | Component | States Handled | Key Features |
 |-----------|----------------|--------------|
-| BasicTaskDetail | backlog, ready, blocked, qa_*, failed, cancelled | Steps list, description |
+| BasicTaskDetail | backlog, ready, blocked, qa_*, failed, cancelled, paused, stopped | Steps list, description |
 | ExecutionTaskDetail | executing, re_executing | Live progress, step tracking, revision feedback |
 | WaitingTaskDetail | pending_review | Work summary, completion stats |
 | ReviewingTaskDetail | reviewing | AI review progress, step indicators |
@@ -45,6 +52,10 @@
 | EscalatedTaskDetail | escalated | Escalation reason, human decision buttons |
 | RevisionTaskDetail | revision_needed | Review feedback, parsed issues, attempt count |
 | CompletedTaskDetail | approved | Approval details, review history, diff viewer |
+| MergingTaskDetail | pending_merge, merging | Agent merge progress spinner |
+| MergeConflictTaskDetail | merge_conflict | Conflict files, resolution steps, resolve button |
+| MergeIncompleteTaskDetail | merge_incomplete | Error context, recovery steps, retry/resolve buttons |
+| MergedTaskDetail | merged | Merge completion details |
 
 ## Wiring
 

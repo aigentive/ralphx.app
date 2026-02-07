@@ -4,6 +4,31 @@
 
 ---
 
+### 2026-02-07 19:05:00 - Phase 99 Task 1: MergeIncompleteTaskDetail view + backend guard + docs
+**What:**
+- Created `MergeIncompleteTaskDetail.tsx` (~190 LOC) following `MergeConflictTaskDetail` pattern
+- Uses error variant (red) to distinguish from MergeConflict warning (amber)
+- StatusBanner, DetailCard for error context (branch deleted, git lock, network), recovery steps
+- Two action buttons: Retry Merge (accent) + Mark Resolved (green)
+- Wired into view registry: `merge_incomplete` now maps to `MergeIncompleteTaskDetail` (was `MergingTaskDetail`)
+- Backend: widened `resolve_merge_conflict` guard to accept both `MergeConflict` and `MergeIncomplete`
+- Updated `.claude/rules/task-detail-views.md` with all merge states + component count (8 → 12)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (3612 passed, 0 failed)
+- `npm run typecheck` (passed)
+
+**Visual Verification:**
+- Mock-check: screenshots/features/2026-02-07_19-00-00_merge-incomplete-detail-view_mock-check.md
+- Screenshot: N/A - merge_incomplete state not in mock seed data, component follows verified MergeConflictTaskDetail pattern
+- PRD content check: Component uses same shared components (StatusBanner, DetailCard, StatusPill, TwoColumnLayout) already verified
+- Browser test: Web app loads, Graph view renders
+
+**Result:** Success
+
+---
+
 ### 2026-02-07 18:30:00 - Phase 98 Complete: Fix Merge Workflow Bugs
 **What:**
 - All 3 tasks passed: MergeIncomplete agent removal, try_merge method, worktree mode wiring
