@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-07 22:00:00 - Phase 101 Task 3: Add review issue tools to worker and reviewer allowlists
+**What:**
+- Added `get_task_issues`, `mark_issue_in_progress`, `mark_issue_addressed` to worker's `allowed_mcp_tools` in `agent_config.rs`
+- Added `get_task_issues`, `get_step_progress`, `get_issue_progress` to reviewer's `allowed_mcp_tools` in `agent_config.rs`
+- Added `test_get_allowed_mcp_tools_worker_review_issues` and `test_get_allowed_mcp_tools_reviewer_review_issues` tests
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (all passed, including 2 new agent config tests)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-07 21:30:00 - Phase 101 Task 2: Add MCP tool definitions and dispatch handlers for review issues
 **What:**
 - Created `ralphx-plugin/ralphx-mcp-server/src/issue-tools.ts` with 4 tool definitions: `get_task_issues`, `get_issue_progress`, `mark_issue_in_progress`, `mark_issue_addressed`
