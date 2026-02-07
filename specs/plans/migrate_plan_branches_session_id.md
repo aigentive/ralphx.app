@@ -106,24 +106,44 @@ This directly fixes Bug #1 — task `82a21731` has `ideation_session_id` set, so
 
 **Modify:** `src-tauri/src/commands/ideation_commands/ideation_commands_apply.rs`
 
-### Remove plan_artifact_id gate (~line 164-290)
+### Remove plan_artifact_id gate on feature branch creation (~line 207-289)
 
+> **CRITICAL FK SAFETY:** `tasks.plan_artifact_id` has a FK to the `artifacts` table.
+> `plan_branches.plan_artifact_id` does NOT (just `TEXT NOT NULL UNIQUE`).
+> Phase 96 fixed this FK violation — do NOT re-introduce it by setting session_id
+> into `tasks.plan_artifact_id`.
+
+**Two separate concerns:**
+
+#### 1. Task plan_artifact_id propagation (line 171) — KEEP AS-IS
 ```
-BEFORE (line 168):
-  let plan_artifact_id: Option<ArtifactId> = session.plan_artifact_id.clone();
-  // Gates everything on if let Some(ref artifact_id) = plan_artifact_id
+// Phase 96 fix: only set when real artifact exists. DO NOT CHANGE.
+if let Some(ref artifact_id) = plan_artifact_id {
+    // set tasks.plan_artifact_id = artifact_id (real artifact, FK-safe)
+}
+```
+
+#### 2. Feature branch creation (line 207) — REMOVE GATE
+```
+BEFORE (line 207-208):
+  if use_feature_branch {
+      if let Some(ref artifact_id) = plan_artifact_id {
+          // create branch — SKIPPED when plan_artifact_id is None
 
 AFTER:
-  // Resolve identifier: real artifact_id if available, else session_id as fallback
-  // (plan_branches.plan_artifact_id column is NOT NULL, needs a value)
-  let effective_plan_id: ArtifactId = session.plan_artifact_id.clone()
-      .unwrap_or_else(|| ArtifactId::from_string(session_id.as_str().to_string()));
+  if use_feature_branch {
+      // Compute effective_plan_id for plan_branches table only (no FK constraint)
+      let effective_plan_id: ArtifactId = session.plan_artifact_id.clone()
+          .unwrap_or_else(|| ArtifactId::from_string(session_id.as_str().to_string()));
+      // Always check/create — session_id is always available
 ```
 
-- Always set `plan_artifact_id` on created tasks (no `if let Some` gate)
+- **Keep** Phase 96's `tasks.plan_artifact_id` behavior (only set when real artifact exists)
+- **Remove** the `if let Some` gate around feature branch creation block
+- **Use** `effective_plan_id` only for `plan_branches.plan_artifact_id` (no FK on that table)
 - Feature branch existence check: `get_by_session_id(&session_id)` instead of `get_by_plan_artifact_id`
 - Branch creation always proceeds when `use_feature_branch` is true (session_id always available)
-- Merge task gets both `plan_artifact_id` and `ideation_session_id` set
+- Merge task: set `ideation_session_id` always, `plan_artifact_id` only if real artifact exists
 
 This fixes Bug #2 and #3.
 

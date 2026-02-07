@@ -138,18 +138,19 @@ After completing the task: update `"passes": true`, commit, and stop.
   {
     "id": 4,
     "category": "backend",
-    "description": "Remove plan_artifact_id gate from apply_proposals_to_kanban — always create feature branch",
+    "description": "Remove plan_artifact_id gate from feature branch creation in apply_proposals_to_kanban",
     "plan_section": "Step 4: Fix auto-create on Accept Plan — ideation_commands_apply.rs",
     "blocking": [],
     "blockedBy": [2],
     "atomic_commit": "fix(plan-branch): remove plan_artifact_id gate from apply_proposals_to_kanban",
     "steps": [
       "Read specs/plans/migrate_plan_branches_session_id.md section 'Step 4'",
-      "Replace Optional plan_artifact_id with effective_plan_id: use session.plan_artifact_id or fallback to ArtifactId::from_string(session_id)",
-      "Always set plan_artifact_id on created tasks using effective_plan_id (remove if let Some gate)",
+      "CRITICAL FK SAFETY: tasks.plan_artifact_id has FK to artifacts table. plan_branches.plan_artifact_id does NOT. Only use session_id fallback for plan_branches, NEVER for tasks.",
+      "Keep Phase 96 behavior for tasks: only set tasks.plan_artifact_id when real artifact_id exists (preserve the if let Some gate for task updates at line 171)",
+      "Remove the if let Some gate around FEATURE BRANCH CREATION (line 208): gate on session_id availability instead",
+      "Compute effective_plan_id (real artifact_id or session_id fallback) ONLY for plan_branches.plan_artifact_id column (no FK constraint)",
       "Change feature branch existence check: get_by_session_id(&session_id) instead of get_by_plan_artifact_id",
-      "Branch creation always proceeds when use_feature_branch is true (no plan_artifact_id gate)",
-      "Set both plan_artifact_id and ideation_session_id on merge task",
+      "Merge task: set ideation_session_id always, plan_artifact_id only if real artifact exists",
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: fix(plan-branch): remove plan_artifact_id gate from apply_proposals_to_kanban"
     ],
@@ -210,7 +211,7 @@ After completing the task: update `"passes": true`, commit, and stop.
 | **Add `get_by_session_id()` vs modify `get_by_plan_artifact_id()`** | Keep backward compat — existing callers still work, new callers use session_id |
 | **UNIQUE index on session_id** | Enforces 1:1 session-to-branch mapping at DB level, enables efficient lookup |
 | **Session-first fallback in commands** | Frontend sends `plan_artifact_id` param which may actually be a session_id (graph uses session_id as fallback) |
-| **`effective_plan_id` pattern in apply flow** | `plan_branches.plan_artifact_id` is NOT NULL — use real artifact_id or session_id as fallback value |
+| **`effective_plan_id` only for `plan_branches` table** | `plan_branches.plan_artifact_id` is NOT NULL (no FK) — session_id fallback OK. `tasks.plan_artifact_id` HAS FK to artifacts — only set real artifact_id (Phase 96 fix) |
 
 ---
 
