@@ -217,10 +217,10 @@ export function ChatMessages({
                   <TypingIndicator />
                 )
               )}
-              {/* Show inline question card when agent asks a question */}
-              {activeQuestion && onSubmitAnswer && (
+              {/* Show inline question card when agent asks a question or answered summary */}
+              {(activeQuestion || answeredQuestion) && onSubmitAnswer && (
                 <AskUserQuestionCard
-                  question={activeQuestion}
+                  question={activeQuestion ?? { taskId: "", header: "", question: "", options: [], multiSelect: false }}
                   onSubmit={onSubmitAnswer}
                   isSubmitting={isSubmittingAnswer}
                   answeredWith={answeredQuestion}
