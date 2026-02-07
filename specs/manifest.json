@@ -665,7 +665,7 @@
       "phase": 93,
       "name": "Merge Target MCP Tool & Branch Fix",
       "prd": "specs/phases/prd_phase_93_merge_target_tool.md",
-      "status": "active",
+      "status": "complete",
       "description": "Add get_merge_target MCP tool, fix hardcoded base_branch in merge verification"
     }
   ]
