@@ -28,9 +28,11 @@ export const askUserQuestionApi = {
    */
   answerQuestion: async (response: AskUserQuestionResponse): Promise<void> => {
     await invoke("answer_user_question", {
-      taskId: response.taskId,
-      selectedOptions: response.selectedOptions,
-      customResponse: response.customResponse,
+      input: {
+        taskId: response.taskId,
+        selectedOptions: response.selectedOptions,
+        customResponse: response.customResponse,
+      },
     });
   },
 
