@@ -12,6 +12,7 @@ pub mod health;
 pub mod ideation_commands;
 pub mod methodology_commands;
 pub mod permission_commands;
+pub mod question_commands;
 pub mod project_commands;
 pub mod qa_commands;
 pub mod research_commands;
@@ -108,6 +109,10 @@ pub use test_data_commands::{clear_test_data, seed_test_data, seed_visual_audit_
 pub use permission_commands::{
     get_pending_permissions, resolve_permission_request, ResolvePermissionArgs,
     ResolvePermissionResponse,
+};
+pub use question_commands::{
+    get_pending_questions, resolve_user_question, ResolveQuestionArgs,
+    ResolveQuestionResponse,
 };
 pub use task_context_commands::{
     get_artifact_full, get_artifact_version, get_related_artifacts, get_task_context,

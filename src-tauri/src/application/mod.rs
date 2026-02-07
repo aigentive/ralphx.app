@@ -43,7 +43,7 @@ pub use review_service::ReviewService;
 pub use session_reopen_service::SessionReopenService;
 pub use supervisor_service::{SupervisorConfig, SupervisorService, TaskMonitorState};
 pub use permission_state::{PendingPermissionInfo, PermissionDecision, PermissionState};
-pub use question_state::{PendingQuestion, QuestionAnswer, QuestionInfo, QuestionState};
+pub use question_state::{PendingQuestionInfo, QuestionAnswer, QuestionOption, QuestionState};
 pub use chat_resumption::ChatResumptionRunner;
 pub use reconciliation::ReconciliationRunner;
 pub use startup_jobs::StartupJobRunner;

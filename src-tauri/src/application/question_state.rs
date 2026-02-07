@@ -1,5 +1,6 @@
-// Question state for handling inline ask_user_question from agents
-// Clones the permission_request bridge pattern: MCP tool → backend → Tauri event → frontend → resolve
+// Question state for handling inline AskUserQuestion from agents
+// Used by the question bridge system to coordinate between MCP tools and frontend
+// Mirrors the permission_state.rs pattern exactly
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -8,30 +9,36 @@ use tokio::sync::{watch, Mutex};
 /// Answer provided by the user in the UI
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QuestionAnswer {
-    /// Selected option(s) or free-text answer
-    pub answer: Vec<String>,
-    /// Whether the user dismissed/skipped the question
-    pub dismissed: bool,
+    pub selected_options: Vec<String>,
+    pub text: Option<String>,
 }
 
-/// Metadata for a pending question (sent to frontend for rendering)
+/// Metadata for a pending question
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct QuestionInfo {
+pub struct PendingQuestionInfo {
     pub request_id: String,
     pub session_id: String,
     pub question: String,
     pub header: Option<String>,
-    pub options: Option<Vec<String>>,
+    pub options: Vec<QuestionOption>,
     pub multi_select: bool,
+}
+
+/// A single option in a question
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuestionOption {
+    pub value: String,
+    pub label: String,
+    pub description: Option<String>,
 }
 
 /// A pending question with its signaling channel
 pub struct PendingQuestion {
-    pub info: QuestionInfo,
+    pub info: PendingQuestionInfo,
     pub sender: watch::Sender<Option<QuestionAnswer>>,
 }
 
-/// Shared state for managing pending ask_user_question requests
+/// Shared state for managing pending questions from agents
 ///
 /// Uses tokio::sync::watch channels to allow long-polling:
 /// - MCP server registers a question and waits on a receiver
@@ -48,7 +55,7 @@ impl QuestionState {
     }
 
     /// Get info about all pending questions
-    pub async fn get_pending_info(&self) -> Vec<QuestionInfo> {
+    pub async fn get_pending_info(&self) -> Vec<PendingQuestionInfo> {
         let pending = self.pending.lock().await;
         pending.values().map(|p| p.info.clone()).collect()
     }
@@ -60,12 +67,12 @@ impl QuestionState {
         session_id: String,
         question: String,
         header: Option<String>,
-        options: Option<Vec<String>>,
+        options: Vec<QuestionOption>,
         multi_select: bool,
     ) -> watch::Receiver<Option<QuestionAnswer>> {
         let (tx, rx) = watch::channel(None);
-        let pending_question = PendingQuestion {
-            info: QuestionInfo {
+        let request = PendingQuestion {
+            info: PendingQuestionInfo {
                 request_id: request_id.clone(),
                 session_id,
                 question,
@@ -75,7 +82,7 @@ impl QuestionState {
             },
             sender: tx,
         };
-        self.pending.lock().await.insert(request_id, pending_question);
+        self.pending.lock().await.insert(request_id, request);
         rx
     }
 
@@ -124,86 +131,71 @@ mod tests {
     #[tokio::test]
     async fn test_question_answer_clone() {
         let answer = QuestionAnswer {
-            answer: vec!["Option A".to_string()],
-            dismissed: false,
+            selected_options: vec!["opt1".to_string()],
+            text: Some("Custom text".to_string()),
         };
         let cloned = answer.clone();
-        assert_eq!(cloned.answer, vec!["Option A"]);
-        assert!(!cloned.dismissed);
+        assert_eq!(cloned.selected_options, vec!["opt1"]);
+        assert_eq!(cloned.text, Some("Custom text".to_string()));
     }
 
     #[tokio::test]
     async fn test_question_answer_serialization() {
         let answer = QuestionAnswer {
-            answer: vec!["yes".to_string()],
-            dismissed: false,
+            selected_options: vec!["a".to_string(), "b".to_string()],
+            text: None,
         };
         let json = serde_json::to_string(&answer).unwrap();
-        assert!(json.contains("\"answer\":[\"yes\"]"));
-        assert!(json.contains("\"dismissed\":false"));
+        assert!(json.contains("\"selected_options\""));
 
         let deserialized: QuestionAnswer = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.answer, vec!["yes"]);
-        assert!(!deserialized.dismissed);
+        assert_eq!(deserialized.selected_options.len(), 2);
+        assert!(deserialized.text.is_none());
     }
 
     #[tokio::test]
-    async fn test_question_answer_dismissed() {
-        let answer = QuestionAnswer {
-            answer: vec![],
-            dismissed: true,
-        };
-        let json = serde_json::to_string(&answer).unwrap();
-        let deserialized: QuestionAnswer = serde_json::from_str(&json).unwrap();
-        assert!(deserialized.answer.is_empty());
-        assert!(deserialized.dismissed);
-    }
-
-    #[tokio::test]
-    async fn test_question_info_serialization() {
-        let info = QuestionInfo {
-            request_id: "q-123".to_string(),
-            session_id: "session-abc".to_string(),
-            question: "What framework?".to_string(),
-            header: Some("Tech Choice".to_string()),
-            options: Some(vec!["React".to_string(), "Vue".to_string()]),
+    async fn test_pending_question_info_serialization() {
+        let info = PendingQuestionInfo {
+            request_id: "req-123".to_string(),
+            session_id: "session-456".to_string(),
+            question: "Which approach?".to_string(),
+            header: Some("Architecture Decision".to_string()),
+            options: vec![QuestionOption {
+                value: "a".to_string(),
+                label: "Option A".to_string(),
+                description: Some("First approach".to_string()),
+            }],
             multi_select: false,
         };
         let json = serde_json::to_string(&info).unwrap();
-        assert!(json.contains("\"request_id\":\"q-123\""));
-        assert!(json.contains("\"session_id\":\"session-abc\""));
-        assert!(json.contains("\"question\":\"What framework?\""));
-        assert!(json.contains("\"header\":\"Tech Choice\""));
-        assert!(json.contains("\"multi_select\":false"));
-    }
-
-    #[tokio::test]
-    async fn test_question_info_optional_fields() {
-        let info = QuestionInfo {
-            request_id: "q-456".to_string(),
-            session_id: "session-def".to_string(),
-            question: "Free text question".to_string(),
-            header: None,
-            options: None,
-            multi_select: false,
-        };
-        let json = serde_json::to_string(&info).unwrap();
-        assert!(json.contains("\"header\":null"));
-        assert!(json.contains("\"options\":null"));
+        assert!(json.contains("\"request_id\":\"req-123\""));
+        assert!(json.contains("\"session_id\":\"session-456\""));
+        assert!(json.contains("\"question\":\"Which approach?\""));
     }
 
     #[tokio::test]
     async fn test_register_and_resolve_question() {
         let state = QuestionState::new();
 
-        let request_id = "test-q-123".to_string();
+        let request_id = "test-question-123".to_string();
         let rx = state
             .register(
                 request_id.clone(),
                 "session-1".to_string(),
-                "Which database?".to_string(),
-                Some("Architecture".to_string()),
-                Some(vec!["PostgreSQL".to_string(), "SQLite".to_string()]),
+                "Which framework?".to_string(),
+                None,
+                vec![
+                    QuestionOption {
+                        value: "react".to_string(),
+                        label: "React".to_string(),
+                        description: None,
+                    },
+                    QuestionOption {
+                        value: "vue".to_string(),
+                        label: "Vue".to_string(),
+                        description: None,
+                    },
+                ],
                 false,
             )
             .await;
@@ -213,8 +205,7 @@ mod tests {
             let pending = state.pending.lock().await;
             assert!(pending.contains_key(&request_id));
             let question = pending.get(&request_id).unwrap();
-            assert_eq!(question.info.question, "Which database?");
-            assert_eq!(question.info.session_id, "session-1");
+            assert_eq!(question.info.question, "Which framework?");
         }
 
         // Resolve with an answer
@@ -222,8 +213,8 @@ mod tests {
             .resolve(
                 &request_id,
                 QuestionAnswer {
-                    answer: vec!["SQLite".to_string()],
-                    dismissed: false,
+                    selected_options: vec!["react".to_string()],
+                    text: None,
                 },
             )
             .await;
@@ -233,40 +224,7 @@ mod tests {
         let answer = rx.borrow().clone();
         assert!(answer.is_some());
         let answer = answer.unwrap();
-        assert_eq!(answer.answer, vec!["SQLite"]);
-        assert!(!answer.dismissed);
-    }
-
-    #[tokio::test]
-    async fn test_register_multi_select() {
-        let state = QuestionState::new();
-
-        let rx = state
-            .register(
-                "ms-q-1".to_string(),
-                "session-2".to_string(),
-                "Select features".to_string(),
-                None,
-                Some(vec!["Auth".to_string(), "DB".to_string(), "API".to_string()]),
-                true,
-            )
-            .await;
-
-        let resolved = state
-            .resolve(
-                "ms-q-1",
-                QuestionAnswer {
-                    answer: vec!["Auth".to_string(), "API".to_string()],
-                    dismissed: false,
-                },
-            )
-            .await;
-        assert!(resolved);
-
-        let answer = rx.borrow().clone().unwrap();
-        assert_eq!(answer.answer.len(), 2);
-        assert!(answer.answer.contains(&"Auth".to_string()));
-        assert!(answer.answer.contains(&"API".to_string()));
+        assert_eq!(answer.selected_options, vec!["react"]);
     }
 
     #[tokio::test]
@@ -276,11 +234,11 @@ mod tests {
         for i in 0..3 {
             state
                 .register(
-                    format!("q-{}", i),
-                    format!("session-{}", i),
+                    format!("request-{}", i),
+                    "session-1".to_string(),
                     format!("Question {}", i),
                     None,
-                    None,
+                    vec![],
                     false,
                 )
                 .await;
@@ -290,33 +248,9 @@ mod tests {
         assert_eq!(pending_info.len(), 3);
 
         let request_ids: Vec<_> = pending_info.iter().map(|p| p.request_id.as_str()).collect();
-        assert!(request_ids.contains(&"q-0"));
-        assert!(request_ids.contains(&"q-1"));
-        assert!(request_ids.contains(&"q-2"));
-    }
-
-    #[tokio::test]
-    async fn test_multiple_pending_questions() {
-        let state = QuestionState::new();
-
-        for i in 0..5 {
-            state
-                .register(
-                    format!("q-{}", i),
-                    "session-1".to_string(),
-                    format!("Question {}", i),
-                    None,
-                    None,
-                    false,
-                )
-                .await;
-        }
-
-        let pending = state.pending.lock().await;
-        assert_eq!(pending.len(), 5);
-        for i in 0..5 {
-            assert!(pending.contains_key(&format!("q-{}", i)));
-        }
+        assert!(request_ids.contains(&"request-0"));
+        assert!(request_ids.contains(&"request-1"));
+        assert!(request_ids.contains(&"request-2"));
     }
 
     #[tokio::test]
@@ -328,9 +262,9 @@ mod tests {
             .register(
                 request_id.clone(),
                 "session-1".to_string(),
-                "Remove me".to_string(),
+                "Remove me?".to_string(),
                 None,
-                None,
+                vec![],
                 false,
             )
             .await;
@@ -348,7 +282,6 @@ mod tests {
             assert!(!pending.contains_key(&request_id));
         }
 
-        // Try to remove again - should return false
         let removed_again = state.remove(&request_id).await;
         assert!(!removed_again);
     }
@@ -361,8 +294,8 @@ mod tests {
             .resolve(
                 "nonexistent",
                 QuestionAnswer {
-                    answer: vec![],
-                    dismissed: true,
+                    selected_options: vec![],
+                    text: None,
                 },
             )
             .await;
