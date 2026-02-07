@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-07 - Phase 95 Task 2: Add session-based task lookup fallback in enable_feature_branch
+**What:**
+- In `plan_branch_commands.rs`, extended `enable_feature_branch` to also find tasks via `task_proposals` where `session_id` matches
+- After finding project tasks, queries `task_proposal_repo.get_by_session()` to collect task IDs created from session proposals
+- Backfills `plan_artifact_id` on any tasks that have it NULL but were created from session proposals
+- Updated filter to include tasks matching either by `plan_artifact_id` or by session proposal linkage
+- Cloned `session_id` before passing to `PlanBranch::new` since it's now also used for proposal lookup
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — all 3599 tests passed
+
+**Visual Verification:** N/A — backend only, no UI changes
+
+**Result:** Success
+
 ### 2026-02-07 - Phase 95 Task 1: Add session_id fallback for plan_artifact_id in apply flow
 **What:**
 - In `ideation_commands_apply.rs` line 167, replaced `session.plan_artifact_id.clone()` with fallback to `session.id`
