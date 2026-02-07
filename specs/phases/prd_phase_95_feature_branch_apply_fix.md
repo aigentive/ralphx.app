@@ -126,7 +126,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: fix(ideation): invalidate plan-branch queries after apply"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 4,

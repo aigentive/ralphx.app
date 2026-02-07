@@ -61,6 +61,11 @@ export function useApplyProposals() {
         queryKey: ideationKeys.sessionWithData(variables.sessionId),
       });
 
+      // Invalidate plan-branch queries since feature branch may have been created
+      queryClient.invalidateQueries({
+        queryKey: ["plan-branch"],
+      });
+
       // If session was accepted, also invalidate session list
       if (result.sessionConverted) {
         queryClient.invalidateQueries({
