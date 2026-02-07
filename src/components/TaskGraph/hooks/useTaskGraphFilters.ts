@@ -30,10 +30,6 @@ import { isGroupNodeId } from "../groups/groupTypes";
 // Types
 // ============================================================================
 
-/**
- * Status categories that map to showCompleted filter
- */
-const COMPLETED_STATUSES: InternalStatus[] = ["approved", "merged"];
 
 /**
  * Result of applying filters to graph data
@@ -165,11 +161,6 @@ export function useTaskGraphFilters(): UseTaskGraphFiltersReturn {
     (node: TaskGraphNode): boolean => {
       const status = node.internalStatus as InternalStatus;
 
-      // Check showCompleted filter
-      if (!filters.showCompleted && COMPLETED_STATUSES.includes(status)) {
-        return false;
-      }
-
       // Check status filter (empty = show all)
       if (filters.statuses.length > 0 && !filters.statuses.includes(status)) {
         return false;
@@ -233,8 +224,7 @@ export function useTaskGraphFilters(): UseTaskGraphFiltersReturn {
   const hasActiveFilters = useMemo(() => {
     return (
       filters.statuses.length > 0 ||
-      filters.planIds.length > 0 ||
-      !filters.showCompleted
+      filters.planIds.length > 0
     );
   }, [filters]);
 
@@ -294,11 +284,6 @@ export function filterFlowNodes<T extends Node>(
 
     const status = data.internalStatus as InternalStatus | undefined;
     if (!status) return true;
-
-    // Check showCompleted filter
-    if (!filters.showCompleted && COMPLETED_STATUSES.includes(status)) {
-      return false;
-    }
 
     // Check status filter (empty = show all)
     if (filters.statuses.length > 0 && !filters.statuses.includes(status)) {
