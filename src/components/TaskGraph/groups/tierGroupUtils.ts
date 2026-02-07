@@ -53,6 +53,7 @@ export function buildTierGroups(
     for (const taskId of planEntry.taskIds) {
       const node = nodeMap.get(taskId);
       if (!node) continue;
+      if (node.category === "plan_merge") continue;
       const tierTasks = tiers.get(node.tier);
       if (tierTasks) {
         tierTasks.push(taskId);

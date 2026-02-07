@@ -89,7 +89,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint",
       "Commit: fix(graph): exclude plan_merge tasks from tier group calculation"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,
