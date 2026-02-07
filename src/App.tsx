@@ -146,7 +146,6 @@ function AppContent() {
   const clearMessages = useChatStore((s) => s.clearMessages);
 
   // Project state
-  const projects = useProjectStore((s) => s.projects);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const setProjects = useProjectStore((s) => s.setProjects);
   const addProject = useProjectStore((s) => s.addProject);
@@ -197,7 +196,10 @@ function AppContent() {
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Check if we should show the empty state (no projects)
-  const hasNoProjects = !isLoadingProjects && Object.keys(projects).length === 0;
+  // Use TanStack Query data directly — the Zustand store sync via useEffect
+  // can lag behind, causing a brief flash where store.projects is {} while
+  // fetchedProjects already has data.
+  const hasNoProjects = !isLoadingProjects && (!fetchedProjects || fetchedProjects.length === 0);
 
   // Use active project ID (queries are disabled when null)
   const currentProjectId = activeProjectId ?? "";
