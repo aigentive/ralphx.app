@@ -839,6 +839,33 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     [graphData?.planGroups, confirm, deleteSessionMutation, removeSession, clearMessages, clearGraphSelection, queryClient, projectId]
   );
 
+  // Task deletion handler (Delete key on task node)
+  const handleDeleteTask = useCallback(
+    async (taskId: string) => {
+      const taskNode = graphData?.nodes.find((n) => n.taskId === taskId);
+      const taskTitle = taskNode?.title ?? "this task";
+
+      const confirmed = await confirm({
+        title: "Delete task?",
+        description: `This will permanently delete "${taskTitle}". This action cannot be undone.`,
+        confirmText: "Delete",
+        variant: "destructive",
+      });
+
+      if (!confirmed) return;
+
+      try {
+        await api.tasks.delete(taskId);
+        clearGraphSelection();
+        queryClient.invalidateQueries({ queryKey: taskGraphKeys.graph(projectId) });
+        toast.success("Task deleted");
+      } catch {
+        toast.error("Failed to delete task");
+      }
+    },
+    [graphData?.nodes, confirm, clearGraphSelection, queryClient, projectId]
+  );
+
   // Compute layout using dagre (includes plan grouping)
   const { nodes: layoutNodes, edges: layoutEdges, groupNodes } = useTaskGraphLayout(
     filteredGraphData.nodes,
@@ -905,6 +932,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     graphError: error ?? null,
     isLoading,
     onDeletePlanGroup: handleDeletePlan,
+    onDeleteTask: handleDeleteTask,
   });
 
   // Compute visible nodes and edges (controlled mode).

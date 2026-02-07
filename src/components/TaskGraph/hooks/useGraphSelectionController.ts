@@ -47,6 +47,8 @@ interface GraphSelectionControllerParams {
   isLoading: boolean;
   /** Called when Backspace is pressed on a selected plan group (prompts delete) */
   onDeletePlanGroup?: (planArtifactId: string) => void;
+  /** Called when Delete key is pressed on a selected task node (prompts delete) */
+  onDeleteTask?: (taskId: string) => void;
 }
 
 /** Public controller surface returned to TaskGraphView. */
@@ -230,6 +232,7 @@ export function useGraphSelectionController({
   graphError,
   isLoading,
   onDeletePlanGroup,
+  onDeleteTask,
 }: GraphSelectionControllerParams): GraphSelectionControllerResult {
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
@@ -620,7 +623,7 @@ export function useGraphSelectionController({
         return;
       }
 
-      if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "Escape", "Backspace"].includes(key)) {
+      if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "Escape", "Backspace", "Delete"].includes(key)) {
         return;
       }
 
@@ -680,6 +683,19 @@ export function useGraphSelectionController({
             setFocusedNodeId(null);
             clearGraphSelection();
           }
+        }
+        return;
+      }
+
+      if (key === "Delete") {
+        if (!activeSelection) return;
+        if (activeSelection.kind === "task") {
+          onDeleteTask?.(activeSelection.id);
+          return;
+        }
+        if (activeSelection.kind === "planGroup") {
+          onDeletePlanGroup?.(activeSelection.id);
+          return;
         }
         return;
       }
@@ -888,6 +904,7 @@ export function useGraphSelectionController({
       layoutNodes,
       nodes,
       onDeletePlanGroup,
+      onDeleteTask,
       onToggleAllTiers,
       onToggleCollapse,
       onToggleTierCollapse,
