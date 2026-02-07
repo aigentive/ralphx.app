@@ -26,7 +26,9 @@ export type AskUserQuestionOption = z.infer<typeof AskUserQuestionOptionSchema>;
  * Rendered as an interactive question component in the UI
  */
 export const AskUserQuestionPayloadSchema = z.object({
-  taskId: z.string().min(1),
+  requestId: z.string().min(1),
+  taskId: z.string().min(1).optional(),
+  sessionId: z.string().min(1).optional(),
   question: z.string().min(1),
   header: z.string().min(1),
   options: z.array(AskUserQuestionOptionSchema).min(2),
@@ -43,7 +45,8 @@ export type AskUserQuestionPayload = z.infer<typeof AskUserQuestionPayloadSchema
  * Response sent back to agent with user's answer
  */
 export const AskUserQuestionResponseSchema = z.object({
-  taskId: z.string().min(1),
+  requestId: z.string().min(1).optional(),
+  taskId: z.string().min(1).optional(),
   selectedOptions: z.array(z.string()),
   customResponse: z.string().optional(),
 });
@@ -89,11 +92,11 @@ export function isValidResponse(response: AskUserQuestionResponse): boolean {
  * Create a response with a single selected option
  */
 export function createSingleSelectResponse(
-  taskId: string,
-  selectedOption: string
+  selectedOption: string,
+  ids: { requestId?: string; taskId?: string }
 ): AskUserQuestionResponse {
   return {
-    taskId,
+    ...ids,
     selectedOptions: [selectedOption],
   };
 }
@@ -102,11 +105,11 @@ export function createSingleSelectResponse(
  * Create a response with multiple selected options
  */
 export function createMultiSelectResponse(
-  taskId: string,
-  selectedOptions: string[]
+  selectedOptions: string[],
+  ids: { requestId?: string; taskId?: string }
 ): AskUserQuestionResponse {
   return {
-    taskId,
+    ...ids,
     selectedOptions,
   };
 }
@@ -115,11 +118,11 @@ export function createMultiSelectResponse(
  * Create a response with a custom text response
  */
 export function createCustomResponse(
-  taskId: string,
-  customResponse: string
+  customResponse: string,
+  ids: { requestId?: string; taskId?: string }
 ): AskUserQuestionResponse {
   return {
-    taskId,
+    ...ids,
     selectedOptions: [],
     customResponse,
   };
