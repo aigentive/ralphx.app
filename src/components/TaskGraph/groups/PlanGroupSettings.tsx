@@ -107,11 +107,19 @@ export const PlanGroupSettings = memo(function PlanGroupSettings({
       } else {
         await api.planBranches.disable(planArtifactId);
       }
-      onBranchChange?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update feature branch");
+      const message = typeof err === "string"
+        ? err
+        : err instanceof Error
+          ? err.message
+          : "Failed to update feature branch";
+      // Silence "already exists" — just stale UI state, refetch will correct it
+      if (!message.toLowerCase().includes("already exists")) {
+        setError(message);
+      }
     } finally {
       setIsLoading(false);
+      onBranchChange?.();
     }
   }, [planArtifactId, sessionId, projectId, onBranchChange]);
 

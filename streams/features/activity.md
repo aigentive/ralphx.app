@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-02-07 14:30:00 - Phase 97 Task 6: Fix stale toggle after feature branch enable
+**What:**
+- Moved `onBranchChange?.()` from `try` block to `finally` block — always invalidates cache even on error
+- Handle Tauri string errors: `typeof err === 'string'` check before `instanceof Error`
+- Silence "already exists" error — just stale UI state, refetch will correct it
+
+**Commands:**
+- `npx eslint src/components/TaskGraph/groups/PlanGroupSettings.tsx` — passed (0 errors)
+- `npm run typecheck` — passed
+
+**Visual Verification:**
+- Mock-check: screenshots/features/2026-02-07_plan-group-settings-stale-toggle-fix_mock-check.md
+- Screenshot: screenshots/features/2026-02-07_plan-group-settings-stale-toggle-fix.png
+- PRD content check: ✅ Data visible (toggle, branch name, status, source, merge task link)
+
+**Result:** Success
+
 ### 2026-02-07 13:15:00 - Phase 97 Task 5: Session-first lookup in get/enable/disable plan branch commands
 **What:**
 - `get_plan_branch`: Try `get_by_session_id()` first (param may be session_id from graph), fallback to `get_by_plan_artifact_id()`
