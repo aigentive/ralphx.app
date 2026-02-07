@@ -526,6 +526,41 @@ pub struct MarkIssueAddressedRequest {
 }
 
 // ============================================================================
+// Request/Response Types - Questions (AskUserQuestion)
+// ============================================================================
+
+/// Option in a question request
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct QuestionOptionInput {
+    pub value: String,
+    pub label: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct QuestionRequestInput {
+    pub session_id: String,
+    pub question: String,
+    pub header: Option<String>,
+    #[serde(default)]
+    pub options: Vec<QuestionOptionInput>,
+    #[serde(default)]
+    pub multi_select: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct QuestionRequestResponse {
+    pub request_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ResolveQuestionInput {
+    pub request_id: String,
+    pub selected_options: Vec<String>,
+    pub text: Option<String>,
+}
+
+// ============================================================================
 // Common Response Types
 // ============================================================================
 
