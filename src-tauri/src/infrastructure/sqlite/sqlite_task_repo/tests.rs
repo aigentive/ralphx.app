@@ -1,5 +1,5 @@
 use crate::infrastructure::sqlite::SqliteTaskRepository;
-use crate::domain::entities::{InternalStatus, ProjectId, Task, TaskId};
+use crate::domain::entities::{IdeationSessionId, InternalStatus, ProjectId, Task, TaskId};
 use crate::domain::repositories::TaskRepository;
 use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
 use rusqlite::Connection;
@@ -862,4 +862,92 @@ async fn test_blocked_reason_defaults_to_none() {
 
     let found = repo.get_by_id(&task.id).await.unwrap().unwrap();
     assert!(found.blocked_reason.is_none());
+}
+
+// ==================== IDEATION SESSION QUERY TESTS ====================
+
+#[tokio::test]
+async fn test_get_by_ideation_session_returns_matching_tasks() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let session_id = IdeationSessionId::from_string("test-session-1");
+
+    let mut task1 = create_test_task("Session Task 1");
+    task1.ideation_session_id = Some(session_id.clone());
+
+    let mut task2 = create_test_task("Session Task 2");
+    task2.ideation_session_id = Some(session_id.clone());
+
+    repo.create(task1.clone()).await.unwrap();
+    repo.create(task2.clone()).await.unwrap();
+
+    let result = repo.get_by_ideation_session(&session_id).await;
+
+    assert!(result.is_ok());
+    let tasks = result.unwrap();
+    assert_eq!(tasks.len(), 2);
+}
+
+#[tokio::test]
+async fn test_get_by_ideation_session_excludes_other_sessions() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let session_a = IdeationSessionId::from_string("session-a");
+    let session_b = IdeationSessionId::from_string("session-b");
+
+    let mut task1 = create_test_task("Task A");
+    task1.ideation_session_id = Some(session_a.clone());
+
+    let mut task2 = create_test_task("Task B");
+    task2.ideation_session_id = Some(session_b.clone());
+
+    let task3 = create_test_task("Task No Session");
+    // task3 has no ideation_session_id (None)
+
+    repo.create(task1).await.unwrap();
+    repo.create(task2).await.unwrap();
+    repo.create(task3).await.unwrap();
+
+    let result_a = repo.get_by_ideation_session(&session_a).await.unwrap();
+    assert_eq!(result_a.len(), 1);
+    assert_eq!(result_a[0].title, "Task A");
+
+    let result_b = repo.get_by_ideation_session(&session_b).await.unwrap();
+    assert_eq!(result_b.len(), 1);
+    assert_eq!(result_b[0].title, "Task B");
+}
+
+#[tokio::test]
+async fn test_get_by_ideation_session_returns_empty_for_nonexistent() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let session_id = IdeationSessionId::from_string("nonexistent-session");
+
+    let result = repo.get_by_ideation_session(&session_id).await;
+
+    assert!(result.is_ok());
+    assert!(result.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_get_by_ideation_session_sorted_by_created_at() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let session_id = IdeationSessionId::from_string("test-session-sort");
+
+    // Create tasks — they get created_at = Utc::now() sequentially
+    let mut task1 = create_test_task("First Task");
+    task1.ideation_session_id = Some(session_id.clone());
+
+    let mut task2 = create_test_task("Second Task");
+    task2.ideation_session_id = Some(session_id.clone());
+
+    repo.create(task1).await.unwrap();
+    repo.create(task2).await.unwrap();
+
+    let tasks = repo.get_by_ideation_session(&session_id).await.unwrap();
+    assert_eq!(tasks.len(), 2);
+    // ORDER BY created_at ASC — first created should come first
+    assert_eq!(tasks[0].title, "First Task");
+    assert_eq!(tasks[1].title, "Second Task");
 }
