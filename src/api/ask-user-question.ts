@@ -22,9 +22,11 @@ export const askUserQuestionApi = {
    */
   answerQuestion: async (response: AskUserQuestionResponse): Promise<void> => {
     await invoke("answer_user_question", {
-      taskId: response.taskId,
-      selectedOptions: response.selectedOptions,
-      customResponse: response.customResponse,
+      input: {
+        task_id: response.taskId,
+        selected_options: response.selectedOptions,
+        custom_response: response.customResponse,
+      },
     });
     // Command returns () on success, no parsing needed
   },
