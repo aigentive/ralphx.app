@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-02-07 12:00:00 - Phase 89: Fix ActiveProjectState Race Condition on Startup
+**What:**
+- Added `tokio::sync::Notify` field to `ActiveProjectState` struct
+- Implemented `wait_for_project(timeout: Duration) -> Option<ProjectId>` with register-before-check pattern to prevent TOCTOU races
+- Wired `wait_for_project()` into `StartupJobRunner` replacing direct `get()` call
+- Added configurable `active_project_wait_timeout` (5s default) with builder method
+- Updated test helper `build_runner()` with 10ms timeout so non-project tests stay fast
+- Added 3 new tests: async wait, fast path, and timeout
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passes)
+- `cargo test -p ralphx -- application::startup_jobs` (25/25 pass)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-08 01:00:00 - Phase 88 Complete: Consolidate Legacy Events
 **What:**
 - All 2 PRD tasks already passed — ran gap verification

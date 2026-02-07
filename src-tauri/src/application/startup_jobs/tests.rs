@@ -2,6 +2,7 @@ use super::*;
 use crate::application::AppState;
 use crate::domain::entities::{ChatContextType, InternalStatus, Project, Task};
 use crate::domain::state_machine::mocks::MockTaskScheduler;
+use std::time::Duration;
 
 // Helper to create test state
 async fn setup_test_state() -> (Arc<ExecutionState>, AppState) {
@@ -47,7 +48,9 @@ fn build_runner(
         transition_service,
         Arc::clone(execution_state),
         Arc::clone(&active_project_state),
-    );
+    )
+    // Phase 89: Use short timeout so tests that don't set active project don't wait 5s
+    .with_active_project_timeout(Duration::from_millis(10));
     (runner, active_project_state)
 }
 
@@ -961,4 +964,76 @@ async fn test_unblock_runs_even_when_paused() {
         InternalStatus::Ready,
         "Blocked task should be unblocked even when execution is paused"
     );
+}
+
+// ============================================================
+// Phase 89 Tests: ActiveProjectState wait_for_project()
+// ============================================================
+
+#[tokio::test]
+async fn test_resumption_waits_for_active_project() {
+    // Verifies the runner waits for the frontend to set the active project
+    // rather than immediately skipping when it's not yet set.
+    let (execution_state, app_state) = setup_test_state().await;
+
+    // Create a project with a task in Executing state
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Executing Task".to_string());
+    task.internal_status = InternalStatus::Executing;
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task).await.unwrap();
+
+    execution_state.set_max_concurrent(10);
+
+    let (runner, active_project_state) = build_runner(&app_state, &execution_state);
+    // Override the short test timeout with a longer one for this specific test
+    let runner = runner.with_active_project_timeout(Duration::from_secs(2));
+
+    // Spawn runner in a background task — it will wait for active project
+    let active_project_state_clone = Arc::clone(&active_project_state);
+    let project_id = project.id.clone();
+
+    // Set active project after a 200ms delay (simulates frontend IPC arriving late)
+    let setter = tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        active_project_state_clone.set(Some(project_id)).await;
+    });
+
+    // Run the startup runner — it should wait and then resume
+    runner.run().await;
+    setter.await.unwrap();
+
+    // Verify entry actions were called (task was resumed after waiting)
+    let convs = app_state
+        .chat_conversation_repo
+        .get_by_context(ChatContextType::TaskExecution, task_id.as_str())
+        .await
+        .unwrap();
+    assert_eq!(
+        convs.len(),
+        1,
+        "Runner should wait for active project and resume the executing task"
+    );
+}
+
+#[tokio::test]
+async fn test_wait_for_project_fast_path() {
+    // Verifies wait_for_project returns immediately when already set
+    let state = ActiveProjectState::new();
+    let pid = crate::domain::entities::ProjectId::new();
+    state.set(Some(pid.clone())).await;
+
+    let result = state.wait_for_project(Duration::from_millis(10)).await;
+    assert_eq!(result, Some(pid), "Fast path should return immediately when already set");
+}
+
+#[tokio::test]
+async fn test_wait_for_project_timeout() {
+    // Verifies wait_for_project returns None after timeout when never set
+    let state = ActiveProjectState::new();
+
+    let result = state.wait_for_project(Duration::from_millis(50)).await;
+    assert!(result.is_none(), "Should return None after timeout when never set");
 }

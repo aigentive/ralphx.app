@@ -66,7 +66,7 @@ Key points:
 **IMPORTANT: Work on ONE task per iteration.**
 
 **BEFORE STARTING:**
-1. Find the first task with `"passes": false`
+1. Find the first task with `"passes": true`
 2. **Read the ENTIRE implementation plan** at `specs/plans/fix_active_project_state_race_condition.md`
 3. Locate the relevant section for this task
 4. Only then begin implementation
@@ -95,7 +95,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings",
       "Do NOT commit yet — continues in Task 2"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,
@@ -114,7 +114,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings",
       "Do NOT commit yet — continues in Task 3"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 3,
@@ -133,7 +133,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings",
       "Commit all 3 files atomically: fix(startup): wait for active project before task resumption"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
