@@ -178,16 +178,23 @@ pub async fn enable_feature_branch(
         .filter_map(|p| p.created_task_id.clone())
         .collect();
 
-    // Backfill plan_artifact_id on tasks that were created from session proposals but lack it
+    // Backfill plan_artifact_id and ideation_session_id on tasks created from session proposals
     for task in &all_tasks {
-        if task.plan_artifact_id.is_none() && session_task_ids.contains(&task.id) {
+        if session_task_ids.contains(&task.id)
+            && (task.plan_artifact_id.is_none() || task.ideation_session_id.is_none())
+        {
             let mut task_to_update = task.clone();
-            task_to_update.plan_artifact_id = Some(plan_artifact_id.clone());
+            if task_to_update.plan_artifact_id.is_none() {
+                task_to_update.plan_artifact_id = Some(plan_artifact_id.clone());
+            }
+            if task_to_update.ideation_session_id.is_none() {
+                task_to_update.ideation_session_id = Some(session_id.clone());
+            }
             state
                 .task_repo
                 .update(&task_to_update)
                 .await
-                .map_err(|e| format!("Failed to backfill plan_artifact_id: {}", e))?;
+                .map_err(|e| format!("Failed to backfill task fields: {}", e))?;
         }
     }
 
@@ -211,6 +218,7 @@ pub async fn enable_feature_branch(
         base_branch
     ));
     merge_task.plan_artifact_id = Some(plan_artifact_id);
+    merge_task.ideation_session_id = Some(session_id.clone());
     merge_task.internal_status = InternalStatus::Blocked;
     merge_task.blocked_reason = Some("Waiting for all plan tasks to complete".to_string());
 
