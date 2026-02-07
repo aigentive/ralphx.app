@@ -666,6 +666,9 @@ export function useGraphSelectionController({
             focusSelectionInView({ kind: "planGroup", id: planArtifactId });
             return;
           }
+          // Uncategorized task (no tier group, no plan group) — treat as delete
+          onDeleteTask?.(activeSelection.id);
+          return;
         }
         if (activeSelection.kind === "tierGroup") {
           const planArtifactId = tierGroupsById.get(activeSelection.id)?.planArtifactId;
