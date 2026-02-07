@@ -553,6 +553,7 @@ mod tests {
         async fn get_dependents(&self, _id: &TaskId) -> AppResult<Vec<Task>> { Ok(vec![]) }
         async fn add_blocker(&self, _task_id: &TaskId, _blocker_id: &TaskId) -> AppResult<()> { Ok(()) }
         async fn resolve_blocker(&self, _task_id: &TaskId, _blocker_id: &TaskId) -> AppResult<()> { Ok(()) }
+        async fn get_by_ideation_session(&self, _session_id: &crate::domain::entities::IdeationSessionId) -> AppResult<Vec<Task>> { Ok(vec![]) }
         async fn get_by_project_filtered(&self, _project_id: &ProjectId, _include_archived: bool) -> AppResult<Vec<Task>> { Ok(vec![]) }
         async fn archive(&self, task_id: &TaskId) -> AppResult<Task> {
             if let Some(task) = self.tasks.read().unwrap().get(task_id.as_str()) {

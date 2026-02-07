@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 
-use crate::domain::entities::{InternalStatus, ProjectId, Task, TaskId};
+use crate::domain::entities::{IdeationSessionId, InternalStatus, ProjectId, Task, TaskId};
 use crate::domain::repositories::StatusTransition;
 use crate::error::AppResult;
 
@@ -82,6 +82,15 @@ pub trait TaskRepository: Send + Sync {
 
     /// Remove/resolve a blocker relationship
     async fn resolve_blocker(&self, task_id: &TaskId, blocker_id: &TaskId) -> AppResult<()>;
+
+    /// Get all tasks belonging to an ideation session
+    ///
+    /// Used by cascade delete to find all tasks that should be deleted
+    /// when an ideation session is removed.
+    async fn get_by_ideation_session(
+        &self,
+        session_id: &IdeationSessionId,
+    ) -> AppResult<Vec<Task>>;
 
     // ═══════════════════════════════════════════════════════════════════════
     // Archive Operations (Phase 18 - Soft Delete)
@@ -306,6 +315,13 @@ mod tests {
 
         async fn resolve_blocker(&self, _task_id: &TaskId, _blocker_id: &TaskId) -> AppResult<()> {
             Ok(())
+        }
+
+        async fn get_by_ideation_session(
+            &self,
+            _session_id: &IdeationSessionId,
+        ) -> AppResult<Vec<Task>> {
+            Ok(vec![])
         }
 
         async fn get_by_project_filtered(

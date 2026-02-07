@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-02-08 03:30:00 - Phase 103 Task 1: Add get_by_ideation_session to TaskRepository
+**What:**
+- Added `get_by_ideation_session(&self, session_id: &IdeationSessionId) -> AppResult<Vec<Task>>` to TaskRepository trait
+- Added `GET_BY_IDEATION_SESSION` SQL query constant to queries.rs (SELECT WHERE ideation_session_id = ?1, ORDER BY created_at ASC)
+- Implemented in SqliteTaskRepository following get_by_project pattern
+- Implemented in MemoryTaskRepository with filter by ideation_session_id match
+- Added mock stubs in 5 additional MockTaskRepository implementations (trait_tests, apply_service, review_service, task_context_service, spawner_tests)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (pass)
+- `cargo test` (3614 tests pass, 0 failures)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-08 02:00:00 - Phase 102 Complete: Gap Verification Passed
 **What:**
 - Code gap verification: WIRING (store→Column→toggle all traced), API (no new backend), STATE (toggle reads/writes correctly), EVENTS (none), TYPES (plan_merge string consistent)
