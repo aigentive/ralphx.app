@@ -43,15 +43,21 @@ export function useIntegratedChatEvents({
     const unsubscribes: Unsubscribe[] = [];
 
     // Unified agent:tool_call event (for merge and all contexts)
+    // Dedup pattern ported from useChatPanelHandlers (Phase 41)
     unsubscribes.push(
       bus.subscribe<{
         tool_name: string;
+        tool_id?: string;
         arguments: unknown;
         result?: unknown;
         conversation_id: string;
         diff_context?: { old_content?: string; file_path: string } | null;
       }>("agent:tool_call", (payload) => {
-        const { tool_name, arguments: args, result, conversation_id, diff_context } = payload;
+        const { tool_name, tool_id, arguments: args, result, conversation_id, diff_context } = payload;
+
+        // Skip result events early — they don't add new tool calls
+        if (tool_name.startsWith("result:toolu")) return;
+
         if (conversation_id === activeConversationIdRef.current) {
           // Build diffContext with exactOptionalPropertyTypes compliance
           let diffContext: ToolCall["diffContext"];
@@ -61,13 +67,30 @@ export function useIntegratedChatEvents({
               diffContext.oldContent = diff_context.old_content;
             }
           }
+
+          // Use backend tool_id for deduplication, fall back to timestamp-based ID
+          const id = tool_id ?? `streaming-agent-${Date.now()}`;
+
           setStreamingToolCalls((prev) => {
-            const entry: ToolCall = {
-              id: `streaming-agent-${Date.now()}-${prev.length}`,
-              name: tool_name,
-              arguments: args,
-              result,
-            };
+            const existing = prev.find((tc) => tc.id === id);
+            if (existing) {
+              // Update existing entry (Started → Completed lifecycle)
+              return prev.map((tc) => {
+                if (tc.id !== id) return tc;
+                const updated: ToolCall = {
+                  ...tc,
+                  name: tool_name,
+                  arguments: args ?? tc.arguments,
+                  result: result ?? tc.result,
+                };
+                if (diffContext) {
+                  updated.diffContext = diffContext;
+                }
+                return updated;
+              });
+            }
+            // New tool call — append
+            const entry: ToolCall = { id, name: tool_name, arguments: args, result };
             if (diffContext) {
               entry.diffContext = diffContext;
             }

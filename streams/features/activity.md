@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-07 17:30:00 - Phase 92 Task 1: Port tool_id dedup to useIntegratedChatEvents
+**What:**
+- Ported proven upsert-by-tool_id dedup pattern from useChatPanelHandlers.ts to useIntegratedChatEvents.ts
+- Added `tool_id?: string` to event payload type
+- Added early return for `result:toolu*` events (filtered before state update)
+- Replaced append-only setStreamingToolCalls with upsert: find existing by tool_id, update in-place if found, append if new
+- Preserved Phase 91 diffContext handling in both update and append paths
+
+**Commands:**
+- `npx eslint src/hooks/useIntegratedChatEvents.ts` — clean
+- `npm run typecheck` — clean
+
+**Visual Verification:** N/A — backend event handling only, no UI changes
+
+**Result:** Success
+
 ### 2026-02-07 16:00:00 - Phase 91 Complete: Chat Diff View for Edit/Write Tool Calls
 **What:**
 - All 6 tasks verified as `passes: true`

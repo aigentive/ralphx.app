@@ -98,7 +98,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: fix(chat-streaming): deduplicate tool call events in integrated chat panel"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
