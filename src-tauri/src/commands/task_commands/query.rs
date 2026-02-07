@@ -571,6 +571,35 @@ pub async fn get_task_dependency_graph(
         });
     }
 
+    // 5b. Second pass: catch tasks with plan_artifact_id not found via proposal tracing
+    // (e.g. merge tasks created directly via task_repo.create())
+    {
+        let grouped_task_ids: HashSet<String> = plan_groups
+            .iter()
+            .flat_map(|g| g.task_ids.iter().cloned())
+            .collect();
+
+        // Build a lookup from plan_artifact_id -> plan_group index
+        let plan_group_index: HashMap<String, usize> = plan_groups
+            .iter()
+            .enumerate()
+            .map(|(i, g)| (g.plan_artifact_id.clone(), i))
+            .collect();
+
+        for task in &tasks {
+            let task_id_str = task.id.as_str().to_string();
+            if grouped_task_ids.contains(&task_id_str) {
+                continue;
+            }
+            if let Some(plan_id) = task.plan_artifact_id.as_ref().map(|id| id.as_str().to_string()) {
+                if let Some(&group_idx) = plan_group_index.get(&plan_id) {
+                    plan_groups[group_idx].task_ids.push(task_id_str);
+                    categorize_status(&task.internal_status, &mut plan_groups[group_idx].status_summary);
+                }
+            }
+        }
+    }
+
     // 6. Build nodes
     let nodes: Vec<TaskGraphNode> = tasks
         .iter()
