@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 97,
+  "currentPhase": 98,
   "phases": [
     {
       "phase": 0,
@@ -695,6 +695,13 @@
       "prd": "specs/phases/prd_phase_97_plan_branch_session_lookup.md",
       "status": "complete",
       "description": "Add get_by_session_id() as primary plan branch lookup, fix merge resolution and apply flow"
+    },
+    {
+      "phase": 98,
+      "name": "Fix Merge Workflow Bugs",
+      "prd": "specs/phases/prd_phase_98_fix_merge_workflow_bugs.md",
+      "status": "active",
+      "description": "Fix MergeIncomplete agent mismatch and dirty tree blocking worktree merge"
     }
   ]
 }
