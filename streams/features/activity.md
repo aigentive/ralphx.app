@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-02-07 - Phase 91 Task 3: Add diffContext to ToolCall and ContentBlockItem types
+**What:**
+- Added optional `diffContext` field to `ToolCall` interface in ToolCallIndicator.tsx
+- Added optional `diffContext` field to `ContentBlockItem` interface in MessageItem.tsx
+- Updated `parseToolCalls` in chat.ts to transform `diff_context` (snake_case) to `diffContext` (camelCase)
+- Updated `parseContentBlocks` in chat.ts to transform `diff_context` on tool_use blocks
+- Updated MessageItem to pass `diffContext` through from content blocks to ToolCall objects
+- Fixed `exactOptionalPropertyTypes` TS errors by conditionally setting property instead of assigning undefined
+
+**Commands:**
+- `npx eslint src/components/Chat/ToolCallIndicator.tsx src/components/Chat/MessageItem.tsx src/api/chat.ts`
+- `npm run typecheck`
+
+**Visual Verification:** N/A - type-only changes, no UI modifications
+
+**Result:** Success
+
 ### 2026-02-07 23:00:00 - Phase 91 Task 2: Capture old file content for Edit/Write diff context
 **What:**
 - Added `diff_context: Option<serde_json::Value>` with `#[serde(skip_serializing_if)]` to `AgentToolCallPayload`

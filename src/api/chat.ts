@@ -63,7 +63,24 @@ export function parseContentBlocks(raw: unknown): ContentBlockItem[] {
   const data = typeof raw === "string" ? safeJsonParse(raw) : raw;
   if (!Array.isArray(data)) return [];
 
-  return data as ContentBlockItem[];
+  return data.map((block) => {
+    const item: ContentBlockItem = {
+      type: block.type,
+      text: block.text,
+      id: block.id,
+      name: block.name,
+      arguments: block.arguments,
+      result: block.result,
+    };
+    // Transform diff_context (snake_case) to diffContext (camelCase) for tool_use blocks
+    if (block.type === "tool_use" && block.diff_context) {
+      item.diffContext = {
+        oldContent: block.diff_context.old_content ?? undefined,
+        filePath: block.diff_context.file_path,
+      };
+    }
+    return item;
+  });
 }
 
 /**
@@ -78,13 +95,22 @@ export function parseToolCalls(raw: unknown): ToolCall[] {
   const data = typeof raw === "string" ? safeJsonParse(raw) : raw;
   if (!Array.isArray(data)) return [];
 
-  return data.map((tc, idx) => ({
-    id: tc.id ?? `tool-${idx}`,
-    name: tc.name ?? "unknown",
-    arguments: tc.arguments ?? {},
-    result: tc.result,
-    error: tc.error,
-  }));
+  return data.map((tc, idx) => {
+    const toolCall: ToolCall = {
+      id: tc.id ?? `tool-${idx}`,
+      name: tc.name ?? "unknown",
+      arguments: tc.arguments ?? {},
+      result: tc.result,
+      error: tc.error,
+    };
+    if (tc.diff_context) {
+      toolCall.diffContext = {
+        oldContent: tc.diff_context.old_content ?? undefined,
+        filePath: tc.diff_context.file_path,
+      };
+    }
+    return toolCall;
+  });
 }
 
 /**
