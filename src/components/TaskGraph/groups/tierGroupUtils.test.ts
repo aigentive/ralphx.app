@@ -3,7 +3,6 @@ import type { PlanGroupInfo, TaskGraphNode } from "@/api/task-graph.types";
 import {
   buildTierGroups,
   getTierGroupId,
-  UNGROUPED_PLAN_ID,
 } from "./tierGroupUtils";
 
 const STATUS_SUMMARY = {
@@ -85,15 +84,24 @@ describe("buildTierGroups", () => {
     });
   });
 
-  it("creates tier groups for ungrouped tasks when multiple tiers exist", () => {
+  it("does not create tier groups for uncategorized tasks even when they span multiple tiers", () => {
+    const nodes = [
+      makeNode({ taskId: "t1", tier: 0 }),
+      makeNode({ taskId: "t2", tier: 1 }),
+      makeNode({ taskId: "t3", tier: 2 }),
+    ];
+
+    const groups = buildTierGroups(nodes, []);
+    expect(groups).toEqual([]);
+  });
+
+  it("does not create tier groups for uncategorized tasks when includeUngrouped is true", () => {
     const nodes = [
       makeNode({ taskId: "t1", tier: 0 }),
       makeNode({ taskId: "t2", tier: 2 }),
     ];
 
-    const groups = buildTierGroups(nodes, []);
-    expect(groups).toHaveLength(2);
-    expect(groups[0]?.planArtifactId).toBe(UNGROUPED_PLAN_ID);
-    expect(groups[1]?.planArtifactId).toBe(UNGROUPED_PLAN_ID);
+    const groups = buildTierGroups(nodes, [], { includeUngrouped: true });
+    expect(groups).toEqual([]);
   });
 });

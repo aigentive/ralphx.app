@@ -24,20 +24,10 @@ export function getTierLabel(tier: number): string {
   }
 }
 
-function collectUngroupedTaskIds(nodes: TaskGraphNode[], planGroups: PlanGroupInfo[]): string[] {
-  const groupedTaskIds = new Set<string>();
-  for (const pg of planGroups) {
-    for (const taskId of pg.taskIds) {
-      groupedTaskIds.add(taskId);
-    }
-  }
-
-  return nodes.filter((node) => !groupedTaskIds.has(node.taskId)).map((node) => node.taskId);
-}
-
 /**
- * Build tier groups for plans (and ungrouped tasks) when multiple tiers exist.
+ * Build tier groups for plan groups when multiple tiers exist.
  * Plans with a single tier return no tier groups.
+ * Uncategorized tasks are always flat (no tier sub-groups).
  */
 export function buildTierGroups(
   nodes: TaskGraphNode[],
@@ -46,7 +36,6 @@ export function buildTierGroups(
 ): TierGroupInfo[] {
   if (options.enabled === false) return [];
 
-  const includeUngrouped = options.includeUngrouped !== false;
   const nodeMap = new Map<string, TaskGraphNode>();
   for (const node of nodes) {
     nodeMap.set(node.taskId, node);
@@ -56,16 +45,6 @@ export function buildTierGroups(
     planArtifactId: pg.planArtifactId,
     taskIds: pg.taskIds,
   }));
-
-  const ungroupedTaskIds = includeUngrouped
-    ? collectUngroupedTaskIds(nodes, planGroups)
-    : [];
-  if (includeUngrouped && ungroupedTaskIds.length > 0) {
-    planEntries.push({
-      planArtifactId: UNGROUPED_PLAN_ID,
-      taskIds: ungroupedTaskIds,
-    });
-  }
 
   const tierGroups: TierGroupInfo[] = [];
 
