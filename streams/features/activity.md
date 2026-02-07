@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-02-07 22:30:00 - Phase 101 Task 4: Add issue tools to reviewer frontmatter and re-review workflow
+**What:**
+- Added `mcp__ralphx__get_task_issues`, `mcp__ralphx__get_step_progress`, `mcp__ralphx__get_issue_progress` to reviewer.md frontmatter `tools:` list
+- Added "Re-Review Workflow (After Revision)" section to reviewer.md system prompt with 7-step process for verifying issue resolution
+- Verified worker.md already has all issue tools listed (no changes needed)
+
+**Commands:**
+- N/A (markdown-only changes, no compilation required)
+
+**Visual Verification:** N/A - agent config only
+
+**Result:** Success
+
+---
+
 ### 2026-02-07 22:00:00 - Phase 101 Task 3: Add review issue tools to worker and reviewer allowlists
 **What:**
 - Added `get_task_issues`, `mark_issue_in_progress`, `mark_issue_addressed` to worker's `allowed_mcp_tools` in `agent_config.rs`

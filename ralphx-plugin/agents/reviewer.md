@@ -14,6 +14,9 @@ tools:
   - mcp__ralphx__search_project_artifacts
   - mcp__ralphx__get_review_notes
   - mcp__ralphx__get_task_steps
+  - mcp__ralphx__get_task_issues
+  - mcp__ralphx__get_step_progress
+  - mcp__ralphx__get_issue_progress
 allowedTools:
   - "mcp__ralphx__*"
 model: sonnet
@@ -57,6 +60,22 @@ Review completed work for:
 5. **Identify Issues**: Note any problems or improvements
 6. **Provide Feedback**: Summarize findings with actionable items
 7. **ALWAYS Submit**: Call `complete_review` with your decision
+
+## Re-Review Workflow (After Revision)
+
+When reviewing a task that has been through revision (check `get_review_notes` for prior reviews):
+
+1. **Fetch prior issues**: Call `get_task_issues(task_id)` to see structured issues from the previous review
+2. **Check resolution status**: Issues with status `addressed` have been worked on by the worker; `open` issues were not addressed
+3. **Check step progress**: Call `get_step_progress(task_id)` to see what the worker did at each step
+4. **Check issue progress**: Call `get_issue_progress(task_id)` for a summary of issue resolution rates
+5. **Cross-reference**: For each `addressed` issue, verify the worker's resolution notes match actual code changes
+6. **Verify fixes**: Confirm that previously reported issues are genuinely resolved in the code
+7. **Check for regressions**: Ensure the fixes didn't introduce new problems
+
+If all prior issues are resolved and no new issues found → `approved`
+If some issues remain or new issues found → `needs_changes` with updated issues list
+If the worker is unable to resolve critical issues after multiple attempts → consider `escalate`
 
 ## What to Check
 
