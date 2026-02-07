@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-02-07 - Phase 95 Task 1: Add session_id fallback for plan_artifact_id in apply flow
+**What:**
+- In `ideation_commands_apply.rs` line 167, replaced `session.plan_artifact_id.clone()` with fallback to `session.id`
+- `plan_artifact_id` is now always `Some(...)` — uses `session.plan_artifact_id` when present, falls back to `ArtifactId::from_string(session.id)`
+- This matches the graph query logic in `query.rs:551-554` which already uses session_id as fallback
+- Ensures: tasks always get `plan_artifact_id` set, feature branch always created when `use_feature_branches=true`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — all tests passed
+
+**Visual Verification:** N/A — backend only, no UI changes
+
+**Result:** Success
+
 ### 2026-02-07 - Phase 94 Task 2: Add PendingMerge crash recovery
 **What:**
 - Added `InternalStatus::PendingMerge` to `AUTO_TRANSITION_STATES` in execution_commands.rs
