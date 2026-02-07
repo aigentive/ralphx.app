@@ -1,74 +1,143 @@
-# Fix: ActiveProjectState Race Condition on Startup
+# Fix: ActiveProjectState Race Condition — Persist to SQLite
 
 ## Context
 
-When the app restarts, tasks stuck in `executing` state should be resumed via `StartupJobRunner`. However, the runner sees "No active project set" and skips resumption because:
+The Phase 89 Notify-based fix doesn't work because the webview hasn't loaded the React app within 5 seconds (especially in dev mode). The frontend `useEffect` that calls `setActiveProject()` fires after the timeout expires.
 
-1. `ActiveProjectState` is **in-memory only** (`RwLock<Option<ProjectId>>`) — starts as `None` every restart
-2. Frontend has `activeProjectId` persisted in localStorage (Zustand persist), sends it to backend via `setActiveProject()` IPC on mount
-3. `StartupJobRunner` runs after a 500ms delay — but the frontend IPC may arrive at 500-700ms
-4. **Race condition**: runner checks before frontend IPC lands
+**Root cause**: `ActiveProjectState` is in-memory only — starts as `None` every restart. The backend depends on the frontend to re-send the active project, but the frontend isn't ready yet.
 
-## Fix: Add `tokio::sync::Notify` to `ActiveProjectState`
+**Fix**: Persist `active_project_id` to a new `app_state` singleton SQLite table. On startup, `StartupJobRunner` reads directly from DB — no waiting, no race condition.
 
-When `set()` is called with `Some(project_id)`, it calls `notify_waiters()`. The startup runner uses a new `wait_for_project()` method with a 5-second timeout instead of a single `get()` check. No DB changes, no frontend changes.
+## Files to Modify/Create (~10 files)
 
-## Files to Modify (3)
-
-### Task 1: Add `Notify` to `ActiveProjectState` (BLOCKING)
+### Task 1: Create `AppStateRepository` trait + entity (BLOCKING)
 **Dependencies:** None
-**Atomic Commit:** Part of single commit (see Task 3)
+**Atomic Commit:** `feat(startup): add AppStateRepository for persisted app state`
 
-**File:** `src-tauri/src/commands/execution_commands.rs` (lines 54-77)
+**New files:**
+- `src-tauri/src/domain/repositories/app_state_repository.rs` — trait definition
+- `src-tauri/src/domain/entities/app_state.rs` — `AppSettings` entity (just `active_project_id: Option<ProjectId>`)
 
-- Add `Notify` field to `ActiveProjectState`
-- Remove `Default` derive (can't auto-derive with `Notify`)
-- Add manual `Default` impl (preserves existing callers)
-- In `set()`: call `self.notify.notify_waiters()` when project is `Some`
-- Add `wait_for_project(timeout: Duration) -> Option<ProjectId>` method:
-  - Register `notified` future FIRST (guarantees delivery from `notify_waiters()`)
-  - Fast path: if already set, return immediately
-  - Slow path: `tokio::time::timeout(timeout, notified).await`, then re-check
+**Modify:**
+- `src-tauri/src/domain/repositories/mod.rs` — add module + re-export
+- `src-tauri/src/domain/entities/mod.rs` — add module + re-export
 
-**Compilation unit note:** Additive — `new()`, `get()`, `set()` signatures unchanged. All 5 files importing `ActiveProjectState` continue to compile.
+**Pattern** (follow `GlobalExecutionSettingsRepository`):
+```rust
+#[async_trait]
+pub trait AppStateRepository: Send + Sync {
+    async fn get(&self) -> Result<AppSettings, Box<dyn std::error::Error>>;
+    async fn set_active_project(&self, project_id: Option<&ProjectId>) -> Result<(), Box<dyn std::error::Error>>;
+}
+```
 
-### Task 2: Wire `wait_for_project()` into `StartupJobRunner`
-**Dependencies:** Task 1 (uses `wait_for_project()` added in Task 1)
-**Atomic Commit:** Part of single commit (see Task 3)
+Entity:
+```rust
+#[derive(Debug, Clone, Default)]
+pub struct AppSettings {
+    pub active_project_id: Option<ProjectId>,
+}
+```
 
-**File:** `src-tauri/src/application/startup_jobs.rs` (lines 42-57, 156-167)
+### Task 2: Migration v14 + SQLite impl + Memory impl
+**Dependencies:** Task 1
+**Atomic Commit:** `feat(startup): add app_state table with SQLite and memory implementations`
 
-- Add `active_project_wait_timeout: Duration` field to `StartupJobRunner` (default 5s)
-- Add `with_active_project_timeout(Duration) -> Self` builder method (for tests)
-- Replace `self.active_project_state.get().await` (line 157) with `self.active_project_state.wait_for_project(self.active_project_wait_timeout).await`
-- Update log message to mention "after waiting"
+**New files:**
+- `src-tauri/src/infrastructure/sqlite/migrations/v14_app_state.rs` — migration
+- `src-tauri/src/infrastructure/sqlite/migrations/v14_app_state_tests.rs` — migration tests
+- `src-tauri/src/infrastructure/sqlite/sqlite_app_state_repo.rs` — SQLite impl
+- `src-tauri/src/infrastructure/memory/memory_app_state_repo.rs` — Memory impl (for tests)
 
-### Task 3: Update tests + add new async wait test
+**Modify:**
+- `src-tauri/src/infrastructure/sqlite/migrations/mod.rs` — bump SCHEMA_VERSION to 14, register migration
+- `src-tauri/src/infrastructure/sqlite/mod.rs` — add module + re-export
+- `src-tauri/src/infrastructure/memory/mod.rs` — add module + re-export
+
+**Migration v14:**
+```sql
+CREATE TABLE IF NOT EXISTS app_state (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    active_project_id TEXT DEFAULT NULL,
+    updated_at TEXT NOT NULL
+);
+INSERT OR IGNORE INTO app_state (id, active_project_id, updated_at)
+VALUES (1, NULL, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'));
+```
+
+**SQLite impl** (follow `SqliteGlobalExecutionSettingsRepository` pattern):
+- `from_shared(conn: Arc<Mutex<Connection>>)` constructor
+- `get()` → `SELECT active_project_id FROM app_state WHERE id = 1`
+- `set_active_project()` → `UPDATE app_state SET active_project_id = ?, updated_at = ... WHERE id = 1`
+
+**Memory impl** (follow `MemoryGlobalExecutionSettingsRepository` pattern):
+- `Arc<RwLock<AppSettings>>` internal state
+- `Default` impl creates with `active_project_id: None`
+
+### Task 3: Wire into AppState + set_active_project command + StartupJobRunner
 **Dependencies:** Task 1, Task 2
-**Atomic Commit:** `fix(startup): wait for active project before task resumption`
+**Atomic Commit:** `fix(startup): persist active project to DB, read on startup`
 
-**File:** `src-tauri/src/application/startup_jobs/tests.rs`
+**Modify:**
+- `src-tauri/src/application/app_state.rs` — add `app_state_repo: Arc<dyn AppStateRepository>` field, wire in `new_production()`, `new_app_data()`, `new_test()`
+- `src-tauri/src/commands/execution_commands.rs`:
+  - `set_active_project` command: after setting in-memory state, also write to DB via `app_state.app_state_repo.set_active_project()`
+  - Remove `Notify` from `ActiveProjectState` (revert to simple `RwLock`, remove `wait_for_project()`)
+- `src-tauri/src/application/startup_jobs.rs`:
+  - Add `app_state_repo: Arc<dyn AppStateRepository>` field to `StartupJobRunner`
+  - In `run()`: read `active_project_id` from `app_state_repo.get()`, then set in-memory `ActiveProjectState` from DB value
+  - Remove `active_project_wait_timeout` field and `with_active_project_timeout()` builder
+- `src-tauri/src/application/startup_jobs/tests.rs`:
+  - Update `build_runner()` to pass `app_state_repo`
+  - Remove `with_active_project_timeout()` calls
+  - Tests that set active project: set it on the memory repo instead (or keep setting in-memory — both work since runner reads from repo)
+  - Remove `test_resumption_waits_for_active_project` (Notify-based, no longer relevant)
+  - Add new test: `test_resumption_reads_active_project_from_db` — set project in repo, don't set in-memory, verify runner reads from DB and resumes
+- `src-tauri/src/lib.rs` — pass `app_state_repo` to `StartupJobRunner::new()`
 
-- In `build_runner()`: add `.with_active_project_timeout(Duration::from_millis(10))` so tests that don't set active project don't wait 5 seconds
-- Tests that DO set active project (e.g., `test_resumption_spawns_agents`) already set it before `run()`, so the fast path returns immediately
-- Add new test `test_resumption_waits_for_active_project`: spawn a task that sets active project after 200ms delay, verify runner waits and successfully resumes
+## Startup Flow (After Fix)
 
-**Implementation note:** All 3 tasks form a single compilation unit and should be committed together. Tasks 1-2 are logical ordering only — they ship as one atomic commit.
+```
+1. Rust binary starts
+2. Migrations run (app_state table exists with last active_project_id)
+3. 500ms delay (for HTTP server)
+4. StartupJobRunner reads active_project_id from app_state table
+5. Sets in-memory ActiveProjectState from DB value
+6. Proceeds with task resumption — no waiting needed
+7. (Later) Frontend loads, calls setActiveProject() — writes to DB again (idempotent)
+```
 
 ## Edge Cases
 
 | Scenario | Behavior |
 |----------|----------|
-| Normal startup (IPC at ~600ms) | Fast path or <200ms Notify wait |
-| Fresh install, no projects | Frontend sends `set_active_project(null)` → `set(None)` doesn't notify → 5s timeout → skip. Correct. |
-| Frontend crashes before IPC | 5s timeout → skip. Acceptable. |
-| Multiple `set()` calls | `notify_waiters()` is idempotent, only one waiter exists |
+| Normal restart | DB has active_project_id from last session → immediate resumption |
+| Fresh install | app_state.active_project_id = NULL → skip resumption (correct) |
+| Project deleted between sessions | DB has stale ID → project_repo lookup fails → skip (existing logic handles this) |
+| Frontend switches project | set_active_project writes to DB + in-memory → next restart uses new project |
+
+## Compilation Unit Validation
+
+All 3 tasks verified as complete compilation units:
+
+| Task | Type | Why It Compiles Alone |
+|------|------|----------------------|
+| 1 | Additive | New entity + trait files. Module declarations in `mod.rs` files. Nothing references these yet. |
+| 2 | Additive (blockedBy: 1) | New migration + impl files. References Task 1 types via `use crate::domain::...`. No existing code changes. |
+| 3 | Breaking changes (blockedBy: 1, 2) | Removes `Notify`, `wait_for_project()`, changes `StartupJobRunner::new()` signature. All callers (`lib.rs`, `tests.rs`) updated in same task. |
+
+**Task 3 is the critical compilation unit** — it groups:
+- Removal of `Notify` from `ActiveProjectState` (breaks `wait_for_project()` callers)
+- Removal of `active_project_wait_timeout` field (breaks `with_active_project_timeout()` callers)
+- Addition of `app_state_repo` param to `StartupJobRunner::new()` (breaks all callers)
+- All callers updated: `lib.rs`, `startup_jobs/tests.rs`
 
 ## Verification
 
-1. `cargo test -p ralphx -- startup_jobs` — all existing tests pass, new test passes
-2. `cargo clippy --all-targets --all-features -- -D warnings` — no warnings
-3. Manual: `npm run tauri dev` → observe logs show "waiting for active project" then successful resumption (no more "No active project set, skipping")
+1. `cargo test -p ralphx -- startup_jobs` — all tests pass
+2. `cargo test -p ralphx -- app_state` — new repo tests pass
+3. `cargo clippy --all-targets --all-features -- -D warnings` — no warnings
+4. Manual: `npm run tauri dev` → quit → restart → observe logs show immediate project detection and task resumption (no "waiting", no "no active project")
 
 ## Commit Lock Workflow (Parallel Agent Coordination)
 
@@ -79,4 +148,3 @@ Key points:
 - All commit operations (check + acquire + commit + release) must be in a SINGLE Bash command
 - Never separate the lock check and acquisition into different tool calls
 - Each task must be a complete compilation unit (code compiles after each task)
-- This plan is a **single commit** — all 3 files modified atomically as `fix(startup): wait for active project before task resumption`
