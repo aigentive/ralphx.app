@@ -84,6 +84,7 @@ pub async fn apply_proposals_to_kanban(
         task.category = proposal.category.to_string();
         // Initial status - will be updated after dependencies are created
         task.internal_status = InternalStatus::Backlog;
+        task.ideation_session_id = Some(session_id.clone());
 
         // Set priority based on user override or suggested (use priority score as i32)
         if proposal.user_priority.is_some() {
@@ -163,14 +164,8 @@ pub async fn apply_proposals_to_kanban(
     // ========================================================================
     // PHASE 2.5: Feature Branch Setup (if enabled)
     // ========================================================================
-    // Resolve plan_artifact_id from session, falling back to session.id
-    // (matches graph query logic in query.rs:551-554 which uses session_id as fallback)
-    let plan_artifact_id: Option<ArtifactId> = Some(
-        session
-            .plan_artifact_id
-            .clone()
-            .unwrap_or_else(|| ArtifactId::from_string(session.id.as_str().to_string())),
-    );
+    // Use real plan_artifact_id only — never fake it with session_id (causes FK violation)
+    let plan_artifact_id: Option<ArtifactId> = session.plan_artifact_id.clone();
 
     // Set plan_artifact_id on all created tasks (propagate from proposal or session)
     if let Some(ref artifact_id) = plan_artifact_id {
@@ -263,6 +258,7 @@ pub async fn apply_proposals_to_kanban(
                     base_branch
                 ));
                 merge_task.plan_artifact_id = Some(artifact_id.clone());
+                merge_task.ideation_session_id = Some(session_id.clone());
                 merge_task.internal_status = InternalStatus::Blocked;
                 merge_task.blocked_reason =
                     Some("Waiting for all plan tasks to complete".to_string());
