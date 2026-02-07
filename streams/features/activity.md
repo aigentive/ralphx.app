@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-02-07 19:00:00 - Phase 93 Task 2: Add get_merge_target HTTP endpoint
+**What:**
+- Added `MergeTargetResponse` struct with `source_branch` and `target_branch` fields
+- Added `get_merge_target` handler following `get_task_commits` pattern: get task, get project, call `resolve_merge_branches`, return response
+- Added import of `resolve_merge_branches` from `crate::domain::state_machine`
+- Added route `.route("/api/git/tasks/:id/merge-target", get(get_merge_target))` in `http_server/mod.rs`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — all 3598 tests passed
+
+**Visual Verification:** N/A — backend only, no UI changes
+
+**Result:** Success
+
 ### 2026-02-07 18:15:00 - Phase 93 Task 1: Make resolve_merge_branches pub and re-export
 **What:**
 - Changed `resolve_merge_branches` from private to `pub async fn` in side_effects.rs

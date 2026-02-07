@@ -89,6 +89,7 @@ pub async fn start_http_server(app_state: Arc<AppState>, execution_state: Arc<Ex
         .route("/api/git/tasks/:id/report-incomplete", post(report_incomplete))
         .route("/api/git/tasks/:id/commits", get(get_task_commits))
         .route("/api/git/tasks/:id/diff-stats", get(get_task_diff_stats))
+        .route("/api/git/tasks/:id/merge-target", get(get_merge_target))
         // Execution settings endpoints (Phase 82)
         .route("/api/execution/global-settings", get(get_global_settings))
         .route("/api/execution/global-settings", post(update_global_settings))
