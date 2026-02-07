@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-07 10:30:00 - Phase 91 Task 4: Extract diff computation utilities
+**What:**
+- Created `src/components/Chat/DiffToolCallView.utils.ts` (~210 lines)
+- Extracted `computeDiff`, `computeLCS`, `DiffLine`, `Match` types from `SimpleDiffView.tsx`
+- Extracted line helpers: `getLineBackground`, `getLineNumColor`, `getLinePrefix`, `getPrefixColor`
+- Added new helpers: `extractEditDiff(toolCall)`, `extractWriteDiff(toolCall)`, `isDiffToolCall(name)`
+- `extractEditDiff` computes diff from Edit tool call's `old_string`→`new_string` arguments
+- `extractWriteDiff` handles both new files (all additions) and overwrites (proper diff via `diffContext.oldContent`)
+
+**Commands:**
+- `npm run lint && npm run typecheck`
+
+**Visual Verification:** N/A - utility file only, no UI
+
+**Result:** Success
+
 ### 2026-02-07 - Phase 91 Task 3: Add diffContext to ToolCall and ContentBlockItem types
 **What:**
 - Added optional `diffContext` field to `ToolCall` interface in ToolCallIndicator.tsx
