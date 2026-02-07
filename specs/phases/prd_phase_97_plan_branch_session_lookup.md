@@ -173,7 +173,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: fix(plan-branch): session-first lookup in get/enable/disable commands"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 6,

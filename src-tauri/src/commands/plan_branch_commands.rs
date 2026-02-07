@@ -56,16 +56,28 @@ pub struct EnableFeatureBranchInput {
 // Query Commands
 // ============================================================================
 
-/// Get plan branch by plan artifact ID
+/// Get plan branch by plan artifact ID or session ID
 ///
-/// Returns the plan branch for a given plan artifact, or null if none exists.
+/// The frontend may pass either a real plan_artifact_id or a session_id
+/// (graph uses session_id as fallback). Try session-first, then artifact.
 #[tauri::command]
 pub async fn get_plan_branch(
     plan_artifact_id: String,
     state: State<'_, AppState>,
 ) -> Result<Option<PlanBranchResponse>, String> {
-    let artifact_id = ArtifactId::from_string(plan_artifact_id);
+    // Try as session_id first (common case: graph sends session_id as fallback)
+    let session_id = IdeationSessionId::from_string(plan_artifact_id.clone());
+    let by_session = state
+        .plan_branch_repo
+        .get_by_session_id(&session_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    if by_session.is_some() {
+        return Ok(by_session.map(PlanBranchResponse::from));
+    }
 
+    // Fallback: try as plan_artifact_id (backward compat)
+    let artifact_id = ArtifactId::from_string(plan_artifact_id);
     state
         .plan_branch_repo
         .get_by_plan_artifact_id(&artifact_id)
@@ -110,10 +122,10 @@ pub async fn enable_feature_branch(
     let session_id = IdeationSessionId::from_string(input.session_id);
     let project_id = ProjectId::from_string(input.project_id);
 
-    // Check if a feature branch already exists for this plan
+    // Check if a feature branch already exists for this plan (session-first lookup)
     let existing = state
         .plan_branch_repo
-        .get_by_plan_artifact_id(&plan_artifact_id)
+        .get_by_session_id(&session_id)
         .await
         .map_err(|e| e.to_string())?;
     if existing.is_some() {
@@ -244,10 +256,10 @@ pub async fn enable_feature_branch(
         .await
         .map_err(|e| format!("Failed to set merge task ID: {}", e))?;
 
-    // Re-fetch the plan branch to get updated data
+    // Re-fetch the plan branch to get updated data (session-first lookup)
     let updated_branch = state
         .plan_branch_repo
-        .get_by_plan_artifact_id(&created_branch.plan_artifact_id)
+        .get_by_session_id(&session_id)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "Plan branch not found after creation".to_string())?;
@@ -264,15 +276,25 @@ pub async fn disable_feature_branch(
     plan_artifact_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let artifact_id = ArtifactId::from_string(plan_artifact_id);
-
-    // Get the plan branch
-    let plan_branch = state
+    // Try as session_id first (common case), fallback to plan_artifact_id
+    let session_id = IdeationSessionId::from_string(plan_artifact_id.clone());
+    let by_session = state
         .plan_branch_repo
-        .get_by_plan_artifact_id(&artifact_id)
+        .get_by_session_id(&session_id)
         .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "No feature branch found for this plan".to_string())?;
+        .map_err(|e| e.to_string())?;
+
+    let plan_branch = if let Some(branch) = by_session {
+        branch
+    } else {
+        let artifact_id = ArtifactId::from_string(plan_artifact_id);
+        state
+            .plan_branch_repo
+            .get_by_plan_artifact_id(&artifact_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "No feature branch found for this plan".to_string())?
+    };
 
     // Only allow disabling active branches
     if plan_branch.status != PlanBranchStatus::Active {
@@ -296,8 +318,14 @@ pub async fn disable_feature_branch(
         .await
         .map_err(|e| e.to_string())?;
     let has_merged_tasks = all_tasks.iter().any(|t| {
-        t.plan_artifact_id.as_ref() == Some(&artifact_id)
-            && t.internal_status == InternalStatus::Merged
+        // Match by session_id or plan_artifact_id
+        let matches = t
+            .ideation_session_id
+            .as_ref()
+            .map_or(false, |sid| sid.as_str() == plan_branch.session_id.as_str())
+            || t.plan_artifact_id.as_ref()
+                == Some(&plan_branch.plan_artifact_id);
+        matches && t.internal_status == InternalStatus::Merged
     });
 
     if has_merged_tasks {

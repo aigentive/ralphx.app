@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-02-07 13:15:00 - Phase 97 Task 5: Session-first lookup in get/enable/disable plan branch commands
+**What:**
+- `get_plan_branch`: Try `get_by_session_id()` first (param may be session_id from graph), fallback to `get_by_plan_artifact_id()`
+- `enable_feature_branch`: Changed existence check from `get_by_plan_artifact_id` to `get_by_session_id(&session_id)`, same for re-fetch after creation
+- `disable_feature_branch`: Try `get_by_session_id()` first, fallback to `get_by_plan_artifact_id()`. Updated `has_merged_tasks` check to match by session_id or plan_artifact_id from the fetched plan branch
+- Kept all existing param names for frontend compatibility
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — passed
+- `cargo test` — 3859 passed, 0 failed
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-07 12:45:00 - Phase 97 Task 4: Remove plan_artifact_id gate from apply_proposals_to_kanban
 **What:**
 - Removed nested `if let Some(ref artifact_id) = plan_artifact_id` gate around feature branch creation
