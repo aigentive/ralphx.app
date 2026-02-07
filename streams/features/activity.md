@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-02-07 - Phase 93 Task 5: Fix complete_merge handler to use resolved merge target
+**What:**
+- Replaced hardcoded `base_branch` in complete_merge handler with `resolve_merge_branches()` call
+- Now resolves correct target branch (plan branch or base branch) dynamically
+- Updated error messages to reference `target_branch` instead of `base_branch`
+- Import of `resolve_merge_branches` already existed from Task 2
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — all passed
+
+**Visual Verification:** N/A — backend only, no UI changes
+
+**Result:** Success
+
 ### 2026-02-07 - Phase 93 Task 4: Update merger agent prompt to use get_merge_target
 **What:**
 - Added `mcp__ralphx__get_merge_target` and `mcp__ralphx__report_incomplete` to merger.md frontmatter allowedTools
