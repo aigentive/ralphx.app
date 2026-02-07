@@ -30,6 +30,11 @@ export interface ContentBlockItem {
   name?: string;
   arguments?: unknown;
   result?: unknown;
+  /** Diff context for Edit/Write tool calls (old file content for computing diffs) */
+  diffContext?: {
+    oldContent?: string;
+    filePath: string;
+  };
 }
 
 export interface MessageItemProps {
@@ -85,6 +90,9 @@ export const MessageItem = React.memo(function MessageItem({
                 arguments: block.arguments,
                 result: block.result,
               };
+              if (block.diffContext) {
+                toolCall.diffContext = block.diffContext;
+              }
               return <ToolCallIndicator key={`block-${index}`} toolCall={toolCall} />;
             }
             return null;

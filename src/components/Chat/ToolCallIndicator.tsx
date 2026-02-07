@@ -30,6 +30,11 @@ export interface ToolCall {
   result?: unknown;
   /** Error message if tool call failed */
   error?: string;
+  /** Diff context for Edit/Write tool calls (old file content for computing diffs) */
+  diffContext?: {
+    oldContent?: string;
+    filePath: string;
+  };
 }
 
 interface ToolCallIndicatorProps {
