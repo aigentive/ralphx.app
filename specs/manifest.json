@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 96,
+  "currentPhase": 97,
   "phases": [
     {
       "phase": 0,
@@ -688,6 +688,13 @@
       "prd": "specs/phases/prd_phase_96_fk_constraint_ideation_session_id.md",
       "status": "complete",
       "description": "Fix FK constraint in apply_proposals_to_kanban by adding ideation_session_id column to tasks"
+    },
+    {
+      "phase": 97,
+      "name": "Plan Branch Session-Based Lookup",
+      "prd": "specs/phases/prd_phase_97_plan_branch_session_lookup.md",
+      "status": "active",
+      "description": "Add get_by_session_id() as primary plan branch lookup, fix merge resolution and apply flow"
     }
   ]
 }
