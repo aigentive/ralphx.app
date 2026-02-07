@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-08 06:00:00 - Phase 104 Task 1: Add session reopen repository methods
+**What:**
+- Added `clear_created_task_ids_by_session` to `TaskProposalRepository` trait + all 8 impls (SQLite, Memory, Mock in trait tests, and 5 test mock impls across apply_service, dependency_service, ideation_service, priority_service, task_context_service)
+- Fixed `update_status(Active)` in SQLite ideation session repo to clear `archived_at` and `converted_at` (SET NULL)
+- Fixed same in Memory ideation session repo (using match instead of if-chain)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (pass)
+- `cargo test` (3621 passed, 0 failed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-08 05:15:00 - Phase 103 Complete: Gap Verification Passed
 **What:**
 - Code gap verification: WIRING (get_by_ideation_session called from delete command, frontend uses mutation + invalidation), API (no new endpoints, modified existing), STATE (force-stop uses AGENT_ACTIVE_STATUSES + TransitionService correctly), EVENTS (task:deleted emitted, graph view uses direct query invalidation)

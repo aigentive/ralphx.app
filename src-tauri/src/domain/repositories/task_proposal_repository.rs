@@ -69,6 +69,13 @@ pub trait TaskProposalRepository: Send + Sync {
     /// Get proposals linked to a plan artifact
     /// Used by proactive sync to find proposals that may need updating when a plan changes
     async fn get_by_plan_artifact_id(&self, artifact_id: &ArtifactId) -> AppResult<Vec<TaskProposal>>;
+
+    /// Clear the created_task_id for all proposals in a session
+    /// Used when reopening an ideation session to unlink proposals from deleted tasks
+    async fn clear_created_task_ids_by_session(
+        &self,
+        session_id: &IdeationSessionId,
+    ) -> AppResult<()>;
 }
 
 #[cfg(test)]
@@ -212,6 +219,13 @@ mod tests {
                 .filter(|p| p.plan_artifact_id.as_ref() == Some(artifact_id))
                 .cloned()
                 .collect())
+        }
+
+        async fn clear_created_task_ids_by_session(
+            &self,
+            _session_id: &IdeationSessionId,
+        ) -> AppResult<()> {
+            Ok(())
         }
     }
 

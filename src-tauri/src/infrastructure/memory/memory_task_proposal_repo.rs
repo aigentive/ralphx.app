@@ -164,6 +164,19 @@ impl TaskProposalRepository for MemoryTaskProposalRepository {
         proposals.sort_by_key(|p| p.sort_order);
         Ok(proposals)
     }
+
+    async fn clear_created_task_ids_by_session(
+        &self,
+        session_id: &IdeationSessionId,
+    ) -> AppResult<()> {
+        let mut proposals = self.proposals.write().unwrap();
+        for p in proposals.values_mut() {
+            if &p.session_id == session_id {
+                p.created_task_id = None;
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
