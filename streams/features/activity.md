@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-02-08 07:00:00 - Phase 104 Task 2: Add reopen_ideation_session command and service
+**What:**
+- Created `SessionReopenService` (~160 LOC) in `src-tauri/src/application/session_reopen_service.rs` with full cleanup: validate session status, stop agents, abort rebase, checkout base, delete worktrees/branches/tasks, clean plan branch, clear proposals, reset session to Active
+- Added `reopen_ideation_session` Tauri command (~40 LOC) in `ideation_commands_session.rs` with event emission (`ideation:session_reopened`, `task:list_changed`)
+- Registered command in `lib.rs` invoke_handler
+- Added module to `application/mod.rs` with re-export
+- Git operations are best-effort (project lookup non-fatal) — core DB operations always succeed
+- 5 unit tests: reopen accepted, reopen archived, active fails, nonexistent fails, no-tasks edge case
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (pass)
+- `cargo test` (3876 passed, 0 failed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-08 06:00:00 - Phase 104 Task 1: Add session reopen repository methods
 **What:**
 - Added `clear_created_task_ids_by_session` to `TaskProposalRepository` trait + all 8 impls (SQLite, Memory, Mock in trait tests, and 5 test mock impls across apply_service, dependency_service, ideation_service, priority_service, task_context_service)
