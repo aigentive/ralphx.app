@@ -737,6 +737,13 @@
       "prd": "specs/phases/prd_phase_103_cascade_delete_plan_tasks.md",
       "status": "active",
       "description": "Cascade delete tasks and clean up plan branches when deleting ideation session"
+    },
+    {
+      "phase": 104,
+      "name": "Reopen & Reset Ideation Sessions",
+      "prd": "specs/phases/prd_phase_104_reopen_reset_ideation_sessions.md",
+      "status": "pending",
+      "description": "Reopen accepted/archived sessions to Active, reset & re-accept with fresh tasks"
     }
   ]
 }
