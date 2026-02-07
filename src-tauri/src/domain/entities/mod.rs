@@ -3,6 +3,7 @@
 
 pub mod activity_event;
 pub mod agent_run;
+pub mod app_state;
 pub mod artifact;
 pub mod artifact_flow;
 pub mod chat_conversation;
@@ -70,6 +71,7 @@ pub use chat_conversation::{ChatContextType, ChatConversation, ChatConversationI
 pub use agent_run::{AgentRun, AgentRunId, AgentRunStatus, InterruptedConversation};
 pub use task_context::{ArtifactSummary, TaskContext, TaskDependencySummary, TaskProposalSummary};
 pub use task_step::{StepProgressSummary, TaskStep, TaskStepStatus};
+pub use app_state::AppSettings;
 pub use activity_event::{
     ActivityEvent, ActivityEventId, ActivityEventRole, ActivityEventType,
     ParseActivityEventRoleError, ParseActivityEventTypeError,
