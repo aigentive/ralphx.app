@@ -742,7 +742,7 @@
       "phase": 104,
       "name": "Reopen & Reset Ideation Sessions",
       "prd": "specs/phases/prd_phase_104_reopen_reset_ideation_sessions.md",
-      "status": "active",
+      "status": "complete",
       "description": "Reopen accepted/archived sessions to Active, reset & re-accept with fresh tasks"
     }
   ]
