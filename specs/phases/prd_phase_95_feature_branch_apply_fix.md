@@ -92,7 +92,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: fix(ideation): use session_id fallback for plan_artifact_id in apply flow"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,

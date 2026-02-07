@@ -163,8 +163,14 @@ pub async fn apply_proposals_to_kanban(
     // ========================================================================
     // PHASE 2.5: Feature Branch Setup (if enabled)
     // ========================================================================
-    // Resolve plan_artifact_id from session (the plan this session belongs to)
-    let plan_artifact_id: Option<ArtifactId> = session.plan_artifact_id.clone();
+    // Resolve plan_artifact_id from session, falling back to session.id
+    // (matches graph query logic in query.rs:551-554 which uses session_id as fallback)
+    let plan_artifact_id: Option<ArtifactId> = Some(
+        session
+            .plan_artifact_id
+            .clone()
+            .unwrap_or_else(|| ArtifactId::from_string(session.id.as_str().to_string())),
+    );
 
     // Set plan_artifact_id on all created tasks (propagate from proposal or session)
     if let Some(ref artifact_id) = plan_artifact_id {
