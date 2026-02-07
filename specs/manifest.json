@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 91,
+  "currentPhase": 92,
   "phases": [
     {
       "phase": 0,
@@ -651,14 +651,14 @@
       "phase": 91,
       "name": "Chat Diff View for Edit/Write Tool Calls",
       "prd": "specs/phases/prd_phase_91_chat_diff_view.md",
-      "status": "active",
+      "status": "complete",
       "description": "Inline diff cards for Edit/Write tool calls with collapse/expand, gradient blur, and streaming breakout"
     },
     {
       "phase": 92,
       "name": "Deduplicate Tool Calls in IntegratedChatPanel",
       "prd": "specs/phases/prd_phase_92_integrated_chat_tool_dedup.md",
-      "status": "pending",
+      "status": "active",
       "description": "Port tool_id dedup pattern from useChatPanelHandlers to useIntegratedChatEvents"
     }
   ]
