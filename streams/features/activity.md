@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-07 - Phase 94 Task 2: Add PendingMerge crash recovery
+**What:**
+- Added `InternalStatus::PendingMerge` to `AUTO_TRANSITION_STATES` in execution_commands.rs
+- Comment: `// attempt_programmatic_merge() (→ Merged or → Merging)`
+- Added `test_pending_merge_auto_transitions_on_startup` test following existing pattern
+- Test creates task in PendingMerge with task_branch, verifies auto-transition triggers attempt_programmatic_merge
+
+**Commands:**
+- `cargo test -- startup_jobs` — all 25 tests passed
+- `cargo test -- execution_commands` — passed
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+
+**Visual Verification:** N/A — backend only, no UI changes
+
+**Result:** Success
+
 ### 2026-02-07 - Phase 94 Task 1: Fix Approved inconsistency in all_blockers_complete()
 **What:**
 - Removed `InternalStatus::Approved` from `all_blockers_complete()` match arm in startup_jobs.rs
