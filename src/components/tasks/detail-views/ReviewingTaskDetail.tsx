@@ -251,14 +251,6 @@ export function ReviewingTaskDetail({
           variant={isHistorical ? outcomeConfig?.variant ?? "info" : "info"}
         />
       </section>
-
-      {/* Files Under Review - placeholder */}
-      <section data-testid="files-under-review-empty">
-        <SectionTitle muted>Files Under Review</SectionTitle>
-        <p className="text-[12px] text-white/35 italic">
-          File list will appear once review gathers context
-        </p>
-      </section>
     </TwoColumnLayout>
   );
 }

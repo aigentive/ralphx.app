@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-02-07 23:00:00 - Phase 101 Task 5: Remove unimplemented Files Under Review placeholder
+**What:**
+- Deleted the "Files Under Review" placeholder section (data-testid='files-under-review-empty') from ReviewingTaskDetail.tsx (lines 255-261)
+- This was an unimplemented feature stub with no backend support — removed to avoid misleading users
+
+**Commands:**
+- `npm run lint` (passed — no errors in ReviewingTaskDetail.tsx; pre-existing errors in TaskGraphView.tsx unrelated)
+- `npm run typecheck` (passed)
+
+**Visual Verification:** N/A - deletion of placeholder in state-dependent view (reviewing state requires active AI agent session, not web-mode testable). No new visual elements added.
+
+**Result:** Success
+
+---
+
 ### 2026-02-07 22:30:00 - Phase 101 Task 4: Add issue tools to reviewer frontmatter and re-review workflow
 **What:**
 - Added `mcp__ralphx__get_task_issues`, `mcp__ralphx__get_step_progress`, `mcp__ralphx__get_issue_progress` to reviewer.md frontmatter `tools:` list
