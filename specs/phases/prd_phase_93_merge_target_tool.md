@@ -94,7 +94,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(state-machine): make resolve_merge_branches pub for cross-module use"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,

@@ -13,6 +13,7 @@ mod tests;
 
 // Re-export shared merge completion logic for use by HTTP handlers and auto-completion
 pub use side_effects::complete_merge_internal;
+pub use side_effects::resolve_merge_branches;
 
 /// Result of handling a transition
 #[derive(Debug, Clone, PartialEq, Eq)]

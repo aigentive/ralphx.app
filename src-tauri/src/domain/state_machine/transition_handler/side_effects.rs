@@ -241,7 +241,7 @@ async fn resolve_task_base_branch(
 /// - **Merge task** (task is `plan_branches.merge_task_id`): merge feature branch into project base
 /// - **Plan task with feature branch**: merge task branch into feature branch
 /// - **Regular task**: merge task branch into project base branch
-async fn resolve_merge_branches(
+pub async fn resolve_merge_branches(
     task: &Task,
     project: &Project,
     plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,

@@ -27,7 +27,7 @@ pub use persistence::{
     serialize_qa_failed_data, state_has_data, StateData,
 };
 pub use types::{Blocker, FailedData, QaFailedData, QaFailure};
-pub use transition_handler::{TransitionHandler, TransitionResult};
+pub use transition_handler::{TransitionHandler, TransitionResult, resolve_merge_branches};
 
 #[cfg(test)]
 mod tests {
