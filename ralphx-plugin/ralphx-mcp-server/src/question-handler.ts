@@ -165,18 +165,6 @@ export async function handleAskUserQuestion(
     }
 
     console.error(`[RalphX MCP] Question await error:`, error);
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify({
-            error: true,
-            message: `Failed to await question answer: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          }),
-        },
-      ],
-    };
+    throw error;
   }
 }
