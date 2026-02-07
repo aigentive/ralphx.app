@@ -700,7 +700,7 @@
       "phase": 98,
       "name": "Fix Merge Workflow Bugs",
       "prd": "specs/phases/prd_phase_98_fix_merge_workflow_bugs.md",
-      "status": "active",
+      "status": "complete",
       "description": "Fix MergeIncomplete agent mismatch and dirty tree blocking worktree merge"
     }
   ]
