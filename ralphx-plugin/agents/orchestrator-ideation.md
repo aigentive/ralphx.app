@@ -16,6 +16,7 @@ tools:
   - mcp__ralphx__get_plan_artifact
   - mcp__ralphx__link_proposals_to_plan
   - mcp__ralphx__get_session_plan
+  - mcp__ralphx__ask_user_question
 disallowedTools: Write, Edit, NotebookEdit
 allowedTools:
   - "mcp__ralphx__*"

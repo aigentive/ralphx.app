@@ -62,6 +62,7 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
             "get_plan_artifact",
             "link_proposals_to_plan",
             "get_session_plan",
+            "ask_user_question",
         ],
         preapproved_cli_tools: &[],
     },
@@ -314,6 +315,7 @@ mod tests {
         let tools = tools.unwrap();
         assert!(tools.contains("mcp__ralphx__create_task_proposal"));
         assert!(tools.contains("mcp__ralphx__list_session_proposals"));
+        assert!(tools.contains("mcp__ralphx__ask_user_question"));
     }
 
     #[test]
