@@ -672,7 +672,7 @@
       "phase": 94,
       "name": "Post-Merge Crash Recovery",
       "prd": "specs/phases/prd_phase_94_post_merge_crash_recovery.md",
-      "status": "active",
+      "status": "complete",
       "description": "Fix Approved blocker inconsistency, add PendingMerge crash recovery"
     }
   ]
