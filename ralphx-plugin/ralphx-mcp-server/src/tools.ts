@@ -624,6 +624,7 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_plan_artifact",
     "link_proposals_to_plan",
     "get_session_plan",
+    "ask_user_question",
   ],
   "chat-task": ["update_task", "add_task_note", "get_task_details"],
   "chat-project": ["suggest_task", "list_tasks"],
