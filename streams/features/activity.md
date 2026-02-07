@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-02-07 12:00:00 - Phase 90 Complete — Gap Verification Passed
+**What:**
+- All 3 PRD tasks already had `passes: true`
+- Ran gap verification checks:
+  - WIRING: `set_active_project` writes to both in-memory + DB (confirmed)
+  - WIRING: `StartupJobRunner` reads `active_project_id` from DB on startup (confirmed)
+  - WIRING: `Notify`/`wait_for_project` fully removed from `ActiveProjectState` (confirmed)
+  - WIRING: `lib.rs` passes `app_state_repo` to `StartupJobRunner::new()` (confirmed)
+- No P0 gaps found
+- Updated manifest: Phase 90 → complete, Phase 91 → active
+
+**Visual Verification:** N/A — backend only
+
+**Result:** Success — Phase 90 complete, Phase 91 activated
+
 ### 2026-02-07 20:00:00 - Phase 90 Task 3: Wire AppStateRepository into AppState, set_active_project command, and StartupJobRunner
 **What:**
 - Added `app_state_repo: Arc<dyn AppStateRepository>` field to `AppState` struct
