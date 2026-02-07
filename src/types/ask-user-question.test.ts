@@ -51,6 +51,7 @@ describe("AskUserQuestionOptionSchema", () => {
 
 describe("AskUserQuestionPayloadSchema", () => {
   const validPayload = {
+    requestId: "req-abc",
     taskId: "task-123",
     question: "Which authentication method should we use?",
     header: "Auth method",
@@ -63,6 +64,16 @@ describe("AskUserQuestionPayloadSchema", () => {
 
   it("should parse a valid payload", () => {
     expect(() => AskUserQuestionPayloadSchema.parse(validPayload)).not.toThrow();
+  });
+
+  it("should parse a payload without taskId (MCP flow)", () => {
+    const { taskId: _, ...mcpPayload } = validPayload;
+    expect(() => AskUserQuestionPayloadSchema.parse(mcpPayload)).not.toThrow();
+  });
+
+  it("should parse a payload with sessionId", () => {
+    const withSession = { ...validPayload, sessionId: "session-xyz" };
+    expect(() => AskUserQuestionPayloadSchema.parse(withSession)).not.toThrow();
   });
 
   it("should parse a multi-select payload", () => {
@@ -86,9 +97,9 @@ describe("AskUserQuestionPayloadSchema", () => {
     expect(() => AskUserQuestionPayloadSchema.parse(manyOptions)).not.toThrow();
   });
 
-  it("should reject payload with empty taskId", () => {
+  it("should reject payload with empty requestId", () => {
     expect(() =>
-      AskUserQuestionPayloadSchema.parse({ ...validPayload, taskId: "" })
+      AskUserQuestionPayloadSchema.parse({ ...validPayload, requestId: "" })
     ).toThrow();
   });
 
@@ -119,9 +130,11 @@ describe("AskUserQuestionPayloadSchema", () => {
     ).toThrow();
   });
 
-  it("should reject payload missing required fields", () => {
-    expect(() => AskUserQuestionPayloadSchema.parse({})).toThrow();
-    expect(() => AskUserQuestionPayloadSchema.parse({ taskId: "task-1" })).toThrow();
+  it("should reject payload missing requestId", () => {
+    const { requestId: _, ...noRequestId } = validPayload;
+    // requestId is required - omitting it but also omitting taskId
+    const { taskId: _t, ...bare } = noRequestId;
+    expect(() => AskUserQuestionPayloadSchema.parse(bare)).toThrow();
   });
 
   it("should reject payload with non-boolean multiSelect", () => {
@@ -140,8 +153,25 @@ describe("AskUserQuestionResponseSchema", () => {
     selectedOptions: ["JWT tokens"],
   };
 
-  it("should parse a valid response with single selection", () => {
+  it("should parse a valid response with taskId", () => {
     expect(() => AskUserQuestionResponseSchema.parse(validResponse)).not.toThrow();
+  });
+
+  it("should parse a valid response with requestId (MCP flow)", () => {
+    const mcpResponse = {
+      requestId: "req-abc",
+      selectedOptions: ["Option 1"],
+    };
+    expect(() => AskUserQuestionResponseSchema.parse(mcpResponse)).not.toThrow();
+  });
+
+  it("should parse a response with both requestId and taskId", () => {
+    const bothResponse = {
+      requestId: "req-abc",
+      taskId: "task-123",
+      selectedOptions: ["Option 1"],
+    };
+    expect(() => AskUserQuestionResponseSchema.parse(bothResponse)).not.toThrow();
   });
 
   it("should parse a response with multiple selections", () => {
@@ -161,18 +191,8 @@ describe("AskUserQuestionResponseSchema", () => {
     expect(() => AskUserQuestionResponseSchema.parse(customResponse)).not.toThrow();
   });
 
-  it("should parse a response with both selected options and custom response", () => {
-    const combinedResponse = {
-      taskId: "task-123",
-      selectedOptions: ["Option 1"],
-      customResponse: "But with some modifications",
-    };
-    expect(() => AskUserQuestionResponseSchema.parse(combinedResponse)).not.toThrow();
-  });
-
   it("should parse a response with empty selectedOptions", () => {
     const emptySelection = {
-      taskId: "task-123",
       selectedOptions: [],
     };
     expect(() => AskUserQuestionResponseSchema.parse(emptySelection)).not.toThrow();
@@ -189,9 +209,9 @@ describe("AskUserQuestionResponseSchema", () => {
     ).toThrow();
   });
 
-  it("should reject response missing taskId", () => {
+  it("should reject response with empty requestId", () => {
     expect(() =>
-      AskUserQuestionResponseSchema.parse({ selectedOptions: ["test"] })
+      AskUserQuestionResponseSchema.parse({ requestId: "", selectedOptions: ["test"] })
     ).toThrow();
   });
 
@@ -216,6 +236,7 @@ describe("AskUserQuestionPayloadListSchema", () => {
   it("should parse array of valid payloads", () => {
     const payloads = [
       {
+        requestId: "req-1",
         taskId: "task-1",
         question: "Question 1?",
         header: "Q1",
@@ -226,7 +247,8 @@ describe("AskUserQuestionPayloadListSchema", () => {
         multiSelect: false,
       },
       {
-        taskId: "task-2",
+        requestId: "req-2",
+        sessionId: "session-1",
         question: "Question 2?",
         header: "Q2",
         options: [
@@ -244,7 +266,7 @@ describe("AskUserQuestionPayloadListSchema", () => {
     const payloads = [
       {
         taskId: "task-1",
-        // Missing required fields
+        // Missing requestId and other required fields
       },
     ];
     expect(() => AskUserQuestionPayloadListSchema.parse(payloads)).toThrow();
@@ -327,31 +349,37 @@ describe("AskUserQuestion helper functions", () => {
   });
 
   describe("createSingleSelectResponse", () => {
-    it("should create response with single option", () => {
-      const response = createSingleSelectResponse("task-123", "Option A");
+    it("should create response with taskId (legacy flow)", () => {
+      const response = createSingleSelectResponse("Option A", { taskId: "task-123" });
       expect(response.taskId).toBe("task-123");
       expect(response.selectedOptions).toEqual(["Option A"]);
       expect(response.customResponse).toBeUndefined();
+    });
+
+    it("should create response with requestId (MCP flow)", () => {
+      const response = createSingleSelectResponse("Option A", { requestId: "req-abc" });
+      expect(response.requestId).toBe("req-abc");
+      expect(response.selectedOptions).toEqual(["Option A"]);
     });
   });
 
   describe("createMultiSelectResponse", () => {
     it("should create response with multiple options", () => {
-      const response = createMultiSelectResponse("task-456", ["A", "B", "C"]);
+      const response = createMultiSelectResponse(["A", "B", "C"], { taskId: "task-456" });
       expect(response.taskId).toBe("task-456");
       expect(response.selectedOptions).toEqual(["A", "B", "C"]);
       expect(response.customResponse).toBeUndefined();
     });
 
     it("should create response with empty options array", () => {
-      const response = createMultiSelectResponse("task-789", []);
+      const response = createMultiSelectResponse([], { requestId: "req-xyz" });
       expect(response.selectedOptions).toEqual([]);
     });
   });
 
   describe("createCustomResponse", () => {
     it("should create response with custom text", () => {
-      const response = createCustomResponse("task-abc", "My custom answer");
+      const response = createCustomResponse("My custom answer", { taskId: "task-abc" });
       expect(response.taskId).toBe("task-abc");
       expect(response.selectedOptions).toEqual([]);
       expect(response.customResponse).toBe("My custom answer");

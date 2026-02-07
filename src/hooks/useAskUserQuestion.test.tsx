@@ -39,6 +39,7 @@ function emitEvent(eventName: string, payload: unknown) {
 
 // Valid test payload
 const validPayload: AskUserQuestionPayload = {
+  requestId: "req-test-123",
   taskId: "task-123",
   question: "Which authentication method should we use?",
   header: "Auth method",
@@ -196,8 +197,29 @@ describe("useAskUserQuestion", () => {
   });
 
   describe("submitAnswer", () => {
-    it("should call Tauri invoke with answer_user_question command", async () => {
-      // Set up active question
+    it("should call resolve_user_question when requestId is present (MCP flow)", async () => {
+      useUiStore.getState().setActiveQuestion(validPayload);
+
+      const { result } = renderHook(() => useAskUserQuestion());
+
+      const response: AskUserQuestionResponse = {
+        requestId: "req-test-123",
+        taskId: "task-123",
+        selectedOptions: ["JWT tokens"],
+      };
+
+      await act(async () => {
+        await result.current.submitAnswer(response);
+      });
+
+      expect(mockInvoke).toHaveBeenCalledWith("resolve_user_question", {
+        requestId: "req-test-123",
+        selectedOptions: ["JWT tokens"],
+        customResponse: undefined,
+      });
+    });
+
+    it("should call answer_user_question when no requestId (legacy flow)", async () => {
       useUiStore.getState().setActiveQuestion(validPayload);
 
       const { result } = renderHook(() => useAskUserQuestion());
@@ -224,7 +246,7 @@ describe("useAskUserQuestion", () => {
       const { result } = renderHook(() => useAskUserQuestion());
 
       const response: AskUserQuestionResponse = {
-        taskId: "task-123",
+        requestId: "req-test-123",
         selectedOptions: [],
         customResponse: "Use OAuth2 instead",
       };
@@ -233,8 +255,8 @@ describe("useAskUserQuestion", () => {
         await result.current.submitAnswer(response);
       });
 
-      expect(mockInvoke).toHaveBeenCalledWith("answer_user_question", {
-        taskId: "task-123",
+      expect(mockInvoke).toHaveBeenCalledWith("resolve_user_question", {
+        requestId: "req-test-123",
         selectedOptions: [],
         customResponse: "Use OAuth2 instead",
       });
@@ -360,8 +382,8 @@ describe("useAskUserQuestion", () => {
         expect(mockListeners.has("agent:ask_user_question")).toBe(true);
       });
 
-      const firstPayload = { ...validPayload, taskId: "task-1" };
-      const secondPayload = { ...validPayload, taskId: "task-2" };
+      const firstPayload = { ...validPayload, requestId: "req-1", taskId: "task-1" };
+      const secondPayload = { ...validPayload, requestId: "req-2", taskId: "task-2" };
 
       act(() => {
         emitEvent("agent:ask_user_question", firstPayload);
@@ -400,7 +422,7 @@ describe("useAskUserQuestion", () => {
       expect(state.activeQuestion?.multiSelect).toBe(true);
     });
 
-    it("should submit multiple selected options for multi-select", async () => {
+    it("should submit multiple selected options for multi-select (MCP flow)", async () => {
       const multiSelectPayload: AskUserQuestionPayload = {
         ...validPayload,
         multiSelect: true,
@@ -410,6 +432,7 @@ describe("useAskUserQuestion", () => {
       const { result } = renderHook(() => useAskUserQuestion());
 
       const response: AskUserQuestionResponse = {
+        requestId: "req-test-123",
         taskId: "task-123",
         selectedOptions: ["JWT tokens", "Session cookies"],
       };
@@ -418,8 +441,8 @@ describe("useAskUserQuestion", () => {
         await result.current.submitAnswer(response);
       });
 
-      expect(mockInvoke).toHaveBeenCalledWith("answer_user_question", {
-        taskId: "task-123",
+      expect(mockInvoke).toHaveBeenCalledWith("resolve_user_question", {
+        requestId: "req-test-123",
         selectedOptions: ["JWT tokens", "Session cookies"],
         customResponse: undefined,
       });
