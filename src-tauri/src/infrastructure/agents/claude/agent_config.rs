@@ -203,6 +203,8 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
         allowed_mcp_tools: &[
             "complete_merge",
             "report_conflict",
+            "report_incomplete",
+            "get_merge_target",
             "get_task_context",
         ],
         preapproved_cli_tools: &["Read", "Edit", "Bash"],
@@ -348,6 +350,8 @@ mod tests {
         let tools = tools.unwrap();
         assert!(tools.contains("mcp__ralphx__complete_merge"));
         assert!(tools.contains("mcp__ralphx__report_conflict"));
+        assert!(tools.contains("mcp__ralphx__report_incomplete"));
+        assert!(tools.contains("mcp__ralphx__get_merge_target"));
         assert!(tools.contains("mcp__ralphx__get_task_context"));
         // Also includes preapproved CLI tools
         assert!(tools.contains("Read"));

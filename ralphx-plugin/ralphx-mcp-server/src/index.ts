@@ -107,6 +107,7 @@ function validateTaskScope(
     "complete_merge",
     "report_conflict",
     "report_incomplete",
+    "get_merge_target",
   ];
 
   if (!taskScopedTools.includes(toolName)) {
@@ -289,6 +290,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         diagnostic_info?: string;
       };
       result = await callTauri(`git/tasks/${task_id}/report-incomplete`, { reason, diagnostic_info });
+    } else if (name === "get_merge_target") {
+      const { task_id } = args as { task_id: string };
+      result = await callTauriGet(`git/tasks/${task_id}/merge-target`);
     } else {
       // Default: POST request
       result = await callTauri(name, (args as Record<string, unknown>) || {});
