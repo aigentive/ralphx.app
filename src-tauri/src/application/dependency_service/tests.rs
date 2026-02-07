@@ -138,6 +138,13 @@ use std::sync::{Arc, Mutex};
                 .cloned()
                 .collect())
         }
+
+        async fn clear_created_task_ids_by_session(
+            &self,
+            _session_id: &IdeationSessionId,
+        ) -> AppResult<()> {
+            Ok(())
+        }
     }
 
     struct MockProposalDependencyRepository {

@@ -112,8 +112,8 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                 "UPDATE ideation_sessions SET status = ?2, updated_at = ?3, converted_at = ?4 WHERE id = ?1"
             }
             IdeationSessionStatus::Active => {
-                // When reactivating, just update status and updated_at
-                "UPDATE ideation_sessions SET status = ?2, updated_at = ?3 WHERE id = ?1"
+                // When reactivating, clear archived_at and converted_at
+                "UPDATE ideation_sessions SET status = ?2, updated_at = ?3, archived_at = NULL, converted_at = NULL WHERE id = ?1"
             }
         };
 

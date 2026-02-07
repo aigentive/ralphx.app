@@ -66,11 +66,17 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
         if let Some(session) = self.sessions.write().unwrap().get_mut(&id.to_string()) {
             session.status = status;
             session.updated_at = Utc::now();
-            if status == IdeationSessionStatus::Archived {
-                session.archived_at = Some(Utc::now());
-            }
-            if status == IdeationSessionStatus::Accepted {
-                session.converted_at = Some(Utc::now());
+            match status {
+                IdeationSessionStatus::Archived => {
+                    session.archived_at = Some(Utc::now());
+                }
+                IdeationSessionStatus::Accepted => {
+                    session.converted_at = Some(Utc::now());
+                }
+                IdeationSessionStatus::Active => {
+                    session.archived_at = None;
+                    session.converted_at = None;
+                }
             }
         }
         Ok(())

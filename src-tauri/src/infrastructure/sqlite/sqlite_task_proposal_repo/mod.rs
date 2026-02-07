@@ -348,5 +348,21 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
 
         Ok(proposals)
     }
+
+    async fn clear_created_task_ids_by_session(
+        &self,
+        session_id: &IdeationSessionId,
+    ) -> AppResult<()> {
+        let conn = self.conn.lock().await;
+        let now = Utc::now();
+
+        conn.execute(
+            "UPDATE task_proposals SET created_task_id = NULL, updated_at = ?2 WHERE session_id = ?1",
+            rusqlite::params![session_id.as_str(), now.to_rfc3339()],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(())
+    }
 }
 

@@ -579,6 +579,13 @@ mod tests {
         ) -> AppResult<Vec<TaskProposal>> {
             Ok(vec![])
         }
+
+        async fn clear_created_task_ids_by_session(
+            &self,
+            _session_id: &crate::domain::entities::IdeationSessionId,
+        ) -> AppResult<()> {
+            Ok(())
+        }
     }
 
     struct MockArtifactRepository {
