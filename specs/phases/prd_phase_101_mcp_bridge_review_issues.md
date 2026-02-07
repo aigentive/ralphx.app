@@ -169,7 +169,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: fix(ui): remove unimplemented Files Under Review placeholder"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

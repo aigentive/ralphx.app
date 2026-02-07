@@ -721,7 +721,7 @@
       "phase": 101,
       "name": "MCP Bridge for Review Issue Tools",
       "prd": "specs/phases/prd_phase_101_mcp_bridge_review_issues.md",
-      "status": "active",
+      "status": "complete",
       "description": "HTTP endpoints, MCP tool definitions, and agent allowlist updates for review issue lifecycle"
     }
   ]
