@@ -693,7 +693,7 @@
       "phase": 97,
       "name": "Plan Branch Session-Based Lookup",
       "prd": "specs/phases/prd_phase_97_plan_branch_session_lookup.md",
-      "status": "active",
+      "status": "complete",
       "description": "Add get_by_session_id() as primary plan branch lookup, fix merge resolution and apply flow"
     }
   ]
