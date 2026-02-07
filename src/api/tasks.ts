@@ -164,7 +164,7 @@ export const tasksApi = {
    * @returns true if deleted
    */
   delete: (taskId: string) =>
-    typedInvoke("delete_task", { taskId }, z.boolean()),
+    typedInvoke("delete_task", { id: taskId }, z.boolean()),
 
   /**
    * Archive a task (soft delete)
