@@ -136,6 +136,16 @@ pub struct ContentDelta {
 // Tool Call Type
 // ============================================================================
 
+/// Diff context captured at ToolCallCompleted for Edit/Write tool calls.
+/// Stores old file content so frontend can compute proper diffs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiffContext {
+    /// Previous file content (None if new file)
+    pub old_content: Option<String>,
+    /// Resolved file path for reference
+    pub file_path: String,
+}
+
 /// Tool call extracted from the stream
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCall {
@@ -143,6 +153,8 @@ pub struct ToolCall {
     pub name: String,
     pub arguments: serde_json::Value,
     pub result: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diff_context: Option<DiffContext>,
 }
 
 /// Content block item - preserves order of text and tool calls
@@ -157,6 +169,8 @@ pub enum ContentBlockItem {
         name: String,
         arguments: serde_json::Value,
         result: Option<serde_json::Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        diff_context: Option<serde_json::Value>,
     },
 }
 
@@ -308,6 +322,7 @@ impl StreamProcessor {
                         name: self.current_tool_name.clone(),
                         arguments: args.clone(),
                         result: None,
+                        diff_context: None,
                     };
 
                     self.tool_calls.push(tool_call.clone());
@@ -318,6 +333,7 @@ impl StreamProcessor {
                         name: self.current_tool_name.clone(),
                         arguments: args,
                         result: None,
+                        diff_context: None,
                     });
 
                     events.push(StreamEvent::ToolCallCompleted(tool_call));
@@ -372,6 +388,7 @@ impl StreamProcessor {
                                 name: name.clone(),
                                 arguments: input.clone(),
                                 result: None,
+                                diff_context: None,
                             };
 
                             self.tool_calls.push(tool_call.clone());
@@ -381,6 +398,7 @@ impl StreamProcessor {
                                 name,
                                 arguments: input,
                                 result: None,
+                                diff_context: None,
                             });
                             events.push(StreamEvent::ToolCallCompleted(tool_call));
                         }
@@ -764,14 +782,63 @@ mod tests {
             name: "create_task_proposal".to_string(),
             arguments: serde_json::json!({"title": "Test task"}),
             result: None,
+            diff_context: None,
         };
 
         let json = serde_json::to_string(&tool_call).unwrap();
         assert!(json.contains("toolu_01ABC"));
         assert!(json.contains("create_task_proposal"));
+        // diff_context: None should be skipped via skip_serializing_if
+        assert!(!json.contains("diff_context"));
 
         let parsed: ToolCall = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.name, "create_task_proposal");
+        assert!(parsed.diff_context.is_none());
+    }
+
+    #[test]
+    fn test_tool_call_with_diff_context_serialization() {
+        let tool_call = ToolCall {
+            id: Some("toolu_02DEF".to_string()),
+            name: "Edit".to_string(),
+            arguments: serde_json::json!({"file_path": "src/main.rs", "old_string": "old", "new_string": "new"}),
+            result: None,
+            diff_context: Some(DiffContext {
+                old_content: Some("fn main() {\n    old\n}\n".to_string()),
+                file_path: "/project/src/main.rs".to_string(),
+            }),
+        };
+
+        let json = serde_json::to_string(&tool_call).unwrap();
+        assert!(json.contains("diff_context"));
+        assert!(json.contains("old_content"));
+        assert!(json.contains("/project/src/main.rs"));
+
+        let parsed: ToolCall = serde_json::from_str(&json).unwrap();
+        assert!(parsed.diff_context.is_some());
+        let ctx = parsed.diff_context.unwrap();
+        assert_eq!(ctx.file_path, "/project/src/main.rs");
+        assert!(ctx.old_content.is_some());
+    }
+
+    #[test]
+    fn test_tool_call_diff_context_new_file() {
+        let tool_call = ToolCall {
+            id: Some("toolu_03GHI".to_string()),
+            name: "Write".to_string(),
+            arguments: serde_json::json!({"file_path": "src/new.rs", "content": "fn new() {}"}),
+            result: None,
+            diff_context: Some(DiffContext {
+                old_content: None,
+                file_path: "/project/src/new.rs".to_string(),
+            }),
+        };
+
+        let json = serde_json::to_string(&tool_call).unwrap();
+        let parsed: ToolCall = serde_json::from_str(&json).unwrap();
+        let ctx = parsed.diff_context.unwrap();
+        assert!(ctx.old_content.is_none());
+        assert_eq!(ctx.file_path, "/project/src/new.rs");
     }
 
     #[test]
