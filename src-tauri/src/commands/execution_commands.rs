@@ -5,9 +5,8 @@
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
 use tauri::{AppHandle, Emitter, Runtime, State};
-use tokio::sync::{Notify, RwLock};
+use tokio::sync::RwLock;
 
 use crate::application::{
     AppState, ReconciliationRunner, TaskSchedulerService, TaskTransitionService,
@@ -52,12 +51,10 @@ pub const AUTO_TRANSITION_STATES: &[InternalStatus] = &[
 
 /// Tracks the currently active project for execution scoping.
 /// Commands without explicit project_id use the active project.
-/// Phase 89: Includes Notify for startup wait synchronization.
+/// Phase 90: Simple RwLock — DB persistence eliminates the startup race condition.
 pub struct ActiveProjectState {
     /// The currently active project, if any
     current: RwLock<Option<ProjectId>>,
-    /// Notifier for wait_for_project() — signals when project is set
-    notify: Notify,
 }
 
 impl std::fmt::Debug for ActiveProjectState {
@@ -79,7 +76,6 @@ impl ActiveProjectState {
     pub fn new() -> Self {
         Self {
             current: RwLock::new(None),
-            notify: Notify::new(),
         }
     }
 
@@ -88,43 +84,9 @@ impl ActiveProjectState {
         self.current.read().await.clone()
     }
 
-    /// Set the active project. Notifies waiters when project_id is Some.
+    /// Set the active project
     pub async fn set(&self, project_id: Option<ProjectId>) {
-        let is_some = project_id.is_some();
         *self.current.write().await = project_id;
-        if is_some {
-            self.notify.notify_waiters();
-        }
-    }
-
-    /// Wait for an active project to be set, with timeout.
-    ///
-    /// Returns the project ID if set within the timeout, or None if timeout expires.
-    /// Uses a register-before-check pattern to prevent TOCTOU races:
-    /// 1. Register the notified future FIRST
-    /// 2. Fast path: check if already set
-    /// 3. Slow path: wait for notification with timeout
-    pub async fn wait_for_project(&self, timeout: Duration) -> Option<ProjectId> {
-        // Register notified future BEFORE checking — prevents race where set()
-        // fires between our check and await
-        let notified = self.notify.notified();
-
-        // Fast path: already set
-        if let Some(pid) = self.get().await {
-            return Some(pid);
-        }
-
-        // Slow path: wait for set() to call notify_waiters()
-        match tokio::time::timeout(timeout, notified).await {
-            Ok(()) => {
-                // Notification received — re-read the value
-                self.get().await
-            }
-            Err(_) => {
-                // Timeout expired
-                None
-            }
-        }
     }
 }
 
@@ -1117,9 +1079,16 @@ pub async fn set_active_project(
 
     active_project_state.set(project_id.clone()).await;
 
+    // Persist to DB so it survives app restarts
+    app_state
+        .app_state_repo
+        .set_active_project(project_id.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+
     tracing::info!(
         project_id = ?project_id.as_ref().map(|p| p.as_str()),
-        "Active project set"
+        "Active project set (in-memory + DB)"
     );
 
     // Emit event for UI sync

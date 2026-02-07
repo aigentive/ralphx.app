@@ -4,6 +4,28 @@
 
 ---
 
+### 2026-02-07 20:00:00 - Phase 90 Task 3: Wire AppStateRepository into AppState, set_active_project command, and StartupJobRunner
+**What:**
+- Added `app_state_repo: Arc<dyn AppStateRepository>` field to `AppState` struct
+- Wired `SqliteAppStateRepository` in `new_production()` and `with_db_path()`
+- Wired `MemoryAppStateRepository` in `new_test()` and `with_repos()`
+- Removed `Notify` from `ActiveProjectState` (reverted to simple `RwLock`)
+- Removed `wait_for_project()` method from `ActiveProjectState`
+- Updated `set_active_project` command to persist to DB via `app_state_repo.set_active_project()`
+- Updated `StartupJobRunner` to read `active_project_id` from DB on startup (no more waiting)
+- Removed `active_project_wait_timeout` field and `with_active_project_timeout()` builder
+- Updated `lib.rs` to pass `app_state_repo` to `StartupJobRunner::new()`
+- Updated all 24 startup_jobs tests: replaced `active_project_state.set()` with `app_state_repo.set_active_project()`
+- Removed 3 Phase 89 Notify-based tests, added 2 Phase 90 DB-based tests
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passes)
+- `cargo test` (all pass, 24 startup tests pass)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-07 18:00:00 - Phase 90 Task 2: Add v14 migration, SQLite and Memory implementations for AppStateRepository
 **What:**
 - Created `v14_app_state.rs` migration with singleton `app_state` table (id=1 CHECK constraint, active_project_id TEXT, updated_at TEXT)

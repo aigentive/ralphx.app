@@ -15,7 +15,6 @@
 // - Stops early if max_concurrent is reached
 
 use std::sync::Arc;
-use std::time::Duration;
 use tauri::{AppHandle, Emitter, Runtime};
 use tracing::info;
 
@@ -25,8 +24,8 @@ use crate::commands::execution_commands::{
 use crate::application::ReconciliationRunner;
 use crate::domain::entities::InternalStatus;
 use crate::domain::repositories::{
-    AgentRunRepository, ChatConversationRepository, ProjectRepository, TaskDependencyRepository,
-    TaskRepository,
+    AgentRunRepository, AppStateRepository, ChatConversationRepository, ProjectRepository,
+    TaskDependencyRepository, TaskRepository,
 };
 use crate::domain::state_machine::services::TaskScheduler;
 
@@ -49,19 +48,20 @@ pub struct StartupJobRunner<R: Runtime = tauri::Wry> {
     execution_state: Arc<ExecutionState>,
     /// Phase 82: Active project state for per-project scoping
     active_project_state: Arc<ActiveProjectState>,
+    /// Phase 90: App state repository for reading persisted active_project_id from DB
+    app_state_repo: Arc<dyn AppStateRepository>,
     reconciler: ReconciliationRunner<R>,
     /// Optional task scheduler for auto-starting Ready tasks on startup.
     /// When provided, Ready tasks will be scheduled after resuming agent-active tasks.
     task_scheduler: Option<Arc<dyn TaskScheduler>>,
     /// Optional app handle for event emission
     app_handle: Option<AppHandle<R>>,
-    /// Phase 89: Timeout for waiting for active project to be set by frontend
-    active_project_wait_timeout: Duration,
 }
 
 impl<R: Runtime> StartupJobRunner<R> {
     /// Create a new StartupJobRunner with all required dependencies.
     /// Phase 82: Now requires active_project_state for per-project scoping.
+    /// Phase 90: Now requires app_state_repo for reading persisted active project from DB.
     pub fn new(
         task_repo: Arc<dyn TaskRepository>,
         task_dep_repo: Arc<dyn TaskDependencyRepository>,
@@ -76,6 +76,7 @@ impl<R: Runtime> StartupJobRunner<R> {
         transition_service: Arc<TaskTransitionService<R>>,
         execution_state: Arc<ExecutionState>,
         active_project_state: Arc<ActiveProjectState>,
+        app_state_repo: Arc<dyn AppStateRepository>,
     ) -> Self {
         let reconciler = ReconciliationRunner::new(
             Arc::clone(&task_repo),
@@ -101,10 +102,10 @@ impl<R: Runtime> StartupJobRunner<R> {
             transition_service,
             execution_state,
             active_project_state,
+            app_state_repo,
             reconciler,
             task_scheduler: None,
             app_handle: None,
-            active_project_wait_timeout: Duration::from_secs(5),
         }
     }
 
@@ -121,13 +122,6 @@ impl<R: Runtime> StartupJobRunner<R> {
     pub fn with_app_handle(mut self, app_handle: AppHandle<R>) -> Self {
         self.app_handle = Some(app_handle.clone());
         self.reconciler = self.reconciler.with_app_handle(app_handle);
-        self
-    }
-
-    /// Phase 89: Set the timeout for waiting for active project (builder pattern).
-    /// Tests use short timeouts to avoid 5s waits when active project is intentionally unset.
-    pub fn with_active_project_timeout(mut self, timeout: Duration) -> Self {
-        self.active_project_wait_timeout = timeout;
         self
     }
 
@@ -164,12 +158,29 @@ impl<R: Runtime> StartupJobRunner<R> {
         }
         eprintln!("[STARTUP] Execution NOT paused, continuing...");
 
-        // Phase 82/89: Wait for active project from frontend IPC (with timeout)
-        eprintln!("[STARTUP] Waiting for active project (timeout: {:?})...", self.active_project_wait_timeout);
-        let active_project_id = self.active_project_state.wait_for_project(self.active_project_wait_timeout).await;
+        // Phase 90: Read active project from DB (persisted from last session)
+        // No waiting needed — DB has the value from the previous session.
+        eprintln!("[STARTUP] Reading active project from DB...");
+        let active_project_id = {
+            let db_result = self.app_state_repo.get().await;
+            match db_result {
+                Ok(settings) => settings.active_project_id,
+                Err(e) => {
+                    tracing::warn!("Failed to read app_state from DB: {}", e);
+                    eprintln!("[STARTUP] Failed to read app_state from DB: {}", e);
+                    None
+                }
+            }
+        };
+        if let Some(ref pid) = active_project_id {
+            // Set in-memory state from DB value so other commands can use it immediately
+            self.active_project_state.set(Some(pid.clone())).await;
+            eprintln!("[STARTUP] Active project from DB: {}", pid.as_str());
+            info!(project_id = pid.as_str(), "Active project loaded from DB");
+        }
         if active_project_id.is_none() {
-            eprintln!("[STARTUP] No active project set after waiting, skipping task resumption");
-            info!("No active project set after waiting {:?}, skipping task resumption", self.active_project_wait_timeout);
+            eprintln!("[STARTUP] No active project in DB, skipping task resumption");
+            info!("No active project in DB, skipping task resumption");
             // Still try to schedule Ready tasks if scheduler is set
             if let Some(ref scheduler) = self.task_scheduler {
                 info!("Scheduling Ready tasks (no resumption)");

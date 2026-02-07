@@ -123,7 +123,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: fix(startup): persist active project to DB, read on startup"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
