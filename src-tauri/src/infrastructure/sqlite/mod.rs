@@ -4,6 +4,7 @@
 pub mod connection;
 pub mod migrations;
 pub mod sqlite_activity_event_repo;
+pub mod sqlite_app_state_repo;
 pub mod sqlite_agent_profile_repo;
 pub mod sqlite_agent_run_repo;
 pub mod sqlite_artifact_bucket_repo;
@@ -36,6 +37,7 @@ pub mod state_machine_repository;
 pub use connection::{get_app_data_db_path, get_default_db_path, open_connection, open_memory_connection};
 pub use migrations::{run_migrations, SCHEMA_VERSION};
 pub use sqlite_activity_event_repo::SqliteActivityEventRepository;
+pub use sqlite_app_state_repo::SqliteAppStateRepository;
 pub use sqlite_agent_profile_repo::SqliteAgentProfileRepository;
 pub use sqlite_agent_run_repo::SqliteAgentRunRepository;
 pub use sqlite_artifact_bucket_repo::SqliteArtifactBucketRepository;

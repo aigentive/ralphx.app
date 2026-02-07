@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-02-07 18:00:00 - Phase 90 Task 2: Add v14 migration, SQLite and Memory implementations for AppStateRepository
+**What:**
+- Created `v14_app_state.rs` migration with singleton `app_state` table (id=1 CHECK constraint, active_project_id TEXT, updated_at TEXT)
+- Created `v14_app_state_tests.rs` with 6 tests: table creation, columns, singleton row, CHECK constraint, nullable project_id, idempotency
+- Bumped SCHEMA_VERSION to 14, registered migration in `migrations/mod.rs`
+- Created `SqliteAppStateRepository` in `sqlite_app_state_repo.rs` with `from_shared`, `get`, `set_active_project` (follows SqliteGlobalExecutionSettingsRepository pattern)
+- Created `MemoryAppStateRepository` in `memory_app_state_repo.rs` with `Arc<RwLock<AppSettings>>` (follows MemoryGlobalExecutionSettingsRepository pattern)
+- Added module declarations and re-exports in `sqlite/mod.rs` and `memory/mod.rs`
+- Updated `v1_initial_schema_tests.rs` SCHEMA_VERSION assertion from 13 to 14
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passes)
+- `cargo test` (all 3597 pass)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-07 16:00:00 - Phase 90 Task 1: Create AppStateRepository trait and AppSettings entity
 **What:**
 - Created `AppSettings` entity in `src-tauri/src/domain/entities/app_state.rs` with `active_project_id: Option<ProjectId>`
