@@ -600,6 +600,34 @@ pub async fn get_task_dependency_graph(
         }
     }
 
+    // 5c. Third pass: catch tasks with ideation_session_id but no plan_artifact_id
+    // (tasks from sessions without a plan artifact)
+    {
+        let grouped_task_ids: HashSet<String> = plan_groups
+            .iter()
+            .flat_map(|g| g.task_ids.iter().cloned())
+            .collect();
+
+        let session_group_index: HashMap<String, usize> = plan_groups
+            .iter()
+            .enumerate()
+            .map(|(i, g)| (g.session_id.clone(), i))
+            .collect();
+
+        for task in &tasks {
+            let task_id_str = task.id.as_str().to_string();
+            if grouped_task_ids.contains(&task_id_str) {
+                continue;
+            }
+            if let Some(sid) = task.ideation_session_id.as_ref().map(|id| id.as_str().to_string()) {
+                if let Some(&idx) = session_group_index.get(&sid) {
+                    plan_groups[idx].task_ids.push(task_id_str);
+                    categorize_status(&task.internal_status, &mut plan_groups[idx].status_summary);
+                }
+            }
+        }
+    }
+
     // 6. Build nodes
     let nodes: Vec<TaskGraphNode> = tasks
         .iter()

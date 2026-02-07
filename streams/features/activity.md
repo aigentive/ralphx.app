@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-07 - Phase 96 Task 3: Add 3rd pass to graph query for ideation_session_id grouping
+**What:**
+- Added "5c. Third pass" block in `get_task_dependency_graph` (query.rs) after the existing "5b. Second pass"
+- Builds `grouped_task_ids` HashSet from existing plan_groups to skip already-grouped tasks
+- Builds `session_group_index` HashMap mapping session_id → plan_group index
+- Iterates tasks: for ungrouped tasks with `ideation_session_id`, matches to corresponding plan group and appends task_id + updates status_summary
+- This ensures tasks created from sessions without a `plan_artifact_id` still appear in the correct graph group
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — all tests passed (3604+)
+
+**Visual Verification:** N/A — backend only, no UI changes
+
+**Result:** Success
+
 ### 2026-02-07 - Phase 96 Task 2: Fix apply_proposals_to_kanban — stop faking plan_artifact_id
 **What:**
 - Set `task.ideation_session_id = Some(session_id.clone())` on each new task before `repo.create()` (~line 87)
