@@ -7,6 +7,7 @@ import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { PLAN_TOOLS } from "./plan-tools.js";
 import { WORKER_CONTEXT_TOOLS } from "./worker-context-tools.js";
 import { STEP_TOOLS } from "./step-tools.js";
+import { ISSUE_TOOLS } from "./issue-tools.js";
 
 /**
  * All available MCP tools
@@ -598,6 +599,11 @@ export const ALL_TOOLS: Tool[] = [
   // STEP TOOLS (worker agent)
   // ========================================================================
   ...STEP_TOOLS,
+
+  // ========================================================================
+  // ISSUE TOOLS (worker + reviewer agents)
+  // ========================================================================
+  ...ISSUE_TOOLS,
 ];
 
 /**
@@ -624,6 +630,10 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
   "ralphx-reviewer": [
     // specific review tools
     "complete_review",
+    // issue tools (re-review workflow)
+    "get_task_issues",
+    "get_step_progress",
+    "get_issue_progress",
     // common context tools
     "get_task_context",
     "get_artifact",
@@ -656,6 +666,10 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "fail_step",
     "add_step",
     "get_step_progress",
+    // issue tools (re-execution workflow)
+    "get_task_issues",
+    "mark_issue_in_progress",
+    "mark_issue_addressed",
     // common context tools
     "get_task_context",
     "get_artifact",

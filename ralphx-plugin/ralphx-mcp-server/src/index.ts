@@ -108,6 +108,9 @@ function validateTaskScope(
     "report_conflict",
     "report_incomplete",
     "get_merge_target",
+    // Issue tools (worker + reviewer agents)
+    "get_task_issues",
+    "get_issue_progress",
   ];
 
   if (!taskScopedTools.includes(toolName)) {
@@ -293,6 +296,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     } else if (name === "get_merge_target") {
       const { task_id } = args as { task_id: string };
       result = await callTauriGet(`git/tasks/${task_id}/merge-target`);
+    } else if (name === "get_task_issues") {
+      // GET /api/task_issues/:task_id?status=<filter>
+      const { task_id, status_filter } = args as { task_id: string; status_filter?: string };
+      const query = status_filter ? `?status=${status_filter}` : "";
+      result = await callTauriGet(`task_issues/${task_id}${query}`);
+    } else if (name === "get_issue_progress") {
+      // GET /api/issue_progress/:task_id
+      const { task_id } = args as { task_id: string };
+      result = await callTauriGet(`issue_progress/${task_id}`);
+    } else if (name === "mark_issue_in_progress") {
+      // POST /api/mark_issue_in_progress
+      const { issue_id } = args as { issue_id: string };
+      result = await callTauri("mark_issue_in_progress", { issue_id });
+    } else if (name === "mark_issue_addressed") {
+      // POST /api/mark_issue_addressed
+      const { issue_id, resolution_notes, attempt_number } = args as {
+        issue_id: string;
+        resolution_notes: string;
+        attempt_number: number;
+      };
+      result = await callTauri("mark_issue_addressed", { issue_id, resolution_notes, attempt_number });
     } else {
       // Default: POST request
       result = await callTauri(name, (args as Record<string, unknown>) || {});
