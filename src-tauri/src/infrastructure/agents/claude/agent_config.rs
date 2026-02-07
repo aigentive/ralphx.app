@@ -315,6 +315,7 @@ mod tests {
         let tools = tools.unwrap();
         assert!(tools.contains("mcp__ralphx__create_task_proposal"));
         assert!(tools.contains("mcp__ralphx__list_session_proposals"));
+        assert!(tools.contains("mcp__ralphx__ask_user_question"));
     }
 
     #[test]
