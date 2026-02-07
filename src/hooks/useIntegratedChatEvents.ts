@@ -49,18 +49,30 @@ export function useIntegratedChatEvents({
         arguments: unknown;
         result?: unknown;
         conversation_id: string;
+        diff_context?: { old_content?: string; file_path: string } | null;
       }>("agent:tool_call", (payload) => {
-        const { tool_name, arguments: args, result, conversation_id } = payload;
+        const { tool_name, arguments: args, result, conversation_id, diff_context } = payload;
         if (conversation_id === activeConversationIdRef.current) {
-          setStreamingToolCalls((prev) => [
-            ...prev,
-            {
+          // Build diffContext with exactOptionalPropertyTypes compliance
+          let diffContext: ToolCall["diffContext"];
+          if (diff_context) {
+            diffContext = { filePath: diff_context.file_path };
+            if (diff_context.old_content != null) {
+              diffContext.oldContent = diff_context.old_content;
+            }
+          }
+          setStreamingToolCalls((prev) => {
+            const entry: ToolCall = {
               id: `streaming-agent-${Date.now()}-${prev.length}`,
               name: tool_name,
               arguments: args,
               result,
-            },
-          ]);
+            };
+            if (diffContext) {
+              entry.diffContext = diffContext;
+            }
+            return [...prev, entry];
+          });
           queryClient.invalidateQueries({
             queryKey: chatKeys.conversation(conversation_id),
           });

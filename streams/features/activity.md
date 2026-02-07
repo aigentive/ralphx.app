@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-02-07 14:30:00 - Phase 91 Task 6: Wire DiffToolCallView into ToolCallIndicator and streaming footer
+**What:**
+- In `ToolCallIndicator.tsx`: Added `isDiffToolCall` check after hooks; if Edit/Write with file_path, delegates to `<DiffToolCallView>`, falls through to generic view otherwise
+- In `ChatMessageList.tsx` Footer: Split `streamingToolCalls` into `diffToolCalls` (edit/write with args) rendered as individual `<DiffToolCallView>` cards, and `otherToolCalls` passed to `<StreamingToolIndicator>`
+- In `useIntegratedChatEvents.ts`: Extended `agent:tool_call` subscription type to include `diff_context`, mapped `old_content`/`file_path` to `oldContent`/`filePath` with `exactOptionalPropertyTypes` compliance
+
+**Commands:**
+- `npx eslint src/components/Chat/ToolCallIndicator.tsx src/components/Chat/ChatMessageList.tsx src/hooks/useIntegratedChatEvents.ts`
+- `npm run typecheck`
+
+**Visual Verification:** N/A - wiring task, visual verification will be done at phase completion gap verification
+
+**Result:** Success
+
 ### 2026-02-07 12:15:00 - Phase 91 Task 5: Create DiffToolCallView component
 **What:**
 - Created `src/components/Chat/DiffToolCallView.tsx` (~200 lines)
