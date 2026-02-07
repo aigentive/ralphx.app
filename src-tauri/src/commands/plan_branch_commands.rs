@@ -9,6 +9,7 @@ use crate::application::git_service::GitService;
 use crate::application::AppState;
 use crate::domain::entities::{
     ArtifactId, IdeationSessionId, InternalStatus, PlanBranch, PlanBranchStatus, ProjectId, Task,
+    TaskId,
 };
 
 /// Response for plan branch queries
@@ -146,7 +147,7 @@ pub async fn enable_feature_branch(
     // Insert plan_branches DB record
     let plan_branch = PlanBranch::new(
         plan_artifact_id.clone(),
-        session_id,
+        session_id.clone(),
         project_id.clone(),
         branch_name,
         base_branch.clone(),
@@ -157,16 +158,45 @@ pub async fn enable_feature_branch(
         .await
         .map_err(|e| format!("Failed to create plan branch record: {}", e))?;
 
-    // Find all unmerged plan tasks for this plan artifact
+    // Find all unmerged plan tasks for this plan artifact.
+    // Also find tasks linked via session proposals whose plan_artifact_id is NULL
+    // (created before the session_id fallback fix), and backfill their plan_artifact_id.
     let all_tasks = state
         .task_repo
         .get_by_project(&project_id)
         .await
         .map_err(|e| e.to_string())?;
+
+    // Collect task IDs from session proposals (for tasks with NULL plan_artifact_id)
+    let proposals = state
+        .task_proposal_repo
+        .get_by_session(&session_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let session_task_ids: std::collections::HashSet<TaskId> = proposals
+        .iter()
+        .filter_map(|p| p.created_task_id.clone())
+        .collect();
+
+    // Backfill plan_artifact_id on tasks that were created from session proposals but lack it
+    for task in &all_tasks {
+        if task.plan_artifact_id.is_none() && session_task_ids.contains(&task.id) {
+            let mut task_to_update = task.clone();
+            task_to_update.plan_artifact_id = Some(plan_artifact_id.clone());
+            state
+                .task_repo
+                .update(&task_to_update)
+                .await
+                .map_err(|e| format!("Failed to backfill plan_artifact_id: {}", e))?;
+        }
+    }
+
     let unmerged_plan_tasks: Vec<&Task> = all_tasks
         .iter()
         .filter(|t| {
-            t.plan_artifact_id.as_ref() == Some(&plan_artifact_id)
+            let matches_plan = t.plan_artifact_id.as_ref() == Some(&plan_artifact_id)
+                || (t.plan_artifact_id.is_none() && session_task_ids.contains(&t.id));
+            matches_plan
                 && t.internal_status != InternalStatus::Merged
                 && t.internal_status != InternalStatus::Approved
         })
