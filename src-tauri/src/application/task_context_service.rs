@@ -385,6 +385,13 @@ mod tests {
             Ok(())
         }
 
+        async fn get_by_ideation_session(
+            &self,
+            _session_id: &crate::domain::entities::IdeationSessionId,
+        ) -> AppResult<Vec<Task>> {
+            Ok(vec![])
+        }
+
         async fn get_by_project_filtered(
             &self,
             _project_id: &ProjectId,

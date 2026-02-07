@@ -509,6 +509,13 @@ use std::sync::{Arc, Mutex};
             Ok(())
         }
 
+        async fn get_by_ideation_session(
+            &self,
+            _session_id: &crate::domain::entities::IdeationSessionId,
+        ) -> AppResult<Vec<Task>> {
+            Ok(vec![])
+        }
+
         async fn get_by_project_filtered(&self, project_id: &ProjectId, include_archived: bool) -> AppResult<Vec<Task>> {
             Ok(self
                 .tasks

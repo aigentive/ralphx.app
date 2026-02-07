@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use rusqlite::Connection;
 
-use crate::domain::entities::{InternalStatus, ProjectId, Task, TaskId};
+use crate::domain::entities::{IdeationSessionId, InternalStatus, ProjectId, Task, TaskId};
 use crate::domain::repositories::{StateHistoryMetadata, StatusTransition, TaskRepository};
 use crate::error::{AppError, AppResult};
 
@@ -93,6 +93,25 @@ impl TaskRepository for SqliteTaskRepository {
 
         let tasks = stmt
             .query_map([project_id.as_str()], Task::from_row)
+            .map_err(|e| AppError::Database(e.to_string()))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(tasks)
+    }
+
+    async fn get_by_ideation_session(
+        &self,
+        session_id: &IdeationSessionId,
+    ) -> AppResult<Vec<Task>> {
+        let conn = self.conn.lock().await;
+
+        let mut stmt = conn
+            .prepare(queries::GET_BY_IDEATION_SESSION)
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        let tasks = stmt
+            .query_map([session_id.as_str()], Task::from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;

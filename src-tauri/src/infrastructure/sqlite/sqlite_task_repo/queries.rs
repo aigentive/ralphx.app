@@ -15,6 +15,12 @@ pub(super) const GET_BY_PROJECT: &str =
      FROM tasks WHERE project_id = ?1
      ORDER BY priority DESC, created_at ASC";
 
+/// Get tasks by ideation session ID (for cascade delete)
+pub(super) const GET_BY_IDEATION_SESSION: &str =
+    "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, ideation_session_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason, task_branch, worktree_path, merge_commit_sha
+     FROM tasks WHERE ideation_session_id = ?1
+     ORDER BY created_at ASC";
+
 /// Delete task query
 pub(super) const DELETE_TASK: &str = "DELETE FROM tasks WHERE id = ?1";
 

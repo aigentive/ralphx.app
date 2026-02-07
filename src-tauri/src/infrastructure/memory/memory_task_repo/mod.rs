@@ -8,7 +8,7 @@ use tokio::sync::RwLock;
 use async_trait::async_trait;
 use chrono::Utc;
 
-use crate::domain::entities::{InternalStatus, ProjectId, Task, TaskId};
+use crate::domain::entities::{IdeationSessionId, InternalStatus, ProjectId, Task, TaskId};
 use crate::domain::repositories::{StateHistoryMetadata, StatusTransition, TaskRepository};
 use crate::error::AppResult;
 
@@ -73,6 +73,25 @@ impl TaskRepository for MemoryTaskRepository {
                 .cmp(&a.priority)
                 .then_with(|| a.created_at.cmp(&b.created_at))
         });
+        Ok(result)
+    }
+
+    async fn get_by_ideation_session(
+        &self,
+        session_id: &IdeationSessionId,
+    ) -> AppResult<Vec<Task>> {
+        let tasks = self.tasks.read().await;
+        let mut result: Vec<Task> = tasks
+            .values()
+            .filter(|t| {
+                t.ideation_session_id
+                    .as_ref()
+                    .map(|id| id == session_id)
+                    .unwrap_or(false)
+            })
+            .cloned()
+            .collect();
+        result.sort_by(|a, b| a.created_at.cmp(&b.created_at));
         Ok(result)
     }
 
