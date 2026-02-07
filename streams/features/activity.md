@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-02-07 - Phase 96 Task 2: Fix apply_proposals_to_kanban — stop faking plan_artifact_id
+**What:**
+- Set `task.ideation_session_id = Some(session_id.clone())` on each new task before `repo.create()` (~line 87)
+- Replaced fake `plan_artifact_id` fallback (`session.id` as artifact ID → FK violation) with `session.plan_artifact_id.clone()` (genuine `Option`)
+- The existing `if let Some(ref artifact_id)` guard now correctly skips when no real artifact exists
+- Set `merge_task.ideation_session_id = Some(session_id.clone())` on merge task creation (~line 266)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — all tests passed (3604+)
+
+**Visual Verification:** N/A — backend only, no UI changes
+
+**Result:** Success
+
 ### 2026-02-07 - Phase 96 Task 1: Add ideation_session_id column, entity field, and repo queries
 **What:**
 - Created v15 migration (`v15_task_ideation_session_id.rs`): adds `ideation_session_id TEXT DEFAULT NULL` column to tasks, backfills from `task_proposals` join
