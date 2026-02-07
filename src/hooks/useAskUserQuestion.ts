@@ -87,7 +87,7 @@ export function useAskUserQuestion() {
           await api.askUserQuestion.resolveQuestion({
             requestId: response.requestId,
             selectedOptions: response.selectedOptions,
-            customResponse: response.customResponse,
+            ...(response.customResponse !== undefined && { customResponse: response.customResponse }),
           });
         } else {
           await api.askUserQuestion.answerQuestion(response);
