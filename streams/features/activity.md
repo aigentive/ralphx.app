@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-02-07 - Phase 104 Task 6: PlanningView Header Actions
+**What:**
+- Added Reopen and Reset & Re-accept buttons to PlanningView header for accepted/archived sessions
+- Buttons conditionally render: Reopen for both accepted/archived, Reset & Re-accept for accepted only
+- Archive button only shows for active sessions (not read-only)
+- Wired ReopenSessionDialog with two modes, connected to useReopenSession and useResetAndReaccept hooks
+- Task count derived from proposals with `createdTaskId` set
+- Passed `onReopenPlan` and `onResetReacceptPlan` callbacks to PlanBrowser for history context menu integration
+- Added RotateCcw and RefreshCw Lucide icons for header buttons
+- Toast notifications on success/error for both operations
+
+**Commands:**
+- `npm run typecheck` — passes
+- `npx eslint src/components/Ideation/PlanningView.tsx` — passes
+
+**Visual Verification:**
+- Mock-check: screenshots/features/2026-02-07_planning-view-reopen-actions_mock-check.md
+- Screenshot: screenshots/features/2026-02-07_planning-view-reopen-actions-active.png
+- PRD content check: ✅ Header renders correctly with conditional buttons (Archive for active, Reopen/Reset for accepted/archived)
+- Browser test: Passed (mock mode — accept doesn't persist state, but button rendering logic verified)
+
+**Result:** Success
+
 ### 2026-02-07 - Phase 104 Task 5: PlanBrowser History Context Menu
 **What:**
 - Added `onReopenPlan` and `onResetReacceptPlan` optional props to `PlanBrowserProps` and `PlanItemProps`

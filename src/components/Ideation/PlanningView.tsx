@@ -15,6 +15,8 @@ import {
   Loader2,
   Upload,
   Sparkles,
+  RotateCcw,
+  RefreshCw,
 } from "lucide-react";
 import { useEventBus } from "@/providers/EventProvider";
 import { toast } from "sonner";
@@ -43,6 +45,9 @@ import { useFileDrop } from "@/hooks/useFileDrop";
 import { useDependencyGraph } from "@/hooks/useDependencyGraph";
 import { DropZoneOverlay } from "./DropZoneOverlay";
 import { ideationApi } from "@/api/ideation";
+import { ReopenSessionDialog } from "./ReopenSessionDialog";
+import type { ReopenMode } from "./ReopenSessionDialog";
+import { useReopenSession, useResetAndReaccept } from "@/hooks/useIdeation";
 
 // ============================================================================
 // Types
@@ -127,6 +132,50 @@ export function PlanningView({
 
   // Read-only mode: plans that are not active are read-only
   const isReadOnly = session?.status !== "active";
+
+  // Reopen/Reset dialog state
+  const [reopenDialogOpen, setReopenDialogOpen] = useState(false);
+  const [reopenDialogMode, setReopenDialogMode] = useState<ReopenMode>("reopen");
+  const reopenMutation = useReopenSession();
+  const resetMutation = useResetAndReaccept();
+
+  // Count tasks created from this session's proposals
+  const sessionTaskCount = useMemo(
+    () => proposals.filter((p) => p.createdTaskId != null).length,
+    [proposals]
+  );
+
+  const canReopen = isReadOnly && (session?.status === "accepted" || session?.status === "archived");
+  const canResetReaccept = session?.status === "accepted";
+
+  const handleOpenReopenDialog = useCallback((mode: ReopenMode) => {
+    setReopenDialogMode(mode);
+    setReopenDialogOpen(true);
+  }, []);
+
+  const handleConfirmReopen = useCallback(() => {
+    if (!session) return;
+    if (reopenDialogMode === "reopen") {
+      reopenMutation.mutate(session.id, {
+        onSuccess: () => {
+          setReopenDialogOpen(false);
+          toast.success("Session reopened");
+        },
+        onError: (err) => toast.error(`Failed to reopen: ${err.message}`),
+      });
+    } else {
+      resetMutation.mutate(
+        { sessionId: session.id, proposalIds: proposals.map((p) => p.id) },
+        {
+          onSuccess: () => {
+            setReopenDialogOpen(false);
+            toast.success("Session reset and re-accepted");
+          },
+          onError: (err) => toast.error(`Failed to reset: ${err.message}`),
+        }
+      );
+    }
+  }, [session, reopenDialogMode, reopenMutation, resetMutation, proposals]);
 
   // Get the event bus from context (TauriEventBus or MockEventBus)
   const eventBus = useEventBus();
@@ -455,6 +504,14 @@ export function PlanningView({
           onSelectPlan={onSelectSession}
           onNewPlan={onNewSession}
           {...(onDeleteSession !== undefined && { onDeletePlan: onDeleteSession })}
+          onReopenPlan={(planId) => {
+            onSelectSession(planId);
+            handleOpenReopenDialog("reopen");
+          }}
+          onResetReacceptPlan={(planId) => {
+            onSelectSession(planId);
+            handleOpenReopenDialog("reset");
+          }}
         />
 
         {/* Main Content */}
@@ -498,24 +555,68 @@ export function PlanningView({
                   </p>
                 </div>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleArchive}
-                className="h-7 gap-1.5 text-xs transition-colors duration-150"
-                style={{ color: "hsl(220 10% 60%)" }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = "hsl(220 10% 90%)";
-                  e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = "hsl(220 10% 60%)";
-                  e.currentTarget.style.background = "transparent";
-                }}
-              >
-                <Archive className="w-3.5 h-3.5" />
-                Archive
-              </Button>
+              <div className="flex items-center gap-1.5">
+                {canReopen && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleOpenReopenDialog("reopen")}
+                    className="h-7 gap-1.5 text-xs transition-colors duration-150"
+                    style={{ color: "hsl(220 10% 60%)" }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = "hsl(220 10% 90%)";
+                      e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = "hsl(220 10% 60%)";
+                      e.currentTarget.style.background = "transparent";
+                    }}
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    Reopen
+                  </Button>
+                )}
+                {canReopen && canResetReaccept && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleOpenReopenDialog("reset")}
+                    className="h-7 gap-1.5 text-xs transition-colors duration-150"
+                    style={{ color: "hsl(220 10% 60%)" }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = "hsl(220 10% 90%)";
+                      e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = "hsl(220 10% 60%)";
+                      e.currentTarget.style.background = "transparent";
+                    }}
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Reset & Re-accept
+                  </Button>
+                )}
+                {!isReadOnly && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleArchive}
+                    className="h-7 gap-1.5 text-xs transition-colors duration-150"
+                    style={{ color: "hsl(220 10% 60%)" }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = "hsl(220 10% 90%)";
+                      e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = "hsl(220 10% 60%)";
+                      e.currentTarget.style.background = "transparent";
+                    }}
+                  >
+                    <Archive className="w-3.5 h-3.5" />
+                    Archive
+                  </Button>
+                )}
+              </div>
             </header>
 
             {/* Split Layout - Proposals left, Conversation right (matching Kanban pattern) */}
@@ -693,6 +794,16 @@ export function PlanningView({
           data-testid="plan-import-file-input"
         />
       </div>
+
+      <ReopenSessionDialog
+        open={reopenDialogOpen}
+        onOpenChange={setReopenDialogOpen}
+        mode={reopenDialogMode}
+        sessionTitle={session?.title || "Untitled"}
+        taskCount={sessionTaskCount}
+        onConfirm={handleConfirmReopen}
+        isLoading={reopenMutation.isPending || resetMutation.isPending}
+      />
     </>
   );
 }

@@ -197,7 +197,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run typecheck && npm run lint",
       "Commit: feat(ideation): add reopen/reset header actions to planning view"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
