@@ -4,6 +4,19 @@
 
 ---
 
+### 2026-02-07 - Phase 95 Task 3: Invalidate plan-branch queries after apply
+**What:**
+- In `useApplyProposals.ts` onSuccess callback, added `queryClient.invalidateQueries({ queryKey: ["plan-branch"] })`
+- This ensures the plan-branch query refetches immediately after apply, so the feature branch toggle shows correct state
+- Placed before the session conversion check, alongside other query invalidations
+
+**Commands:**
+- `npx eslint src/hooks/useApplyProposals.ts` — clean
+
+**Visual Verification:** N/A — hook logic only, no visual component changes
+
+**Result:** Success
+
 ### 2026-02-07 - Phase 95 Task 2: Add session-based task lookup fallback in enable_feature_branch
 **What:**
 - In `plan_branch_commands.rs`, extended `enable_feature_branch` to also find tasks via `task_proposals` where `session_id` matches
