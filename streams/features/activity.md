@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-07 15:30:00 - Phase 97 Task 1: Add UNIQUE index on plan_branches.session_id (v16 migration)
+**What:**
+- Created v16 migration: `CREATE UNIQUE INDEX IF NOT EXISTS idx_plan_branches_session_id ON plan_branches(session_id)`
+- Registered v16 in mod.rs, bumped SCHEMA_VERSION to 16
+- Created v16_plan_branch_session_index_tests.rs with 3 tests (index exists, uniqueness enforced, idempotent)
+- Updated v1_initial_schema_tests.rs SCHEMA_VERSION constant check to 16
+- (Recovered from previous incomplete iteration)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — all tests passed
+
+**Visual Verification:** N/A — backend only, no UI changes
+
+**Result:** Success
+
 ### 2026-02-07 - Phase 96 Complete — Gap Verification Passed
 **What:**
 - All 4 tasks verified as `"passes": true`
