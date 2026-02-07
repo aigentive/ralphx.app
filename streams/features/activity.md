@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-02-07 15:30:00 - Phase 98 Task 1: Remove agent auto-spawn from MergeIncomplete error path
+**What:**
+- Deleted the merger agent spawn block (27 lines) from the `Err(e)` arm of `attempt_programmatic_merge`
+- `MergeIncomplete` is now a pure human-waiting state — user clicks "Retry" to transition to `Merging` where agent spawns correctly
+- Added `task:status_changed` event emit so the UI updates to show the Retry button
+- Kept: error log, status transition to MergeIncomplete, status history recording
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — passed
+- `cargo test` — 3609 passed, 0 failed
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-07 14:30:00 - Phase 97 Task 6: Fix stale toggle after feature branch enable
 **What:**
 - Moved `onBranchChange?.()` from `try` block to `finally` block — always invalidates cache even on error

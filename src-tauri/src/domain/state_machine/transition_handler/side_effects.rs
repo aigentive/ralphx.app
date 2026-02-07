@@ -1116,33 +1116,14 @@ impl<'a> super::TransitionHandler<'a> {
                     tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
                 }
 
-                // Spawn merger agent with diagnostic prompt
-                let prompt = format!("Merge failed for task: {}. Error: {}. Diagnose and fix.", task_id_str, e);
-                tracing::info!(
-                    task_id = task_id_str,
-                    "Spawning merger agent for error recovery (from attempt_programmatic_merge)"
-                );
-
-                let result = self
-                    .machine
+                // Emit event for UI update — MergeIncomplete is a human-waiting state
+                // (user clicks "Retry" which transitions to Merging where agent spawns correctly)
+                self.machine
                     .context
                     .services
-                    .chat_service
-                    .send_message(
-                        crate::domain::entities::ChatContextType::Merge,
-                        task_id_str,
-                        &prompt,
-                    )
+                    .event_emitter
+                    .emit("task:status_changed", task_id_str)
                     .await;
-
-                match &result {
-                    Ok(_) => {
-                        tracing::info!(task_id = task_id_str, "Merger agent spawned successfully");
-                    }
-                    Err(e) => {
-                        tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent");
-                    }
-                }
             }
         }
     }
