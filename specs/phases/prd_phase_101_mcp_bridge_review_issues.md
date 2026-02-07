@@ -153,7 +153,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Verify worker.md already has issue tools listed (no changes needed)",
       "Commit: feat(agents): add issue tools to reviewer frontmatter and re-review workflow"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 5,
