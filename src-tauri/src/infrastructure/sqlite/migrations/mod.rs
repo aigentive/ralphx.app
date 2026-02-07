@@ -41,6 +41,7 @@ mod v12_fix_worktree_project_settings;
 mod v13_plan_branches;
 mod v14_app_state;
 mod v15_task_ideation_session_id;
+mod v16_plan_branch_session_index;
 
 #[cfg(test)]
 mod tests;
@@ -72,9 +73,11 @@ mod v13_plan_branches_tests;
 mod v14_app_state_tests;
 #[cfg(test)]
 mod v15_task_ideation_session_id_tests;
+#[cfg(test)]
+mod v16_plan_branch_session_index_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 15;
+pub const SCHEMA_VERSION: i32 = 16;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -163,6 +166,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 15,
         name: "task_ideation_session_id",
         migrate: v15_task_ideation_session_id::migrate,
+    },
+    Migration {
+        version: 16,
+        name: "plan_branch_session_index",
+        migrate: v16_plan_branch_session_index::migrate,
     },
 ];
 
