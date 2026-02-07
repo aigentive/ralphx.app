@@ -242,6 +242,58 @@ export const ALL_TOOLS: Tool[] = [
   },
 
   // ========================================================================
+  // QUESTION TOOLS (orchestrator-ideation agent — inline AskUserQuestion)
+  // ========================================================================
+  {
+    name: "ask_user_question",
+    description:
+      "Ask the user a clarifying question with optional predefined answer options. " +
+      "The question appears as an inline card in the chat. " +
+      "This tool blocks until the user responds (up to 5 minutes). " +
+      "Use for confirmations, multi-choice selections, or open-ended questions during ideation.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: {
+          type: "string",
+          description: "The ideation session ID (provided in context)",
+        },
+        question: {
+          type: "string",
+          description: "The question text to display to the user",
+        },
+        header: {
+          type: "string",
+          description: "Optional header/title above the question (e.g., 'Confirm Plan')",
+        },
+        options: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              label: {
+                type: "string",
+                description: "Short label for the option (e.g., 'Yes', 'Option A')",
+              },
+              description: {
+                type: "string",
+                description: "Optional longer description of what this option means",
+              },
+            },
+            required: ["label"],
+          },
+          description: "Predefined answer options. If omitted, user can type a free-form response.",
+        },
+        multi_select: {
+          type: "boolean",
+          description: "If true and options are provided, user can select multiple options. Default: false.",
+        },
+      },
+      required: ["session_id", "question"],
+    },
+  },
+
+  // ========================================================================
   // TASK TOOLS (chat-task agent)
   // ========================================================================
   {
@@ -624,6 +676,7 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_plan_artifact",
     "link_proposals_to_plan",
     "get_session_plan",
+    "ask_user_question",
   ],
   "chat-task": ["update_task", "add_task_note", "get_task_details"],
   "chat-project": ["suggest_task", "list_tasks"],
