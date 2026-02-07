@@ -49,7 +49,7 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     // =========================================================================
     AgentConfig {
         name: "orchestrator-ideation",
-        allowed_tools: Some("Read,Grep,Glob"),
+        allowed_tools: Some("Read,Grep,Glob,Task"),
         allowed_mcp_tools: &[
             "create_task_proposal",
             "update_task_proposal",
@@ -273,7 +273,7 @@ mod tests {
     #[test]
     fn test_get_allowed_tools_restricted_agent() {
         let tools = get_allowed_tools("orchestrator-ideation");
-        assert_eq!(tools, Some("Read,Grep,Glob"));
+        assert_eq!(tools, Some("Read,Grep,Glob,Task"));
     }
 
     #[test]
