@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 99,
+  "currentPhase": 100,
   "phases": [
     {
       "phase": 0,
@@ -709,6 +709,13 @@
       "prd": "specs/phases/prd_phase_99_merge_incomplete_detail_view.md",
       "status": "complete",
       "description": "Dedicated detail view for merge_incomplete state with retry/resolve actions"
+    },
+    {
+      "phase": 100,
+      "name": "Plan Merge Auto-Promote",
+      "prd": "specs/phases/prd_phase_100_plan_merge_auto_promote.md",
+      "status": "active",
+      "description": "Auto-promote plan_merge tasks from Ready to PendingMerge when unblocked"
     }
   ]
 }
