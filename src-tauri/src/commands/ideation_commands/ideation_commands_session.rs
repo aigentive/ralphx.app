@@ -271,6 +271,59 @@ pub async fn delete_ideation_session(
         .map_err(|e| e.to_string())
 }
 
+/// Reopen an accepted/archived ideation session back to Active.
+///
+/// Cleanup: stops running agents, deletes tasks, cleans git branches/worktrees,
+/// clears proposal task links, resets session to Active.
+/// Emits ideation:session_reopened and task:list_changed events.
+#[tauri::command]
+pub async fn reopen_ideation_session(
+    id: String,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    use crate::application::session_reopen_service::SessionReopenService;
+
+    let session_id = IdeationSessionId::from_string(id.clone());
+
+    // Get project_id for events before reopening
+    let session = state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Session not found: {}", id))?;
+    let project_id_str = session.project_id.as_str().to_string();
+
+    let service = SessionReopenService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.task_proposal_repo),
+        Arc::clone(&state.ideation_session_repo),
+        Arc::clone(&state.plan_branch_repo),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.running_agent_registry),
+    );
+
+    service.reopen(&session_id).await.map_err(|e| e.to_string())?;
+
+    // Emit events for real-time UI updates
+    let _ = app.emit(
+        "ideation:session_reopened",
+        serde_json::json!({
+            "sessionId": id,
+            "projectId": project_id_str,
+        }),
+    );
+    let _ = app.emit(
+        "task:list_changed",
+        serde_json::json!({
+            "projectId": project_id_str,
+        }),
+    );
+
+    Ok(())
+}
+
 /// Update the title of an ideation session
 ///
 /// Sets or clears the session title and emits a real-time event for UI updates.

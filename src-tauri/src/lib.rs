@@ -453,6 +453,7 @@ pub fn run() {
             commands::ideation_commands::list_ideation_sessions,
             commands::ideation_commands::archive_ideation_session,
             commands::ideation_commands::delete_ideation_session,
+            commands::ideation_commands::reopen_ideation_session,
             commands::ideation_commands::update_ideation_session_title,
             commands::ideation_commands::spawn_session_namer,
             commands::ideation_commands::spawn_dependency_suggester,
