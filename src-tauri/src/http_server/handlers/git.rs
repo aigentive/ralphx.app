@@ -15,6 +15,7 @@ use tauri::Emitter;
 use super::*;
 use crate::application::{GitService, TaskSchedulerService, TaskTransitionService};
 use crate::domain::entities::{InternalStatus, TaskId};
+use crate::domain::state_machine::resolve_merge_branches;
 use crate::domain::state_machine::services::TaskScheduler;
 
 // ============================================================================
@@ -69,6 +70,13 @@ pub struct DiffStatsResponse {
     pub insertions: u32,
     pub deletions: u32,
     pub changed_files: Vec<String>,
+}
+
+/// Merge target branches for get_merge_target
+#[derive(Debug, serde::Serialize)]
+pub struct MergeTargetResponse {
+    pub source_branch: String,
+    pub target_branch: String,
 }
 
 // ============================================================================
@@ -531,6 +539,46 @@ pub async fn get_task_diff_stats(
         insertions: stats.insertions,
         deletions: stats.deletions,
         changed_files: stats.changed_files,
+    }))
+}
+
+/// GET /api/git/tasks/{id}/merge-target
+///
+/// Get the resolved merge target branches for a task.
+/// Returns source_branch (task's branch) and target_branch (where to merge INTO).
+/// The target may be a plan feature branch instead of main.
+pub async fn get_merge_target(
+    State(state): State<HttpServerState>,
+    Path(task_id): Path<String>,
+) -> Result<Json<MergeTargetResponse>, (StatusCode, String)> {
+    let task_id = TaskId::from_string(task_id);
+
+    // 1. Get task
+    let task = state
+        .app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Task not found".to_string()))?;
+
+    // 2. Get project
+    let project = state
+        .app_state
+        .project_repo
+        .get_by_id(&task.project_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Project not found".to_string()))?;
+
+    // 3. Resolve merge branches
+    let plan_branch_repo = Some(Arc::clone(&state.app_state.plan_branch_repo));
+    let (source_branch, target_branch) =
+        resolve_merge_branches(&task, &project, &plan_branch_repo).await;
+
+    Ok(Json(MergeTargetResponse {
+        source_branch,
+        target_branch,
     }))
 }
 
