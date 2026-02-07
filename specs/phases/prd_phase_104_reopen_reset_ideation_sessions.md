@@ -175,7 +175,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run typecheck && npm run lint",
       "Commit: feat(ideation): add reopen/reset context menu to plan browser history"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 6,

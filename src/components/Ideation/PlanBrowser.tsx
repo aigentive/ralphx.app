@@ -32,6 +32,8 @@ import {
   History,
   ChevronDown,
   CheckCircle,
+  RotateCcw,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { IdeationSession } from "@/types/ideation";
@@ -69,6 +71,8 @@ interface PlanBrowserProps {
   onNewPlan: () => void;
   onArchivePlan?: (planId: string) => void;
   onDeletePlan?: (planId: string) => void;
+  onReopenPlan?: (planId: string) => void;
+  onResetReacceptPlan?: (planId: string) => void;
 }
 
 // ============================================================================
@@ -92,6 +96,8 @@ interface PlanItemProps {
   onMenuOpenChange: (open: boolean) => void;
   onArchive?: () => void;
   onDelete?: () => void;
+  onReopen?: () => void;
+  onResetReaccept?: () => void;
 }
 
 function PlanItem({
@@ -111,6 +117,8 @@ function PlanItem({
   onMenuOpenChange,
   onArchive,
   onDelete,
+  onReopen,
+  onResetReaccept,
 }: PlanItemProps) {
   const statusBadge = isHistory ? (
     <span
@@ -224,7 +232,7 @@ function PlanItem({
           )}
         </div>
 
-        {/* Menu - only show for non-history items (history items are read-only) */}
+        {/* Menu - active items */}
         {!isEditing && !isHistory && (
           <DropdownMenu onOpenChange={onMenuOpenChange}>
             <DropdownMenuTrigger asChild>
@@ -296,6 +304,79 @@ function PlanItem({
             </DropdownMenuContent>
           </DropdownMenu>
         )}
+
+        {/* Menu - history items */}
+        {!isEditing && isHistory && (
+          <DropdownMenu onOpenChange={onMenuOpenChange}>
+            <DropdownMenuTrigger asChild>
+              <button
+                className={cn(
+                  "w-6 h-6 rounded flex items-center justify-center flex-shrink-0",
+                  "transition-all duration-150",
+                  (isMenuOpen || isSelected)
+                    ? "opacity-100"
+                    : "opacity-0 group-hover:opacity-100"
+                )}
+                style={{
+                  background: isMenuOpen ? "hsla(220 10% 100% / 0.08)" : "transparent",
+                }}
+                onClick={(e) => e.stopPropagation()}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "hsla(220 10% 100% / 0.08)";
+                }}
+                onMouseLeave={(e) => {
+                  if (!isMenuOpen) {
+                    e.currentTarget.style.background = "transparent";
+                  }
+                }}
+              >
+                <MoreHorizontal className="w-3.5 h-3.5" style={{ color: "hsl(220 10% 50%)" }} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="w-48"
+              style={{
+                background: "hsl(220 10% 14%)",
+                border: "1px solid hsla(220 10% 100% / 0.08)",
+                boxShadow: "0 8px 32px hsla(0 0% 0% / 0.4)",
+              }}
+            >
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReopen?.();
+                }}
+                className="text-[13px] cursor-pointer gap-2.5 py-2"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Reopen
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onResetReaccept?.();
+                }}
+                className="text-[13px] cursor-pointer gap-2.5 py-2"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Reset & Re-accept
+              </DropdownMenuItem>
+              <DropdownMenuSeparator style={{ background: "hsla(220 10% 100% / 0.06)" }} />
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete?.();
+                }}
+                className="text-[13px] cursor-pointer gap-2.5 py-2"
+                style={{ color: "hsl(0 70% 60%)" }}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
     </div>
   );
@@ -313,6 +394,8 @@ export function PlanBrowser({
   onNewPlan,
   onArchivePlan,
   onDeletePlan,
+  onReopenPlan,
+  onResetReacceptPlan,
 }: PlanBrowserProps) {
   const sortedPlans = useMemo(
     () => [...plans].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
@@ -545,6 +628,9 @@ export function PlanBrowser({
                         onTitleChange={setEditingTitle}
                         onKeyDown={(e) => handleKeyDown(e, plan.id)}
                         onMenuOpenChange={(open) => setOpenMenuId(open ? plan.id : null)}
+                        onDelete={() => onDeletePlan?.(plan.id)}
+                        onReopen={() => onReopenPlan?.(plan.id)}
+                        onResetReaccept={() => onResetReacceptPlan?.(plan.id)}
                       />
                     ))}
                   </CollapsibleContent>

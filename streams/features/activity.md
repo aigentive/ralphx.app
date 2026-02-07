@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-07 - Phase 104 Task 5: PlanBrowser History Context Menu
+**What:**
+- Added `onReopenPlan` and `onResetReacceptPlan` optional props to `PlanBrowserProps` and `PlanItemProps`
+- Added history context menu to PlanItem with Reopen, Reset & Re-accept, and Delete items
+- Wired callbacks from PlanBrowser to PlanItem for history items
+- Added RotateCcw and RefreshCw Lucide icons for menu items
+- Menu width set to `w-48` for history items to accommodate "Reset & Re-accept" text
+
+**Commands:**
+- `npx eslint src/components/Ideation/PlanBrowser.tsx` — passes
+- `npm run typecheck` — passes
+
+**Visual Verification:** N/A - backend-only prop additions, wiring tested in Task 6
+
+**Result:** Success
+
 ### 2026-02-08 09:00:00 - Phase 104 Task 4: Create ReopenSessionDialog component
 **What:**
 - Created `src/components/Ideation/ReopenSessionDialog.tsx` (~95 LOC) — AlertDialog-based confirmation dialog with two modes
