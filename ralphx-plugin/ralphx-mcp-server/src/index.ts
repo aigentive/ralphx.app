@@ -33,6 +33,7 @@ import {
   permissionRequestTool,
   handlePermissionRequest,
 } from "./permission-handler.js";
+import { handleAskUserQuestion, AskUserQuestionArgs } from "./question-handler.js";
 
 /**
  * Parse command line arguments for --agent-type
@@ -174,6 +175,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     return handlePermissionRequest(
       args as Parameters<typeof handlePermissionRequest>[0]
     );
+  }
+
+  // Special handling for ask_user_question (register + long-poll, like permission_request)
+  if (name === "ask_user_question") {
+    // Still check authorization (must be in agent's allowlist)
+    if (!isToolAllowed(name)) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `ERROR: Tool "${name}" is not available for agent type "${AGENT_TYPE}".`,
+          },
+        ],
+        isError: true,
+      };
+    }
+    return handleAskUserQuestion(args as unknown as AskUserQuestionArgs);
   }
 
   // Authorization check (defense in depth)
