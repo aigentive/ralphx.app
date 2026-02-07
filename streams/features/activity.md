@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-08 01:15:00 - Phase 102 Task 2: Hide merge tasks from Kanban with toggle
+**What:**
+- Added `showMergeTasks: boolean` (default: `false`) and `setShowMergeTasks` action to uiStore.ts (same pattern as showArchived)
+- In Column.tsx: added `showMergeTasks` prop, filters out `plan_merge` tasks in the tasks useMemo when toggle is off
+- In TaskBoard.tsx: reads `showMergeTasks`/`setShowMergeTasks` from store, computes merge task count reactively via query cache observer, adds GitMerge toggle button (only visible when merge tasks exist), passes `showMergeTasks` to Column components
+
+**Commands:**
+- `npm run typecheck` (passed)
+- `npm run lint` (pre-existing errors in TaskGraphView.tsx only, no errors in modified files)
+
+**Visual Verification:** N/A - merge tasks require plan application with feature branches (not available in web mode without Tauri backend). Toggle follows established showArchived pattern exactly.
+
+**Result:** Success
+
+---
+
 ### 2026-02-08 00:42:00 - Phase 102 Task 1: Filter merge tasks from tier group calculation
 **What:**
 - Added `if (node.category === "plan_merge") continue;` guard in `buildTierGroups()` (tierGroupUtils.ts:56) to skip merge tasks from tier counting

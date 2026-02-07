@@ -33,6 +33,7 @@ interface ColumnProps {
   column: WorkflowColumnResponse;
   projectId: string;
   showArchived: boolean;
+  showMergeTasks: boolean;
   isOver?: boolean;
   isInvalid?: boolean;
   onTaskSelect?: (taskId: string) => void;
@@ -78,7 +79,7 @@ function TaskSkeleton() {
   );
 }
 
-export function Column({ column, projectId, showArchived, isOver, isInvalid, onTaskSelect, hiddenTaskId, searchTasks, matchCount, groups, isLast = false }: ColumnProps) {
+export function Column({ column, projectId, showArchived, showMergeTasks, isOver, isInvalid, onTaskSelect, hiddenTaskId, searchTasks, matchCount, groups, isLast = false }: ColumnProps) {
   const { setNodeRef } = useDroppable({ id: column.id });
   const sentinelRef = useRef<HTMLDivElement>(null);
   const { active } = useDndContext();
@@ -136,14 +137,21 @@ export function Column({ column, projectId, showArchived, isOver, isInvalid, onT
 
   // Use search tasks if provided (search mode), otherwise use fetched tasks
   const tasks = useMemo(() => {
+    let result: Task[];
     if (searchTasks) {
       // In search mode, use provided search results
-      return searchTasks.sort((a, b) => a.priority - b.priority);
+      result = searchTasks.sort((a, b) => a.priority - b.priority);
+    } else {
+      // In normal mode, flatten paginated data
+      const flattened = flattenPages(data);
+      result = flattened.sort((a, b) => a.priority - b.priority);
     }
-    // In normal mode, flatten paginated data
-    const flattened = flattenPages(data);
-    return flattened.sort((a, b) => a.priority - b.priority);
-  }, [data, searchTasks]);
+    // Filter out merge tasks when toggle is off
+    if (!showMergeTasks) {
+      result = result.filter((t) => t.category !== "plan_merge");
+    }
+    return result;
+  }, [data, searchTasks, showMergeTasks]);
 
   // Group tasks by their internal status when groups are defined
   const tasksByGroup = useMemo(() => {

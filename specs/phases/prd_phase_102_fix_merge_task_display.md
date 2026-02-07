@@ -108,7 +108,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint",
       "Commit: feat(kanban): hide merge tasks by default with toggle"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
