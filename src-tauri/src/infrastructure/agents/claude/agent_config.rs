@@ -49,7 +49,7 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     // =========================================================================
     AgentConfig {
         name: "orchestrator-ideation",
-        allowed_tools: Some("Read,Grep,Glob"),
+        allowed_tools: Some("Read,Grep,Glob,Task"),
         allowed_mcp_tools: &[
             "create_task_proposal",
             "update_task_proposal",
@@ -62,8 +62,9 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
             "get_plan_artifact",
             "link_proposals_to_plan",
             "get_session_plan",
+            "ask_user_question",
         ],
-        preapproved_cli_tools: &[],
+        preapproved_cli_tools: &["Task"],
     },
     // Read-only variant for accepted plans - no mutation tools
     AgentConfig {
@@ -273,7 +274,7 @@ mod tests {
     #[test]
     fn test_get_allowed_tools_restricted_agent() {
         let tools = get_allowed_tools("orchestrator-ideation");
-        assert_eq!(tools, Some("Read,Grep,Glob"));
+        assert_eq!(tools, Some("Read,Grep,Glob,Task"));
     }
 
     #[test]
@@ -314,6 +315,16 @@ mod tests {
         let tools = tools.unwrap();
         assert!(tools.contains("mcp__ralphx__create_task_proposal"));
         assert!(tools.contains("mcp__ralphx__list_session_proposals"));
+    }
+
+    #[test]
+    fn test_get_allowed_mcp_tools_ideation_ask_user_question() {
+        let tools = get_allowed_mcp_tools("orchestrator-ideation");
+        assert!(tools.is_some());
+        let tools = tools.unwrap();
+        assert!(tools.contains("mcp__ralphx__ask_user_question"));
+        // Task should be in preapproved CLI tools
+        assert!(tools.contains("Task"));
     }
 
     #[test]

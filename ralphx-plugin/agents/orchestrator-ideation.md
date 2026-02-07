@@ -5,6 +5,7 @@ tools:
   - Read
   - Grep
   - Glob
+  - Task
   - mcp__ralphx__create_task_proposal
   - mcp__ralphx__update_task_proposal
   - mcp__ralphx__delete_task_proposal
@@ -16,9 +17,11 @@ tools:
   - mcp__ralphx__get_plan_artifact
   - mcp__ralphx__link_proposals_to_plan
   - mcp__ralphx__get_session_plan
+  - mcp__ralphx__ask_user_question
 disallowedTools: Write, Edit, NotebookEdit
 allowedTools:
   - "mcp__ralphx__*"
+  - Task
 model: sonnet
 maxIterations: 25
 skills:
