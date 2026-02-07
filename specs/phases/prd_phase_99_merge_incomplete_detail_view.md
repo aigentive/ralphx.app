@@ -97,7 +97,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(merge): add MergeIncompleteTaskDetail view with retry/resolve actions"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

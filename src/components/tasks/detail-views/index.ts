@@ -20,4 +20,5 @@ export { WaitingTaskDetail } from "./WaitingTaskDetail";
 export { CompletedTaskDetail } from "./CompletedTaskDetail";
 export { MergingTaskDetail } from "./MergingTaskDetail";
 export { MergeConflictTaskDetail } from "./MergeConflictTaskDetail";
+export { MergeIncompleteTaskDetail } from "./MergeIncompleteTaskDetail";
 export { MergedTaskDetail } from "./MergedTaskDetail";

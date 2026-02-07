@@ -40,6 +40,7 @@ import {
   CompletedTaskDetail,
   MergingTaskDetail,
   MergeConflictTaskDetail,
+  MergeIncompleteTaskDetail,
   MergedTaskDetail,
 } from "./detail-views";
 
@@ -106,7 +107,7 @@ const TASK_DETAIL_VIEWS: Record<
   // Merge states - specialized views
   pending_merge: MergingTaskDetail,
   merging: MergingTaskDetail,
-  merge_incomplete: MergingTaskDetail,
+  merge_incomplete: MergeIncompleteTaskDetail,
   merge_conflict: MergeConflictTaskDetail,
   // Terminal states
   merged: MergedTaskDetail,

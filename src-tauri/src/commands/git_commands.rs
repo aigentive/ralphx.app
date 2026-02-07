@@ -200,10 +200,14 @@ pub async fn resolve_merge_conflict(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Task not found: {}", task_id_parsed.as_str()))?;
 
-    // Validate task is in MergeConflict state
-    if task.internal_status != InternalStatus::MergeConflict {
+    // Validate task is in a resolvable merge state
+    let valid_resolve_states = [
+        InternalStatus::MergeConflict,
+        InternalStatus::MergeIncomplete,
+    ];
+    if !valid_resolve_states.contains(&task.internal_status) {
         return Err(format!(
-            "Task is not in MergeConflict state (current: {:?})",
+            "Task is not in MergeConflict or MergeIncomplete state (current: {:?})",
             task.internal_status
         ));
     }
