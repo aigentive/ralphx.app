@@ -15,8 +15,6 @@ pub struct CreateProjectInput {
     pub name: String,
     pub working_directory: String,
     pub git_mode: Option<String>,
-    pub worktree_path: Option<String>,
-    pub worktree_branch: Option<String>,
     pub base_branch: Option<String>,
 }
 
@@ -27,8 +25,6 @@ pub struct UpdateProjectInput {
     pub name: Option<String>,
     pub working_directory: Option<String>,
     pub git_mode: Option<String>,
-    pub worktree_path: Option<String>,
-    pub worktree_branch: Option<String>,
     pub base_branch: Option<String>,
 }
 
@@ -39,8 +35,6 @@ pub struct ProjectResponse {
     pub name: String,
     pub working_directory: String,
     pub git_mode: String,
-    pub worktree_path: Option<String>,
-    pub worktree_branch: Option<String>,
     pub base_branch: Option<String>,
     pub use_feature_branches: bool,
     pub created_at: String,
@@ -54,8 +48,6 @@ impl From<Project> for ProjectResponse {
             name: project.name,
             working_directory: project.working_directory,
             git_mode: project.git_mode.to_string(),
-            worktree_path: project.worktree_path,
-            worktree_branch: project.worktree_branch,
             base_branch: project.base_branch,
             use_feature_branches: project.use_feature_branches,
             created_at: project.created_at.to_rfc3339(),
@@ -141,23 +133,13 @@ pub async fn create_project(
     // Ensure git is initialized in the working directory
     ensure_git_initialized(&input.working_directory)?;
 
-    let project = if let (Some(worktree_path), Some(worktree_branch)) =
-        (input.worktree_path, input.worktree_branch)
-    {
-        Project::new_with_worktree(
-            input.name,
-            input.working_directory,
-            worktree_path,
-            worktree_branch,
-            input.base_branch,
-        )
-    } else {
-        let mut project = Project::new(input.name, input.working_directory);
-        if let Some(base_branch) = input.base_branch {
-            project.base_branch = Some(base_branch);
-        }
-        project
-    };
+    let mut project = Project::new(input.name, input.working_directory);
+    if let Some(git_mode_str) = input.git_mode {
+        project.git_mode = git_mode_str.parse().unwrap_or(GitMode::Local);
+    }
+    if let Some(base_branch) = input.base_branch {
+        project.base_branch = Some(base_branch);
+    }
 
     state
         .project_repo
@@ -195,12 +177,6 @@ pub async fn update_project(
     }
     if let Some(git_mode_str) = input.git_mode {
         project.git_mode = git_mode_str.parse().unwrap_or(GitMode::Local);
-    }
-    if let Some(worktree_path) = input.worktree_path {
-        project.worktree_path = Some(worktree_path);
-    }
-    if let Some(worktree_branch) = input.worktree_branch {
-        project.worktree_branch = Some(worktree_branch);
     }
     if let Some(base_branch) = input.base_branch {
         project.base_branch = Some(base_branch);
@@ -373,29 +349,19 @@ mod tests {
         assert_eq!(created.name, "Test Project");
         assert_eq!(created.working_directory, "/test/path");
         assert_eq!(created.git_mode, GitMode::Local);
-        assert!(created.worktree_path.is_none());
     }
 
     #[tokio::test]
-    async fn test_create_project_with_worktree() {
+    async fn test_create_project_with_worktree_mode() {
         let state = setup_test_state();
 
-        let project = Project::new_with_worktree(
-            "Worktree Project".to_string(),
-            "/main/repo".to_string(),
-            "/worktree/path".to_string(),
-            "feature-branch".to_string(),
-            Some("main".to_string()),
-        );
+        let mut project = Project::new("Worktree Project".to_string(), "/main/repo".to_string());
+        project.git_mode = GitMode::Worktree;
+        project.base_branch = Some("main".to_string());
         let created = state.project_repo.create(project).await.unwrap();
 
         assert_eq!(created.name, "Worktree Project");
         assert_eq!(created.git_mode, GitMode::Worktree);
-        assert_eq!(created.worktree_path, Some("/worktree/path".to_string()));
-        assert_eq!(
-            created.worktree_branch,
-            Some("feature-branch".to_string())
-        );
         assert_eq!(created.base_branch, Some("main".to_string()));
     }
 
