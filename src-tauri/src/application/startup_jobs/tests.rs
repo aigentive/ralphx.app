@@ -511,6 +511,47 @@ async fn test_approved_auto_transitions_on_startup() {
 }
 
 #[tokio::test]
+async fn test_pending_merge_auto_transitions_on_startup() {
+    // PendingMerge is in AUTO_TRANSITION_STATES
+    // Tasks stuck in PendingMerge should have attempt_programmatic_merge() re-triggered
+    // which transitions to Merged (success) or Merging (spawns merger agent)
+    let (execution_state, app_state) = setup_test_state().await;
+
+    // Create a project with a task in PendingMerge state
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "PendingMerge Task".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.task_branch = Some("task/pending-merge-test".to_string());
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task).await.unwrap();
+
+    // Set high max_concurrent to allow auto-transition
+    execution_state.set_max_concurrent(10);
+
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo.set_active_project(Some(&project.id)).await.unwrap();
+
+    // Run startup - should trigger attempt_programmatic_merge()
+    runner.run().await;
+
+    // The auto-transition path is:
+    // 1. execute_entry_actions(PendingMerge) triggers on_enter(PendingMerge)
+    // 2. attempt_programmatic_merge() runs
+    // 3. Task transitions to Merged (success), Merging (conflict), or MergeIncomplete (error)
+    // Since we're in test mode without a real git repo, the merge will fail with an error
+    // and the task transitions to MergeIncomplete
+    let updated_task = app_state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    // PendingMerge should NOT be the final state - attempt_programmatic_merge should have run
+    assert_ne!(
+        updated_task.internal_status,
+        InternalStatus::PendingMerge,
+        "Task should have auto-transitioned from PendingMerge (to MergeIncomplete in test env)"
+    );
+}
+
+#[tokio::test]
 async fn test_qa_passed_auto_transitions_on_startup() {
     // QaPassed is in AUTO_TRANSITION_STATES
     // Tasks stuck in QaPassed should auto-transition to PendingReview

@@ -114,7 +114,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings",
       "Commit: fix(startup): add PendingMerge crash recovery"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

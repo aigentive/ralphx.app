@@ -43,6 +43,7 @@ pub const AUTO_TRANSITION_STATES: &[InternalStatus] = &[
     InternalStatus::PendingReview,  // → Reviewing (spawns reviewer)
     InternalStatus::RevisionNeeded, // → ReExecuting (spawns worker)
     InternalStatus::Approved,       // → PendingMerge (programmatic merge)
+    InternalStatus::PendingMerge,   // attempt_programmatic_merge() (→ Merged or → Merging)
 ];
 
 // ========================================
