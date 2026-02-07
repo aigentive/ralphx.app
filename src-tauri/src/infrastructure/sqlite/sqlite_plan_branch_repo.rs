@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use rusqlite::Connection;
 
 use crate::domain::entities::{
-    ArtifactId, PlanBranch, PlanBranchId, PlanBranchStatus, ProjectId, TaskId,
+    ArtifactId, IdeationSessionId, PlanBranch, PlanBranchId, PlanBranchStatus, ProjectId, TaskId,
 };
 use crate::domain::repositories::PlanBranchRepository;
 use crate::error::{AppError, AppResult};
@@ -68,6 +68,26 @@ impl PlanBranchRepository for SqlitePlanBranchRepository {
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(AppError::Database(format!(
                 "Failed to get plan branch by artifact id: {}",
+                e
+            ))),
+        }
+    }
+
+    async fn get_by_session_id(&self, session_id: &IdeationSessionId) -> AppResult<Option<PlanBranch>> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn
+            .prepare("SELECT * FROM plan_branches WHERE session_id = ?1")
+            .map_err(|e| AppError::Database(format!("Failed to prepare query: {}", e)))?;
+
+        let result = stmt.query_row(rusqlite::params![session_id.as_str()], |row| {
+            PlanBranch::from_row(row)
+        });
+
+        match result {
+            Ok(branch) => Ok(Some(branch)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(AppError::Database(format!(
+                "Failed to get plan branch by session id: {}",
                 e
             ))),
         }
@@ -220,6 +240,34 @@ mod tests {
         let repo = setup_repo().await;
         let result = repo
             .get_by_plan_artifact_id(&ArtifactId::from_string("nonexistent"))
+            .await
+            .unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_by_session_id() {
+        let repo = setup_repo().await;
+        let branch = create_test_branch();
+        let session_id = branch.session_id.clone();
+
+        repo.create(branch).await.unwrap();
+
+        let retrieved = repo
+            .get_by_session_id(&session_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(retrieved.session_id, session_id);
+        assert_eq!(retrieved.branch_name, "ralphx/test-project/plan-abc123");
+        assert_eq!(retrieved.status, PlanBranchStatus::Active);
+    }
+
+    #[tokio::test]
+    async fn test_get_by_session_id_not_found() {
+        let repo = setup_repo().await;
+        let result = repo
+            .get_by_session_id(&IdeationSessionId::from_string("nonexistent"))
             .await
             .unwrap();
         assert!(result.is_none());

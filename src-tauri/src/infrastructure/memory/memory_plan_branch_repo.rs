@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::domain::entities::{ArtifactId, PlanBranch, PlanBranchId, PlanBranchStatus, ProjectId, TaskId};
+use crate::domain::entities::{ArtifactId, IdeationSessionId, PlanBranch, PlanBranchId, PlanBranchStatus, ProjectId, TaskId};
 use crate::domain::repositories::PlanBranchRepository;
 use crate::error::AppResult;
 
@@ -38,6 +38,11 @@ impl PlanBranchRepository for MemoryPlanBranchRepository {
     async fn get_by_plan_artifact_id(&self, id: &ArtifactId) -> AppResult<Option<PlanBranch>> {
         let branches = self.branches.read().await;
         Ok(branches.values().find(|b| b.plan_artifact_id == *id).cloned())
+    }
+
+    async fn get_by_session_id(&self, session_id: &IdeationSessionId) -> AppResult<Option<PlanBranch>> {
+        let branches = self.branches.read().await;
+        Ok(branches.values().find(|b| b.session_id == *session_id).cloned())
     }
 
     async fn get_by_merge_task_id(&self, task_id: &TaskId) -> AppResult<Option<PlanBranch>> {
