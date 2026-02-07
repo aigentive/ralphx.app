@@ -118,7 +118,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cd ralphx-plugin/ralphx-mcp-server && npm run typecheck",
       "Commit: feat(mcp): add review issue tool definitions and dispatch handlers"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 3,

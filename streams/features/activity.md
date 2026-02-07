@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-02-07 21:30:00 - Phase 101 Task 2: Add MCP tool definitions and dispatch handlers for review issues
+**What:**
+- Created `ralphx-plugin/ralphx-mcp-server/src/issue-tools.ts` with 4 tool definitions: `get_task_issues`, `get_issue_progress`, `mark_issue_in_progress`, `mark_issue_addressed`
+- Updated `tools.ts`: imported `ISSUE_TOOLS`, added to `ALL_TOOLS` array, updated `TOOL_ALLOWLIST` for `ralphx-worker` (3 tools) and `ralphx-reviewer` (3 tools including `get_step_progress`)
+- Updated `index.ts`: added 4 dispatch handler cases mapping MCP tool calls to HTTP endpoints, added `get_task_issues` and `get_issue_progress` to `taskScopedTools`
+
+**Commands:**
+- `npx tsc --noEmit` (passed)
+
+**Visual Verification:** N/A - MCP server only
+
+**Result:** Success
+
+---
+
 ### 2026-02-07 21:15:00 - Phase 101 Task 1: Add review issue HTTP endpoints for MCP bridge
 **What:**
 - Created `src-tauri/src/http_server/handlers/issues.rs` with 4 HTTP handlers: `get_task_issues_http`, `get_issue_progress_http`, `mark_issue_in_progress_http`, `mark_issue_addressed_http`
