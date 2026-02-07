@@ -15,9 +15,15 @@ import type { AskUserQuestionResponse } from "@/types/ask-user-question";
 /**
  * Ask User Question API object containing typed Tauri command wrappers
  */
+export interface ResolveQuestionInput {
+  requestId: string;
+  selectedOptions: string[];
+  customResponse?: string;
+}
+
 export const askUserQuestionApi = {
   /**
-   * Submit an answer to an agent's question
+   * Submit an answer to an agent's question (legacy task-based flow)
    * @param response The user's response including selected options
    */
   answerQuestion: async (response: AskUserQuestionResponse): Promise<void> => {
@@ -26,6 +32,18 @@ export const askUserQuestionApi = {
       selectedOptions: response.selectedOptions,
       customResponse: response.customResponse,
     });
-    // Command returns () on success, no parsing needed
+  },
+
+  /**
+   * Resolve an MCP-based question by requestId
+   * Used when the agent asks questions via the ask_user_question MCP tool
+   * @param input The resolution including requestId and selected options
+   */
+  resolveQuestion: async (input: ResolveQuestionInput): Promise<void> => {
+    await invoke("resolve_user_question", {
+      requestId: input.requestId,
+      selectedOptions: input.selectedOptions,
+      customResponse: input.customResponse,
+    });
   },
 } as const;

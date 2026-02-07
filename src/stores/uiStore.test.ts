@@ -243,6 +243,7 @@ describe("uiStore", () => {
 
   describe("active question", () => {
     const mockQuestion: AskUserQuestionPayload = {
+      requestId: "req-123",
       taskId: "task-123",
       question: "Which authentication method should we use?",
       header: "Auth method",
@@ -273,6 +274,7 @@ describe("uiStore", () => {
       useUiStore.setState({ activeQuestion: mockQuestion });
 
       const newQuestion: AskUserQuestionPayload = {
+        requestId: "req-456",
         taskId: "task-456",
         question: "Which database?",
         header: "Database",

@@ -134,7 +134,7 @@ export {
 } from "@/api/research";
 
 // Ask User Question API
-export { askUserQuestionApi } from "@/api/ask-user-question";
+export { askUserQuestionApi, type ResolveQuestionInput } from "@/api/ask-user-question";
 
 // Permission API
 export { permissionApi, type ResolvePermissionInput } from "@/api/permission";

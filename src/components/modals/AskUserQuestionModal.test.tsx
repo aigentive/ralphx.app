@@ -8,6 +8,7 @@ import { AskUserQuestionModal } from "./AskUserQuestionModal";
 import type { AskUserQuestionPayload } from "@/types/ask-user-question";
 
 const mockSingleSelectQuestion: AskUserQuestionPayload = {
+  requestId: "req-123",
   taskId: "task-123",
   header: "Authentication Method",
   question: "Which authentication method should we use?",
@@ -20,6 +21,7 @@ const mockSingleSelectQuestion: AskUserQuestionPayload = {
 };
 
 const mockMultiSelectQuestion: AskUserQuestionPayload = {
+  requestId: "req-456",
   taskId: "task-456",
   header: "Features",
   question: "Which features do you want to enable?",
@@ -295,6 +297,7 @@ describe("AskUserQuestionModal", () => {
       fireEvent.click(jwtRadio);
       fireEvent.click(screen.getByRole("button", { name: /submit/i }));
       expect(mockSubmitAnswer).toHaveBeenCalledWith({
+        requestId: "req-123",
         taskId: "task-123",
         selectedOptions: ["JWT tokens"],
       });
@@ -313,6 +316,7 @@ describe("AskUserQuestionModal", () => {
       fireEvent.click(screen.getByRole("checkbox", { name: /Analytics/i }));
       fireEvent.click(screen.getByRole("button", { name: /submit/i }));
       expect(mockSubmitAnswer).toHaveBeenCalledWith({
+        requestId: "req-456",
         taskId: "task-456",
         selectedOptions: ["Dark mode", "Analytics"],
       });
@@ -333,6 +337,7 @@ describe("AskUserQuestionModal", () => {
       fireEvent.change(textInput, { target: { value: "Custom auth method" } });
       fireEvent.click(screen.getByRole("button", { name: /submit/i }));
       expect(mockSubmitAnswer).toHaveBeenCalledWith({
+        requestId: "req-123",
         taskId: "task-123",
         selectedOptions: [],
         customResponse: "Custom auth method",
