@@ -175,8 +175,8 @@ const StatusFilterContent = memo(function StatusFilterContent({
     onFiltersChange({ ...filters, statuses: [] });
   }, [filters, onFiltersChange]);
 
-  const handleShowCompletedToggle = useCallback(() => {
-    onFiltersChange({ ...filters, showCompleted: !filters.showCompleted });
+  const handleShowArchivedToggle = useCallback(() => {
+    onFiltersChange({ ...filters, showArchived: !filters.showArchived });
   }, [filters, onFiltersChange]);
 
   return (
@@ -267,12 +267,12 @@ const StatusFilterContent = memo(function StatusFilterContent({
       <div className="pt-2 border-t border-[hsl(220_10%_20%)]">
         <label className="flex items-center gap-2 cursor-pointer">
           <Checkbox
-            checked={filters.showCompleted}
-            onCheckedChange={handleShowCompletedToggle}
+            checked={filters.showArchived}
+            onCheckedChange={handleShowArchivedToggle}
             className="h-3.5 w-3.5"
           />
           <span className="text-xs text-[hsl(220_10%_70%)]">
-            Show completed tasks
+            Show archived tasks
           </span>
         </label>
       </div>

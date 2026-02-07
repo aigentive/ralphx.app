@@ -58,8 +58,8 @@ export interface GraphFilters {
   statuses: InternalStatus[];
   /** Selected plan artifact IDs (empty = show all) */
   planIds: string[];
-  /** Whether to show completed tasks */
-  showCompleted: boolean;
+  /** Whether to include archived tasks (fetched from backend) */
+  showArchived: boolean;
 }
 
 export type NodeMode = "standard" | "compact";
@@ -163,8 +163,8 @@ const StatusFilterContent = memo(function StatusFilterContent({
     onFiltersChange({ ...filters, statuses: [] });
   }, [filters, onFiltersChange]);
 
-  const handleShowCompletedToggle = useCallback(() => {
-    onFiltersChange({ ...filters, showCompleted: !filters.showCompleted });
+  const handleShowArchivedToggle = useCallback(() => {
+    onFiltersChange({ ...filters, showArchived: !filters.showArchived });
   }, [filters, onFiltersChange]);
 
   return (
@@ -247,15 +247,15 @@ const StatusFilterContent = memo(function StatusFilterContent({
         );
       })}
 
-      {/* Show completed toggle */}
+      {/* Show archived toggle */}
       <div className="pt-2 border-t border-[hsl(220_10%_20%)]">
         <label className="flex items-center gap-2 cursor-pointer">
           <Checkbox
-            checked={filters.showCompleted}
-            onCheckedChange={handleShowCompletedToggle}
+            checked={filters.showArchived}
+            onCheckedChange={handleShowArchivedToggle}
             className="h-3.5 w-3.5"
           />
-          <span className="text-xs text-[hsl(220_10%_70%)]">Show completed tasks</span>
+          <span className="text-xs text-[hsl(220_10%_70%)]">Show archived tasks</span>
         </label>
       </div>
     </div>
@@ -601,7 +601,7 @@ export const GraphControls = memo(GraphControlsComponent);
 export const DEFAULT_GRAPH_FILTERS: GraphFilters = {
   statuses: [],
   planIds: [],
-  showCompleted: true,
+  showArchived: false,
 };
 
 /**

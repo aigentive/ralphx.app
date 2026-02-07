@@ -86,9 +86,6 @@ export interface TaskGraphViewProps {
 /** Empty layout config - defined as constant to prevent re-renders */
 // Layout config is now computed dynamically based on node mode
 
-/** Status categories considered "completed" for filtering */
-const COMPLETED_STATUSES: InternalStatus[] = ["approved", "merged"];
-
 function areSetsEqual(a: Set<string>, b: Set<string>): boolean {
   if (a.size !== b.size) return false;
   for (const value of a) {
@@ -99,7 +96,8 @@ function areSetsEqual(a: Set<string>, b: Set<string>): boolean {
 
 /**
  * Apply filters to graph data
- * Filters nodes based on status, plan, and showCompleted settings.
+ * Filters nodes based on status and plan selections.
+ * Archived filtering is handled by the backend via `include_archived` param.
  * Filters edges to only include those where both source and target are visible.
  */
 function applyGraphFilters(
@@ -108,9 +106,8 @@ function applyGraphFilters(
   planGroups: PlanGroupInfo[],
   filters: GraphFilters
 ): { nodes: TaskGraphNode[]; edges: TaskGraphEdge[]; planGroups: PlanGroupInfo[] } {
-  // Short-circuit: if no filters are active, return original references
-  const noFilters = filters.showCompleted
-    && filters.statuses.length === 0
+  // Short-circuit: if no client-side filters are active, return original references
+  const noFilters = filters.statuses.length === 0
     && filters.planIds.length === 0;
   if (noFilters) {
     return { nodes, edges, planGroups };
@@ -119,11 +116,6 @@ function applyGraphFilters(
   // Filter nodes
   const filteredNodes = nodes.filter((node) => {
     const status = node.internalStatus as InternalStatus;
-
-    // Check showCompleted filter
-    if (!filters.showCompleted && COMPLETED_STATUSES.includes(status)) {
-      return false;
-    }
 
     // Check status filter (empty = show all)
     if (filters.statuses.length > 0 && !filters.statuses.includes(status)) {
@@ -298,7 +290,10 @@ interface TaskGraphViewInnerProps {
 }
 
 function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
-  const { data: graphData, isLoading, error } = useTaskGraph(projectId);
+  // GraphControls state (declared early so showArchived is available for useTaskGraph)
+  const [filters, setFilters] = useState<GraphFilters>(DEFAULT_GRAPH_FILTERS);
+
+  const { data: graphData, isLoading, error } = useTaskGraph(projectId, filters.showArchived);
   const {
     fitNodeInView,
     centerOnNode,
@@ -560,8 +555,6 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     };
   }, [isNavCompact, graphRightPanelCompactOpen]);
 
-  // GraphControls state
-  const [filters, setFilters] = useState<GraphFilters>(DEFAULT_GRAPH_FILTERS);
   const [layoutDirection, setLayoutDirection] = useState<LayoutDirection>(DEFAULT_LAYOUT_DIRECTION);
 
   // Node mode state (standard or compact)
@@ -830,7 +823,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
         removeSession(planGroup.sessionId);
         clearMessages(`session:${planGroup.sessionId}`);
         clearGraphSelection();
-        queryClient.invalidateQueries({ queryKey: taskGraphKeys.graph(projectId) });
+        queryClient.invalidateQueries({ queryKey: taskGraphKeys.graphPrefix(projectId) });
         toast.success("Plan deleted");
       } catch {
         toast.error("Failed to delete plan");
@@ -857,7 +850,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
       try {
         await api.tasks.delete(taskId);
         clearGraphSelection();
-        queryClient.invalidateQueries({ queryKey: taskGraphKeys.graph(projectId) });
+        queryClient.invalidateQueries({ queryKey: taskGraphKeys.graphPrefix(projectId) });
         toast.success("Task deleted");
       } catch {
         toast.error("Failed to delete task");
@@ -1141,11 +1134,10 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     );
   }
 
-  // Check if filters hide all tasks
+  // Check if client-side filters might hide tasks (showArchived is a backend filter, not counted here)
   const hasActiveFilters =
     filters.statuses.length > 0 ||
-    filters.planIds.length > 0 ||
-    !filters.showCompleted;
+    filters.planIds.length > 0;
 
   return (
     <>

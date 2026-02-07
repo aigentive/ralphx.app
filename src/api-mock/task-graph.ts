@@ -139,7 +139,7 @@ function buildGraphResponse(projectId: string): TaskDependencyGraphResponseRaw {
 }
 
 export const mockTaskGraphApi = {
-  getDependencyGraph: async (projectId: string): Promise<TaskDependencyGraphResponseRaw> =>
+  getDependencyGraph: async (projectId: string, _includeArchived: boolean = false): Promise<TaskDependencyGraphResponseRaw> =>
     buildGraphResponse(projectId),
 
   getTimelineEvents: async (
