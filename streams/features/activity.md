@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-02-07 - Phase 93 Task 6: Fix attempt_merge_auto_complete to use resolved merge target
+**What:**
+- Replaced hardcoded `base_branch` in `attempt_merge_auto_complete` with `resolve_merge_branches()` call
+- Added `use crate::domain::state_machine::resolve_merge_branches;` import
+- Updated `is_commit_on_branch` call to use `&target_branch` instead of `base_branch`
+- Updated log messages to reference `target_branch` instead of `base_branch`/`main`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — all 3598+ tests passed
+
+**Visual Verification:** N/A — backend only, no UI changes
+
+**Result:** Success
+
 ### 2026-02-07 - Phase 93 Task 5: Fix complete_merge handler to use resolved merge target
 **What:**
 - Replaced hardcoded `base_branch` in complete_merge handler with `resolve_merge_branches()` call
