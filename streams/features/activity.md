@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-02-08 09:00:00 - Phase 104 Task 4: Create ReopenSessionDialog component
+**What:**
+- Created `src/components/Ideation/ReopenSessionDialog.tsx` (~95 LOC) — AlertDialog-based confirmation dialog with two modes
+- "reopen" mode: warns about task deletion, returns session to Active for editing proposals
+- "reset" mode: warns about task deletion + immediate re-apply of proposals as fresh tasks
+- Props: `open`, `onOpenChange`, `mode`, `sessionTitle`, `taskCount`, `onConfirm`, `isLoading`
+- Uses destructive button styling, warning icon, loading spinner, prevents close while loading
+
+**Commands:**
+- `npm run typecheck` (pass)
+- `npm run lint` (pre-existing errors in TaskGraphView only, no errors in modified files)
+
+**Visual Verification:** Dialog not yet wired to any UI trigger (Tasks 5/6 will add triggers)
+- Mock-check: screenshots/features/2026-02-08_09-00-00_reopen-session-dialog_mock-check.md
+- Screenshot: Deferred to Tasks 5/6 (no trigger available yet)
+- PRD content check: N/A (component is pure presentational, no invoke calls)
+
+**Result:** Success
+
+---
+
 ### 2026-02-08 08:00:00 - Phase 104 Task 3: Add reopen session API wrapper and mutation hooks
 **What:**
 - Added `sessions.reopen(sessionId)` to `ideationApi` in `src/api/ideation.ts` — calls `reopen_ideation_session` Tauri command
