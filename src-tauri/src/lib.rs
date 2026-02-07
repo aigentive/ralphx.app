@@ -185,6 +185,7 @@ pub fn run() {
             let startup_running_agent_registry = Arc::clone(&app_state.running_agent_registry);
             let startup_execution_state = app.state::<Arc<commands::ExecutionState>>().inner().clone();
             let startup_active_project_state = app.state::<Arc<commands::ActiveProjectState>>().inner().clone();
+            let startup_app_state_repo = Arc::clone(&app_state.app_state_repo);
             // Clone app handle to enable event emission in startup tasks
             let startup_app_handle = app.handle().clone();
 
@@ -280,6 +281,7 @@ pub fn run() {
                     Arc::clone(&transition_service),
                     Arc::clone(&startup_execution_state),
                     Arc::clone(&startup_active_project_state),
+                    startup_app_state_repo,
                 )
                 .with_task_scheduler(Arc::clone(&task_scheduler))
                 .with_app_handle(startup_runner_app_handle);

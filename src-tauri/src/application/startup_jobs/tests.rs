@@ -1,8 +1,8 @@
 use super::*;
 use crate::application::AppState;
 use crate::domain::entities::{ChatContextType, InternalStatus, Project, Task};
+use crate::domain::repositories::AppStateRepository;
 use crate::domain::state_machine::mocks::MockTaskScheduler;
-use std::time::Duration;
 
 // Helper to create test state
 async fn setup_test_state() -> (Arc<ExecutionState>, AppState) {
@@ -12,10 +12,11 @@ async fn setup_test_state() -> (Arc<ExecutionState>, AppState) {
 }
 
 /// Helper to build a StartupJobRunner from test state.
+/// Returns (runner, app_state_repo) — set active project on app_state_repo for DB-based tests.
 fn build_runner(
     app_state: &AppState,
     execution_state: &Arc<ExecutionState>,
-) -> (StartupJobRunner<tauri::Wry>, Arc<crate::commands::ActiveProjectState>) {
+) -> (StartupJobRunner<tauri::Wry>, Arc<dyn AppStateRepository>) {
     let transition_service = Arc::new(TaskTransitionService::new(
         Arc::clone(&app_state.task_repo),
         Arc::clone(&app_state.task_dependency_repo),
@@ -32,6 +33,7 @@ fn build_runner(
     ));
 
     let agent_run_repo = Arc::clone(&app_state.agent_run_repo);
+    let app_state_repo = Arc::clone(&app_state.app_state_repo);
 
     let active_project_state = Arc::new(crate::commands::ActiveProjectState::new());
     let runner = StartupJobRunner::new(
@@ -48,10 +50,9 @@ fn build_runner(
         transition_service,
         Arc::clone(execution_state),
         Arc::clone(&active_project_state),
-    )
-    // Phase 89: Use short timeout so tests that don't set active project don't wait 5s
-    .with_active_project_timeout(Duration::from_millis(10));
-    (runner, active_project_state)
+        Arc::clone(&app_state_repo),
+    );
+    (runner, app_state_repo)
 }
 
 #[tokio::test]
@@ -69,7 +70,7 @@ async fn test_resumption_skipped_when_paused() {
     // Pause execution
     execution_state.pause();
 
-    let (runner, _) = build_runner(&app_state, &execution_state);
+    let (runner, _app_state_repo) = build_runner(&app_state, &execution_state);
 
     // Run should skip because paused
     runner.run().await;
@@ -102,8 +103,9 @@ async fn test_resumption_spawns_agents() {
     // Set high max_concurrent to allow resumption
     execution_state.set_max_concurrent(10);
 
-    let (runner, active_project_state) = build_runner(&app_state, &execution_state);
-    active_project_state.set(Some(project.id.clone())).await;
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    // Set active project in DB (simulates persisted state from previous session)
+    app_state_repo.set_active_project(Some(&project.id)).await.unwrap();
 
     // Run should trigger entry actions for the Executing task
     runner.run().await;
@@ -132,9 +134,9 @@ async fn test_resumption_spawns_agents() {
 async fn test_resumption_handles_empty_projects() {
     let (execution_state, app_state) = setup_test_state().await;
 
-    let (runner, _) = build_runner(&app_state, &execution_state);
+    let (runner, _app_state_repo) = build_runner(&app_state, &execution_state);
 
-    // Run should complete without panic (no active project set, early return)
+    // Run should complete without panic (no active project in DB, early return)
     runner.run().await;
 
     // Running count should be 0
@@ -158,8 +160,8 @@ async fn test_resumption_respects_max_concurrent() {
         app_state.task_repo.create(task).await.unwrap();
     }
 
-    let (runner, active_project_state) = build_runner(&app_state, &execution_state);
-    active_project_state.set(Some(project.id.clone())).await;
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo.set_active_project(Some(&project.id)).await.unwrap();
 
     // Run should stop after 2 tasks due to max_concurrent
     runner.run().await;
@@ -204,8 +206,8 @@ async fn test_resumption_handles_multiple_statuses() {
     // Set high max_concurrent so all tasks can be resumed
     execution_state.set_max_concurrent(10);
 
-    let (runner, active_project_state) = build_runner(&app_state, &execution_state);
-    active_project_state.set(Some(project.id.clone())).await;
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo.set_active_project(Some(&project.id)).await.unwrap();
 
     // Run should complete
     runner.run().await;
@@ -243,10 +245,10 @@ async fn test_startup_schedules_ready_tasks_when_scheduler_configured() {
     // Create a mock scheduler to verify it gets called
     let scheduler = Arc::new(MockTaskScheduler::new());
 
-    let (runner, _) = build_runner(&app_state, &execution_state);
+    let (runner, _app_state_repo) = build_runner(&app_state, &execution_state);
     let runner = runner.with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
 
-    // Run startup (no agent-active tasks, but should still call scheduler)
+    // Run startup (no active project in DB → scheduler called in early return path)
     runner.run().await;
 
     // Verify scheduler was called once at the end of startup
@@ -267,7 +269,7 @@ async fn test_startup_does_not_schedule_when_paused() {
     // Create a mock scheduler
     let scheduler = Arc::new(MockTaskScheduler::new());
 
-    let (runner, _) = build_runner(&app_state, &execution_state);
+    let (runner, _app_state_repo) = build_runner(&app_state, &execution_state);
     let runner = runner.with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
 
     // Run startup while paused
@@ -299,8 +301,8 @@ async fn test_startup_schedules_after_resuming_agent_tasks() {
     // Create a mock scheduler
     let scheduler = Arc::new(MockTaskScheduler::new());
 
-    let (runner, active_project_state) = build_runner(&app_state, &execution_state);
-    active_project_state.set(Some(project.id.clone())).await;
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo.set_active_project(Some(&project.id)).await.unwrap();
     let runner = runner.with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
 
     // Run startup - should resume the Executing task AND call scheduler
@@ -337,8 +339,8 @@ async fn test_merging_state_resumed_on_startup() {
     // Set high max_concurrent to allow resumption
     execution_state.set_max_concurrent(10);
 
-    let (runner, active_project_state) = build_runner(&app_state, &execution_state);
-    active_project_state.set(Some(project.id.clone())).await;
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo.set_active_project(Some(&project.id)).await.unwrap();
 
     // Run startup
     runner.run().await;
@@ -380,8 +382,8 @@ async fn test_pending_review_auto_transitions_on_startup() {
     // Set high max_concurrent to allow auto-transition
     execution_state.set_max_concurrent(10);
 
-    let (runner, active_project_state) = build_runner(&app_state, &execution_state);
-    active_project_state.set(Some(project.id.clone())).await;
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo.set_active_project(Some(&project.id)).await.unwrap();
 
     // Run startup - should trigger auto-transition to Reviewing
     runner.run().await;
@@ -432,8 +434,8 @@ async fn test_revision_needed_auto_transitions_on_startup() {
     // Set high max_concurrent to allow auto-transition
     execution_state.set_max_concurrent(10);
 
-    let (runner, active_project_state) = build_runner(&app_state, &execution_state);
-    active_project_state.set(Some(project.id.clone())).await;
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo.set_active_project(Some(&project.id)).await.unwrap();
 
     // Run startup - should trigger auto-transition to ReExecuting
     runner.run().await;
@@ -484,8 +486,8 @@ async fn test_approved_auto_transitions_on_startup() {
     // Set high max_concurrent to allow auto-transition
     execution_state.set_max_concurrent(10);
 
-    let (runner, active_project_state) = build_runner(&app_state, &execution_state);
-    active_project_state.set(Some(project.id.clone())).await;
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo.set_active_project(Some(&project.id)).await.unwrap();
 
     // Run startup - should trigger auto-transition to PendingMerge
     runner.run().await;
@@ -527,8 +529,8 @@ async fn test_qa_passed_auto_transitions_on_startup() {
     // Set high max_concurrent to allow auto-transition
     execution_state.set_max_concurrent(10);
 
-    let (runner, active_project_state) = build_runner(&app_state, &execution_state);
-    active_project_state.set(Some(project.id.clone())).await;
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo.set_active_project(Some(&project.id)).await.unwrap();
 
     // Run startup - should trigger auto-transition chain
     runner.run().await;
@@ -580,8 +582,8 @@ async fn test_auto_transition_respects_max_concurrent() {
         app_state.task_repo.create(task).await.unwrap();
     }
 
-    let (runner, active_project_state) = build_runner(&app_state, &execution_state);
-    active_project_state.set(Some(project.id.clone())).await;
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo.set_active_project(Some(&project.id)).await.unwrap();
 
     // Run startup - should stop after max_concurrent is reached
     runner.run().await;
@@ -626,7 +628,7 @@ async fn test_blocked_task_unblocked_when_blocker_is_merged() {
         .await
         .unwrap();
 
-    let (runner, _) = build_runner(&app_state, &execution_state);
+    let (runner, _app_state_repo) = build_runner(&app_state, &execution_state);
 
     // Run startup - should unblock the blocked task
     runner.run().await;
@@ -669,7 +671,7 @@ async fn test_blocked_task_unblocked_when_blocker_is_approved() {
         .await
         .unwrap();
 
-    let (runner, _) = build_runner(&app_state, &execution_state);
+    let (runner, _app_state_repo) = build_runner(&app_state, &execution_state);
 
     // Run startup
     runner.run().await;
@@ -712,7 +714,7 @@ async fn test_blocked_task_remains_blocked_when_blocker_incomplete() {
     // Pause execution to skip agent resumption (we only want to test unblocking)
     execution_state.pause();
 
-    let (runner, _) = build_runner(&app_state, &execution_state);
+    let (runner, _app_state_repo) = build_runner(&app_state, &execution_state);
 
     // Run startup
     runner.run().await;
@@ -759,7 +761,7 @@ async fn test_blocked_task_remains_blocked_when_blocker_paused() {
     // Pause execution to skip agent resumption (we only want to test unblocking)
     execution_state.pause();
 
-    let (runner, _) = build_runner(&app_state, &execution_state);
+    let (runner, _app_state_repo) = build_runner(&app_state, &execution_state);
 
     // Run startup
     runner.run().await;
@@ -806,7 +808,7 @@ async fn test_blocked_task_remains_blocked_when_blocker_stopped() {
     // Pause execution to skip agent resumption (we only want to test unblocking)
     execution_state.pause();
 
-    let (runner, _) = build_runner(&app_state, &execution_state);
+    let (runner, _app_state_repo) = build_runner(&app_state, &execution_state);
 
     // Run startup
     runner.run().await;
@@ -858,7 +860,7 @@ async fn test_blocked_task_with_multiple_blockers_all_complete() {
         .await
         .unwrap();
 
-    let (runner, _) = build_runner(&app_state, &execution_state);
+    let (runner, _app_state_repo) = build_runner(&app_state, &execution_state);
 
     // Run startup
     runner.run().await;
@@ -909,7 +911,7 @@ async fn test_blocked_task_with_multiple_blockers_one_incomplete() {
     // Pause execution to skip agent resumption
     execution_state.pause();
 
-    let (runner, _) = build_runner(&app_state, &execution_state);
+    let (runner, _app_state_repo) = build_runner(&app_state, &execution_state);
 
     // Run startup
     runner.run().await;
@@ -952,7 +954,7 @@ async fn test_unblock_runs_even_when_paused() {
         .await
         .unwrap();
 
-    let (runner, _) = build_runner(&app_state, &execution_state);
+    let (runner, _app_state_repo) = build_runner(&app_state, &execution_state);
 
     // Run startup while paused
     runner.run().await;
@@ -967,13 +969,13 @@ async fn test_unblock_runs_even_when_paused() {
 }
 
 // ============================================================
-// Phase 89 Tests: ActiveProjectState wait_for_project()
+// Phase 90 Tests: DB-based active project persistence
 // ============================================================
 
 #[tokio::test]
-async fn test_resumption_waits_for_active_project() {
-    // Verifies the runner waits for the frontend to set the active project
-    // rather than immediately skipping when it's not yet set.
+async fn test_resumption_reads_active_project_from_db() {
+    // Verifies the runner reads the active project from the DB (app_state_repo)
+    // instead of waiting for the frontend to set it via IPC.
     let (execution_state, app_state) = setup_test_state().await;
 
     // Create a project with a task in Executing state
@@ -987,25 +989,19 @@ async fn test_resumption_waits_for_active_project() {
 
     execution_state.set_max_concurrent(10);
 
-    let (runner, active_project_state) = build_runner(&app_state, &execution_state);
-    // Override the short test timeout with a longer one for this specific test
-    let runner = runner.with_active_project_timeout(Duration::from_secs(2));
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
 
-    // Spawn runner in a background task — it will wait for active project
-    let active_project_state_clone = Arc::clone(&active_project_state);
-    let project_id = project.id.clone();
+    // Set active project in DB only (NOT in-memory ActiveProjectState)
+    // This simulates the persisted state from a previous session
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
 
-    // Set active project after a 200ms delay (simulates frontend IPC arriving late)
-    let setter = tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        active_project_state_clone.set(Some(project_id)).await;
-    });
-
-    // Run the startup runner — it should wait and then resume
+    // Run the startup runner — it should read from DB and resume
     runner.run().await;
-    setter.await.unwrap();
 
-    // Verify entry actions were called (task was resumed after waiting)
+    // Verify entry actions were called (task was resumed using DB value)
     let convs = app_state
         .chat_conversation_repo
         .get_by_context(ChatContextType::TaskExecution, task_id.as_str())
@@ -1014,26 +1010,41 @@ async fn test_resumption_waits_for_active_project() {
     assert_eq!(
         convs.len(),
         1,
-        "Runner should wait for active project and resume the executing task"
+        "Runner should read active project from DB and resume the executing task"
     );
 }
 
 #[tokio::test]
-async fn test_wait_for_project_fast_path() {
-    // Verifies wait_for_project returns immediately when already set
-    let state = ActiveProjectState::new();
-    let pid = crate::domain::entities::ProjectId::new();
-    state.set(Some(pid.clone())).await;
+async fn test_resumption_skips_when_no_active_project_in_db() {
+    // Verifies the runner skips resumption when no active project is in the DB
+    // (fresh install scenario)
+    let (execution_state, app_state) = setup_test_state().await;
 
-    let result = state.wait_for_project(Duration::from_millis(10)).await;
-    assert_eq!(result, Some(pid), "Fast path should return immediately when already set");
-}
+    // Create a project with a task in Executing state
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
 
-#[tokio::test]
-async fn test_wait_for_project_timeout() {
-    // Verifies wait_for_project returns None after timeout when never set
-    let state = ActiveProjectState::new();
+    let mut task = Task::new(project.id.clone(), "Executing Task".to_string());
+    task.internal_status = InternalStatus::Executing;
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task).await.unwrap();
 
-    let result = state.wait_for_project(Duration::from_millis(50)).await;
-    assert!(result.is_none(), "Should return None after timeout when never set");
+    execution_state.set_max_concurrent(10);
+
+    let (runner, _app_state_repo) = build_runner(&app_state, &execution_state);
+    // Don't set active project in DB — simulates fresh install
+
+    runner.run().await;
+
+    // Verify NO entry actions were called (no active project in DB)
+    let convs = app_state
+        .chat_conversation_repo
+        .get_by_context(ChatContextType::TaskExecution, task_id.as_str())
+        .await
+        .unwrap();
+    assert_eq!(
+        convs.len(),
+        0,
+        "No tasks should be resumed when no active project in DB"
+    );
 }
