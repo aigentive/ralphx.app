@@ -140,6 +140,9 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
             "search_project_artifacts",
             "get_review_notes",
             "get_task_steps",
+            "get_task_issues",
+            "mark_issue_in_progress",
+            "mark_issue_addressed",
         ],
         preapproved_cli_tools: &["Write", "Edit", "Bash"],
     },
@@ -155,6 +158,9 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
             "search_project_artifacts",
             "get_review_notes",
             "get_task_steps",
+            "get_task_issues",
+            "get_step_progress",
+            "get_issue_progress",
         ],
         preapproved_cli_tools: &["Bash"],
     },
@@ -357,5 +363,25 @@ mod tests {
         assert!(tools.contains("Read"));
         assert!(tools.contains("Edit"));
         assert!(tools.contains("Bash"));
+    }
+
+    #[test]
+    fn test_get_allowed_mcp_tools_worker_review_issues() {
+        let tools = get_allowed_mcp_tools("ralphx-worker");
+        assert!(tools.is_some());
+        let tools = tools.unwrap();
+        assert!(tools.contains("mcp__ralphx__get_task_issues"));
+        assert!(tools.contains("mcp__ralphx__mark_issue_in_progress"));
+        assert!(tools.contains("mcp__ralphx__mark_issue_addressed"));
+    }
+
+    #[test]
+    fn test_get_allowed_mcp_tools_reviewer_review_issues() {
+        let tools = get_allowed_mcp_tools("ralphx-reviewer");
+        assert!(tools.is_some());
+        let tools = tools.unwrap();
+        assert!(tools.contains("mcp__ralphx__get_task_issues"));
+        assert!(tools.contains("mcp__ralphx__get_step_progress"));
+        assert!(tools.contains("mcp__ralphx__get_issue_progress"));
     }
 }

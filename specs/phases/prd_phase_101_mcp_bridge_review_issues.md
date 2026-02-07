@@ -136,7 +136,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(agents): add review issue tools to worker and reviewer allowlists"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 4,
