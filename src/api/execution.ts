@@ -89,7 +89,7 @@ export const executionApi = {
   getStatus: (projectId?: string): Promise<ExecutionStatusResponse> =>
     typedInvokeWithTransform(
       "get_execution_status",
-      { project_id: projectId ?? null },
+      { projectId: projectId ?? null },
       ExecutionStatusResponseSchema,
       transformExecutionStatus
     ),
@@ -103,7 +103,7 @@ export const executionApi = {
   pause: (projectId?: string): Promise<ExecutionCommandResponse> =>
     typedInvokeWithTransform(
       "pause_execution",
-      { project_id: projectId ?? null },
+      { projectId: projectId ?? null },
       ExecutionCommandResponseSchema,
       transformExecutionCommand
     ),
@@ -117,7 +117,7 @@ export const executionApi = {
   resume: (projectId?: string): Promise<ExecutionCommandResponse> =>
     typedInvokeWithTransform(
       "resume_execution",
-      { project_id: projectId ?? null },
+      { projectId: projectId ?? null },
       ExecutionCommandResponseSchema,
       transformExecutionCommand
     ),
@@ -131,7 +131,7 @@ export const executionApi = {
   stop: (projectId?: string): Promise<ExecutionCommandResponse> =>
     typedInvokeWithTransform(
       "stop_execution",
-      { project_id: projectId ?? null },
+      { projectId: projectId ?? null },
       ExecutionCommandResponseSchema,
       transformExecutionCommand
     ),
@@ -143,7 +143,7 @@ export const executionApi = {
    * @returns Execution settings with max concurrent tasks, auto-commit, pause on failure
    */
   getSettings: async (projectId?: string): Promise<ExecutionSettingsResponse> => {
-    const result = await invoke("get_execution_settings", { project_id: projectId ?? null });
+    const result = await invoke("get_execution_settings", { projectId: projectId ?? null });
 
     if (!result) {
       const defaults = DEFAULT_PROJECT_SETTINGS.execution;
@@ -172,7 +172,7 @@ export const executionApi = {
   ): Promise<ExecutionSettingsResponse> =>
     typedInvokeWithTransform(
       "update_execution_settings",
-      { input: transformExecutionSettingsInput(input), project_id: projectId ?? null },
+      { input: transformExecutionSettingsInput(input), projectId: projectId ?? null },
       ExecutionSettingsResponseSchema,
       transformExecutionSettings
     ),
@@ -183,7 +183,7 @@ export const executionApi = {
    * @param projectId - Project ID to set as active, or undefined to clear
    */
   setActiveProject: async (projectId?: string): Promise<void> => {
-    await invoke("set_active_project", { project_id: projectId ?? null });
+    await invoke("set_active_project", { projectId: projectId ?? null });
   },
 
   /**
