@@ -658,7 +658,7 @@
       "phase": 92,
       "name": "Deduplicate Tool Calls in IntegratedChatPanel",
       "prd": "specs/phases/prd_phase_92_integrated_chat_tool_dedup.md",
-      "status": "active",
+      "status": "complete",
       "description": "Port tool_id dedup pattern from useChatPanelHandlers to useIntegratedChatEvents"
     }
   ]
