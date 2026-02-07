@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-02-07 12:15:00 - Phase 91 Task 5: Create DiffToolCallView component
+**What:**
+- Created `src/components/Chat/DiffToolCallView.tsx` (~200 lines)
+- Collapsed state: ~3.65 line preview (73px at 20px line-height) with gradient blur overlay
+- Expanded state: full diff with dual line numbers, red/green backgrounds
+- Header: chevron + tool icon + name badge + file path (shortened) + stats badge (+N/-M)
+- Uses `extractEditDiff` / `extractWriteDiff` from DiffToolCallView.utils.ts
+- Falls back to null if no file_path or parse error, letting parent render generic view
+- Streaming indicator ("writing...") with pulse animation
+- `DiffLineRow` sub-component memoized with `React.memo`
+
+**Commands:**
+- `npx eslint src/components/Chat/DiffToolCallView.tsx`
+- `npm run typecheck`
+
+**Visual Verification:** N/A - component created but not yet wired into ToolCallIndicator (Task 6)
+
+**Result:** Success
+
 ### 2026-02-07 10:30:00 - Phase 91 Task 4: Extract diff computation utilities
 **What:**
 - Created `src/components/Chat/DiffToolCallView.utils.ts` (~210 lines)
