@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-07 - Phase 94 Task 1: Fix Approved inconsistency in all_blockers_complete()
+**What:**
+- Removed `InternalStatus::Approved` from `all_blockers_complete()` match arm in startup_jobs.rs
+- Updated doc comment to list only Merged, Failed, Cancelled as terminal states
+- Renamed test from `test_blocked_task_unblocked_when_blocker_is_approved` to `test_blocked_task_remains_blocked_when_blocker_is_approved`
+- Added `execution_state.pause()` to isolate unblock logic from auto-transition recovery
+- Changed assertion: task should remain Blocked (not Ready) when blocker is Approved
+
+**Commands:**
+- `cargo test -- startup_jobs` — all 24 tests passed
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+
+**Visual Verification:** N/A — backend only, no UI changes
+
+**Result:** Success
+
 ### 2026-02-07 - Phase 93 Task 6: Fix attempt_merge_auto_complete to use resolved merge target
 **What:**
 - Replaced hardcoded `base_branch` in `attempt_merge_auto_complete` with `resolve_merge_branches()` call

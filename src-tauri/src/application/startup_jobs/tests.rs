@@ -647,14 +647,14 @@ async fn test_blocked_task_unblocked_when_blocker_is_merged() {
 }
 
 #[tokio::test]
-async fn test_blocked_task_unblocked_when_blocker_is_approved() {
+async fn test_blocked_task_remains_blocked_when_blocker_is_approved() {
     let (execution_state, app_state) = setup_test_state().await;
 
     // Create a project
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
     app_state.project_repo.create(project.clone()).await.unwrap();
 
-    // Create a blocker task that is approved
+    // Create a blocker task that is approved (not yet merged)
     let mut blocker_task = Task::new(project.id.clone(), "Blocker Task".to_string());
     blocker_task.internal_status = InternalStatus::Approved;
     app_state.task_repo.create(blocker_task.clone()).await.unwrap();
@@ -671,17 +671,21 @@ async fn test_blocked_task_unblocked_when_blocker_is_approved() {
         .await
         .unwrap();
 
+    // Pause execution to isolate unblock logic from auto-transition recovery
+    // (without pause, Approved would auto-transition to PendingMerge, masking the test intent)
+    execution_state.pause();
+
     let (runner, _app_state_repo) = build_runner(&app_state, &execution_state);
 
     // Run startup
     runner.run().await;
 
-    // Verify the blocked task is now Ready
+    // Verify the blocked task remains Blocked (Approved is NOT a terminal state)
     let updated_task = app_state.task_repo.get_by_id(&blocked_task.id).await.unwrap().unwrap();
     assert_eq!(
         updated_task.internal_status,
-        InternalStatus::Ready,
-        "Blocked task should be unblocked when blocker is Approved"
+        InternalStatus::Blocked,
+        "Blocked task should remain blocked when blocker is Approved (not yet merged)"
     );
 }
 
