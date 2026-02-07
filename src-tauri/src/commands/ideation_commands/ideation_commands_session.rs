@@ -1,11 +1,20 @@
 // Session management commands
 
+use std::path::PathBuf;
+use std::sync::Arc;
+
 use tauri::{Emitter, State};
 
+use crate::application::git_service::GitService;
+use crate::application::task_transition_service::TaskTransitionService;
 use crate::application::AppState;
+use crate::commands::execution_commands::{ExecutionState, AGENT_ACTIVE_STATUSES};
+use crate::commands::task_commands::helpers::emit_task_lifecycle_event;
 use crate::domain::entities::{
-    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, TaskId,
+    IdeationSession, IdeationSessionId, IdeationSessionStatus, InternalStatus, ProjectId, TaskId,
 };
+use crate::domain::entities::plan_branch::PlanBranchStatus;
+use crate::domain::services::RunningAgentKey;
 
 use super::ideation_commands_types::{
     ChatMessageResponse, CreateSessionInput, IdeationSessionResponse,
@@ -134,13 +143,127 @@ pub async fn archive_ideation_session(
         .map_err(|e| e.to_string())
 }
 
-/// Delete an ideation session
+/// Delete an ideation session with cascade: stop active agents, delete tasks, clean up plan branch
 #[tauri::command]
 pub async fn delete_ideation_session(
     id: String,
     state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
+    app: tauri::AppHandle,
 ) -> Result<(), String> {
-    let session_id = IdeationSessionId::from_string(id);
+    let session_id = IdeationSessionId::from_string(id.clone());
+
+    // Get session to retrieve project_id for events
+    let session = state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Session not found: {}", id))?;
+
+    let project_id_str = session.project_id.as_str().to_string();
+
+    // 1. Get all tasks for this session
+    let tasks = state
+        .task_repo
+        .get_by_ideation_session(&session_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 2. Force-stop any active agent tasks
+    if tasks.iter().any(|t| AGENT_ACTIVE_STATUSES.contains(&t.internal_status)) {
+        let transition_service = TaskTransitionService::new(
+            Arc::clone(&state.task_repo),
+            Arc::clone(&state.task_dependency_repo),
+            Arc::clone(&state.project_repo),
+            Arc::clone(&state.chat_message_repo),
+            Arc::clone(&state.chat_conversation_repo),
+            Arc::clone(&state.agent_run_repo),
+            Arc::clone(&state.ideation_session_repo),
+            Arc::clone(&state.activity_event_repo),
+            Arc::clone(&state.message_queue),
+            Arc::clone(&state.running_agent_registry),
+            Arc::clone(&execution_state),
+            state.app_handle.clone(),
+        )
+        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
+
+        for task in &tasks {
+            if AGENT_ACTIVE_STATUSES.contains(&task.internal_status) {
+                // Determine context type based on task status
+                let context_type = match task.internal_status {
+                    InternalStatus::Reviewing => "review",
+                    InternalStatus::Merging => "merge",
+                    _ => "task_execution",
+                };
+                let key = RunningAgentKey::new(context_type, task.id.as_str());
+                let _ = state.running_agent_registry.stop(&key).await;
+
+                // Transition to Stopped (triggers on_exit handlers)
+                if let Err(e) = transition_service
+                    .transition_task(&task.id, InternalStatus::Stopped)
+                    .await
+                {
+                    tracing::warn!(
+                        task_id = task.id.as_str(),
+                        session_id = id.as_str(),
+                        error = %e,
+                        "Failed to transition task to Stopped during session deletion"
+                    );
+                }
+            }
+        }
+    }
+
+    // 3. Delete each task and emit events
+    for task in &tasks {
+        if let Err(e) = state.task_repo.delete(&task.id).await {
+            tracing::warn!(
+                task_id = task.id.as_str(),
+                session_id = id.as_str(),
+                error = %e,
+                "Failed to delete task during session deletion"
+            );
+        }
+        emit_task_lifecycle_event(&app, "task:deleted", task.id.as_str(), &project_id_str);
+    }
+
+    // 4. Clean up plan branch (best-effort)
+    if let Ok(Some(plan_branch)) = state.plan_branch_repo.get_by_session_id(&session_id).await {
+        // Best-effort delete the git feature branch
+        let project = state
+            .project_repo
+            .get_by_id(&session.project_id)
+            .await
+            .ok()
+            .flatten();
+
+        if let Some(project) = project {
+            let repo_path = PathBuf::from(&project.working_directory);
+            if let Err(e) = GitService::delete_feature_branch(&repo_path, &plan_branch.branch_name) {
+                tracing::warn!(
+                    branch = plan_branch.branch_name.as_str(),
+                    error = %e,
+                    "Failed to delete git feature branch during session deletion (best-effort)"
+                );
+            }
+        }
+
+        // Mark plan branch as Abandoned
+        if let Err(e) = state
+            .plan_branch_repo
+            .update_status(&plan_branch.id, PlanBranchStatus::Abandoned)
+            .await
+        {
+            tracing::warn!(
+                plan_branch_id = plan_branch.id.as_str(),
+                error = %e,
+                "Failed to mark plan branch as Abandoned during session deletion"
+            );
+        }
+    }
+
+    // 5. Delete the session (existing CASCADE handles proposals/messages)
     state
         .ideation_session_repo
         .delete(&session_id)
@@ -200,9 +323,6 @@ pub async fn spawn_session_namer(
     first_message: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    use std::path::PathBuf;
-    use std::sync::Arc;
-
     use crate::domain::agents::{AgentConfig, AgentRole};
 
     // Build the prompt with session context (XML-delineated to prevent injection)
@@ -277,9 +397,6 @@ pub async fn spawn_dependency_suggester(
     state: State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
-    use std::path::PathBuf;
-    use std::sync::Arc;
-
     use crate::domain::agents::{AgentConfig, AgentRole};
 
     let session_id_typed = IdeationSessionId::from_string(session_id.clone());

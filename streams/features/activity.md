@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-02-08 04:15:00 - Phase 103 Task 2: Cascade delete tasks when deleting ideation session
+**What:**
+- Updated `delete_ideation_session` command with full cascade logic
+- Added params: `execution_state: State<'_, Arc<ExecutionState>>`, `app: tauri::AppHandle`
+- Force-stops active agent tasks (per-task, context-type-aware: task_execution/review/merge)
+- Deletes all session tasks via `task_repo.delete()`, emits `task:deleted` event per task
+- Best-effort plan branch cleanup: deletes git feature branch, marks plan branch as Abandoned
+- Cleaned up duplicate `use std::path::PathBuf` / `use std::sync::Arc` from function-scoped imports
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (pass)
+- `cargo test` (3614+ tests pass, 0 failures)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-08 03:30:00 - Phase 103 Task 1: Add get_by_ideation_session to TaskRepository
 **What:**
 - Added `get_by_ideation_session(&self, session_id: &IdeationSessionId) -> AppResult<Vec<Task>>` to TaskRepository trait
