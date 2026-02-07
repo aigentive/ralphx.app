@@ -12,7 +12,7 @@ use crate::domain::entities::{
     ActivityEvent, ActivityEventType, ChatContextType, ChatConversationId, ChatMessageId, TaskId,
 };
 use crate::domain::repositories::{ActivityEventRepository, ChatMessageRepository, TaskRepository};
-use crate::infrastructure::agents::claude::{ContentBlockItem, StreamEvent, StreamProcessor, ToolCall};
+use crate::infrastructure::agents::claude::{ContentBlockItem, DiffContext, StreamEvent, StreamProcessor, ToolCall};
 
 use super::{events, AgentChunkPayload, AgentToolCallPayload};
 
@@ -214,12 +214,38 @@ pub async fn process_stream_background<R: Runtime>(
                                     conversation_id: conversation_id_str.clone(),
                                     context_type: context_type_str.clone(),
                                     context_id: context_id_str.clone(),
+                                    diff_context: None,
                                 },
                             );
 
                         }
                     }
-                    StreamEvent::ToolCallCompleted(tool_call) => {
+                    StreamEvent::ToolCallCompleted(mut tool_call) => {
+                        // Capture old file content for Edit/Write tool calls
+                        let name_lower = tool_call.name.to_lowercase();
+                        if name_lower == "edit" || name_lower == "write" {
+                            if let Some(file_path) = tool_call.arguments.get("file_path").and_then(|v| v.as_str()) {
+                                let old_content = std::fs::read_to_string(file_path).ok();
+                                let diff_ctx = DiffContext {
+                                    old_content,
+                                    file_path: file_path.to_string(),
+                                };
+                                tool_call.diff_context = Some(diff_ctx.clone());
+
+                                // Update processor's stored tool_call and content_block
+                                // (they were pushed before this event was emitted)
+                                if let Some(last_tc) = processor.tool_calls.last_mut() {
+                                    last_tc.diff_context = Some(diff_ctx.clone());
+                                }
+                                if let Some(ContentBlockItem::ToolUse { diff_context, .. }) = processor.content_blocks.last_mut() {
+                                    *diff_context = serde_json::to_value(&diff_ctx).ok();
+                                }
+                            }
+                        }
+
+                        let diff_context_value = tool_call.diff_context.as_ref()
+                            .and_then(|dc| serde_json::to_value(dc).ok());
+
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
                                 events::AGENT_TOOL_CALL,
@@ -231,6 +257,7 @@ pub async fn process_stream_background<R: Runtime>(
                                     conversation_id: conversation_id_str.clone(),
                                     context_type: context_type_str.clone(),
                                     context_id: context_id_str.clone(),
+                                    diff_context: diff_context_value,
                                 },
                             );
 
@@ -297,6 +324,7 @@ pub async fn process_stream_background<R: Runtime>(
                                     conversation_id: conversation_id_str.clone(),
                                     context_type: context_type_str.clone(),
                                     context_id: context_id_str.clone(),
+                                    diff_context: None,
                                 },
                             );
 

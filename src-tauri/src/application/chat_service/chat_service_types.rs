@@ -86,6 +86,8 @@ pub struct AgentToolCallPayload {
     pub conversation_id: String,
     pub context_type: String,
     pub context_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diff_context: Option<serde_json::Value>,
 }
 
 /// Payload for agent:message_created event
