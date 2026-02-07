@@ -15,6 +15,7 @@
 // - Stops early if max_concurrent is reached
 
 use std::sync::Arc;
+use std::time::Duration;
 use tauri::{AppHandle, Emitter, Runtime};
 use tracing::info;
 
@@ -54,6 +55,8 @@ pub struct StartupJobRunner<R: Runtime = tauri::Wry> {
     task_scheduler: Option<Arc<dyn TaskScheduler>>,
     /// Optional app handle for event emission
     app_handle: Option<AppHandle<R>>,
+    /// Phase 89: Timeout for waiting for active project to be set by frontend
+    active_project_wait_timeout: Duration,
 }
 
 impl<R: Runtime> StartupJobRunner<R> {
@@ -101,6 +104,7 @@ impl<R: Runtime> StartupJobRunner<R> {
             reconciler,
             task_scheduler: None,
             app_handle: None,
+            active_project_wait_timeout: Duration::from_secs(5),
         }
     }
 
@@ -117,6 +121,13 @@ impl<R: Runtime> StartupJobRunner<R> {
     pub fn with_app_handle(mut self, app_handle: AppHandle<R>) -> Self {
         self.app_handle = Some(app_handle.clone());
         self.reconciler = self.reconciler.with_app_handle(app_handle);
+        self
+    }
+
+    /// Phase 89: Set the timeout for waiting for active project (builder pattern).
+    /// Tests use short timeouts to avoid 5s waits when active project is intentionally unset.
+    pub fn with_active_project_timeout(mut self, timeout: Duration) -> Self {
+        self.active_project_wait_timeout = timeout;
         self
     }
 
@@ -153,11 +164,12 @@ impl<R: Runtime> StartupJobRunner<R> {
         }
         eprintln!("[STARTUP] Execution NOT paused, continuing...");
 
-        // Phase 82: Check active project - skip resumption if no active project
-        let active_project_id = self.active_project_state.get().await;
+        // Phase 82/89: Wait for active project from frontend IPC (with timeout)
+        eprintln!("[STARTUP] Waiting for active project (timeout: {:?})...", self.active_project_wait_timeout);
+        let active_project_id = self.active_project_state.wait_for_project(self.active_project_wait_timeout).await;
         if active_project_id.is_none() {
-            eprintln!("[STARTUP] No active project set, skipping task resumption");
-            info!("No active project set, skipping task resumption (Phase 82 scoping)");
+            eprintln!("[STARTUP] No active project set after waiting, skipping task resumption");
+            info!("No active project set after waiting {:?}, skipping task resumption", self.active_project_wait_timeout);
             // Still try to schedule Ready tasks if scheduler is set
             if let Some(ref scheduler) = self.task_scheduler {
                 info!("Scheduling Ready tasks (no resumption)");
