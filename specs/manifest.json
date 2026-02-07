@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 103,
+  "currentPhase": 104,
   "phases": [
     {
       "phase": 0,
@@ -735,14 +735,14 @@
       "phase": 103,
       "name": "Cascade Delete Tasks When Plan Group is Deleted",
       "prd": "specs/phases/prd_phase_103_cascade_delete_plan_tasks.md",
-      "status": "active",
+      "status": "complete",
       "description": "Cascade delete tasks and clean up plan branches when deleting ideation session"
     },
     {
       "phase": 104,
       "name": "Reopen & Reset Ideation Sessions",
       "prd": "specs/phases/prd_phase_104_reopen_reset_ideation_sessions.md",
-      "status": "pending",
+      "status": "active",
       "description": "Reopen accepted/archived sessions to Active, reset & re-accept with fresh tasks"
     }
   ]
