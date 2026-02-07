@@ -126,7 +126,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Update .claude/rules/task-execution-git-workflows.md: (1) Line 254 — step 3 should note try_rebase_and_merge (Local) or try_merge (Worktree). (2) Line 257 — 4c error path: remove 'spawn merger agent with diagnostics', replace with 'human-waiting, no agent spawn'. (3) Add try_merge() internals section after try_rebase_and_merge() internals.",
       "Commit: fix(merge): use git merge instead of rebase for worktree mode"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
