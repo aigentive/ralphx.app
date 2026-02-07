@@ -27,6 +27,8 @@ Claude Agent → MCP Protocol → ralphx-mcp-server (TS) → HTTP :3847 → Taur
 Plugin: `claude --plugin-dir ./ralphx-plugin --agent worker -p "Execute"`
 
 ## Agent Tool Scopes
+Adding/modifying MCP tools for agents: @.claude/rules/agent-mcp-tools.md (three-layer allowlist — all required)
+
 | Agent | MCP Tools |
 |-------|-----------|
 | orchestrator-ideation | *_task_proposal, *_plan_artifact |
@@ -34,6 +36,7 @@ Plugin: `claude --plugin-dir ./ralphx-plugin --agent worker -p "Execute"`
 | chat-project | suggest_task, list_tasks |
 | worker | get_task_context, get_artifact*, *_step |
 | reviewer | complete_review |
+| merger | complete_merge, report_conflict, report_incomplete, get_merge_target, get_task_context |
 
 ## Manifest Format
 ```json

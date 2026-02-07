@@ -116,6 +116,8 @@ Example: "ServiceExtraction Pattern: business logic in *_service.rs, commands ju
 
 **ExecutionState Propagation:** `Arc<ExecutionState>` must be passed to `TaskTransitionService::new()` and `AgenticClientSpawner::with_execution_state()` for spawn gating and running count tracking.
 
+**Agent MCP Tool Allowlist:** Three-layer system — see `@../.claude/rules/agent-mcp-tools.md`. Rust source of truth: `infrastructure/agents/claude/agent_config.rs` (`AGENT_CONFIGS`).
+
 ## Code Quality
 
 ### Multi-Stream Workflow
