@@ -646,6 +646,13 @@
       "prd": "specs/phases/prd_phase_90_persist_active_project.md",
       "status": "active",
       "description": "Persist active_project_id to SQLite, read on startup — eliminate race condition"
+    },
+    {
+      "phase": 91,
+      "name": "Chat Diff View for Edit/Write Tool Calls",
+      "prd": "specs/phases/prd_phase_91_chat_diff_view.md",
+      "status": "pending",
+      "description": "Inline diff cards for Edit/Write tool calls with collapse/expand, gradient blur, and streaming breakout"
     }
   ]
 }
