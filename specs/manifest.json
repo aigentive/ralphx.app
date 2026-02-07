@@ -707,7 +707,7 @@
       "phase": 99,
       "name": "MergeIncomplete Detail View",
       "prd": "specs/phases/prd_phase_99_merge_incomplete_detail_view.md",
-      "status": "active",
+      "status": "complete",
       "description": "Dedicated detail view for merge_incomplete state with retry/resolve actions"
     }
   ]
