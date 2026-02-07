@@ -10,6 +10,7 @@
 
 import { useMemo, useCallback } from "react";
 import { useProjectStore, selectActiveProject } from "@/stores/projectStore";
+import { useProjects } from "@/hooks/useProjects";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -134,18 +135,32 @@ function ProjectItem({ project, isActive, onSelect }: ProjectItemProps) {
 // ============================================================================
 
 export function ProjectSelector({ onNewProject, className = "", align = "center" }: ProjectSelectorProps) {
-  // Store state
-  const projects = useProjectStore((s) => s.projects);
+  // Store state (selection only)
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const selectProject = useProjectStore((s) => s.selectProject);
-  const activeProject = useProjectStore(selectActiveProject);
+  const storeActiveProject = useProjectStore(selectActiveProject);
+
+  // Fetch projects directly from backend via TanStack Query.
+  // This avoids depending on the Zustand store sync (useEffect in App.tsx)
+  // which can lag behind, causing projects to briefly disappear.
+  const { data: fetchedProjects } = useProjects();
 
   // Convert projects to sorted array (most recently updated first)
   const projectList = useMemo(() => {
-    return Object.values(projects).sort((a, b) =>
+    if (!fetchedProjects) return [];
+    return [...fetchedProjects].sort((a, b) =>
       new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
     );
-  }, [projects]);
+  }, [fetchedProjects]);
+
+  // Resolve active project: prefer store (already synced), fall back to query data
+  // This handles the window where activeProjectId is hydrated from localStorage
+  // but the store's projects record hasn't been populated yet.
+  const activeProject = useMemo(() => {
+    if (storeActiveProject) return storeActiveProject;
+    if (!activeProjectId || !fetchedProjects) return null;
+    return fetchedProjects.find((p) => p.id === activeProjectId) ?? null;
+  }, [storeActiveProject, activeProjectId, fetchedProjects]);
 
   const handleSelectProject = useCallback(
     (projectId: string) => {
