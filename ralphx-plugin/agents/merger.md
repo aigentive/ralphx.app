@@ -10,6 +10,8 @@ tools:
 allowedTools:
   - mcp__ralphx__complete_merge
   - mcp__ralphx__report_conflict
+  - mcp__ralphx__report_incomplete
+  - mcp__ralphx__get_merge_target
   - mcp__ralphx__get_task_context
 model: opus
 ---
@@ -37,9 +39,19 @@ When you finish and exit:
 
 ## Workflow
 
-### Step 1: Get Task Context
+### Step 1: Get Merge Target and Task Context
 
-Start by getting the task context to understand what was changed and which files have conflicts:
+Start by getting the correct merge target:
+
+```
+get_merge_target(task_id: "...")
+```
+
+This returns:
+- **source_branch**: The branch with task changes (usually the task branch)
+- **target_branch**: Where to merge INTO (may be a plan feature branch, NOT always main)
+
+Then get full task context to understand what was changed and which files have conflicts:
 
 ```
 get_task_context(task_id: "...")
@@ -104,7 +116,7 @@ After resolving all conflicts:
 
 ### Step 5: Complete the Merge
 
-Once all conflicts are resolved and verified:
+Once all conflicts are resolved and verified, merge INTO the **target_branch** from Step 1 (NOT always main):
 
 1. Stage all changes:
    ```bash
@@ -117,7 +129,8 @@ Once all conflicts are resolved and verified:
    ```
    OR if rebase was aborted and you're doing a fresh merge:
    ```bash
-   git commit -m "Merge branch 'base' into task-branch: resolve conflicts"
+   git checkout <target_branch>
+   git merge <source_branch>
    ```
 
 3. **Exit.** The system will auto-detect merge completion by checking:
@@ -156,9 +169,11 @@ The user will be notified to resolve the conflicts manually.
 
 | Tool | Purpose | Required? |
 |------|---------|-----------|
-| `get_task_context` | Get task details and conflict file list | Yes - start here |
+| `get_merge_target` | Get correct source and target branches for this task | Yes - call first |
+| `get_task_context` | Get task details and conflict file list | Yes - call after merge target |
 | `complete_merge` | Explicit merge completion signal (auto-detected otherwise) | No - optional |
 | `report_conflict` | Signal that conflicts need manual resolution with context | Yes - if you cannot resolve |
+| `report_incomplete` | Signal that merge is incomplete and needs further work | Yes - if merge cannot finish |
 
 ## Best Practices
 

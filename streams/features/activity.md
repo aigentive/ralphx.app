@@ -4,6 +4,18 @@
 
 ---
 
+### 2026-02-07 - Phase 93 Task 4: Update merger agent prompt to use get_merge_target
+**What:**
+- Added `mcp__ralphx__get_merge_target` and `mcp__ralphx__report_incomplete` to merger.md frontmatter allowedTools
+- Updated Step 1 to call `get_merge_target` first to discover correct target branch, then `get_task_context`
+- Updated Step 5 to merge into `target_branch` from Step 1 instead of assuming main
+- Updated MCP Tools Available table to include `get_merge_target` and `report_incomplete`
+- Verified no hardcoded "main branch" assumptions remain
+
+**Visual Verification:** N/A - agent prompt file only (no UI changes)
+
+**Result:** Success
+
 ### 2026-02-07 19:45:00 - Phase 93 Task 3: Add get_merge_target MCP tool definition, handler, allowlists
 **What:**
 - Added `get_merge_target` tool definition in tools.ts MERGE TOOLS section with task_id input schema

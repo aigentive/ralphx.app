@@ -156,7 +156,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Remove hardcoded 'ON the main branch' language throughout",
       "Commit: docs(merger): update workflow to use get_merge_target"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 5,
