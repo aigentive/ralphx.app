@@ -72,7 +72,8 @@ pub type AppResult<T> = Result<T, AppError>;
 ## Rules
 
 ### State Machine (CRITICAL)
-14 states: Backlog→Ready→Executing→ExecutionDone→QaRefining→QaTesting→QaPassed→PendingReview→Approved
+
+**Full reference:** @../.claude/rules/task-execution-git-workflows.md — 24 states, transitions, side effects, merge workflow, git modes, agents.
 
 **NEVER update status directly. ALWAYS use TransitionHandler:**
 ```rust
@@ -81,8 +82,7 @@ pub type AppResult<T> = Result<T, AppError>;
 ```
 
 ### Auto-Transitions
-ExecutionDone→QaRefining (QA on) | ExecutionDone→PendingReview (QA off)
-QaPassed→PendingReview | RevisionNeeded→Executing (retry)
+QaPassed→PendingReview | PendingReview→Reviewing | RevisionNeeded→ReExecuting | Approved→PendingMerge
 
 ### API Layer Patterns
 See @.claude/rules/api-layer.md for param conventions, response serialization, and cross-layer patterns.
@@ -117,6 +117,8 @@ Example: "ServiceExtraction Pattern: business logic in *_service.rs, commands ju
 **ExecutionState Propagation:** `Arc<ExecutionState>` must be passed to `TaskTransitionService::new()` and `AgenticClientSpawner::with_execution_state()` for spawn gating and running count tracking.
 
 **Agent MCP Tool Allowlist:** Three-layer system — see `@../.claude/rules/agent-mcp-tools.md`. Rust source of truth: `infrastructure/agents/claude/agent_config.rs` (`AGENT_CONFIGS`).
+
+**Git Modes & Merge Workflow:** Two modes (Local/Worktree), two-level branch hierarchy (plan→task), programmatic+agent merge — see `@../.claude/rules/task-execution-git-workflows.md`.
 
 ## Code Quality
 
