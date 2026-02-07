@@ -194,7 +194,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: fix(merge): use resolved merge target in auto-complete verification"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

@@ -12,6 +12,7 @@ use crate::application::git_service::GitService;
 use crate::application::task_transition_service::TaskTransitionService;
 use crate::application::task_scheduler_service::TaskSchedulerService;
 use crate::domain::state_machine::services::TaskScheduler;
+use crate::domain::state_machine::resolve_merge_branches;
 use crate::domain::state_machine::transition_handler::complete_merge_internal;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
@@ -823,12 +824,12 @@ async fn attempt_merge_auto_complete<R: Runtime>(
         }
     };
 
-    // Get main repo path and base branch
+    // Get main repo path and resolve correct merge target (plan branch or base branch)
     let main_repo_path = PathBuf::from(&project.working_directory);
-    let base_branch = project.base_branch.as_deref().unwrap_or("main");
+    let (_, target_branch) = resolve_merge_branches(&task, &project, plan_branch_repo).await;
 
-    // Verify task branch commit is merged into base branch
-    match GitService::is_commit_on_branch(&main_repo_path, &task_branch_head, base_branch) {
+    // Verify task branch commit is merged into target branch
+    match GitService::is_commit_on_branch(&main_repo_path, &task_branch_head, &target_branch) {
         Ok(true) => {
             // Task branch is merged - good to proceed
         }
@@ -836,12 +837,12 @@ async fn attempt_merge_auto_complete<R: Runtime>(
             tracing::warn!(
                 task_id = task_id_str,
                 task_branch_head = %task_branch_head,
-                base_branch = %base_branch,
-                "attempt_merge_auto_complete: task branch not merged to main, transitioning to MergeIncomplete"
+                target_branch = %target_branch,
+                "attempt_merge_auto_complete: task branch not merged to target, transitioning to MergeIncomplete"
             );
             transition_to_merge_incomplete(
                 &task_id,
-                &format!("Agent exited but task branch {} not merged to {}", task_branch_head, base_branch),
+                &format!("Agent exited but task branch {} not merged to {}", task_branch_head, target_branch),
                 task_repo,
                 task_dependency_repo,
                 project_repo,
@@ -863,7 +864,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
             tracing::error!(
                 task_id = task_id_str,
                 error = %e,
-                "attempt_merge_auto_complete: failed to verify merge on main"
+                "attempt_merge_auto_complete: failed to verify merge on target branch"
             );
             transition_to_merge_incomplete(
                 &task_id,
@@ -922,7 +923,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
     tracing::info!(
         task_id = task_id_str,
         commit_sha = %commit_sha,
-        "attempt_merge_auto_complete: merge verified on main, completing"
+        "attempt_merge_auto_complete: merge verified on target branch, completing"
     );
 
     if let Err(e) = complete_merge_internal(
