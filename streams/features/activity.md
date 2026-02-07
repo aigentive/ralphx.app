@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-02-07 21:15:00 - Phase 101 Task 1: Add review issue HTTP endpoints for MCP bridge
+**What:**
+- Created `src-tauri/src/http_server/handlers/issues.rs` with 4 HTTP handlers: `get_task_issues_http`, `get_issue_progress_http`, `mark_issue_in_progress_http`, `mark_issue_addressed_http`
+- Added `MarkIssueInProgressRequest` and `MarkIssueAddressedRequest` to `types.rs`
+- Added 4 routes to `mod.rs` after review tools section
+- Registered `issues` module in `handlers/mod.rs`
+- Handlers follow `steps.rs` pattern: repo access, status validation, emit frontend events
+- `get_task_issues_http` supports optional `?status=open` query param via `axum::extract::Query`
+- Reuses `ReviewIssueResponse` and `IssueProgressResponse` from `review_commands_types.rs`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (3612 passed, 0 failed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-07 20:30:00 - Phase 100 Task 1: Fix plan merge tasks auto-promote
 **What:**
 - In `side_effects.rs` on_enter(Merged): added `try_schedule_ready_tasks()` after `unblock_dependents()` with 600ms delay (matches Ready pattern)

@@ -100,7 +100,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(http_server): add review issue HTTP endpoints for MCP bridge"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,
