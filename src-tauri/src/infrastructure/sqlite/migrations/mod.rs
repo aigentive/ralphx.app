@@ -40,6 +40,7 @@ mod v11_per_project_execution_settings;
 mod v12_fix_worktree_project_settings;
 mod v13_plan_branches;
 mod v14_app_state;
+mod v15_task_ideation_session_id;
 
 #[cfg(test)]
 mod tests;
@@ -69,9 +70,11 @@ mod v12_fix_worktree_project_settings_tests;
 mod v13_plan_branches_tests;
 #[cfg(test)]
 mod v14_app_state_tests;
+#[cfg(test)]
+mod v15_task_ideation_session_id_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 14;
+pub const SCHEMA_VERSION: i32 = 15;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -155,6 +158,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 14,
         name: "app_state",
         migrate: v14_app_state::migrate,
+    },
+    Migration {
+        version: 15,
+        name: "task_ideation_session_id",
+        migrate: v15_task_ideation_session_id::migrate,
     },
 ];
 

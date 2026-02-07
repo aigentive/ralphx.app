@@ -5,7 +5,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use rusqlite::Row;
 use serde::{Deserialize, Serialize};
 
-use super::{InternalStatus, ProjectId, TaskId};
+use super::{IdeationSessionId, InternalStatus, ProjectId, TaskId};
 use super::super::entities::artifact::ArtifactId;
 use super::super::entities::types::TaskProposalId;
 
@@ -39,6 +39,10 @@ pub struct Task {
     /// Used by worker to fetch implementation context during execution
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan_artifact_id: Option<ArtifactId>,
+    /// Direct link to the originating ideation session
+    /// Always valid (no FK constraint issues unlike plan_artifact_id fallback)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ideation_session_id: Option<IdeationSessionId>,
     /// When the task was created
     pub created_at: DateTime<Utc>,
     /// When the task was last updated
@@ -88,6 +92,7 @@ impl Task {
             needs_review_point: false,
             source_proposal_id: None,
             plan_artifact_id: None,
+            ideation_session_id: None,
             created_at: now,
             updated_at: now,
             started_at: None,
@@ -178,6 +183,9 @@ impl Task {
             plan_artifact_id: row
                 .get::<_, Option<String>>("plan_artifact_id")?
                 .map(ArtifactId::from_string),
+            ideation_session_id: row
+                .get::<_, Option<String>>("ideation_session_id")?
+                .map(IdeationSessionId::from_string),
             created_at: Self::parse_datetime(row.get("created_at")?),
             updated_at: Self::parse_datetime(row.get("updated_at")?),
             started_at: row
@@ -636,6 +644,7 @@ mod tests {
                 needs_review_point INTEGER DEFAULT 0,
                 source_proposal_id TEXT,
                 plan_artifact_id TEXT,
+                ideation_session_id TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 started_at TEXT,

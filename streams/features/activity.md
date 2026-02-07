@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-02-07 - Phase 96 Task 1: Add ideation_session_id column, entity field, and repo queries
+**What:**
+- Created v15 migration (`v15_task_ideation_session_id.rs`): adds `ideation_session_id TEXT DEFAULT NULL` column to tasks, backfills from `task_proposals` join
+- Created v15 migration tests (`v15_task_ideation_session_id_tests.rs`): column existence, nullable, backfill, skip-without-proposals, idempotency
+- Registered v15 in `migrations/mod.rs`, bumped `SCHEMA_VERSION` to 15
+- Added `ideation_session_id: Option<IdeationSessionId>` field to `Task` entity, updated `new()`, `from_row()`, `setup_test_db()`
+- Updated `queries.rs`: added column to `TASK_COLUMNS` and all 4 hardcoded SELECT constants
+- Updated `sqlite_task_repo/mod.rs`: added column to `create()` INSERT (?20), `update()` SET (?10 renumbered), and all 6 inline SELECTs (get_by_status, get_next_executable, get_blockers, get_dependents, archive, restore)
+- Updated v1 schema test to expect `SCHEMA_VERSION = 15`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — all tests passed (3604+)
+
+**Visual Verification:** N/A — backend only, no UI changes
+
+**Result:** Success
+
 ### 2026-02-07 - Phase 95 Task 4: Reduce plan-branch staleTime for faster UI updates
 **What:**
 - In PlanGroupHeader.tsx line 219, changed `staleTime` from `30_000` to `5_000` (5 seconds)
