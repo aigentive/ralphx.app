@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-02-07 23:00:00 - Phase 91 Task 2: Capture old file content for Edit/Write diff context
+**What:**
+- Added `diff_context: Option<serde_json::Value>` with `#[serde(skip_serializing_if)]` to `AgentToolCallPayload`
+- Updated all 3 `AgentToolCallPayload` construction sites in `chat_service_streaming.rs` to include `diff_context`
+- At `ToolCallCompleted`: detect Edit/Write (case-insensitive), extract `file_path` from arguments, read old file content via `std::fs::read_to_string`
+- Set `tool_call.diff_context = Some(DiffContext { old_content, file_path })` for Edit/Write tools
+- Patched `processor.tool_calls` and `processor.content_blocks` last entries so diff_context persists in content_blocks JSON
+- Re-exported `DiffContext` from `claude/mod.rs` for clean import path
+- Emitted `diff_context` as serialized JSON value in `AgentToolCallPayload` event
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passes)
+- `cargo test` (all 3598 tests pass)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-07 22:30:00 - Phase 91 Task 1: Add DiffContext struct and diff_context field to ToolCall
 **What:**
 - Added `DiffContext` struct with `Serialize`/`Deserialize` derives, fields: `old_content: Option<String>`, `file_path: String`

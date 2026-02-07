@@ -13,7 +13,7 @@ pub use claude_code_client::{StreamEvent as ClientStreamEvent, StreamingSpawnRes
 pub use stream_processor::{
     StreamProcessor, StreamMessage, StreamEvent, StreamResult,
     ToolCall, ContentBlock, ContentDelta, ContentBlockItem,
-    AssistantMessage, AssistantContent,
+    AssistantMessage, AssistantContent, DiffContext,
 };
 
 use std::path::{Path, PathBuf};
