@@ -251,17 +251,24 @@ Reviewing → RevisionNeeded → (auto) ReExecuting → PendingReview
 |------|--------|
 | 1 | Resolve source/target via `resolve_merge_branches()` |
 | 2 | Worktree mode: delete worktree first (unlock branch) |
-| 3 | `GitService::try_rebase_and_merge(repo, task_branch, target)` |
+| 3 | Local mode: `GitService::try_rebase_and_merge(repo, task_branch, target)` / Worktree mode: `GitService::try_merge(repo, task_branch, target)` |
 | 4a | **Success** → `complete_merge_internal()` → `Merged` |
 | 4b | **Conflict** → transition to `Merging` → spawn merger agent |
-| 4c | **Error** → transition to `MergeIncomplete` → spawn merger agent with diagnostics |
+| 4c | **Error** → transition to `MergeIncomplete` (human-waiting, no agent spawn) |
 
-**`try_rebase_and_merge()` internals:**
+**`try_rebase_and_merge()` internals (Local mode):**
 1. Fetch origin (non-fatal)
 2. If base has ≤1 commit (empty repo): skip rebase, merge directly
 3. Checkout task branch → `git rebase {base}`
 4. Success: checkout base → `git merge {task_branch}` (fast-forward)
 5. Conflict: `git rebase --abort`, checkout base → return `NeedsAgent`
+
+**`try_merge()` internals (Worktree mode):**
+1. Fetch origin (non-fatal)
+2. Checkout base branch
+3. `git merge {task_branch} --no-edit`
+4. Success/FastForward: return `Success { commit_sha }`
+5. Conflict: `git merge --abort` → return `NeedsAgent { conflict_files }`
 
 **`complete_merge_internal()` cleanup:**
 - Persist `task.merge_commit_sha`

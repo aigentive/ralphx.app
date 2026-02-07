@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-02-07 12:00:00 - Phase 98 Task 3: Use try_merge in worktree mode
+**What:**
+- Replaced direct `try_rebase_and_merge` call with git_mode branch in `attempt_programmatic_merge`
+- Worktree mode now calls `GitService::try_merge` (git merge, no rebase) to avoid dirty tree failures
+- Local mode continues using `try_rebase_and_merge` for linear history
+- Updated task-execution-git-workflows.md with try_merge internals and corrected error path docs
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (all passed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-07 16:15:00 - Phase 98 Task 2: Add try_merge method to GitService for worktree mode
 **What:**
 - Added `try_merge(repo, task_branch, base)` method to GitService after `try_rebase_and_merge`

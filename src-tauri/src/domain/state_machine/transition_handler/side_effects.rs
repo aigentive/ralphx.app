@@ -907,12 +907,13 @@ impl<'a> super::TransitionHandler<'a> {
             task_id = task_id_str,
             source_branch = %source_branch,
             target_branch = %target_branch,
-            "Attempting programmatic rebase and merge (Phase 1)"
+            git_mode = ?project.git_mode,
+            "Attempting programmatic merge (Phase 1)"
         );
 
         // In worktree mode, delete the worktree first to unlock the branch.
         // Git refuses to checkout a branch that's checked out in another worktree,
-        // so we must remove the worktree before try_rebase_and_merge can checkout the task branch.
+        // so we must remove the worktree before the merge can checkout the task branch.
         if project.git_mode == GitMode::Worktree {
             if let Some(ref worktree_path) = task.worktree_path {
                 let worktree_path_buf = PathBuf::from(worktree_path);
@@ -929,14 +930,21 @@ impl<'a> super::TransitionHandler<'a> {
                             worktree_path = %worktree_path,
                             "Failed to delete worktree before merge"
                         );
-                        // Continue anyway - try_rebase_and_merge will fail with a clear error
+                        // Continue anyway - merge will fail with a clear error
                     }
                 }
             }
         }
 
-        // Attempt the rebase and merge
-        match GitService::try_rebase_and_merge(repo_path, &source_branch, &target_branch) {
+        // Attempt the merge: worktree mode uses git merge (no rebase) to avoid
+        // failing when the main repo has unrelated unstaged changes.
+        // Local mode uses rebase for linear history.
+        let merge_result = if project.git_mode == GitMode::Worktree {
+            GitService::try_merge(repo_path, &source_branch, &target_branch)
+        } else {
+            GitService::try_rebase_and_merge(repo_path, &source_branch, &target_branch)
+        };
+        match merge_result {
             Ok(MergeAttemptResult::Success { commit_sha }) => {
                 // Fast path success: merge completed without conflicts
                 tracing::info!(
