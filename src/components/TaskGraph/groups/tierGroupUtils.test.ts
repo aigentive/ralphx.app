@@ -95,6 +95,59 @@ describe("buildTierGroups", () => {
     expect(groups).toEqual([]);
   });
 
+  it("excludes plan_merge tasks from tier calculation — single tier stays flat", () => {
+    const nodes = [
+      makeNode({ taskId: "t1", tier: 0, planArtifactId: "p1" }),
+      makeNode({ taskId: "t-merge", tier: 1, planArtifactId: "p1", category: "plan_merge" }),
+    ];
+    const planGroups: PlanGroupInfo[] = [
+      {
+        planArtifactId: "p1",
+        sessionId: "s1",
+        sessionTitle: "Plan 1",
+        taskIds: ["t1", "t-merge"],
+        statusSummary: STATUS_SUMMARY,
+      },
+    ];
+
+    // Without the merge task, there's only 1 effective tier → no tier sub-groups
+    expect(buildTierGroups(nodes, planGroups)).toEqual([]);
+  });
+
+  it("excludes plan_merge tasks from tier calculation — multi-tier keeps original structure", () => {
+    const nodes = [
+      makeNode({ taskId: "t1", tier: 0, planArtifactId: "p1" }),
+      makeNode({ taskId: "t2", tier: 1, planArtifactId: "p1" }),
+      makeNode({ taskId: "t3", tier: 1, planArtifactId: "p1" }),
+      makeNode({ taskId: "t-merge", tier: 2, planArtifactId: "p1", category: "plan_merge" }),
+    ];
+    const planGroups: PlanGroupInfo[] = [
+      {
+        planArtifactId: "p1",
+        sessionId: "s1",
+        sessionTitle: "Plan 1",
+        taskIds: ["t1", "t2", "t3", "t-merge"],
+        statusSummary: STATUS_SUMMARY,
+      },
+    ];
+
+    const groups = buildTierGroups(nodes, planGroups);
+    // Only 2 tiers (0 and 1), merge task on tier 2 excluded
+    expect(groups).toHaveLength(2);
+    expect(groups[0]).toEqual({
+      id: getTierGroupId("p1", 0),
+      planArtifactId: "p1",
+      tier: 0,
+      taskIds: ["t1"],
+    });
+    expect(groups[1]).toEqual({
+      id: getTierGroupId("p1", 1),
+      planArtifactId: "p1",
+      tier: 1,
+      taskIds: ["t2", "t3"],
+    });
+  });
+
   it("does not create tier groups for uncategorized tasks when includeUngrouped is true", () => {
     const nodes = [
       makeNode({ taskId: "t1", tier: 0 }),

@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-02-08 00:42:00 - Phase 102 Task 1: Filter merge tasks from tier group calculation
+**What:**
+- Added `if (node.category === "plan_merge") continue;` guard in `buildTierGroups()` (tierGroupUtils.ts:56) to skip merge tasks from tier counting
+- Added test: 1 real task + 1 merge task (on different tiers) → no tier sub-groups created (single effective tier stays flat)
+- Added test: 2-tier tasks + merge task (on tier 2) → only 2 tiers returned (merge excluded from phantom tier)
+
+**Commands:**
+- `npm run typecheck` (passed)
+- `npx vitest run tierGroupUtils.test.ts` (6/6 passed, including 2 new tests)
+- `npm run lint` (pre-existing errors in unrelated files only)
+
+**Visual Verification:** N/A - logic-only change in graph tier grouping utility, no UI components modified
+
+**Result:** Success
+
+---
+
 ### 2026-02-07 23:00:00 - Phase 101 Task 5: Remove unimplemented Files Under Review placeholder
 **What:**
 - Deleted the "Files Under Review" placeholder section (data-testid='files-under-review-empty') from ReviewingTaskDetail.tsx (lines 255-261)
