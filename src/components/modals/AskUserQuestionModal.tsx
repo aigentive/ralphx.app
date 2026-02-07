@@ -90,6 +90,7 @@ export function AskUserQuestionModal({
     if (!question) return;
 
     const response: AskUserQuestionResponse = {
+      requestId: question.requestId,
       taskId: question.taskId,
       selectedOptions: otherSelected ? [] : selectedOptions,
     };

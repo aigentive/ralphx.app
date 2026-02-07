@@ -72,7 +72,8 @@ export function useAskUserQuestion() {
 
   /**
    * Submit an answer to the agent's question
-   * Calls the Tauri command and clears the question on success
+   * Routes to resolveQuestion (MCP flow) when requestId is present,
+   * or answerQuestion (legacy task flow) otherwise.
    */
   const submitAnswer = useCallback(
     async (response: AskUserQuestionResponse) => {
@@ -82,7 +83,15 @@ export function useAskUserQuestion() {
 
       setIsLoading(true);
       try {
-        await api.askUserQuestion.answerQuestion(response);
+        if (response.requestId) {
+          await api.askUserQuestion.resolveQuestion({
+            requestId: response.requestId,
+            selectedOptions: response.selectedOptions,
+            customResponse: response.customResponse,
+          });
+        } else {
+          await api.askUserQuestion.answerQuestion(response);
+        }
 
         clearActiveQuestion();
       } catch {

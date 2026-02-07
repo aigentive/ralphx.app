@@ -6,17 +6,17 @@
  */
 
 import type { AskUserQuestionResponse } from "@/types/ask-user-question";
+import type { ResolveQuestionInput } from "@/api/ask-user-question";
 
 /**
  * Mock Ask User Question API matching the real API interface
  */
 export const mockAskUserQuestionApi = {
-  /**
-   * Mock answer submission - no-op for visual testing
-   * In web mode, agent questions are simulated via events
-   */
   answerQuestion: async (_response: AskUserQuestionResponse): Promise<void> => {
-    // No-op - visual testing doesn't process answers
     console.log("[mock] answerQuestion called");
+  },
+
+  resolveQuestion: async (_input: ResolveQuestionInput): Promise<void> => {
+    console.log("[mock] resolveQuestion called");
   },
 } as const;
