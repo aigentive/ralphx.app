@@ -226,7 +226,7 @@ const commandHandlers: Record<
 
   // Execution commands (Phase 82)
   get_execution_status: async (args) => {
-    const status = await mockExecutionApi.getStatus(args.project_id as string | undefined);
+    const status = await mockExecutionApi.getStatus(args.projectId as string | undefined);
     // Transform to snake_case as backend would return
     return {
       is_paused: status.isPaused,
@@ -238,7 +238,7 @@ const commandHandlers: Record<
     };
   },
   pause_execution: async (args) => {
-    const response = await mockExecutionApi.pause(args.project_id as string | undefined);
+    const response = await mockExecutionApi.pause(args.projectId as string | undefined);
     return {
       success: response.success,
       status: {
@@ -252,7 +252,7 @@ const commandHandlers: Record<
     };
   },
   resume_execution: async (args) => {
-    const response = await mockExecutionApi.resume(args.project_id as string | undefined);
+    const response = await mockExecutionApi.resume(args.projectId as string | undefined);
     return {
       success: response.success,
       status: {
@@ -266,7 +266,7 @@ const commandHandlers: Record<
     };
   },
   stop_execution: async (args) => {
-    const response = await mockExecutionApi.stop(args.project_id as string | undefined);
+    const response = await mockExecutionApi.stop(args.projectId as string | undefined);
     return {
       success: response.success,
       status: {
@@ -280,7 +280,7 @@ const commandHandlers: Record<
     };
   },
   get_execution_settings: async (args) => {
-    const settings = await mockExecutionApi.getSettings(args.project_id as string | undefined);
+    const settings = await mockExecutionApi.getSettings(args.projectId as string | undefined);
     // Transform to snake_case as backend would return
     return {
       max_concurrent_tasks: settings.maxConcurrentTasks,
@@ -294,7 +294,7 @@ const commandHandlers: Record<
       maxConcurrentTasks: input.max_concurrent_tasks,
       autoCommit: input.auto_commit,
       pauseOnFailure: input.pause_on_failure,
-    }, args.project_id as string | undefined);
+    }, args.projectId as string | undefined);
     return {
       max_concurrent_tasks: settings.maxConcurrentTasks,
       auto_commit: settings.autoCommit,
@@ -302,7 +302,7 @@ const commandHandlers: Record<
     };
   },
   set_active_project: async (args) => {
-    await mockExecutionApi.setActiveProject(args.project_id as string | undefined);
+    await mockExecutionApi.setActiveProject(args.projectId as string | undefined);
   },
   get_global_execution_settings: async () => {
     const settings = await mockExecutionApi.getGlobalSettings();
