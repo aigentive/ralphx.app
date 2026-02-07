@@ -679,7 +679,7 @@
       "phase": 95,
       "name": "Fix Feature Branch Not Created on Accept Plan",
       "prd": "specs/phases/prd_phase_95_feature_branch_apply_fix.md",
-      "status": "active",
+      "status": "complete",
       "description": "Fix plan_artifact_id fallback, feature branch creation, and stale UI on accept plan"
     }
   ]
