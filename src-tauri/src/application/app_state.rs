@@ -8,6 +8,7 @@ use tauri::AppHandle;
 use tokio::sync::Mutex;
 
 use crate::application::PermissionState;
+use crate::application::QuestionState;
 use crate::domain::entities::IdeationSessionId;
 use crate::domain::agents::AgenticClient;
 use crate::domain::qa::QASettings;
@@ -112,6 +113,8 @@ pub struct AppState {
     pub methodology_repo: Arc<dyn MethodologyRepository>,
     /// Permission state for UI-based permission approval
     pub permission_state: Arc<PermissionState>,
+    /// Question state for inline ask_user_question from agents
+    pub question_state: Arc<QuestionState>,
     /// Unified message queue for all chat contexts
     pub message_queue: Arc<MessageQueue>,
     /// Registry for tracking running agent processes
@@ -225,6 +228,7 @@ impl AppState {
             plan_branch_repo: Arc::new(SqlitePlanBranchRepository::from_shared(Arc::clone(&shared_conn))),
             app_state_repo: Arc::new(SqliteAppStateRepository::from_shared(shared_conn)),
             permission_state: Arc::new(PermissionState::new()),
+            question_state: Arc::new(QuestionState::new()),
             message_queue: Arc::new(MessageQueue::new()),
             running_agent_registry: Arc::new(RunningAgentRegistry::new()),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
@@ -324,6 +328,7 @@ impl AppState {
             plan_branch_repo: Arc::new(SqlitePlanBranchRepository::from_shared(Arc::clone(&shared_conn))),
             app_state_repo: Arc::new(SqliteAppStateRepository::from_shared(shared_conn)),
             permission_state: Arc::new(PermissionState::new()),
+            question_state: Arc::new(QuestionState::new()),
             message_queue: Arc::new(MessageQueue::new()),
             running_agent_registry: Arc::new(RunningAgentRegistry::new()),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
@@ -371,6 +376,7 @@ impl AppState {
             plan_branch_repo: Arc::new(MemoryPlanBranchRepository::new()),
             app_state_repo: Arc::new(MemoryAppStateRepository::new()),
             permission_state: Arc::new(PermissionState::new()),
+            question_state: Arc::new(QuestionState::new()),
             message_queue: Arc::new(MessageQueue::new()),
             running_agent_registry: Arc::new(RunningAgentRegistry::new()),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
@@ -420,6 +426,7 @@ impl AppState {
             plan_branch_repo: Arc::new(MemoryPlanBranchRepository::new()),
             app_state_repo: Arc::new(MemoryAppStateRepository::new()),
             permission_state: Arc::new(PermissionState::new()),
+            question_state: Arc::new(QuestionState::new()),
             message_queue: Arc::new(MessageQueue::new()),
             running_agent_registry: Arc::new(RunningAgentRegistry::new()),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
