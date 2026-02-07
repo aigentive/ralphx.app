@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-02-07 19:45:00 - Phase 93 Task 3: Add get_merge_target MCP tool definition, handler, allowlists
+**What:**
+- Added `get_merge_target` tool definition in tools.ts MERGE TOOLS section with task_id input schema
+- Updated `complete_merge` description to remove hardcoded "main branch" references, now references target branch
+- Added `get_merge_target` to `TOOL_ALLOWLIST["ralphx-merger"]`
+- Added GET handler dispatch for `get_merge_target` in index.ts (calls `git/tasks/:id/merge-target`)
+- Added `get_merge_target` to `taskScopedTools` array in index.ts
+- Added `report_incomplete` and `get_merge_target` to Rust `AGENT_CONFIGS` for `ralphx-merger`
+- Updated `test_get_allowed_mcp_tools_merger_agent` test to expect new tools
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — all passed (including specific merger agent test)
+- `cd ralphx-plugin/ralphx-mcp-server && npm run build` — clean
+
+**Visual Verification:** N/A — backend/MCP only, no UI changes
+
+**Result:** Success
+
 ### 2026-02-07 19:00:00 - Phase 93 Task 2: Add get_merge_target HTTP endpoint
 **What:**
 - Added `MergeTargetResponse` struct with `source_branch` and `target_branch` fields

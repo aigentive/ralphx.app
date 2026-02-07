@@ -137,7 +137,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cd ralphx-plugin/ralphx-mcp-server && npm run build",
       "Commit: feat(mcp): add get_merge_target tool and update merge tool descriptions"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 4,

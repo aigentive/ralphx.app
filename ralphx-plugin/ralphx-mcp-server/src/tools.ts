@@ -392,11 +392,12 @@ export const ALL_TOOLS: Tool[] = [
   {
     name: "complete_merge",
     description:
-      "Signal successful merge completion. IMPORTANT: Call this AFTER you have:" +
+      "Signal successful merge completion. Call get_merge_target first to determine the correct target branch." +
+      "\n\nIMPORTANT: Call this AFTER you have:" +
       "\n1. Resolved all conflicts (if any)" +
-      "\n2. Merged the task branch INTO main (git checkout main && git merge <task-branch>)" +
-      "\n3. Obtained the merge commit SHA from main (git rev-parse HEAD on main)" +
-      "\n\nThe commit_sha MUST be a commit ON the main branch, not the task branch." +
+      "\n2. Merged the task branch INTO the target branch (git checkout <target_branch> && git merge <source_branch>)" +
+      "\n3. Obtained the merge commit SHA from the target branch (git rev-parse HEAD on target branch)" +
+      "\n\nThe commit_sha MUST be a commit ON the target branch, not the task branch." +
       "\nThis transitions the task from Merging to Merged state and triggers cleanup of the task branch/worktree.",
     inputSchema: {
       type: "object",
@@ -408,7 +409,7 @@ export const ALL_TOOLS: Tool[] = [
         commit_sha: {
           type: "string",
           description:
-            "The SHA of the merge commit ON the main branch (run: git rev-parse HEAD after merging into main)",
+            "The SHA of the merge commit ON the target branch (run: git rev-parse HEAD after merging into target)",
         },
       },
       required: ["task_id", "commit_sha"],
@@ -461,6 +462,21 @@ export const ALL_TOOLS: Tool[] = [
         },
       },
       required: ["task_id", "reason"],
+    },
+  },
+  {
+    name: "get_merge_target",
+    description:
+      "Get the resolved merge target branches for a task. " +
+      "Returns source_branch (task's branch) and target_branch (where to merge INTO). " +
+      "IMPORTANT: Always call this BEFORE merging to know the correct target. " +
+      "The target may be a plan feature branch instead of main.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        task_id: { type: "string", description: "The task ID" },
+      },
+      required: ["task_id"],
     },
   },
 
@@ -659,6 +675,7 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "complete_merge",
     "report_conflict",
     "report_incomplete",
+    "get_merge_target",
     // common context tools
     "get_task_context",
   ],
