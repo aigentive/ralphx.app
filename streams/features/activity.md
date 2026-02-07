@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-07 12:45:00 - Phase 97 Task 4: Remove plan_artifact_id gate from apply_proposals_to_kanban
+**What:**
+- Removed nested `if let Some(ref artifact_id) = plan_artifact_id` gate around feature branch creation
+- Feature branch now always created when `use_feature_branch` is true (session_id always available)
+- Compute `effective_plan_id` from real artifact_id or session_id fallback — used ONLY for `plan_branches.plan_artifact_id` (no FK constraint)
+- Branch existence check now uses `get_by_session_id()` instead of `get_by_plan_artifact_id()`
+- Merge task: `plan_artifact_id` set only when real artifact exists (FK safety), `ideation_session_id` always set
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — passed
+- `cargo test` — 3830 passed, 0 failed
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-07 12:30:00 - Phase 97 Task 3: Fix merge resolution to use ideation_session_id
 **What:**
 - Changed `resolve_task_base_branch()` from `task.plan_artifact_id` → `get_by_plan_artifact_id()` to `task.ideation_session_id` → `get_by_session_id()`
