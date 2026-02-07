@@ -132,6 +132,10 @@ export const mockIdeationApi = {
       // No-op in read-only mode
     },
 
+    reopen: async (_sessionId: string): Promise<void> => {
+      // No-op in mock mode
+    },
+
     updateTitle: async (
       sessionId: string,
       title: string | null

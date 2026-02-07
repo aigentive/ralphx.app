@@ -151,6 +151,15 @@ export const ideationApi = {
     },
 
     /**
+     * Reopen an accepted/archived session back to Active status
+     * Deletes all tasks, cleans up git resources, clears proposal task links
+     * @param sessionId The session ID
+     */
+    reopen: async (sessionId: string): Promise<void> => {
+      await invoke("reopen_ideation_session", { id: sessionId });
+    },
+
+    /**
      * Update a session's title
      * @param sessionId The session ID
      * @param title The new title (or null to clear)

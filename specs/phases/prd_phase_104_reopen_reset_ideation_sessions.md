@@ -135,7 +135,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run typecheck && npm run lint",
       "Commit: feat(ideation): add reopen session API wrapper and mutation hooks"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 4,

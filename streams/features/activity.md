@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-02-08 08:00:00 - Phase 104 Task 3: Add reopen session API wrapper and mutation hooks
+**What:**
+- Added `sessions.reopen(sessionId)` to `ideationApi` in `src/api/ideation.ts` — calls `reopen_ideation_session` Tauri command
+- Added `reopen` mock method to `src/api-mock/ideation.ts` (no-op in mock mode)
+- Added `useReopenSession()` mutation hook to `src/hooks/useIdeation.ts` — invalidates sessions, tasks, proposals, plan-branch queries
+- Added `useResetAndReaccept()` mutation hook — chains `reopen` → `apply.toKanban` with all proposal IDs, broad query invalidation
+- Imported `taskKeys` from `useTasks` and `ApplyProposalsInput` type for hook implementations
+
+**Commands:**
+- `npm run typecheck` (pass)
+- `npm run lint` (pre-existing errors in TaskGraphView only, no errors in modified files)
+
+**Visual Verification:** N/A - hooks/API only, no UI components
+
+**Result:** Success
+
+---
+
 ### 2026-02-08 07:00:00 - Phase 104 Task 2: Add reopen_ideation_session command and service
 **What:**
 - Created `SessionReopenService` (~160 LOC) in `src-tauri/src/application/session_reopen_service.rs` with full cleanup: validate session status, stop agents, abort rebase, checkout base, delete worktrees/branches/tasks, clean plan branch, clear proposals, reset session to Active

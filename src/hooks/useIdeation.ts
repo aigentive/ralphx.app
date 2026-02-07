@@ -6,7 +6,8 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ideationApi, type SessionWithDataResponse, type IdeationSessionResponse } from "@/api/ideation";
+import { ideationApi, type SessionWithDataResponse, type IdeationSessionResponse, type ApplyProposalsInput } from "@/api/ideation";
+import { taskKeys } from "@/hooks/useTasks";
 
 /**
  * Query key factory for ideation
@@ -190,6 +191,87 @@ export function useDeleteIdeationSession() {
       });
       queryClient.invalidateQueries({
         queryKey: ideationKeys.sessions(),
+      });
+    },
+  });
+}
+
+/**
+ * Hook to reopen an accepted/archived ideation session back to Active
+ *
+ * Deletes all associated tasks, cleans up git resources, and resets session status.
+ */
+export function useReopenSession() {
+  const queryClient = useQueryClient();
+
+  return useMutation<void, Error, string>({
+    mutationFn: (sessionId) => ideationApi.sessions.reopen(sessionId),
+    onSuccess: (_data, sessionId) => {
+      // Broad invalidation: session detail, session lists, tasks (deleted), proposals (cleared task links)
+      queryClient.invalidateQueries({
+        queryKey: ideationKeys.sessionDetail(sessionId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: ideationKeys.sessions(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: taskKeys.all,
+      });
+      queryClient.invalidateQueries({
+        queryKey: ideationKeys.proposals(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["plan-branch"],
+      });
+    },
+  });
+}
+
+/**
+ * Input for the reset & re-accept mutation
+ */
+interface ResetAndReacceptInput {
+  sessionId: string;
+  proposalIds: string[];
+}
+
+/**
+ * Hook to reset & re-accept an ideation session
+ *
+ * Chains: reopen (delete tasks, cleanup) → apply_proposals_to_kanban (create fresh tasks).
+ */
+export function useResetAndReaccept() {
+  const queryClient = useQueryClient();
+
+  return useMutation<void, Error, ResetAndReacceptInput>({
+    mutationFn: async ({ sessionId, proposalIds }) => {
+      // Step 1: Reopen (deletes tasks, cleans git, resets to Active)
+      await ideationApi.sessions.reopen(sessionId);
+      // Step 2: Re-apply proposals as fresh tasks
+      const applyInput: ApplyProposalsInput = {
+        sessionId,
+        proposalIds,
+        targetColumn: "backlog",
+        preserveDependencies: true,
+      };
+      await ideationApi.apply.toKanban(applyInput);
+    },
+    onSuccess: (_data, { sessionId }) => {
+      // Broad invalidation: everything touched by reopen + apply
+      queryClient.invalidateQueries({
+        queryKey: ideationKeys.sessionDetail(sessionId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: ideationKeys.sessions(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: taskKeys.all,
+      });
+      queryClient.invalidateQueries({
+        queryKey: ideationKeys.proposals(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["plan-branch"],
       });
     },
   });
