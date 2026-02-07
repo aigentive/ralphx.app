@@ -716,6 +716,13 @@
       "prd": "specs/phases/prd_phase_100_plan_merge_auto_promote.md",
       "status": "active",
       "description": "Auto-promote plan_merge tasks from Ready to PendingMerge when unblocked"
+    },
+    {
+      "phase": 101,
+      "name": "MCP Bridge for Review Issue Tools",
+      "prd": "specs/phases/prd_phase_101_mcp_bridge_review_issues.md",
+      "status": "pending",
+      "description": "HTTP endpoints, MCP tool definitions, and agent allowlist updates for review issue lifecycle"
     }
   ]
 }
