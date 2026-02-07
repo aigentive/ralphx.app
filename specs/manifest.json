@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 95,
+  "currentPhase": 96,
   "phases": [
     {
       "phase": 0,
@@ -681,6 +681,13 @@
       "prd": "specs/phases/prd_phase_95_feature_branch_apply_fix.md",
       "status": "complete",
       "description": "Fix plan_artifact_id fallback, feature branch creation, and stale UI on accept plan"
+    },
+    {
+      "phase": 96,
+      "name": "Fix FK Constraint — Add ideation_session_id to Tasks",
+      "prd": "specs/phases/prd_phase_96_fk_constraint_ideation_session_id.md",
+      "status": "active",
+      "description": "Fix FK constraint in apply_proposals_to_kanban by adding ideation_session_id column to tasks"
     }
   ]
 }
