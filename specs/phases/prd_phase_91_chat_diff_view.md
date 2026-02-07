@@ -209,7 +209,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(chat-diff): wire DiffToolCallView into ToolCallIndicator and streaming footer"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

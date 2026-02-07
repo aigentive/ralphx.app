@@ -11,6 +11,8 @@
 import React, { useState, useMemo } from "react";
 import { Wrench, ChevronDown, ChevronRight, FileText, Terminal, FileEdit, Search, FolderSearch } from "lucide-react";
 import { createSummary, formatValue, isArtifactContextTool, renderArtifactPreview } from "./ToolCallIndicator.helpers";
+import { isDiffToolCall } from "./DiffToolCallView.utils";
+import { DiffToolCallView } from "./DiffToolCallView";
 
 // ============================================================================
 // Types
@@ -74,10 +76,20 @@ function ToolIcon({ name, hasError }: { name: string; hasError: boolean }) {
 }
 
 export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCall, className = "" }: ToolCallIndicatorProps) {
-  // Bash tool calls are expanded by default for that terminal feel
+  // Hooks must be called unconditionally (React rules-of-hooks)
   const [isExpanded, setIsExpanded] = useState(toolCall.name.toLowerCase() === "bash");
   const summary = useMemo(() => createSummary(toolCall), [toolCall]);
   const hasError = Boolean(toolCall.error);
+
+  // Delegate Edit/Write to DiffToolCallView for inline diff rendering
+  // Quick check: arguments must have file_path for diff to work (same gate as DiffToolCallView)
+  if (isDiffToolCall(toolCall.name)) {
+    const args = toolCall.arguments;
+    const hasFilePath = args != null && typeof args === "object" && typeof (args as Record<string, unknown>).file_path === "string" && (args as Record<string, unknown>).file_path !== "";
+    if (hasFilePath) {
+      return <DiffToolCallView toolCall={toolCall} className={className} />;
+    }
+  }
 
   return (
     <div

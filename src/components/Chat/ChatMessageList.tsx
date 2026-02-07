@@ -18,6 +18,8 @@ import {
 } from "./IntegratedChatPanel.components";
 import type { ToolCall } from "./ToolCallIndicator";
 import type { ContentBlockItem } from "./MessageItem";
+import { isDiffToolCall } from "./DiffToolCallView.utils";
+import { DiffToolCallView } from "./DiffToolCallView";
 
 // ============================================================================
 // Constants
@@ -175,30 +177,46 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                 )}
               </div>
             ),
-            Footer: () => (
-              <div className="px-3 pb-3 w-full" style={contentContainerStyle}>
-                {/* Show streaming assistant text from agent:chunk events */}
-                {streamingText && (
-                  <MessageItem
-                    key="streaming-assistant"
-                    role="assistant"
-                    content={streamingText}
-                    createdAt={new Date().toISOString()}
-                    toolCalls={null}
-                    contentBlocks={null}
-                  />
-                )}
-                {/* Show streaming tool calls or typing indicator while agent is working */}
-                {(isSending || isAgentRunning) && (
-                  streamingToolCalls.length > 0 ? (
-                    <StreamingToolIndicator toolCalls={streamingToolCalls} isActive={true} />
-                  ) : !streamingText ? (
-                    <TypingIndicator />
-                  ) : null
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-            ),
+            Footer: () => {
+              // Split Edit/Write tool calls (with arguments) for individual diff rendering
+              const diffToolCalls = streamingToolCalls.filter(
+                (tc) => isDiffToolCall(tc.name) && tc.arguments != null
+              );
+              const otherToolCalls = streamingToolCalls.filter(
+                (tc) => !isDiffToolCall(tc.name) || tc.arguments == null
+              );
+
+              return (
+                <div className="px-3 pb-3 w-full" style={contentContainerStyle}>
+                  {/* Show streaming assistant text from agent:chunk events */}
+                  {streamingText && (
+                    <MessageItem
+                      key="streaming-assistant"
+                      role="assistant"
+                      content={streamingText}
+                      createdAt={new Date().toISOString()}
+                      toolCalls={null}
+                      contentBlocks={null}
+                    />
+                  )}
+
+                  {/* Diff views for Edit/Write — shown as individual cards */}
+                  {diffToolCalls.map((tc) => (
+                    <DiffToolCallView key={tc.id} toolCall={tc} isStreaming className="mb-2" />
+                  ))}
+
+                  {/* Aggregated indicator for remaining tools, or typing indicator */}
+                  {(isSending || isAgentRunning) && (
+                    otherToolCalls.length > 0 ? (
+                      <StreamingToolIndicator toolCalls={otherToolCalls} isActive={true} />
+                    ) : !streamingText && diffToolCalls.length === 0 ? (
+                      <TypingIndicator />
+                    ) : null
+                  )}
+                  <div ref={messagesEndRef} />
+                </div>
+              );
+            },
           }}
           itemContent={(_, msg) => (
             <div className="px-3 w-full" style={contentContainerStyle}>
