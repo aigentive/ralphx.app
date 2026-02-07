@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 
-use crate::domain::entities::{ArtifactId, PlanBranch, PlanBranchId, PlanBranchStatus, ProjectId, TaskId};
+use crate::domain::entities::{ArtifactId, IdeationSessionId, PlanBranch, PlanBranchId, PlanBranchStatus, ProjectId, TaskId};
 use crate::error::AppResult;
 
 /// Repository trait for PlanBranch persistence.
@@ -16,6 +16,9 @@ pub trait PlanBranchRepository: Send + Sync {
 
     /// Get plan branch by plan artifact ID (unique constraint)
     async fn get_by_plan_artifact_id(&self, id: &ArtifactId) -> AppResult<Option<PlanBranch>>;
+
+    /// Get plan branch by session ID (unique constraint, primary lookup)
+    async fn get_by_session_id(&self, session_id: &IdeationSessionId) -> AppResult<Option<PlanBranch>>;
 
     /// Get plan branch by its merge task ID
     async fn get_by_merge_task_id(&self, task_id: &TaskId) -> AppResult<Option<PlanBranch>>;
