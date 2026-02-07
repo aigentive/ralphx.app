@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 92,
+  "currentPhase": 93,
   "phases": [
     {
       "phase": 0,
@@ -660,6 +660,13 @@
       "prd": "specs/phases/prd_phase_92_integrated_chat_tool_dedup.md",
       "status": "complete",
       "description": "Port tool_id dedup pattern from useChatPanelHandlers to useIntegratedChatEvents"
+    },
+    {
+      "phase": 93,
+      "name": "Merge Target MCP Tool & Branch Fix",
+      "prd": "specs/phases/prd_phase_93_merge_target_tool.md",
+      "status": "active",
+      "description": "Add get_merge_target MCP tool, fix hardcoded base_branch in merge verification"
     }
   ]
 }
