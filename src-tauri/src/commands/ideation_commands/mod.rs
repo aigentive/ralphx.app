@@ -1056,4 +1056,164 @@ mod tests {
         assert!(retrieved.suggest_plans_for_complex);
         assert!(!retrieved.auto_link_proposals);
     }
+
+    // ========================================================================
+    // Cascade Delete Session Tests (Phase 103)
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_delete_session_cascades_to_tasks() {
+        let state = setup_test_state();
+        let project_id = ProjectId::new();
+
+        // Create session
+        let session = IdeationSession::new(project_id.clone());
+        let created_session = state
+            .ideation_session_repo
+            .create(session)
+            .await
+            .expect("Failed to create session");
+
+        // Create tasks linked to this session
+        let mut task1 = crate::domain::entities::Task::new(project_id.clone(), "Task 1".to_string());
+        task1.ideation_session_id = Some(created_session.id.clone());
+        let mut task2 = crate::domain::entities::Task::new(project_id.clone(), "Task 2".to_string());
+        task2.ideation_session_id = Some(created_session.id.clone());
+
+        let t1 = state.task_repo.create(task1).await.expect("Failed to create task");
+        let t2 = state.task_repo.create(task2).await.expect("Failed to create task");
+
+        // Verify tasks exist and are linked to session
+        let session_tasks = state
+            .task_repo
+            .get_by_ideation_session(&created_session.id)
+            .await
+            .expect("Failed to query tasks");
+        assert_eq!(session_tasks.len(), 2);
+
+        // Simulate cascade: delete tasks then session (mirrors command logic)
+        for task in &session_tasks {
+            state.task_repo.delete(&task.id).await.expect("Failed to delete task");
+        }
+        state
+            .ideation_session_repo
+            .delete(&created_session.id)
+            .await
+            .expect("Failed to delete session");
+
+        // Verify tasks are gone
+        assert!(state.task_repo.get_by_id(&t1.id).await.unwrap().is_none());
+        assert!(state.task_repo.get_by_id(&t2.id).await.unwrap().is_none());
+
+        // Verify session is gone
+        assert!(state
+            .ideation_session_repo
+            .get_by_id(&created_session.id)
+            .await
+            .unwrap()
+            .is_none());
+
+        // Verify get_by_ideation_session returns empty
+        let remaining = state
+            .task_repo
+            .get_by_ideation_session(&created_session.id)
+            .await
+            .unwrap();
+        assert!(remaining.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_delete_session_with_no_tasks() {
+        let state = setup_test_state();
+        let project_id = ProjectId::new();
+
+        // Create session with no tasks
+        let session = IdeationSession::new(project_id);
+        let created_session = state
+            .ideation_session_repo
+            .create(session)
+            .await
+            .expect("Failed to create session");
+
+        // Verify no tasks for this session
+        let session_tasks = state
+            .task_repo
+            .get_by_ideation_session(&created_session.id)
+            .await
+            .unwrap();
+        assert!(session_tasks.is_empty());
+
+        // Delete session directly (no cascade needed)
+        state
+            .ideation_session_repo
+            .delete(&created_session.id)
+            .await
+            .expect("Failed to delete session");
+
+        // Verify session is gone
+        assert!(state
+            .ideation_session_repo
+            .get_by_id(&created_session.id)
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn test_delete_session_only_deletes_own_tasks() {
+        let state = setup_test_state();
+        let project_id = ProjectId::new();
+
+        // Create two sessions
+        let session_a = IdeationSession::new(project_id.clone());
+        let created_a = state
+            .ideation_session_repo
+            .create(session_a)
+            .await
+            .expect("Failed to create session A");
+
+        let session_b = IdeationSession::new(project_id.clone());
+        let created_b = state
+            .ideation_session_repo
+            .create(session_b)
+            .await
+            .expect("Failed to create session B");
+
+        // Create tasks: 2 for session A, 1 for session B
+        let mut task_a1 = crate::domain::entities::Task::new(project_id.clone(), "A-Task 1".to_string());
+        task_a1.ideation_session_id = Some(created_a.id.clone());
+        let mut task_a2 = crate::domain::entities::Task::new(project_id.clone(), "A-Task 2".to_string());
+        task_a2.ideation_session_id = Some(created_a.id.clone());
+        let mut task_b1 = crate::domain::entities::Task::new(project_id.clone(), "B-Task 1".to_string());
+        task_b1.ideation_session_id = Some(created_b.id.clone());
+
+        state.task_repo.create(task_a1).await.unwrap();
+        state.task_repo.create(task_a2).await.unwrap();
+        let tb1 = state.task_repo.create(task_b1).await.unwrap();
+
+        // Cascade delete session A's tasks only
+        let tasks_a = state
+            .task_repo
+            .get_by_ideation_session(&created_a.id)
+            .await
+            .unwrap();
+        assert_eq!(tasks_a.len(), 2);
+
+        for task in &tasks_a {
+            state.task_repo.delete(&task.id).await.unwrap();
+        }
+        state.ideation_session_repo.delete(&created_a.id).await.unwrap();
+
+        // Session B's task should be untouched
+        let tasks_b = state
+            .task_repo
+            .get_by_ideation_session(&created_b.id)
+            .await
+            .unwrap();
+        assert_eq!(tasks_b.len(), 1);
+        assert_eq!(tasks_b[0].title, "B-Task 1");
+
+        // Session B's task still retrievable by ID
+        assert!(state.task_repo.get_by_id(&tb1.id).await.unwrap().is_some());
+    }
 }
