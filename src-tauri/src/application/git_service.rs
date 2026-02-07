@@ -840,6 +840,73 @@ impl GitService {
         }
     }
 
+    /// Attempt a direct merge without rebase (for worktree mode)
+    ///
+    /// Unlike `try_rebase_and_merge`, this uses `git merge` directly which
+    /// doesn't require a clean working tree. This is important for worktree mode
+    /// where the main repo may have unrelated unstaged changes that would block
+    /// `git rebase`.
+    ///
+    /// Tradeoff: produces merge commits instead of linear history. Acceptable
+    /// for worktree-isolated tasks.
+    ///
+    /// # Arguments
+    /// * `repo` - Path to the main git repository
+    /// * `task_branch` - Name of the task branch to merge
+    /// * `base` - Name of the base branch to merge into
+    pub fn try_merge(
+        repo: &Path,
+        task_branch: &str,
+        base: &str,
+    ) -> AppResult<MergeAttemptResult> {
+        debug!(
+            "Attempting direct merge of '{}' into '{}' in {:?}",
+            task_branch, base, repo
+        );
+
+        // Step 1: Fetch latest from origin (non-fatal if fails)
+        match Self::fetch_origin(repo) {
+            Ok(_) => debug!("Fetch from origin succeeded for {:?}", repo),
+            Err(e) => debug!("Fetch from origin failed (non-fatal): {}", e),
+        }
+
+        // Step 2: Checkout base branch
+        debug!("Checking out base branch '{}' for merge", base);
+        Self::checkout_branch(repo, base)?;
+
+        // Step 3: Merge task branch into base
+        let output = Command::new("git")
+            .args(["merge", task_branch, "--no-edit"])
+            .current_dir(repo)
+            .output()
+            .map_err(|e| AppError::GitOperation(format!("Failed to run git merge: {}", e)))?;
+
+        if output.status.success() {
+            let commit_sha = Self::get_head_sha(repo)?;
+            debug!("Direct merge succeeded for '{}', SHA: {}", task_branch, commit_sha);
+            return Ok(MergeAttemptResult::Success { commit_sha });
+        }
+
+        // Check for conflict in both stdout and stderr
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stdout.contains("CONFLICT") || stderr.contains("CONFLICT")
+            || stdout.contains("conflict") || stderr.contains("conflict")
+        {
+            let conflict_files = Self::get_conflict_files(repo)?;
+            Self::abort_merge(repo)?;
+            debug!("Direct merge conflict for '{}', files: {:?}", task_branch, conflict_files);
+            return Ok(MergeAttemptResult::NeedsAgent {
+                conflict_files,
+            });
+        }
+
+        Err(AppError::GitOperation(format!(
+            "Merge of '{}' into '{}' failed: {}{}",
+            task_branch, base, stderr, stdout
+        )))
+    }
+
     // =========================================================================
     // Query Operations
     // =========================================================================
@@ -2128,5 +2195,137 @@ mod tests {
         // Delete non-existent branch — should fail
         let result = GitService::delete_feature_branch(repo, "feature/nonexistent");
         assert!(result.is_err(), "Deleting non-existent branch should fail");
+    }
+
+    // =========================================================================
+    // try_merge Tests (Phase 98 - Worktree mode direct merge)
+    // =========================================================================
+
+    #[test]
+    fn test_try_merge_clean_fast_forward() {
+        // Task branch has commits ahead of base, no divergence → fast-forward
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.email", "test@test.com"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.name", "Test"]).current_dir(repo).output().unwrap();
+
+        // Initial commit on main
+        std::fs::write(repo.join("initial.txt"), "initial").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
+        let _ = Command::new("git").args(["branch", "-M", "main"]).current_dir(repo).output();
+
+        // Create task branch from main
+        Command::new("git").args(["checkout", "-b", "task-branch"]).current_dir(repo).output().unwrap();
+        std::fs::write(repo.join("feature.txt"), "feature").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "add feature"]).current_dir(repo).output().unwrap();
+
+        // Back to main (no new commits on main → fast-forward possible)
+        Command::new("git").args(["checkout", "main"]).current_dir(repo).output().unwrap();
+
+        let result = GitService::try_merge(repo, "task-branch", "main");
+        assert!(result.is_ok(), "try_merge should succeed: {:?}", result.err());
+
+        match result.unwrap() {
+            MergeAttemptResult::Success { commit_sha } => {
+                let on_main = GitService::is_commit_on_branch(repo, &commit_sha, "main").unwrap();
+                assert!(on_main, "Merge commit should be on main");
+                assert!(repo.join("feature.txt").exists(), "Feature file should exist");
+            }
+            MergeAttemptResult::NeedsAgent { .. } => {
+                panic!("Clean fast-forward merge should not need agent");
+            }
+        }
+    }
+
+    #[test]
+    fn test_try_merge_with_diverged_branches() {
+        // Both base and task branch have new commits → merge commit created
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.email", "test@test.com"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.name", "Test"]).current_dir(repo).output().unwrap();
+
+        // Initial commit on main
+        std::fs::write(repo.join("initial.txt"), "initial").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
+        let _ = Command::new("git").args(["branch", "-M", "main"]).current_dir(repo).output();
+
+        // Create task branch
+        Command::new("git").args(["checkout", "-b", "task-branch"]).current_dir(repo).output().unwrap();
+        std::fs::write(repo.join("feature.txt"), "feature").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "add feature"]).current_dir(repo).output().unwrap();
+
+        // Go back to main and add a non-conflicting commit
+        Command::new("git").args(["checkout", "main"]).current_dir(repo).output().unwrap();
+        std::fs::write(repo.join("other.txt"), "other work").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "other work on main"]).current_dir(repo).output().unwrap();
+
+        let result = GitService::try_merge(repo, "task-branch", "main");
+        assert!(result.is_ok(), "try_merge should succeed: {:?}", result.err());
+
+        match result.unwrap() {
+            MergeAttemptResult::Success { commit_sha } => {
+                let on_main = GitService::is_commit_on_branch(repo, &commit_sha, "main").unwrap();
+                assert!(on_main, "Merge commit should be on main");
+                assert!(repo.join("feature.txt").exists(), "Feature file should exist");
+                assert!(repo.join("other.txt").exists(), "Other file should exist");
+            }
+            MergeAttemptResult::NeedsAgent { .. } => {
+                panic!("Non-conflicting diverged merge should not need agent");
+            }
+        }
+    }
+
+    #[test]
+    fn test_try_merge_with_conflict() {
+        // Both branches modify the same file → conflict → NeedsAgent
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.email", "test@test.com"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.name", "Test"]).current_dir(repo).output().unwrap();
+
+        // Initial commit
+        std::fs::write(repo.join("shared.txt"), "original content").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
+        let _ = Command::new("git").args(["branch", "-M", "main"]).current_dir(repo).output();
+
+        // Task branch modifies shared file
+        Command::new("git").args(["checkout", "-b", "task-branch"]).current_dir(repo).output().unwrap();
+        std::fs::write(repo.join("shared.txt"), "task branch changes").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "task changes"]).current_dir(repo).output().unwrap();
+
+        // Main also modifies shared file (conflict)
+        Command::new("git").args(["checkout", "main"]).current_dir(repo).output().unwrap();
+        std::fs::write(repo.join("shared.txt"), "main branch changes").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "main changes"]).current_dir(repo).output().unwrap();
+
+        let result = GitService::try_merge(repo, "task-branch", "main");
+        assert!(result.is_ok(), "try_merge should return Ok even on conflict: {:?}", result.err());
+
+        match result.unwrap() {
+            MergeAttemptResult::NeedsAgent { conflict_files } => {
+                assert!(!conflict_files.is_empty(), "Should report conflict files");
+                // Verify merge was aborted (repo is clean)
+                let has_changes = GitService::has_uncommitted_changes(repo).unwrap();
+                assert!(!has_changes, "Merge should be aborted, no uncommitted changes");
+            }
+            MergeAttemptResult::Success { .. } => {
+                panic!("Conflicting merge should need agent, not succeed");
+            }
+        }
     }
 }

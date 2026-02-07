@@ -107,7 +107,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(git-service): add try_merge for worktree mode programmatic merge"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 3,

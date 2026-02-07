@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-07 16:15:00 - Phase 98 Task 2: Add try_merge method to GitService for worktree mode
+**What:**
+- Added `try_merge(repo, task_branch, base)` method to GitService after `try_rebase_and_merge`
+- Uses `git merge --no-edit` directly (no rebase) — doesn't require clean working tree
+- Handles Success/FastForward → `MergeAttemptResult::Success`, Conflict → abort + `NeedsAgent`
+- Checks both stdout and stderr for "CONFLICT" (git puts conflict info in stdout)
+- Added 3 tests: fast-forward, diverged branches (merge commit), and conflict detection
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — passed
+- `cargo test` — 3612 passed, 0 failed
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-07 15:30:00 - Phase 98 Task 1: Remove agent auto-spawn from MergeIncomplete error path
 **What:**
 - Deleted the merger agent spawn block (27 lines) from the `Err(e)` arm of `attempt_programmatic_merge`
