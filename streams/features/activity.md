@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-07 16:00:00 - Phase 91 Complete: Chat Diff View for Edit/Write Tool Calls
+**What:**
+- All 6 tasks verified as `passes: true`
+- Code gap verification: WIRING, API, STATE, EVENTS, TYPE checks all pass
+- Visual gap verification: Mock-check evidence created, no web-mode trigger gaps
+- DiffToolCallView is presentation-only (no direct invoke calls), EventBus mockable
+- Updated manifest: Phase 91 → complete, Phase 92 → active
+
+**Commands:**
+- Code gap verification via Explore agents (wiring + orphan detection)
+- Visual gap verification via Explore agent (mock parity + component coverage)
+
+**Visual Verification:** Mock-check: screenshots/features/2026-02-07_16-00-00_phase-91-chat-diff-view_mock-check.md
+
+**Result:** Success — Phase 91 complete, Phase 92 activated
+
 ### 2026-02-07 14:30:00 - Phase 91 Task 6: Wire DiffToolCallView into ToolCallIndicator and streaming footer
 **What:**
 - In `ToolCallIndicator.tsx`: Added `isDiffToolCall` check after hooks; if Edit/Write with file_path, delegates to `<DiffToolCallView>`, falls through to generic view otherwise
