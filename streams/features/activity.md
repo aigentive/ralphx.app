@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-02-07 22:30:00 - Phase 91 Task 1: Add DiffContext struct and diff_context field to ToolCall
+**What:**
+- Added `DiffContext` struct with `Serialize`/`Deserialize` derives, fields: `old_content: Option<String>`, `file_path: String`
+- Added `diff_context: Option<DiffContext>` with `#[serde(skip_serializing_if = "Option::is_none")]` to `ToolCall` struct
+- Added `diff_context: Option<serde_json::Value>` with `#[serde(skip_serializing_if = "Option::is_none")]` to `ContentBlockItem::ToolUse` variant
+- Updated all 4 construction sites (2 ToolCall, 2 ContentBlockItem::ToolUse) to include `diff_context: None`
+- Updated existing `test_tool_call_serialization` to verify `diff_context: None` is skipped in JSON
+- Added 2 new tests: `test_tool_call_with_diff_context_serialization` and `test_tool_call_diff_context_new_file`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passes)
+- `cargo test` (all 3598 tests pass)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-07 12:00:00 - Phase 90 Complete — Gap Verification Passed
 **What:**
 - All 3 PRD tasks already had `passes: true`
