@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 100,
+  "currentPhase": 101,
   "phases": [
     {
       "phase": 0,
@@ -714,14 +714,14 @@
       "phase": 100,
       "name": "Plan Merge Auto-Promote",
       "prd": "specs/phases/prd_phase_100_plan_merge_auto_promote.md",
-      "status": "active",
+      "status": "complete",
       "description": "Auto-promote plan_merge tasks from Ready to PendingMerge when unblocked"
     },
     {
       "phase": 101,
       "name": "MCP Bridge for Review Issue Tools",
       "prd": "specs/phases/prd_phase_101_mcp_bridge_review_issues.md",
-      "status": "pending",
+      "status": "active",
       "description": "HTTP endpoints, MCP tool definitions, and agent allowlist updates for review issue lifecycle"
     }
   ]
