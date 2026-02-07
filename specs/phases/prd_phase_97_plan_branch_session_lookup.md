@@ -154,7 +154,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: fix(plan-branch): remove plan_artifact_id gate from apply_proposals_to_kanban"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 5,
