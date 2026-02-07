@@ -4,6 +4,19 @@
 
 ---
 
+### 2026-02-07 - Phase 96 Task 4: Set ideation_session_id on merge task and backfilled tasks in plan branch commands
+**What:**
+- In `enable_feature_branch` backfill loop (~line 182): expanded condition to also check `ideation_session_id.is_none()`, sets `ideation_session_id = Some(session_id.clone())` alongside `plan_artifact_id` backfill
+- At merge task creation (~line 215): set `merge_task.ideation_session_id = Some(session_id.clone())` so merge tasks are linked to the originating session
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` -- clean
+- `cargo test` -- all tests passed (3604+)
+
+**Visual Verification:** N/A -- backend only, no UI changes
+
+**Result:** Success
+
 ### 2026-02-07 - Phase 96 Task 3: Add 3rd pass to graph query for ideation_session_id grouping
 **What:**
 - Added "5c. Third pass" block in `get_task_dependency_graph` (query.rs) after the existing "5b. Second pass"
