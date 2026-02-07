@@ -686,7 +686,7 @@
       "phase": 96,
       "name": "Fix FK Constraint — Add ideation_session_id to Tasks",
       "prd": "specs/phases/prd_phase_96_fk_constraint_ideation_session_id.md",
-      "status": "active",
+      "status": "complete",
       "description": "Fix FK constraint in apply_proposals_to_kanban by adding ideation_session_id column to tasks"
     }
   ]
