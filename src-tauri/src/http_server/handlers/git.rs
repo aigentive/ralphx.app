@@ -142,22 +142,24 @@ pub async fn complete_merge(
         .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?
         .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Project not found", None))?;
 
-    // 6. Verify commit is on main branch (not just in worktree)
-    let base_branch = project.base_branch.as_deref().unwrap_or("main");
+    // 6. Verify commit is on target branch (resolved via plan branch or base branch)
+    let plan_branch_repo = Some(Arc::clone(&state.app_state.plan_branch_repo));
+    let (_, target_branch) =
+        resolve_merge_branches(&task, &project, &plan_branch_repo).await;
     let repo_path = PathBuf::from(&project.working_directory);
 
-    if !GitService::is_commit_on_branch(&repo_path, &req.commit_sha, base_branch)
+    if !GitService::is_commit_on_branch(&repo_path, &req.commit_sha, &target_branch)
         .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?
     {
         return Err(json_error(
             StatusCode::BAD_REQUEST,
             format!(
                 "Commit {} is not on {} branch. The merge may not have completed successfully.",
-                req.commit_sha, base_branch
+                req.commit_sha, target_branch
             ),
             Some(format!(
                 "Ensure you merged the task branch INTO {} and obtained the SHA from {} (git rev-parse HEAD on {})",
-                base_branch, base_branch, base_branch
+                target_branch, target_branch, target_branch
             )),
         ));
     }
