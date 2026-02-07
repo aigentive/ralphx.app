@@ -272,20 +272,31 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
                 "Scheduling Ready task for execution"
             );
 
-            // Transition the task to Executing
-            // This triggers on_enter(Executing) which:
-            // - Increments running_count via ExecutionState
-            // - Spawns the worker agent
+            // Determine target status: plan_merge tasks skip execution and go directly to merge
+            let target_status = if task.category == "plan_merge" {
+                tracing::info!(
+                    task_id = task.id.as_str(),
+                    "Plan merge task: routing to PendingMerge (skip execution)"
+                );
+                InternalStatus::PendingMerge
+            } else {
+                InternalStatus::Executing
+            };
+
+            // Transition the task to the target status
+            // For Executing: triggers on_enter(Executing) which spawns worker agent
+            // For PendingMerge: triggers on_enter(PendingMerge) which runs attempt_programmatic_merge()
             let transition_service = self.build_transition_service();
 
             if let Err(e) = transition_service
-                .transition_task(&task.id, InternalStatus::Executing)
+                .transition_task(&task.id, target_status)
                 .await
             {
                 tracing::error!(
                     task_id = task.id.as_str(),
                     error = %e,
-                    "Failed to transition Ready task to Executing"
+                    target = ?target_status,
+                    "Failed to transition Ready task"
                 );
                 // Stop on error to avoid infinite loop on persistent failures
                 break;

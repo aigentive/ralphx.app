@@ -71,7 +71,7 @@ impl InternalStatus {
         match self {
             // Idle states
             Backlog => &[Ready, Cancelled],
-            Ready => &[Executing, Blocked, Cancelled],
+            Ready => &[Executing, Blocked, PendingMerge, Cancelled],
             Blocked => &[Ready, Cancelled],
 
             // Execution states
@@ -421,7 +421,7 @@ mod tests {
     fn ready_transitions() {
         use InternalStatus::*;
         let transitions = Ready.valid_transitions();
-        assert_eq!(transitions, &[Executing, Blocked, Cancelled]);
+        assert_eq!(transitions, &[Executing, Blocked, PendingMerge, Cancelled]);
     }
 
     #[test]

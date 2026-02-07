@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-02-07 20:30:00 - Phase 100 Task 1: Fix plan merge tasks auto-promote
+**What:**
+- In `side_effects.rs` on_enter(Merged): added `try_schedule_ready_tasks()` after `unblock_dependents()` with 600ms delay (matches Ready pattern)
+- In `status.rs`: added `PendingMerge` to Ready's valid transitions
+- In `task_scheduler_service.rs`: added plan_merge category check — routes to `PendingMerge` instead of `Executing`
+- Updated 2 tests: `ready_transitions` (status.rs) and `test_get_valid_transitions_from_ready` (task_commands/tests.rs)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (passed)
+- `cargo test` (3612 passed, 0 failed)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-07 19:05:00 - Phase 99 Task 1: MergeIncompleteTaskDetail view + backend guard + docs
 **What:**
 - Created `MergeIncompleteTaskDetail.tsx` (~190 LOC) following `MergeConflictTaskDetail` pattern

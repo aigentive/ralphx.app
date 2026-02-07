@@ -93,7 +93,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: fix(scheduler): auto-promote plan_merge tasks to PendingMerge on unblock"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
