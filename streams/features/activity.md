@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-02-07 18:15:00 - Phase 93 Task 1: Make resolve_merge_branches pub and re-export
+**What:**
+- Changed `resolve_merge_branches` from private to `pub async fn` in side_effects.rs
+- Added re-export in transition_handler/mod.rs (alongside existing `complete_merge_internal`)
+- Added re-export in state_machine/mod.rs (alongside `TransitionHandler`, `TransitionResult`)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — all passed
+
+**Visual Verification:** N/A — backend only, no UI changes
+
+**Result:** Success
+
 ### 2026-02-07 17:35:00 - Phase 92 Complete: Deduplicate Tool Calls in IntegratedChatPanel
 **What:**
 - Single task phase — ported upsert-by-tool_id dedup pattern to useIntegratedChatEvents.ts
