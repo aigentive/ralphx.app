@@ -142,7 +142,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: fix(graph): reduce plan-branch staleTime for faster UI updates"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

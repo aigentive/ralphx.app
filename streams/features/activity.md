@@ -4,6 +4,19 @@
 
 ---
 
+### 2026-02-07 - Phase 95 Task 4: Reduce plan-branch staleTime for faster UI updates
+**What:**
+- In PlanGroupHeader.tsx line 219, changed `staleTime` from `30_000` to `5_000` (5 seconds)
+- The plan branch data is small and fast to fetch; 30s was too long for a critical state indicator
+
+**Commands:**
+- `npx eslint src/components/TaskGraph/groups/PlanGroupHeader.tsx` — clean
+- `npm run typecheck` — clean
+
+**Visual Verification:** N/A — query config change only, no visual component changes
+
+**Result:** Success
+
 ### 2026-02-07 - Phase 95 Task 3: Invalidate plan-branch queries after apply
 **What:**
 - In `useApplyProposals.ts` onSuccess callback, added `queryClient.invalidateQueries({ queryKey: ["plan-branch"] })`

@@ -216,7 +216,7 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
     queryKey: ["plan-branch", planArtifactId],
     queryFn: () => api.planBranches.getByPlan(planArtifactId),
     enabled: Boolean(planArtifactId),
-    staleTime: 30_000,
+    staleTime: 5_000,
   });
 
   const handleBranchChange = useCallback(() => {
