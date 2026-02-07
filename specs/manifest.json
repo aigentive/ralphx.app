@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 93,
+  "currentPhase": 94,
   "phases": [
     {
       "phase": 0,
@@ -667,6 +667,13 @@
       "prd": "specs/phases/prd_phase_93_merge_target_tool.md",
       "status": "complete",
       "description": "Add get_merge_target MCP tool, fix hardcoded base_branch in merge verification"
+    },
+    {
+      "phase": 94,
+      "name": "Post-Merge Crash Recovery",
+      "prd": "specs/phases/prd_phase_94_post_merge_crash_recovery.md",
+      "status": "active",
+      "description": "Fix Approved blocker inconsistency, add PendingMerge crash recovery"
     }
   ]
 }
