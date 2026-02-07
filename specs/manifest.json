@@ -653,6 +653,13 @@
       "prd": "specs/phases/prd_phase_91_chat_diff_view.md",
       "status": "active",
       "description": "Inline diff cards for Edit/Write tool calls with collapse/expand, gradient blur, and streaming breakout"
+    },
+    {
+      "phase": 92,
+      "name": "Deduplicate Tool Calls in IntegratedChatPanel",
+      "prd": "specs/phases/prd_phase_92_integrated_chat_tool_dedup.md",
+      "status": "pending",
+      "description": "Port tool_id dedup pattern from useChatPanelHandlers to useIntegratedChatEvents"
     }
   ]
 }
