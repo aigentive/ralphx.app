@@ -220,7 +220,7 @@ export function ChatMessages({
               {/* Show inline question card when agent asks a question or answered summary */}
               {(activeQuestion || answeredQuestion) && onSubmitAnswer && (
                 <AskUserQuestionCard
-                  question={activeQuestion ?? { taskId: "", header: "", question: "", options: [], multiSelect: false }}
+                  question={activeQuestion ?? { requestId: "", taskId: "", header: "", question: "", options: [], multiSelect: false }}
                   onSubmit={onSubmitAnswer}
                   isSubmitting={isSubmittingAnswer}
                   answeredWith={answeredQuestion}
