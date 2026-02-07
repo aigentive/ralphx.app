@@ -637,7 +637,7 @@
       "phase": 89,
       "name": "Fix ActiveProjectState Race Condition on Startup",
       "prd": "specs/phases/prd_phase_89_startup_race_condition_fix.md",
-      "status": "active",
+      "status": "complete",
       "description": "Add Notify-based wait to ActiveProjectState so StartupJobRunner waits for frontend IPC"
     }
   ]
