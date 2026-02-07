@@ -510,6 +510,22 @@ impl From<TaskStep> for StepResponse {
 }
 
 // ============================================================================
+// Request/Response Types - Review Issues
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct MarkIssueInProgressRequest {
+    pub issue_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MarkIssueAddressedRequest {
+    pub issue_id: String,
+    pub resolution_notes: String,
+    pub attempt_number: i32,
+}
+
+// ============================================================================
 // Common Response Types
 // ============================================================================
 
