@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 98,
+  "currentPhase": 99,
   "phases": [
     {
       "phase": 0,
@@ -702,6 +702,13 @@
       "prd": "specs/phases/prd_phase_98_fix_merge_workflow_bugs.md",
       "status": "complete",
       "description": "Fix MergeIncomplete agent mismatch and dirty tree blocking worktree merge"
+    },
+    {
+      "phase": 99,
+      "name": "MergeIncomplete Detail View",
+      "prd": "specs/phases/prd_phase_99_merge_incomplete_detail_view.md",
+      "status": "active",
+      "description": "Dedicated detail view for merge_incomplete state with retry/resolve actions"
     }
   ]
 }
