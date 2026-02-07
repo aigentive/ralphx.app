@@ -27,7 +27,7 @@ import { Column } from "./Column";
 import { TaskCard } from "./TaskCard";
 import { useUiStore } from "@/stores/uiStore";
 import { Toggle } from "@/components/ui/toggle";
-import { Archive } from "lucide-react";
+import { Archive, GitMerge } from "lucide-react";
 import { api } from "@/lib/tauri";
 import { useTaskSearch } from "@/hooks/useTaskSearch";
 import { TaskSearchBar } from "../TaskSearchBar";
@@ -65,6 +65,8 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
   const openModal = useUiStore((s) => s.openModal);
   const showArchived = useUiStore((s) => s.showArchived);
   const setShowArchived = useUiStore((s) => s.setShowArchived);
+  const showMergeTasks = useUiStore((s) => s.showMergeTasks);
+  const setShowMergeTasks = useUiStore((s) => s.setShowMergeTasks);
   const boardSearchQuery = useUiStore((s) => s.boardSearchQuery);
   const setBoardSearchQuery = useUiStore((s) => s.setBoardSearchQuery);
 
@@ -73,6 +75,33 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
     queryKey: ["archived-count", projectId],
     queryFn: () => api.tasks.getArchivedCount(projectId),
   });
+
+  // Count merge tasks across all columns reactively via cache observer
+  const [mergeTaskCount, setMergeTaskCount] = useState(0);
+  useEffect(() => {
+    function countMergeTasks(): number {
+      let count = 0;
+      for (const col of columns) {
+        const key = infiniteTaskKeys.list({
+          projectId,
+          statuses: getColumnStatuses(col),
+          includeArchived: showArchived,
+        });
+        const colData = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);
+        if (colData?.pages) {
+          for (const page of colData.pages) {
+            count += page.tasks.filter((t: Task) => t.category === "plan_merge").length;
+          }
+        }
+      }
+      return count;
+    }
+    setMergeTaskCount(countMergeTasks());
+    const unsubscribe = queryClient.getQueryCache().subscribe(() => {
+      setMergeTaskCount(countMergeTasks());
+    });
+    return unsubscribe;
+  }, [columns, projectId, showArchived, queryClient]);
 
   // Search functionality
   const {
@@ -338,7 +367,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
       {/* Container for the entire board including header */}
       <div className="flex flex-col h-full">
         {/* Header bar - macOS Tahoe: minimal, flat */}
-        {(searchOpen || archivedCount > 0) && (
+        {(searchOpen || archivedCount > 0 || mergeTaskCount > 0) && (
           <div className="px-4 py-2 flex items-center gap-3">
             {/* Search Bar (when search is open) */}
             {searchOpen && (
@@ -374,6 +403,27 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
               >
                 <Archive className="h-3.5 w-3.5" />
                 <span>Archived ({archivedCount})</span>
+              </Toggle>
+            )}
+
+            {/* Show Merge Tasks toggle */}
+            {mergeTaskCount > 0 && (
+              <Toggle
+                pressed={showMergeTasks}
+                onPressedChange={setShowMergeTasks}
+                aria-label="Toggle show merge tasks"
+                className="gap-1.5 h-7 px-2.5 rounded-md text-xs font-medium transition-colors"
+                style={{
+                  background: showMergeTasks
+                    ? "hsla(14 100% 60% / 0.15)"
+                    : "transparent",
+                  color: showMergeTasks
+                    ? "hsl(14 100% 60%)"
+                    : "hsl(220 10% 55%)",
+                }}
+              >
+                <GitMerge className="h-3.5 w-3.5" />
+                <span>Merge ({mergeTaskCount})</span>
               </Toggle>
             )}
           </div>
@@ -432,6 +482,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
                     column={column}
                     projectId={projectId}
                     showArchived={showArchived}
+                    showMergeTasks={showMergeTasks}
                     isOver={overColumnId === column.id}
                     isInvalid={
                       overColumnId === column.id && lockedColumns.includes(column.id)

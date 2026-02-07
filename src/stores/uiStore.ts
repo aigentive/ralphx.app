@@ -140,6 +140,8 @@ interface UiState {
   executionStatus: ExecutionStatusResponse;
   /** Whether to show archived tasks on the board */
   showArchived: boolean;
+  /** Whether to show merge tasks on the board */
+  showMergeTasks: boolean;
   /** Current search query for the task board */
   boardSearchQuery: string | null;
   /** Whether a search request is in flight */
@@ -224,6 +226,8 @@ interface UiActions {
   setExecutionQueuedCount: (count: number) => void;
   /** Set whether to show archived tasks */
   setShowArchived: (show: boolean) => void;
+  /** Set whether to show merge tasks */
+  setShowMergeTasks: (show: boolean) => void;
   /** Set the board search query */
   setBoardSearchQuery: (query: string | null) => void;
   /** Set whether a search is in progress */
@@ -294,6 +298,7 @@ export const useUiStore = create<UiState & UiActions>()(
       canStartTask: true,
     },
     showArchived: false,
+    showMergeTasks: false,
     boardSearchQuery: null,
     isSearching: false,
     selectedTaskId: null,
@@ -440,6 +445,11 @@ export const useUiStore = create<UiState & UiActions>()(
     setShowArchived: (show) =>
       set((state) => {
         state.showArchived = show;
+      }),
+
+    setShowMergeTasks: (show) =>
+      set((state) => {
+        state.showMergeTasks = show;
       }),
 
     setBoardSearchQuery: (query) =>
