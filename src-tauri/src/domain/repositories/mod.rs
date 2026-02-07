@@ -3,6 +3,7 @@
 
 pub mod activity_event_repository;
 pub mod agent_profile_repository;
+pub mod app_state_repository;
 pub mod agent_run_repository;
 pub mod artifact_bucket_repository;
 pub mod artifact_flow_repository;
@@ -28,6 +29,7 @@ pub mod task_step_repository;
 pub mod workflow_repository;
 
 // Re-exports for convenience
+pub use app_state_repository::AppStateRepository;
 pub use activity_event_repository::{
     ActivityEventFilter, ActivityEventPage, ActivityEventRepository,
 };
