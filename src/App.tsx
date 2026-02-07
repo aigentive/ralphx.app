@@ -272,12 +272,14 @@ function AppContent() {
   }, [fetchedProjects, setProjects, activeProjectId, selectProject]);
 
   // Phase 82: Notify backend of active project changes for scoped execution
+  // Only send when we have an actual project ID — skip the initial null
+  // that occurs before Zustand persist hydration from localStorage.
   useEffect(() => {
-    // Call set_active_project whenever activeProjectId changes
-    // This enables per-project execution scoping on the backend
-    executionApi.setActiveProject(activeProjectId ?? undefined).catch((err) => {
-      console.error("Failed to set active project:", err);
-    });
+    if (activeProjectId) {
+      executionApi.setActiveProject(activeProjectId).catch((err) => {
+        console.error("Failed to set active project:", err);
+      });
+    }
   }, [activeProjectId]);
 
   // Load persisted chat width from localStorage on mount
