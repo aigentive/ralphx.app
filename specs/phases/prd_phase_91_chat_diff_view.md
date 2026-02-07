@@ -187,7 +187,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(chat-diff): add DiffToolCallView component with collapse/expand and gradient blur"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 6,
