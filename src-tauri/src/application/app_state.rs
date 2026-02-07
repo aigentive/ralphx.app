@@ -113,7 +113,7 @@ pub struct AppState {
     pub methodology_repo: Arc<dyn MethodologyRepository>,
     /// Permission state for UI-based permission approval
     pub permission_state: Arc<PermissionState>,
-    /// Question state for inline ask_user_question from agents
+    /// Question state for inline AskUserQuestion from agents
     pub question_state: Arc<QuestionState>,
     /// Unified message queue for all chat contexts
     pub message_queue: Arc<MessageQueue>,

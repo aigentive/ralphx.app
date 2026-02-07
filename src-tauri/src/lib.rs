@@ -538,6 +538,9 @@ pub fn run() {
             // Permission commands
             commands::permission_commands::resolve_permission_request,
             commands::permission_commands::get_pending_permissions,
+            // Question commands (AskUserQuestion)
+            commands::question_commands::resolve_user_question,
+            commands::question_commands::get_pending_questions,
             // Task context commands
             commands::task_context_commands::get_task_context,
             commands::task_context_commands::get_artifact_full,
