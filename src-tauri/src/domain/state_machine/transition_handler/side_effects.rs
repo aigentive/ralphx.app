@@ -218,11 +218,11 @@ async fn resolve_task_base_branch(
     let Some(ref plan_branch_repo) = plan_branch_repo else {
         return default;
     };
-    let Some(ref plan_artifact_id) = task.plan_artifact_id else {
+    let Some(ref session_id) = task.ideation_session_id else {
         return default;
     };
 
-    match plan_branch_repo.get_by_plan_artifact_id(plan_artifact_id).await {
+    match plan_branch_repo.get_by_session_id(session_id).await {
         Ok(Some(pb)) if pb.status == PlanBranchStatus::Active => {
             tracing::info!(
                 task_id = task.id.as_str(),
@@ -267,8 +267,8 @@ pub async fn resolve_merge_branches(
     }
 
     // Check if this task belongs to a plan with a feature branch
-    if let Some(ref plan_artifact_id) = task.plan_artifact_id {
-        if let Ok(Some(pb)) = plan_branch_repo.get_by_plan_artifact_id(plan_artifact_id).await {
+    if let Some(ref session_id) = task.ideation_session_id {
+        if let Ok(Some(pb)) = plan_branch_repo.get_by_session_id(session_id).await {
             if pb.status == PlanBranchStatus::Active {
                 tracing::info!(
                     task_id = task.id.as_str(),
@@ -1165,9 +1165,18 @@ mod tests {
     }
 
     fn make_task(plan_artifact_id: Option<&str>, task_branch: Option<&str>) -> Task {
+        make_task_with_session(plan_artifact_id, task_branch, None)
+    }
+
+    fn make_task_with_session(
+        plan_artifact_id: Option<&str>,
+        task_branch: Option<&str>,
+        ideation_session_id: Option<&str>,
+    ) -> Task {
         let mut t = Task::new(ProjectId::from_string("proj-1".to_string()), "Test task".into());
         t.plan_artifact_id = plan_artifact_id.map(|s| ArtifactId::from_string(s));
         t.task_branch = task_branch.map(|s| s.to_string());
+        t.ideation_session_id = ideation_session_id.map(|s| IdeationSessionId::from_string(s));
         t
     }
 
@@ -1196,7 +1205,7 @@ mod tests {
     #[tokio::test]
     async fn resolve_task_base_branch_returns_project_base_when_no_repo() {
         let project = make_project(Some("develop"));
-        let task = make_task(Some("art-1"), None);
+        let task = make_task_with_session(Some("art-1"), None, Some("sess-1"));
         let repo: Option<Arc<dyn PlanBranchRepository>> = None;
 
         let result = resolve_task_base_branch(&task, &project, &repo).await;
@@ -1206,7 +1215,7 @@ mod tests {
     #[tokio::test]
     async fn resolve_task_base_branch_defaults_to_main_when_no_base_branch() {
         let project = make_project(None);
-        let task = make_task(Some("art-1"), None);
+        let task = make_task_with_session(Some("art-1"), None, Some("sess-1"));
         let repo: Option<Arc<dyn PlanBranchRepository>> = None;
 
         let result = resolve_task_base_branch(&task, &project, &repo).await;
@@ -1214,7 +1223,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resolve_task_base_branch_returns_default_when_task_has_no_plan_artifact() {
+    async fn resolve_task_base_branch_returns_default_when_task_has_no_session_id() {
         let project = make_project(Some("develop"));
         let task = make_task(None, None);
         let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
@@ -1227,7 +1236,7 @@ mod tests {
     #[tokio::test]
     async fn resolve_task_base_branch_returns_feature_branch_when_active() {
         let project = make_project(Some("main"));
-        let task = make_task(Some("art-1"), None);
+        let task = make_task_with_session(Some("art-1"), None, Some("sess-1"));
 
         let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
         let pb = make_plan_branch("art-1", "ralphx/test/plan-abc123", PlanBranchStatus::Active, None);
@@ -1241,7 +1250,7 @@ mod tests {
     #[tokio::test]
     async fn resolve_task_base_branch_returns_default_when_branch_merged() {
         let project = make_project(Some("main"));
-        let task = make_task(Some("art-1"), None);
+        let task = make_task_with_session(Some("art-1"), None, Some("sess-1"));
 
         let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
         let pb = make_plan_branch("art-1", "ralphx/test/plan-abc123", PlanBranchStatus::Merged, None);
@@ -1255,7 +1264,7 @@ mod tests {
     #[tokio::test]
     async fn resolve_task_base_branch_returns_default_when_branch_abandoned() {
         let project = make_project(Some("main"));
-        let task = make_task(Some("art-1"), None);
+        let task = make_task_with_session(Some("art-1"), None, Some("sess-1"));
 
         let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
         let pb = make_plan_branch("art-1", "ralphx/test/plan-abc123", PlanBranchStatus::Abandoned, None);
@@ -1269,7 +1278,8 @@ mod tests {
     #[tokio::test]
     async fn resolve_task_base_branch_returns_default_when_no_matching_branch() {
         let project = make_project(Some("main"));
-        let task = make_task(Some("art-nonexistent"), None);
+        // Task has session_id "sess-nonexistent" which won't match "sess-1" in plan branch
+        let task = make_task_with_session(Some("art-nonexistent"), None, Some("sess-nonexistent"));
 
         let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
         let pb = make_plan_branch("art-other", "ralphx/test/plan-abc123", PlanBranchStatus::Active, None);
@@ -1320,7 +1330,7 @@ mod tests {
     #[tokio::test]
     async fn resolve_merge_branches_plan_task_returns_task_into_feature() {
         let project = make_project(Some("main"));
-        let mut task = make_task(Some("art-1"), Some("ralphx/test/task-456"));
+        let mut task = make_task_with_session(Some("art-1"), Some("ralphx/test/task-456"), Some("sess-1"));
         task.id = TaskId::from_string("task-456".to_string());
 
         let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
@@ -1372,7 +1382,7 @@ mod tests {
     #[tokio::test]
     async fn resolve_merge_branches_plan_task_with_abandoned_branch_returns_default() {
         let project = make_project(Some("main"));
-        let mut task = make_task(Some("art-3"), Some("ralphx/test/task-abandoned"));
+        let mut task = make_task_with_session(Some("art-3"), Some("ralphx/test/task-abandoned"), Some("sess-1"));
         task.id = TaskId::from_string("task-abandoned".to_string());
 
         let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
@@ -1405,10 +1415,10 @@ mod tests {
 
     #[tokio::test]
     async fn resolve_merge_branches_merge_task_checked_before_plan_task() {
-        // If a task is both a merge task AND has plan_artifact_id,
+        // If a task is both a merge task AND has ideation_session_id,
         // merge task check should take precedence
         let project = make_project(Some("main"));
-        let mut task = make_task(Some("art-1"), Some("ralphx/test/task-dual"));
+        let mut task = make_task_with_session(Some("art-1"), Some("ralphx/test/task-dual"), Some("sess-1"));
         task.id = TaskId::from_string("dual-task".to_string());
 
         let mem_repo = Arc::new(MemoryPlanBranchRepository::new());

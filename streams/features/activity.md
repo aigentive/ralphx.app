@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-02-07 12:30:00 - Phase 97 Task 3: Fix merge resolution to use ideation_session_id
+**What:**
+- Changed `resolve_task_base_branch()` from `task.plan_artifact_id` → `get_by_plan_artifact_id()` to `task.ideation_session_id` → `get_by_session_id()`
+- Changed `resolve_merge_branches()` Path 2 from `task.plan_artifact_id` → `get_by_plan_artifact_id()` to `task.ideation_session_id` → `get_by_session_id()`
+- Added `make_task_with_session()` test helper accepting `ideation_session_id` parameter
+- Updated all tests exercising plan branch lookup to use `ideation_session_id` matching plan branch `session_id`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` (clean)
+- `cargo test` (3609 passed, 0 failed, 16 side_effects tests pass)
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
+---
+
 ### 2026-02-07 16:15:00 - Phase 97 Task 2: Add get_by_session_id() to PlanBranchRepository trait and all implementations
 **What:**
 - Added `get_by_session_id(&self, session_id: &IdeationSessionId) -> AppResult<Option<PlanBranch>>` to PlanBranchRepository trait
