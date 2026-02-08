@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
-use tauri::State;
+use tauri::{Emitter, State};
 
 use crate::application::AppState;
 use crate::domain::entities::{GitMode, Project, ProjectId};
@@ -166,6 +166,7 @@ pub async fn create_project(
         created.id.as_str(),
         &created.working_directory,
         Arc::clone(&state.agent_client),
+        state.app_handle.clone(),
     );
 
     Ok(ProjectResponse::from(created))
@@ -388,6 +389,7 @@ pub fn spawn_project_analyzer(
     project_id: &str,
     working_directory: &str,
     agent_client: Arc<dyn crate::domain::agents::AgenticClient>,
+    app_handle: Option<tauri::AppHandle>,
 ) {
     use crate::domain::agents::{AgentConfig, AgentRole};
 
@@ -404,14 +406,22 @@ pub fn spawn_project_analyzer(
     );
 
     let working_directory = PathBuf::from(working_directory);
-    let plugin_dir = working_directory.join("ralphx-plugin");
+    // Plugin dir must be relative to the RalphX app's own directory (where ralphx-plugin/ lives),
+    // NOT the target project's working_directory. The app runs from src-tauri/, so parent is project root.
+    let app_root = std::env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."));
+    let plugin_dir = app_root.join("ralphx-plugin");
 
     let mut env = std::collections::HashMap::new();
     env.insert(
         "RALPHX_AGENT_TYPE".to_string(),
         "project-analyzer".to_string(),
     );
-    env.insert("RALPHX_PROJECT_ID".to_string(), project_id.to_string());
+    let pid = project_id.to_string();
+    env.insert("RALPHX_PROJECT_ID".to_string(), pid.clone());
 
     let config = AgentConfig {
         role: AgentRole::Custom("project-analyzer".to_string()),
@@ -426,14 +436,28 @@ pub fn spawn_project_analyzer(
     };
 
     tokio::spawn(async move {
+        let emit_failure = |error: &str| {
+            if let Some(ref handle) = app_handle {
+                let _ = handle.emit(
+                    "project:analysis_failed",
+                    serde_json::json!({
+                        "project_id": pid,
+                        "error": error,
+                    }),
+                );
+            }
+        };
+
         match agent_client.spawn_agent(config).await {
             Ok(handle) => {
                 if let Err(e) = agent_client.wait_for_completion(&handle).await {
                     tracing::warn!("Project analyzer agent failed: {}", e);
+                    emit_failure(&e.to_string());
                 }
             }
             Err(e) => {
                 tracing::warn!("Failed to spawn project analyzer agent: {}", e);
+                emit_failure(&e.to_string());
             }
         }
     });
@@ -449,14 +473,28 @@ pub async fn reanalyze_project(
 ) -> Result<(), String> {
     let project_id = ProjectId::from_string(id.clone());
 
-    let project = state
+    let mut project = state
         .project_repo
         .get_by_id(&project_id)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Project not found: {}", id))?;
 
-    spawn_project_analyzer(&id, &project.working_directory, Arc::clone(&state.agent_client));
+    // Clear analyzed_at so the lazy-spawn guard in get_project_analysis doesn't block
+    project.analyzed_at = None;
+    project.touch();
+    state
+        .project_repo
+        .update(&project)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    spawn_project_analyzer(
+        &id,
+        &project.working_directory,
+        Arc::clone(&state.agent_client),
+        state.app_handle.clone(),
+    );
 
     Ok(())
 }
