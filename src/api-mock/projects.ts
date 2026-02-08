@@ -80,6 +80,22 @@ export const mockProjectsApi = {
       store.projects.set(projectId, project);
     }
   },
+
+  updateCustomAnalysis: async (projectId: string, customAnalysis: string | null): Promise<Project> => {
+    const store = getStore();
+    const project = store.projects.get(projectId);
+    if (!project) {
+      throw new Error(`Project not found: ${projectId}`);
+    }
+    project.customAnalysis = customAnalysis;
+    project.updatedAt = new Date().toISOString();
+    store.projects.set(projectId, project);
+    return project;
+  },
+
+  reanalyzeProject: async (_projectId: string): Promise<void> => {
+    // No-op in mock — analyzer agent would run in real mode
+  },
 } as const;
 
 // ============================================================================
