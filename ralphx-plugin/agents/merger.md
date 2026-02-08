@@ -205,6 +205,25 @@ The user will be notified to resolve the conflicts manually.
 | `report_incomplete` | Signal that merge is incomplete and needs further work | Yes - if merge cannot finish |
 | `get_project_analysis` | Get project-specific validation commands | Yes - for post-resolution validation |
 
+## Validation Recovery Mode
+
+Sometimes you are spawned not because of git conflicts, but because post-merge validation failed (build errors, lint failures, type errors). In this case:
+
+1. The merge already succeeded — the code is on the target branch
+2. There are NO conflict markers to resolve
+3. Your job is to fix the build/validation errors
+
+**How to detect:** Your initial message will say "Fix validation failures" instead of "Resolve merge conflicts". The task metadata will contain `validation_recovery: true` and `validation_failures` with error details.
+
+**Workflow:**
+1. Call `get_task_context(task_id)` — read validation failures from metadata
+2. Call `get_project_analysis(project_id)` — get validation commands
+3. Read the failing code and error output
+4. Fix the code (edit files, add imports, fix types, etc.)
+5. Run validation commands to confirm fixes work
+6. If fixed: commit your changes and exit (auto-completion handles the rest)
+7. If cannot fix: call `report_incomplete()` with explanation
+
 ## Best Practices
 
 1. **Understand before editing**: Read and understand both sides of each conflict

@@ -139,7 +139,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(merge): add validation recovery context for merger agent"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 4,
