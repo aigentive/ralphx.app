@@ -7,9 +7,11 @@ use std::sync::Arc;
 use tauri::State;
 
 use crate::application::git_service::{CommitInfo, DiffStats, GitService};
+use crate::application::task_scheduler_service::TaskSchedulerService;
 use crate::application::{AppState, TaskTransitionService};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{GitMode, InternalStatus, ProjectId, TaskId};
+use crate::domain::state_machine::services::TaskScheduler;
 
 /// Response for get_task_commits command
 #[derive(Debug, Serialize)]
@@ -451,6 +453,24 @@ fn create_transition_service(
     state: &AppState,
     execution_state: &Arc<ExecutionState>,
 ) -> TaskTransitionService<tauri::Wry> {
+    // Create scheduler for post-merge scheduling (unblocked plan_merge tasks)
+    let scheduler_concrete = Arc::new(TaskSchedulerService::new(
+        Arc::clone(execution_state),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.task_dependency_repo),
+        Arc::clone(&state.chat_message_repo),
+        Arc::clone(&state.chat_conversation_repo),
+        Arc::clone(&state.agent_run_repo),
+        Arc::clone(&state.ideation_session_repo),
+        Arc::clone(&state.activity_event_repo),
+        Arc::clone(&state.message_queue),
+        Arc::clone(&state.running_agent_registry),
+        state.app_handle.clone(),
+    ).with_plan_branch_repo(Arc::clone(&state.plan_branch_repo)));
+    scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
+    let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
+
     TaskTransitionService::new(
         Arc::clone(&state.task_repo),
         Arc::clone(&state.task_dependency_repo),
@@ -465,6 +485,7 @@ fn create_transition_service(
         Arc::clone(execution_state),
         state.app_handle.clone(),
     )
+    .with_task_scheduler(task_scheduler)
     .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
 }
 
