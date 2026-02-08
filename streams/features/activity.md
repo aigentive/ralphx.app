@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-02-09 02:30:00 - Phase 108 Task 4: Display actual error details in MergeIncomplete view
+**What:**
+- Added `parseMergeError()` function to extract error, source_branch, target_branch, diagnostic_info from task.metadata JSON
+- Updated `ErrorContextCard` with conditional display: actual error in red code block with branch labels when metadata present, generic fallback when null
+- Updated `RecoverySteps` to use branch name from metadata.sourceBranch or task.taskBranch instead of hardcoded "task branch"
+- Fixed mock parity: added merge_incomplete task to store, aligned workflow column IDs with built-in workflow, added task_branch/metadata/groups to mock responses
+
+**Commands:**
+- `npm run lint` — clean (pre-existing TaskGraph errors only)
+- `npm run typecheck` — clean
+
+**Visual Verification:**
+- Mock-check: screenshots/features/2026-02-09_02-00-00_merge-incomplete-error-details_mock-check.md
+- Screenshot: screenshots/features/2026-02-09_02-15-00_merge-incomplete-error-details.png
+- PRD content check: ✅ Error message, branch names, recovery steps all visible with actual data
+
+**Result:** Success
+
 ### 2026-02-09 01:00:00 - Phase 108 Task 3: Persist agent error context from report_incomplete
 **What:**
 - Made task mutable in `report_incomplete` handler (git.rs ~line 361)

@@ -146,6 +146,23 @@ function seedMockData(): void {
     store.tasks.set(task.id, task);
   }
 
+  // Add a merge_incomplete task with metadata for visual testing
+  const mergeIncompleteTask = createMockTask({
+    id: "task-mock-merge-incomplete",
+    projectId: project.id,
+    title: "Merge Incomplete Task",
+    description: "A task whose merge failed with a git error",
+    internalStatus: "merge_incomplete",
+    priority: 20,
+    taskBranch: "ralphx/demo/task-abc123",
+    metadata: JSON.stringify({
+      error: "fatal: Not possible to fast-forward, aborting.\nerror: could not apply fa1afe1... feat: implement task filtering",
+      source_branch: "ralphx/demo/task-abc123",
+      target_branch: "main",
+    }),
+  });
+  store.tasks.set(mergeIncompleteTask.id, mergeIncompleteTask);
+
   store.initialized = true;
 }
 
