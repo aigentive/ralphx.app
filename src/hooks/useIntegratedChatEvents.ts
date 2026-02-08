@@ -9,7 +9,7 @@
  * Uses EventBus abstraction for browser/Tauri compatibility.
  */
 
-import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
+import { useEffect, type Dispatch, type SetStateAction } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEventBus } from "@/providers/EventProvider";
 import { chatKeys } from "@/hooks/useChat";
@@ -31,15 +31,9 @@ export function useIntegratedChatEvents({
 }: UseIntegratedChatEventsProps) {
   const bus = useEventBus();
   const queryClient = useQueryClient();
-  const activeConversationIdRef = useRef(activeConversationId);
 
   // Subscribe to Tauri events for real-time updates
   useEffect(() => {
-    // Update ref synchronously at the START of this effect, before creating subscriptions.
-    // This prevents a race where autoSelectConversation changes activeConversationId,
-    // events arrive with the new conversation_id, but the ref still has the old value.
-    activeConversationIdRef.current = activeConversationId;
-
     const unsubscribes: Unsubscribe[] = [];
 
     // Unified agent:tool_call event (for merge and all contexts)
@@ -58,7 +52,7 @@ export function useIntegratedChatEvents({
         // Skip result events early — they don't add new tool calls
         if (tool_name.startsWith("result:toolu")) return;
 
-        if (conversation_id === activeConversationIdRef.current) {
+        if (conversation_id === activeConversationId) {
           // Build diffContext with exactOptionalPropertyTypes compliance
           let diffContext: ToolCall["diffContext"];
           if (diff_context) {
@@ -107,7 +101,7 @@ export function useIntegratedChatEvents({
     unsubscribes.push(
       bus.subscribe<{ text: string; conversation_id: string }>(
         "agent:chunk", (payload) => {
-          if (payload.conversation_id === activeConversationIdRef.current) {
+          if (payload.conversation_id === activeConversationId) {
             setStreamingText((prev) => prev + payload.text);
           }
         }
@@ -120,7 +114,7 @@ export function useIntegratedChatEvents({
       if (!conversationId) {
         return;
       }
-      if (conversationId === activeConversationIdRef.current) {
+      if (conversationId === activeConversationId) {
         queryClient.invalidateQueries({
           queryKey: chatKeys.conversation(conversationId),
         });
