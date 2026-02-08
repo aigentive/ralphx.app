@@ -13,7 +13,7 @@ import { z } from "zod";
 export const AskUserQuestionOptionSchema = z.object({
   label: z.string().min(1),
   value: z.string().optional(),
-  description: z.string(),
+  description: z.string().optional(),
 });
 
 export type AskUserQuestionOption = z.infer<typeof AskUserQuestionOptionSchema>;
@@ -31,9 +31,9 @@ export const AskUserQuestionPayloadSchema = z.object({
   taskId: z.string().min(1).optional(),
   sessionId: z.string().min(1).optional(),
   question: z.string().min(1),
-  header: z.string().min(1),
-  options: z.array(AskUserQuestionOptionSchema).min(2),
-  multiSelect: z.boolean(),
+  header: z.string().optional().nullable(),
+  options: z.array(AskUserQuestionOptionSchema).default([]),
+  multiSelect: z.boolean().default(false),
 });
 
 export type AskUserQuestionPayload = z.infer<typeof AskUserQuestionPayloadSchema>;

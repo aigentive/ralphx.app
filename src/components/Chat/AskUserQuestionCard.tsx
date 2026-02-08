@@ -38,7 +38,7 @@ function OptionRadio({
   onSelect,
 }: {
   label: string;
-  description: string;
+  description?: string | undefined;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -89,7 +89,7 @@ function OptionCheckbox({
   onToggle,
 }: {
   label: string;
-  description: string;
+  description?: string | undefined;
   selected: boolean;
   onToggle: () => void;
 }) {
