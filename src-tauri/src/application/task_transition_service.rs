@@ -670,6 +670,21 @@ impl<R: Runtime> TaskTransitionService<R> {
                 }
             }
 
+            // Emit task:event for auto-transition so UI updates in real time
+            if let Some(ref handle) = self._app_handle {
+                let _ = handle.emit(
+                    "task:event",
+                    serde_json::json!({
+                        "type": "status_changed",
+                        "taskId": task_id.as_str(),
+                        "from": status.as_str(),
+                        "to": auto_status.as_str(),
+                        "changedBy": "auto",
+                    }),
+                );
+                tracing::debug!("Emitted task:event for auto-transition");
+            }
+
             // Execute on_enter for the auto-transition target state
             if let Err(e) = handler.on_enter(&auto_state).await {
                 tracing::error!(error = %e, "on_enter failed for auto-transition state {:?}", auto_state);
