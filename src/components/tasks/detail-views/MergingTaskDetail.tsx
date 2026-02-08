@@ -171,7 +171,7 @@ function MergeProgressSteps({
     const agentStepStatus = isHistorical ? ("completed" as const) : ("active" as const);
     const recoverySteps = [
       { label: "Merge completed", status: "completed" as const },
-      { label: "Post-merge validation failed", status: "completed" as const },
+      { label: "Merge validation failed", status: "completed" as const },
       { label: "AI agent fixing build errors", status: agentStepStatus },
       { label: "Re-validating fixes", status: "pending" as const },
     ];
@@ -462,7 +462,7 @@ export function ValidationProgress({
   return (
     <section data-testid={`validation-progress-${taskId}`}>
       <SectionTitle>
-        Post-Merge Validation
+        Merge Validation
         {source === "live" && (
           <span className="ml-2 text-[10px] font-normal text-white/30">(live)</span>
         )}
@@ -578,10 +578,10 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
             : isHistorical
             ? isProgrammaticPhase
               ? "Merge attempt captured in history"
-              : isValidationRecovery ? "Agent was fixing post-merge build errors" : "Agent was resolving conflicts"
+              : isValidationRecovery ? "Agent was fixing build errors" : "Agent was resolving conflicts"
             : isProgrammaticPhase
             ? `Attempting to merge ${branchName}`
-            : isValidationRecovery ? "AI agent is fixing post-merge build errors" : "AI agent is resolving conflicts"
+            : isValidationRecovery ? "AI agent is fixing build errors" : "AI agent is resolving conflicts"
         }
         variant={
           historicalOutcome
@@ -631,7 +631,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
               ? historicalMode === "attempted"
                 ? "Programmatic merge attempt captured in history."
                 : isValidationRecovery
-                ? "Agent was fixing post-merge validation errors at this point."
+                ? "Agent was fixing validation errors at this point."
                 : "Agent was resolving conflicts at this point."
               : isProgrammaticPhase
               ? "Programmatic merge attempt in progress."

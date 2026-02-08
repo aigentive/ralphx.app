@@ -65,7 +65,7 @@ const VALIDATION_MODE_OPTIONS: {
   {
     value: "off",
     label: "Disabled",
-    description: "Skip post-merge validation entirely",
+    description: "Skip merge validation entirely",
   },
 ];
 
