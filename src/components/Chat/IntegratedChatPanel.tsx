@@ -488,6 +488,8 @@ export function IntegratedChatPanel({
 
   useIntegratedChatEvents({
     activeConversationId,
+    contextId: currentContextId,
+    contextType: currentContextType,
     messagesEndRef,
     setStreamingToolCalls,
     setStreamingText,
