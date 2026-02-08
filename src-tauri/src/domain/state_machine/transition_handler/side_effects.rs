@@ -1506,7 +1506,7 @@ impl<'a> super::TransitionHandler<'a> {
                                         self.handle_validation_failure(
                                             &mut task, &task_id, task_id_str, task_repo,
                                             &validation.failures, &validation.log, &source_branch, &target_branch,
-                                            repo_path, "in-repo",
+                                            repo_path, "in-repo", validation_mode,
                                         ).await;
                                         return;
                                     }
@@ -1696,7 +1696,7 @@ impl<'a> super::TransitionHandler<'a> {
                                         self.handle_validation_failure(
                                             &mut task, &task_id, task_id_str, task_repo,
                                             &validation.failures, &validation.log, &source_branch, &target_branch,
-                                            &merge_wt_path, "worktree",
+                                            &merge_wt_path, "worktree", validation_mode,
                                         ).await;
                                         let _ = GitService::delete_worktree(repo_path, &merge_wt_path);
                                         return;
@@ -1884,7 +1884,7 @@ impl<'a> super::TransitionHandler<'a> {
                                     self.handle_validation_failure(
                                         &mut task, &task_id, task_id_str, task_repo,
                                         &validation.failures, &validation.log, &source_branch, &target_branch,
-                                        repo_path, "local",
+                                        repo_path, "local", validation_mode,
                                     ).await;
                                     return;
                                 }
@@ -2115,6 +2115,7 @@ impl<'a> super::TransitionHandler<'a> {
     /// * `source_branch` / `target_branch` - For metadata
     /// * `merge_path` - Path where the merge happened (for git reset)
     /// * `mode_label` - Label for log messages (e.g., "in-repo", "worktree", "local")
+    /// * `validation_mode` - Current validation mode (AutoFix spawns agent, Block reverts)
     async fn handle_validation_failure(
         &self,
         task: &mut Task,
@@ -2127,39 +2128,108 @@ impl<'a> super::TransitionHandler<'a> {
         target_branch: &str,
         merge_path: &Path,
         mode_label: &str,
+        validation_mode: &MergeValidationMode,
     ) {
-        tracing::warn!(
-            task_id = task_id_str,
-            failure_count = failures.len(),
-            "Post-merge validation failed ({}), reverting merge and transitioning to MergeIncomplete",
-            mode_label,
-        );
-
-        // Revert the merge commit so failing code doesn't remain on the target branch
-        if let Err(e) = GitService::reset_hard(merge_path, "HEAD~1") {
-            tracing::error!(
+        if *validation_mode == MergeValidationMode::AutoFix {
+            // AutoFix: DON'T revert — keep the merged (failing) code for the agent to fix
+            tracing::info!(
                 task_id = task_id_str,
-                error = %e,
-                "Failed to revert merge commit after validation failure — target branch may have failing code"
+                failure_count = failures.len(),
+                "Validation failed (AutoFix mode, {}), spawning merger agent to attempt fix",
+                mode_label,
             );
+
+            let failure_details: Vec<serde_json::Value> = failures
+                .iter()
+                .map(|f| {
+                    serde_json::json!({
+                        "command": f.command,
+                        "path": f.path,
+                        "exit_code": f.exit_code,
+                        "stderr": if f.stderr.len() > 2000 { &f.stderr[..2000] } else { &f.stderr },
+                    })
+                })
+                .collect();
+
+            task.metadata = Some(serde_json::json!({
+                "validation_recovery": true,
+                "validation_failures": failure_details,
+                "validation_log": log,
+                "source_branch": source_branch,
+                "target_branch": target_branch,
+            }).to_string());
+            task.internal_status = InternalStatus::Merging;
+            task.touch();
+
+            let _ = task_repo.update(task).await;
+            let _ = task_repo.persist_status_change(
+                task_id,
+                InternalStatus::PendingMerge,
+                InternalStatus::Merging,
+                "validation_auto_fix",
+            ).await;
+
+            self.machine.context.services.event_emitter
+                .emit("task:status_changed", task_id_str).await;
+
+            // Spawn merger agent to attempt fix (same pattern as conflict resolution)
+            let prompt = format!("Fix validation failures for task: {}", task_id_str);
+            tracing::info!(
+                task_id = task_id_str,
+                "Spawning merger agent for validation recovery"
+            );
+
+            let result = self
+                .machine
+                .context
+                .services
+                .chat_service
+                .send_message(
+                    crate::domain::entities::ChatContextType::Merge,
+                    task_id_str,
+                    &prompt,
+                )
+                .await;
+
+            match &result {
+                Ok(_) => tracing::info!(task_id = task_id_str, "Merger agent spawned for validation recovery"),
+                Err(e) => tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent for validation recovery"),
+            }
+        } else {
+            // Block mode: revert merge and transition to MergeIncomplete
+            tracing::warn!(
+                task_id = task_id_str,
+                failure_count = failures.len(),
+                "Post-merge validation failed ({}), reverting merge and transitioning to MergeIncomplete",
+                mode_label,
+            );
+
+            // Revert the merge commit so failing code doesn't remain on the target branch
+            if let Err(e) = GitService::reset_hard(merge_path, "HEAD~1") {
+                tracing::error!(
+                    task_id = task_id_str,
+                    error = %e,
+                    "Failed to revert merge commit after validation failure — target branch may have failing code"
+                );
+            }
+
+            task.metadata = Some(format_validation_error_metadata(
+                failures, log, source_branch, target_branch,
+            ));
+            task.internal_status = InternalStatus::MergeIncomplete;
+            task.touch();
+
+            let _ = task_repo.update(task).await;
+            let _ = task_repo.persist_status_change(
+                task_id,
+                InternalStatus::PendingMerge,
+                InternalStatus::MergeIncomplete,
+                "validation_failed",
+            ).await;
+
+            self.machine.context.services.event_emitter
+                .emit("task:status_changed", task_id_str).await;
         }
-
-        task.metadata = Some(format_validation_error_metadata(
-            failures, log, source_branch, target_branch,
-        ));
-        task.internal_status = InternalStatus::MergeIncomplete;
-        task.touch();
-
-        let _ = task_repo.update(task).await;
-        let _ = task_repo.persist_status_change(
-            task_id,
-            InternalStatus::PendingMerge,
-            InternalStatus::MergeIncomplete,
-            "validation_failed",
-        ).await;
-
-        self.machine.context.services.event_emitter
-            .emit("task:status_changed", task_id_str).await;
     }
 }
 
