@@ -404,15 +404,22 @@ function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) {
 }
 
 /**
- * SetupPhaseGroup - Collapses all setup steps into a single row.
- * Shows summary when collapsed, individual commands when expanded.
+ * StepsGroup - Collapsible group of steps with summary header.
+ * Used for setup steps and passed validation checks.
  */
-function SetupPhaseGroup({ steps }: { steps: MergeValidationStepEvent[] }) {
+function StepsGroup({ steps, phase, label }: {
+  steps: MergeValidationStepEvent[];
+  phase: string;
+  label: string;
+}) {
   const anyFailed = steps.some((s) => s.status === "failed");
   const anyRunning = steps.some((s) => s.status === "running");
   const [expanded, setExpanded] = useState(anyFailed);
 
   const totalMs = steps.reduce((sum, s) => sum + (s.duration_ms ?? 0), 0);
+  const isSetup = phase === "setup";
+  const badgeBg = isSetup ? "rgba(10, 132, 255, 0.15)" : "rgba(52, 199, 89, 0.15)";
+  const badgeColor = isSetup ? "#64d2ff" : "#34c759";
 
   const statusIcon = anyRunning ? (
     <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#0a84ff" }} />
@@ -435,12 +442,12 @@ function SetupPhaseGroup({ steps }: { steps: MergeValidationStepEvent[] }) {
         {statusIcon}
         <span
           className="text-[10px] uppercase font-semibold tracking-wider px-1.5 py-0.5 rounded"
-          style={{ backgroundColor: "rgba(10, 132, 255, 0.15)", color: "#64d2ff" }}
+          style={{ backgroundColor: badgeBg, color: badgeColor }}
         >
-          setup
+          {phase}
         </span>
         <span className="text-[12px] text-white/80 flex-1">
-          {steps.length} command{steps.length !== 1 ? "s" : ""}
+          {label}
         </span>
         {totalMs > 0 && (
           <span className="flex items-center gap-1 text-[11px] text-white/40 shrink-0">
@@ -460,7 +467,7 @@ function SetupPhaseGroup({ steps }: { steps: MergeValidationStepEvent[] }) {
             const hasOutput = (step.stdout && step.stdout.trim().length > 0) ||
               (step.stderr && step.stderr.trim().length > 0);
             return (
-              <div key={`setup-${step.command}-${i}`} className="space-y-1">
+              <div key={`${phase}-${step.command}-${i}`} className="space-y-1">
                 <div className="flex items-center gap-2">
                   {isRunning ? (
                     <Loader2 className="w-3 h-3 animate-spin" style={{ color: "#0a84ff" }} />
@@ -561,6 +568,8 @@ export function ValidationProgress({
   const source = liveSteps && liveSteps.length > 0 ? "live" : "historical";
   const setupSteps = steps.filter((s) => s.phase === "setup");
   const validateSteps = steps.filter((s) => s.phase !== "setup");
+  const passedValidateSteps = validateSteps.filter((s) => s.status === "success");
+  const nonPassedValidateSteps = validateSteps.filter((s) => s.status !== "success");
 
   return (
     <section data-testid={`validation-progress-${taskId}`}>
@@ -571,8 +580,21 @@ export function ValidationProgress({
         )}
       </SectionTitle>
       <div className="space-y-1.5">
-        {setupSteps.length > 0 && <SetupPhaseGroup steps={setupSteps} />}
-        {validateSteps.map((step, index) => (
+        {setupSteps.length > 0 && (
+          <StepsGroup
+            steps={setupSteps}
+            phase="setup"
+            label={`${setupSteps.length} command${setupSteps.length !== 1 ? "s" : ""}`}
+          />
+        )}
+        {passedValidateSteps.length > 0 && (
+          <StepsGroup
+            steps={passedValidateSteps}
+            phase="passed"
+            label={`${passedValidateSteps.length} check${passedValidateSteps.length !== 1 ? "s" : ""} passed`}
+          />
+        )}
+        {nonPassedValidateSteps.map((step, index) => (
           <ValidationStepRow key={`${step.phase}-${step.command}-${index}`} step={step} />
         ))}
       </div>
