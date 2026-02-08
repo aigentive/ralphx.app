@@ -206,20 +206,16 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
         style={{
           // Fixed height for consistent graph layout (minus handle space)
           height: NODE_HEIGHT - 6,
-          // Glass morphism surface - overridden by selection state
-          background: selected
-            ? "hsla(220 60% 50% / 0.25)"
-            : GLASS_SURFACE.background,
+          // Glass morphism surface - no background change on selection
+          background: GLASS_SURFACE.background,
           backdropFilter: GLASS_SURFACE.backdropFilter,
           WebkitBackdropFilter: GLASS_SURFACE.WebkitBackdropFilter,
-          // Border: solid orange when focused, blue when selected, default otherwise
-          border: (isHighlighted || isFocused) && !selected
+          // Border: solid orange for all selection methods (click, keyboard, timeline)
+          border: (selected || isHighlighted || isFocused)
             ? "2px solid hsl(14 100% 55%)"
-            : selected
-            ? "1px solid hsla(220 60% 60% / 0.3)"
             : GLASS_SURFACE.border,
-          // Left border colored by status (only when not focused)
-          borderLeft: (isHighlighted || isFocused) && !selected
+          // Left border colored by status (only when not selected/focused)
+          borderLeft: (selected || isHighlighted || isFocused)
             ? "2px solid hsl(14 100% 55%)"
             : `3px solid ${statusColor}`,
           boxShadow: GLASS_SURFACE.boxShadow,

@@ -675,6 +675,13 @@ body {
   transition: transform 300ms ease-out;
 }
 
+/* Override React Flow's default blue selection outline — selection is handled
+   via inline orange border in TaskNode.tsx */
+.react-flow__node.selected {
+  box-shadow: none !important;
+  outline: none !important;
+}
+
 /* Disable position transition during drag to prevent lag */
 .react-flow__node.dragging {
   transition: none;
