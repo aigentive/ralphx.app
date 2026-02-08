@@ -8,12 +8,13 @@
  * - Template variables reference
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Search, Loader2, Trash2, Save, ChevronDown, ChevronRight, Info } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/tauri";
 import { useProjectStore, selectActiveProject } from "@/stores/projectStore";
+import { useEventBus } from "@/providers/EventProvider";
 import { SectionCard } from "./SettingsView.shared";
 
 /** Shape of a single analysis entry */
@@ -172,11 +173,45 @@ function TemplateVariablesInfo() {
 export function ProjectAnalysisSection() {
   const project = useProjectStore(selectActiveProject);
   const updateProject = useProjectStore((s) => s.updateProject);
+  const bus = useEventBus();
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [customJson, setCustomJson] = useState<string | null>(null);
   const [jsonError, setJsonError] = useState<string | null>(null);
+
+  // Listen for analysis completion/failure events
+  useEffect(() => {
+    const unsubComplete = bus.subscribe<{
+      project_id: string;
+      detected_analysis: string | null;
+      analyzed_at: string | null;
+    }>("project:analysis_complete", (payload) => {
+      if (project && payload.project_id === project.id) {
+        updateProject(project.id, {
+          detectedAnalysis: payload.detected_analysis,
+          analyzedAt: payload.analyzed_at,
+        });
+        setIsAnalyzing(false);
+        toast.success("Project analysis complete");
+      }
+    });
+
+    const unsubFailed = bus.subscribe<{
+      project_id: string;
+      error: string;
+    }>("project:analysis_failed", (payload) => {
+      if (project && payload.project_id === project.id) {
+        setIsAnalyzing(false);
+        toast.error(`Analysis failed: ${payload.error}`);
+      }
+    });
+
+    return () => {
+      unsubComplete();
+      unsubFailed();
+    };
+  }, [bus, project, updateProject]);
 
   // Derived state
   const detectedEntries = parseAnalysisEntries(project?.detectedAnalysis ?? null);
@@ -194,9 +229,9 @@ export function ProjectAnalysisSection() {
     try {
       await api.projects.reanalyzeProject(project.id);
       toast.success("Re-analysis started. Results will appear shortly.");
+      // isAnalyzing stays true — cleared by project:analysis_complete or project:analysis_failed event
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to start re-analysis");
-    } finally {
       setIsAnalyzing(false);
     }
   }, [project]);
