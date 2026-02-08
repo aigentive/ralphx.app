@@ -42,6 +42,7 @@ mod v13_plan_branches;
 mod v14_app_state;
 mod v15_task_ideation_session_id;
 mod v16_plan_branch_session_index;
+mod v17_running_agents;
 
 #[cfg(test)]
 mod tests;
@@ -75,9 +76,11 @@ mod v14_app_state_tests;
 mod v15_task_ideation_session_id_tests;
 #[cfg(test)]
 mod v16_plan_branch_session_index_tests;
+#[cfg(test)]
+mod v17_running_agents_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 16;
+pub const SCHEMA_VERSION: i32 = 17;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -171,6 +174,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 16,
         name: "plan_branch_session_index",
         migrate: v16_plan_branch_session_index::migrate,
+    },
+    Migration {
+        version: 17,
+        name: "running_agents",
+        migrate: v17_running_agents::migrate,
     },
 ];
 

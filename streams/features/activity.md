@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-02-08 12:00:00 - Phase 105 Task 1: Add DB migration for running_agents table
+**What:**
+- Created v17_running_agents.rs migration with CREATE TABLE IF NOT EXISTS running_agents
+- Table has composite PRIMARY KEY (context_type, context_id) for PID persistence across restarts
+- Columns: context_type, context_id, pid, conversation_id, agent_run_id, started_at
+- Created v17_running_agents_tests.rs with table existence, PK constraint, and idempotency tests
+- Registered v17 in MIGRATIONS array, bumped SCHEMA_VERSION to 17
+- Updated test_schema_version_constant assertion to 17
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — passes
+- `cargo test` — 3655 tests pass
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-07 - Phase 104 Complete: Reopen & Reset Ideation Sessions
 **What:**
 - All 6 tasks passed — code gap verification and visual gap verification both clean
