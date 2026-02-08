@@ -719,39 +719,10 @@ impl GitService {
     // Merge State Detection (Phase 76 - Auto-completion)
     // =========================================================================
 
-    /// Check if a rebase is currently in progress
+    /// Resolves the actual git directory for a worktree or repository.
     ///
-    /// Detects incomplete rebase by checking for `.git/rebase-merge` or `.git/rebase-apply`
-    /// directories which exist while a rebase is paused (e.g., due to conflicts).
-    ///
-    /// # Arguments
-    /// * `worktree` - Path to the git worktree or repository
-    pub fn is_rebase_in_progress(worktree: &Path) -> bool {
-        let git_dir = Self::resolve_git_dir(worktree);
-        git_dir.join("rebase-merge").exists() || git_dir.join("rebase-apply").exists()
-    }
-
-    /// Check if a merge is currently in progress
-    ///
-    /// Detects an incomplete merge by checking for the `MERGE_HEAD` file in the
-    /// worktree's git directory. This file exists while a merge is paused
-    /// (e.g., due to conflicts that haven't been committed yet).
-    ///
-    /// Handles both regular repos (`.git/MERGE_HEAD`) and worktrees where `.git`
-    /// is a file pointing to the real git dir.
-    ///
-    /// # Arguments
-    /// * `worktree` - Path to the git worktree or repository
-    pub fn is_merge_in_progress(worktree: &Path) -> bool {
-        let git_dir = Self::resolve_git_dir(worktree);
-        git_dir.join("MERGE_HEAD").exists()
-    }
-
-    /// Resolve the actual git directory for a worktree or repository
-    ///
-    /// For regular repos, returns `{path}/.git`.
-    /// For worktrees where `.git` is a file containing `gitdir: <path>`,
-    /// resolves and returns the actual git directory path.
+    /// For regular repos, returns `worktree/.git`. For worktrees where `.git`
+    /// is a file containing `gitdir: <path>`, follows the indirection.
     fn resolve_git_dir(worktree: &Path) -> PathBuf {
         let git_path = worktree.join(".git");
 
@@ -764,6 +735,30 @@ impl GitService {
         }
 
         git_path
+    }
+
+    /// Check if a rebase is currently in progress
+    ///
+    /// Detects incomplete rebase by checking for `.git/rebase-merge` or `.git/rebase-apply`
+    /// directories which exist while a rebase is paused (e.g., due to conflicts).
+    ///
+    /// # Arguments
+    /// * `worktree` - Path to the git worktree or repository
+    pub fn is_rebase_in_progress(worktree: &Path) -> bool {
+        let git_dir = Self::resolve_git_dir(worktree);
+        git_dir.join("rebase-merge").exists() || git_dir.join("rebase-apply").exists()
+    }
+
+    /// Detects an incomplete `git merge` by checking for the MERGE_HEAD file.
+    ///
+    /// MERGE_HEAD exists when a merge has been started but not yet committed
+    /// (e.g., the agent resolved conflicts but forgot `git merge --continue`).
+    ///
+    /// # Arguments
+    /// * `worktree` - Path to the git worktree or repository
+    pub fn is_merge_in_progress(worktree: &Path) -> bool {
+        let git_dir = Self::resolve_git_dir(worktree);
+        git_dir.join("MERGE_HEAD").exists()
     }
 
     /// Check for conflict markers in tracked files
@@ -1478,6 +1473,79 @@ mod tests {
         std::fs::create_dir(actual_git_dir.join("rebase-merge")).unwrap();
 
         assert!(GitService::is_rebase_in_progress(temp_dir.path()));
+    }
+
+    // =========================================================================
+    // resolve_git_dir Tests
+    // =========================================================================
+
+    #[test]
+    fn test_resolve_git_dir_regular_repo() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let git_dir = temp_dir.path().join(".git");
+        std::fs::create_dir(&git_dir).unwrap();
+
+        assert_eq!(GitService::resolve_git_dir(temp_dir.path()), git_dir);
+    }
+
+    #[test]
+    fn test_resolve_git_dir_worktree_style() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let git_path = temp_dir.path().join(".git");
+
+        let actual_git_dir = temp_dir.path().join("actual_git_dir");
+        std::fs::create_dir(&actual_git_dir).unwrap();
+
+        std::fs::write(&git_path, format!("gitdir: {}", actual_git_dir.display())).unwrap();
+
+        assert_eq!(GitService::resolve_git_dir(temp_dir.path()), actual_git_dir);
+    }
+
+    // =========================================================================
+    // is_merge_in_progress Tests
+    // =========================================================================
+
+    #[test]
+    fn test_is_merge_in_progress_no_merge() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let git_dir = temp_dir.path().join(".git");
+        std::fs::create_dir(&git_dir).unwrap();
+
+        assert!(!GitService::is_merge_in_progress(temp_dir.path()));
+    }
+
+    #[test]
+    fn test_is_merge_in_progress_with_merge_head() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let git_dir = temp_dir.path().join(".git");
+        std::fs::create_dir(&git_dir).unwrap();
+
+        // Simulate MERGE_HEAD file (merge started but not committed)
+        std::fs::write(git_dir.join("MERGE_HEAD"), "abc123\n").unwrap();
+
+        assert!(GitService::is_merge_in_progress(temp_dir.path()));
+    }
+
+    #[test]
+    fn test_is_merge_in_progress_worktree_style() {
+        // Test worktree-style .git file pointing to gitdir
+        let temp_dir = tempfile::tempdir().unwrap();
+        let git_path = temp_dir.path().join(".git");
+
+        // Create the actual git directory somewhere else
+        let actual_git_dir = temp_dir.path().join("actual_git_dir");
+        std::fs::create_dir(&actual_git_dir).unwrap();
+
+        // Create .git file pointing to actual git dir
+        std::fs::write(&git_path, format!("gitdir: {}", actual_git_dir.display())).unwrap();
+
+        // No merge in progress
+        assert!(!GitService::is_merge_in_progress(temp_dir.path()));
+
+        // Add MERGE_HEAD to actual git dir
+        std::fs::write(actual_git_dir.join("MERGE_HEAD"), "abc123\n").unwrap();
+
+        assert!(GitService::is_merge_in_progress(temp_dir.path()));
     }
 
     // =========================================================================
@@ -2690,79 +2758,5 @@ mod tests {
 
         // Clean up
         let _ = GitService::delete_worktree(repo, &merge_wt);
-    }
-
-    // =========================================================================
-    // is_merge_in_progress Tests
-    // =========================================================================
-
-    #[test]
-    fn test_is_merge_in_progress_no_merge() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let git_dir = temp_dir.path().join(".git");
-        std::fs::create_dir(&git_dir).unwrap();
-
-        assert!(!GitService::is_merge_in_progress(temp_dir.path()));
-    }
-
-    #[test]
-    fn test_is_merge_in_progress_with_merge_head() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let git_dir = temp_dir.path().join(".git");
-        std::fs::create_dir(&git_dir).unwrap();
-
-        // Simulate MERGE_HEAD file (merge in progress)
-        std::fs::write(git_dir.join("MERGE_HEAD"), "abc123def456").unwrap();
-
-        assert!(GitService::is_merge_in_progress(temp_dir.path()));
-    }
-
-    #[test]
-    fn test_is_merge_in_progress_worktree_style() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let git_path = temp_dir.path().join(".git");
-
-        // Create the actual git directory somewhere else (simulates worktree)
-        let actual_git_dir = temp_dir.path().join("actual_git_dir");
-        std::fs::create_dir(&actual_git_dir).unwrap();
-
-        // Create .git file pointing to actual git dir
-        std::fs::write(&git_path, format!("gitdir: {}", actual_git_dir.display())).unwrap();
-
-        // No merge in progress
-        assert!(!GitService::is_merge_in_progress(temp_dir.path()));
-
-        // Add MERGE_HEAD to actual git dir
-        std::fs::write(actual_git_dir.join("MERGE_HEAD"), "abc123def456").unwrap();
-
-        assert!(GitService::is_merge_in_progress(temp_dir.path()));
-    }
-
-    // =========================================================================
-    // resolve_git_dir Tests
-    // =========================================================================
-
-    #[test]
-    fn test_resolve_git_dir_regular_repo() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let git_dir = temp_dir.path().join(".git");
-        std::fs::create_dir(&git_dir).unwrap();
-
-        let resolved = GitService::resolve_git_dir(temp_dir.path());
-        assert_eq!(resolved, git_dir);
-    }
-
-    #[test]
-    fn test_resolve_git_dir_worktree_file() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let git_path = temp_dir.path().join(".git");
-
-        let actual_git_dir = temp_dir.path().join("real_git");
-        std::fs::create_dir(&actual_git_dir).unwrap();
-
-        std::fs::write(&git_path, format!("gitdir: {}", actual_git_dir.display())).unwrap();
-
-        let resolved = GitService::resolve_git_dir(temp_dir.path());
-        assert_eq!(resolved, actual_git_dir);
     }
 }
