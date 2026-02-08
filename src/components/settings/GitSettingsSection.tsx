@@ -53,6 +53,11 @@ const VALIDATION_MODE_OPTIONS: {
     description: "Validation failure pauses merge — you decide",
   },
   {
+    value: "auto_fix",
+    label: "Auto-fix",
+    description: "AI agent attempts to fix validation errors before asking you",
+  },
+  {
     value: "warn",
     label: "Warn on Failure",
     description: "Merge continues, validation issues logged as warnings",
@@ -308,6 +313,7 @@ export function GitSettingsSection() {
         updateProject(project.id, { mergeValidationMode: newMode });
         const labels: Record<MergeValidationMode, string> = {
           block: "Block on Failure",
+          auto_fix: "Auto-fix",
           warn: "Warn on Failure",
           off: "Disabled",
         };

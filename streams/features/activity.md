@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-02-09 08:15:00 - Phase 113 Task 5: Add AutoFix option to validation mode settings
+**What:**
+- Added `"auto_fix"` to `MergeValidationModeSchema` Zod enum in `src/types/project.ts` (between "block" and "warn")
+- Added Auto-fix option to `VALIDATION_MODE_OPTIONS` array in `GitSettingsSection.tsx` with label "Auto-fix" and description "AI agent attempts to fix validation errors before asking you"
+- Added `auto_fix` key to toast labels Record in `handleValidationModeChange` callback
+
+**Commands:**
+- `npx eslint src/types/project.ts src/components/settings/GitSettingsSection.tsx` — clean
+- `npm run typecheck` — clean
+
+**Visual Verification:** N/A - Settings dropdown, existing component already verified in Phase 112
+
+**Result:** Success
+
 ### 2026-02-09 06:45:00 - Phase 113 Task 4: Show validation recovery context in MergingTaskDetail
 **What:**
 - Added `parseValidationRecovery()` helper to detect `validation_recovery` flag and extract `validation_failures` array from task metadata
