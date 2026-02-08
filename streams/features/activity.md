@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-02-08 23:15:00 - Phase 112 Task 3: Real-time validation progress in MergingTaskDetail
+**What:**
+- Added `MergeValidationStepEventSchema` and `MergeValidationStepEvent` type to `src/types/events.ts`
+- Created `src/hooks/useMergeValidationEvents.ts` hook — subscribes to `merge:validation_step` events via EventBus, filters by taskId, accumulates/updates steps (running→success/failed dedup)
+- Built `ValidationStepRow` component with collapsible terminal output — status icons, phase badges (Setup/Validate), duration display, auto-expand for running/failed steps
+- Built `ValidationProgress` component (exported) with data source merging: prefers live events, falls back to `task.metadata.validation_log` for historical views
+- Added `parseMetadataValidationLog()` helper to parse validation log entries from task metadata JSON
+- Integrated into `MergingTaskDetail`: calls `useMergeValidationEvents(task.id)` for live data, passes both live and metadata to `ValidationProgress`
+- CI/CD pipeline aesthetic: dark terminal blocks (`rgba(0,0,0,0.3)`), monospace font, scrollable output, collapsible chevron toggle
+
+**Commands:**
+- `npx eslint src/types/events.ts src/hooks/useMergeValidationEvents.ts src/components/tasks/detail-views/MergingTaskDetail.tsx` — clean
+- `npm run typecheck` — clean
+
+**Visual Verification:** N/A - component renders during merge state (requires active merge to visually verify)
+
+**Result:** Success
+
 ### 2026-02-08 21:00:00 - Phase 112 Task 2: Add MergeValidationMode setting and skip-validation retry
 **What:**
 - Added `MergeValidationMode` enum (Block/Warn/Off) to `project.rs` with Default, Serialize, Deserialize, Display, FromStr
