@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   Loader2,
   RefreshCw,
+  SkipForward,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import {
   StatusPill,
   TwoColumnLayout,
 } from "./shared";
+import { ValidationProgress } from "./MergingTaskDetail";
 import type { Task } from "@/types/task";
 import { useQueryClient } from "@tanstack/react-query";
 import { taskKeys } from "@/hooks/useTasks";
@@ -36,6 +38,7 @@ interface MergeErrorContext {
   sourceBranch: string | null;
   targetBranch: string | null;
   diagnosticInfo: string | null;
+  hasValidationFailures: boolean;
 }
 
 function parseMergeError(metadata?: string | null): MergeErrorContext | null {
@@ -47,6 +50,7 @@ function parseMergeError(metadata?: string | null): MergeErrorContext | null {
       sourceBranch: m.source_branch ?? null,
       targetBranch: m.target_branch ?? null,
       diagnosticInfo: m.diagnostic_info ?? null,
+      hasValidationFailures: Array.isArray(m.validation_failures) && m.validation_failures.length > 0,
     };
   } catch {
     return null;
@@ -156,15 +160,17 @@ function RecoverySteps({ branchName, targetBranch }: { branchName: string; targe
  */
 function ActionButtons({
   onRetry,
+  onRetrySkipValidation,
   onResolve,
   isProcessing,
 }: {
   onRetry: () => void;
+  onRetrySkipValidation?: (() => void) | undefined;
   onResolve: () => void;
   isProcessing: boolean;
 }) {
   return (
-    <div className="flex gap-2 justify-end">
+    <div className="flex gap-2 justify-end flex-wrap">
       <Button
         data-testid="retry-merge-button"
         onClick={onRetry}
@@ -182,6 +188,25 @@ function ActionButtons({
         )}
         Retry Merge
       </Button>
+      {onRetrySkipValidation && (
+        <Button
+          data-testid="retry-skip-validation-button"
+          onClick={onRetrySkipValidation}
+          disabled={isProcessing}
+          className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
+          style={{
+            color: "white",
+            backgroundColor: "rgba(255, 159, 10, 0.85)",
+          }}
+        >
+          {isProcessing ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <SkipForward className="w-4 h-4" />
+          )}
+          Retry (Skip Validation)
+        </Button>
+      )}
       <Button
         data-testid="resolve-merge-button"
         onClick={onResolve}
@@ -219,6 +244,23 @@ export function MergeIncompleteTaskDetail({
     setError(null);
     try {
       await invoke("retry_merge", { taskId: task.id });
+      await queryClient.invalidateQueries({
+        queryKey: taskKeys.list(task.projectId),
+      });
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to retry merge",
+      );
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [task.id, task.projectId, queryClient]);
+
+  const handleRetrySkipValidation = useCallback(async () => {
+    setIsProcessing(true);
+    setError(null);
+    try {
+      await invoke("retry_merge", { taskId: task.id, skipValidation: true });
       await queryClient.invalidateQueries({
         queryKey: taskKeys.list(task.projectId),
       });
@@ -283,6 +325,14 @@ export function MergeIncompleteTaskDetail({
         </DetailCard>
       </section>
 
+      {/* Validation Log (when failure was caused by validation) */}
+      {mergeError?.hasValidationFailures && (
+        <ValidationProgress
+          taskId={task.id}
+          metadata={task.metadata}
+        />
+      )}
+
       {/* Recovery Steps (not in historical mode) */}
       {!isHistorical && (
         <section data-testid="recovery-steps-section">
@@ -311,6 +361,7 @@ export function MergeIncompleteTaskDetail({
         <section data-testid="action-buttons">
           <ActionButtons
             onRetry={handleRetryMerge}
+            onRetrySkipValidation={mergeError?.hasValidationFailures ? handleRetrySkipValidation : undefined}
             onResolve={handleMarkResolved}
             isProcessing={isProcessing}
           />

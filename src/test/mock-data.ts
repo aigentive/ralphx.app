@@ -165,6 +165,7 @@ export function createMockProject(overrides: Partial<Project> = {}): Project {
     baseBranch: null,
     worktreeParentDirectory: null,
     useFeatureBranches: true,
+    mergeValidationMode: "block",
     detectedAnalysis: null,
     customAnalysis: null,
     analyzedAt: null,

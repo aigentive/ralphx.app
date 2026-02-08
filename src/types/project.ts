@@ -10,6 +10,12 @@ export const GitModeSchema = z.enum(["local", "worktree"]);
 export type GitMode = z.infer<typeof GitModeSchema>;
 
 /**
+ * Merge validation mode for post-merge build checks
+ */
+export const MergeValidationModeSchema = z.enum(["block", "warn", "off"]);
+export type MergeValidationMode = z.infer<typeof MergeValidationModeSchema>;
+
+/**
  * Backend response schema - expects snake_case from Rust serialization
  */
 export const ProjectResponseSchema = z.object({
@@ -22,6 +28,7 @@ export const ProjectResponseSchema = z.object({
   base_branch: z.string().nullable(),
   worktree_parent_directory: z.string().nullish(),
   use_feature_branches: z.boolean().default(true),
+  merge_validation_mode: MergeValidationModeSchema.default("block"),
   detected_analysis: z.string().nullish(),
   custom_analysis: z.string().nullish(),
   analyzed_at: z.string().nullish(),
@@ -43,6 +50,7 @@ export interface Project {
   baseBranch: string | null;
   worktreeParentDirectory: string | null;
   useFeatureBranches: boolean;
+  mergeValidationMode: MergeValidationMode;
   detectedAnalysis: string | null;
   customAnalysis: string | null;
   analyzedAt: string | null;
@@ -66,6 +74,7 @@ export function transformProject(
     baseBranch: response.base_branch,
     worktreeParentDirectory: response.worktree_parent_directory ?? null,
     useFeatureBranches: response.use_feature_branches,
+    mergeValidationMode: response.merge_validation_mode,
     detectedAnalysis: response.detected_analysis ?? null,
     customAnalysis: response.custom_analysis ?? null,
     analyzedAt: response.analyzed_at ?? null,
@@ -105,6 +114,7 @@ export const UpdateProjectSchema = z.object({
   worktreeBranch: z.string().nullable().optional(),
   baseBranch: z.string().nullable().optional(),
   worktreeParentDirectory: z.string().nullable().optional(),
+  mergeValidationMode: MergeValidationModeSchema.optional(),
 });
 
 export type UpdateProject = z.infer<typeof UpdateProjectSchema>;

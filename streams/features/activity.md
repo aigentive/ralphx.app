@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-02-09 00:30:00 - Phase 112 Task 4: Validation mode settings and skip-validation UI
+**What:**
+- Added `MergeValidationModeSchema` and `MergeValidationMode` type to `src/types/project.ts`
+- Added `merge_validation_mode` to `ProjectResponseSchema` (snake_case) and `mergeValidationMode` to `Project` interface + `transformProject` + `UpdateProjectSchema`
+- Added `mergeValidationMode: "block"` default to `createMockProject` in `src/test/mock-data.ts`
+- Added `mergeValidationMode` handling to mock `update` in `src/api-mock/projects.ts`
+- Added `VALIDATION_MODE_OPTIONS` array and `SelectSettingRow` for merge validation mode in `GitSettingsSection.tsx`
+- Added `handleValidationModeChange` callback that persists via `api.projects.update` and updates local store
+- Added `hasValidationFailures` detection in `parseMergeError` for `MergeIncompleteTaskDetail`
+- Imported `ValidationProgress` from `MergingTaskDetail` and rendered when validation failures detected
+- Added "Retry (Skip Validation)" button calling `retry_merge` with `{ skipValidation: true }`
+- Extended `ActionButtons` component with optional `onRetrySkipValidation` prop (amber SkipForward icon)
+
+**Commands:**
+- `npx eslint src/types/project.ts src/components/settings/GitSettingsSection.tsx src/components/tasks/detail-views/MergeIncompleteTaskDetail.tsx src/test/mock-data.ts src/api-mock/projects.ts` -- clean
+- `npm run typecheck` -- clean
+
+**Visual Verification:** N/A - MergeIncomplete view requires active merge failure state; Settings selector uses existing SelectSettingRow pattern
+
+**Result:** Success
+
 ### 2026-02-08 23:15:00 - Phase 112 Task 3: Real-time validation progress in MergingTaskDetail
 **What:**
 - Added `MergeValidationStepEventSchema` and `MergeValidationStepEvent` type to `src/types/events.ts`

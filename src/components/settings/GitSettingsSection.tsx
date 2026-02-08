@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { api, getGitDefaultBranch } from "@/lib/tauri";
 import { useProjectStore, selectActiveProject } from "@/stores/projectStore";
-import type { GitMode, Project } from "@/types/project";
+import type { GitMode, MergeValidationMode, Project } from "@/types/project";
 import { SectionCard, SelectSettingRow, SettingRow, ToggleSettingRow } from "./SettingsView.shared";
 
 /**
@@ -36,6 +36,31 @@ const GIT_MODE_OPTIONS: {
     value: "local",
     label: "Local Branches",
     description: "Single directory, one task at a time",
+  },
+];
+
+/**
+ * Merge validation mode options
+ */
+const VALIDATION_MODE_OPTIONS: {
+  value: MergeValidationMode;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: "block",
+    label: "Block on Failure",
+    description: "Validation failure pauses merge — you decide",
+  },
+  {
+    value: "warn",
+    label: "Warn on Failure",
+    description: "Merge continues, validation issues logged as warnings",
+  },
+  {
+    value: "off",
+    label: "Disabled",
+    description: "Skip post-merge validation entirely",
   },
 ];
 
@@ -270,6 +295,34 @@ export function GitSettingsSection() {
     }
   }, [project, updateProject]);
 
+  // Handler for merge validation mode change
+  const handleValidationModeChange = useCallback(
+    async (newMode: MergeValidationMode) => {
+      if (!project || newMode === project.mergeValidationMode) return;
+
+      setIsUpdating(true);
+      try {
+        await api.projects.update(project.id, {
+          mergeValidationMode: newMode,
+        });
+        updateProject(project.id, { mergeValidationMode: newMode });
+        const labels: Record<MergeValidationMode, string> = {
+          block: "Block on Failure",
+          warn: "Warn on Failure",
+          off: "Disabled",
+        };
+        toast.success(`Merge validation set to ${labels[newMode]}`);
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Failed to update merge validation mode"
+        );
+      } finally {
+        setIsUpdating(false);
+      }
+    },
+    [project, updateProject]
+  );
+
   // Early return if no project selected (after all hooks)
   if (!project) {
     return null;
@@ -348,6 +401,16 @@ export function GitSettingsSection() {
         checked={project.useFeatureBranches}
         disabled={isUpdating}
         onChange={handleFeatureBranchToggle}
+      />
+
+      <SelectSettingRow
+        id="merge-validation-mode"
+        label="Merge Validation"
+        description="Run build checks after merging task branches"
+        value={project.mergeValidationMode}
+        options={VALIDATION_MODE_OPTIONS}
+        disabled={isUpdating}
+        onChange={handleValidationModeChange}
       />
 
       {/* Show saving indicator */}

@@ -170,7 +170,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run npm run lint && npm run typecheck",
       "Commit: feat(merge): validation mode settings and skip-validation UI"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

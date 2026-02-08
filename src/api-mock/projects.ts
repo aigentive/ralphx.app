@@ -58,6 +58,7 @@ export const mockProjectsApi = {
     if (input.worktreeBranch !== undefined) updated.worktreeBranch = input.worktreeBranch;
     if (input.baseBranch !== undefined) updated.baseBranch = input.baseBranch;
     if (input.worktreeParentDirectory !== undefined) updated.worktreeParentDirectory = input.worktreeParentDirectory;
+    if (input.mergeValidationMode !== undefined) updated.mergeValidationMode = input.mergeValidationMode;
     return updated;
   },
 
