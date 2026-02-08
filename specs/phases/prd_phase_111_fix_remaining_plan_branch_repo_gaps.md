@@ -92,7 +92,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Verify: grep all TaskSchedulerService::new sites outside tests have .with_plan_branch_repo()",
       "Commit: fix(scheduler): propagate plan_branch_repo to all scheduler construction sites"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,

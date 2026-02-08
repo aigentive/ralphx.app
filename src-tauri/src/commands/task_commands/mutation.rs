@@ -180,7 +180,7 @@ pub async fn move_task(
         Arc::clone(&state.message_queue),
         Arc::clone(&state.running_agent_registry),
         Some(app.clone()),
-    ));
+    ).with_plan_branch_repo(Arc::clone(&state.plan_branch_repo)));
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
@@ -573,7 +573,7 @@ pub async fn block_task(
         Arc::clone(&state.message_queue),
         Arc::clone(&state.running_agent_registry),
         Some(app.clone()),
-    ));
+    ).with_plan_branch_repo(Arc::clone(&state.plan_branch_repo)));
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
@@ -677,7 +677,7 @@ pub async fn unblock_task(
         Arc::clone(&state.message_queue),
         Arc::clone(&state.running_agent_registry),
         Some(app.clone()),
-    ));
+    ).with_plan_branch_repo(Arc::clone(&state.plan_branch_repo)));
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 

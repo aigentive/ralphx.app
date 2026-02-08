@@ -200,7 +200,7 @@ pub async fn complete_merge(
         Arc::clone(&state.app_state.message_queue),
         Arc::clone(&state.app_state.running_agent_registry),
         state.app_state.app_handle.as_ref().cloned(),
-    ));
+    ).with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo)));
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
