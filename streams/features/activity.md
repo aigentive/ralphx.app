@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-02-08 18:00:00 - Phase 105 Complete, Phase 106 Activated
+**What:**
+- All 4 tasks passed: v17 migration, RunningAgentRegistry trait extraction + SQLite impl, startup orphan killing, terminal-state chat resumption guard
+- Code gap verification: all checks passed (wiring, API, state, function usage)
+- Visual gap verification: N/A (backend-only phase)
+- Updated manifest.json: Phase 105 → complete, Phase 106 → active
+
+**Commands:**
+- Gap verification via Explore agent
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-08 17:30:00 - Phase 105 Task 4: Guard ChatResumptionRunner against terminal-state tasks
 **What:**
 - Added `is_terminal()` method to `InternalStatus` — returns true for Merged, Failed, Cancelled, Stopped
