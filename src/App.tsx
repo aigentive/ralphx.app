@@ -509,11 +509,21 @@ function AppContent() {
 
   const handleApplyProposals = useCallback(async (options: ApplyProposalsInput) => {
     try {
-      await applyProposalsMutation.mutateAsync(options);
+      const result = await applyProposalsMutation.mutateAsync(options);
+      if (result.sessionConverted) {
+        const count = result.createdTaskIds.length;
+        toast.success(`Plan accepted — ${count} ${count === 1 ? "task" : "tasks"} created`, {
+          action: {
+            label: "View Work",
+            onClick: () => setCurrentView("graph"),
+          },
+          duration: 6000,
+        });
+      }
     } catch {
       toast.error("Failed to apply proposals");
     }
-  }, [applyProposalsMutation]);
+  }, [applyProposalsMutation, setCurrentView]);
 
   // Project wizard handlers
   const handleOpenProjectWizard = useCallback(() => {
