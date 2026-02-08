@@ -192,7 +192,7 @@ pub fn spawn_send_message_background<R: Runtime>(
                                 || task.internal_status == InternalStatus::ReExecuting
                             {
                                 // Create scheduler for auto-scheduling next Ready task
-                                let scheduler_concrete = Arc::new(TaskSchedulerService::new(
+                                let mut scheduler_svc = TaskSchedulerService::new(
                                     Arc::clone(exec_state),
                                     Arc::clone(&project_repo),
                                     Arc::clone(&task_repo),
@@ -205,7 +205,11 @@ pub fn spawn_send_message_background<R: Runtime>(
                                     Arc::clone(&message_queue),
                                     Arc::clone(&running_agent_registry),
                                     app_handle.clone(),
-                                ));
+                                );
+                                if let Some(ref repo) = plan_branch_repo {
+                                    scheduler_svc = scheduler_svc.with_plan_branch_repo(Arc::clone(repo));
+                                }
+                                let scheduler_concrete = Arc::new(scheduler_svc);
                                 scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
                                 let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 

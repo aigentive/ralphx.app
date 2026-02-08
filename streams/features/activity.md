@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-02-09 10:00:00 - Phase 111 Task 1: Add plan_branch_repo to 6 remaining TaskSchedulerService::new() sites
+**What:**
+- Added `.with_plan_branch_repo()` to 6 remaining `TaskSchedulerService::new()` sites that were creating schedulers without plan branch context
+- `chat_service_send_background.rs:195`: Used if-let pattern since plan_branch_repo is `Option`
+- `http_server/handlers/reviews.rs:145`: Chained `.with_plan_branch_repo()` inside `Arc::new()`
+- `http_server/handlers/git.rs:190`: Chained `.with_plan_branch_repo()` inside `Arc::new()`
+- `commands/task_commands/mutation.rs:170,563,667`: Chained `.with_plan_branch_repo()` at move_task, block_task, unblock_task sites
+- Verified: all non-test `TaskSchedulerService::new()` sites now have `.with_plan_branch_repo()`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — all 3672 tests pass, 0 failures
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-09 09:00:00 - Phase 110 Task 3: Convert silent merge failures to MergeIncomplete with diagnostics
 **What:**
 - Added diagnostic `tracing::debug!` at `resolve_merge_branches` entry with category, plan_branch_repo availability, ideation_session_id
