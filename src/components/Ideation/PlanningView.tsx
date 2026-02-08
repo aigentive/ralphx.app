@@ -504,6 +504,7 @@ export function PlanningView({
           onSelectPlan={onSelectSession}
           onNewPlan={onNewSession}
           {...(onDeleteSession !== undefined && { onDeletePlan: onDeleteSession })}
+          onArchivePlan={onArchiveSession}
           onReopenPlan={(planId) => {
             onSelectSession(planId);
             handleOpenReopenDialog("reopen");
