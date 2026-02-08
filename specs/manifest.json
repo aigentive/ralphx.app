@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 108,
+  "currentPhase": 109,
   "phases": [
     {
       "phase": 0,
@@ -772,6 +772,13 @@
       "prd": "specs/phases/prd_phase_108_merge_incomplete_view_useful.md",
       "status": "complete",
       "description": "Persist merge error context to task metadata and display in MergeIncomplete view"
+    },
+    {
+      "phase": 109,
+      "name": "Fix Worktree-Mode Plan Merge Base Branch",
+      "prd": "specs/phases/prd_phase_109_fix_worktree_plan_merge.md",
+      "status": "active",
+      "description": "Fix plan merge failing when target branch (main) is already checked out in worktree mode"
     }
   ]
 }
