@@ -122,7 +122,6 @@ fn cleanup_branch_and_worktree_internal(task: &Task, project: &Project) {
         return;
     };
 
-    let base_branch = project.base_branch.as_deref().unwrap_or("main");
     let repo_path = Path::new(&project.working_directory);
 
     match project.git_mode {
@@ -169,9 +168,9 @@ fn cleanup_branch_and_worktree_internal(task: &Task, project: &Project) {
                 }
             }
 
-            // Delete the branch from main repo
-            // We need to be on base branch to delete the task branch
-            let _ = GitService::checkout_branch(repo_path, base_branch);
+            // Delete the branch from main repo.
+            // The branch is no longer checked out in any worktree, so force-delete works
+            // without needing to checkout a different branch in the main repo.
             match GitService::delete_branch(repo_path, task_branch, true) {
                 Ok(_) => {
                     tracing::info!(
@@ -201,6 +200,30 @@ fn slugify(name: &str) -> String {
         .collect::<String>()
         .trim_matches('-')
         .to_string()
+}
+
+/// Expand `~/` prefix to the user's home directory
+fn expand_home(path: &str) -> String {
+    if let Some(stripped) = path.strip_prefix("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            return format!("{}/{}", home, stripped);
+        }
+    }
+    path.to_string()
+}
+
+/// Compute the worktree path for a merge operation.
+///
+/// Convention: `{worktree_parent}/{slug}/merge-{task_id}`
+/// This is separate from the task worktree (`task-{task_id}`) to allow
+/// the merge to happen in isolation while the task worktree is deleted.
+fn compute_merge_worktree_path(project: &Project, task_id: &str) -> String {
+    let worktree_parent = project
+        .worktree_parent_directory
+        .as_deref()
+        .unwrap_or("~/ralphx-worktrees");
+    let expanded = expand_home(worktree_parent);
+    format!("{}/{}/merge-{}", expanded, slugify(&project.name), task_id)
 }
 
 /// Resolve the base branch for a task's working branch.
@@ -393,20 +416,11 @@ impl<'a> super::TransitionHandler<'a> {
                                         .worktree_parent_directory
                                         .as_deref()
                                         .unwrap_or("~/ralphx-worktrees");
-                                    // Expand ~ to home directory
-                                    let worktree_parent = if let Some(stripped) = worktree_parent.strip_prefix("~/") {
-                                        if let Ok(home) = std::env::var("HOME") {
-                                            format!("{}/{}", home, stripped)
-                                        } else {
-                                            worktree_parent.to_string()
-                                        }
-                                    } else {
-                                        worktree_parent.to_string()
-                                    };
+                                    let expanded_parent = expand_home(worktree_parent);
 
                                     let worktree_path = format!(
                                         "{}/{}/task-{}",
-                                        worktree_parent,
+                                        expanded_parent,
                                         slugify(&project.name),
                                         task_id_str
                                     );
@@ -920,9 +934,9 @@ impl<'a> super::TransitionHandler<'a> {
             "Attempting programmatic merge (Phase 1)"
         );
 
-        // In worktree mode, delete the worktree first to unlock the branch.
+        // In worktree mode, delete the task worktree first to unlock the branch.
         // Git refuses to checkout a branch that's checked out in another worktree,
-        // so we must remove the worktree before the merge can checkout the task branch.
+        // so we must remove the task worktree before creating the merge worktree.
         if project.git_mode == GitMode::Worktree {
             if let Some(ref worktree_path) = task.worktree_path {
                 let worktree_path_buf = PathBuf::from(worktree_path);
@@ -930,14 +944,14 @@ impl<'a> super::TransitionHandler<'a> {
                     tracing::info!(
                         task_id = task_id_str,
                         worktree_path = %worktree_path,
-                        "Deleting worktree before programmatic merge to unlock branch"
+                        "Deleting task worktree before programmatic merge to unlock branch"
                     );
                     if let Err(e) = GitService::delete_worktree(repo_path, &worktree_path_buf) {
                         tracing::error!(
                             task_id = task_id_str,
                             error = %e,
                             worktree_path = %worktree_path,
-                            "Failed to delete worktree before merge"
+                            "Failed to delete task worktree before merge"
                         );
                         // Continue anyway - merge will fail with a clear error
                     }
@@ -945,204 +959,342 @@ impl<'a> super::TransitionHandler<'a> {
             }
         }
 
-        // Attempt the merge: worktree mode uses git merge (no rebase) to avoid
-        // failing when the main repo has unrelated unstaged changes.
-        // Local mode uses rebase for linear history.
-        let merge_result = if project.git_mode == GitMode::Worktree {
-            GitService::try_merge(repo_path, &source_branch, &target_branch)
-        } else {
-            GitService::try_rebase_and_merge(repo_path, &source_branch, &target_branch)
-        };
-        match merge_result {
-            Ok(MergeAttemptResult::Success { commit_sha }) => {
-                // Fast path success: merge completed without conflicts
-                tracing::info!(
-                    task_id = task_id_str,
-                    commit_sha = %commit_sha,
-                    "Programmatic merge succeeded (fast path)"
-                );
+        // Attempt the merge based on git mode:
+        // - Worktree mode: merge in an isolated merge worktree (never touches main repo)
+        // - Local mode: rebase for linear history (operates on main repo)
+        if project.git_mode == GitMode::Worktree {
+            let merge_wt_path_str = compute_merge_worktree_path(&project, task_id_str);
+            let merge_wt_path = PathBuf::from(&merge_wt_path_str);
 
-                // Use shared merge completion logic
-                let app_handle = self.machine.context.services.app_handle.as_ref();
-                if let Err(e) = complete_merge_internal(
-                    &mut task,
-                    &project,
-                    &commit_sha,
-                    task_repo,
-                    app_handle,
-                ).await {
-                    tracing::error!(error = %e, task_id = task_id_str, "Failed to complete programmatic merge");
-                } else {
-                    // Post-merge cleanup for merge tasks: update plan_branch status,
-                    // delete feature branch, emit event
-                    if let Some(ref plan_branch_repo) = plan_branch_repo {
-                        if let Ok(Some(pb)) = plan_branch_repo.get_by_merge_task_id(&task_id).await {
-                            // Mark plan branch as merged
-                            if let Err(e) = plan_branch_repo.set_merged(&pb.id).await {
-                                tracing::warn!(
-                                    error = %e,
-                                    task_id = task_id_str,
-                                    plan_branch_id = pb.id.as_str(),
-                                    "Failed to mark plan branch as merged (non-fatal)"
-                                );
-                            }
+            tracing::info!(
+                task_id = task_id_str,
+                merge_worktree_path = %merge_wt_path_str,
+                "Creating merge worktree for isolated merge"
+            );
 
-                            // Delete the feature branch from git
-                            if let Err(e) = GitService::delete_feature_branch(repo_path, &pb.branch_name) {
-                                tracing::warn!(
-                                    error = %e,
-                                    task_id = task_id_str,
-                                    branch = %pb.branch_name,
-                                    "Failed to delete feature branch after merge (non-fatal)"
-                                );
-                            } else {
-                                tracing::info!(
-                                    task_id = task_id_str,
-                                    branch = %pb.branch_name,
-                                    "Deleted feature branch after plan merge"
-                                );
-                            }
+            let merge_result = GitService::try_merge_in_worktree(
+                repo_path,
+                &source_branch,
+                &target_branch,
+                &merge_wt_path,
+            );
 
-                            // Emit plan-merge-complete event
-                            if let Some(handle) = app_handle {
-                                let _ = handle.emit(
-                                    "plan:merge_complete",
-                                    serde_json::json!({
-                                        "plan_artifact_id": pb.plan_artifact_id.as_str(),
-                                        "plan_branch_id": pb.id.as_str(),
-                                        "merge_task_id": task_id_str,
-                                        "branch_name": pb.branch_name,
-                                    }),
-                                );
-                            }
-                        }
+            match merge_result {
+                Ok(MergeAttemptResult::Success { commit_sha }) => {
+                    // Fast path success: merge completed in worktree
+                    tracing::info!(
+                        task_id = task_id_str,
+                        commit_sha = %commit_sha,
+                        "Programmatic merge in worktree succeeded (fast path)"
+                    );
+
+                    // Delete the merge worktree — no longer needed
+                    if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt_path) {
+                        tracing::warn!(
+                            error = %e,
+                            task_id = task_id_str,
+                            merge_worktree_path = %merge_wt_path_str,
+                            "Failed to delete merge worktree after success (non-fatal)"
+                        );
                     }
 
-                    // Auto-unblock tasks that were waiting on this task
-                    // (programmatic merge path - on_enter(Merged) won't be triggered)
+                    // Use shared merge completion logic
+                    let app_handle = self.machine.context.services.app_handle.as_ref();
+                    if let Err(e) = complete_merge_internal(
+                        &mut task,
+                        &project,
+                        &commit_sha,
+                        task_repo,
+                        app_handle,
+                    ).await {
+                        tracing::error!(error = %e, task_id = task_id_str, "Failed to complete programmatic merge");
+                    } else {
+                        self.post_merge_cleanup(task_id_str, &task_id, repo_path, plan_branch_repo).await;
+                    }
+                }
+                Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
+                    // Conflict detected: keep merge worktree alive for merger agent CWD
+                    tracing::info!(
+                        task_id = task_id_str,
+                        conflict_count = conflict_files.len(),
+                        merge_worktree_path = %merge_wt_path_str,
+                        "Merge in worktree has conflicts, transitioning to Merging"
+                    );
+
+                    for file in &conflict_files {
+                        tracing::debug!(task_id = task_id_str, file = %file.display(), "Conflict file");
+                    }
+
+                    // Update task.worktree_path to the merge worktree so the merger agent
+                    // gets the correct CWD when spawned
+                    task.worktree_path = Some(merge_wt_path_str.clone());
+                    task.internal_status = InternalStatus::Merging;
+                    task.touch();
+
+                    if let Err(e) = task_repo.update(&task).await {
+                        tracing::error!(error = %e, "Failed to update task to Merging with merge worktree path");
+                        return;
+                    }
+
+                    if let Err(e) = task_repo.persist_status_change(
+                        &task_id,
+                        InternalStatus::PendingMerge,
+                        InternalStatus::Merging,
+                        "merge_conflict",
+                    ).await {
+                        tracing::warn!(error = %e, "Failed to record merge conflict transition (non-fatal)");
+                    }
+
                     self.machine
                         .context
                         .services
-                        .dependency_manager
-                        .unblock_dependents(task_id_str)
+                        .event_emitter
+                        .emit("task:merge_conflict", task_id_str)
+                        .await;
+
+                    // Spawn merger agent — its CWD will resolve to merge_wt_path
+                    let prompt = format!("Resolve merge conflicts for task: {}", task_id_str);
+                    tracing::info!(
+                        task_id = task_id_str,
+                        "Spawning merger agent for conflict resolution (from attempt_programmatic_merge)"
+                    );
+
+                    let result = self
+                        .machine
+                        .context
+                        .services
+                        .chat_service
+                        .send_message(
+                            crate::domain::entities::ChatContextType::Merge,
+                            task_id_str,
+                            &prompt,
+                        )
+                        .await;
+
+                    match &result {
+                        Ok(_) => tracing::info!(task_id = task_id_str, "Merger agent spawned successfully"),
+                        Err(e) => tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent"),
+                    }
+                }
+                Err(e) => {
+                    // Git operation failed — delete merge worktree (best effort) and transition to MergeIncomplete
+                    tracing::error!(
+                        task_id = task_id_str,
+                        error = %e,
+                        merge_worktree_path = %merge_wt_path_str,
+                        source_branch = %source_branch,
+                        target_branch = %target_branch,
+                        "Merge in worktree failed, transitioning to MergeIncomplete"
+                    );
+
+                    // Best-effort cleanup of the merge worktree
+                    if merge_wt_path.exists() {
+                        let _ = GitService::delete_worktree(repo_path, &merge_wt_path);
+                    }
+
+                    task.internal_status = InternalStatus::MergeIncomplete;
+                    task.touch();
+
+                    if let Err(e) = task_repo.update(&task).await {
+                        tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
+                        return;
+                    }
+
+                    if let Err(e) = task_repo.persist_status_change(
+                        &task_id,
+                        InternalStatus::PendingMerge,
+                        InternalStatus::MergeIncomplete,
+                        "merge_incomplete",
+                    ).await {
+                        tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
+                    }
+
+                    self.machine
+                        .context
+                        .services
+                        .event_emitter
+                        .emit("task:status_changed", task_id_str)
                         .await;
                 }
             }
-            Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
-                // Conflict detected: transition to Merging for agent resolution
-                tracing::info!(
-                    task_id = task_id_str,
-                    conflict_count = conflict_files.len(),
-                    "Programmatic merge failed: conflicts detected, transitioning to Merging"
-                );
-
-                // Log conflict files for debugging
-                for file in &conflict_files {
-                    tracing::debug!(
+        } else {
+            // Local mode: rebase for linear history
+            let merge_result = GitService::try_rebase_and_merge(repo_path, &source_branch, &target_branch);
+            match merge_result {
+                Ok(MergeAttemptResult::Success { commit_sha }) => {
+                    tracing::info!(
                         task_id = task_id_str,
-                        file = %file.display(),
-                        "Conflict file"
+                        commit_sha = %commit_sha,
+                        "Programmatic merge succeeded (fast path)"
+                    );
+
+                    let app_handle = self.machine.context.services.app_handle.as_ref();
+                    if let Err(e) = complete_merge_internal(
+                        &mut task,
+                        &project,
+                        &commit_sha,
+                        task_repo,
+                        app_handle,
+                    ).await {
+                        tracing::error!(error = %e, task_id = task_id_str, "Failed to complete programmatic merge");
+                    } else {
+                        self.post_merge_cleanup(task_id_str, &task_id, repo_path, plan_branch_repo).await;
+                    }
+                }
+                Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
+                    tracing::info!(
+                        task_id = task_id_str,
+                        conflict_count = conflict_files.len(),
+                        "Programmatic merge failed: conflicts detected, transitioning to Merging"
+                    );
+
+                    for file in &conflict_files {
+                        tracing::debug!(task_id = task_id_str, file = %file.display(), "Conflict file");
+                    }
+
+                    task.internal_status = InternalStatus::Merging;
+                    task.touch();
+
+                    if let Err(e) = task_repo.update(&task).await {
+                        tracing::error!(error = %e, "Failed to update task to Merging status");
+                        return;
+                    }
+
+                    if let Err(e) = task_repo.persist_status_change(
+                        &task_id,
+                        InternalStatus::PendingMerge,
+                        InternalStatus::Merging,
+                        "merge_conflict",
+                    ).await {
+                        tracing::warn!(error = %e, "Failed to record merge conflict transition (non-fatal)");
+                    }
+
+                    self.machine
+                        .context
+                        .services
+                        .event_emitter
+                        .emit("task:merge_conflict", task_id_str)
+                        .await;
+
+                    let prompt = format!("Resolve merge conflicts for task: {}", task_id_str);
+                    tracing::info!(
+                        task_id = task_id_str,
+                        "Spawning merger agent for conflict resolution (from attempt_programmatic_merge)"
+                    );
+
+                    let result = self
+                        .machine
+                        .context
+                        .services
+                        .chat_service
+                        .send_message(
+                            crate::domain::entities::ChatContextType::Merge,
+                            task_id_str,
+                            &prompt,
+                        )
+                        .await;
+
+                    match &result {
+                        Ok(_) => tracing::info!(task_id = task_id_str, "Merger agent spawned successfully"),
+                        Err(e) => tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent"),
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(
+                        task_id = task_id_str,
+                        error = %e,
+                        source_branch = %source_branch,
+                        target_branch = %target_branch,
+                        repo_path = %repo_path.display(),
+                        "Programmatic merge failed due to error, transitioning to MergeIncomplete"
+                    );
+
+                    task.internal_status = InternalStatus::MergeIncomplete;
+                    task.touch();
+
+                    if let Err(e) = task_repo.update(&task).await {
+                        tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
+                        return;
+                    }
+
+                    if let Err(e) = task_repo.persist_status_change(
+                        &task_id,
+                        InternalStatus::PendingMerge,
+                        InternalStatus::MergeIncomplete,
+                        "merge_incomplete",
+                    ).await {
+                        tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
+                    }
+
+                    self.machine
+                        .context
+                        .services
+                        .event_emitter
+                        .emit("task:status_changed", task_id_str)
+                        .await;
+                }
+            }
+        }
+    }
+
+    /// Post-merge cleanup: update plan branch status, delete feature branch, unblock dependents.
+    ///
+    /// Shared between Worktree and Local mode success paths in `attempt_programmatic_merge()`.
+    async fn post_merge_cleanup(
+        &self,
+        task_id_str: &str,
+        task_id: &TaskId,
+        repo_path: &Path,
+        plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
+    ) {
+        let app_handle = self.machine.context.services.app_handle.as_ref();
+
+        if let Some(ref plan_branch_repo) = plan_branch_repo {
+            if let Ok(Some(pb)) = plan_branch_repo.get_by_merge_task_id(task_id).await {
+                if let Err(e) = plan_branch_repo.set_merged(&pb.id).await {
+                    tracing::warn!(
+                        error = %e,
+                        task_id = task_id_str,
+                        plan_branch_id = pb.id.as_str(),
+                        "Failed to mark plan branch as merged (non-fatal)"
                     );
                 }
 
-                // Update task status to Merging (agent phase)
-                task.internal_status = InternalStatus::Merging;
-                task.touch();
-
-                if let Err(e) = task_repo.update(&task).await {
-                    tracing::error!(error = %e, "Failed to update task to Merging status");
-                    return;
+                if let Err(e) = GitService::delete_feature_branch(repo_path, &pb.branch_name) {
+                    tracing::warn!(
+                        error = %e,
+                        task_id = task_id_str,
+                        branch = %pb.branch_name,
+                        "Failed to delete feature branch after merge (non-fatal)"
+                    );
+                } else {
+                    tracing::info!(
+                        task_id = task_id_str,
+                        branch = %pb.branch_name,
+                        "Deleted feature branch after plan merge"
+                    );
                 }
 
-                // Record status change in history
-                if let Err(e) = task_repo.persist_status_change(
-                    &task_id,
-                    InternalStatus::PendingMerge,
-                    InternalStatus::Merging,
-                    "merge_conflict",
-                ).await {
-                    tracing::warn!(error = %e, "Failed to record merge conflict transition (non-fatal)");
+                if let Some(handle) = app_handle {
+                    let _ = handle.emit(
+                        "plan:merge_complete",
+                        serde_json::json!({
+                            "plan_artifact_id": pb.plan_artifact_id.as_str(),
+                            "plan_branch_id": pb.id.as_str(),
+                            "merge_task_id": task_id_str,
+                            "branch_name": pb.branch_name,
+                        }),
+                    );
                 }
-
-                // Emit event for UI update
-                self.machine
-                    .context
-                    .services
-                    .event_emitter
-                    .emit("task:merge_conflict", task_id_str)
-                    .await;
-
-                // Spawn merger agent directly (on_enter(Merging) won't be called automatically
-                // when we update status directly - TaskTransitionService only triggers entry
-                // actions via transition_task() or execute_entry_actions())
-                let prompt = format!("Resolve merge conflicts for task: {}", task_id_str);
-                tracing::info!(
-                    task_id = task_id_str,
-                    "Spawning merger agent for conflict resolution (from attempt_programmatic_merge)"
-                );
-
-                let result = self
-                    .machine
-                    .context
-                    .services
-                    .chat_service
-                    .send_message(
-                        crate::domain::entities::ChatContextType::Merge,
-                        task_id_str,
-                        &prompt,
-                    )
-                    .await;
-
-                match &result {
-                    Ok(_) => {
-                        tracing::info!(task_id = task_id_str, "Merger agent spawned successfully");
-                    }
-                    Err(e) => {
-                        tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent");
-                    }
-                }
-            }
-            Err(e) => {
-                // Git operation failed (not a conflict, but an error)
-                tracing::error!(
-                    task_id = task_id_str,
-                    error = %e,
-                    worktree_path = ?task.worktree_path,
-                    source_branch = %source_branch,
-                    target_branch = %target_branch,
-                    repo_path = %repo_path.display(),
-                    "Programmatic merge failed due to error, transitioning to MergeIncomplete"
-                );
-
-                // Transition to MergeIncomplete - distinguishes non-conflict errors from actual conflicts
-                task.internal_status = InternalStatus::MergeIncomplete;
-                task.touch();
-
-                if let Err(e) = task_repo.update(&task).await {
-                    tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
-                    return;
-                }
-
-                // Record status change in history
-                if let Err(e) = task_repo.persist_status_change(
-                    &task_id,
-                    InternalStatus::PendingMerge,
-                    InternalStatus::MergeIncomplete,
-                    "merge_incomplete",
-                ).await {
-                    tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
-                }
-
-                // Emit event for UI update — MergeIncomplete is a human-waiting state
-                // (user clicks "Retry" which transitions to Merging where agent spawns correctly)
-                self.machine
-                    .context
-                    .services
-                    .event_emitter
-                    .emit("task:status_changed", task_id_str)
-                    .await;
             }
         }
+
+        self.machine
+            .context
+            .services
+            .dependency_manager
+            .unblock_dependents(task_id_str)
+            .await;
     }
 
 }
