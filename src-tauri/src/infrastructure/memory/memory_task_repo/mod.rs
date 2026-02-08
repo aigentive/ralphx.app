@@ -121,7 +121,7 @@ impl TaskRepository for MemoryTaskRepository {
         let tasks = self.tasks.read().await;
         let mut result: Vec<Task> = tasks
             .values()
-            .filter(|t| t.project_id == *project_id && t.internal_status == status)
+            .filter(|t| t.project_id == *project_id && t.internal_status == status && t.archived_at.is_none())
             .cloned()
             .collect();
         result.sort_by(|a, b| {
