@@ -226,6 +226,35 @@ pub async fn delete_project(id: String, state: State<'_, AppState>) -> Result<()
         .map_err(|e| e.to_string())
 }
 
+/// Update custom analysis override for a project (Settings UI)
+/// Sets or clears the custom_analysis JSON field.
+#[tauri::command]
+pub async fn update_custom_analysis(
+    id: String,
+    custom_analysis: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<ProjectResponse, String> {
+    let project_id = ProjectId::from_string(id.clone());
+
+    let mut project = state
+        .project_repo
+        .get_by_id(&project_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Project not found: {}", id))?;
+
+    project.custom_analysis = custom_analysis;
+    project.touch();
+
+    state
+        .project_repo
+        .update(&project)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(ProjectResponse::from(project))
+}
+
 /// Get the default branch for a git repository
 /// Fallback chain: origin/HEAD -> main -> master -> first branch
 #[tauri::command]

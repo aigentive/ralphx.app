@@ -412,6 +412,7 @@ pub fn run() {
             commands::project_commands::get_git_branches,
             commands::project_commands::get_git_default_branch,
             commands::project_commands::reanalyze_project,
+            commands::project_commands::update_custom_analysis,
             commands::agent_profile_commands::list_agent_profiles,
             commands::agent_profile_commands::get_agent_profile,
             commands::agent_profile_commands::get_agent_profiles_by_role,
