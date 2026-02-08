@@ -172,12 +172,13 @@ export function AskUserQuestionCard({
 
   const handleSubmit = useCallback(() => {
     const response: AskUserQuestionResponse = {
+      requestId: question.requestId,
       taskId: question.taskId,
       selectedOptions: Array.from(selectedOptions),
       customResponse: showOther && otherText.trim() ? otherText.trim() : undefined,
     };
     onSubmit(response);
-  }, [question.taskId, selectedOptions, showOther, otherText, onSubmit]);
+  }, [question.requestId, question.taskId, selectedOptions, showOther, otherText, onSubmit]);
 
   const hasValidAnswer = selectedOptions.size > 0 || (showOther && otherText.trim().length > 0);
 

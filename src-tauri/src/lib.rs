@@ -141,10 +141,18 @@ pub fn run() {
             });
 
             // Start HTTP server for MCP proxy on port 3847
-            // Create a second AppState for HTTP server (repos are Arc'd so this is efficient)
-            let http_app_state = Arc::new(
-                AppState::new_production(app_handle).expect("Failed to initialize AppState for HTTP server"),
-            );
+            // Create a second AppState for HTTP server with its own DB connection,
+            // but share in-memory state (question_state, permission_state, message_queue)
+            // so MCP handlers and Tauri commands operate on the same data.
+            let shared_question_state = Arc::clone(&app_state.question_state);
+            let shared_permission_state = Arc::clone(&app_state.permission_state);
+            let shared_message_queue = Arc::clone(&app_state.message_queue);
+            let mut http_app_state_inner =
+                AppState::new_production(app_handle).expect("Failed to initialize AppState for HTTP server");
+            http_app_state_inner.question_state = shared_question_state;
+            http_app_state_inner.permission_state = shared_permission_state;
+            http_app_state_inner.message_queue = shared_message_queue;
+            let http_app_state = Arc::new(http_app_state_inner);
             // Clone execution_state from Tauri state for HTTP server
             let http_execution_state = app.state::<Arc<commands::ExecutionState>>().inner().clone();
             tauri::async_runtime::spawn(async move {
