@@ -50,6 +50,8 @@ pub struct StartupJobRunner<R: Runtime = tauri::Wry> {
     active_project_state: Arc<ActiveProjectState>,
     /// Phase 90: App state repository for reading persisted active_project_id from DB
     app_state_repo: Arc<dyn AppStateRepository>,
+    /// Phase 105: Persisted agent registry for killing orphaned OS processes on restart
+    running_agent_registry: Arc<dyn crate::domain::services::RunningAgentRegistry>,
     reconciler: ReconciliationRunner<R>,
     /// Optional task scheduler for auto-starting Ready tasks on startup.
     /// When provided, Ready tasks will be scheduled after resuming agent-active tasks.
@@ -103,6 +105,7 @@ impl<R: Runtime> StartupJobRunner<R> {
             execution_state,
             active_project_state,
             app_state_repo,
+            running_agent_registry,
             reconciler,
             task_scheduler: None,
             app_handle: None,
@@ -132,7 +135,16 @@ impl<R: Runtime> StartupJobRunner<R> {
     /// respawn the appropriate agent.
     pub async fn run(&self) {
         eprintln!("[STARTUP] StartupJobRunner::run() called");
-        // Clean up orphaned agent runs from previous sessions first
+
+        // Phase 105: Kill orphaned agent OS processes from previous session.
+        // The SQLite-backed registry persists PIDs across restarts, so we can
+        // SIGTERM old processes before spawning new ones.
+        let killed = self.running_agent_registry.stop_all().await;
+        if !killed.is_empty() {
+            info!(count = killed.len(), "Killed orphaned agent processes from previous session");
+        }
+
+        // Clean up orphaned agent runs from previous sessions
         // These are runs that were left in "running" status when the app was closed/crashed
         match self.agent_run_repo.cancel_all_running().await {
             Ok(count) if count > 0 => {
