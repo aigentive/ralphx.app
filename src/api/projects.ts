@@ -153,6 +153,28 @@ export const projectsApi = {
         worktreeParentDirectory,
       },
     }),
+
+  /**
+   * Update custom analysis override for a project
+   * @param projectId The project ID
+   * @param customAnalysis JSON string of analysis entries, or null to clear
+   * @returns The updated project
+   */
+  updateCustomAnalysis: (projectId: string, customAnalysis: string | null) =>
+    typedInvokeWithTransform(
+      "update_custom_analysis",
+      { id: projectId, customAnalysis },
+      ProjectResponseSchema,
+      transformProject
+    ),
+
+  /**
+   * Re-analyze project build systems and validation commands
+   * Triggers the project-analyzer agent
+   * @param projectId The project ID
+   */
+  reanalyzeProject: (projectId: string) =>
+    invoke("reanalyze_project", { id: projectId }),
 } as const;
 
 /**

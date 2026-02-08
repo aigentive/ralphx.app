@@ -44,6 +44,7 @@ mod v15_task_ideation_session_id;
 mod v16_plan_branch_session_index;
 mod v17_running_agents;
 mod v18_task_metadata;
+mod v19_project_analysis;
 
 #[cfg(test)]
 mod tests;
@@ -81,9 +82,11 @@ mod v16_plan_branch_session_index_tests;
 mod v17_running_agents_tests;
 #[cfg(test)]
 mod v18_task_metadata_tests;
+#[cfg(test)]
+mod v19_project_analysis_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 18;
+pub const SCHEMA_VERSION: i32 = 19;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -187,6 +190,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 18,
         name: "task_metadata",
         migrate: v18_task_metadata::migrate,
+    },
+    Migration {
+        version: 19,
+        name: "project_analysis",
+        migrate: v19_project_analysis::migrate,
     },
 ];
 

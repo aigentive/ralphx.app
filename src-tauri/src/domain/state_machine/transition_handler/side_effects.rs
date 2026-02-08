@@ -2,6 +2,7 @@
 // This module contains the on_enter implementation that handles state-specific actions
 
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::Arc;
 
 use tauri::{AppHandle, Emitter};
@@ -322,6 +323,184 @@ pub async fn resolve_merge_branches(
     }
 
     (task_branch, base_branch)
+}
+
+// ============================================================================
+// Post-Merge Validation Gate
+// ============================================================================
+
+/// Analysis entry for path-scoped build/validation commands.
+/// Mirrors the HTTP handler's AnalysisEntry but kept local to avoid cross-module coupling.
+#[derive(Debug, Clone, serde::Deserialize)]
+struct MergeAnalysisEntry {
+    path: String,
+    #[allow(dead_code)]
+    label: String,
+    #[serde(default)]
+    validate: Vec<String>,
+}
+
+/// Result of running post-merge validation commands.
+#[derive(Debug)]
+struct ValidationResult {
+    all_passed: bool,
+    failures: Vec<ValidationFailure>,
+}
+
+#[derive(Debug)]
+struct ValidationFailure {
+    command: String,
+    path: String,
+    exit_code: Option<i32>,
+    stderr: String,
+}
+
+/// Load effective analysis, resolve template vars, and run all validate commands.
+///
+/// Returns `None` if no analysis entries exist (backward compatible — skip validation).
+/// Returns `Some(ValidationResult)` with pass/fail details otherwise.
+fn run_validation_commands(
+    project: &Project,
+    task: &Task,
+    merge_cwd: &Path,
+) -> Option<ValidationResult> {
+    // Load effective analysis: custom_analysis ?? detected_analysis
+    let analysis_json = project
+        .custom_analysis
+        .as_ref()
+        .or(project.detected_analysis.as_ref())?;
+
+    let entries: Vec<MergeAnalysisEntry> = match serde_json::from_str(analysis_json) {
+        Ok(e) => e,
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to parse project analysis JSON, skipping validation");
+            return None;
+        }
+    };
+
+    if entries.is_empty() {
+        return None;
+    }
+
+    // Collect all validate commands with their resolved paths
+    let project_root = &project.working_directory;
+    let worktree_path = task.worktree_path.as_deref().unwrap_or(project_root);
+    let task_branch = task.task_branch.as_deref().unwrap_or("");
+
+    let resolve = |s: &str| -> String {
+        s.replace("{project_root}", project_root)
+            .replace("{worktree_path}", worktree_path)
+            .replace("{task_branch}", task_branch)
+    };
+
+    let mut failures = Vec::new();
+    let mut ran_any = false;
+
+    for entry in &entries {
+        if entry.validate.is_empty() {
+            continue;
+        }
+
+        let resolved_path = resolve(&entry.path);
+        // Resolve the CWD for this entry's commands:
+        // If the entry path is ".", use merge_cwd directly.
+        // Otherwise, join merge_cwd with the resolved relative path.
+        let cmd_cwd = if resolved_path == "." {
+            merge_cwd.to_path_buf()
+        } else {
+            merge_cwd.join(&resolved_path)
+        };
+
+        for cmd_str in &entry.validate {
+            let resolved_cmd = resolve(cmd_str);
+            ran_any = true;
+
+            tracing::info!(
+                command = %resolved_cmd,
+                cwd = %cmd_cwd.display(),
+                "Running post-merge validation command"
+            );
+
+            let result = Command::new("sh")
+                .arg("-c")
+                .arg(&resolved_cmd)
+                .current_dir(&cmd_cwd)
+                .output();
+
+            match result {
+                Ok(output) => {
+                    if !output.status.success() {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        let stdout = String::from_utf8_lossy(&output.stdout);
+                        tracing::warn!(
+                            command = %resolved_cmd,
+                            exit_code = ?output.status.code(),
+                            stderr = %stderr,
+                            "Post-merge validation command failed"
+                        );
+                        failures.push(ValidationFailure {
+                            command: resolved_cmd,
+                            path: resolved_path.clone(),
+                            exit_code: output.status.code(),
+                            stderr: format!(
+                                "{}{}",
+                                if stderr.is_empty() { "" } else { &stderr },
+                                if stdout.is_empty() { String::new() } else { format!("\nstdout: {}", stdout) },
+                            ),
+                        });
+                    } else {
+                        tracing::info!(command = %resolved_cmd, "Post-merge validation command passed");
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(command = %resolved_cmd, error = %e, "Failed to execute validation command");
+                    failures.push(ValidationFailure {
+                        command: resolved_cmd,
+                        path: resolved_path.clone(),
+                        exit_code: None,
+                        stderr: format!("Failed to execute: {}", e),
+                    });
+                }
+            }
+        }
+    }
+
+    if !ran_any {
+        // All entries had empty validate arrays
+        return None;
+    }
+
+    Some(ValidationResult {
+        all_passed: failures.is_empty(),
+        failures,
+    })
+}
+
+/// Format validation failures as a JSON metadata string for MergeIncomplete.
+fn format_validation_error_metadata(
+    failures: &[ValidationFailure],
+    source_branch: &str,
+    target_branch: &str,
+) -> String {
+    let failure_details: Vec<serde_json::Value> = failures
+        .iter()
+        .map(|f| {
+            serde_json::json!({
+                "command": f.command,
+                "path": f.path,
+                "exit_code": f.exit_code,
+                "stderr": if f.stderr.len() > 2000 { &f.stderr[..2000] } else { &f.stderr },
+            })
+        })
+        .collect();
+
+    serde_json::json!({
+        "error": format!("Post-merge validation failed: {} command(s) failed", failures.len()),
+        "validation_failures": failure_details,
+        "source_branch": source_branch,
+        "target_branch": target_branch,
+    })
+    .to_string()
 }
 
 impl<'a> super::TransitionHandler<'a> {
@@ -1050,6 +1229,18 @@ impl<'a> super::TransitionHandler<'a> {
                             "Programmatic merge in-repo succeeded (fast path)"
                         );
 
+                        // Post-merge validation gate: run validate commands before completing
+                        if let Some(validation) = run_validation_commands(&project, &task, repo_path) {
+                            if !validation.all_passed {
+                                self.handle_validation_failure(
+                                    &mut task, &task_id, task_id_str, task_repo,
+                                    &validation.failures, &source_branch, &target_branch,
+                                    repo_path, "in-repo",
+                                ).await;
+                                return;
+                            }
+                        }
+
                         let app_handle = self.machine.context.services.app_handle.as_ref();
                         if let Err(e) = complete_merge_internal(
                             &mut task,
@@ -1209,6 +1400,20 @@ impl<'a> super::TransitionHandler<'a> {
                             "Programmatic merge in worktree succeeded (fast path)"
                         );
 
+                        // Post-merge validation gate: run in the merge worktree (before deleting it)
+                        if let Some(validation) = run_validation_commands(&project, &task, &merge_wt_path) {
+                            if !validation.all_passed {
+                                // Reset in merge worktree first, then delete it
+                                self.handle_validation_failure(
+                                    &mut task, &task_id, task_id_str, task_repo,
+                                    &validation.failures, &source_branch, &target_branch,
+                                    &merge_wt_path, "worktree",
+                                ).await;
+                                let _ = GitService::delete_worktree(repo_path, &merge_wt_path);
+                                return;
+                            }
+                        }
+
                         if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt_path) {
                             tracing::warn!(
                                 error = %e,
@@ -1365,6 +1570,18 @@ impl<'a> super::TransitionHandler<'a> {
                         commit_sha = %commit_sha,
                         "Programmatic merge succeeded (fast path)"
                     );
+
+                    // Post-merge validation gate: run validate commands before completing
+                    if let Some(validation) = run_validation_commands(&project, &task, repo_path) {
+                        if !validation.all_passed {
+                            self.handle_validation_failure(
+                                &mut task, &task_id, task_id_str, task_repo,
+                                &validation.failures, &source_branch, &target_branch,
+                                repo_path, "local",
+                            ).await;
+                            return;
+                        }
+                    }
 
                     let app_handle = self.machine.context.services.app_handle.as_ref();
                     if let Err(e) = complete_merge_internal(
@@ -1568,6 +1785,66 @@ impl<'a> super::TransitionHandler<'a> {
         }
     }
 
+    /// Handle post-merge validation failure: revert the merge commit, then transition
+    /// to MergeIncomplete with error metadata.
+    ///
+    /// The merge commit has already landed on the target branch. We must revert it
+    /// before transitioning so that failing code doesn't remain on the target branch.
+    ///
+    /// # Arguments
+    /// * `task` - Mutable task to update
+    /// * `task_id` - Task ID for persistence
+    /// * `task_id_str` - Task ID string for logging
+    /// * `task_repo` - Repository for persisting status change
+    /// * `failures` - Validation failures to include in metadata
+    /// * `source_branch` / `target_branch` - For metadata
+    /// * `merge_path` - Path where the merge happened (for git reset)
+    /// * `mode_label` - Label for log messages (e.g., "in-repo", "worktree", "local")
+    async fn handle_validation_failure(
+        &self,
+        task: &mut Task,
+        task_id: &TaskId,
+        task_id_str: &str,
+        task_repo: &Arc<dyn TaskRepository>,
+        failures: &[ValidationFailure],
+        source_branch: &str,
+        target_branch: &str,
+        merge_path: &Path,
+        mode_label: &str,
+    ) {
+        tracing::warn!(
+            task_id = task_id_str,
+            failure_count = failures.len(),
+            "Post-merge validation failed ({}), reverting merge and transitioning to MergeIncomplete",
+            mode_label,
+        );
+
+        // Revert the merge commit so failing code doesn't remain on the target branch
+        if let Err(e) = GitService::reset_hard(merge_path, "HEAD~1") {
+            tracing::error!(
+                task_id = task_id_str,
+                error = %e,
+                "Failed to revert merge commit after validation failure — target branch may have failing code"
+            );
+        }
+
+        task.metadata = Some(format_validation_error_metadata(
+            failures, source_branch, target_branch,
+        ));
+        task.internal_status = InternalStatus::MergeIncomplete;
+        task.touch();
+
+        let _ = task_repo.update(task).await;
+        let _ = task_repo.persist_status_change(
+            task_id,
+            InternalStatus::PendingMerge,
+            InternalStatus::MergeIncomplete,
+            "validation_failed",
+        ).await;
+
+        self.machine.context.services.event_emitter
+            .emit("task:status_changed", task_id_str).await;
+    }
 }
 
 #[cfg(test)]
@@ -1856,5 +2133,121 @@ mod tests {
         // Merge task path wins: feature branch into base
         assert_eq!(source, "ralphx/test/plan-dual");
         assert_eq!(target, "main");
+    }
+
+    // ==================
+    // run_validation_commands tests
+    // ==================
+
+    #[test]
+    fn run_validation_returns_none_when_no_analysis() {
+        let project = make_project(Some("main"));
+        let task = make_task(None, None);
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn run_validation_returns_none_when_empty_entries() {
+        let mut project = make_project(Some("main"));
+        project.detected_analysis = Some("[]".to_string());
+        let task = make_task(None, None);
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn run_validation_returns_none_when_no_validate_commands() {
+        let mut project = make_project(Some("main"));
+        project.detected_analysis = Some(
+            r#"[{"path": ".", "label": "Test", "validate": []}]"#.to_string(),
+        );
+        let task = make_task(None, None);
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn run_validation_prefers_custom_over_detected() {
+        let mut project = make_project(Some("main"));
+        // detected has a failing command
+        project.detected_analysis = Some(
+            r#"[{"path": ".", "label": "Test", "validate": ["false"]}]"#.to_string(),
+        );
+        // custom has a passing command (overrides detected)
+        project.custom_analysis = Some(
+            r#"[{"path": ".", "label": "Test", "validate": ["true"]}]"#.to_string(),
+        );
+        let task = make_task(None, None);
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"));
+        assert!(result.is_some());
+        assert!(result.unwrap().all_passed);
+    }
+
+    #[test]
+    fn run_validation_succeeds_with_passing_command() {
+        let mut project = make_project(Some("main"));
+        project.detected_analysis = Some(
+            r#"[{"path": ".", "label": "Test", "validate": ["true"]}]"#.to_string(),
+        );
+        let task = make_task(None, None);
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"));
+        assert!(result.is_some());
+        let r = result.unwrap();
+        assert!(r.all_passed);
+        assert!(r.failures.is_empty());
+    }
+
+    #[test]
+    fn run_validation_fails_with_failing_command() {
+        let mut project = make_project(Some("main"));
+        project.detected_analysis = Some(
+            r#"[{"path": ".", "label": "Test", "validate": ["false"]}]"#.to_string(),
+        );
+        let task = make_task(None, None);
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"));
+        assert!(result.is_some());
+        let r = result.unwrap();
+        assert!(!r.all_passed);
+        assert_eq!(r.failures.len(), 1);
+        assert_eq!(r.failures[0].command, "false");
+    }
+
+    #[test]
+    fn run_validation_resolves_template_vars() {
+        let mut project = make_project(Some("main"));
+        project.detected_analysis = Some(
+            r#"[{"path": ".", "label": "Test", "validate": ["echo {project_root} {worktree_path}"]}]"#.to_string(),
+        );
+        let mut task = make_task(None, None);
+        task.worktree_path = Some("/tmp/wt".to_string());
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"));
+        assert!(result.is_some());
+        assert!(result.unwrap().all_passed);
+    }
+
+    #[test]
+    fn run_validation_returns_none_for_invalid_json() {
+        let mut project = make_project(Some("main"));
+        project.detected_analysis = Some("not valid json".to_string());
+        let task = make_task(None, None);
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn format_validation_error_metadata_formats_correctly() {
+        let failures = vec![ValidationFailure {
+            command: "cargo check".to_string(),
+            path: ".".to_string(),
+            exit_code: Some(1),
+            stderr: "error[E0308]: mismatched types".to_string(),
+        }];
+        let result = format_validation_error_metadata(&failures, "task-branch", "main");
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert!(parsed["error"].as_str().unwrap().contains("1 command(s) failed"));
+        assert_eq!(parsed["source_branch"], "task-branch");
+        assert_eq!(parsed["target_branch"], "main");
+        assert_eq!(parsed["validation_failures"].as_array().unwrap().len(), 1);
     }
 }

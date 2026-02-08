@@ -141,6 +141,17 @@ impl AgenticClientSpawner {
         self.event_bus.as_ref()
     }
 
+    /// Resolve the project ID for a given task.
+    async fn resolve_project_id(&self, task_id: &str) -> Option<String> {
+        if let Some(task_repo) = &self.task_repo {
+            let task_id_typed = TaskId(task_id.to_string());
+            if let Ok(Some(task)) = task_repo.get_by_id(&task_id_typed).await {
+                return Some(task.project_id.as_str().to_string());
+            }
+        }
+        None
+    }
+
     /// Resolve the working directory for a given task.
     /// Uses task's worktree_path when project is in Worktree mode,
     /// falls back to project working_directory, then self.working_directory.
@@ -198,8 +209,16 @@ impl AgentSpawner for AgenticClientSpawner {
         // Resolve working directory per-task (worktree-aware)
         let working_dir = self.resolve_working_directory(task_id).await;
 
+        // Resolve project ID for RALPHX_PROJECT_ID env var
+        let project_id = self.resolve_project_id(task_id).await;
+
         // Plugin dir is relative to working directory (which is now project root)
         let plugin_dir = working_dir.join("ralphx-plugin");
+
+        let mut env = std::collections::HashMap::new();
+        if let Some(pid) = project_id {
+            env.insert("RALPHX_PROJECT_ID".to_string(), pid);
+        }
 
         let config = AgentConfig {
             role,
@@ -210,7 +229,7 @@ impl AgentSpawner for AgenticClientSpawner {
             model: None,
             max_tokens: None,
             timeout_secs: None,
-            env: std::collections::HashMap::new(),
+            env,
         };
 
         // Spawn and handle errors

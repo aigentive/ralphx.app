@@ -95,6 +95,16 @@ pub fn spawn_send_message_background<R: Runtime>(
             context_id,
             conversation_id.as_str()
         );
+
+        // Resolve project ID for RALPHX_PROJECT_ID env var (used in queue processing)
+        let resolved_project_id = chat_service_context::resolve_project_id(
+            context_type,
+            &context_id,
+            Arc::clone(&task_repo),
+            Arc::clone(&ideation_session_repo),
+        )
+        .await;
+
         // Create key for unregistering
         let registry_key = RunningAgentKey::new(context_type.to_string(), &context_id);
 
@@ -432,6 +442,11 @@ pub fn spawn_send_message_background<R: Runtime>(
                                 cmd.env("RALPHX_TASK_ID", &context_id);
                             }
                             _ => {}
+                        }
+
+                        // Add project scope for all contexts
+                        if let Some(ref pid) = resolved_project_id {
+                            cmd.env("RALPHX_PROJECT_ID", pid);
                         }
 
                         add_prompt_args(&mut cmd, &queued_msg.content, None, Some(sess_id));
