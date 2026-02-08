@@ -4,13 +4,14 @@
  * Uses EventBus abstraction for browser/Tauri compatibility.
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEventBus } from "@/providers/EventProvider";
 import { PlanArtifactEventSchema } from "@/types/events";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { ideationKeys } from "./useIdeation";
 import type { Artifact } from "@/types/artifact";
+import type { IdeationSession } from "@/types/ideation";
 import type { Unsubscribe } from "@/lib/event-bus";
 
 /**
@@ -35,6 +36,18 @@ export function usePlanArtifactEvents() {
   const sessions = useIdeationStore((s) => s.sessions);
   const queryClient = useQueryClient();
 
+  // Keep sessions and setPlanArtifact in refs so the effect doesn't
+  // re-subscribe every time the sessions Record or store actions change.
+  const sessionsRef = useRef<Record<string, IdeationSession>>(sessions);
+  const setPlanArtifactRef = useRef(setPlanArtifact);
+  const queryClientRef = useRef(queryClient);
+  useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
+  useEffect(() => { setPlanArtifactRef.current = setPlanArtifact; }, [setPlanArtifact]);
+  useEffect(() => { queryClientRef.current = queryClient; }, [queryClient]);
+
+  // Dedup guard: skip duplicate events during subscribe/unsubscribe cycles
+  const lastProcessedRef = useRef<string | null>(null);
+
   useEffect(() => {
     const unsubscribes: Unsubscribe[] = [];
 
@@ -57,6 +70,11 @@ export function usePlanArtifactEvents() {
         if (parsed.data.type === "created") {
           const { sessionId, artifact } = parsed.data;
 
+          // Dedup: skip if we already processed this exact event
+          const eventKey = `created:${artifact.id}:${artifact.version}`;
+          if (lastProcessedRef.current === eventKey) return;
+          lastProcessedRef.current = eventKey;
+
           // Only update store if this is for the active session
           if (sessionId === activeSessionId) {
             // Transform to Artifact type
@@ -72,11 +90,11 @@ export function usePlanArtifactEvents() {
               },
               derivedFrom: [],
             };
-            setPlanArtifact(planArtifact);
+            setPlanArtifactRef.current(planArtifact);
           }
 
           // Invalidate session query to refetch with new plan artifact link
-          queryClient.invalidateQueries({
+          queryClientRef.current.invalidateQueries({
             queryKey: ideationKeys.sessionWithData(sessionId),
           });
         }
@@ -102,10 +120,16 @@ export function usePlanArtifactEvents() {
         if (parsed.data.type === "updated") {
           const { artifactId, artifact } = parsed.data;
 
+          // Dedup: skip if we already processed this exact event
+          const eventKey = `updated:${artifact.id}:${artifact.version}`;
+          if (lastProcessedRef.current === eventKey) return;
+          lastProcessedRef.current = eventKey;
+
           // Find the session that has this artifact linked
           // Check active session first (most common case)
+          const currentSessions = sessionsRef.current;
           const activeSession = activeSessionId
-            ? sessions[activeSessionId]
+            ? currentSessions[activeSessionId]
             : null;
           const isActiveSessionArtifact =
             activeSession?.planArtifactId === artifactId;
@@ -124,13 +148,13 @@ export function usePlanArtifactEvents() {
               },
               derivedFrom: [],
             };
-            setPlanArtifact(planArtifact);
+            setPlanArtifactRef.current(planArtifact);
           }
 
           // Find any session with this artifact and invalidate its query
-          for (const session of Object.values(sessions)) {
+          for (const session of Object.values(currentSessions)) {
             if (session.planArtifactId === artifactId) {
-              queryClient.invalidateQueries({
+              queryClientRef.current.invalidateQueries({
                 queryKey: ideationKeys.sessionWithData(session.id),
               });
             }
@@ -142,5 +166,5 @@ export function usePlanArtifactEvents() {
     return () => {
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [bus, setPlanArtifact, activeSessionId, sessions, queryClient]);
+  }, [bus, activeSessionId]);
 }
