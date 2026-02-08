@@ -395,7 +395,9 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   }, [graphData]);
 
   // Keep ref in sync (used by initial-fit effect)
-  expandedPlanIdRef.current = expandedPlanId;
+  useEffect(() => {
+    expandedPlanIdRef.current = expandedPlanId;
+  }, [expandedPlanId]);
 
   // Plan group collapse: recompute defaults synchronously when graphData changes
   const [prevPlanCollapseData, setPrevPlanCollapseData] = useState<typeof graphData>(undefined);
@@ -423,6 +425,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   );
 
   // Tier group collapse: recompute defaults synchronously when inputs change
+  let tierAutoCenterCandidate: string | null = null;
   const [prevTierCollapseInputs, setPrevTierCollapseInputs] = useState<{
     graphData: typeof graphData;
     byPlan: boolean;
@@ -506,19 +509,24 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
 
         setCollapsedTierIds((prev) => areSetsEqual(prev, toCollapseTiers) ? prev : toCollapseTiers);
 
-        // Only set pending auto-center AFTER initial fit has completed.
-        // On initial load, the initial-fit effect owns viewport positioning.
-        if (
-          initialFitDoneRef.current &&
-          expandedPlanId &&
-          tiersByPlanLocal.has(expandedPlanId) &&
-          expandedPlanId !== lastAutoCenteredPlanRef.current
-        ) {
-          pendingTierAutoCenterRef.current = expandedPlanId;
+        // Track whether expandedPlanId has tiers (used by effect below for auto-center)
+        if (expandedPlanId && tiersByPlanLocal.has(expandedPlanId)) {
+          tierAutoCenterCandidate = expandedPlanId;
         }
       }
     }
   }
+
+  // Schedule auto-center via effect (refs must not be accessed during render)
+  useEffect(() => {
+    if (
+      tierAutoCenterCandidate &&
+      initialFitDoneRef.current &&
+      tierAutoCenterCandidate !== lastAutoCenteredPlanRef.current
+    ) {
+      pendingTierAutoCenterRef.current = tierAutoCenterCandidate;
+    }
+  });
 
   // ---- End synchronous collapsed-state derivation ----------------------------
 
