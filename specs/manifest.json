@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 109,
+  "currentPhase": 110,
   "phases": [
     {
       "phase": 0,
@@ -779,6 +779,13 @@
       "prd": "specs/phases/prd_phase_109_fix_worktree_plan_merge.md",
       "status": "complete",
       "description": "Fix plan merge failing when target branch (main) is already checked out in worktree mode"
+    },
+    {
+      "phase": 110,
+      "name": "Fix Plan Merge Tasks Stuck in pending_merge",
+      "prd": "specs/phases/prd_phase_110_fix_plan_merge_stuck_pending.md",
+      "status": "active",
+      "description": "Fix plan_branch_repo propagation gaps causing plan merge tasks to silently fail"
     }
   ]
 }
