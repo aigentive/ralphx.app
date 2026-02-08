@@ -134,13 +134,13 @@ export function useIntegratedChatEvents({
         conversation_id: string;
       }>("agent:run_completed", (payload) => {
         const { conversation_id } = payload;
+        if (conversation_id !== activeConversationId) return;
+
         setStreamingToolCalls([]);
         setStreamingText("");
-        if (conversation_id) {
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.conversation(conversation_id),
-          });
-        }
+        queryClient.invalidateQueries({
+          queryKey: chatKeys.conversation(conversation_id),
+        });
         setTimeout(() => {
           if (messagesEndRef.current) {
             messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
