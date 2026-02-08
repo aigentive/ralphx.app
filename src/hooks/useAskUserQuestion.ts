@@ -61,7 +61,7 @@ export function useAskUserQuestion() {
       const parsed = AskUserQuestionPayloadSchema.safeParse(payload);
 
       if (!parsed.success) {
-        console.warn('[useAskUserQuestion] Invalid payload:', parsed.error.issues);
+        console.warn("[useAskUserQuestion] Zod parse failed:", parsed.error.issues);
         return;
       }
 
