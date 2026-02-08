@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-02-08 21:30:00 - Phase 107 Task 2: Add try_schedule_ready_tasks() in post_merge_cleanup()
+**What:**
+- Added scheduler trigger after `unblock_dependents()` in `post_merge_cleanup()` (programmatic merge path)
+- Uses same pattern as `on_enter(Merged)` at lines 792-798: `Arc::clone(scheduler)` + `tokio::spawn` with 600ms delay
+- File: `src-tauri/src/domain/state_machine/transition_handler/side_effects.rs:1300-1306`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — passes clean
+- `cargo test` — all tests pass
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-08 21:00:00 - Phase 107 Task 1: Add persist_status_change() in unblock_dependents()
 **What:**
 - Added `persist_status_change()` call after successful `task_repo.update()` in `RepoBackedDependencyManager::unblock_dependents()`

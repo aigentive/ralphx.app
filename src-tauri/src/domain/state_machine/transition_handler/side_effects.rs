@@ -1295,6 +1295,15 @@ impl<'a> super::TransitionHandler<'a> {
             .dependency_manager
             .unblock_dependents(task_id_str)
             .await;
+
+        // Schedule newly-unblocked tasks (e.g. plan_merge tasks that just became Ready)
+        if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
+            let scheduler = Arc::clone(scheduler);
+            tokio::spawn(async move {
+                tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
+                scheduler.try_schedule_ready_tasks().await;
+            });
+        }
     }
 
 }
