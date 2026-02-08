@@ -72,30 +72,26 @@ export type TaskNodeData = Record<string, unknown> & {
 export type TaskNodeType = Node<TaskNodeData, "task">;
 
 // ============================================================================
-// Helper Functions
-// ============================================================================
-
-/**
- * Truncate text to max length with ellipsis
- */
-function truncateText(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text;
-  return text.slice(0, maxLength - 1) + "…";
-}
-
-// ============================================================================
 // Component
 // ============================================================================
 
 /**
  * Get background color for step dot based on status (inline style)
+ *
+ * Color scheme:
+ * - Completed: light gray (or green when task is in merged/approved terminal state)
+ * - Skipped: muted gray
+ * - Failed: red
+ * - In-progress: orange
+ * - Pending: darker gray
  */
 function getStepDotStyle(
   index: number,
   completed: number,
   skipped: number,
   failed: number,
-  inProgress: number
+  inProgress: number,
+  isTerminalComplete: boolean
 ): React.CSSProperties {
   const completedAndSkipped = completed + skipped;
   const failedStart = completedAndSkipped;
@@ -109,11 +105,16 @@ function getStepDotStyle(
     borderRadius: "50%",
   };
 
-  if (index < completed) return { ...base, backgroundColor: "hsl(142 76% 45%)" }; // success green
-  if (index < completedAndSkipped) return { ...base, backgroundColor: "hsl(220 10% 50%)" }; // muted
+  // Green only for terminal complete states (merged/approved)
+  const completedColor = isTerminalComplete
+    ? "hsl(142 76% 45%)" // success green
+    : "hsl(220 10% 55%)"; // light gray
+
+  if (index < completed) return { ...base, backgroundColor: completedColor };
+  if (index < completedAndSkipped) return { ...base, backgroundColor: "hsl(220 10% 45%)" }; // muted
   if (index < failedEnd) return { ...base, backgroundColor: "hsl(0 84% 60%)" }; // error red
   if (index < inProgressEnd) return { ...base, backgroundColor: "hsl(14 100% 60%)" }; // accent orange
-  return { ...base, backgroundColor: "hsl(220 10% 30%)" }; // pending gray
+  return { ...base, backgroundColor: "hsl(220 10% 25%)" }; // pending darker gray
 }
 
 
@@ -121,6 +122,7 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
   const { label, taskId, internalStatus, priority, isCriticalPath, description, category, isHighlighted, isFocused, handlers } = data;
   const statusColor = getStatusBorderColor(internalStatus);
   const { data: stepProgress } = useStepProgress(taskId);
+  const isTerminalComplete = internalStatus === "merged" || internalStatus === "approved";
 
   // Create a minimal task-like object for the context menu
   // The context menu only uses title and internalStatus
@@ -229,31 +231,33 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
           <TaskStatusBadge status={internalStatus as InternalStatus} />
         </div>
 
-        {/* Title - Kanban parity (13px, 500 weight) - fixed height */}
+        {/* Title - Kanban parity (13px, 500 weight) - 2-line clamp */}
         <div
-          className="truncate leading-tight pr-8"
+          className="leading-tight pr-8 line-clamp-2"
           style={{
             fontSize: "13px",
             fontWeight: 500,
             color: "hsl(220 10% 90%)",
             lineHeight: 1.4,
-            height: "18px",
+            minHeight: "18px",
+            maxHeight: "36px",
           }}
           title={label}
         >
-          {truncateText(label, 18)}
+          {label}
         </div>
 
-        {/* Description area - fixed height (1 line) */}
+        {/* Description area - 2-line clamp */}
         <div
           className="mt-1 pr-2"
           style={{
-            height: "18px", // Space for 1 line
+            minHeight: "17px",
+            maxHeight: "35px",
           }}
         >
           {description && (
             <div
-              className="truncate"
+              className="line-clamp-2"
               style={{
                 fontSize: "12px",
                 color: "hsl(220 10% 55%)",
@@ -294,7 +298,8 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
                     stepProgress.completed,
                     stepProgress.skipped,
                     stepProgress.failed,
-                    stepProgress.inProgress
+                    stepProgress.inProgress,
+                    isTerminalComplete
                   )}
                 />
               ))}
