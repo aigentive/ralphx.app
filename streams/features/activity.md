@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-02-08 22:00:00 - Phase 107 Task 3: Add try_schedule_ready_tasks() in attempt_merge_auto_complete()
+**What:**
+- Added `TaskSchedulerService` construction and `try_schedule_ready_tasks()` call after `unblock_dependents()` in `attempt_merge_auto_complete()` (agent auto-complete merge path)
+- Constructs scheduler from all available function parameters, adds `plan_branch_repo` conditionally
+- Uses same 600ms delay + `tokio::spawn` pattern as other scheduling sites
+- File: `src-tauri/src/application/chat_service/chat_service_send_background.rs:983-1002`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — passes clean
+- `cargo test` — 3668+ tests pass, 0 failures
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-08 21:30:00 - Phase 107 Task 2: Add try_schedule_ready_tasks() in post_merge_cleanup()
 **What:**
 - Added scheduler trigger after `unblock_dependents()` in `post_merge_cleanup()` (programmatic merge path)

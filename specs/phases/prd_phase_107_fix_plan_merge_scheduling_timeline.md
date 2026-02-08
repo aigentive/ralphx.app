@@ -129,7 +129,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: fix(merge): schedule unblocked tasks after agent auto-complete merge"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
