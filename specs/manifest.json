@@ -800,6 +800,13 @@
       "prd": "specs/phases/prd_phase_112_merge_validation_streaming.md",
       "status": "active",
       "description": "Stream validation output in real-time, configurable validation mode, skip-validation retry"
+    },
+    {
+      "phase": 113,
+      "name": "AI Auto-Fix for Validation Failures",
+      "prd": "specs/phases/prd_phase_113_merge_validation_autofix.md",
+      "status": "pending",
+      "description": "AutoFix validation mode — merger agent attempts to fix build errors before human fallback"
     }
   ]
 }
