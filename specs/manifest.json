@@ -756,7 +756,7 @@
       "phase": 106,
       "name": "Fix Startup Recovery Ignores Archived Tasks",
       "prd": "specs/phases/prd_phase_106_fix_startup_archived_tasks.md",
-      "status": "active",
+      "status": "complete",
       "description": "Exclude archived tasks from get_by_status query and add startup recovery guards"
     }
   ]
