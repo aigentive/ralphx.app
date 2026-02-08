@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-02-08 16:00:00 - Phase 105 Task 3: Add startup kill-orphans from persisted SQLite registry
+**What:**
+- Stored `running_agent_registry` as a field on `StartupJobRunner` struct (was previously only passed to `ReconciliationRunner`)
+- Added `stop_all()` call at the start of `run()` BEFORE `cancel_all_running()` — kills orphaned OS processes via SIGTERM before spawning new agents
+- Logs killed count with `info!` macro when orphans are found
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — passes
+- `cargo test` — 3661 tests pass
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-08 14:30:00 - Phase 105 Task 2: Extract RunningAgentRegistry trait, create SQLite impl
 **What:**
 - Extracted `#[async_trait] pub trait RunningAgentRegistry` from concrete struct

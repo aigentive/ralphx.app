@@ -132,7 +132,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(startup): kill orphaned agent processes from SQLite registry on restart"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 4,
