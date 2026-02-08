@@ -40,6 +40,9 @@ pub struct ProjectResponse {
     pub base_branch: Option<String>,
     pub worktree_parent_directory: Option<String>,
     pub use_feature_branches: bool,
+    pub detected_analysis: Option<String>,
+    pub custom_analysis: Option<String>,
+    pub analyzed_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -56,6 +59,9 @@ impl From<Project> for ProjectResponse {
             base_branch: project.base_branch,
             worktree_parent_directory: project.worktree_parent_directory,
             use_feature_branches: project.use_feature_branches,
+            detected_analysis: project.detected_analysis,
+            custom_analysis: project.custom_analysis,
+            analyzed_at: project.analyzed_at,
             created_at: project.created_at.to_rfc3339(),
             updated_at: project.updated_at.to_rfc3339(),
         }
