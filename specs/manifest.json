@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 107,
+  "currentPhase": 108,
   "phases": [
     {
       "phase": 0,
@@ -765,6 +765,13 @@
       "prd": "specs/phases/prd_phase_107_fix_plan_merge_scheduling_timeline.md",
       "status": "complete",
       "description": "Fix plan merge task not auto-scheduled after unblock and empty timeline"
+    },
+    {
+      "phase": 108,
+      "name": "Make MergeIncomplete View Useful",
+      "prd": "specs/phases/prd_phase_108_merge_incomplete_view_useful.md",
+      "status": "active",
+      "description": "Persist merge error context to task metadata and display in MergeIncomplete view"
     }
   ]
 }
