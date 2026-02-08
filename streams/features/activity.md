@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-02-08 20:00:00 - Phase 106 Task 2: Defense-in-depth archived task skip guards in startup_jobs.rs
+**What:**
+- Added `archived_at.is_some()` skip guard with `eprintln!` log in agent-active recovery loop (line ~264)
+- Added `archived_at.is_some()` skip guard with `eprintln!` log in auto-transition recovery loop (line ~328)
+- Added `archived_at.is_some()` skip guard with `eprintln!` log in blocker unblock loop (line ~416)
+- All three loops now skip archived tasks as a safety net even if `get_by_status` query changes
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — passes clean
+- `cargo test` — all tests pass
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-08 19:00:00 - Phase 106 Task 1: Exclude archived tasks from get_by_status query
 **What:**
 - Added `AND archived_at IS NULL` to SQL WHERE clause in `sqlite_task_repo/mod.rs:173`

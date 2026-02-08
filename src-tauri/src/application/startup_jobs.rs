@@ -257,6 +257,12 @@ impl<R: Runtime> StartupJobRunner<R> {
 
                 eprintln!("[STARTUP] Found {} tasks in {:?} status", tasks.len(), status);
                 for task in tasks {
+                    // Phase 106: Defense-in-depth — skip archived tasks even if query returns them
+                    if task.archived_at.is_some() {
+                        eprintln!("[STARTUP] Skipping archived task: {} ({})", task.id.as_str(), task.title);
+                        continue;
+                    }
+
                     let reconciled = self.reconciler.reconcile_task(&task, *status).await;
 
                     if reconciled {
@@ -316,6 +322,12 @@ impl<R: Runtime> StartupJobRunner<R> {
                     status
                 );
                 for task in tasks {
+                    // Phase 106: Defense-in-depth — skip archived tasks even if query returns them
+                    if task.archived_at.is_some() {
+                        eprintln!("[STARTUP] Skipping archived task: {} ({})", task.id.as_str(), task.title);
+                        continue;
+                    }
+
                     // Check max_concurrent before triggering (auto-transitions may spawn agents)
                     if !self.execution_state.can_start_task() {
                         info!(
@@ -404,6 +416,12 @@ impl<R: Runtime> StartupJobRunner<R> {
             );
 
             for mut task in blocked_tasks {
+                // Phase 106: Defense-in-depth — skip archived tasks even if query returns them
+                if task.archived_at.is_some() {
+                    eprintln!("[STARTUP] Skipping archived task: {} ({})", task.id.as_str(), task.title);
+                    continue;
+                }
+
                 // Get blockers for this task
                 let blockers = match self.task_dep_repo.get_blockers(&task.id).await {
                     Ok(b) => b,
