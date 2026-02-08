@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 112,
+  "currentPhase": 113,
   "phases": [
     {
       "phase": 0,
@@ -798,14 +798,14 @@
       "phase": 112,
       "name": "Real-Time Merge Validation Streaming",
       "prd": "specs/phases/prd_phase_112_merge_validation_streaming.md",
-      "status": "active",
+      "status": "complete",
       "description": "Stream validation output in real-time, configurable validation mode, skip-validation retry"
     },
     {
       "phase": 113,
       "name": "AI Auto-Fix for Validation Failures",
       "prd": "specs/phases/prd_phase_113_merge_validation_autofix.md",
-      "status": "pending",
+      "status": "active",
       "description": "AutoFix validation mode — merger agent attempts to fix build errors before human fallback"
     }
   ]
