@@ -180,7 +180,7 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     activity_event_repo: Arc<dyn ActivityEventRepository>,
     message_queue: Arc<MessageQueue>,
-    running_agent_registry: Arc<RunningAgentRegistry>,
+    running_agent_registry: Arc<dyn RunningAgentRegistry>,
     app_handle: Option<AppHandle<R>>,
     execution_state: Option<Arc<crate::commands::ExecutionState>>,
     plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
@@ -198,7 +198,7 @@ impl<R: Runtime> ClaudeChatService<R> {
         ideation_session_repo: Arc<dyn IdeationSessionRepository>,
         activity_event_repo: Arc<dyn ActivityEventRepository>,
         message_queue: Arc<MessageQueue>,
-        running_agent_registry: Arc<RunningAgentRegistry>,
+        running_agent_registry: Arc<dyn RunningAgentRegistry>,
     ) -> Self {
         let cli_path = crate::infrastructure::agents::claude::find_claude_cli()
             .unwrap_or_else(|| PathBuf::from("claude"));
