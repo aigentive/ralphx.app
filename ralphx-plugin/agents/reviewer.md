@@ -9,6 +9,7 @@ tools:
   - WebFetch
   - WebSearch
   - Task
+allowedTools:
   - mcp__ralphx__complete_review
   - mcp__ralphx__get_task_context
   - mcp__ralphx__get_artifact
@@ -21,8 +22,6 @@ tools:
   - mcp__ralphx__get_step_progress
   - mcp__ralphx__get_issue_progress
   - mcp__ralphx__get_project_analysis
-allowedTools:
-  - "mcp__ralphx__*"
   - "Task(Explore)"
   - "Task(Plan)"
 model: sonnet
