@@ -40,6 +40,7 @@ import { ProposalsToolbar } from "./ProposalsToolbar";
 import { TieredProposalList } from "./TieredProposalList";
 import { ProactiveSyncNotificationBanner } from "./ProactiveSyncNotification";
 import { ProposalsEmptyState } from "./ProposalsEmptyState";
+import { AcceptedSessionBanner } from "./AcceptedSessionBanner";
 import { useIdeationHandlers } from "./useIdeationHandlers";
 import { useFileDrop } from "@/hooks/useFileDrop";
 import { useDependencyGraph } from "@/hooks/useDependencyGraph";
@@ -335,6 +336,10 @@ export function PlanningView({
     setCurrentView("kanban");
     setSelectedTaskId(taskId);
   }, [setCurrentView, setSelectedTaskId]);
+
+  const handleViewWork = useCallback(() => {
+    setCurrentView("graph");
+  }, [setCurrentView]);
 
   const {
     highlightedProposalIds,
@@ -664,6 +669,15 @@ export function PlanningView({
 
                 {/* Proposals List */}
                 <div ref={proposalsScrollRef} className="flex-1 overflow-y-auto p-4">
+                  {session.status === "accepted" && (
+                    <AcceptedSessionBanner
+                      projectId={session.projectId}
+                      proposals={proposals}
+                      convertedAt={session.convertedAt}
+                      onViewWork={handleViewWork}
+                    />
+                  )}
+
                   {importStatus && (
                     <div
                       className="mb-4 p-4 rounded-xl"
