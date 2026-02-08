@@ -9,10 +9,11 @@ use crate::AppState;
 
 /// Arguments for resolving a question
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ResolveQuestionArgs {
     pub request_id: String,
     pub selected_options: Vec<String>,
-    pub text: Option<String>,
+    pub custom_response: Option<String>,
 }
 
 /// Response for resolve_user_question command
@@ -33,7 +34,7 @@ pub async fn resolve_user_question(
 ) -> Result<ResolveQuestionResponse, String> {
     let answer = QuestionAnswer {
         selected_options: args.selected_options,
-        text: args.text,
+        text: args.custom_response,
     };
 
     let resolved = state
@@ -72,20 +73,20 @@ mod tests {
 
     #[test]
     fn test_resolve_question_args_deserialize() {
-        let json = r#"{"request_id": "abc-123", "selected_options": ["opt1", "opt2"], "text": "Custom answer"}"#;
+        let json = r#"{"requestId": "abc-123", "selectedOptions": ["opt1", "opt2"], "customResponse": "Custom answer"}"#;
         let args: ResolveQuestionArgs = serde_json::from_str(json).unwrap();
         assert_eq!(args.request_id, "abc-123");
         assert_eq!(args.selected_options, vec!["opt1", "opt2"]);
-        assert_eq!(args.text, Some("Custom answer".to_string()));
+        assert_eq!(args.custom_response, Some("Custom answer".to_string()));
     }
 
     #[test]
-    fn test_resolve_question_args_without_text() {
-        let json = r#"{"request_id": "abc-123", "selected_options": ["opt1"]}"#;
+    fn test_resolve_question_args_without_custom_response() {
+        let json = r#"{"requestId": "abc-123", "selectedOptions": ["opt1"]}"#;
         let args: ResolveQuestionArgs = serde_json::from_str(json).unwrap();
         assert_eq!(args.request_id, "abc-123");
         assert_eq!(args.selected_options, vec!["opt1"]);
-        assert!(args.text.is_none());
+        assert!(args.custom_response.is_none());
     }
 
     #[test]
