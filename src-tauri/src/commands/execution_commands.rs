@@ -666,7 +666,8 @@ pub async fn resume_execution(
         Arc::clone(&app_state.message_queue),
         Arc::clone(&app_state.running_agent_registry),
         app_state.app_handle.clone(),
-    );
+    )
+    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
     scheduler.try_schedule_ready_tasks().await;
 
     // Get current status
@@ -943,7 +944,8 @@ pub async fn set_max_concurrent(
             Arc::clone(&app_state.message_queue),
             Arc::clone(&app_state.running_agent_registry),
             app_state.app_handle.clone(),
-        );
+        )
+        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
         scheduler.try_schedule_ready_tasks().await;
     }
 
@@ -1027,7 +1029,8 @@ pub async fn update_execution_settings(
                 Arc::clone(&app_state.message_queue),
                 Arc::clone(&app_state.running_agent_registry),
                 app_state.app_handle.clone(),
-            );
+            )
+            .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
             scheduler.try_schedule_ready_tasks().await;
         }
     }
@@ -1176,7 +1179,8 @@ pub async fn update_global_execution_settings(
             Arc::clone(&app_state.message_queue),
             Arc::clone(&app_state.running_agent_registry),
             app_state.app_handle.clone(),
-        );
+        )
+        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
         scheduler.try_schedule_ready_tasks().await;
     }
 

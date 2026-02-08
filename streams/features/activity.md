@@ -4,6 +4,20 @@
 
 ---
 
+### 2026-02-09 07:00:00 - Phase 110 Task 1: Add plan_branch_repo to scheduler construction sites
+**What:**
+- Added `.with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))` to 4 `TaskSchedulerService::new()` sites in execution_commands.rs
+- Sites: `resume_execution` (line 656), `set_max_concurrent` (line 933), `update_execution_settings` (line 1017), `update_global_execution_settings` (line 1166)
+- These schedulers were constructed without plan_branch_repo, causing plan merge tasks to silently fail when picked up by these code paths
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — all 3672 tests pass, 0 failures
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-09 06:00:00 - Phase 109 Task 3: Route MergeIncomplete Retry through PendingMerge
 **What:**
 - Changed `MergeIncomplete` valid transitions from `&[Merging, Merged]` to `&[PendingMerge, Merging, Merged]` in status.rs
