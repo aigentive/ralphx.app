@@ -375,10 +375,7 @@ pub fn spawn_project_analyzer(
     );
 
     let working_directory = PathBuf::from(working_directory);
-    let plugin_dir = working_directory
-        .parent()
-        .map(|p| p.join("ralphx-plugin"))
-        .unwrap_or_else(|| working_directory.join("ralphx-plugin"));
+    let plugin_dir = working_directory.join("ralphx-plugin");
 
     let mut env = std::collections::HashMap::new();
     env.insert(

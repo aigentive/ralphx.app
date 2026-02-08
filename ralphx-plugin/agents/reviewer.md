@@ -20,6 +20,7 @@ tools:
   - mcp__ralphx__get_task_issues
   - mcp__ralphx__get_step_progress
   - mcp__ralphx__get_issue_progress
+  - mcp__ralphx__get_project_analysis
 allowedTools:
   - "mcp__ralphx__*"
   - "Task(Explore)"

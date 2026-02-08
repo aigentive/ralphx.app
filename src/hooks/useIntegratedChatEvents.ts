@@ -140,18 +140,18 @@ export function useIntegratedChatEvents({
         conversation_id: string;
       }>("agent:run_completed", (payload) => {
         const { conversation_id } = payload;
-        setStreamingToolCalls([]);
-        setStreamingText("");
-        if (conversation_id) {
+        if (conversation_id && conversation_id === activeConversationIdRef.current) {
+          setStreamingToolCalls([]);
+          setStreamingText("");
           queryClient.invalidateQueries({
             queryKey: chatKeys.conversation(conversation_id),
           });
+          setTimeout(() => {
+            if (messagesEndRef.current) {
+              messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+            }
+          }, 100);
         }
-        setTimeout(() => {
-          if (messagesEndRef.current) {
-            messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-          }
-        }, 100);
       })
     );
 

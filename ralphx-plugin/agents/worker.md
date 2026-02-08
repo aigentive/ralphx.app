@@ -27,6 +27,7 @@ tools:
   - mcp__ralphx__get_task_issues
   - mcp__ralphx__mark_issue_in_progress
   - mcp__ralphx__mark_issue_addressed
+  - mcp__ralphx__get_project_analysis
 allowedTools:
   - "mcp__ralphx__*"
 model: sonnet
