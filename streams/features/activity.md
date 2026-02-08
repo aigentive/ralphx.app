@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-08 17:30:00 - Phase 105 Task 4: Guard ChatResumptionRunner against terminal-state tasks
+**What:**
+- Added `is_terminal()` method to `InternalStatus` — returns true for Merged, Failed, Cancelled, Stopped
+- Updated `is_handled_by_task_resumption()` in chat_resumption.rs to return true (skip) for terminal-state tasks
+- Added `test_is_terminal` test verifying exactly 4 terminal statuses and all 20 non-terminal statuses
+- Added 4 tests: `test_is_handled_for_merged_task`, `test_is_handled_for_failed_task`, `test_is_handled_for_cancelled_task`, `test_is_handled_for_stopped_task`
+- Extracted `create_terminal_state_test()` helper to reduce test boilerplate
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — passes
+- `cargo test` — 3666 tests pass
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-08 16:00:00 - Phase 105 Task 3: Add startup kill-orphans from persisted SQLite registry
 **What:**
 - Stored `running_agent_registry` as a field on `StartupJobRunner` struct (was previously only passed to `ReconciliationRunner`)
