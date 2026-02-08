@@ -137,7 +137,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(merge): persist agent error context to task metadata"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 4,
