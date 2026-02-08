@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-09 11:00:00 - Phase 111 Task 2: Add TaskScheduler to approve_task_for_review for post-merge scheduling
+**What:**
+- Created `TaskSchedulerService` with all repos + `.with_plan_branch_repo()` in `approve_task_for_review`
+- Called `set_self_ref()` after Arc-wrapping for scheduler self-propagation
+- Added `.with_task_scheduler(task_scheduler)` to the existing `TaskTransitionService`
+- This enables post-merge scheduling from the HumanApprove → Approved → PendingMerge path
+- Added imports for `TaskSchedulerService` and `TaskScheduler` trait
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — all 3672 tests pass, 0 failures
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-09 10:00:00 - Phase 111 Task 1: Add plan_branch_repo to 6 remaining TaskSchedulerService::new() sites
 **What:**
 - Added `.with_plan_branch_repo()` to 6 remaining `TaskSchedulerService::new()` sites that were creating schedulers without plan branch context
