@@ -113,8 +113,8 @@ function RecoverySteps({ branchName, targetBranch, hasValidationFailures }: { br
       {hasValidationFailures ? (
         <>
           <p className="text-[13px] text-white/60">
-            The merge succeeded but post-merge validation commands failed.
-            To recover:
+            Your validation commands (build, type checks, linting) failed,
+            so the merge could not be completed. To recover:
           </p>
           <ol className="list-decimal list-inside space-y-2 text-[13px] text-white/50">
             <li>
@@ -122,12 +122,12 @@ function RecoverySteps({ branchName, targetBranch, hasValidationFailures }: { br
             </li>
             <li>
               Click <strong className="text-white/70">Retry Merge</strong> to
-              re-attempt with validation
+              re-run validation and complete the merge
             </li>
             <li>
               Click{" "}
               <strong className="text-white/70">Retry (Skip Validation)</strong>{" "}
-              to merge without running validation
+              to complete the merge without running validation
             </li>
             <li>
               If fixed manually, click{" "}
@@ -333,8 +333,8 @@ export function MergeIncompleteTaskDetail({
         subtitle={
           mergeError?.hasValidationFailures
             ? isHistorical
-              ? "Post-merge validation failed"
-              : "Post-merge validation failed — action required"
+              ? "Merge validation failed"
+              : "Merge validation failed — action required"
             : isHistorical
               ? "A git error prevented the merge"
               : "A git error prevented the merge — action required"
