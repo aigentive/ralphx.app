@@ -196,21 +196,22 @@ pub fn run() {
                 info!("Starting startup job runner...");
 
                 // Create TaskSchedulerService for auto-scheduling Ready tasks
-                let task_scheduler: Arc<dyn domain::state_machine::services::TaskScheduler> =
-                    Arc::new(TaskSchedulerService::<tauri::Wry>::new(
-                        Arc::clone(&startup_execution_state),
-                        startup_project_repo.clone(),
-                        startup_task_repo.clone(),
-                        startup_task_dependency_repo.clone(),
-                        startup_chat_message_repo.clone(),
-                        startup_conversation_repo.clone(),
-                        startup_agent_run_repo.clone(),
-                        startup_ideation_session_repo.clone(),
-                        startup_activity_event_repo.clone(),
-                        startup_message_queue.clone(),
-                        startup_running_agent_registry.clone(),
-                        Some(startup_app_handle.clone()),
-                    ));
+                let scheduler_concrete = Arc::new(TaskSchedulerService::<tauri::Wry>::new(
+                    Arc::clone(&startup_execution_state),
+                    startup_project_repo.clone(),
+                    startup_task_repo.clone(),
+                    startup_task_dependency_repo.clone(),
+                    startup_chat_message_repo.clone(),
+                    startup_conversation_repo.clone(),
+                    startup_agent_run_repo.clone(),
+                    startup_ideation_session_repo.clone(),
+                    startup_activity_event_repo.clone(),
+                    startup_message_queue.clone(),
+                    startup_running_agent_registry.clone(),
+                    Some(startup_app_handle.clone()),
+                ));
+                scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn domain::state_machine::services::TaskScheduler>);
+                let task_scheduler: Arc<dyn domain::state_machine::services::TaskScheduler> = scheduler_concrete;
 
                 // Clone repos for ChatResumptionRunner before they're consumed by TaskTransitionService/StartupJobRunner
                 let chat_resumption_agent_run_repo = Arc::clone(&startup_agent_run_repo);

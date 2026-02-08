@@ -187,7 +187,7 @@ pub async fn complete_merge(
     }
 
     // 9. Create transition service and transition to Merged
-    let task_scheduler: Arc<dyn TaskScheduler> = Arc::new(TaskSchedulerService::new(
+    let scheduler_concrete = Arc::new(TaskSchedulerService::new(
         Arc::clone(&state.execution_state),
         Arc::clone(&state.app_state.project_repo),
         Arc::clone(&state.app_state.task_repo),
@@ -201,6 +201,8 @@ pub async fn complete_merge(
         Arc::clone(&state.app_state.running_agent_registry),
         state.app_state.app_handle.as_ref().cloned(),
     ));
+    scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
+    let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
     let transition_service = TaskTransitionService::new(
         Arc::clone(&state.app_state.task_repo),

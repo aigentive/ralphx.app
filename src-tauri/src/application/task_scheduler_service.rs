@@ -10,7 +10,7 @@
 // - StartupJobRunner after resuming agent-active tasks
 // - resume_execution and set_max_concurrent commands (future Phase 26 tasks)
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use tauri::{AppHandle, Runtime};
 use tokio::sync::RwLock;
@@ -57,6 +57,9 @@ pub struct TaskSchedulerService<R: Runtime = tauri::Wry> {
     app_handle: Option<AppHandle<R>>,
     /// Optional plan branch repository for feature branch resolution.
     plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
+    /// Self-reference for propagating scheduler through build_transition_service().
+    /// Set after Arc-wrapping via set_self_ref(). Uses Mutex since it's written once at init.
+    self_ref: Mutex<Option<Arc<dyn TaskScheduler>>>,
     /// Phase 82: Optional project ID to scope scheduling to a single project.
     /// When set, only Ready tasks from this project are considered.
     active_project_id: RwLock<Option<ProjectId>>,
@@ -93,6 +96,7 @@ impl<R: Runtime> TaskSchedulerService<R> {
             running_agent_registry,
             app_handle,
             plan_branch_repo: None,
+            self_ref: Mutex::new(None),
             active_project_id: RwLock::new(None),
         }
     }
@@ -101,6 +105,13 @@ impl<R: Runtime> TaskSchedulerService<R> {
     pub fn with_plan_branch_repo(mut self, repo: Arc<dyn PlanBranchRepository>) -> Self {
         self.plan_branch_repo = Some(repo);
         self
+    }
+
+    /// Set the self-reference after wrapping in Arc.
+    /// This allows build_transition_service() to propagate the scheduler.
+    /// Must be called after Arc::new(scheduler) at each construction site.
+    pub fn set_self_ref(&self, scheduler: Arc<dyn TaskScheduler>) {
+        *self.self_ref.lock().unwrap() = Some(scheduler);
     }
 
     /// Set the active project ID for scoped scheduling (Phase 82).
@@ -215,7 +226,7 @@ impl<R: Runtime> TaskSchedulerService<R> {
     where
         R: Runtime,
     {
-        let service = TaskTransitionService::new(
+        let mut service = TaskTransitionService::new(
             Arc::clone(&self.task_repo),
             Arc::clone(&self.task_dependency_repo),
             Arc::clone(&self.project_repo),
@@ -230,10 +241,12 @@ impl<R: Runtime> TaskSchedulerService<R> {
             self.app_handle.clone(),
         );
         if let Some(ref repo) = self.plan_branch_repo {
-            service.with_plan_branch_repo(Arc::clone(repo))
-        } else {
-            service
+            service = service.with_plan_branch_repo(Arc::clone(repo));
         }
+        if let Some(ref sched) = *self.self_ref.lock().unwrap() {
+            service = service.with_task_scheduler(Arc::clone(sched));
+        }
+        service
     }
 }
 

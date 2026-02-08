@@ -653,7 +653,7 @@ pub async fn resume_execution(
     }
 
     // Trigger scheduler to pick up waiting Ready tasks
-    let scheduler = TaskSchedulerService::new(
+    let scheduler = Arc::new(TaskSchedulerService::new(
         Arc::clone(&execution_state),
         Arc::clone(&app_state.project_repo),
         Arc::clone(&app_state.task_repo),
@@ -667,7 +667,8 @@ pub async fn resume_execution(
         Arc::clone(&app_state.running_agent_registry),
         app_state.app_handle.clone(),
     )
-    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
+    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)));
+    scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
     scheduler.try_schedule_ready_tasks().await;
 
     // Get current status
@@ -931,7 +932,7 @@ pub async fn set_max_concurrent(
 
     // If capacity increased, trigger scheduler to pick up waiting Ready tasks
     if max > old_max {
-        let scheduler = TaskSchedulerService::new(
+        let scheduler = Arc::new(TaskSchedulerService::new(
             Arc::clone(&execution_state),
             Arc::clone(&app_state.project_repo),
             Arc::clone(&app_state.task_repo),
@@ -945,7 +946,8 @@ pub async fn set_max_concurrent(
             Arc::clone(&app_state.running_agent_registry),
             app_state.app_handle.clone(),
         )
-        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
+        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)));
+        scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
         scheduler.try_schedule_ready_tasks().await;
     }
 
@@ -1016,7 +1018,7 @@ pub async fn update_execution_settings(
 
         // If capacity increased, trigger scheduler to pick up waiting Ready tasks
         if new_max > old_max {
-            let scheduler = TaskSchedulerService::new(
+            let scheduler = Arc::new(TaskSchedulerService::new(
                 Arc::clone(&execution_state),
                 Arc::clone(&app_state.project_repo),
                 Arc::clone(&app_state.task_repo),
@@ -1030,7 +1032,8 @@ pub async fn update_execution_settings(
                 Arc::clone(&app_state.running_agent_registry),
                 app_state.app_handle.clone(),
             )
-            .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
+            .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)));
+            scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
             scheduler.try_schedule_ready_tasks().await;
         }
     }
@@ -1166,7 +1169,7 @@ pub async fn update_global_execution_settings(
 
     // If global capacity increased, trigger scheduler to pick up waiting tasks
     if updated.global_max_concurrent > old_global_max {
-        let scheduler = TaskSchedulerService::new(
+        let scheduler = Arc::new(TaskSchedulerService::new(
             Arc::clone(&execution_state),
             Arc::clone(&app_state.project_repo),
             Arc::clone(&app_state.task_repo),
@@ -1180,7 +1183,8 @@ pub async fn update_global_execution_settings(
             Arc::clone(&app_state.running_agent_registry),
             app_state.app_handle.clone(),
         )
-        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
+        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)));
+        scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
         scheduler.try_schedule_ready_tasks().await;
     }
 
