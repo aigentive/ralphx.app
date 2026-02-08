@@ -37,6 +37,7 @@ pub async fn process_message_queue<R: Runtime + 'static>(
     plugin_dir: &Path,
     working_directory: &Path,
     app_handle: Option<AppHandle<R>>,
+    project_id: Option<&str>,
 ) -> u32 {
     let mut total_processed = 0u32;
 
@@ -156,6 +157,11 @@ pub async fn process_message_queue<R: Runtime + 'static>(
                     cmd.env("RALPHX_TASK_ID", context_id);
                 }
                 _ => {}
+            }
+
+            // Add project scope for all contexts
+            if let Some(pid) = project_id {
+                cmd.env("RALPHX_PROJECT_ID", pid);
             }
 
             add_prompt_args(&mut cmd, &queued_msg.content, None, Some(session_id));
