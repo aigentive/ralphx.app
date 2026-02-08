@@ -84,7 +84,7 @@ style={{ boxShadow: "none", outline: "none" }}
 ## Git Conventions
 - NO: git init, push, remotes
 - Commits: `docs:` | `feat:` | `fix:` | `chore:`
-- Co-author: `Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>`
+- Co-author: `Co-Authored-By: Claude <MODEL> <noreply@anthropic.com>` — substitute your actual model name (e.g. Opus 4.6, Sonnet 4.5)
 
 ## Slash Commands
 - `/activate-prd <path>` — Switch active PRD
