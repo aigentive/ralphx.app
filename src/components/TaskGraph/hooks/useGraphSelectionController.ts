@@ -408,7 +408,9 @@ export function useGraphSelectionController({
   // focusSelectionInView changes when graphNodesById changes (every layout),
   // but select() must be safe to use in effects without causing re-fires.
   const focusSelectionRef = useRef(focusSelectionInView);
-  focusSelectionRef.current = focusSelectionInView;
+  useEffect(() => {
+    focusSelectionRef.current = focusSelectionInView;
+  }, [focusSelectionInView]);
 
   /** Set selection state AND focus viewport — stable callback, safe for effects.
    *  Pass `skipFocus: true` to set selection without viewport animation. */
@@ -893,6 +895,7 @@ export function useGraphSelectionController({
       }
     },
     [
+      clearGraphSelection,
       collapsedPlanIds,
       collapsedTierIds,
       edges,
@@ -914,6 +917,7 @@ export function useGraphSelectionController({
       planGroupNodes,
       planGroupNodesSorted,
       selectedTaskId,
+      setGraphSelection,
       setSelectedTaskId,
       taskToPlanMap,
       taskToTierMap,
