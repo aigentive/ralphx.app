@@ -342,11 +342,26 @@ struct MergeAnalysisEntry {
     worktree_setup: Vec<String>,
 }
 
+/// A single validation command execution record for streaming + storage.
+#[derive(Debug, Clone, serde::Serialize)]
+struct ValidationLogEntry {
+    phase: String,
+    command: String,
+    path: String,
+    label: String,
+    status: String,
+    exit_code: Option<i32>,
+    stdout: String,
+    stderr: String,
+    duration_ms: u64,
+}
+
 /// Result of running post-merge validation commands.
 #[derive(Debug)]
 struct ValidationResult {
     all_passed: bool,
     failures: Vec<ValidationFailure>,
+    log: Vec<ValidationLogEntry>,
 }
 
 #[derive(Debug)]
@@ -357,14 +372,28 @@ struct ValidationFailure {
     stderr: String,
 }
 
+/// Truncate a string to `max_len` chars, appending "... (truncated)" if needed.
+fn truncate_output(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}... (truncated)", &s[..max_len])
+    }
+}
+
 /// Load effective analysis, resolve template vars, and run all validate commands.
 ///
 /// Returns `None` if no analysis entries exist (backward compatible — skip validation).
 /// Returns `Some(ValidationResult)` with pass/fail details otherwise.
+///
+/// When `app_handle` is `Some`, emits `merge:validation_step` events for real-time UI streaming.
+/// All executed commands are recorded in `ValidationResult::log` for metadata storage.
 fn run_validation_commands(
     project: &Project,
     task: &Task,
     merge_cwd: &Path,
+    task_id_str: &str,
+    app_handle: Option<&tauri::AppHandle>,
 ) -> Option<ValidationResult> {
     // Load effective analysis: custom_analysis ?? detected_analysis
     let analysis_json = project
@@ -395,6 +424,8 @@ fn run_validation_commands(
             .replace("{task_branch}", task_branch)
     };
 
+    let mut log: Vec<ValidationLogEntry> = Vec::new();
+
     // Run worktree_setup commands first (symlinks, etc.) — non-fatal
     for entry in &entries {
         for cmd_str in &entry.worktree_setup {
@@ -406,33 +437,109 @@ fn run_validation_commands(
                 merge_cwd.join(&resolved_path)
             };
 
+            // Emit "running" event before execution
+            if let Some(handle) = app_handle {
+                let _ = handle.emit("merge:validation_step", serde_json::json!({
+                    "task_id": task_id_str,
+                    "phase": "setup",
+                    "command": resolved_cmd,
+                    "path": resolved_path,
+                    "label": entry.label,
+                    "status": "running",
+                }));
+            }
+
             tracing::info!(
                 command = %resolved_cmd,
                 cwd = %cmd_cwd.display(),
                 "Running worktree setup command"
             );
 
+            let start = std::time::Instant::now();
             match Command::new("sh")
                 .arg("-c")
                 .arg(&resolved_cmd)
                 .current_dir(&cmd_cwd)
                 .output()
             {
-                Ok(output) if !output.status.success() => {
-                    tracing::warn!(
-                        command = %resolved_cmd,
-                        stderr = %String::from_utf8_lossy(&output.stderr),
-                        "Worktree setup command failed (non-fatal)"
-                    );
+                Ok(output) => {
+                    let duration_ms = start.elapsed().as_millis() as u64;
+                    let stdout_raw = String::from_utf8_lossy(&output.stdout).to_string();
+                    let stderr_raw = String::from_utf8_lossy(&output.stderr).to_string();
+                    let status = if output.status.success() { "success" } else { "failed" };
+
+                    if !output.status.success() {
+                        tracing::warn!(
+                            command = %resolved_cmd,
+                            stderr = %stderr_raw,
+                            "Worktree setup command failed (non-fatal)"
+                        );
+                    }
+
+                    let log_entry = ValidationLogEntry {
+                        phase: "setup".to_string(),
+                        command: resolved_cmd.clone(),
+                        path: resolved_path.clone(),
+                        label: entry.label.clone(),
+                        status: status.to_string(),
+                        exit_code: output.status.code(),
+                        stdout: truncate_output(&stdout_raw, 2000),
+                        stderr: truncate_output(&stderr_raw, 2000),
+                        duration_ms,
+                    };
+
+                    if let Some(handle) = app_handle {
+                        let _ = handle.emit("merge:validation_step", serde_json::json!({
+                            "task_id": task_id_str,
+                            "phase": log_entry.phase,
+                            "command": log_entry.command,
+                            "path": log_entry.path,
+                            "label": log_entry.label,
+                            "status": log_entry.status,
+                            "exit_code": log_entry.exit_code,
+                            "stdout": log_entry.stdout,
+                            "stderr": log_entry.stderr,
+                            "duration_ms": log_entry.duration_ms,
+                        }));
+                    }
+                    log.push(log_entry);
                 }
                 Err(e) => {
+                    let duration_ms = start.elapsed().as_millis() as u64;
                     tracing::warn!(
                         command = %resolved_cmd,
                         error = %e,
                         "Worktree setup command failed (non-fatal)"
                     );
+
+                    let log_entry = ValidationLogEntry {
+                        phase: "setup".to_string(),
+                        command: resolved_cmd.clone(),
+                        path: resolved_path.clone(),
+                        label: entry.label.clone(),
+                        status: "failed".to_string(),
+                        exit_code: None,
+                        stdout: String::new(),
+                        stderr: truncate_output(&format!("Failed to execute: {}", e), 2000),
+                        duration_ms,
+                    };
+
+                    if let Some(handle) = app_handle {
+                        let _ = handle.emit("merge:validation_step", serde_json::json!({
+                            "task_id": task_id_str,
+                            "phase": log_entry.phase,
+                            "command": log_entry.command,
+                            "path": log_entry.path,
+                            "label": log_entry.label,
+                            "status": log_entry.status,
+                            "exit_code": log_entry.exit_code,
+                            "stdout": log_entry.stdout,
+                            "stderr": log_entry.stderr,
+                            "duration_ms": log_entry.duration_ms,
+                        }));
+                    }
+                    log.push(log_entry);
                 }
-                _ => {}
             }
         }
     }
@@ -459,12 +566,25 @@ fn run_validation_commands(
             let resolved_cmd = resolve(cmd_str);
             ran_any = true;
 
+            // Emit "running" event before execution
+            if let Some(handle) = app_handle {
+                let _ = handle.emit("merge:validation_step", serde_json::json!({
+                    "task_id": task_id_str,
+                    "phase": "validate",
+                    "command": resolved_cmd,
+                    "path": resolved_path,
+                    "label": entry.label,
+                    "status": "running",
+                }));
+            }
+
             tracing::info!(
                 command = %resolved_cmd,
                 cwd = %cmd_cwd.display(),
                 "Running post-merge validation command"
             );
 
+            let start = std::time::Instant::now();
             let result = Command::new("sh")
                 .arg("-c")
                 .arg(&resolved_cmd)
@@ -473,37 +593,97 @@ fn run_validation_commands(
 
             match result {
                 Ok(output) => {
+                    let duration_ms = start.elapsed().as_millis() as u64;
+                    let stderr_raw = String::from_utf8_lossy(&output.stderr).to_string();
+                    let stdout_raw = String::from_utf8_lossy(&output.stdout).to_string();
+
                     if !output.status.success() {
-                        let stderr = String::from_utf8_lossy(&output.stderr);
-                        let stdout = String::from_utf8_lossy(&output.stdout);
                         tracing::warn!(
                             command = %resolved_cmd,
                             exit_code = ?output.status.code(),
-                            stderr = %stderr,
+                            stderr = %stderr_raw,
                             "Post-merge validation command failed"
                         );
                         failures.push(ValidationFailure {
-                            command: resolved_cmd,
+                            command: resolved_cmd.clone(),
                             path: resolved_path.clone(),
                             exit_code: output.status.code(),
                             stderr: format!(
                                 "{}{}",
-                                if stderr.is_empty() { "" } else { &stderr },
-                                if stdout.is_empty() { String::new() } else { format!("\nstdout: {}", stdout) },
+                                if stderr_raw.is_empty() { "" } else { &stderr_raw },
+                                if stdout_raw.is_empty() { String::new() } else { format!("\nstdout: {}", stdout_raw) },
                             ),
                         });
                     } else {
                         tracing::info!(command = %resolved_cmd, "Post-merge validation command passed");
                     }
+
+                    let status = if output.status.success() { "success" } else { "failed" };
+                    let log_entry = ValidationLogEntry {
+                        phase: "validate".to_string(),
+                        command: resolved_cmd,
+                        path: resolved_path.clone(),
+                        label: entry.label.clone(),
+                        status: status.to_string(),
+                        exit_code: output.status.code(),
+                        stdout: truncate_output(&stdout_raw, 2000),
+                        stderr: truncate_output(&stderr_raw, 2000),
+                        duration_ms,
+                    };
+
+                    if let Some(handle) = app_handle {
+                        let _ = handle.emit("merge:validation_step", serde_json::json!({
+                            "task_id": task_id_str,
+                            "phase": log_entry.phase,
+                            "command": log_entry.command,
+                            "path": log_entry.path,
+                            "label": log_entry.label,
+                            "status": log_entry.status,
+                            "exit_code": log_entry.exit_code,
+                            "stdout": log_entry.stdout,
+                            "stderr": log_entry.stderr,
+                            "duration_ms": log_entry.duration_ms,
+                        }));
+                    }
+                    log.push(log_entry);
                 }
                 Err(e) => {
+                    let duration_ms = start.elapsed().as_millis() as u64;
                     tracing::error!(command = %resolved_cmd, error = %e, "Failed to execute validation command");
                     failures.push(ValidationFailure {
-                        command: resolved_cmd,
+                        command: resolved_cmd.clone(),
                         path: resolved_path.clone(),
                         exit_code: None,
                         stderr: format!("Failed to execute: {}", e),
                     });
+
+                    let log_entry = ValidationLogEntry {
+                        phase: "validate".to_string(),
+                        command: resolved_cmd,
+                        path: resolved_path.clone(),
+                        label: entry.label.clone(),
+                        status: "failed".to_string(),
+                        exit_code: None,
+                        stdout: String::new(),
+                        stderr: truncate_output(&format!("Failed to execute: {}", e), 2000),
+                        duration_ms,
+                    };
+
+                    if let Some(handle) = app_handle {
+                        let _ = handle.emit("merge:validation_step", serde_json::json!({
+                            "task_id": task_id_str,
+                            "phase": log_entry.phase,
+                            "command": log_entry.command,
+                            "path": log_entry.path,
+                            "label": log_entry.label,
+                            "status": log_entry.status,
+                            "exit_code": log_entry.exit_code,
+                            "stdout": log_entry.stdout,
+                            "stderr": log_entry.stderr,
+                            "duration_ms": log_entry.duration_ms,
+                        }));
+                    }
+                    log.push(log_entry);
                 }
             }
         }
@@ -517,12 +697,14 @@ fn run_validation_commands(
     Some(ValidationResult {
         all_passed: failures.is_empty(),
         failures,
+        log,
     })
 }
 
 /// Format validation failures as a JSON metadata string for MergeIncomplete.
 fn format_validation_error_metadata(
     failures: &[ValidationFailure],
+    log: &[ValidationLogEntry],
     source_branch: &str,
     target_branch: &str,
 ) -> String {
@@ -541,6 +723,7 @@ fn format_validation_error_metadata(
     serde_json::json!({
         "error": format!("Post-merge validation failed: {} command(s) failed", failures.len()),
         "validation_failures": failure_details,
+        "validation_log": log,
         "source_branch": source_branch,
         "target_branch": target_branch,
     })
@@ -1274,15 +1457,22 @@ impl<'a> super::TransitionHandler<'a> {
                         );
 
                         // Post-merge validation gate: run validate commands before completing
-                        if let Some(validation) = run_validation_commands(&project, &task, repo_path) {
+                        let app_handle_ref = self.machine.context.services.app_handle.as_ref();
+                        if let Some(validation) = run_validation_commands(&project, &task, repo_path, task_id_str, app_handle_ref) {
                             if !validation.all_passed {
                                 self.handle_validation_failure(
                                     &mut task, &task_id, task_id_str, task_repo,
-                                    &validation.failures, &source_branch, &target_branch,
+                                    &validation.failures, &validation.log, &source_branch, &target_branch,
                                     repo_path, "in-repo",
                                 ).await;
                                 return;
                             }
+                            // Store validation log on success
+                            task.metadata = Some(serde_json::json!({
+                                "validation_log": validation.log,
+                                "source_branch": source_branch,
+                                "target_branch": target_branch,
+                            }).to_string());
                         }
 
                         let app_handle = self.machine.context.services.app_handle.as_ref();
@@ -1445,17 +1635,24 @@ impl<'a> super::TransitionHandler<'a> {
                         );
 
                         // Post-merge validation gate: run in the merge worktree (before deleting it)
-                        if let Some(validation) = run_validation_commands(&project, &task, &merge_wt_path) {
+                        let app_handle_ref = self.machine.context.services.app_handle.as_ref();
+                        if let Some(validation) = run_validation_commands(&project, &task, &merge_wt_path, task_id_str, app_handle_ref) {
                             if !validation.all_passed {
                                 // Reset in merge worktree first, then delete it
                                 self.handle_validation_failure(
                                     &mut task, &task_id, task_id_str, task_repo,
-                                    &validation.failures, &source_branch, &target_branch,
+                                    &validation.failures, &validation.log, &source_branch, &target_branch,
                                     &merge_wt_path, "worktree",
                                 ).await;
                                 let _ = GitService::delete_worktree(repo_path, &merge_wt_path);
                                 return;
                             }
+                            // Store validation log on success
+                            task.metadata = Some(serde_json::json!({
+                                "validation_log": validation.log,
+                                "source_branch": source_branch,
+                                "target_branch": target_branch,
+                            }).to_string());
                         }
 
                         if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt_path) {
@@ -1616,15 +1813,22 @@ impl<'a> super::TransitionHandler<'a> {
                     );
 
                     // Post-merge validation gate: run validate commands before completing
-                    if let Some(validation) = run_validation_commands(&project, &task, repo_path) {
+                    let app_handle_ref = self.machine.context.services.app_handle.as_ref();
+                    if let Some(validation) = run_validation_commands(&project, &task, repo_path, task_id_str, app_handle_ref) {
                         if !validation.all_passed {
                             self.handle_validation_failure(
                                 &mut task, &task_id, task_id_str, task_repo,
-                                &validation.failures, &source_branch, &target_branch,
+                                &validation.failures, &validation.log, &source_branch, &target_branch,
                                 repo_path, "local",
                             ).await;
                             return;
                         }
+                        // Store validation log on success
+                        task.metadata = Some(serde_json::json!({
+                            "validation_log": validation.log,
+                            "source_branch": source_branch,
+                            "target_branch": target_branch,
+                        }).to_string());
                     }
 
                     let app_handle = self.machine.context.services.app_handle.as_ref();
@@ -1851,6 +2055,7 @@ impl<'a> super::TransitionHandler<'a> {
         task_id_str: &str,
         task_repo: &Arc<dyn TaskRepository>,
         failures: &[ValidationFailure],
+        log: &[ValidationLogEntry],
         source_branch: &str,
         target_branch: &str,
         merge_path: &Path,
@@ -1873,7 +2078,7 @@ impl<'a> super::TransitionHandler<'a> {
         }
 
         task.metadata = Some(format_validation_error_metadata(
-            failures, source_branch, target_branch,
+            failures, log, source_branch, target_branch,
         ));
         task.internal_status = InternalStatus::MergeIncomplete;
         task.touch();
@@ -2187,7 +2392,7 @@ mod tests {
     fn run_validation_returns_none_when_no_analysis() {
         let project = make_project(Some("main"));
         let task = make_task(None, None);
-        let result = run_validation_commands(&project, &task, Path::new("/tmp"));
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None);
         assert!(result.is_none());
     }
 
@@ -2196,7 +2401,7 @@ mod tests {
         let mut project = make_project(Some("main"));
         project.detected_analysis = Some("[]".to_string());
         let task = make_task(None, None);
-        let result = run_validation_commands(&project, &task, Path::new("/tmp"));
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None);
         assert!(result.is_none());
     }
 
@@ -2207,7 +2412,7 @@ mod tests {
             r#"[{"path": ".", "label": "Test", "validate": []}]"#.to_string(),
         );
         let task = make_task(None, None);
-        let result = run_validation_commands(&project, &task, Path::new("/tmp"));
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None);
         assert!(result.is_none());
     }
 
@@ -2223,7 +2428,7 @@ mod tests {
             r#"[{"path": ".", "label": "Test", "validate": ["true"]}]"#.to_string(),
         );
         let task = make_task(None, None);
-        let result = run_validation_commands(&project, &task, Path::new("/tmp"));
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None);
         assert!(result.is_some());
         assert!(result.unwrap().all_passed);
     }
@@ -2235,11 +2440,15 @@ mod tests {
             r#"[{"path": ".", "label": "Test", "validate": ["true"]}]"#.to_string(),
         );
         let task = make_task(None, None);
-        let result = run_validation_commands(&project, &task, Path::new("/tmp"));
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None);
         assert!(result.is_some());
         let r = result.unwrap();
         assert!(r.all_passed);
         assert!(r.failures.is_empty());
+        assert_eq!(r.log.len(), 1);
+        assert_eq!(r.log[0].phase, "validate");
+        assert_eq!(r.log[0].status, "success");
+        assert_eq!(r.log[0].label, "Test");
     }
 
     #[test]
@@ -2249,12 +2458,15 @@ mod tests {
             r#"[{"path": ".", "label": "Test", "validate": ["false"]}]"#.to_string(),
         );
         let task = make_task(None, None);
-        let result = run_validation_commands(&project, &task, Path::new("/tmp"));
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None);
         assert!(result.is_some());
         let r = result.unwrap();
         assert!(!r.all_passed);
         assert_eq!(r.failures.len(), 1);
         assert_eq!(r.failures[0].command, "false");
+        assert_eq!(r.log.len(), 1);
+        assert_eq!(r.log[0].phase, "validate");
+        assert_eq!(r.log[0].status, "failed");
     }
 
     #[test]
@@ -2265,7 +2477,7 @@ mod tests {
         );
         let mut task = make_task(None, None);
         task.worktree_path = Some("/tmp/wt".to_string());
-        let result = run_validation_commands(&project, &task, Path::new("/tmp"));
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None);
         assert!(result.is_some());
         assert!(result.unwrap().all_passed);
     }
@@ -2275,7 +2487,7 @@ mod tests {
         let mut project = make_project(Some("main"));
         project.detected_analysis = Some("not valid json".to_string());
         let task = make_task(None, None);
-        let result = run_validation_commands(&project, &task, Path::new("/tmp"));
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None);
         assert!(result.is_none());
     }
 
@@ -2287,11 +2499,23 @@ mod tests {
             exit_code: Some(1),
             stderr: "error[E0308]: mismatched types".to_string(),
         }];
-        let result = format_validation_error_metadata(&failures, "task-branch", "main");
+        let log = vec![ValidationLogEntry {
+            phase: "validate".to_string(),
+            command: "cargo check".to_string(),
+            path: ".".to_string(),
+            label: "Rust".to_string(),
+            status: "failed".to_string(),
+            exit_code: Some(1),
+            stdout: String::new(),
+            stderr: "error[E0308]: mismatched types".to_string(),
+            duration_ms: 1500,
+        }];
+        let result = format_validation_error_metadata(&failures, &log, "task-branch", "main");
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
         assert!(parsed["error"].as_str().unwrap().contains("1 command(s) failed"));
         assert_eq!(parsed["source_branch"], "task-branch");
         assert_eq!(parsed["target_branch"], "main");
         assert_eq!(parsed["validation_failures"].as_array().unwrap().len(), 1);
+        assert_eq!(parsed["validation_log"].as_array().unwrap().len(), 1);
     }
 }
