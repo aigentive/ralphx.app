@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-02-08 19:00:00 - Phase 106 Task 1: Exclude archived tasks from get_by_status query
+**What:**
+- Added `AND archived_at IS NULL` to SQL WHERE clause in `sqlite_task_repo/mod.rs:173`
+- Added `&& t.archived_at.is_none()` filter in `memory_task_repo/mod.rs:124`
+- Added `test_get_by_status_excludes_archived` test for SQLite repo (creates active + archived PendingMerge tasks, verifies only active returned)
+- Added `test_get_by_status_excludes_archived` test for memory repo (same pattern)
+
+**Commands:**
+- `cargo test -- get_by_status` — 12 tests pass (including 2 new)
+- `cargo clippy --all-targets --all-features -- -D warnings` — passes clean
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-08 18:00:00 - Phase 105 Complete, Phase 106 Activated
 **What:**
 - All 4 tasks passed: v17 migration, RunningAgentRegistry trait extraction + SQLite impl, startup orphan killing, terminal-state chat resumption guard

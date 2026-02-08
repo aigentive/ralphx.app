@@ -744,3 +744,29 @@ async fn test_get_oldest_ready_task_returns_none_when_empty() {
     let result = repo.get_oldest_ready_task().await.unwrap();
     assert!(result.is_none(), "Should return None for empty repository");
 }
+
+#[tokio::test]
+async fn test_get_by_status_excludes_archived() {
+    let repo = MemoryTaskRepository::new();
+    let project = ProjectId::new();
+
+    let mut task1 = create_test_task(project.clone(), "Active PendingMerge", 1);
+    task1.internal_status = InternalStatus::PendingMerge;
+
+    let mut task2 = create_test_task(project.clone(), "Archived PendingMerge", 2);
+    task2.internal_status = InternalStatus::PendingMerge;
+
+    repo.create(task1).await.unwrap();
+    repo.create(task2.clone()).await.unwrap();
+
+    // Archive the second task
+    repo.archive(&task2.id).await.unwrap();
+
+    let results = repo
+        .get_by_status(&project, InternalStatus::PendingMerge)
+        .await
+        .unwrap();
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].title, "Active PendingMerge");
+}

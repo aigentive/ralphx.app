@@ -170,7 +170,7 @@ impl TaskRepository for SqliteTaskRepository {
         let mut stmt = conn
             .prepare(
                 "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, ideation_session_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason, task_branch, worktree_path, merge_commit_sha
-                 FROM tasks WHERE project_id = ?1 AND internal_status = ?2
+                 FROM tasks WHERE project_id = ?1 AND internal_status = ?2 AND archived_at IS NULL
                  ORDER BY priority DESC, created_at ASC",
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
