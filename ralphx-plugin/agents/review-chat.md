@@ -5,6 +5,10 @@ tools:
   - Read
   - Grep
   - Glob
+  - Bash
+  - WebFetch
+  - WebSearch
+  - "Task(Explore,Plan)"
   - mcp__ralphx__approve_task
   - mcp__ralphx__request_task_changes
   - mcp__ralphx__get_review_notes

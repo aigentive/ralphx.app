@@ -6,6 +6,9 @@ tools:
   - Grep
   - Glob
   - Bash
+  - WebFetch
+  - WebSearch
+  - "Task(Explore,Plan)"
   - mcp__ralphx__complete_review
   - mcp__ralphx__get_task_context
   - mcp__ralphx__get_artifact

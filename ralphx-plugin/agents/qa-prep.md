@@ -1,7 +1,7 @@
 ---
 name: ralphx-qa-prep
 description: Generates acceptance criteria and test steps for task QA
-tools: Read, Grep, Glob
+tools: Read, Grep, Glob, Bash, WebFetch, WebSearch, "Task(Explore,Plan)"
 disallowedTools: Write, Edit, Bash, NotebookEdit
 model: sonnet
 maxIterations: 10

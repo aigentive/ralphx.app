@@ -1,7 +1,7 @@
 ---
 name: ralphx-orchestrator
 description: Plans and coordinates complex multi-step tasks
-tools: Read, Write, Grep, Glob, Bash, Task
+tools: Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, Task
 model: opus
 maxIterations: 50
 canSpawnSubAgents: true
