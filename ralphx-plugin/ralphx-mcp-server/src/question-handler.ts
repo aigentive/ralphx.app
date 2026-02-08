@@ -14,6 +14,7 @@ const QUESTION_TIMEOUT_MS = 5 * 60 * 1000;
 
 interface QuestionOption {
   label: string;
+  value?: string;
   description?: string;
 }
 
@@ -57,7 +58,11 @@ export async function handleAskUserQuestion(
           session_id: args.session_id,
           question: args.question,
           header: args.header,
-          options: args.options,
+          options: (args.options ?? []).map((o) => ({
+            value: o.value ?? o.label,
+            label: o.label,
+            description: o.description,
+          })),
           multi_select: args.multi_select ?? false,
         }),
       }
