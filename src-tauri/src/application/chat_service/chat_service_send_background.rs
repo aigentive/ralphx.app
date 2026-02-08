@@ -14,6 +14,9 @@ use crate::application::task_scheduler_service::TaskSchedulerService;
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::resolve_merge_branches;
 use crate::domain::state_machine::transition_handler::complete_merge_internal;
+use crate::domain::state_machine::transition_handler::{
+    format_validation_error_metadata, run_validation_commands,
+};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
     AgentRunId, ChatConversationId, ChatContextType, InternalStatus, TaskId,
@@ -836,6 +839,87 @@ async fn attempt_merge_auto_complete<R: Runtime>(
             )
             .await;
             return;
+        }
+    }
+
+    // 3b. If this was a validation recovery (AutoFix mode), re-run validation before completing.
+    // The agent may have fixed code and committed, but we must verify validation passes.
+    let is_validation_recovery = task
+        .metadata
+        .as_ref()
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+        .and_then(|v| v.get("validation_recovery")?.as_bool())
+        .unwrap_or(false);
+
+    if is_validation_recovery {
+        tracing::info!(
+            task_id = task_id_str,
+            "attempt_merge_auto_complete: validation recovery mode — re-running validation"
+        );
+
+        // Re-run validation commands on the merge path
+        match run_validation_commands(&project, &task, worktree, task_id_str, None) {
+            Some(result) if !result.all_passed => {
+                // Agent didn't fix it — revert and fall back to MergeIncomplete
+                tracing::warn!(
+                    task_id = task_id_str,
+                    failure_count = result.failures.len(),
+                    "attempt_merge_auto_complete: re-validation failed, reverting merge"
+                );
+
+                if let Err(e) = GitService::reset_hard(worktree, "HEAD~1") {
+                    tracing::error!(
+                        task_id = task_id_str,
+                        error = %e,
+                        "attempt_merge_auto_complete: failed to revert merge after validation failure"
+                    );
+                }
+
+                // Update task metadata with validation failure details
+                let (source_branch, target_branch) =
+                    resolve_merge_branches(&task, &project, plan_branch_repo).await;
+                task.metadata = Some(format_validation_error_metadata(
+                    &result.failures,
+                    &result.log,
+                    &source_branch,
+                    &target_branch,
+                ));
+                task.touch();
+                let _ = task_repo.update(&task).await;
+
+                transition_to_merge_incomplete(
+                    &task_id,
+                    "Validation re-check failed after agent fix attempt",
+                    task_repo,
+                    task_dependency_repo,
+                    project_repo,
+                    chat_message_repo,
+                    conversation_repo,
+                    agent_run_repo,
+                    ideation_session_repo,
+                    activity_event_repo,
+                    message_queue,
+                    running_agent_registry,
+                    execution_state,
+                    plan_branch_repo,
+                    app_handle,
+                )
+                .await;
+                return;
+            }
+            Some(_) => {
+                tracing::info!(
+                    task_id = task_id_str,
+                    "attempt_merge_auto_complete: re-validation passed — proceeding to complete merge"
+                );
+            }
+            None => {
+                // No validation commands configured — proceed normally
+                tracing::info!(
+                    task_id = task_id_str,
+                    "attempt_merge_auto_complete: no validation commands found, proceeding"
+                );
+            }
         }
     }
 

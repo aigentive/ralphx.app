@@ -15,6 +15,10 @@ mod tests;
 pub use side_effects::complete_merge_internal;
 pub use side_effects::resolve_merge_branches;
 
+// Re-export validation helpers for auto-completion re-validation (Phase 113)
+pub(crate) use side_effects::format_validation_error_metadata;
+pub(crate) use side_effects::run_validation_commands;
+
 /// Result of handling a transition
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransitionResult {

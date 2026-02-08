@@ -121,7 +121,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(merge): re-validate in auto-completion for validation recovery mode"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 3,
