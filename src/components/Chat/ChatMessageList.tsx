@@ -12,12 +12,14 @@ import React, { forwardRef, useEffect, useRef, useImperativeHandle } from "react
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { MessageItem } from "./MessageItem";
 import { StreamingToolIndicator } from "./StreamingToolIndicator";
+import { AskUserQuestionCard } from "./AskUserQuestionCard";
 import {
   TypingIndicator,
   FailedRunBanner,
 } from "./IntegratedChatPanel.components";
 import type { ToolCall } from "./ToolCallIndicator";
 import type { ContentBlockItem } from "./MessageItem";
+import type { AskUserQuestionPayload, AskUserQuestionResponse } from "@/types/ask-user-question";
 import { isDiffToolCall } from "./DiffToolCallView.utils";
 import { DiffToolCallView } from "./DiffToolCallView";
 
@@ -70,6 +72,14 @@ interface ChatMessageListProps {
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
   /** Optional timestamp to scroll to (for history mode) - scrolls to first message at or after this time */
   scrollToTimestamp?: string | null;
+  /** Active question from agent (ask-user-question) */
+  activeQuestion?: AskUserQuestionPayload | null | undefined;
+  /** Callback when user submits an answer */
+  onSubmitAnswer?: ((response: AskUserQuestionResponse) => void) | undefined;
+  /** Whether answer submission is in progress */
+  isSubmittingAnswer?: boolean | undefined;
+  /** Summary of the previously answered question */
+  answeredQuestion?: string | undefined;
 }
 
 // ============================================================================
@@ -89,6 +99,10 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       streamingText,
       messagesEndRef,
       scrollToTimestamp,
+      activeQuestion,
+      onSubmitAnswer,
+      isSubmittingAnswer = false,
+      answeredQuestion,
     },
     ref
   ) {
@@ -212,6 +226,15 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                     ) : !streamingText && diffToolCalls.length === 0 ? (
                       <TypingIndicator />
                     ) : null
+                  )}
+                  {/* Show inline question card when agent asks a question or answered summary */}
+                  {(activeQuestion || answeredQuestion) && onSubmitAnswer && (
+                    <AskUserQuestionCard
+                      question={activeQuestion ?? { requestId: "", taskId: "", header: "", question: "", options: [], multiSelect: false }}
+                      onSubmit={onSubmitAnswer}
+                      isSubmitting={isSubmittingAnswer}
+                      answeredWith={answeredQuestion}
+                    />
                   )}
                   <div ref={messagesEndRef} />
                 </div>

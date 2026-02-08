@@ -145,19 +145,19 @@ export function AskUserQuestionCard({
   const [showOther, setShowOther] = useState(false);
   const [otherText, setOtherText] = useState("");
 
-  const handleRadioSelect = useCallback((label: string) => {
-    setSelectedOptions(new Set([label]));
+  const handleRadioSelect = useCallback((value: string) => {
+    setSelectedOptions(new Set([value]));
     setShowOther(false);
     setOtherText("");
   }, []);
 
-  const handleCheckboxToggle = useCallback((label: string) => {
+  const handleCheckboxToggle = useCallback((value: string) => {
     setSelectedOptions((prev) => {
       const next = new Set(prev);
-      if (next.has(label)) {
-        next.delete(label);
+      if (next.has(value)) {
+        next.delete(value);
       } else {
-        next.add(label);
+        next.add(value);
       }
       return next;
     });
@@ -254,25 +254,26 @@ export function AskUserQuestionCard({
 
       {/* Options */}
       <div className="px-1.5 pb-1">
-        {question.options.map((option) =>
-          question.multiSelect ? (
+        {question.options.map((option) => {
+          const optionValue = option.value ?? option.label;
+          return question.multiSelect ? (
             <OptionCheckbox
-              key={option.label}
+              key={optionValue}
               label={option.label}
               description={option.description}
-              selected={selectedOptions.has(option.label)}
-              onToggle={() => handleCheckboxToggle(option.label)}
+              selected={selectedOptions.has(optionValue)}
+              onToggle={() => handleCheckboxToggle(optionValue)}
             />
           ) : (
             <OptionRadio
-              key={option.label}
+              key={optionValue}
               label={option.label}
               description={option.description}
-              selected={selectedOptions.has(option.label)}
-              onSelect={() => handleRadioSelect(option.label)}
+              selected={selectedOptions.has(optionValue)}
+              onSelect={() => handleRadioSelect(optionValue)}
             />
-          )
-        )}
+          );
+        })}
 
         {/* "Other" option */}
         <button

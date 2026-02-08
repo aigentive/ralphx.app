@@ -12,6 +12,7 @@ import { z } from "zod";
  */
 export const AskUserQuestionOptionSchema = z.object({
   label: z.string().min(1),
+  value: z.string().optional(),
   description: z.string(),
 });
 
