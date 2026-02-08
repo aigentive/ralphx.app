@@ -53,10 +53,10 @@ export interface GlassSurface {
 // ============================================================================
 
 /** Standard node width - full-size TaskNode with status badges */
-export const NODE_WIDTH = 210;
+export const NODE_WIDTH = 240;
 
-/** Standard node height to accommodate: title + 1-line description + category + progress bar */
-export const NODE_HEIGHT = 100;
+/** Standard node height to accommodate: title (2-line) + description (2-line) + category + progress bar */
+export const NODE_HEIGHT = 140;
 
 /** Compact node width - smaller TaskNodeCompact for large graphs (50+ tasks) */
 export const COMPACT_NODE_WIDTH = 160;
