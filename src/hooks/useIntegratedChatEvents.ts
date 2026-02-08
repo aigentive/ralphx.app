@@ -18,6 +18,8 @@ import type { Unsubscribe } from "@/lib/event-bus";
 
 interface UseIntegratedChatEventsProps {
   activeConversationId: string | null;
+  contextId: string | null;
+  contextType: string | null;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
   setStreamingToolCalls: Dispatch<SetStateAction<ToolCall[]>>;
   setStreamingText: Dispatch<SetStateAction<string>>;
@@ -25,6 +27,8 @@ interface UseIntegratedChatEventsProps {
 
 export function useIntegratedChatEvents({
   activeConversationId,
+  contextId,
+  contextType,
   messagesEndRef,
   setStreamingToolCalls,
   setStreamingText,
@@ -45,6 +49,8 @@ export function useIntegratedChatEvents({
         arguments: unknown;
         result?: unknown;
         conversation_id: string;
+        context_id?: string;
+        context_type?: string;
         diff_context?: { old_content?: string; file_path: string } | null;
       }>("agent:tool_call", (payload) => {
         const { tool_name, tool_id, arguments: args, result, conversation_id, diff_context } = payload;
@@ -52,7 +58,7 @@ export function useIntegratedChatEvents({
         // Skip result events early — they don't add new tool calls
         if (tool_name.startsWith("result:toolu")) return;
 
-        if (conversation_id === activeConversationId) {
+        if (conversation_id === activeConversationId && (!contextId || payload.context_id === contextId)) {
           // Build diffContext with exactOptionalPropertyTypes compliance
           let diffContext: ToolCall["diffContext"];
           if (diff_context) {
@@ -99,9 +105,9 @@ export function useIntegratedChatEvents({
 
     // Streaming text chunks - accumulate for real-time display
     unsubscribes.push(
-      bus.subscribe<{ text: string; conversation_id: string }>(
+      bus.subscribe<{ text: string; conversation_id: string; context_id?: string; context_type?: string }>(
         "agent:chunk", (payload) => {
-          if (payload.conversation_id === activeConversationId) {
+          if (payload.conversation_id === activeConversationId && (!contextId || payload.context_id === contextId)) {
             setStreamingText((prev) => prev + payload.text);
           }
         }
@@ -109,12 +115,12 @@ export function useIntegratedChatEvents({
     );
 
     // Message created events - invalidate conversation for live updates
-    const handleMessageCreated = (payload: { conversation_id?: string }) => {
+    const handleMessageCreated = (payload: { conversation_id?: string; context_id?: string; context_type?: string }) => {
       const conversationId = payload.conversation_id;
       if (!conversationId) {
         return;
       }
-      if (conversationId === activeConversationId) {
+      if (conversationId === activeConversationId && (!contextId || payload.context_id === contextId)) {
         queryClient.invalidateQueries({
           queryKey: chatKeys.conversation(conversationId),
         });
@@ -122,7 +128,7 @@ export function useIntegratedChatEvents({
     };
 
     unsubscribes.push(
-      bus.subscribe<{ conversation_id?: string }>(
+      bus.subscribe<{ conversation_id?: string; context_id?: string; context_type?: string }>(
         "agent:message_created",
         handleMessageCreated
       )
@@ -132,9 +138,11 @@ export function useIntegratedChatEvents({
     unsubscribes.push(
       bus.subscribe<{
         conversation_id: string;
+        context_id?: string;
+        context_type?: string;
       }>("agent:run_completed", (payload) => {
         const { conversation_id } = payload;
-        if (conversation_id !== activeConversationId) return;
+        if (conversation_id !== activeConversationId || (contextId && payload.context_id !== contextId)) return;
 
         setStreamingToolCalls([]);
         setStreamingText("");
@@ -154,5 +162,5 @@ export function useIntegratedChatEvents({
       setStreamingText("");
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [bus, queryClient, messagesEndRef, setStreamingToolCalls, setStreamingText, activeConversationId]);
+  }, [bus, queryClient, messagesEndRef, setStreamingToolCalls, setStreamingText, activeConversationId, contextId, contextType]);
 }
