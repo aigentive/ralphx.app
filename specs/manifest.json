@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 104,
+  "currentPhase": 105,
   "phases": [
     {
       "phase": 0,
@@ -744,6 +744,13 @@
       "prd": "specs/phases/prd_phase_104_reopen_reset_ideation_sessions.md",
       "status": "complete",
       "description": "Reopen accepted/archived sessions to Active, reset & re-accept with fresh tasks"
+    },
+    {
+      "phase": 105,
+      "name": "Fix Duplicate Agent Processes on App Restart",
+      "prd": "specs/phases/prd_phase_105_fix_duplicate_agent_processes.md",
+      "status": "active",
+      "description": "Fix orphaned agent OS processes on restart and terminal-state chat resumption guard"
     }
   ]
 }
