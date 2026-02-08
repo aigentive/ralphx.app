@@ -791,7 +791,7 @@
       "phase": 111,
       "name": "Fix Remaining plan_branch_repo Gaps on Scheduler Sites",
       "prd": "specs/phases/prd_phase_111_fix_remaining_plan_branch_repo_gaps.md",
-      "status": "active",
+      "status": "complete",
       "description": "Add plan_branch_repo to 6 remaining scheduler construction sites and add scheduler to approve path"
     }
   ]
