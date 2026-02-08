@@ -1232,29 +1232,11 @@ impl<'a> super::TransitionHandler<'a> {
                         // Post-merge validation gate: run validate commands before completing
                         if let Some(validation) = run_validation_commands(&project, &task, repo_path) {
                             if !validation.all_passed {
-                                tracing::warn!(
-                                    task_id = task_id_str,
-                                    failure_count = validation.failures.len(),
-                                    "Post-merge validation failed (in-repo), transitioning to MergeIncomplete"
-                                );
-
-                                task.metadata = Some(format_validation_error_metadata(
+                                self.handle_validation_failure(
+                                    &mut task, &task_id, task_id_str, task_repo,
                                     &validation.failures, &source_branch, &target_branch,
-                                ));
-                                task.internal_status = InternalStatus::MergeIncomplete;
-                                task.touch();
-
-                                let _ = task_repo.update(&task).await;
-                                let _ = task_repo.persist_status_change(
-                                    &task_id,
-                                    InternalStatus::PendingMerge,
-                                    InternalStatus::MergeIncomplete,
-                                    "validation_failed",
+                                    repo_path, "in-repo",
                                 ).await;
-
-                                self.machine.context.services.event_emitter
-                                    .emit("task:status_changed", task_id_str).await;
-
                                 return;
                             }
                         }
@@ -1421,32 +1403,13 @@ impl<'a> super::TransitionHandler<'a> {
                         // Post-merge validation gate: run in the merge worktree (before deleting it)
                         if let Some(validation) = run_validation_commands(&project, &task, &merge_wt_path) {
                             if !validation.all_passed {
-                                tracing::warn!(
-                                    task_id = task_id_str,
-                                    failure_count = validation.failures.len(),
-                                    "Post-merge validation failed (worktree), transitioning to MergeIncomplete"
-                                );
-
-                                // Cleanup merge worktree even on validation failure
-                                let _ = GitService::delete_worktree(repo_path, &merge_wt_path);
-
-                                task.metadata = Some(format_validation_error_metadata(
+                                // Reset in merge worktree first, then delete it
+                                self.handle_validation_failure(
+                                    &mut task, &task_id, task_id_str, task_repo,
                                     &validation.failures, &source_branch, &target_branch,
-                                ));
-                                task.internal_status = InternalStatus::MergeIncomplete;
-                                task.touch();
-
-                                let _ = task_repo.update(&task).await;
-                                let _ = task_repo.persist_status_change(
-                                    &task_id,
-                                    InternalStatus::PendingMerge,
-                                    InternalStatus::MergeIncomplete,
-                                    "validation_failed",
+                                    &merge_wt_path, "worktree",
                                 ).await;
-
-                                self.machine.context.services.event_emitter
-                                    .emit("task:status_changed", task_id_str).await;
-
+                                let _ = GitService::delete_worktree(repo_path, &merge_wt_path);
                                 return;
                             }
                         }
@@ -1611,29 +1574,11 @@ impl<'a> super::TransitionHandler<'a> {
                     // Post-merge validation gate: run validate commands before completing
                     if let Some(validation) = run_validation_commands(&project, &task, repo_path) {
                         if !validation.all_passed {
-                            tracing::warn!(
-                                task_id = task_id_str,
-                                failure_count = validation.failures.len(),
-                                "Post-merge validation failed (local), transitioning to MergeIncomplete"
-                            );
-
-                            task.metadata = Some(format_validation_error_metadata(
+                            self.handle_validation_failure(
+                                &mut task, &task_id, task_id_str, task_repo,
                                 &validation.failures, &source_branch, &target_branch,
-                            ));
-                            task.internal_status = InternalStatus::MergeIncomplete;
-                            task.touch();
-
-                            let _ = task_repo.update(&task).await;
-                            let _ = task_repo.persist_status_change(
-                                &task_id,
-                                InternalStatus::PendingMerge,
-                                InternalStatus::MergeIncomplete,
-                                "validation_failed",
+                                repo_path, "local",
                             ).await;
-
-                            self.machine.context.services.event_emitter
-                                .emit("task:status_changed", task_id_str).await;
-
                             return;
                         }
                     }
@@ -1840,6 +1785,66 @@ impl<'a> super::TransitionHandler<'a> {
         }
     }
 
+    /// Handle post-merge validation failure: revert the merge commit, then transition
+    /// to MergeIncomplete with error metadata.
+    ///
+    /// The merge commit has already landed on the target branch. We must revert it
+    /// before transitioning so that failing code doesn't remain on the target branch.
+    ///
+    /// # Arguments
+    /// * `task` - Mutable task to update
+    /// * `task_id` - Task ID for persistence
+    /// * `task_id_str` - Task ID string for logging
+    /// * `task_repo` - Repository for persisting status change
+    /// * `failures` - Validation failures to include in metadata
+    /// * `source_branch` / `target_branch` - For metadata
+    /// * `merge_path` - Path where the merge happened (for git reset)
+    /// * `mode_label` - Label for log messages (e.g., "in-repo", "worktree", "local")
+    async fn handle_validation_failure(
+        &self,
+        task: &mut Task,
+        task_id: &TaskId,
+        task_id_str: &str,
+        task_repo: &Arc<dyn TaskRepository>,
+        failures: &[ValidationFailure],
+        source_branch: &str,
+        target_branch: &str,
+        merge_path: &Path,
+        mode_label: &str,
+    ) {
+        tracing::warn!(
+            task_id = task_id_str,
+            failure_count = failures.len(),
+            "Post-merge validation failed ({}), reverting merge and transitioning to MergeIncomplete",
+            mode_label,
+        );
+
+        // Revert the merge commit so failing code doesn't remain on the target branch
+        if let Err(e) = GitService::reset_hard(merge_path, "HEAD~1") {
+            tracing::error!(
+                task_id = task_id_str,
+                error = %e,
+                "Failed to revert merge commit after validation failure — target branch may have failing code"
+            );
+        }
+
+        task.metadata = Some(format_validation_error_metadata(
+            failures, source_branch, target_branch,
+        ));
+        task.internal_status = InternalStatus::MergeIncomplete;
+        task.touch();
+
+        let _ = task_repo.update(task).await;
+        let _ = task_repo.persist_status_change(
+            task_id,
+            InternalStatus::PendingMerge,
+            InternalStatus::MergeIncomplete,
+            "validation_failed",
+        ).await;
+
+        self.machine.context.services.event_emitter
+            .emit("task:status_changed", task_id_str).await;
+    }
 }
 
 #[cfg(test)]
