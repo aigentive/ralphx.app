@@ -95,6 +95,7 @@ pub struct TaskResponse {
     pub task_branch: Option<String>,
     pub worktree_path: Option<String>,
     pub merge_commit_sha: Option<String>,
+    pub metadata: Option<String>,
 }
 
 impl From<Task> for TaskResponse {
@@ -117,6 +118,7 @@ impl From<Task> for TaskResponse {
             task_branch: task.task_branch,
             worktree_path: task.worktree_path,
             merge_commit_sha: task.merge_commit_sha,
+            metadata: task.metadata,
         }
     }
 }

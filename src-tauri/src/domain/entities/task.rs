@@ -69,6 +69,10 @@ pub struct Task {
     /// Set when task transitions to Merged state
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub merge_commit_sha: Option<String>,
+    /// Generic JSON metadata (Phase 108)
+    /// Used for merge error context (error message, branch names) and future structured data
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<String>,
 }
 
 impl Task {
@@ -102,6 +106,7 @@ impl Task {
             task_branch: None,
             worktree_path: None,
             merge_commit_sha: None,
+            metadata: None,
         }
     }
 
@@ -201,6 +206,7 @@ impl Task {
             task_branch: row.get("task_branch")?,
             worktree_path: row.get("worktree_path")?,
             merge_commit_sha: row.get("merge_commit_sha")?,
+            metadata: row.get("metadata")?,
         })
     }
 
@@ -653,7 +659,8 @@ mod tests {
                 blocked_reason TEXT,
                 task_branch TEXT,
                 worktree_path TEXT,
-                merge_commit_sha TEXT
+                merge_commit_sha TEXT,
+                metadata TEXT
             )"#,
             [],
         )

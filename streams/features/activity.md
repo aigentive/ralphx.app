@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-02-08 23:30:00 - Phase 108 Task 1: Add metadata column to tasks table
+**What:**
+- Created v18 migration: `add_column_if_not_exists(conn, "tasks", "metadata", "TEXT DEFAULT NULL")`
+- Added `pub metadata: Option<String>` to Task entity (struct, new(), from_row())
+- Updated setup_test_db() to include metadata column
+- Updated TASK_COLUMNS and all 6 query constants in queries.rs
+- Updated INSERT (21 params) and UPDATE (19 SET params) in sqlite_task_repo/mod.rs
+- Updated all 6 inline SELECT lists (get_by_status, get_next_executable, get_blockers, get_dependents, archive, restore)
+- Added `pub metadata: Option<String>` to TaskResponse and From<Task> impl
+- Created migration tests (column exists, set/get, defaults to null, idempotent)
+- Updated v1 schema version test to expect 18
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — 3672+ tests pass, 0 failures
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-08 22:15:00 - Phase 107 Complete
 **What:**
 - All 3 tasks passed: timeline recording, programmatic merge scheduling, agent auto-complete merge scheduling
