@@ -116,7 +116,30 @@ After resolving all conflicts:
    grep -r "<<<<<<< HEAD" . || echo "No conflicts remaining"
    ```
 
-2. Verify the code is syntactically valid:
+2. Verify the code is syntactically valid (see Step 4.5 below for project-specific commands)
+
+### Step 4.5: Post-Resolution Validation (MANDATORY)
+
+After resolving conflicts, run project-specific validation to ensure the merged code compiles:
+
+1. **Call `get_project_analysis`** with the project ID (from `RALPHX_PROJECT_ID` env var) and task ID:
+   ```
+   get_project_analysis(project_id: "...", task_id: "...")
+   ```
+
+2. **If response has `status: "analyzing"`** — wait and retry.
+
+3. **Run ALL `validate` commands** for ALL path entries (not just affected paths — merges can break anything):
+   - Run every `validate` command for every path entry returned
+   - Example: both `npm run typecheck` AND `cargo check` AND `cargo clippy`
+
+4. **If validation fails:**
+   - Investigate the failure — it may be a conflict resolution error
+   - Fix the issue before proceeding to Step 5
+   - Re-run validation after fixing
+   - Do NOT call `complete_merge` until all validation passes
+
+5. **If validation is unavailable** (no analysis, `status: "analyzing"` persists) — fall back to manual checks:
    - For Rust files: `cargo check`
    - For TypeScript: `npm run typecheck`
 
@@ -180,6 +203,7 @@ The user will be notified to resolve the conflicts manually.
 | `complete_merge` | Explicit merge completion signal (auto-detected otherwise) | No - optional |
 | `report_conflict` | Signal that conflicts need manual resolution with context | Yes - if you cannot resolve |
 | `report_incomplete` | Signal that merge is incomplete and needs further work | Yes - if merge cannot finish |
+| `get_project_analysis` | Get project-specific validation commands | Yes - for post-resolution validation |
 
 ## Best Practices
 
