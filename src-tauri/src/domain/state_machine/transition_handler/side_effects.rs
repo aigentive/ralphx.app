@@ -338,6 +338,8 @@ struct MergeAnalysisEntry {
     label: String,
     #[serde(default)]
     validate: Vec<String>,
+    #[serde(default)]
+    worktree_setup: Vec<String>,
 }
 
 /// Result of running post-merge validation commands.
@@ -384,7 +386,7 @@ fn run_validation_commands(
 
     // Collect all validate commands with their resolved paths
     let project_root = &project.working_directory;
-    let worktree_path = task.worktree_path.as_deref().unwrap_or(project_root);
+    let worktree_path = merge_cwd.to_str().unwrap_or(project_root);
     let task_branch = task.task_branch.as_deref().unwrap_or("");
 
     let resolve = |s: &str| -> String {
@@ -392,6 +394,48 @@ fn run_validation_commands(
             .replace("{worktree_path}", worktree_path)
             .replace("{task_branch}", task_branch)
     };
+
+    // Run worktree_setup commands first (symlinks, etc.) — non-fatal
+    for entry in &entries {
+        for cmd_str in &entry.worktree_setup {
+            let resolved_cmd = resolve(cmd_str);
+            let resolved_path = resolve(&entry.path);
+            let cmd_cwd = if resolved_path == "." {
+                merge_cwd.to_path_buf()
+            } else {
+                merge_cwd.join(&resolved_path)
+            };
+
+            tracing::info!(
+                command = %resolved_cmd,
+                cwd = %cmd_cwd.display(),
+                "Running worktree setup command"
+            );
+
+            match Command::new("sh")
+                .arg("-c")
+                .arg(&resolved_cmd)
+                .current_dir(&cmd_cwd)
+                .output()
+            {
+                Ok(output) if !output.status.success() => {
+                    tracing::warn!(
+                        command = %resolved_cmd,
+                        stderr = %String::from_utf8_lossy(&output.stderr),
+                        "Worktree setup command failed (non-fatal)"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        command = %resolved_cmd,
+                        error = %e,
+                        "Worktree setup command failed (non-fatal)"
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
 
     let mut failures = Vec::new();
     let mut ran_any = false;
