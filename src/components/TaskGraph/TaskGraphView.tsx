@@ -995,23 +995,28 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     }));
     const next = [...groupNodesWithSelection, ...taskNodesWithData];
 
-    // Lightweight identity check — IDs, positions, visual state.
+    // Lightweight identity check — IDs, positions, visual state, task data.
     // Must include positions so dagre re-layout after expand/collapse propagates.
+    // Must include internalStatus so real-time status changes propagate to nodes.
     const prev = prevNodesRef.current;
     if (next.length === prev.length) {
       let same = true;
       for (let i = 0; i < next.length; i++) {
         const n = next[i]!;
         const p = prev[i]!;
+        const nd = n.data as Record<string, unknown>;
+        const pd = p.data as Record<string, unknown>;
         if (
           n.id !== p.id
           || n.position.x !== p.position.x
           || n.position.y !== p.position.y
           || n.selected !== p.selected
           || n.type !== p.type
-          || (n.data as Record<string, unknown>)?.isSelected !== (p.data as Record<string, unknown>)?.isSelected
-          || (n.data as Record<string, unknown>)?.isHighlighted !== (p.data as Record<string, unknown>)?.isHighlighted
-          || (n.data as Record<string, unknown>)?.isFocused !== (p.data as Record<string, unknown>)?.isFocused
+          || nd?.isSelected !== pd?.isSelected
+          || nd?.isHighlighted !== pd?.isHighlighted
+          || nd?.isFocused !== pd?.isFocused
+          || nd?.internalStatus !== pd?.internalStatus
+          || nd?.label !== pd?.label
         ) {
           same = false;
           break;
