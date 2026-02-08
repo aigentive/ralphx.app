@@ -9,13 +9,15 @@ tools:
   - Glob
   - WebFetch
   - WebSearch
-  - "Task(Explore,Plan)"
+  - Task
 allowedTools:
   - mcp__ralphx__complete_merge
   - mcp__ralphx__report_conflict
   - mcp__ralphx__report_incomplete
   - mcp__ralphx__get_merge_target
   - mcp__ralphx__get_task_context
+  - "Task(Explore)"
+  - "Task(Plan)"
 model: opus
 ---
 

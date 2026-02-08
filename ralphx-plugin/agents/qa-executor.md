@@ -1,10 +1,13 @@
 ---
 name: ralphx-qa-executor
 description: Executes QA tests via agent-browser and evaluates results
-tools: Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, "Task(Explore,Plan)"
+tools: Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, Task
 disallowedTools: NotebookEdit
+allowedTools:
+  - "Task(Explore)"
+  - "Task(Plan)"
 model: sonnet
-maxIterations: 30
+maxTurns: 30
 skills:
   - agent-browser
   - qa-evaluation

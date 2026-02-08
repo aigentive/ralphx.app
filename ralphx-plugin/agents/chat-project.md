@@ -8,11 +8,13 @@ tools:
   - Bash
   - WebFetch
   - WebSearch
-  - "Task(Explore,Plan)"
+  - Task
   - mcp__ralphx__suggest_task
   - mcp__ralphx__list_tasks
 allowedTools:
   - "mcp__ralphx__*"
+  - "Task(Explore)"
+  - "Task(Plan)"
 model: sonnet
 ---
 

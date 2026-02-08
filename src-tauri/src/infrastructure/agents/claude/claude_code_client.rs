@@ -23,7 +23,7 @@ use crate::domain::agents::{
     ClientCapabilities, ClientType, ResponseChunk,
 };
 
-use super::{ensure_claude_spawn_allowed, get_allowed_mcp_tools, get_allowed_tools};
+use super::{ensure_claude_spawn_allowed, get_preapproved_tools, get_allowed_tools};
 
 // ============================================================================
 // Streaming Event Types
@@ -173,11 +173,11 @@ impl AgenticClient for ClaudeCodeClient {
             "mcp__ralphx__permission_request".to_string(),
         ]);
 
-        // Pre-approve agent-specific MCP tools (no permission prompts)
+        // Pre-approve agent-specific tools (MCP + CLI permissions, no prompts)
         if let Some(agent) = &config.agent {
-            if let Some(mcp_tools) = get_allowed_mcp_tools(agent) {
+            if let Some(preapproved) = get_preapproved_tools(agent) {
                 args.push("--allowedTools".to_string());
-                args.push(mcp_tools);
+                args.push(preapproved);
             }
         }
 
@@ -358,11 +358,11 @@ impl ClaudeCodeClient {
             "mcp__ralphx__permission_request".to_string(),
         ]);
 
-        // Pre-approve agent-specific MCP tools (no permission prompts)
+        // Pre-approve agent-specific tools (MCP + CLI permissions, no prompts)
         if let Some(agent) = &config.agent {
-            if let Some(mcp_tools) = get_allowed_mcp_tools(agent) {
+            if let Some(preapproved) = get_preapproved_tools(agent) {
                 args.push("--allowedTools".to_string());
-                args.push(mcp_tools);
+                args.push(preapproved);
             }
         }
 
@@ -603,8 +603,8 @@ mod tests {
         let args = client.build_cli_args(&config, None);
 
         let tools_idx = args.iter().position(|a| a == "--tools").expect("--tools flag must be present");
-        assert_eq!(args[tools_idx + 1], "Read,Grep,Glob,Bash,WebFetch,WebSearch,Task(Explore,Plan)",
-            "orchestrator-ideation should have base tools + Task(Explore,Plan)");
+        assert_eq!(args[tools_idx + 1], "Read,Grep,Glob,Bash,WebFetch,WebSearch,Task",
+            "orchestrator-ideation should have base tools + Task");
     }
 
     #[test]

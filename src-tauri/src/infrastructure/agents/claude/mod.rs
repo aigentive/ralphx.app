@@ -5,7 +5,7 @@ mod agent_config;
 mod claude_code_client;
 mod stream_processor;
 
-pub use agent_config::{get_agent_config, get_allowed_tools, get_allowed_mcp_tools, AgentConfig, AGENT_CONFIGS};
+pub use agent_config::{get_agent_config, get_allowed_tools, get_preapproved_tools, AgentConfig, AGENT_CONFIGS};
 pub use claude_code_client::ClaudeCodeClient;
 pub use claude_code_client::{StreamEvent as ClientStreamEvent, StreamingSpawnResult};
 
@@ -107,7 +107,7 @@ pub fn build_base_cli_command(
 /// Add prompt-related args to a CLI command
 ///
 /// Applies agent-specific tool restrictions via --tools flag (CLI tools)
-/// and --allowedTools flag (MCP tools for permission bypass).
+/// and --allowedTools flag (MCP + CLI tool pre-approvals).
 /// See `agent_config.rs` for the single source of truth on tool configurations.
 pub fn add_prompt_args(cmd: &mut Command, prompt: &str, agent: Option<&str>, resume_session: Option<&str>) {
     // Add resume if continuing an existing session
@@ -131,10 +131,10 @@ pub fn add_prompt_args(cmd: &mut Command, prompt: &str, agent: Option<&str>, res
                 if allowed_tools.is_empty() { "(MCP only)" } else { allowed_tools.as_str() });
         }
 
-        // Pre-approve MCP tools to bypass permission prompts
-        if let Some(mcp_tools) = get_allowed_mcp_tools(agent_name) {
-            cmd.args(["--allowedTools", &mcp_tools]);
-            eprintln!("[CLI] Agent {} pre-approved MCP tools: {}", agent_name, mcp_tools);
+        // Pre-approve tools to bypass permission prompts (MCP + CLI permissions)
+        if let Some(preapproved) = get_preapproved_tools(agent_name) {
+            cmd.args(["--allowedTools", &preapproved]);
+            eprintln!("[CLI] Agent {} pre-approved tools: {}", agent_name, preapproved);
         }
     }
 

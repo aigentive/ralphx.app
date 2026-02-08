@@ -54,7 +54,7 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     AgentConfig {
         name: "orchestrator-ideation",
         mcp_only: false,
-        extra_cli_tools: &["Task(Explore,Plan)"],
+        extra_cli_tools: &["Task"],
         allowed_mcp_tools: &[
             "create_task_proposal",
             "update_task_proposal",
@@ -69,20 +69,20 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
             "get_session_plan",
             "ask_user_question",
         ],
-        preapproved_cli_tools: &["Task"],
+        preapproved_cli_tools: &["Task(Explore)", "Task(Plan)"],
     },
     // Read-only variant for accepted plans - no mutation tools
     AgentConfig {
         name: "orchestrator-ideation-readonly",
         mcp_only: false,
-        extra_cli_tools: &["Task(Explore,Plan)"],
+        extra_cli_tools: &["Task"],
         allowed_mcp_tools: &[
             "list_session_proposals",
             "get_proposal",
             "get_plan_artifact",
             "get_session_plan",
         ],
-        preapproved_cli_tools: &[],
+        preapproved_cli_tools: &["Task(Explore)", "Task(Plan)"],
     },
     AgentConfig {
         name: "session-namer",
@@ -104,21 +104,21 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     AgentConfig {
         name: "chat-task",
         mcp_only: false,
-        extra_cli_tools: &["Task(Explore,Plan)"],
+        extra_cli_tools: &["Task"],
         allowed_mcp_tools: &["update_task", "add_task_note", "get_task_details"],
-        preapproved_cli_tools: &[],
+        preapproved_cli_tools: &["Task(Explore)", "Task(Plan)"],
     },
     AgentConfig {
         name: "chat-project",
         mcp_only: false,
-        extra_cli_tools: &["Task(Explore,Plan)"],
+        extra_cli_tools: &["Task"],
         allowed_mcp_tools: &["suggest_task", "list_tasks"],
-        preapproved_cli_tools: &[],
+        preapproved_cli_tools: &["Task(Explore)", "Task(Plan)"],
     },
     AgentConfig {
         name: "ralphx-review-chat",
         mcp_only: false,
-        extra_cli_tools: &["Task(Explore,Plan)"],
+        extra_cli_tools: &["Task"],
         allowed_mcp_tools: &[
             "approve_task",
             "request_task_changes",
@@ -130,7 +130,7 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
             "search_project_artifacts",
             "get_task_steps",
         ],
-        preapproved_cli_tools: &[],
+        preapproved_cli_tools: &["Task(Explore)", "Task(Plan)"],
     },
     // =========================================================================
     // EXECUTION AGENTS
@@ -162,7 +162,7 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     AgentConfig {
         name: "ralphx-reviewer",
         mcp_only: false,
-        extra_cli_tools: &["Task(Explore,Plan)"],
+        extra_cli_tools: &["Task"],
         allowed_mcp_tools: &[
             "complete_review",
             "get_task_context",
@@ -176,7 +176,7 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
             "get_step_progress",
             "get_issue_progress",
         ],
-        preapproved_cli_tools: &["Bash"],
+        preapproved_cli_tools: &["Bash", "Task(Explore)", "Task(Plan)"],
     },
     // =========================================================================
     // QA AGENTS
@@ -184,16 +184,16 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     AgentConfig {
         name: "ralphx-qa-prep",
         mcp_only: false,
-        extra_cli_tools: &["Task(Explore,Plan)"],
+        extra_cli_tools: &["Task"],
         allowed_mcp_tools: &[],
-        preapproved_cli_tools: &[],
+        preapproved_cli_tools: &["Task(Explore)", "Task(Plan)"],
     },
     AgentConfig {
         name: "ralphx-qa-executor",
         mcp_only: false,
-        extra_cli_tools: &["Write", "Edit", "Task(Explore,Plan)"],
+        extra_cli_tools: &["Write", "Edit", "Task"],
         allowed_mcp_tools: &[],
-        preapproved_cli_tools: &["Write", "Edit", "Bash"],
+        preapproved_cli_tools: &["Write", "Edit", "Bash", "Task(Explore)", "Task(Plan)"],
     },
     // =========================================================================
     // COORDINATION AGENTS
@@ -208,16 +208,16 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     AgentConfig {
         name: "ralphx-supervisor",
         mcp_only: false,
-        extra_cli_tools: &["Task(Explore,Plan)"],
+        extra_cli_tools: &["Task"],
         allowed_mcp_tools: &[],
-        preapproved_cli_tools: &["Bash"],
+        preapproved_cli_tools: &["Bash", "Task(Explore)", "Task(Plan)"],
     },
     AgentConfig {
         name: "ralphx-deep-researcher",
         mcp_only: false,
-        extra_cli_tools: &["Write", "Task(Explore,Plan)"],
+        extra_cli_tools: &["Write", "Task"],
         allowed_mcp_tools: &[],
-        preapproved_cli_tools: &["Write", "WebFetch", "WebSearch"],
+        preapproved_cli_tools: &["Write", "WebFetch", "WebSearch", "Task(Explore)", "Task(Plan)"],
     },
     // =========================================================================
     // MERGE AGENTS
@@ -225,7 +225,7 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     AgentConfig {
         name: "ralphx-merger",
         mcp_only: false,
-        extra_cli_tools: &["Edit", "Task(Explore,Plan)"],
+        extra_cli_tools: &["Edit", "Task"],
         allowed_mcp_tools: &[
             "complete_merge",
             "report_conflict",
@@ -233,7 +233,7 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
             "get_merge_target",
             "get_task_context",
         ],
-        preapproved_cli_tools: &["Read", "Edit", "Bash"],
+        preapproved_cli_tools: &["Read", "Edit", "Bash", "Task(Explore)", "Task(Plan)"],
     },
 ];
 
@@ -269,10 +269,10 @@ pub fn get_allowed_tools(agent_name: &str) -> Option<String> {
 ///
 /// Returns formatted string combining:
 /// - MCP tools with mcp__ralphx__ prefix
-/// - Pre-approved CLI tools (Write, Edit, Bash, etc.)
+/// - Pre-approved CLI tools (Write, Edit, Bash, Task(Explore), etc.)
 ///
 /// Returns None if agent has no tools to pre-approve.
-pub fn get_allowed_mcp_tools(agent_name: &str) -> Option<String> {
+pub fn get_preapproved_tools(agent_name: &str) -> Option<String> {
     get_agent_config(agent_name).and_then(|c| {
         let mut tools: Vec<String> = Vec::new();
 
@@ -301,7 +301,7 @@ mod tests {
     #[test]
     fn test_get_allowed_tools_restricted_agent() {
         let tools = get_allowed_tools("orchestrator-ideation");
-        assert_eq!(tools, Some("Read,Grep,Glob,Bash,WebFetch,WebSearch,Task(Explore,Plan)".to_string()));
+        assert_eq!(tools, Some("Read,Grep,Glob,Bash,WebFetch,WebSearch,Task".to_string()));
     }
 
     #[test]
@@ -341,8 +341,8 @@ mod tests {
     }
 
     #[test]
-    fn test_get_allowed_mcp_tools_with_tools() {
-        let tools = get_allowed_mcp_tools("orchestrator-ideation");
+    fn test_get_preapproved_tools_with_tools() {
+        let tools = get_preapproved_tools("orchestrator-ideation");
         assert!(tools.is_some());
         let tools = tools.unwrap();
         assert!(tools.contains("mcp__ralphx__create_task_proposal"));
@@ -351,33 +351,43 @@ mod tests {
     }
 
     #[test]
-    fn test_get_allowed_mcp_tools_ideation_ask_user_question() {
-        let tools = get_allowed_mcp_tools("orchestrator-ideation");
+    fn test_get_preapproved_tools_ideation_ask_user_question() {
+        let tools = get_preapproved_tools("orchestrator-ideation");
         assert!(tools.is_some());
         let tools = tools.unwrap();
         assert!(tools.contains("mcp__ralphx__ask_user_question"));
-        // Task should be in preapproved CLI tools
-        assert!(tools.contains("Task"));
+        // Task subagent restrictions should be in preapproved CLI tools
+        assert!(tools.contains("Task(Explore)"));
+        assert!(tools.contains("Task(Plan)"));
     }
 
     #[test]
-    fn test_get_allowed_mcp_tools_no_tools() {
-        // qa-prep has no MCP tools and no preapproved CLI tools
-        let tools = get_allowed_mcp_tools("ralphx-qa-prep");
-        assert!(tools.is_none());
+    fn test_get_preapproved_tools_no_tools() {
+        // session-namer is MCP-only with one MCP tool and no preapproved CLI tools
+        // Use dependency-suggester which also has no preapproved CLI tools
+        // Actually qa-prep now has Task(Explore)/Task(Plan) preapproved, so use an agent with truly none
+        let config = get_agent_config("session-namer").unwrap();
+        assert!(config.preapproved_cli_tools.is_empty());
+        // But session-namer has MCP tools, so get_preapproved_tools returns Some
+        // Test that qa-prep now returns Some (has preapproved Task subagents)
+        let tools = get_preapproved_tools("ralphx-qa-prep");
+        assert!(tools.is_some());
+        let tools = tools.unwrap();
+        assert!(tools.contains("Task(Explore)"));
+        assert!(tools.contains("Task(Plan)"));
     }
 
     #[test]
-    fn test_get_allowed_mcp_tools_cli_only() {
+    fn test_get_preapproved_tools_cli_only() {
         // supervisor has no MCP tools but has preapproved CLI tools
-        let tools = get_allowed_mcp_tools("ralphx-supervisor");
+        let tools = get_preapproved_tools("ralphx-supervisor");
         assert!(tools.is_some());
         assert!(tools.unwrap().contains("Bash"));
     }
 
     #[test]
-    fn test_get_allowed_mcp_tools_unknown_agent() {
-        let tools = get_allowed_mcp_tools("unknown-agent");
+    fn test_get_preapproved_tools_unknown_agent() {
+        let tools = get_preapproved_tools("unknown-agent");
         assert!(tools.is_none());
     }
 
@@ -392,12 +402,14 @@ mod tests {
         }
         // Extra tools
         assert!(tools.contains("Edit"));
-        assert!(tools.contains("Task(Explore,Plan)"));
+        assert!(tools.contains("Task"));
+        // Task(Explore)/Task(Plan) are in preapproved_cli_tools (--allowedTools), not --tools
+        assert!(!tools.contains("Task(Explore)"));
     }
 
     #[test]
-    fn test_get_allowed_mcp_tools_merger_agent() {
-        let tools = get_allowed_mcp_tools("ralphx-merger");
+    fn test_get_preapproved_tools_merger_agent() {
+        let tools = get_preapproved_tools("ralphx-merger");
         assert!(tools.is_some());
         let tools = tools.unwrap();
         assert!(tools.contains("mcp__ralphx__complete_merge"));
@@ -412,8 +424,8 @@ mod tests {
     }
 
     #[test]
-    fn test_get_allowed_mcp_tools_worker_review_issues() {
-        let tools = get_allowed_mcp_tools("ralphx-worker");
+    fn test_get_preapproved_tools_worker_review_issues() {
+        let tools = get_preapproved_tools("ralphx-worker");
         assert!(tools.is_some());
         let tools = tools.unwrap();
         assert!(tools.contains("mcp__ralphx__get_task_issues"));
@@ -422,8 +434,8 @@ mod tests {
     }
 
     #[test]
-    fn test_get_allowed_mcp_tools_reviewer_review_issues() {
-        let tools = get_allowed_mcp_tools("ralphx-reviewer");
+    fn test_get_preapproved_tools_reviewer_review_issues() {
+        let tools = get_preapproved_tools("ralphx-reviewer");
         assert!(tools.is_some());
         let tools = tools.unwrap();
         assert!(tools.contains("mcp__ralphx__get_task_issues"));
