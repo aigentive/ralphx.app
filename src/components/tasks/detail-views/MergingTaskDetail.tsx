@@ -20,6 +20,8 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
+  Wrench,
+  Terminal,
 } from "lucide-react";
 import {
   SectionTitle,
@@ -65,6 +67,91 @@ function ConflictFilesList({ files }: { files: string[] }) {
   );
 }
 
+interface ValidationFailureEntry {
+  command: string;
+  path?: string;
+  exit_code?: number;
+  stderr?: string;
+}
+
+/**
+ * Parse validation recovery state from task metadata.
+ */
+function parseValidationRecovery(metadata: string | Record<string, unknown> | null | undefined): {
+  isRecovery: boolean;
+  failures: ValidationFailureEntry[];
+} {
+  if (!metadata) return { isRecovery: false, failures: [] };
+  try {
+    const parsed = typeof metadata === "string" ? JSON.parse(metadata) : metadata;
+    const isRecovery = parsed?.validation_recovery === true;
+    if (!isRecovery) return { isRecovery: false, failures: [] };
+    const failures = Array.isArray(parsed?.validation_failures)
+      ? (parsed.validation_failures as ValidationFailureEntry[])
+      : [];
+    return { isRecovery: true, failures };
+  } catch {
+    return { isRecovery: false, failures: [] };
+  }
+}
+
+/**
+ * ValidationFailuresList - Shows validation command failures that triggered recovery
+ */
+function ValidationFailuresList({ failures }: { failures: ValidationFailureEntry[] }) {
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+
+  if (failures.length === 0) return null;
+
+  return (
+    <div className="space-y-1.5">
+      {failures.map((failure, index) => {
+        const hasStderr = failure.stderr && failure.stderr.trim().length > 0;
+        const expanded = expandedIndex === index;
+
+        return (
+          <div
+            key={index}
+            className="rounded-lg overflow-hidden"
+            style={{ backgroundColor: "rgba(255, 69, 58, 0.08)" }}
+          >
+            <button
+              type="button"
+              className="w-full flex items-center gap-2 py-2 px-3 text-left"
+              onClick={() => hasStderr && setExpandedIndex(expanded ? null : index)}
+              style={{ cursor: hasStderr ? "pointer" : "default" }}
+            >
+              <XCircle className="w-4 h-4 shrink-0" style={{ color: "#ff453a" }} />
+              <Terminal className="w-3.5 h-3.5 shrink-0 text-white/30" />
+              <span className="text-[12px] font-mono text-white/70 truncate flex-1" title={failure.command}>
+                {failure.command}
+              </span>
+              {failure.exit_code != null && (
+                <span className="text-[10px] text-white/30 shrink-0">exit {failure.exit_code}</span>
+              )}
+              {hasStderr && (
+                expanded
+                  ? <ChevronDown className="w-3.5 h-3.5 text-white/30 shrink-0" />
+                  : <ChevronRight className="w-3.5 h-3.5 text-white/30 shrink-0" />
+              )}
+            </button>
+            {expanded && hasStderr && (
+              <div
+                className="px-3 pb-3 max-h-[200px] overflow-y-auto"
+                style={{ scrollbarWidth: "thin" }}
+              >
+                <pre className="text-[11px] font-mono whitespace-pre-wrap break-all leading-relaxed" style={{ color: "#ff6961" }}>
+                  {failure.stderr}
+                </pre>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
  * MergeProgressSteps - Shows progress through merge phases
  */
@@ -72,11 +159,82 @@ function MergeProgressSteps({
   isProgrammaticPhase,
   isHistorical,
   historicalMode,
+  isValidationRecovery,
 }: {
   isProgrammaticPhase: boolean;
   isHistorical?: boolean | undefined;
   historicalMode?: "attempted" | "resolving" | undefined;
+  isValidationRecovery?: boolean;
 }) {
+  // Validation recovery mode: different steps (no conflict resolution)
+  if (isValidationRecovery && !isProgrammaticPhase) {
+    const agentStepStatus = isHistorical ? ("completed" as const) : ("active" as const);
+    const recoverySteps = [
+      { label: "Merge completed", status: "completed" as const },
+      { label: "Post-merge validation failed", status: "completed" as const },
+      { label: "AI agent fixing build errors", status: agentStepStatus },
+      { label: "Re-validating fixes", status: "pending" as const },
+    ];
+
+    return (
+      <div className="divide-y divide-white/5">
+        {recoverySteps.map((step, index) => (
+          <div key={index} className="flex items-center gap-3 py-2.5">
+            <div className="relative">
+              {step.status === "completed" && (
+                <CheckCircle2 className="w-5 h-5" style={{ color: "#34c759" }} />
+              )}
+              {step.status === "active" && !isHistorical && (
+                <div className="relative">
+                  <Loader2
+                    className="w-5 h-5 animate-spin"
+                    style={{ color: "#ff6b35" }}
+                  />
+                  <div
+                    className="absolute inset-0 rounded-full animate-pulse"
+                    style={{
+                      background: "radial-gradient(circle, rgba(255,107,53,0.3) 0%, transparent 70%)",
+                    }}
+                  />
+                </div>
+              )}
+              {step.status === "active" && isHistorical && (
+                <div
+                  className="w-5 h-5 rounded-full border-2"
+                  style={{
+                    borderColor: "rgba(255,255,255,0.2)",
+                    backgroundColor: "rgba(255, 107, 53, 0.35)",
+                  }}
+                />
+              )}
+              {step.status === "pending" && (
+                <div
+                  className="w-5 h-5 rounded-full border-2"
+                  style={{ borderColor: "rgba(255,255,255,0.2)" }}
+                />
+              )}
+            </div>
+            <span
+              className="text-[13px] font-medium"
+              style={{
+                color:
+                  step.status === "completed"
+                    ? "rgba(255,255,255,0.6)"
+                    : step.status === "active"
+                    ? isHistorical
+                      ? "rgba(255,255,255,0.35)"
+                      : "#ff6b35"
+                    : "rgba(255,255,255,0.35)",
+              }}
+            >
+              {step.label}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   const steps = isHistorical
     ? historicalMode === "attempted"
       ? ([
@@ -333,6 +491,12 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
       : "resolving"
     : undefined;
 
+  // Detect validation recovery mode from task metadata
+  const { isRecovery: isValidationRecovery, failures: validationFailures } = useMemo(
+    () => parseValidationRecovery(task.metadata),
+    [task.metadata],
+  );
+
   // Live validation events (only meaningful during active pending_merge)
   const liveSteps = useMergeValidationEvents(task.id);
 
@@ -346,6 +510,10 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
   })();
 
   const branchName = task.taskBranch ?? "task branch";
+
+  // Determine labels/icons based on validation recovery vs conflict resolution
+  const isRecoveryAgent = isAgentPhase && isValidationRecovery;
+
   const statusLabel = historicalOutcome
     ? historicalOutcome === "merged"
       ? "Merged"
@@ -353,10 +521,10 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
     : isHistorical
     ? isProgrammaticPhase
       ? "Attempted"
-      : "Resolving"
+      : isValidationRecovery ? "Fixing" : "Resolving"
     : isProgrammaticPhase
     ? "Merging"
-    : "Resolving";
+    : isValidationRecovery ? "Fixing" : "Resolving";
   const statusIcon = historicalOutcome
     ? historicalOutcome === "merged"
       ? CheckCircle2
@@ -364,10 +532,10 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
     : isHistorical
     ? isProgrammaticPhase
       ? GitMerge
-      : AlertTriangle
+      : isValidationRecovery ? Wrench : AlertTriangle
     : isProgrammaticPhase
     ? GitMerge
-    : AlertTriangle;
+    : isValidationRecovery ? Wrench : AlertTriangle;
 
   return (
     <TwoColumnLayout
@@ -384,10 +552,10 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
             : isHistorical
             ? isProgrammaticPhase
               ? GitMerge
-              : AlertTriangle
+              : isValidationRecovery ? Wrench : AlertTriangle
             : isProgrammaticPhase
             ? GitMerge
-            : Bot
+            : isValidationRecovery ? Wrench : Bot
         }
         title={
           historicalOutcome
@@ -397,10 +565,10 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
             : isHistorical
             ? isProgrammaticPhase
               ? "Merge Attempted"
-              : "Resolving Conflicts"
+              : isValidationRecovery ? "Fixing Validation Errors" : "Resolving Conflicts"
             : isProgrammaticPhase
             ? "Merging Changes..."
-            : "Resolving Merge Conflicts"
+            : isValidationRecovery ? "Fixing Validation Errors..." : "Resolving Merge Conflicts"
         }
         subtitle={
           historicalOutcome
@@ -410,10 +578,10 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
             : isHistorical
             ? isProgrammaticPhase
               ? "Merge attempt captured in history"
-              : "Agent was resolving conflicts"
+              : isValidationRecovery ? "Agent was fixing post-merge build errors" : "Agent was resolving conflicts"
             : isProgrammaticPhase
             ? `Attempting to merge ${branchName}`
-            : "AI agent is resolving conflicts"
+            : isValidationRecovery ? "AI agent is fixing post-merge build errors" : "AI agent is resolving conflicts"
         }
         variant={
           historicalOutcome
@@ -423,10 +591,10 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
             : isHistorical
             ? isProgrammaticPhase
               ? "info"
-              : "warning"
+              : isValidationRecovery ? "accent" : "warning"
             : isProgrammaticPhase
             ? "accent"
-            : "warning"
+            : isValidationRecovery ? "accent" : "warning"
         }
         animated={!isHistorical}
         badge={
@@ -441,10 +609,10 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
                 : isHistorical
                 ? isProgrammaticPhase
                   ? "info"
-                  : "warning"
+                  : isValidationRecovery ? "accent" : "warning"
                 : isProgrammaticPhase
                 ? "accent"
-                : "warning"
+                : isValidationRecovery ? "accent" : "warning"
             }
             animated={!isHistorical}
             size="md"
@@ -462,18 +630,33 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
               : isHistorical
               ? historicalMode === "attempted"
                 ? "Programmatic merge attempt captured in history."
+                : isValidationRecovery
+                ? "Agent was fixing post-merge validation errors at this point."
                 : "Agent was resolving conflicts at this point."
               : isProgrammaticPhase
               ? "Programmatic merge attempt in progress."
+              : isValidationRecovery
+              ? "Agent is fixing validation errors; falls back to manual if unsuccessful."
               : "Agent is resolving conflicts; manual resolution may be required."}
           </p>
           <MergeProgressSteps
             isProgrammaticPhase={isProgrammaticPhase}
             isHistorical={isHistorical}
             historicalMode={historicalMode}
+            isValidationRecovery={isValidationRecovery}
           />
         </DetailCard>
       </section>
+
+      {/* Validation Failures (only in recovery mode during agent phase) */}
+      {isRecoveryAgent && validationFailures.length > 0 && (
+        <section data-testid="validation-failures-section">
+          <SectionTitle>Validation Failures ({validationFailures.length})</SectionTitle>
+          <DetailCard variant="warning">
+            <ValidationFailuresList failures={validationFailures} />
+          </DetailCard>
+        </section>
+      )}
 
       {/* Validation Progress (live or historical) */}
       <ValidationProgress
@@ -482,8 +665,8 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
         liveSteps={liveSteps}
       />
 
-      {/* Conflict Files (only for agent phase) */}
-      {isAgentPhase && conflictFiles.length > 0 && (
+      {/* Conflict Files (only for agent phase, non-recovery) */}
+      {isAgentPhase && !isValidationRecovery && conflictFiles.length > 0 && (
         <section data-testid="conflict-files-section">
           <SectionTitle>Conflict Files ({conflictFiles.length})</SectionTitle>
           <DetailCard variant="warning">
