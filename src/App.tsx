@@ -11,7 +11,6 @@ import { EventProvider } from "@/providers/EventProvider";
 import { TaskBoard } from "@/components/tasks/TaskBoard";
 import { ReviewsPanel } from "@/components/reviews/ReviewsPanel";
 import { ExecutionControlBar } from "@/components/execution/ExecutionControlBar";
-import { AskUserQuestionModal } from "@/components/modals/AskUserQuestionModal";
 import { TaskDetailModal } from "@/components/tasks/TaskDetailModal";
 import { ChatPanel } from "@/components/Chat/ChatPanel";
 import { KanbanSplitLayout, Navigation } from "@/components/layout";
@@ -36,7 +35,6 @@ import type { ApplyProposalsInput } from "@/types/ideation";
 import type { UpdateProposalInput } from "@/api/ideation";
 import { toTaskProposal } from "@/api/ideation";
 import type { CreateProject } from "@/types/project";
-import type { AskUserQuestionResponse } from "@/types/ask-user-question";
 import { useTasksAwaitingReview } from "@/hooks/useReviews";
 import { useReviewMutations } from "@/hooks/useReviewMutations";
 import { useExecutionEvents } from "@/hooks/useExecutionEvents";
@@ -54,7 +52,6 @@ import { useProposalMutations } from "@/hooks/useProposals";
 import { useApplyProposals } from "@/hooks/useApplyProposals";
 import { useAppKeyboardShortcuts } from "@/hooks/useAppKeyboardShortcuts";
 import { useNavCompactBreakpoint } from "@/hooks";
-import { useAskUserQuestion } from "@/hooks/useAskUserQuestion";
 import { api, getGitBranches, getGitDefaultBranch } from "@/lib/tauri";
 import { executionApi } from "@/api/execution";
 import type { ProjectSettings } from "@/types/settings";
@@ -114,8 +111,6 @@ function AppContent() {
   const setReviewsPanelOpen = useUiStore((s) => s.setReviewsPanelOpen);
   const executionStatus = useUiStore((s) => s.executionStatus);
   const setExecutionStatus = useUiStore((s) => s.setExecutionStatus);
-  const activeQuestion = useUiStore((s) => s.activeQuestion);
-  const clearActiveQuestion = useUiStore((s) => s.clearActiveQuestion);
   const activeModal = useUiStore((s) => s.activeModal);
   const modalContext = useUiStore((s) => s.modalContext);
   const closeModal = useUiStore((s) => s.closeModal);
@@ -186,7 +181,6 @@ function AppContent() {
     : null;
 
   const [isExecutionLoading, setIsExecutionLoading] = useState(false);
-  const [isQuestionLoading, setIsQuestionLoading] = useState(false);
 
   // Execution settings state (persisted to database)
   const [executionSettings, setExecutionSettings] = useState<ProjectSettings | null>(null);
@@ -211,9 +205,6 @@ function AppContent() {
   // Fetch initial execution status and poll every 30s as fallback
   useExecutionStatus();
   const { isApproving, isRequestingChanges } = useReviewMutations();
-
-  // Listen for agent questions requiring user input
-  const { submitAnswer } = useAskUserQuestion();
 
   // Ideation hooks
   const { data: sessionData, isLoading: isSessionLoading } = useIdeationSession(activeSession?.id ?? "");
@@ -427,22 +418,6 @@ function AppContent() {
     } finally {
       setIsExecutionLoading(false);
     }
-  };
-
-  const handleQuestionSubmit = async (response: AskUserQuestionResponse) => {
-    setIsQuestionLoading(true);
-    try {
-      await submitAnswer(response);
-    } catch {
-      toast.error("Failed to submit answer");
-    } finally {
-      setIsQuestionLoading(false);
-    }
-  };
-
-  const handleQuestionClose = () => {
-    // Close without submitting - question remains unanswered
-    clearActiveQuestion();
   };
 
   // Ideation handlers
@@ -952,14 +927,6 @@ function AppContent() {
           {currentView !== "kanban" && currentView !== "ideation" && <ChatPanel context={chatContext} />}
         </div>
       )}
-
-      {/* AskUserQuestionModal - renders when activeQuestion is set */}
-      <AskUserQuestionModal
-        question={activeQuestion}
-        onSubmit={handleQuestionSubmit}
-        onClose={handleQuestionClose}
-        isLoading={isQuestionLoading}
-      />
 
       {/* TaskDetailModal - renders when task-detail modal is active */}
       <TaskDetailModal
