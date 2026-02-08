@@ -256,9 +256,7 @@ function MergeProgressSteps({
         <span
           className="text-[13px] font-medium flex-1"
           style={{
-            color: displayStep?.status === "active" && !isHistorical
-              ? "#0a84ff"
-              : "rgba(255,255,255,0.6)",
+            color: "rgba(255,255,255,0.6)",
           }}
         >
           {displayStep?.label ?? "Merge"}
