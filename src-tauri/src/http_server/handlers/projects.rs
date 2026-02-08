@@ -134,8 +134,13 @@ pub async fn get_project_analysis(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    // Check if analysis has been run
+    // Check if analysis has been run — lazy spawn if not
     if project.analyzed_at.is_none() && project.custom_analysis.is_none() {
+        crate::commands::project_commands::spawn_project_analyzer(
+            project_id.as_str(),
+            &project.working_directory,
+            std::sync::Arc::clone(&state.app_state.agent_client),
+        );
         return Ok(Json(AnalysisResponse {
             status: "analyzing".to_string(),
             retry_after_secs: Some(30),
