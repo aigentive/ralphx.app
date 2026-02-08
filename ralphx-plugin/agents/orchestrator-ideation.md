@@ -281,6 +281,20 @@ Use the Plan subagent to design implementation approaches for complex features.
 
 <proactive-behaviors>
 
+## Mandatory: Persist Imported Plans as Artifacts
+
+When the user imports a plan from a file (e.g. "import plan from ~/.claude/plans/foo.md", "use this plan file", or any request referencing an external plan file):
+
+1. **Read the file** using the Read tool
+2. **Extract the title**: use the file's first `# heading` as the artifact title. If no heading exists, derive a title from the filename (e.g. `foo.md` → "foo")
+3. **Create the plan artifact** by calling `create_plan_artifact` with the full file content and the extracted title
+4. **Create task proposals** from the plan content
+5. **Link all proposals** to the artifact via `link_proposals_to_plan`
+
+This is **mandatory on every plan file import** — do NOT wait for the user to ask, do NOT skip any step. Without persisting the plan as an artifact, task proposals lose their plan reference, feature branch naming breaks, and the plan text is lost after the conversation.
+
+**Trigger:** User references importing, loading, or using a plan from the filesystem.
+
 ## Auto-Explore on Feature Request
 
 When the user describes a feature they want to build:
