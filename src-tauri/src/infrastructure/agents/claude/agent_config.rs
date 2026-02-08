@@ -156,6 +156,7 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
             "get_task_issues",
             "mark_issue_in_progress",
             "mark_issue_addressed",
+            "get_project_analysis",
         ],
         preapproved_cli_tools: &["Write", "Edit", "Bash"],
     },
@@ -175,6 +176,7 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
             "get_task_issues",
             "get_step_progress",
             "get_issue_progress",
+            "get_project_analysis",
         ],
         preapproved_cli_tools: &["Bash", "Task(Explore)", "Task(Plan)"],
     },
@@ -220,6 +222,19 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
         preapproved_cli_tools: &["Write", "WebFetch", "WebSearch", "Task(Explore)", "Task(Plan)"],
     },
     // =========================================================================
+    // ANALYSIS AGENTS
+    // =========================================================================
+    AgentConfig {
+        name: "project-analyzer",
+        mcp_only: false,
+        extra_cli_tools: &[],
+        allowed_mcp_tools: &[
+            "save_project_analysis",
+            "get_project_analysis",
+        ],
+        preapproved_cli_tools: &["Read", "Glob", "Bash", "Grep"],
+    },
+    // =========================================================================
     // MERGE AGENTS
     // =========================================================================
     AgentConfig {
@@ -232,6 +247,7 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
             "report_incomplete",
             "get_merge_target",
             "get_task_context",
+            "get_project_analysis",
         ],
         preapproved_cli_tools: &["Read", "Edit", "Bash", "Task(Explore)", "Task(Plan)"],
     },
@@ -477,5 +493,53 @@ mod tests {
                 tools
             );
         }
+    }
+
+    #[test]
+    fn test_get_preapproved_tools_worker_project_analysis() {
+        let tools = get_preapproved_tools("ralphx-worker");
+        assert!(tools.is_some());
+        let tools = tools.unwrap();
+        assert!(tools.contains("mcp__ralphx__get_project_analysis"));
+    }
+
+    #[test]
+    fn test_get_preapproved_tools_reviewer_project_analysis() {
+        let tools = get_preapproved_tools("ralphx-reviewer");
+        assert!(tools.is_some());
+        let tools = tools.unwrap();
+        assert!(tools.contains("mcp__ralphx__get_project_analysis"));
+    }
+
+    #[test]
+    fn test_get_preapproved_tools_merger_project_analysis() {
+        let tools = get_preapproved_tools("ralphx-merger");
+        assert!(tools.is_some());
+        let tools = tools.unwrap();
+        assert!(tools.contains("mcp__ralphx__get_project_analysis"));
+    }
+
+    #[test]
+    fn test_get_allowed_tools_project_analyzer() {
+        let tools = get_allowed_tools("project-analyzer");
+        assert!(tools.is_some());
+        let tools = tools.unwrap();
+        // Base tools
+        for base in BASE_CLI_TOOLS {
+            assert!(tools.contains(base), "project-analyzer missing base tool: {}", base);
+        }
+    }
+
+    #[test]
+    fn test_get_preapproved_tools_project_analyzer() {
+        let tools = get_preapproved_tools("project-analyzer");
+        assert!(tools.is_some());
+        let tools = tools.unwrap();
+        assert!(tools.contains("mcp__ralphx__save_project_analysis"));
+        assert!(tools.contains("mcp__ralphx__get_project_analysis"));
+        assert!(tools.contains("Read"));
+        assert!(tools.contains("Glob"));
+        assert!(tools.contains("Bash"));
+        assert!(tools.contains("Grep"));
     }
 }

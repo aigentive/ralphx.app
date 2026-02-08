@@ -10,6 +10,7 @@ pnpm-debug.log*
 
 # Cache
 .cache/
+node_modules
 node_modules/
 
 # Environment

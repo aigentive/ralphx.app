@@ -294,6 +294,7 @@ impl<R: Runtime> ClaudeChatService<R> {
         user_message: &str,
         working_directory: &Path,
         entity_status: Option<&str>,
+        project_id: Option<&str>,
     ) -> Result<Command, ChatServiceError> {
         chat_service_context::build_command(
             &self.cli_path,
@@ -302,6 +303,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             user_message,
             working_directory,
             entity_status,
+            project_id,
         )
         .map_err(ChatServiceError::SpawnFailed)
     }
@@ -451,6 +453,15 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         // 6a. Fetch entity status for dynamic agent resolution
         let entity_status = self.get_entity_status(context_type, context_id).await;
 
+        // 6b. Resolve project ID for RALPHX_PROJECT_ID env var
+        let project_id = chat_service_context::resolve_project_id(
+            context_type,
+            context_id,
+            Arc::clone(&self.task_repo),
+            Arc::clone(&self.ideation_session_repo),
+        )
+        .await;
+
         // 7. Increment running count for task execution contexts BEFORE spawning
         // This tracks concurrency for agent-active states (Executing, Reviewing, ReExecuting)
         // The count is decremented in TransitionHandler::on_exit when leaving these states
@@ -486,6 +497,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             message,
             &working_directory,
             entity_status.as_deref(),
+            project_id.as_deref(),
         )?;
         eprintln!("[STREAM_DEBUG] chat_service.send_message command built");
         eprintln!("[STREAM_DEBUG] chat_service.send_message spawning CLI");
