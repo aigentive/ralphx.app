@@ -205,8 +205,6 @@ export function useIdeationEvents() {
 
         // Invalidate dependency graph query to show new dependencies
         queryClient.invalidateQueries({ queryKey: dependencyKeys.graphs() });
-        // Also invalidate proposals since their dependency counts may have changed
-        queryClient.invalidateQueries({ queryKey: ideationKeys.proposals() });
       })
     );
 
