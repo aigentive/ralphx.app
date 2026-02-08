@@ -8,6 +8,9 @@ tools:
   - Bash
   - Grep
   - Glob
+  - WebFetch
+  - WebSearch
+  - Task
   - mcp__ralphx__start_step
   - mcp__ralphx__complete_step
   - mcp__ralphx__skip_step
