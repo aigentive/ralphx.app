@@ -155,30 +155,24 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
           relative rounded px-2 py-1.5
           transition-all duration-150 ease-out
           hover:shadow-md
-          ${isCriticalPath && !selected ? "ring-1 ring-[hsl(14_100%_55%_/_0.3)]" : ""}
-          ${isHighlighted ? "ring-2 ring-[hsl(var(--accent-primary))] ring-offset-1 ring-offset-[hsl(220_10%_10%)] animate-pulse" : ""}
-          ${isFocused && !isHighlighted && !selected ? "ring-2 ring-sky-400/70 ring-offset-1 ring-offset-[hsl(220_10%_10%)]" : ""}
+          ${isCriticalPath && !selected && !isHighlighted && !isFocused ? "ring-1 ring-[hsl(14_100%_55%_/_0.3)]" : ""}
+          ${isHighlighted ? "animate-pulse" : ""}
         `}
         style={{
-          // Glass morphism surface - overridden by selection state
-          background: selected
-            ? "hsla(220 60% 50% / 0.25)"
-            : GLASS_SURFACE.background,
+          // Glass morphism surface - no background change on selection
+          background: GLASS_SURFACE.background,
           backdropFilter: GLASS_SURFACE.backdropFilter,
           WebkitBackdropFilter: GLASS_SURFACE.WebkitBackdropFilter,
-          // Finder-like blue selection border, or default border
-          border: selected
-            ? "1px solid hsla(220 60% 60% / 0.3)"
+          // Border: solid orange for all selection methods (click, keyboard, timeline)
+          border: (selected || isHighlighted || isFocused)
+            ? "2px solid hsl(14 100% 55%)"
             : GLASS_SURFACE.border,
-          // Left border colored by status (matches Kanban card styling)
-          borderLeft: `3px solid ${statusColor}`,
-          // Glow for highlighted/focused states only
-          boxShadow: isHighlighted
-            ? `${GLASS_SURFACE.boxShadow}, 0 0 8px 1px hsl(var(--accent-primary) / 0.4)`
-            : isFocused && !selected
-            ? `${GLASS_SURFACE.boxShadow}, 0 0 6px 1px rgba(56, 189, 248, 0.3)`
-            : GLASS_SURFACE.boxShadow,
-          transition: "background 150ms ease, transform 150ms ease, box-shadow 150ms ease",
+          // Left border colored by status (only when not selected/focused)
+          borderLeft: (selected || isHighlighted || isFocused)
+            ? "2px solid hsl(14 100% 55%)"
+            : `3px solid ${statusColor}`,
+          boxShadow: GLASS_SURFACE.boxShadow,
+          transition: "background 150ms ease, transform 150ms ease, box-shadow 150ms ease, border 150ms ease",
         }}
       >
         {/* Activity dots - top-right corner for active states */}
