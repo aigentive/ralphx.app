@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-02-09 00:15:00 - Phase 108 Task 2: Persist error context on programmatic merge failure
+**What:**
+- Added `task.metadata` persistence in worktree mode error path (side_effects.rs ~line 1095)
+- Added `task.metadata` persistence in local mode error path (side_effects.rs ~line 1217)
+- Both paths store JSON with `error`, `source_branch`, `target_branch` fields
+- Metadata is set before `task.internal_status = InternalStatus::MergeIncomplete` and `task_repo.update()`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — 3672+ tests pass, 0 failures
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-08 23:30:00 - Phase 108 Task 1: Add metadata column to tasks table
 **What:**
 - Created v18 migration: `add_column_if_not_exists(conn, "tasks", "metadata", "TEXT DEFAULT NULL")`

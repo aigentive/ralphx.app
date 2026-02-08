@@ -1092,6 +1092,11 @@ impl<'a> super::TransitionHandler<'a> {
                         let _ = GitService::delete_worktree(repo_path, &merge_wt_path);
                     }
 
+                    task.metadata = Some(serde_json::json!({
+                        "error": e.to_string(),
+                        "source_branch": source_branch,
+                        "target_branch": target_branch,
+                    }).to_string());
                     task.internal_status = InternalStatus::MergeIncomplete;
                     task.touch();
 
@@ -1209,6 +1214,11 @@ impl<'a> super::TransitionHandler<'a> {
                         "Programmatic merge failed due to error, transitioning to MergeIncomplete"
                     );
 
+                    task.metadata = Some(serde_json::json!({
+                        "error": e.to_string(),
+                        "source_branch": source_branch,
+                        "target_branch": target_branch,
+                    }).to_string());
                     task.internal_status = InternalStatus::MergeIncomplete;
                     task.touch();
 
