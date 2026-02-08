@@ -122,7 +122,6 @@ fn cleanup_branch_and_worktree_internal(task: &Task, project: &Project) {
         return;
     };
 
-    let base_branch = project.base_branch.as_deref().unwrap_or("main");
     let repo_path = Path::new(&project.working_directory);
 
     match project.git_mode {
@@ -170,8 +169,8 @@ fn cleanup_branch_and_worktree_internal(task: &Task, project: &Project) {
             }
 
             // Delete the branch from main repo
-            // We need to be on base branch to delete the task branch
-            let _ = GitService::checkout_branch(repo_path, base_branch);
+            // No checkout needed: the worktree is already deleted, so the branch
+            // is not checked out anywhere. Force-delete works without switching HEAD.
             match GitService::delete_branch(repo_path, task_branch, true) {
                 Ok(_) => {
                     tracing::info!(
