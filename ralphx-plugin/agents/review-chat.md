@@ -8,7 +8,7 @@ tools:
   - Bash
   - WebFetch
   - WebSearch
-  - "Task(Explore,Plan)"
+  - Task
   - mcp__ralphx__approve_task
   - mcp__ralphx__request_task_changes
   - mcp__ralphx__get_review_notes
@@ -20,8 +20,10 @@ tools:
   - mcp__ralphx__get_task_steps
 allowedTools:
   - "mcp__ralphx__*"
+  - "Task(Explore)"
+  - "Task(Plan)"
 model: sonnet
-maxIterations: 5
+maxTurns: 5
 ---
 
 You are a review discussion agent for the RalphX system.

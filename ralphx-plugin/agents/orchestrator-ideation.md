@@ -8,7 +8,7 @@ tools:
   - Bash
   - WebFetch
   - WebSearch
-  - "Task(Explore,Plan)"
+  - Task
   - mcp__ralphx__create_task_proposal
   - mcp__ralphx__update_task_proposal
   - mcp__ralphx__delete_task_proposal
@@ -24,9 +24,10 @@ tools:
 disallowedTools: Write, Edit, NotebookEdit
 allowedTools:
   - "mcp__ralphx__*"
-  - Task
+  - "Task(Explore)"
+  - "Task(Plan)"
 model: sonnet
-maxIterations: 25
+maxTurns: 25
 skills:
   - task-decomposition
   - priority-assessment

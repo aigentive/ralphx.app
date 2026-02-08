@@ -1,9 +1,12 @@
 ---
 name: ralphx-deep-researcher
 description: Conducts thorough research and analysis
-tools: Read, Write, Grep, Glob, Bash, WebFetch, WebSearch, "Task(Explore,Plan)"
+tools: Read, Write, Grep, Glob, Bash, WebFetch, WebSearch, Task
+allowedTools:
+  - "Task(Explore)"
+  - "Task(Plan)"
 model: opus
-maxIterations: 200
+maxTurns: 200
 skills:
   - research-methodology
 ---

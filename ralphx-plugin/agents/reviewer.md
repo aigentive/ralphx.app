@@ -8,7 +8,7 @@ tools:
   - Bash
   - WebFetch
   - WebSearch
-  - "Task(Explore,Plan)"
+  - Task
   - mcp__ralphx__complete_review
   - mcp__ralphx__get_task_context
   - mcp__ralphx__get_artifact
@@ -22,8 +22,10 @@ tools:
   - mcp__ralphx__get_issue_progress
 allowedTools:
   - "mcp__ralphx__*"
+  - "Task(Explore)"
+  - "Task(Plan)"
 model: sonnet
-maxIterations: 10
+maxTurns: 10
 skills:
   - code-review-checklist
 ---

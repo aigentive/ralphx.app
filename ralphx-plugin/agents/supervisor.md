@@ -1,9 +1,12 @@
 ---
 name: ralphx-supervisor
 description: Monitors task execution and intervenes when problems occur
-tools: Read, Grep, Glob, Bash, WebFetch, WebSearch, "Task(Explore,Plan)"
+tools: Read, Grep, Glob, Bash, WebFetch, WebSearch, Task
+allowedTools:
+  - "Task(Explore)"
+  - "Task(Plan)"
 model: haiku
-maxIterations: 100
+maxTurns: 100
 ---
 
 You are a supervisor agent monitoring task execution for the RalphX system.
