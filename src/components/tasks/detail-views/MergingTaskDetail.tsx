@@ -327,6 +327,10 @@ function MergeProgressSteps({
   );
 }
 
+function formatDuration(ms: number): string {
+  return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
+}
+
 /**
  * ValidationStepRow - Single validation command row with collapsible output
  */
@@ -345,11 +349,6 @@ function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) {
     <CheckCircle2 className="w-4 h-4" style={{ color: "#34c759" }} />
   );
 
-  const phaseBg = step.phase === "setup"
-    ? "rgba(10, 132, 255, 0.15)"
-    : "rgba(255, 107, 53, 0.15)";
-  const phaseColor = step.phase === "setup" ? "#64d2ff" : "#ff6b35";
-
   return (
     <div
       className="rounded-lg overflow-hidden"
@@ -364,9 +363,9 @@ function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) {
         {statusIcon}
         <span
           className="text-[10px] uppercase font-semibold tracking-wider px-1.5 py-0.5 rounded"
-          style={{ backgroundColor: phaseBg, color: phaseColor }}
+          style={{ backgroundColor: "rgba(255, 107, 53, 0.15)", color: "#ff6b35" }}
         >
-          {step.phase}
+          validate
         </span>
         <span className="text-[12px] text-white/80 font-mono truncate flex-1" title={step.label}>
           {step.label}
@@ -374,9 +373,7 @@ function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) {
         {step.duration_ms != null && (
           <span className="flex items-center gap-1 text-[11px] text-white/40 shrink-0">
             <Clock className="w-3 h-3" />
-            {step.duration_ms < 1000
-              ? `${step.duration_ms}ms`
-              : `${(step.duration_ms / 1000).toFixed(1)}s`}
+            {formatDuration(step.duration_ms)}
           </span>
         )}
         {hasOutput && (
@@ -400,6 +397,110 @@ function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) {
               {step.stderr}
             </pre>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * SetupPhaseGroup - Collapses all setup steps into a single row.
+ * Shows summary when collapsed, individual commands when expanded.
+ */
+function SetupPhaseGroup({ steps }: { steps: MergeValidationStepEvent[] }) {
+  const anyFailed = steps.some((s) => s.status === "failed");
+  const anyRunning = steps.some((s) => s.status === "running");
+  const [expanded, setExpanded] = useState(anyFailed);
+
+  const totalMs = steps.reduce((sum, s) => sum + (s.duration_ms ?? 0), 0);
+
+  const statusIcon = anyRunning ? (
+    <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#0a84ff" }} />
+  ) : anyFailed ? (
+    <XCircle className="w-4 h-4" style={{ color: "#ff453a" }} />
+  ) : (
+    <CheckCircle2 className="w-4 h-4" style={{ color: "#34c759" }} />
+  );
+
+  return (
+    <div
+      className="rounded-lg overflow-hidden"
+      style={{ backgroundColor: "rgba(0, 0, 0, 0.3)" }}
+    >
+      <button
+        type="button"
+        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left cursor-pointer"
+        onClick={() => setExpanded(!expanded)}
+      >
+        {statusIcon}
+        <span
+          className="text-[10px] uppercase font-semibold tracking-wider px-1.5 py-0.5 rounded"
+          style={{ backgroundColor: "rgba(10, 132, 255, 0.15)", color: "#64d2ff" }}
+        >
+          setup
+        </span>
+        <span className="text-[12px] text-white/80 flex-1">
+          {steps.length} command{steps.length !== 1 ? "s" : ""}
+        </span>
+        {totalMs > 0 && (
+          <span className="flex items-center gap-1 text-[11px] text-white/40 shrink-0">
+            <Clock className="w-3 h-3" />
+            {formatDuration(totalMs)}
+          </span>
+        )}
+        {expanded
+          ? <ChevronDown className="w-3.5 h-3.5 text-white/30 shrink-0" />
+          : <ChevronRight className="w-3.5 h-3.5 text-white/30 shrink-0" />}
+      </button>
+      {expanded && (
+        <div className="px-3 pb-2.5 space-y-2">
+          {steps.map((step, i) => {
+            const isFailed = step.status === "failed";
+            const isRunning = step.status === "running";
+            const hasOutput = (step.stdout && step.stdout.trim().length > 0) ||
+              (step.stderr && step.stderr.trim().length > 0);
+            return (
+              <div key={`setup-${step.command}-${i}`} className="space-y-1">
+                <div className="flex items-center gap-2">
+                  {isRunning ? (
+                    <Loader2 className="w-3 h-3 animate-spin" style={{ color: "#0a84ff" }} />
+                  ) : isFailed ? (
+                    <XCircle className="w-3 h-3" style={{ color: "#ff453a" }} />
+                  ) : (
+                    <CheckCircle2 className="w-3 h-3" style={{ color: "#34c759" }} />
+                  )}
+                  <span className="text-[11px] text-white/60 truncate flex-1" title={step.label}>
+                    {step.label}
+                  </span>
+                  {step.duration_ms != null && (
+                    <span className="text-[10px] text-white/30 shrink-0">
+                      {formatDuration(step.duration_ms)}
+                    </span>
+                  )}
+                </div>
+                <code className="block text-[10px] font-mono text-white/40 pl-5 truncate" title={step.command}>
+                  $ {step.command}
+                </code>
+                {hasOutput && (
+                  <div
+                    className="pl-5 max-h-[120px] overflow-y-auto"
+                    style={{ scrollbarWidth: "thin" }}
+                  >
+                    {step.stdout && step.stdout.trim() && (
+                      <pre className="text-[10px] font-mono text-white/40 whitespace-pre-wrap break-all leading-relaxed">
+                        {step.stdout}
+                      </pre>
+                    )}
+                    {step.stderr && step.stderr.trim() && (
+                      <pre className="text-[10px] font-mono whitespace-pre-wrap break-all leading-relaxed" style={{ color: "#ff6961" }}>
+                        {step.stderr}
+                      </pre>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -458,6 +559,8 @@ export function ValidationProgress({
   if (steps.length === 0) return null;
 
   const source = liveSteps && liveSteps.length > 0 ? "live" : "historical";
+  const setupSteps = steps.filter((s) => s.phase === "setup");
+  const validateSteps = steps.filter((s) => s.phase !== "setup");
 
   return (
     <section data-testid={`validation-progress-${taskId}`}>
@@ -468,7 +571,8 @@ export function ValidationProgress({
         )}
       </SectionTitle>
       <div className="space-y-1.5">
-        {steps.map((step, index) => (
+        {setupSteps.length > 0 && <SetupPhaseGroup steps={setupSteps} />}
+        {validateSteps.map((step, index) => (
           <ValidationStepRow key={`${step.phase}-${step.command}-${index}`} step={step} />
         ))}
       </div>
