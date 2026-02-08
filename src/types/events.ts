@@ -300,6 +300,7 @@ export const PlanArtifactEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("updated"),
     artifactId: z.string(),
+    previousArtifactId: z.string(),
     artifact: z.object({
       id: z.string(),
       name: z.string(),
