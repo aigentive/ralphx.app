@@ -352,6 +352,61 @@ impl GitService {
         Ok(())
     }
 
+    /// Create a worktree that checks out an existing branch (no new branch creation)
+    ///
+    /// Unlike `create_worktree` which uses `git worktree add -b <new_branch>`,
+    /// this method uses `git worktree add <path> <existing_branch>` to check out
+    /// a branch that already exists. Used for merge worktrees where we need to
+    /// check out the target branch in an isolated directory.
+    ///
+    /// # Arguments
+    /// * `repo` - Path to the main git repository
+    /// * `worktree` - Path where the worktree should be created
+    /// * `branch` - Name of the existing branch to check out
+    pub fn checkout_existing_branch_worktree(
+        repo: &Path,
+        worktree: &Path,
+        branch: &str,
+    ) -> AppResult<()> {
+        debug!(
+            "Creating worktree at {:?} checking out existing branch '{}' in {:?}",
+            worktree, branch, repo
+        );
+
+        // Ensure parent directory exists
+        if let Some(parent) = worktree.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                AppError::GitOperation(format!(
+                    "Failed to create worktree parent directory {:?}: {}",
+                    parent, e
+                ))
+            })?;
+        }
+
+        let output = Command::new("git")
+            .args([
+                "worktree",
+                "add",
+                worktree.to_str().unwrap_or_default(),
+                branch,
+            ])
+            .current_dir(repo)
+            .output()
+            .map_err(|e| {
+                AppError::GitOperation(format!("Failed to run git worktree add: {}", e))
+            })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AppError::GitOperation(format!(
+                "Failed to create worktree at {:?} for branch '{}': {}",
+                worktree, branch, stderr
+            )));
+        }
+
+        Ok(())
+    }
+
     // =========================================================================
     // Commit Operations
     // =========================================================================
@@ -664,6 +719,24 @@ impl GitService {
     // Merge State Detection (Phase 76 - Auto-completion)
     // =========================================================================
 
+    /// Resolves the actual git directory for a worktree or repository.
+    ///
+    /// For regular repos, returns `worktree/.git`. For worktrees where `.git`
+    /// is a file containing `gitdir: <path>`, follows the indirection.
+    fn resolve_git_dir(worktree: &Path) -> PathBuf {
+        let git_path = worktree.join(".git");
+
+        if git_path.is_file() {
+            if let Ok(content) = std::fs::read_to_string(&git_path) {
+                if let Some(path) = content.strip_prefix("gitdir: ") {
+                    return PathBuf::from(path.trim());
+                }
+            }
+        }
+
+        git_path
+    }
+
     /// Check if a rebase is currently in progress
     ///
     /// Detects incomplete rebase by checking for `.git/rebase-merge` or `.git/rebase-apply`
@@ -672,26 +745,20 @@ impl GitService {
     /// # Arguments
     /// * `worktree` - Path to the git worktree or repository
     pub fn is_rebase_in_progress(worktree: &Path) -> bool {
-        // For worktrees, .git is a file pointing to the main repo's .git/worktrees/<name>
-        // We need to resolve the actual git directory
-        let git_path = worktree.join(".git");
-
-        let git_dir = if git_path.is_file() {
-            // Read the gitdir from the .git file
-            if let Ok(content) = std::fs::read_to_string(&git_path) {
-                if let Some(path) = content.strip_prefix("gitdir: ") {
-                    PathBuf::from(path.trim())
-                } else {
-                    git_path
-                }
-            } else {
-                git_path
-            }
-        } else {
-            git_path
-        };
-
+        let git_dir = Self::resolve_git_dir(worktree);
         git_dir.join("rebase-merge").exists() || git_dir.join("rebase-apply").exists()
+    }
+
+    /// Detects an incomplete `git merge` by checking for the MERGE_HEAD file.
+    ///
+    /// MERGE_HEAD exists when a merge has been started but not yet committed
+    /// (e.g., the agent resolved conflicts but forgot `git merge --continue`).
+    ///
+    /// # Arguments
+    /// * `worktree` - Path to the git worktree or repository
+    pub fn is_merge_in_progress(worktree: &Path) -> bool {
+        let git_dir = Self::resolve_git_dir(worktree);
+        git_dir.join("MERGE_HEAD").exists()
     }
 
     /// Check for conflict markers in tracked files
@@ -904,6 +971,81 @@ impl GitService {
         Err(AppError::GitOperation(format!(
             "Merge of '{}' into '{}' failed: {}{}",
             task_branch, base, stderr, stdout
+        )))
+    }
+
+    /// Attempt a merge in an isolated worktree
+    ///
+    /// Creates a temporary merge worktree that checks out the target branch,
+    /// then merges the source branch into it. This avoids disrupting the main
+    /// repository's working directory.
+    ///
+    /// - On **success**: returns commit SHA. Caller should clean up the merge worktree.
+    /// - On **conflict**: leaves the merge worktree in conflict state (does NOT abort).
+    ///   The caller (or merger agent) can resolve conflicts in the merge worktree.
+    /// - On **error**: cleans up the merge worktree and returns an error.
+    ///
+    /// # Arguments
+    /// * `repo` - Path to the main git repository
+    /// * `source_branch` - Branch to merge from (e.g., task branch)
+    /// * `target_branch` - Branch to merge into (e.g., plan feature branch)
+    /// * `merge_worktree_path` - Path for the temporary merge worktree
+    pub fn try_merge_in_worktree(
+        repo: &Path,
+        source_branch: &str,
+        target_branch: &str,
+        merge_worktree_path: &Path,
+    ) -> AppResult<MergeAttemptResult> {
+        debug!(
+            "Attempting merge of '{}' into '{}' in worktree {:?}",
+            source_branch, target_branch, merge_worktree_path
+        );
+
+        // Step 1: Create merge worktree checking out the target branch
+        Self::checkout_existing_branch_worktree(repo, merge_worktree_path, target_branch)?;
+
+        // Step 2: Merge source branch into the merge worktree
+        let output = Command::new("git")
+            .args(["merge", source_branch, "--no-edit"])
+            .current_dir(merge_worktree_path)
+            .output()
+            .map_err(|e| {
+                // Clean up worktree on command execution failure
+                let _ = Self::delete_worktree(repo, merge_worktree_path);
+                AppError::GitOperation(format!("Failed to run git merge: {}", e))
+            })?;
+
+        if output.status.success() {
+            let commit_sha = Self::get_head_sha(merge_worktree_path)?;
+            debug!(
+                "Merge succeeded in worktree, SHA: {}",
+                commit_sha
+            );
+            return Ok(MergeAttemptResult::Success { commit_sha });
+        }
+
+        // Check for conflict
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stdout.contains("CONFLICT")
+            || stderr.contains("CONFLICT")
+            || stdout.contains("conflict")
+            || stderr.contains("conflict")
+        {
+            let conflict_files = Self::get_conflict_files(merge_worktree_path)?;
+            debug!(
+                "Merge conflict in worktree, files: {:?}",
+                conflict_files
+            );
+            // Do NOT abort — leave worktree in conflict state for agent resolution
+            return Ok(MergeAttemptResult::NeedsAgent { conflict_files });
+        }
+
+        // Unexpected error — clean up worktree
+        let _ = Self::delete_worktree(repo, merge_worktree_path);
+        Err(AppError::GitOperation(format!(
+            "Merge of '{}' into '{}' in worktree failed: {}{}",
+            source_branch, target_branch, stderr, stdout
         )))
     }
 
@@ -1331,6 +1473,79 @@ mod tests {
         std::fs::create_dir(actual_git_dir.join("rebase-merge")).unwrap();
 
         assert!(GitService::is_rebase_in_progress(temp_dir.path()));
+    }
+
+    // =========================================================================
+    // resolve_git_dir Tests
+    // =========================================================================
+
+    #[test]
+    fn test_resolve_git_dir_regular_repo() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let git_dir = temp_dir.path().join(".git");
+        std::fs::create_dir(&git_dir).unwrap();
+
+        assert_eq!(GitService::resolve_git_dir(temp_dir.path()), git_dir);
+    }
+
+    #[test]
+    fn test_resolve_git_dir_worktree_style() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let git_path = temp_dir.path().join(".git");
+
+        let actual_git_dir = temp_dir.path().join("actual_git_dir");
+        std::fs::create_dir(&actual_git_dir).unwrap();
+
+        std::fs::write(&git_path, format!("gitdir: {}", actual_git_dir.display())).unwrap();
+
+        assert_eq!(GitService::resolve_git_dir(temp_dir.path()), actual_git_dir);
+    }
+
+    // =========================================================================
+    // is_merge_in_progress Tests
+    // =========================================================================
+
+    #[test]
+    fn test_is_merge_in_progress_no_merge() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let git_dir = temp_dir.path().join(".git");
+        std::fs::create_dir(&git_dir).unwrap();
+
+        assert!(!GitService::is_merge_in_progress(temp_dir.path()));
+    }
+
+    #[test]
+    fn test_is_merge_in_progress_with_merge_head() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let git_dir = temp_dir.path().join(".git");
+        std::fs::create_dir(&git_dir).unwrap();
+
+        // Simulate MERGE_HEAD file (merge started but not committed)
+        std::fs::write(git_dir.join("MERGE_HEAD"), "abc123\n").unwrap();
+
+        assert!(GitService::is_merge_in_progress(temp_dir.path()));
+    }
+
+    #[test]
+    fn test_is_merge_in_progress_worktree_style() {
+        // Test worktree-style .git file pointing to gitdir
+        let temp_dir = tempfile::tempdir().unwrap();
+        let git_path = temp_dir.path().join(".git");
+
+        // Create the actual git directory somewhere else
+        let actual_git_dir = temp_dir.path().join("actual_git_dir");
+        std::fs::create_dir(&actual_git_dir).unwrap();
+
+        // Create .git file pointing to actual git dir
+        std::fs::write(&git_path, format!("gitdir: {}", actual_git_dir.display())).unwrap();
+
+        // No merge in progress
+        assert!(!GitService::is_merge_in_progress(temp_dir.path()));
+
+        // Add MERGE_HEAD to actual git dir
+        std::fs::write(actual_git_dir.join("MERGE_HEAD"), "abc123\n").unwrap();
+
+        assert!(GitService::is_merge_in_progress(temp_dir.path()));
     }
 
     // =========================================================================
@@ -2327,5 +2542,221 @@ mod tests {
                 panic!("Conflicting merge should need agent, not succeed");
             }
         }
+    }
+
+    // =========================================================================
+    // checkout_existing_branch_worktree Tests
+    // =========================================================================
+
+    #[test]
+    fn test_checkout_existing_branch_worktree_success() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Initialize repo with a commit
+        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.email", "test@example.com"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.name", "Test User"]).current_dir(repo).output().unwrap();
+        std::fs::write(repo.join("test.txt"), "initial").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
+        let _ = Command::new("git").args(["branch", "-M", "main"]).current_dir(repo).output();
+
+        // Create a feature branch
+        Command::new("git").args(["branch", "feature-branch"]).current_dir(repo).output().unwrap();
+
+        // Create worktree checking out the existing branch
+        let worktree_path = temp_dir.path().join("worktrees").join("merge-wt");
+        let result = GitService::checkout_existing_branch_worktree(repo, &worktree_path, "feature-branch");
+        assert!(result.is_ok(), "Should succeed: {:?}", result.err());
+
+        // Verify worktree was created and is on the correct branch
+        assert!(worktree_path.exists(), "Worktree directory should exist");
+        let branch = GitService::get_current_branch(&worktree_path).unwrap();
+        assert_eq!(branch, "feature-branch");
+    }
+
+    #[test]
+    fn test_checkout_existing_branch_worktree_creates_parent_dirs() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.email", "test@example.com"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.name", "Test User"]).current_dir(repo).output().unwrap();
+        std::fs::write(repo.join("test.txt"), "initial").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
+        let _ = Command::new("git").args(["branch", "-M", "main"]).current_dir(repo).output();
+
+        Command::new("git").args(["branch", "feature"]).current_dir(repo).output().unwrap();
+
+        // Path with deeply nested non-existent parent dirs
+        let worktree_path = temp_dir.path().join("deep").join("nested").join("merge-wt");
+        let result = GitService::checkout_existing_branch_worktree(repo, &worktree_path, "feature");
+        assert!(result.is_ok(), "Should create parent dirs: {:?}", result.err());
+        assert!(worktree_path.exists());
+    }
+
+    #[test]
+    fn test_checkout_existing_branch_worktree_nonexistent_branch() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.email", "test@example.com"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.name", "Test User"]).current_dir(repo).output().unwrap();
+        std::fs::write(repo.join("test.txt"), "initial").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
+
+        let worktree_path = temp_dir.path().join("merge-wt");
+        let result = GitService::checkout_existing_branch_worktree(repo, &worktree_path, "nonexistent-branch");
+        assert!(result.is_err(), "Should fail for nonexistent branch");
+    }
+
+    // =========================================================================
+    // try_merge_in_worktree Tests
+    // =========================================================================
+
+    #[test]
+    fn test_try_merge_in_worktree_fast_forward() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Setup: feature-branch as target, task-branch as source (fast-forward case)
+        // Main repo stays on main; merge worktree checks out feature-branch
+        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.email", "test@example.com"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.name", "Test User"]).current_dir(repo).output().unwrap();
+        std::fs::write(repo.join("test.txt"), "initial").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
+        let _ = Command::new("git").args(["branch", "-M", "main"]).current_dir(repo).output();
+
+        // Create feature branch (target) at current commit
+        Command::new("git").args(["branch", "feature-branch"]).current_dir(repo).output().unwrap();
+
+        // Create task branch with a new file (fast-forward from feature-branch)
+        Command::new("git").args(["checkout", "-b", "task-branch"]).current_dir(repo).output().unwrap();
+        std::fs::write(repo.join("new-file.txt"), "task work").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "task work"]).current_dir(repo).output().unwrap();
+
+        // Go back to main (user's working branch)
+        Command::new("git").args(["checkout", "main"]).current_dir(repo).output().unwrap();
+
+        let merge_wt = temp_dir.path().join("merge-wt");
+        let result = GitService::try_merge_in_worktree(repo, "task-branch", "feature-branch", &merge_wt);
+        assert!(result.is_ok(), "Merge should succeed: {:?}", result.err());
+
+        match result.unwrap() {
+            MergeAttemptResult::Success { commit_sha } => {
+                assert!(!commit_sha.is_empty(), "Should have commit SHA");
+            }
+            MergeAttemptResult::NeedsAgent { .. } => {
+                panic!("Fast-forward merge should succeed, not need agent");
+            }
+        }
+
+        // Merge worktree should still exist (caller responsible for cleanup)
+        assert!(merge_wt.exists(), "Merge worktree should still exist after success");
+
+        // Clean up worktree
+        let _ = GitService::delete_worktree(repo, &merge_wt);
+    }
+
+    #[test]
+    fn test_try_merge_in_worktree_conflict() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Setup: feature-branch and task-branch modify same file differently
+        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.email", "test@example.com"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.name", "Test User"]).current_dir(repo).output().unwrap();
+        std::fs::write(repo.join("shared.txt"), "initial content").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
+        let _ = Command::new("git").args(["branch", "-M", "main"]).current_dir(repo).output();
+
+        // Create feature branch (target) and add divergent changes
+        Command::new("git").args(["checkout", "-b", "feature-branch"]).current_dir(repo).output().unwrap();
+        std::fs::write(repo.join("shared.txt"), "feature branch changes").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "feature changes"]).current_dir(repo).output().unwrap();
+
+        // Create task branch from main with conflicting changes
+        Command::new("git").args(["checkout", "main"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["checkout", "-b", "task-branch"]).current_dir(repo).output().unwrap();
+        std::fs::write(repo.join("shared.txt"), "task branch changes").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "task changes"]).current_dir(repo).output().unwrap();
+
+        // Go back to main
+        Command::new("git").args(["checkout", "main"]).current_dir(repo).output().unwrap();
+
+        let merge_wt = temp_dir.path().join("merge-wt");
+        let result = GitService::try_merge_in_worktree(repo, "task-branch", "feature-branch", &merge_wt);
+        assert!(result.is_ok(), "Should return Ok even on conflict: {:?}", result.err());
+
+        match result.unwrap() {
+            MergeAttemptResult::NeedsAgent { conflict_files } => {
+                assert!(!conflict_files.is_empty(), "Should report conflict files");
+                // Merge worktree should still exist (for agent to resolve in)
+                assert!(merge_wt.exists(), "Merge worktree should be kept for conflict resolution");
+                // MERGE_HEAD should exist (merge NOT aborted)
+                assert!(
+                    GitService::is_merge_in_progress(&merge_wt),
+                    "Merge should still be in progress in worktree"
+                );
+            }
+            MergeAttemptResult::Success { .. } => {
+                panic!("Conflicting merge should need agent, not succeed");
+            }
+        }
+
+        // Clean up
+        let _ = GitService::delete_worktree(repo, &merge_wt);
+    }
+
+    #[test]
+    fn test_try_merge_in_worktree_does_not_touch_main_repo() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Setup repo with feature-branch as merge target
+        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.email", "test@example.com"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["config", "user.name", "Test User"]).current_dir(repo).output().unwrap();
+        std::fs::write(repo.join("test.txt"), "initial").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
+        let _ = Command::new("git").args(["branch", "-M", "main"]).current_dir(repo).output();
+
+        // Create feature branch (target)
+        Command::new("git").args(["branch", "feature-branch"]).current_dir(repo).output().unwrap();
+
+        // Create task branch
+        Command::new("git").args(["checkout", "-b", "task-branch"]).current_dir(repo).output().unwrap();
+        std::fs::write(repo.join("new.txt"), "task").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["commit", "-m", "task"]).current_dir(repo).output().unwrap();
+
+        // Go back to main — this is the branch the user is working on
+        Command::new("git").args(["checkout", "main"]).current_dir(repo).output().unwrap();
+
+        // Record main repo state before merge
+        let branch_before = GitService::get_current_branch(repo).unwrap();
+
+        let merge_wt = temp_dir.path().join("merge-wt");
+        let _ = GitService::try_merge_in_worktree(repo, "task-branch", "feature-branch", &merge_wt);
+
+        // Main repo should still be on the same branch
+        let branch_after = GitService::get_current_branch(repo).unwrap();
+        assert_eq!(branch_before, branch_after, "Main repo branch should not change");
+
+        // Clean up
+        let _ = GitService::delete_worktree(repo, &merge_wt);
     }
 }

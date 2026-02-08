@@ -275,6 +275,10 @@ export const ALL_TOOLS: Tool[] = [
                 type: "string",
                 description: "Short label for the option (e.g., 'Yes', 'Option A')",
               },
+              value: {
+                type: "string",
+                description: "Programmatic value returned when this option is selected. Defaults to label if omitted.",
+              },
               description: {
                 type: "string",
                 description: "Optional longer description of what this option means",
