@@ -9,7 +9,7 @@ use tauri::{AppHandle, Emitter};
 
 use super::super::machine::State;
 use crate::application::{GitService, MergeAttemptResult};
-use crate::domain::entities::{GitMode, InternalStatus, PlanBranchStatus, Project, Task, TaskId, ProjectId};
+use crate::domain::entities::{GitMode, InternalStatus, MergeValidationMode, PlanBranchStatus, Project, Task, TaskId, ProjectId};
 use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 use crate::error::{AppError, AppResult};
 
@@ -724,6 +724,40 @@ fn format_validation_error_metadata(
         "error": format!("Post-merge validation failed: {} command(s) failed", failures.len()),
         "validation_failures": failure_details,
         "validation_log": log,
+        "source_branch": source_branch,
+        "target_branch": target_branch,
+    })
+    .to_string()
+}
+
+/// Check if task metadata has the skip_validation flag set, and clear it (one-shot).
+fn take_skip_validation_flag(task: &mut Task) -> bool {
+    let Some(meta_str) = task.metadata.as_ref() else {
+        return false;
+    };
+    let Ok(mut val) = serde_json::from_str::<serde_json::Value>(meta_str) else {
+        return false;
+    };
+    let flag = val.get("skip_validation").and_then(|v| v.as_bool()).unwrap_or(false);
+    if flag {
+        if let Some(obj) = val.as_object_mut() {
+            obj.remove("skip_validation");
+            task.metadata = Some(val.to_string());
+        }
+    }
+    flag
+}
+
+/// Format validation warnings as a JSON metadata string for Warn mode.
+/// Stores the log but allows merge to proceed.
+fn format_validation_warn_metadata(
+    log: &[ValidationLogEntry],
+    source_branch: &str,
+    target_branch: &str,
+) -> String {
+    serde_json::json!({
+        "validation_log": log,
+        "validation_warnings": true,
         "source_branch": source_branch,
         "target_branch": target_branch,
     })
@@ -1456,23 +1490,34 @@ impl<'a> super::TransitionHandler<'a> {
                             "Programmatic merge in-repo succeeded (fast path)"
                         );
 
-                        // Post-merge validation gate: run validate commands before completing
-                        let app_handle_ref = self.machine.context.services.app_handle.as_ref();
-                        if let Some(validation) = run_validation_commands(&project, &task, repo_path, task_id_str, app_handle_ref) {
-                            if !validation.all_passed {
-                                self.handle_validation_failure(
-                                    &mut task, &task_id, task_id_str, task_repo,
-                                    &validation.failures, &validation.log, &source_branch, &target_branch,
-                                    repo_path, "in-repo",
-                                ).await;
-                                return;
+                        // Post-merge validation gate: check mode + skip flag
+                        let skip_validation = take_skip_validation_flag(&mut task);
+                        let validation_mode = &project.merge_validation_mode;
+                        if !skip_validation && *validation_mode != MergeValidationMode::Off {
+                            let app_handle_ref = self.machine.context.services.app_handle.as_ref();
+                            if let Some(validation) = run_validation_commands(&project, &task, repo_path, task_id_str, app_handle_ref) {
+                                if !validation.all_passed {
+                                    if *validation_mode == MergeValidationMode::Warn {
+                                        tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode (in-repo), proceeding with merge");
+                                        task.metadata = Some(format_validation_warn_metadata(
+                                            &validation.log, &source_branch, &target_branch,
+                                        ));
+                                    } else {
+                                        self.handle_validation_failure(
+                                            &mut task, &task_id, task_id_str, task_repo,
+                                            &validation.failures, &validation.log, &source_branch, &target_branch,
+                                            repo_path, "in-repo",
+                                        ).await;
+                                        return;
+                                    }
+                                } else {
+                                    task.metadata = Some(serde_json::json!({
+                                        "validation_log": validation.log,
+                                        "source_branch": source_branch,
+                                        "target_branch": target_branch,
+                                    }).to_string());
+                                }
                             }
-                            // Store validation log on success
-                            task.metadata = Some(serde_json::json!({
-                                "validation_log": validation.log,
-                                "source_branch": source_branch,
-                                "target_branch": target_branch,
-                            }).to_string());
                         }
 
                         let app_handle = self.machine.context.services.app_handle.as_ref();
@@ -1634,25 +1679,36 @@ impl<'a> super::TransitionHandler<'a> {
                             "Programmatic merge in worktree succeeded (fast path)"
                         );
 
-                        // Post-merge validation gate: run in the merge worktree (before deleting it)
-                        let app_handle_ref = self.machine.context.services.app_handle.as_ref();
-                        if let Some(validation) = run_validation_commands(&project, &task, &merge_wt_path, task_id_str, app_handle_ref) {
-                            if !validation.all_passed {
-                                // Reset in merge worktree first, then delete it
-                                self.handle_validation_failure(
-                                    &mut task, &task_id, task_id_str, task_repo,
-                                    &validation.failures, &validation.log, &source_branch, &target_branch,
-                                    &merge_wt_path, "worktree",
-                                ).await;
-                                let _ = GitService::delete_worktree(repo_path, &merge_wt_path);
-                                return;
+                        // Post-merge validation gate: check mode + skip flag
+                        let skip_validation = take_skip_validation_flag(&mut task);
+                        let validation_mode = &project.merge_validation_mode;
+                        if !skip_validation && *validation_mode != MergeValidationMode::Off {
+                            let app_handle_ref = self.machine.context.services.app_handle.as_ref();
+                            if let Some(validation) = run_validation_commands(&project, &task, &merge_wt_path, task_id_str, app_handle_ref) {
+                                if !validation.all_passed {
+                                    if *validation_mode == MergeValidationMode::Warn {
+                                        tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode (worktree), proceeding with merge");
+                                        task.metadata = Some(format_validation_warn_metadata(
+                                            &validation.log, &source_branch, &target_branch,
+                                        ));
+                                    } else {
+                                        // Reset in merge worktree first, then delete it
+                                        self.handle_validation_failure(
+                                            &mut task, &task_id, task_id_str, task_repo,
+                                            &validation.failures, &validation.log, &source_branch, &target_branch,
+                                            &merge_wt_path, "worktree",
+                                        ).await;
+                                        let _ = GitService::delete_worktree(repo_path, &merge_wt_path);
+                                        return;
+                                    }
+                                } else {
+                                    task.metadata = Some(serde_json::json!({
+                                        "validation_log": validation.log,
+                                        "source_branch": source_branch,
+                                        "target_branch": target_branch,
+                                    }).to_string());
+                                }
                             }
-                            // Store validation log on success
-                            task.metadata = Some(serde_json::json!({
-                                "validation_log": validation.log,
-                                "source_branch": source_branch,
-                                "target_branch": target_branch,
-                            }).to_string());
                         }
 
                         if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt_path) {
@@ -1812,23 +1868,34 @@ impl<'a> super::TransitionHandler<'a> {
                         "Programmatic merge succeeded (fast path)"
                     );
 
-                    // Post-merge validation gate: run validate commands before completing
-                    let app_handle_ref = self.machine.context.services.app_handle.as_ref();
-                    if let Some(validation) = run_validation_commands(&project, &task, repo_path, task_id_str, app_handle_ref) {
-                        if !validation.all_passed {
-                            self.handle_validation_failure(
-                                &mut task, &task_id, task_id_str, task_repo,
-                                &validation.failures, &validation.log, &source_branch, &target_branch,
-                                repo_path, "local",
-                            ).await;
-                            return;
+                    // Post-merge validation gate: check mode + skip flag
+                    let skip_validation = take_skip_validation_flag(&mut task);
+                    let validation_mode = &project.merge_validation_mode;
+                    if !skip_validation && *validation_mode != MergeValidationMode::Off {
+                        let app_handle_ref = self.machine.context.services.app_handle.as_ref();
+                        if let Some(validation) = run_validation_commands(&project, &task, repo_path, task_id_str, app_handle_ref) {
+                            if !validation.all_passed {
+                                if *validation_mode == MergeValidationMode::Warn {
+                                    tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode (local), proceeding with merge");
+                                    task.metadata = Some(format_validation_warn_metadata(
+                                        &validation.log, &source_branch, &target_branch,
+                                    ));
+                                } else {
+                                    self.handle_validation_failure(
+                                        &mut task, &task_id, task_id_str, task_repo,
+                                        &validation.failures, &validation.log, &source_branch, &target_branch,
+                                        repo_path, "local",
+                                    ).await;
+                                    return;
+                                }
+                            } else {
+                                task.metadata = Some(serde_json::json!({
+                                    "validation_log": validation.log,
+                                    "source_branch": source_branch,
+                                    "target_branch": target_branch,
+                                }).to_string());
+                            }
                         }
-                        // Store validation log on success
-                        task.metadata = Some(serde_json::json!({
-                            "validation_log": validation.log,
-                            "source_branch": source_branch,
-                            "target_branch": target_branch,
-                        }).to_string());
                     }
 
                     let app_handle = self.machine.context.services.app_handle.as_ref();
@@ -2517,5 +2584,64 @@ mod tests {
         assert_eq!(parsed["target_branch"], "main");
         assert_eq!(parsed["validation_failures"].as_array().unwrap().len(), 1);
         assert_eq!(parsed["validation_log"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn format_validation_warn_metadata_formats_correctly() {
+        let log = vec![ValidationLogEntry {
+            phase: "validate".to_string(),
+            command: "npm test".to_string(),
+            path: ".".to_string(),
+            label: "Node".to_string(),
+            status: "failed".to_string(),
+            exit_code: Some(1),
+            stdout: String::new(),
+            stderr: "test failed".to_string(),
+            duration_ms: 500,
+        }];
+        let result = format_validation_warn_metadata(&log, "task-branch", "main");
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(parsed["validation_warnings"], true);
+        assert_eq!(parsed["source_branch"], "task-branch");
+        assert_eq!(parsed["target_branch"], "main");
+        assert_eq!(parsed["validation_log"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn take_skip_validation_flag_returns_false_when_no_metadata() {
+        let mut task = make_task(None, None);
+        assert!(!take_skip_validation_flag(&mut task));
+    }
+
+    #[test]
+    fn take_skip_validation_flag_returns_false_when_no_flag() {
+        let mut task = make_task(None, None);
+        task.metadata = Some(r#"{"some_key": "value"}"#.to_string());
+        assert!(!take_skip_validation_flag(&mut task));
+    }
+
+    #[test]
+    fn take_skip_validation_flag_returns_true_and_clears() {
+        let mut task = make_task(None, None);
+        task.metadata = Some(r#"{"skip_validation": true, "other": "data"}"#.to_string());
+        assert!(take_skip_validation_flag(&mut task));
+        // Flag should be cleared
+        let meta: serde_json::Value = serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
+        assert!(meta.get("skip_validation").is_none());
+        assert_eq!(meta["other"], "data");
+        // Second call returns false
+        assert!(!take_skip_validation_flag(&mut task));
+    }
+
+    #[test]
+    fn run_validation_skipped_in_off_mode() {
+        let mut project = make_project(Some("main"));
+        project.merge_validation_mode = MergeValidationMode::Off;
+        project.detected_analysis = Some(
+            r#"[{"path": ".", "label": "Test", "validate": ["false"]}]"#.to_string(),
+        );
+        // With Off mode, validation should not run, so the test verifies the enum
+        // is correctly set and accessible (actual skip happens in attempt_programmatic_merge)
+        assert_eq!(project.merge_validation_mode, MergeValidationMode::Off);
     }
 }

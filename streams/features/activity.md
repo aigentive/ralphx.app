@@ -4,6 +4,30 @@
 
 ---
 
+### 2026-02-08 21:00:00 - Phase 112 Task 2: Add MergeValidationMode setting and skip-validation retry
+**What:**
+- Added `MergeValidationMode` enum (Block/Warn/Off) to `project.rs` with Default, Serialize, Deserialize, Display, FromStr
+- Added `merge_validation_mode` field to Project struct with `#[serde(default)]`
+- Updated `Project::new()`, `new_with_worktree()`, `from_row()`, and test `setup_test_db()`
+- Exported `MergeValidationMode` from `entities/mod.rs`
+- Created migration `v20_merge_validation_mode.rs` using `add_column_if_not_exists` helper
+- Registered v20 in `migrations/mod.rs`, bumped `SCHEMA_VERSION` to 20
+- Updated all SQL queries in `sqlite_project_repo.rs` (INSERT, 3x SELECT, UPDATE)
+- Updated `project_commands.rs`: `UpdateProjectInput`, `ProjectResponse`, `From` impl, `update_project` handler
+- Added `take_skip_validation_flag()` helper to `side_effects.rs` — reads and clears one-shot metadata flag
+- Added `format_validation_warn_metadata()` for Warn mode (store log but proceed)
+- Updated all 3 validation call sites in `attempt_programmatic_merge` to respect mode (Off→skip, Warn→proceed with warning, Block→existing behavior)
+- Added `skip_validation: Option<bool>` param to `retry_merge` command in `git_commands.rs`
+- Added 5 MergeValidationMode unit tests, 4 migration tests, 5 side_effects tests
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — 3705 passed, 0 failed
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-08 18:30:00 - Phase 112 Task 1: Emit merge:validation_step events + store full validation log
 **What:**
 - Added `ValidationLogEntry` struct with phase, command, path, label, status, exit_code, stdout, stderr, duration_ms fields

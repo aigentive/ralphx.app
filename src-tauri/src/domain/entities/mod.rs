@@ -33,7 +33,7 @@ pub use ideation::{
     UserHintFactor,
 };
 pub use plan_branch::{ParsePlanBranchStatusError, PlanBranch, PlanBranchId, PlanBranchStatus};
-pub use project::{GitMode, Project};
+pub use project::{GitMode, MergeValidationMode, Project};
 pub use review::{
     ParseReviewActionTypeError, ParseReviewOutcomeError, ParseReviewStatusError,
     ParseReviewerTypeError, Review, ReviewAction, ReviewActionId, ReviewActionType, ReviewId,
