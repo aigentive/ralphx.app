@@ -284,7 +284,7 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
         <CollapseToggle isCollapsed={false} onClick={onToggleCollapse} />
         <span
           className={cn(
-            "text-sm font-medium text-[hsl(var(--text-primary))]",
+            "text-sm font-medium text-[hsl(var(--text-primary))] truncate",
             onNavigateToSession &&
               "hover:text-[hsl(var(--accent-primary))] transition-colors cursor-pointer"
           )}
