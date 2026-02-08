@@ -107,34 +107,63 @@ function ErrorContextCard({ mergeError }: { mergeError: MergeErrorContext | null
 /**
  * RecoverySteps - Numbered steps for manual recovery
  */
-function RecoverySteps({ branchName, targetBranch }: { branchName: string; targetBranch?: string | null }) {
+function RecoverySteps({ branchName, targetBranch, hasValidationFailures }: { branchName: string; targetBranch?: string | null; hasValidationFailures: boolean }) {
   return (
     <div className="space-y-3">
-      <p className="text-[13px] text-white/60">
-        To recover, try the following steps:
-      </p>
-      <ol className="list-decimal list-inside space-y-2 text-[13px] text-white/50">
-        <li>
-          Check if the branch exists:{" "}
-          <code className="text-white/70 bg-white/5 px-1 rounded">
-            git branch --list {branchName}
-          </code>
-        </li>
-        <li>
-          Remove any stale lock files:{" "}
-          <code className="text-white/70 bg-white/5 px-1 rounded">
-            rm -f .git/index.lock
-          </code>
-        </li>
-        <li>
-          Click <strong className="text-white/70">Retry Merge</strong> to
-          attempt the merge again
-        </li>
-        <li>
-          If the issue is resolved manually, click{" "}
-          <strong className="text-white/70">Mark Resolved</strong>
-        </li>
-      </ol>
+      {hasValidationFailures ? (
+        <>
+          <p className="text-[13px] text-white/60">
+            The merge succeeded but post-merge validation commands failed.
+            To recover:
+          </p>
+          <ol className="list-decimal list-inside space-y-2 text-[13px] text-white/50">
+            <li>
+              Fix the build, type, or lint errors in your codebase
+            </li>
+            <li>
+              Click <strong className="text-white/70">Retry Merge</strong> to
+              re-attempt with validation
+            </li>
+            <li>
+              Click{" "}
+              <strong className="text-white/70">Retry (Skip Validation)</strong>{" "}
+              to merge without running validation
+            </li>
+            <li>
+              If fixed manually, click{" "}
+              <strong className="text-white/70">Mark Resolved</strong>
+            </li>
+          </ol>
+        </>
+      ) : (
+        <>
+          <p className="text-[13px] text-white/60">
+            To recover, try the following steps:
+          </p>
+          <ol className="list-decimal list-inside space-y-2 text-[13px] text-white/50">
+            <li>
+              Check if the branch exists:{" "}
+              <code className="text-white/70 bg-white/5 px-1 rounded">
+                git branch --list {branchName}
+              </code>
+            </li>
+            <li>
+              Remove any stale lock files:{" "}
+              <code className="text-white/70 bg-white/5 px-1 rounded">
+                rm -f .git/index.lock
+              </code>
+            </li>
+            <li>
+              Click <strong className="text-white/70">Retry Merge</strong> to
+              attempt the merge again
+            </li>
+            <li>
+              If the issue is resolved manually, click{" "}
+              <strong className="text-white/70">Mark Resolved</strong>
+            </li>
+          </ol>
+        </>
+      )}
       <div className="flex gap-4 pt-2">
         <div>
           <span className="text-[11px] text-white/40">Source: </span>
@@ -302,9 +331,13 @@ export function MergeIncompleteTaskDetail({
         icon={AlertTriangle}
         title="Merge Incomplete"
         subtitle={
-          isHistorical
-            ? "A git error prevented the merge"
-            : "A git error prevented the merge — action required"
+          mergeError?.hasValidationFailures
+            ? isHistorical
+              ? "Post-merge validation failed"
+              : "Post-merge validation failed — action required"
+            : isHistorical
+              ? "A git error prevented the merge"
+              : "A git error prevented the merge — action required"
         }
         variant="error"
         badge={
@@ -338,7 +371,7 @@ export function MergeIncompleteTaskDetail({
         <section data-testid="recovery-steps-section">
           <SectionTitle>How to Recover</SectionTitle>
           <DetailCard>
-            <RecoverySteps branchName={branchName} targetBranch={mergeError?.targetBranch ?? null} />
+            <RecoverySteps branchName={branchName} targetBranch={mergeError?.targetBranch ?? null} hasValidationFailures={mergeError?.hasValidationFailures ?? false} />
           </DetailCard>
         </section>
       )}
