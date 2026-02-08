@@ -232,7 +232,7 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
             "save_project_analysis",
             "get_project_analysis",
         ],
-        preapproved_cli_tools: &["Read", "Glob", "Bash"],
+        preapproved_cli_tools: &["Read", "Glob", "Bash", "Grep"],
     },
     // =========================================================================
     // MERGE AGENTS
@@ -540,5 +540,6 @@ mod tests {
         assert!(tools.contains("Read"));
         assert!(tools.contains("Glob"));
         assert!(tools.contains("Bash"));
+        assert!(tools.contains("Grep"));
     }
 }
