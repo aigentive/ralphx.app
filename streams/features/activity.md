@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-09 09:00:00 - Phase 110 Task 3: Convert silent merge failures to MergeIncomplete with diagnostics
+**What:**
+- Added diagnostic `tracing::debug!` at `resolve_merge_branches` entry with category, plan_branch_repo availability, ideation_session_id
+- Added `tracing::warn!` when plan_branch_repo is None for plan_merge tasks in `resolve_merge_branches`
+- Converted empty source branch silent return (~line 916-925) to MergeIncomplete transition with error metadata
+- Converted 3 `complete_merge_internal` failure returns to MergeIncomplete fallback (in-repo, worktree, and local mode paths)
+- Upgraded `warn!` to `error!` for repos unavailable and fetch failure cases with additional context fields
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — all 3672 tests pass, 0 failures
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-09 08:00:00 - Phase 110 Task 2: Fix build_transition_service() to propagate task_scheduler
 **What:**
 - Added `self_ref: Mutex<Option<Arc<dyn TaskScheduler>>>` field to `TaskSchedulerService` struct
