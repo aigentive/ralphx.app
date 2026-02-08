@@ -1720,13 +1720,16 @@ impl<'a> super::TransitionHandler<'a> {
                                             &validation.log, &source_branch, &target_branch,
                                         ));
                                     } else {
-                                        // Reset in merge worktree first, then delete it
+                                        // Block mode: reset in merge worktree, then delete it
+                                        // AutoFix mode: keep the worktree for the merger agent to fix in
                                         self.handle_validation_failure(
                                             &mut task, &task_id, task_id_str, task_repo,
                                             &validation.failures, &validation.log, &source_branch, &target_branch,
                                             &merge_wt_path, "worktree", validation_mode,
                                         ).await;
-                                        let _ = GitService::delete_worktree(repo_path, &merge_wt_path);
+                                        if *validation_mode != MergeValidationMode::AutoFix {
+                                            let _ = GitService::delete_worktree(repo_path, &merge_wt_path);
+                                        }
                                         return;
                                     }
                                 } else {
@@ -2186,6 +2189,8 @@ impl<'a> super::TransitionHandler<'a> {
                 "source_branch": source_branch,
                 "target_branch": target_branch,
             }).to_string());
+            // Set worktree_path to the merge worktree so the merger agent CWD resolves correctly
+            task.worktree_path = Some(merge_path.to_string_lossy().to_string());
             task.internal_status = InternalStatus::Merging;
             task.touch();
 
