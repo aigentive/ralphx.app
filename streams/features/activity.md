@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-02-09 05:30:00 - Phase 113 Task 3: Update merger agent context for validation recovery
+**What:**
+- Modified `on_enter(Merging)` in `side_effects.rs` to detect `validation_recovery` flag in task metadata
+- If recovery mode: sends "Fix validation failures" prompt instead of "Resolve merge conflicts"
+- Updated `build_initial_prompt` in `chat_service_context.rs` to use generic Merge instruction wrapper (specific context conveyed in user_message)
+- Added "Validation Recovery Mode" section to `ralphx-plugin/agents/merger.md` with detection instructions and workflow
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — 3705 tests passed, 0 failed
+
+**Visual Verification:** N/A - backend + agent prompt only
+
+**Result:** Success
+
 ### 2026-02-09 04:15:00 - Phase 113 Task 2: Re-validate in auto-completion for validation recovery mode
 **What:**
 - Made `ValidationLogEntry`, `ValidationResult`, `ValidationFailure` structs `pub(crate)` in `side_effects.rs`

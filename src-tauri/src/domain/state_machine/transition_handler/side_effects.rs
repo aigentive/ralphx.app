@@ -1204,12 +1204,40 @@ impl<'a> super::TransitionHandler<'a> {
             }
             State::Merging => {
                 // Phase 2 of merge workflow: Spawn merger agent for conflict resolution
-                // This state is reached when Phase 1 (programmatic merge) failed due to conflicts
+                // This state is reached when Phase 1 (programmatic merge) failed due to conflicts,
+                // OR when AutoFix validation mode detected validation failures (Phase 113)
                 let task_id = &self.machine.context.task_id;
-                let prompt = format!("Resolve merge conflicts for task: {}", task_id);
+
+                // Check task metadata for validation_recovery flag (Phase 113: AutoFix mode)
+                let is_validation_recovery = if let Some(ref task_repo) = self.machine.context.services.task_repo {
+                    let tid = TaskId::from_string(task_id.clone());
+                    if let Ok(Some(task)) = task_repo.get_by_id(&tid).await {
+                        task.metadata.as_ref()
+                            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                            .and_then(|v| v.get("validation_recovery")?.as_bool())
+                            .unwrap_or(false)
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+
+                let prompt = if is_validation_recovery {
+                    format!(
+                        "Fix validation failures for task: {}. The merge succeeded but post-merge \
+                         validation commands failed. The failing code is on the target branch. \
+                         Read the validation failures from task context, fix the code, run validation \
+                         to confirm, then commit your fixes.",
+                        task_id
+                    )
+                } else {
+                    format!("Resolve merge conflicts for task: {}", task_id)
+                };
 
                 tracing::info!(
                     task_id = task_id,
+                    is_validation_recovery = is_validation_recovery,
                     "on_enter(Merging): Spawning merger agent via ChatService"
                 );
 
