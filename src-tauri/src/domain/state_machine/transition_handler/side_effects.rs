@@ -721,7 +721,7 @@ pub(crate) fn format_validation_error_metadata(
         .collect();
 
     serde_json::json!({
-        "error": format!("Post-merge validation failed: {} command(s) failed", failures.len()),
+        "error": format!("Merge validation failed: {} command(s) failed", failures.len()),
         "validation_failures": failure_details,
         "validation_log": log,
         "source_branch": source_branch,
