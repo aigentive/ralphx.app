@@ -1,7 +1,7 @@
 {
   "project": "RalphX",
   "masterPlan": "specs/plan.md",
-  "currentPhase": 105,
+  "currentPhase": 106,
   "phases": [
     {
       "phase": 0,
@@ -749,14 +749,14 @@
       "phase": 105,
       "name": "Fix Duplicate Agent Processes on App Restart",
       "prd": "specs/phases/prd_phase_105_fix_duplicate_agent_processes.md",
-      "status": "active",
+      "status": "complete",
       "description": "Fix orphaned agent OS processes on restart and terminal-state chat resumption guard"
     },
     {
       "phase": 106,
       "name": "Fix Startup Recovery Ignores Archived Tasks",
       "prd": "specs/phases/prd_phase_106_fix_startup_archived_tasks.md",
-      "status": "pending",
+      "status": "active",
       "description": "Exclude archived tasks from get_by_status query and add startup recovery guards"
     }
   ]
