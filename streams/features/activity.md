@@ -4,6 +4,22 @@
 
 ---
 
+### 2026-02-09 06:00:00 - Phase 109 Task 3: Route MergeIncomplete Retry through PendingMerge
+**What:**
+- Changed `MergeIncomplete` valid transitions from `&[Merging, Merged]` to `&[PendingMerge, Merging, Merged]` in status.rs
+- Changed `Retry` event target from `State::Merging` to `State::PendingMerge` in transitions.rs
+- This routes Retry through `attempt_programmatic_merge()` which now handles the base branch case (from Task 2)
+- Updated `merge_incomplete_transitions` test to expect `&[PendingMerge, Merging, Merged]`
+- Renamed `merge_incomplete_to_merging` test to `merge_incomplete_to_pending_merge`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test merge_incomplete` — all 6 tests pass
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-09 05:00:00 - Phase 109 Task 2: Detect base-branch case in attempt_programmatic_merge()
 **What:**
 - Added base-branch detection in `attempt_programmatic_merge()` worktree-mode path
