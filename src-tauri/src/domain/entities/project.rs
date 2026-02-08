@@ -65,6 +65,42 @@ fn default_use_feature_branches() -> bool {
     true
 }
 
+/// Merge validation behavior mode
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum MergeValidationMode {
+    /// Validation failure → MergeIncomplete (user decides)
+    #[default]
+    Block,
+    /// Validation failure → proceed to Merged, store warnings
+    Warn,
+    /// Skip validation entirely
+    Off,
+}
+
+impl std::fmt::Display for MergeValidationMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MergeValidationMode::Block => write!(f, "block"),
+            MergeValidationMode::Warn => write!(f, "warn"),
+            MergeValidationMode::Off => write!(f, "off"),
+        }
+    }
+}
+
+impl FromStr for MergeValidationMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "block" => Ok(MergeValidationMode::Block),
+            "warn" => Ok(MergeValidationMode::Warn),
+            "off" => Ok(MergeValidationMode::Off),
+            _ => Err(format!("unknown merge validation mode: '{}'", s)),
+        }
+    }
+}
+
 /// A development project managed by RalphX
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
@@ -87,6 +123,9 @@ pub struct Project {
     /// Whether to use feature branches for plan groups (default: true)
     #[serde(default = "default_use_feature_branches")]
     pub use_feature_branches: bool,
+    /// Merge validation behavior mode (block/warn/off)
+    #[serde(default)]
+    pub merge_validation_mode: MergeValidationMode,
     /// Auto-detected analysis commands (JSON array, written by analyzer agent)
     pub detected_analysis: Option<String>,
     /// User-overridden analysis commands (JSON array, written by user via Settings UI)
@@ -114,6 +153,7 @@ impl Project {
             base_branch: None,
             worktree_parent_directory: None,
             use_feature_branches: true,
+            merge_validation_mode: MergeValidationMode::default(),
             detected_analysis: None,
             custom_analysis: None,
             analyzed_at: None,
@@ -141,6 +181,7 @@ impl Project {
             base_branch,
             worktree_parent_directory: None,
             use_feature_branches: true,
+            merge_validation_mode: MergeValidationMode::default(),
             detected_analysis: None,
             custom_analysis: None,
             analyzed_at: None,
@@ -192,6 +233,11 @@ impl Project {
             base_branch: row.get("base_branch")?,
             worktree_parent_directory: row.get("worktree_parent_directory")?,
             use_feature_branches: row.get::<_, i64>("use_feature_branches").unwrap_or(1) != 0,
+            merge_validation_mode: row
+                .get::<_, String>("merge_validation_mode")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or_default(),
             detected_analysis: row.get("detected_analysis").unwrap_or(None),
             custom_analysis: row.get("custom_analysis").unwrap_or(None),
             analyzed_at: row.get("analyzed_at").unwrap_or(None),
@@ -520,6 +566,45 @@ mod tests {
         assert_eq!(project.worktree_parent_or_default(), "~/ralphx-worktrees");
     }
 
+    // ===== MergeValidationMode Tests =====
+
+    #[test]
+    fn merge_validation_mode_default_is_block() {
+        assert_eq!(MergeValidationMode::default(), MergeValidationMode::Block);
+    }
+
+    #[test]
+    fn merge_validation_mode_serializes() {
+        assert_eq!(serde_json::to_string(&MergeValidationMode::Block).unwrap(), "\"block\"");
+        assert_eq!(serde_json::to_string(&MergeValidationMode::Warn).unwrap(), "\"warn\"");
+        assert_eq!(serde_json::to_string(&MergeValidationMode::Off).unwrap(), "\"off\"");
+    }
+
+    #[test]
+    fn merge_validation_mode_deserializes() {
+        let block: MergeValidationMode = serde_json::from_str("\"block\"").unwrap();
+        let warn: MergeValidationMode = serde_json::from_str("\"warn\"").unwrap();
+        let off: MergeValidationMode = serde_json::from_str("\"off\"").unwrap();
+        assert_eq!(block, MergeValidationMode::Block);
+        assert_eq!(warn, MergeValidationMode::Warn);
+        assert_eq!(off, MergeValidationMode::Off);
+    }
+
+    #[test]
+    fn merge_validation_mode_from_str() {
+        assert_eq!("block".parse::<MergeValidationMode>().unwrap(), MergeValidationMode::Block);
+        assert_eq!("warn".parse::<MergeValidationMode>().unwrap(), MergeValidationMode::Warn);
+        assert_eq!("off".parse::<MergeValidationMode>().unwrap(), MergeValidationMode::Off);
+        assert!("invalid".parse::<MergeValidationMode>().is_err());
+    }
+
+    #[test]
+    fn merge_validation_mode_display() {
+        assert_eq!(format!("{}", MergeValidationMode::Block), "block");
+        assert_eq!(format!("{}", MergeValidationMode::Warn), "warn");
+        assert_eq!(format!("{}", MergeValidationMode::Off), "off");
+    }
+
     // ===== GitMode FromStr Tests =====
 
     #[test]
@@ -586,6 +671,7 @@ mod tests {
                 base_branch TEXT,
                 worktree_parent_directory TEXT,
                 use_feature_branches INTEGER NOT NULL DEFAULT 1,
+                merge_validation_mode TEXT NOT NULL DEFAULT 'block',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )"#,

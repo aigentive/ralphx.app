@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tauri::State;
 
 use crate::application::AppState;
-use crate::domain::entities::{GitMode, Project, ProjectId};
+use crate::domain::entities::{GitMode, MergeValidationMode, Project, ProjectId};
 
 /// Input for creating a new project
 #[derive(Debug, Deserialize)]
@@ -28,6 +28,7 @@ pub struct UpdateProjectInput {
     pub working_directory: Option<String>,
     pub git_mode: Option<String>,
     pub base_branch: Option<String>,
+    pub merge_validation_mode: Option<String>,
 }
 
 /// Response wrapper for project operations
@@ -42,6 +43,7 @@ pub struct ProjectResponse {
     pub base_branch: Option<String>,
     pub worktree_parent_directory: Option<String>,
     pub use_feature_branches: bool,
+    pub merge_validation_mode: String,
     pub detected_analysis: Option<String>,
     pub custom_analysis: Option<String>,
     pub analyzed_at: Option<String>,
@@ -61,6 +63,7 @@ impl From<Project> for ProjectResponse {
             base_branch: project.base_branch,
             worktree_parent_directory: project.worktree_parent_directory,
             use_feature_branches: project.use_feature_branches,
+            merge_validation_mode: project.merge_validation_mode.to_string(),
             detected_analysis: project.detected_analysis,
             custom_analysis: project.custom_analysis,
             analyzed_at: project.analyzed_at,
@@ -202,6 +205,11 @@ pub async fn update_project(
     }
     if let Some(base_branch) = input.base_branch {
         project.base_branch = Some(base_branch);
+    }
+    if let Some(mode_str) = input.merge_validation_mode {
+        project.merge_validation_mode = mode_str
+            .parse()
+            .unwrap_or(MergeValidationMode::Block);
     }
 
     project.touch();

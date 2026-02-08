@@ -45,6 +45,7 @@ mod v16_plan_branch_session_index;
 mod v17_running_agents;
 mod v18_task_metadata;
 mod v19_project_analysis;
+mod v20_merge_validation_mode;
 
 #[cfg(test)]
 mod tests;
@@ -84,9 +85,11 @@ mod v17_running_agents_tests;
 mod v18_task_metadata_tests;
 #[cfg(test)]
 mod v19_project_analysis_tests;
+#[cfg(test)]
+mod v20_merge_validation_mode_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 19;
+pub const SCHEMA_VERSION: i32 = 20;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -195,6 +198,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 19,
         name: "project_analysis",
         migrate: v19_project_analysis::migrate,
+    },
+    Migration {
+        version: 20,
+        name: "merge_validation_mode",
+        migrate: v20_merge_validation_mode::migrate,
     },
 ];
 

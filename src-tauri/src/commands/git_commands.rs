@@ -268,13 +268,14 @@ pub async fn resolve_merge_conflict(
 #[tauri::command]
 pub async fn retry_merge(
     task_id: String,
+    skip_validation: Option<bool>,
     state: State<'_, AppState>,
     execution_state: State<'_, Arc<ExecutionState>>,
 ) -> Result<(), String> {
     let task_id_parsed = TaskId::from_string(task_id);
 
     // Get task
-    let task = state
+    let mut task = state
         .task_repo
         .get_by_id(&task_id_parsed)
         .await
@@ -292,6 +293,26 @@ pub async fn retry_merge(
             "Task is not in a state that allows merge retry (current: {:?})",
             task.internal_status
         ));
+    }
+
+    // If skip_validation requested, set metadata flag for attempt_programmatic_merge to check
+    if skip_validation == Some(true) {
+        let metadata_json = task
+            .metadata
+            .as_ref()
+            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+        let mut meta_obj = metadata_json
+            .as_object()
+            .cloned()
+            .unwrap_or_default();
+        meta_obj.insert("skip_validation".to_string(), serde_json::json!(true));
+        task.metadata = Some(serde_json::Value::Object(meta_obj).to_string());
+        state
+            .task_repo
+            .update(&task)
+            .await
+            .map_err(|e| e.to_string())?;
     }
 
     // Create transition service and transition to PendingMerge
