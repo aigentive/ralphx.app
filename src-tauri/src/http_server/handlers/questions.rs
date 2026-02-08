@@ -45,12 +45,12 @@ pub async fn request_question(
         let _ = app_handle.emit(
             "agent:ask_user_question",
             serde_json::json!({
-                "request_id": &request_id,
-                "session_id": &input.session_id,
+                "requestId": &request_id,
+                "sessionId": &input.session_id,
                 "question": &input.question,
                 "header": &input.header,
                 "options": &input.options,
-                "multi_select": input.multi_select,
+                "multiSelect": input.multi_select,
             }),
         );
     }
