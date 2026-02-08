@@ -625,19 +625,52 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     [centerOnPlanGroup, fitNodeInView, fitViewDefault]
   );
 
+  const tierGroupsByPlan = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const tierGroup of tierGroups) {
+      const existing = map.get(tierGroup.planArtifactId);
+      if (existing) {
+        existing.push(tierGroup.id);
+      } else {
+        map.set(tierGroup.planArtifactId, [tierGroup.id]);
+      }
+    }
+    return map;
+  }, [tierGroups]);
+
   // Toggle collapse state for a plan group
+  // When expanding, also expand ALL tier groups within it for full visibility
+  // When collapsing, also collapse all tier groups for a clean state
   const handleToggleCollapse = useCallback((planArtifactId: string) => {
+    let expanding = false;
     setCollapsedPlanIds((prev) => {
       const next = new Set(prev);
       if (next.has(planArtifactId)) {
         next.delete(planArtifactId);
+        expanding = true;
       } else {
         next.add(planArtifactId);
       }
       return next;
     });
+    const tierIds = tierGroupsByPlan.get(planArtifactId) ?? [];
+    if (tierIds.length > 0) {
+      setCollapsedTierIds((prev) => {
+        const next = new Set(prev);
+        if (expanding) {
+          for (const tierId of tierIds) {
+            next.delete(tierId);
+          }
+        } else {
+          for (const tierId of tierIds) {
+            next.add(tierId);
+          }
+        }
+        return next;
+      });
+    }
     setTimeout(() => centerOnPlanGroupNode(planArtifactId), 50);
-  }, [centerOnPlanGroupNode]);
+  }, [centerOnPlanGroupNode, tierGroupsByPlan]);
 
   const handleToggleTierCollapse = useCallback((tierGroupId: string) => {
     let expanding = false;
@@ -667,19 +700,6 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
       fitViewDefault({ padding: 0.2, duration: 200 });
     }, 50);
   }, [centerOnNode, centerOnPlanGroupNode, fitNodeInView, fitViewDefault, tierGroupsById]);
-
-  const tierGroupsByPlan = useMemo(() => {
-    const map = new Map<string, string[]>();
-    for (const tierGroup of tierGroups) {
-      const existing = map.get(tierGroup.planArtifactId);
-      if (existing) {
-        existing.push(tierGroup.id);
-      } else {
-        map.set(tierGroup.planArtifactId, [tierGroup.id]);
-      }
-    }
-    return map;
-  }, [tierGroups]);
 
   const handleToggleAllTiers = useCallback(
     (planArtifactId: string, action: "expand" | "collapse") => {
