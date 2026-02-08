@@ -97,7 +97,7 @@ See @.claude/rules/commit-lock.md for full protocol.
 |-------------|---------|
 | Atomic Bash | wait lock → acquire → add → commit → release |
 | Message | `feat:` \| `fix:` \| `docs:` + description |
-| Co-author | `Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>` |
+| Co-author | `Co-Authored-By: Claude <MODEL> <noreply@anthropic.com>` — use your actual model name |
 
 **IMPORTANT:** IDLE detection happens ONLY at steps 2-3 (start of iteration). After completing a task (step 11), just end — the next iteration will check for more work.
 

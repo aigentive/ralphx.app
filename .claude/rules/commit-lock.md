@@ -121,7 +121,8 @@ git -C "$PROJECT_ROOT" add <files> && \
 git -C "$PROJECT_ROOT" commit -m "$(cat <<'EOF'
 <message>
 
-Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+Co-Authored-By: Claude <MODEL> <noreply@anthropic.com>
+NOTE: Replace <MODEL> with your actual model name (e.g. Opus 4.6, Sonnet 4.5)
 EOF
 )" && \
 rm -f "$LOCK_FILE"
