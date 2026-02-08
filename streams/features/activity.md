@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-02-09 01:00:00 - Phase 108 Task 3: Persist agent error context from report_incomplete
+**What:**
+- Made task mutable in `report_incomplete` handler (git.rs ~line 361)
+- Set `task.metadata` with JSON containing `error` (from req.reason) and `diagnostic_info` (from req.diagnostic_info)
+- Persisted via `task_repo.update(&task)` before transitioning to MergeIncomplete
+- Updated comment numbering (step 2→metadata, step 3→transition, step 4→emit events)
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — all tests pass, 0 failures
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-09 00:15:00 - Phase 108 Task 2: Persist error context on programmatic merge failure
 **What:**
 - Added `task.metadata` persistence in worktree mode error path (side_effects.rs ~line 1095)

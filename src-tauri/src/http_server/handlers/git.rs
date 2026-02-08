@@ -357,7 +357,7 @@ pub async fn report_incomplete(
     let task_id = TaskId::from_string(task_id);
 
     // 1. Get task and validate state is Merging
-    let task = state
+    let mut task = state
         .app_state
         .task_repo
         .get_by_id(&task_id)
@@ -376,7 +376,22 @@ pub async fn report_incomplete(
         ));
     }
 
-    // 2. Transition to MergeIncomplete
+    // 2. Persist error context to task metadata
+    task.metadata = Some(
+        serde_json::json!({
+            "error": req.reason,
+            "diagnostic_info": req.diagnostic_info,
+        })
+        .to_string(),
+    );
+    state
+        .app_state
+        .task_repo
+        .update(&task)
+        .await
+        .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?;
+
+    // 3. Transition to MergeIncomplete
     let transition_service = TaskTransitionService::new(
         Arc::clone(&state.app_state.task_repo),
         Arc::clone(&state.app_state.task_dependency_repo),
@@ -398,7 +413,7 @@ pub async fn report_incomplete(
         .await
         .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?;
 
-    // 3. Emit events
+    // 4. Emit events
     if let Some(app_handle) = &state.app_state.app_handle {
         let _ = app_handle.emit(
             "merge:incomplete",
