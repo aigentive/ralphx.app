@@ -1290,8 +1290,8 @@ function computePositions(
 
   // Add edges - for collapsed tasks, redirect to placeholder nodes
   for (const edge of edges) {
-    let source = edge.source;
-    let target = edge.target;
+    const source = edge.source;
+    const target = edge.target;
 
     const resolvePlaceholder = (taskId: string): string | null => {
       if (!collapsedTaskIds.has(taskId)) return taskId;

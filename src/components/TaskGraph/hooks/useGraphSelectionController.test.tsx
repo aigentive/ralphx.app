@@ -60,7 +60,7 @@ function TestHarness({
   ],
   onDeleteTask,
 }: TestHarnessProps) {
-  const controller = useGraphSelectionController({
+  const { containerRef, onKeyDown } = useGraphSelectionController({
     nodes: layoutNodes,
     edges: [],
     layoutNodes,
@@ -87,8 +87,8 @@ function TestHarness({
   return (
     <div
       id={containerId}
-      ref={controller.containerRef}
-      onKeyDown={controller.onKeyDown}
+      ref={containerRef}
+      onKeyDown={onKeyDown}
     />
   );
 }

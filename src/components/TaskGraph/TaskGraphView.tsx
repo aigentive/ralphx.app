@@ -962,10 +962,10 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   // content is unchanged (web mode mock layer triggers this). We stabilize
   // by comparing node IDs and visual state, returning the previous array ref
   // when structurally unchanged to prevent infinite re-render loops.
-  const prevNodesRef = useRef<Node[]>([]);
-  const prevEdgesRef = useRef<Edge[]>([]);
+  // Uses synchronous state derivation (setState-during-render) to avoid ref
+  // access during render which violates react-hooks/refs.
 
-  const nodes = useMemo<Node[]>(() => {
+  const nextNodesCandidate = useMemo<Node[]>(() => {
     const groupNodesWithSelection = groupNodes.map((node) => {
       if (node.type === PLAN_GROUP_NODE_TYPE) {
         const planArtifactId = (node.data as PlanGroupData | undefined)?.planArtifactId;
@@ -1001,14 +1001,21 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
       },
       selected: graphSelection?.kind === "task" && graphSelection.id === node.id,
     }));
-    const next = [...groupNodesWithSelection, ...taskNodesWithData];
+    return [...groupNodesWithSelection, ...taskNodesWithData];
+  }, [layoutNodes, groupNodes, graphSelection, highlightedTaskId, focusedNodeId, nodeHandlers]);
 
+  // Stabilize nodes: only update state when structurally changed
+  const [nodes, setNodes] = useState<Node[]>([]);
+  const [prevNodesCandidate, setPrevNodesCandidate] = useState(nextNodesCandidate);
+  if (nextNodesCandidate !== prevNodesCandidate) {
+    setPrevNodesCandidate(nextNodesCandidate);
     // Lightweight identity check — IDs, positions, visual state, task data.
     // Must include positions so dagre re-layout after expand/collapse propagates.
     // Must include internalStatus so real-time status changes propagate to nodes.
-    const prev = prevNodesRef.current;
-    if (next.length === prev.length) {
-      let same = true;
+    const prev = nodes;
+    const next = nextNodesCandidate;
+    let changed = next.length !== prev.length;
+    if (!changed) {
       for (let i = 0; i < next.length; i++) {
         const n = next[i]!;
         const p = prev[i]!;
@@ -1026,25 +1033,29 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
           || nd?.internalStatus !== pd?.internalStatus
           || nd?.label !== pd?.label
         ) {
-          same = false;
+          changed = true;
           break;
         }
       }
-      if (same) return prev;
     }
-    prevNodesRef.current = next;
-    return next;
-  }, [layoutNodes, groupNodes, graphSelection, highlightedTaskId, focusedNodeId, nodeHandlers]);
+    if (changed) {
+      setNodes(next);
+    }
+  }
 
   // Edges: stabilize reference with lightweight identity check
-  const edges = useMemo<Edge[]>(() => {
-    const prev = prevEdgesRef.current;
-    if (layoutEdges.length === prev.length && layoutEdges.every((e, i) => e.id === prev[i]!.id)) {
-      return prev;
+  const nextEdgesCandidate = useMemo<Edge[]>(() => layoutEdges, [layoutEdges]);
+  const [edges, setEdges] = useState<Edge[]>([]);
+  const [prevEdgesCandidate, setPrevEdgesCandidate] = useState(nextEdgesCandidate);
+  if (nextEdgesCandidate !== prevEdgesCandidate) {
+    setPrevEdgesCandidate(nextEdgesCandidate);
+    const prev = edges;
+    if (nextEdgesCandidate.length === prev.length && nextEdgesCandidate.every((e, i) => e.id === prev[i]!.id)) {
+      // unchanged
+    } else {
+      setEdges(nextEdgesCandidate);
     }
-    prevEdgesRef.current = layoutEdges;
-    return layoutEdges;
-  }, [layoutEdges]);
+  }
 
   // Handle node changes (for selection, dragging etc.) in controlled mode
   const onNodesChange: OnNodesChange = useCallback(() => {
@@ -1121,7 +1132,9 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   // Uses ref to avoid re-firing when focusSelectionInView ref changes.
   // Skips on first graphSelection change (initial load handles its own positioning).
   const focusInViewRef = useRef(focusSelectionInView);
-  focusInViewRef.current = focusSelectionInView;
+  useEffect(() => {
+    focusInViewRef.current = focusSelectionInView;
+  }, [focusSelectionInView]);
   const prevGraphSelectionRef = useRef<typeof graphSelection>(undefined);
 
   useEffect(() => {
