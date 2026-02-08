@@ -100,7 +100,6 @@ pub fn spawn_send_message_background<R: Runtime>(
         let resolved_project_id = chat_service_context::resolve_project_id(
             context_type,
             &context_id,
-            Arc::clone(&project_repo),
             Arc::clone(&task_repo),
             Arc::clone(&ideation_session_repo),
         )
