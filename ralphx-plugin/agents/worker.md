@@ -29,6 +29,8 @@ allowedTools:
   - mcp__ralphx__mark_issue_in_progress
   - mcp__ralphx__mark_issue_addressed
   - mcp__ralphx__get_project_analysis
+  - "Task(Explore)"
+  - "Task(Plan)"
 model: sonnet
 permissionMode: acceptEdits
 skills:
