@@ -153,8 +153,40 @@ function ValidationFailuresList({ failures }: { failures: ValidationFailureEntry
 }
 
 /**
- * MergeProgressSteps - Compact collapsible progress indicator.
- * Shows only the active step by default; expand to see all steps.
+ * MergeStepIcon - Renders the icon for a single merge step
+ */
+function MergeStepIcon({ status, isHistorical }: { status: "completed" | "active" | "pending"; isHistorical?: boolean | undefined }) {
+  if (status === "completed") {
+    return <CheckCircle2 className="w-5 h-5" style={{ color: "#34c759" }} />;
+  }
+  if (status === "active" && !isHistorical) {
+    return (
+      <div className="relative">
+        <Loader2 className="w-5 h-5 animate-spin" style={{ color: "#0a84ff" }} />
+        <div
+          className="absolute inset-0 rounded-full animate-pulse"
+          style={{ background: "radial-gradient(circle, rgba(10,132,255,0.3) 0%, transparent 70%)" }}
+        />
+      </div>
+    );
+  }
+  if (status === "active" && isHistorical) {
+    return (
+      <div
+        className="w-5 h-5 rounded-full border-2"
+        style={{ borderColor: "rgba(255,255,255,0.2)", backgroundColor: "rgba(255, 159, 10, 0.35)" }}
+      />
+    );
+  }
+  return (
+    <div className="w-5 h-5 rounded-full border-2" style={{ borderColor: "rgba(255,255,255,0.2)" }} />
+  );
+}
+
+/**
+ * MergeProgressSteps - Collapsible progress through merge phases.
+ * Shows only the active step collapsed; expand to see all steps.
+ * Uses original step rendering style with large icons and dividers.
  */
 function MergeProgressSteps({
   isProgrammaticPhase,
@@ -208,62 +240,50 @@ function MergeProgressSteps({
       ];
 
   const activeStep = steps.find((s) => s.status === "active");
-  const completedCount = steps.filter((s) => s.status === "completed").length;
+  const displayStep = activeStep ?? steps[steps.length - 1];
 
   return (
-    <div
-      className="rounded-lg overflow-hidden"
-      style={{ backgroundColor: "rgba(0, 0, 0, 0.2)" }}
-    >
+    <div>
+      {/* Collapsed: show only the active step */}
       <button
         type="button"
-        className="w-full flex items-center gap-2.5 px-3 py-2 text-left cursor-pointer"
+        className="w-full flex items-center gap-3 py-2.5 text-left cursor-pointer"
         onClick={() => setExpanded(!expanded)}
       >
-        {activeStep && !isHistorical ? (
-          <Loader2 className="w-4 h-4 animate-spin shrink-0" style={{ color: "#0a84ff" }} />
-        ) : (
-          <CheckCircle2 className="w-4 h-4 shrink-0" style={{ color: "#34c759" }} />
-        )}
-        <span className="text-[12px] text-white/70 flex-1">
-          {activeStep ? activeStep.label : steps[steps.length - 1]?.label ?? "Merge"}
+        <div className="relative">
+          {displayStep !== undefined && <MergeStepIcon status={displayStep.status} isHistorical={isHistorical} />}
+        </div>
+        <span
+          className="text-[13px] font-medium flex-1"
+          style={{
+            color: displayStep?.status === "active" && !isHistorical
+              ? "#0a84ff"
+              : "rgba(255,255,255,0.6)",
+          }}
+        >
+          {displayStep?.label ?? "Merge"}
         </span>
-        {completedCount > 0 && !expanded && (
-          <span className="text-[10px] text-white/30 shrink-0">
-            {completedCount}/{steps.length}
-          </span>
-        )}
         {expanded
-          ? <ChevronDown className="w-3.5 h-3.5 text-white/30 shrink-0" />
-          : <ChevronRight className="w-3.5 h-3.5 text-white/30 shrink-0" />}
+          ? <ChevronDown className="w-4 h-4 text-white/30 shrink-0" />
+          : <ChevronRight className="w-4 h-4 text-white/30 shrink-0" />}
       </button>
+
+      {/* Expanded: show all steps in original style */}
       {expanded && (
-        <div className="px-3 pb-2.5 space-y-1">
+        <div className="divide-y divide-white/5">
           {steps.map((step, index) => (
-            <div key={index} className="flex items-center gap-2 py-0.5">
-              {step.status === "completed" ? (
-                <CheckCircle2 className="w-3 h-3 shrink-0" style={{ color: "#34c759" }} />
-              ) : step.status === "active" && !isHistorical ? (
-                <Loader2 className="w-3 h-3 animate-spin shrink-0" style={{ color: "#0a84ff" }} />
-              ) : step.status === "active" && isHistorical ? (
-                <div
-                  className="w-3 h-3 rounded-full border"
-                  style={{ borderColor: "rgba(255,255,255,0.3)", backgroundColor: "rgba(255, 159, 10, 0.35)" }}
-                />
-              ) : (
-                <div
-                  className="w-3 h-3 rounded-full border"
-                  style={{ borderColor: "rgba(255,255,255,0.15)" }}
-                />
-              )}
+            <div key={index} className="flex items-center gap-3 py-2.5">
+              <div className="relative">
+                <MergeStepIcon status={step.status} isHistorical={isHistorical} />
+              </div>
               <span
-                className="text-[11px]"
+                className="text-[13px] font-medium"
                 style={{
                   color: step.status === "completed"
-                    ? "rgba(255,255,255,0.5)"
+                    ? "rgba(255,255,255,0.6)"
                     : step.status === "active"
-                    ? "rgba(255,255,255,0.7)"
-                    : "rgba(255,255,255,0.25)",
+                    ? isHistorical ? "rgba(255,255,255,0.35)" : "#0a84ff"
+                    : "rgba(255,255,255,0.35)",
                 }}
               >
                 {step.label}
@@ -698,13 +718,15 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
       {/* Merge Progress */}
       <section data-testid="merge-progress-section">
         <SectionTitle>{isHistorical ? "Process Details" : "Merge Progress"}</SectionTitle>
-        <MergeProgressSteps
-          isProgrammaticPhase={isProgrammaticPhase}
-          isHistorical={isHistorical}
-          historicalMode={historicalMode}
-          isValidationRecovery={isValidationRecovery}
-          isValidating={liveSteps.length > 0}
-        />
+        <DetailCard variant="default">
+          <MergeProgressSteps
+            isProgrammaticPhase={isProgrammaticPhase}
+            isHistorical={isHistorical}
+            historicalMode={historicalMode}
+            isValidationRecovery={isValidationRecovery}
+            isValidating={liveSteps.length > 0}
+          />
+        </DetailCard>
       </section>
 
       {/* Validation Failures (only in recovery mode during agent phase) */}
