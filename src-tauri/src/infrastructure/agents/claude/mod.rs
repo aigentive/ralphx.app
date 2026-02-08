@@ -126,9 +126,9 @@ pub fn add_prompt_args(cmd: &mut Command, prompt: &str, agent: Option<&str>, res
         // NOT for direct CLI invocations with --agent -p. We must pass --tools flag.
         if let Some(allowed_tools) = get_allowed_tools(agent_name) {
             // Pass --tools even if empty (restricts to MCP-only)
-            cmd.args(["--tools", allowed_tools]);
+            cmd.args(["--tools", &allowed_tools]);
             eprintln!("[CLI] Agent {} restricted to CLI tools: {:?}", agent_name,
-                if allowed_tools.is_empty() { "(MCP only)" } else { allowed_tools });
+                if allowed_tools.is_empty() { "(MCP only)" } else { allowed_tools.as_str() });
         }
 
         // Pre-approve MCP tools to bypass permission prompts

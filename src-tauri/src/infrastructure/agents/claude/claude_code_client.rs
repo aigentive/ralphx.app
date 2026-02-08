@@ -152,7 +152,7 @@ impl AgenticClient for ClaudeCodeClient {
         // Apply CLI tool restrictions from agent_config
         if let Some(agent_name) = &config.agent {
             if let Some(allowed_tools) = get_allowed_tools(agent_name) {
-                args.extend(["--tools".to_string(), allowed_tools.to_string()]);
+                args.extend(["--tools".to_string(), allowed_tools]);
             }
         }
 
@@ -336,9 +336,9 @@ impl ClaudeCodeClient {
         // NOT for direct CLI invocations with --agent -p. We must pass --tools flag.
         if let Some(agent_name) = &config.agent {
             if let Some(allowed_tools) = get_allowed_tools(agent_name) {
-                args.extend(["--tools".to_string(), allowed_tools.to_string()]);
                 eprintln!("[CLI] Agent {} restricted to CLI tools: {:?}", agent_name,
-                    if allowed_tools.is_empty() { "(MCP only)" } else { allowed_tools });
+                    if allowed_tools.is_empty() { "(MCP only)" } else { allowed_tools.as_str() });
+                args.extend(["--tools".to_string(), allowed_tools]);
             }
         }
 
@@ -603,7 +603,8 @@ mod tests {
         let args = client.build_cli_args(&config, None);
 
         let tools_idx = args.iter().position(|a| a == "--tools").expect("--tools flag must be present");
-        assert_eq!(args[tools_idx + 1], "Read,Grep,Glob", "orchestrator-ideation should have Read,Grep,Glob");
+        assert_eq!(args[tools_idx + 1], "Read,Grep,Glob,Bash,WebFetch,WebSearch,Task(Explore,Plan)",
+            "orchestrator-ideation should have base tools + Task(Explore,Plan)");
     }
 
     #[test]
