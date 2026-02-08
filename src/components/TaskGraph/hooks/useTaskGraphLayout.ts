@@ -749,6 +749,30 @@ function computeLayoutWithCache(
       });
     }
   }
+
+  // Center plan_merge tasks within their plan group (non-tiered mode)
+  // For tiered mode, centering is handled in the tier recomputation below
+  for (const pg of activePlanGroups) {
+    const planTiers = tierGroups.filter((tg) => tg.planArtifactId === pg.planArtifactId);
+    if (planTiers.length > 0) continue; // Skip — handled in tiered recomputation
+    const bounds = planGroupBounds.get(pg.planArtifactId);
+    if (!bounds) continue;
+    const groupCenterX = bounds.position.x + bounds.width / 2;
+    for (const taskId of pg.taskIds) {
+      const graphNode = graphNodes.find((n) => n.taskId === taskId);
+      if (graphNode?.category !== "plan_merge") continue;
+      const centeredX = groupCenterX - nodeWidth / 2;
+      const visibleNode = nodes.find((n) => n.id === taskId);
+      if (visibleNode) {
+        visibleNode.position = { ...visibleNode.position, x: centeredX };
+      }
+      const allNode = allPositionedNodes.find((n) => n.id === taskId);
+      if (allNode) {
+        allNode.position = { ...allNode.position, x: centeredX };
+      }
+    }
+  }
+
   const tierGroupNodes = createTierGroupNodes(
     allPositionedNodes,
     tierGroups,
@@ -857,18 +881,76 @@ function computeLayoutWithCache(
   }
 
   // If we have tiers, recompute plan group bounds using tier group nodes
+  // AND include plan_merge tasks (which are excluded from tier groups)
   if (tierGroups.length > 0) {
+    // Build a lookup of planArtifactId -> merge task nodes
+    const planTaskMap = new Map<string, string[]>();
+    for (const pg of activePlanGroups) {
+      planTaskMap.set(pg.planArtifactId, pg.taskIds);
+    }
+
     for (const planGroupNode of planGroupNodes) {
       if (planGroupNode.data.isCollapsed) continue;
       const tierNodes = tierGroupNodes.filter(
         (node) => node.data.planArtifactId === planGroupNode.data.planArtifactId
       );
       if (tierNodes.length === 0) continue;
-      const sizedNodes = tierNodes.map((node) => ({
+
+      // Find plan_merge tasks for this plan (excluded from tier groups)
+      const planTaskIds = planTaskMap.get(planGroupNode.data.planArtifactId) ?? [];
+      const mergeTaskNodes: SizedNode[] = [];
+      for (const taskId of planTaskIds) {
+        const graphNode = graphNodes.find((n) => n.taskId === taskId);
+        if (graphNode?.category !== "plan_merge") continue;
+        const posNode = allPositionedNodes.find((n) => n.id === taskId);
+        if (!posNode) continue;
+        mergeTaskNodes.push({
+          position: posNode.position,
+          width: nodeWidth,
+          height: nodeHeight,
+        });
+      }
+
+      // Position merge tasks below the last tier, centered
+      if (mergeTaskNodes.length > 0) {
+        const lastTier = [...tierNodes].sort((a, b) => a.data.tier - b.data.tier).pop();
+        if (lastTier) {
+          const belowY = lastTier.position.y + lastTier.data.height + TIER_STACK_GAP;
+          const tierCenterX = lastTier.position.x + lastTier.data.width / 2;
+          for (const mergeNode of mergeTaskNodes) {
+            mergeNode.position = {
+              x: tierCenterX - mergeNode.width / 2,
+              y: belowY,
+            };
+          }
+          // Also update the actual task node positions
+          for (const taskId of planTaskIds) {
+            const graphNode = graphNodes.find((n) => n.taskId === taskId);
+            if (graphNode?.category !== "plan_merge") continue;
+            const mergePos = mergeTaskNodes[0]?.position;
+            if (!mergePos) continue;
+            // Update visible nodes
+            const visibleNode = nodes.find((n) => n.id === taskId);
+            if (visibleNode) {
+              visibleNode.position = { ...mergePos };
+            }
+            // Update allPositionedNodes
+            const allNode = allPositionedNodes.find((n) => n.id === taskId);
+            if (allNode) {
+              allNode.position = { ...mergePos };
+            }
+          }
+        }
+      }
+
+      const sizedNodes: SizedNode[] = tierNodes.map((node) => ({
         position: node.position,
         width: node.data.width,
         height: node.data.height,
       }));
+      // Include merge task nodes in bounding box calculation
+      sizedNodes.push(...mergeTaskNodes);
+
       const bbox = calculateSizedBoundingBox(sizedNodes);
       if (!bbox) continue;
       const expanded = expandBoundingBox(bbox, GROUP_PADDING, HEADER_HEIGHT);

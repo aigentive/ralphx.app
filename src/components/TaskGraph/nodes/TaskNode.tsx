@@ -280,7 +280,7 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
                 textTransform: "capitalize",
               }}
             >
-              {category}
+              {category === "plan_merge" ? "Merge to main" : category}
             </span>
           )}
           {/* Show dots when we have step data */}
