@@ -784,7 +784,7 @@
       "phase": 110,
       "name": "Fix Plan Merge Tasks Stuck in pending_merge",
       "prd": "specs/phases/prd_phase_110_fix_plan_merge_stuck_pending.md",
-      "status": "active",
+      "status": "complete",
       "description": "Fix plan_branch_repo propagation gaps causing plan merge tasks to silently fail"
     }
   ]
