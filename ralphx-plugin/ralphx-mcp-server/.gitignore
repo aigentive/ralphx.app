@@ -1,0 +1,2 @@
+# Override root .gitignore — commit built assets for plugin distribution
+!build/
