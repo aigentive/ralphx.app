@@ -11,6 +11,7 @@ tools:
   - WebFetch
   - WebSearch
   - Task
+allowedTools:
   - mcp__ralphx__start_step
   - mcp__ralphx__complete_step
   - mcp__ralphx__skip_step
@@ -28,8 +29,6 @@ tools:
   - mcp__ralphx__mark_issue_in_progress
   - mcp__ralphx__mark_issue_addressed
   - mcp__ralphx__get_project_analysis
-allowedTools:
-  - "mcp__ralphx__*"
 model: sonnet
 permissionMode: acceptEdits
 skills:
