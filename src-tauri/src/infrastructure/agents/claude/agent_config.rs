@@ -17,16 +17,20 @@
 // 2. Create agent definition in ralphx-plugin/agents/<name>.md
 // 3. Add MCP tools to TOOL_ALLOWLIST in ralphx-mcp-server/src/tools.ts
 
+/// Base CLI tools shared by all non-MCP-only agents.
+/// Agents that need more (Write, Edit, Task, etc.) declare them in `extra_cli_tools`.
+pub const BASE_CLI_TOOLS: &[&str] = &["Read", "Grep", "Glob", "Bash", "WebFetch", "WebSearch"];
+
 /// Configuration for an agent's CLI tool access
 #[derive(Debug, Clone)]
 pub struct AgentConfig {
     /// Agent name (matches --agent flag and plugin filename without .md)
     pub name: &'static str,
-    /// Allowed CLI tools (passed via --tools flag)
-    /// - Some("Read,Grep,Glob") = only these tools
-    /// - Some("") = no CLI tools (MCP only)
-    /// - None = inherit all tools (no restriction)
-    pub allowed_tools: Option<&'static str>,
+    /// If true, agent gets no CLI tools (empty --tools ""), only MCP tools
+    pub mcp_only: bool,
+    /// Extra CLI tools beyond BASE_CLI_TOOLS (e.g. Write, Edit, Task)
+    /// Ignored when mcp_only is true
+    pub extra_cli_tools: &'static [&'static str],
     /// Allowed MCP tools (passed via --allowedTools flag)
     /// These are the tool names WITHOUT the mcp__ralphx__ prefix
     /// Empty slice = no MCP tools
@@ -49,7 +53,8 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     // =========================================================================
     AgentConfig {
         name: "orchestrator-ideation",
-        allowed_tools: Some("Read,Grep,Glob,Task"),
+        mcp_only: false,
+        extra_cli_tools: &["Task(Explore,Plan)"],
         allowed_mcp_tools: &[
             "create_task_proposal",
             "update_task_proposal",
@@ -69,7 +74,8 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     // Read-only variant for accepted plans - no mutation tools
     AgentConfig {
         name: "orchestrator-ideation-readonly",
-        allowed_tools: Some("Read,Grep,Glob"),
+        mcp_only: false,
+        extra_cli_tools: &["Task(Explore,Plan)"],
         allowed_mcp_tools: &[
             "list_session_proposals",
             "get_proposal",
@@ -80,13 +86,15 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     },
     AgentConfig {
         name: "session-namer",
-        allowed_tools: Some(""),
+        mcp_only: true,
+        extra_cli_tools: &[],
         allowed_mcp_tools: &["update_session_title"],
         preapproved_cli_tools: &[],
     },
     AgentConfig {
         name: "dependency-suggester",
-        allowed_tools: Some(""),
+        mcp_only: true,
+        extra_cli_tools: &[],
         allowed_mcp_tools: &["apply_proposal_dependencies"],
         preapproved_cli_tools: &[],
     },
@@ -95,19 +103,22 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     // =========================================================================
     AgentConfig {
         name: "chat-task",
-        allowed_tools: Some("Read,Grep,Glob"),
+        mcp_only: false,
+        extra_cli_tools: &["Task(Explore,Plan)"],
         allowed_mcp_tools: &["update_task", "add_task_note", "get_task_details"],
         preapproved_cli_tools: &[],
     },
     AgentConfig {
         name: "chat-project",
-        allowed_tools: Some("Read,Grep,Glob"),
+        mcp_only: false,
+        extra_cli_tools: &["Task(Explore,Plan)"],
         allowed_mcp_tools: &["suggest_task", "list_tasks"],
         preapproved_cli_tools: &[],
     },
     AgentConfig {
         name: "ralphx-review-chat",
-        allowed_tools: Some("Read,Grep,Glob"),
+        mcp_only: false,
+        extra_cli_tools: &["Task(Explore,Plan)"],
         allowed_mcp_tools: &[
             "approve_task",
             "request_task_changes",
@@ -126,7 +137,8 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     // =========================================================================
     AgentConfig {
         name: "ralphx-worker",
-        allowed_tools: Some("Read,Write,Edit,Bash,Grep,Glob,Task,WebFetch,WebSearch"),
+        mcp_only: false,
+        extra_cli_tools: &["Write", "Edit", "Task"],
         allowed_mcp_tools: &[
             "start_step",
             "complete_step",
@@ -149,7 +161,8 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     },
     AgentConfig {
         name: "ralphx-reviewer",
-        allowed_tools: Some("Read,Grep,Glob,Bash"),
+        mcp_only: false,
+        extra_cli_tools: &["Task(Explore,Plan)"],
         allowed_mcp_tools: &[
             "complete_review",
             "get_task_context",
@@ -170,13 +183,15 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     // =========================================================================
     AgentConfig {
         name: "ralphx-qa-prep",
-        allowed_tools: Some("Read,Grep,Glob"),
+        mcp_only: false,
+        extra_cli_tools: &["Task(Explore,Plan)"],
         allowed_mcp_tools: &[],
         preapproved_cli_tools: &[],
     },
     AgentConfig {
         name: "ralphx-qa-executor",
-        allowed_tools: Some("Read,Write,Edit,Grep,Glob,Bash"),
+        mcp_only: false,
+        extra_cli_tools: &["Write", "Edit", "Task(Explore,Plan)"],
         allowed_mcp_tools: &[],
         preapproved_cli_tools: &["Write", "Edit", "Bash"],
     },
@@ -185,19 +200,22 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     // =========================================================================
     AgentConfig {
         name: "ralphx-orchestrator",
-        allowed_tools: Some("Read,Write,Edit,Bash,Grep,Glob,Task,WebFetch,WebSearch"),
+        mcp_only: false,
+        extra_cli_tools: &["Write", "Edit", "Task"],
         allowed_mcp_tools: &[],
         preapproved_cli_tools: &["Write", "Edit", "Bash", "Task"],
     },
     AgentConfig {
         name: "ralphx-supervisor",
-        allowed_tools: Some("Read,Grep,Glob,Bash"),
+        mcp_only: false,
+        extra_cli_tools: &["Task(Explore,Plan)"],
         allowed_mcp_tools: &[],
         preapproved_cli_tools: &["Bash"],
     },
     AgentConfig {
         name: "ralphx-deep-researcher",
-        allowed_tools: Some("Read,Write,Grep,Glob,WebFetch,WebSearch"),
+        mcp_only: false,
+        extra_cli_tools: &["Write", "Task(Explore,Plan)"],
         allowed_mcp_tools: &[],
         preapproved_cli_tools: &["Write", "WebFetch", "WebSearch"],
     },
@@ -206,7 +224,8 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     // =========================================================================
     AgentConfig {
         name: "ralphx-merger",
-        allowed_tools: Some("Read,Edit,Bash,Grep,Glob"),
+        mcp_only: false,
+        extra_cli_tools: &["Edit", "Task(Explore,Plan)"],
         allowed_mcp_tools: &[
             "complete_merge",
             "report_conflict",
@@ -231,11 +250,19 @@ pub fn get_agent_config(agent_name: &str) -> Option<&'static AgentConfig> {
 /// Get the --tools argument value for an agent
 ///
 /// Returns:
-/// - Some("Read,Grep,Glob") = pass --tools with this value
-/// - Some("") = pass --tools "" (no CLI tools)
-/// - None = don't pass --tools (all tools allowed)
-pub fn get_allowed_tools(agent_name: &str) -> Option<&'static str> {
-    get_agent_config(agent_name).and_then(|c| c.allowed_tools)
+/// - Some("") = pass --tools "" (MCP-only agent, no CLI tools)
+/// - Some("Read,Grep,Glob,Bash,WebFetch,WebSearch,...") = pass --tools with this value
+/// - None = agent not found (don't pass --tools)
+pub fn get_allowed_tools(agent_name: &str) -> Option<String> {
+    get_agent_config(agent_name).map(|c| {
+        if c.mcp_only {
+            String::new()
+        } else {
+            let mut tools: Vec<&str> = BASE_CLI_TOOLS.to_vec();
+            tools.extend_from_slice(c.extra_cli_tools);
+            tools.join(",")
+        }
+    })
 }
 
 /// Get the --allowedTools argument value for an agent
@@ -274,7 +301,7 @@ mod tests {
     #[test]
     fn test_get_allowed_tools_restricted_agent() {
         let tools = get_allowed_tools("orchestrator-ideation");
-        assert_eq!(tools, Some("Read,Grep,Glob,Task"));
+        assert_eq!(tools, Some("Read,Grep,Glob,Bash,WebFetch,WebSearch,Task(Explore,Plan)".to_string()));
     }
 
     #[test]
@@ -282,15 +309,20 @@ mod tests {
         let tools = get_allowed_tools("ralphx-worker");
         assert!(tools.is_some());
         let tools = tools.unwrap();
+        // Base tools
+        for base in BASE_CLI_TOOLS {
+            assert!(tools.contains(base), "worker missing base tool: {}", base);
+        }
+        // Extra tools
         assert!(tools.contains("Write"));
         assert!(tools.contains("Edit"));
-        assert!(tools.contains("Bash"));
+        assert!(tools.contains("Task"));
     }
 
     #[test]
     fn test_get_allowed_tools_mcp_only_agent() {
         let tools = get_allowed_tools("session-namer");
-        assert_eq!(tools, Some(""));
+        assert_eq!(tools, Some(String::new()));
     }
 
     #[test]
@@ -354,11 +386,13 @@ mod tests {
         let tools = get_allowed_tools("ralphx-merger");
         assert!(tools.is_some());
         let tools = tools.unwrap();
-        assert!(tools.contains("Read"));
+        // Base tools
+        for base in BASE_CLI_TOOLS {
+            assert!(tools.contains(base), "merger missing base tool: {}", base);
+        }
+        // Extra tools
         assert!(tools.contains("Edit"));
-        assert!(tools.contains("Bash"));
-        assert!(tools.contains("Grep"));
-        assert!(tools.contains("Glob"));
+        assert!(tools.contains("Task(Explore,Plan)"));
     }
 
     #[test]
@@ -395,5 +429,41 @@ mod tests {
         assert!(tools.contains("mcp__ralphx__get_task_issues"));
         assert!(tools.contains("mcp__ralphx__get_step_progress"));
         assert!(tools.contains("mcp__ralphx__get_issue_progress"));
+    }
+
+    #[test]
+    fn test_all_non_mcp_only_agents_include_base_tools() {
+        for config in AGENT_CONFIGS {
+            if config.mcp_only {
+                continue;
+            }
+            let tools = get_allowed_tools(config.name)
+                .unwrap_or_else(|| panic!("Agent {} not found", config.name));
+            for base in BASE_CLI_TOOLS {
+                assert!(
+                    tools.contains(base),
+                    "Agent {} missing base CLI tool: {}",
+                    config.name,
+                    base
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_mcp_only_agents_get_empty_tools() {
+        for config in AGENT_CONFIGS {
+            if !config.mcp_only {
+                continue;
+            }
+            let tools = get_allowed_tools(config.name)
+                .unwrap_or_else(|| panic!("Agent {} not found", config.name));
+            assert!(
+                tools.is_empty(),
+                "MCP-only agent {} should have empty tools, got: {}",
+                config.name,
+                tools
+            );
+        }
     }
 }
