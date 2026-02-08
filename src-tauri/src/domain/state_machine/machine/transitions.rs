@@ -256,12 +256,12 @@ impl TaskStateMachine {
     }
 
     /// MergeIncomplete state - merge failed due to non-conflict errors
-    /// Can retry (→ Merging) or manually resolve (→ Merged)
+    /// Can retry (→ PendingMerge to re-attempt programmatic merge) or manually resolve (→ Merged)
     pub fn merge_incomplete(&mut self, event: &TaskEvent) -> Response {
         match event {
             TaskEvent::MergeConflict => Response::Transition(State::Merging),
             TaskEvent::ConflictResolved => Response::Transition(State::Merged),
-            TaskEvent::Retry => Response::Transition(State::Merging),
+            TaskEvent::Retry => Response::Transition(State::PendingMerge),
             _ => Response::NotHandled,
         }
     }
