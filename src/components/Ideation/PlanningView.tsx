@@ -255,12 +255,18 @@ export function PlanningView({
     }
   }, [session, isAnalyzingDependencies, proposals.length]);
 
+  // Stable ref for fetchPlanArtifact to avoid re-triggering the effect
+  // when the Zustand action reference changes.
+  const fetchPlanArtifactRef = useRef(fetchPlanArtifact);
+  useEffect(() => { fetchPlanArtifactRef.current = fetchPlanArtifact; }, [fetchPlanArtifact]);
+
+  const planArtifactId = planArtifact?.id ?? null;
   useEffect(() => {
     if (!session?.planArtifactId) return;
-    if (!planArtifact || planArtifact.id !== session.planArtifactId) {
-      fetchPlanArtifact(session.planArtifactId);
+    if (planArtifactId !== session.planArtifactId) {
+      fetchPlanArtifactRef.current(session.planArtifactId);
     }
-  }, [session?.planArtifactId, planArtifact, fetchPlanArtifact]);
+  }, [session?.planArtifactId, planArtifactId]);
 
   useEffect(() => {
     const unsubProposalsUpdate = eventBus.subscribe<{ artifact_id: string; proposal_ids: string[] }>(
