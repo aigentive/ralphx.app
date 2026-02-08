@@ -31,22 +31,71 @@ interface MergeIncompleteTaskDetailProps {
   isHistorical?: boolean;
 }
 
+interface MergeErrorContext {
+  error: string | null;
+  sourceBranch: string | null;
+  targetBranch: string | null;
+  diagnosticInfo: string | null;
+}
+
+function parseMergeError(metadata?: string | null): MergeErrorContext | null {
+  if (!metadata) return null;
+  try {
+    const m = JSON.parse(metadata);
+    return {
+      error: m.error ?? null,
+      sourceBranch: m.source_branch ?? null,
+      targetBranch: m.target_branch ?? null,
+      diagnosticInfo: m.diagnostic_info ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
- * ErrorContextCard - Explains what went wrong during merge
+ * ErrorContextCard - Shows actual error details or generic fallback
  */
-function ErrorContextCard() {
+function ErrorContextCard({ mergeError }: { mergeError: MergeErrorContext | null }) {
+  if (!mergeError) {
+    return (
+      <div className="space-y-3">
+        <p className="text-[13px] text-white/60">
+          The merge failed due to a git error that is not a merge conflict.
+          This can happen when:
+        </p>
+        <ul className="list-disc list-inside space-y-1.5 text-[13px] text-white/50">
+          <li>The task branch was deleted or corrupted</li>
+          <li>A git lock file is preventing operations</li>
+          <li>Network issues interrupted a fetch operation</li>
+          <li>The worktree directory is missing or inaccessible</li>
+        </ul>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
-      <p className="text-[13px] text-white/60">
-        The merge failed due to a git error that is not a merge conflict.
-        This can happen when:
-      </p>
-      <ul className="list-disc list-inside space-y-1.5 text-[13px] text-white/50">
-        <li>The task branch was deleted or corrupted</li>
-        <li>A git lock file is preventing operations</li>
-        <li>Network issues interrupted a fetch operation</li>
-        <li>The worktree directory is missing or inaccessible</li>
-      </ul>
+      {mergeError.error && (
+        <div
+          className="rounded-md px-3 py-2 font-mono text-[12px] text-white/80 whitespace-pre-wrap"
+          style={{ backgroundColor: "rgba(255, 69, 58, 0.10)" }}
+        >
+          {mergeError.error}
+        </div>
+      )}
+      {(mergeError.sourceBranch || mergeError.targetBranch) && (
+        <div className="flex items-center gap-2 text-[13px] text-white/60">
+          <span className="font-mono text-white/70">{mergeError.sourceBranch ?? "unknown"}</span>
+          <span className="text-white/40">&rarr;</span>
+          <span className="font-mono text-white/70">{mergeError.targetBranch ?? "unknown"}</span>
+        </div>
+      )}
+      {mergeError.diagnosticInfo && (
+        <div className="text-[12px] text-white/50 whitespace-pre-wrap">
+          {mergeError.diagnosticInfo}
+        </div>
+      )}
     </div>
   );
 }
@@ -54,7 +103,7 @@ function ErrorContextCard() {
 /**
  * RecoverySteps - Numbered steps for manual recovery
  */
-function RecoverySteps({ branchName }: { branchName: string }) {
+function RecoverySteps({ branchName, targetBranch }: { branchName: string; targetBranch?: string | null }) {
   return (
     <div className="space-y-3">
       <p className="text-[13px] text-white/60">
@@ -82,11 +131,21 @@ function RecoverySteps({ branchName }: { branchName: string }) {
           <strong className="text-white/70">Mark Resolved</strong>
         </li>
       </ol>
-      <div className="pt-2">
-        <span className="text-[11px] text-white/40">Branch: </span>
-        <span className="text-[11px] text-white/60 font-mono">
-          {branchName}
-        </span>
+      <div className="flex gap-4 pt-2">
+        <div>
+          <span className="text-[11px] text-white/40">Source: </span>
+          <span className="text-[11px] text-white/60 font-mono">
+            {branchName}
+          </span>
+        </div>
+        {targetBranch && (
+          <div>
+            <span className="text-[11px] text-white/40">Target: </span>
+            <span className="text-[11px] text-white/60 font-mono">
+              {targetBranch}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -152,7 +211,8 @@ export function MergeIncompleteTaskDetail({
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const branchName = task.taskBranch ?? "task branch";
+  const mergeError = parseMergeError(task.metadata);
+  const branchName = mergeError?.sourceBranch ?? task.taskBranch ?? "task branch";
 
   const handleRetryMerge = useCallback(async () => {
     setIsProcessing(true);
@@ -219,7 +279,7 @@ export function MergeIncompleteTaskDetail({
       <section data-testid="error-context-section">
         <SectionTitle>What Happened</SectionTitle>
         <DetailCard variant="error">
-          <ErrorContextCard />
+          <ErrorContextCard mergeError={mergeError} />
         </DetailCard>
       </section>
 
@@ -228,7 +288,7 @@ export function MergeIncompleteTaskDetail({
         <section data-testid="recovery-steps-section">
           <SectionTitle>How to Recover</SectionTitle>
           <DetailCard>
-            <RecoverySteps branchName={branchName} />
+            <RecoverySteps branchName={branchName} targetBranch={mergeError?.targetBranch ?? null} />
           </DetailCard>
         </section>
       )}

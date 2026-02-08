@@ -88,28 +88,28 @@ export const mockProjectsApi = {
 
 const mockWorkflowColumns: WorkflowSchema["columns"] = [
   {
-    id: "col-backlog",
+    id: "draft",
     name: "Backlog",
     mapsTo: "backlog" as InternalStatus,
   },
   {
-    id: "col-ready",
+    id: "ready",
     name: "Ready",
     mapsTo: "ready" as InternalStatus,
   },
   {
-    id: "col-executing",
+    id: "in_progress",
     name: "Executing",
     mapsTo: "executing" as InternalStatus,
   },
   {
-    id: "col-review",
+    id: "in_review",
     name: "Review",
     mapsTo: "pending_review" as InternalStatus,
   },
   {
-    id: "col-approved",
-    name: "Approved",
+    id: "done",
+    name: "Done",
     mapsTo: "approved" as InternalStatus,
   },
 ];
