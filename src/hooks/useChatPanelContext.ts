@@ -56,6 +56,7 @@ export function useChatPanelContext({
   const activeConversationId = useChatStore(selectActiveConversationId);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
   const clearMessages = useChatStore((s) => s.clearMessages);
+  const setAgentRunning = useChatStore((s) => s.setAgentRunning);
 
   // Streaming tool calls - accumulated during agent execution
   const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCall[]>([]);
@@ -159,12 +160,16 @@ export function useChatPanelContext({
         clearMessages(prevContextKeyRef.current);
       }
 
+      // Clear agent running state for the NEW context to prevent stale state
+      // from the previous context leaking (e.g., spinner showing in idle session)
+      setAgentRunning(storeContextKey, false);
+
       // Reset auto-select flag when context changes
       hasAutoSelectedRef.current = false;
 
       prevContextKeyRef.current = contextKey;
     }
-  }, [contextKey, setActiveConversation, queryClient, clearMessages]);
+  }, [contextKey, storeContextKey, setActiveConversation, queryClient, clearMessages, setAgentRunning]);
 
   // Track previous override conversation ID to detect changes
   const prevOverrideConversationIdRef = useRef<string | undefined>(undefined);
