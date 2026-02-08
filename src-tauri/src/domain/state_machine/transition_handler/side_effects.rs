@@ -344,7 +344,7 @@ struct MergeAnalysisEntry {
 
 /// A single validation command execution record for streaming + storage.
 #[derive(Debug, Clone, serde::Serialize)]
-struct ValidationLogEntry {
+pub(crate) struct ValidationLogEntry {
     phase: String,
     command: String,
     path: String,
@@ -358,14 +358,14 @@ struct ValidationLogEntry {
 
 /// Result of running post-merge validation commands.
 #[derive(Debug)]
-struct ValidationResult {
-    all_passed: bool,
-    failures: Vec<ValidationFailure>,
-    log: Vec<ValidationLogEntry>,
+pub(crate) struct ValidationResult {
+    pub(crate) all_passed: bool,
+    pub(crate) failures: Vec<ValidationFailure>,
+    pub(crate) log: Vec<ValidationLogEntry>,
 }
 
 #[derive(Debug)]
-struct ValidationFailure {
+pub(crate) struct ValidationFailure {
     command: String,
     path: String,
     exit_code: Option<i32>,
@@ -388,7 +388,7 @@ fn truncate_output(s: &str, max_len: usize) -> String {
 ///
 /// When `app_handle` is `Some`, emits `merge:validation_step` events for real-time UI streaming.
 /// All executed commands are recorded in `ValidationResult::log` for metadata storage.
-fn run_validation_commands(
+pub(crate) fn run_validation_commands(
     project: &Project,
     task: &Task,
     merge_cwd: &Path,
@@ -702,7 +702,7 @@ fn run_validation_commands(
 }
 
 /// Format validation failures as a JSON metadata string for MergeIncomplete.
-fn format_validation_error_metadata(
+pub(crate) fn format_validation_error_metadata(
     failures: &[ValidationFailure],
     log: &[ValidationLogEntry],
     source_branch: &str,

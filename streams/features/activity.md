@@ -4,6 +4,26 @@
 
 ---
 
+### 2026-02-09 04:15:00 - Phase 113 Task 2: Re-validate in auto-completion for validation recovery mode
+**What:**
+- Made `ValidationLogEntry`, `ValidationResult`, `ValidationFailure` structs `pub(crate)` in `side_effects.rs`
+- Made `ValidationResult` fields (`all_passed`, `failures`, `log`) `pub(crate)` for external access
+- Made `run_validation_commands` and `format_validation_error_metadata` functions `pub(crate)` in `side_effects.rs`
+- Added re-exports in `transition_handler/mod.rs` for `run_validation_commands` and `format_validation_error_metadata`
+- Added re-validation logic in `attempt_merge_auto_complete()` in `chat_service_send_background.rs`:
+  - After git state checks pass, detects `validation_recovery: true` in task metadata
+  - If recovery mode: re-runs `run_validation_commands` before completing merge
+  - If re-validation fails: reverts merge with `git reset --hard HEAD~1`, updates metadata with failure details, transitions to `MergeIncomplete`
+  - If re-validation passes: proceeds normally to complete merge
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — 3705 tests passed, 0 failed
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-09 03:00:00 - Phase 113 Task 1: Add AutoFix validation mode and recovery flow
 **What:**
 - Added `AutoFix` variant to `MergeValidationMode` enum in `project.rs` (between Block and Warn)
