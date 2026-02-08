@@ -1116,6 +1116,110 @@ mod tests {
         assert!(relations.is_empty());
     }
 
+    // ==================== VERSION CHAIN TRAVERSAL TESTS ====================
+
+    #[tokio::test]
+    async fn test_get_at_version_traverses_chain_v1_via_v2() {
+        let conn = setup_test_db();
+        let repo = SqliteArtifactRepository::new(conn);
+
+        // Create V1
+        let v1 = Artifact::new_inline("Plan", ArtifactType::Specification, "V1 content", "orchestrator");
+        let v1_id = v1.id.clone();
+        repo.create(v1).await.unwrap();
+
+        // Create V2 chained to V1
+        let mut v2 = Artifact::new_inline("Plan", ArtifactType::Specification, "V2 content", "orchestrator");
+        v2.metadata.version = 2;
+        let v2_id = v2.id.clone();
+        repo.create_with_previous_version(v2, v1_id.clone()).await.unwrap();
+
+        // Fetch V1 using V2's ID — should traverse chain and return V1
+        let result = repo.get_by_id_at_version(&v2_id, 1).await.unwrap();
+        assert!(result.is_some(), "Should find V1 via V2's chain");
+        let artifact = result.unwrap();
+        assert_eq!(artifact.metadata.version, 1);
+        assert_eq!(artifact.id, v1_id);
+        if let ArtifactContent::Inline { text } = &artifact.content {
+            assert_eq!(text, "V1 content");
+        } else {
+            panic!("Expected inline content");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_at_version_returns_current_without_traversal() {
+        let conn = setup_test_db();
+        let repo = SqliteArtifactRepository::new(conn);
+
+        // Create V1
+        let v1 = Artifact::new_inline("Plan", ArtifactType::Specification, "V1 content", "orchestrator");
+        let v1_id = v1.id.clone();
+        repo.create(v1).await.unwrap();
+
+        // Create V2 chained to V1
+        let mut v2 = Artifact::new_inline("Plan", ArtifactType::Specification, "V2 content", "orchestrator");
+        v2.metadata.version = 2;
+        let v2_id = v2.id.clone();
+        repo.create_with_previous_version(v2, v1_id).await.unwrap();
+
+        // Fetch V2 using V2's ID — should return directly (no traversal)
+        let result = repo.get_by_id_at_version(&v2_id, 2).await.unwrap();
+        assert!(result.is_some(), "Should find V2 directly");
+        let artifact = result.unwrap();
+        assert_eq!(artifact.metadata.version, 2);
+        if let ArtifactContent::Inline { text } = &artifact.content {
+            assert_eq!(text, "V2 content");
+        } else {
+            panic!("Expected inline content");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_at_version_three_level_chain() {
+        let conn = setup_test_db();
+        let repo = SqliteArtifactRepository::new(conn);
+
+        // Create V1 → V2 → V3 chain
+        let v1 = Artifact::new_inline("Plan", ArtifactType::Specification, "V1", "orchestrator");
+        let v1_id = v1.id.clone();
+        repo.create(v1).await.unwrap();
+
+        let mut v2 = Artifact::new_inline("Plan", ArtifactType::Specification, "V2", "orchestrator");
+        v2.metadata.version = 2;
+        let v2_id = v2.id.clone();
+        repo.create_with_previous_version(v2, v1_id).await.unwrap();
+
+        let mut v3 = Artifact::new_inline("Plan", ArtifactType::Specification, "V3", "orchestrator");
+        v3.metadata.version = 3;
+        let v3_id = v3.id.clone();
+        repo.create_with_previous_version(v3, v2_id).await.unwrap();
+
+        // Fetch V1 using V3's ID — should traverse V3 → V2 → V1
+        let result = repo.get_by_id_at_version(&v3_id, 1).await.unwrap();
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().metadata.version, 1);
+
+        // Fetch V2 using V3's ID
+        let result = repo.get_by_id_at_version(&v3_id, 2).await.unwrap();
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().metadata.version, 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_at_version_nonexistent_version() {
+        let conn = setup_test_db();
+        let repo = SqliteArtifactRepository::new(conn);
+
+        let v1 = Artifact::new_inline("Plan", ArtifactType::Specification, "V1", "orchestrator");
+        let v1_id = v1.id.clone();
+        repo.create(v1).await.unwrap();
+
+        // Ask for version 5 — doesn't exist
+        let result = repo.get_by_id_at_version(&v1_id, 5).await.unwrap();
+        assert!(result.is_none(), "Should return None for nonexistent version");
+    }
+
     // ==================== SHARED CONNECTION TESTS ====================
 
     #[tokio::test]

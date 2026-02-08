@@ -32,6 +32,7 @@ import type { Unsubscribe } from "@/lib/event-bus";
 export function usePlanArtifactEvents() {
   const bus = useEventBus();
   const setPlanArtifact = useIdeationStore((s) => s.setPlanArtifact);
+  const updateSession = useIdeationStore((s) => s.updateSession);
   const activeSessionId = useIdeationStore((s) => s.activeSessionId);
   const sessions = useIdeationStore((s) => s.sessions);
   const queryClient = useQueryClient();
@@ -40,9 +41,11 @@ export function usePlanArtifactEvents() {
   // re-subscribe every time the sessions Record or store actions change.
   const sessionsRef = useRef<Record<string, IdeationSession>>(sessions);
   const setPlanArtifactRef = useRef(setPlanArtifact);
+  const updateSessionRef = useRef(updateSession);
   const queryClientRef = useRef(queryClient);
   useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
   useEffect(() => { setPlanArtifactRef.current = setPlanArtifact; }, [setPlanArtifact]);
+  useEffect(() => { updateSessionRef.current = updateSession; }, [updateSession]);
   useEffect(() => { queryClientRef.current = queryClient; }, [queryClient]);
 
   // Dedup guard: skip duplicate events during subscribe/unsubscribe cycles
@@ -118,7 +121,7 @@ export function usePlanArtifactEvents() {
         }
 
         if (parsed.data.type === "updated") {
-          const { artifactId, artifact } = parsed.data;
+          const { artifactId, previousArtifactId, artifact } = parsed.data;
 
           // Dedup: skip if we already processed this exact event
           const eventKey = `updated:${artifact.id}:${artifact.version}`;
@@ -127,11 +130,14 @@ export function usePlanArtifactEvents() {
 
           // Find the session that has this artifact linked
           // Check active session first (most common case)
+          // Match against previousArtifactId because the store's session
+          // still holds the old artifact ID when this event arrives
           const currentSessions = sessionsRef.current;
           const activeSession = activeSessionId
             ? currentSessions[activeSessionId]
             : null;
           const isActiveSessionArtifact =
+            activeSession?.planArtifactId === previousArtifactId ||
             activeSession?.planArtifactId === artifactId;
 
           if (isActiveSessionArtifact) {
@@ -151,9 +157,20 @@ export function usePlanArtifactEvents() {
             setPlanArtifactRef.current(planArtifact);
           }
 
-          // Find any session with this artifact and invalidate its query
+          // Immediately update planArtifactId on all matching sessions
+          // so the next rapid update event can still match.
+          // Without this, the session holds the old ID and subsequent
+          // events with a different previousArtifactId get silently dropped.
           for (const session of Object.values(currentSessions)) {
-            if (session.planArtifactId === artifactId) {
+            if (
+              session.planArtifactId === previousArtifactId ||
+              session.planArtifactId === artifactId
+            ) {
+              if (session.planArtifactId !== artifact.id) {
+                updateSessionRef.current(session.id, {
+                  planArtifactId: artifact.id,
+                });
+              }
               queryClientRef.current.invalidateQueries({
                 queryKey: ideationKeys.sessionWithData(session.id),
               });
