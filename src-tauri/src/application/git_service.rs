@@ -974,6 +974,81 @@ impl GitService {
         )))
     }
 
+    /// Attempt a merge directly in the primary repository without aborting on conflict
+    ///
+    /// Unlike `try_merge()`, this method leaves the conflict state in place on
+    /// conflict so that the merger agent can resolve conflicts in-place in the
+    /// primary repo. Use this when the target branch is already checked out
+    /// (e.g., merging a plan feature branch into main in worktree mode).
+    ///
+    /// - On **success**: returns commit SHA.
+    /// - On **conflict**: leaves the merge in conflict state (does NOT abort).
+    ///   The caller (or merger agent) can resolve conflicts in the primary repo.
+    /// - On **error**: returns an error.
+    ///
+    /// # Arguments
+    /// * `repo` - Path to the main git repository
+    /// * `source_branch` - Branch to merge from (e.g., plan feature branch)
+    /// * `target_branch` - Branch to merge into (e.g., main — already checked out)
+    pub fn try_merge_in_repo(
+        repo: &Path,
+        source_branch: &str,
+        target_branch: &str,
+    ) -> AppResult<MergeAttemptResult> {
+        debug!(
+            "Attempting in-repo merge of '{}' into '{}' in {:?}",
+            source_branch, target_branch, repo
+        );
+
+        // Step 1: Fetch latest from origin (non-fatal if fails)
+        match Self::fetch_origin(repo) {
+            Ok(_) => debug!("Fetch from origin succeeded for {:?}", repo),
+            Err(e) => debug!("Fetch from origin failed (non-fatal): {}", e),
+        }
+
+        // Step 2: Checkout target branch (no-op if already checked out)
+        debug!("Checking out target branch '{}' for in-repo merge", target_branch);
+        Self::checkout_branch(repo, target_branch)?;
+
+        // Step 3: Merge source branch into target
+        let output = Command::new("git")
+            .args(["merge", source_branch, "--no-edit"])
+            .current_dir(repo)
+            .output()
+            .map_err(|e| AppError::GitOperation(format!("Failed to run git merge: {}", e)))?;
+
+        if output.status.success() {
+            let commit_sha = Self::get_head_sha(repo)?;
+            debug!(
+                "In-repo merge succeeded for '{}', SHA: {}",
+                source_branch, commit_sha
+            );
+            return Ok(MergeAttemptResult::Success { commit_sha });
+        }
+
+        // Check for conflict in both stdout and stderr
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stdout.contains("CONFLICT")
+            || stderr.contains("CONFLICT")
+            || stdout.contains("conflict")
+            || stderr.contains("conflict")
+        {
+            let conflict_files = Self::get_conflict_files(repo)?;
+            debug!(
+                "In-repo merge conflict for '{}', files: {:?}",
+                source_branch, conflict_files
+            );
+            // Do NOT abort — leave conflict state in place for agent resolution
+            return Ok(MergeAttemptResult::NeedsAgent { conflict_files });
+        }
+
+        Err(AppError::GitOperation(format!(
+            "In-repo merge of '{}' into '{}' failed: {}{}",
+            source_branch, target_branch, stderr, stdout
+        )))
+    }
+
     /// Attempt a merge in an isolated worktree
     ///
     /// Creates a temporary merge worktree that checks out the target branch,

@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-02-09 04:00:00 - Phase 109 Task 1: Add try_merge_in_repo() method to GitService
+**What:**
+- Added `try_merge_in_repo()` method to GitService that merges directly in the primary repo without aborting on conflict
+- Method: fetch origin (non-fatal), checkout target (no-op if already checked out), git merge --no-edit, return Success/NeedsAgent/Err
+- On conflict: leaves conflict state in place (unlike `try_merge()` which aborts) so merger agent can resolve in-place
+- Placed between `try_merge()` and `try_merge_in_worktree()` in git_service.rs
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — all 3672 tests pass, 0 failures
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-09 03:00:00 - Phase 108 Complete — Gap Verification Passed
 **What:**
 - All 4 tasks previously completed (passes: true)
