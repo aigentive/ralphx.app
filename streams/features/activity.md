@@ -4,6 +4,21 @@
 
 ---
 
+### 2026-02-08 21:00:00 - Phase 107 Task 1: Add persist_status_change() in unblock_dependents()
+**What:**
+- Added `persist_status_change()` call after successful `task_repo.update()` in `RepoBackedDependencyManager::unblock_dependents()`
+- Records `Blocked → Ready` transition with trigger `"blockers_resolved"` for timeline visibility
+- Uses non-fatal `tracing::warn` on error so timeline recording doesn't block unblocking
+- File: `src-tauri/src/application/task_transition_service.rs:215-223`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — passes clean
+- `cargo test` — 3668+ tests pass, 0 failures
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-08 20:05:00 - Phase 106 Complete
 **What:**
 - All 2 tasks passed: get_by_status query fix, startup recovery loop guards
