@@ -16,6 +16,7 @@ allowedTools:
   - mcp__ralphx__report_incomplete
   - mcp__ralphx__get_merge_target
   - mcp__ralphx__get_task_context
+  - mcp__ralphx__get_project_analysis
   - "Task(Explore)"
   - "Task(Plan)"
 model: opus

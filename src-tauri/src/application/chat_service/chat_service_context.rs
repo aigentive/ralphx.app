@@ -30,7 +30,6 @@ use super::chat_service_helpers::resolve_agent;
 pub async fn resolve_project_id(
     context_type: ChatContextType,
     context_id: &str,
-    _project_repo: Arc<dyn ProjectRepository>,
     task_repo: Arc<dyn TaskRepository>,
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
 ) -> Option<String> {

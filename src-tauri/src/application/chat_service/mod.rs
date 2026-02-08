@@ -457,7 +457,6 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         let project_id = chat_service_context::resolve_project_id(
             context_type,
             context_id,
-            Arc::clone(&self.project_repo),
             Arc::clone(&self.task_repo),
             Arc::clone(&self.ideation_session_repo),
         )
