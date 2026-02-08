@@ -22,6 +22,45 @@ use crate::infrastructure::agents::claude::{
 
 use super::chat_service_helpers::resolve_agent;
 
+/// Resolve the project ID from a context
+///
+/// For Project context: context_id IS the project_id.
+/// For Task-related contexts: load task → task.project_id.
+/// For Ideation context: load session → session.project_id.
+pub async fn resolve_project_id(
+    context_type: ChatContextType,
+    context_id: &str,
+    _project_repo: Arc<dyn ProjectRepository>,
+    task_repo: Arc<dyn TaskRepository>,
+    ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+) -> Option<String> {
+    match context_type {
+        ChatContextType::Project => {
+            Some(context_id.to_string())
+        }
+        ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge => {
+            if let Ok(Some(task)) = task_repo
+                .get_by_id(&TaskId::from_string(context_id.to_string()))
+                .await
+            {
+                Some(task.project_id.as_str().to_string())
+            } else {
+                None
+            }
+        }
+        ChatContextType::Ideation => {
+            if let Ok(Some(session)) = ideation_session_repo
+                .get_by_id(&IdeationSessionId::from_string(context_id))
+                .await
+            {
+                Some(session.project_id.as_str().to_string())
+            } else {
+                None
+            }
+        }
+    }
+}
+
 /// Resolve the project's working directory from a context
 ///
 /// For task-related contexts (Task, TaskExecution, Review):
@@ -184,6 +223,7 @@ pub fn build_command(
     user_message: &str,
     working_directory: &Path,
     entity_status: Option<&str>,
+    project_id: Option<&str>,
 ) -> Result<Command, String> {
     // Compute agent_name using the resolution system (context type + optional status)
     let agent_name = resolve_agent(&conversation.context_type, entity_status);
@@ -203,6 +243,11 @@ pub fn build_command(
             cmd.env("RALPHX_TASK_ID", &conversation.context_id);
         }
         _ => {}
+    }
+
+    // Add project scope for all contexts
+    if let Some(pid) = project_id {
+        cmd.env("RALPHX_PROJECT_ID", pid);
     }
 
     // For reviewer agent (not review-chat), start fresh session each review cycle.
