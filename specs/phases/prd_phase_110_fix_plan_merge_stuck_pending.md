@@ -133,7 +133,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: fix(merge): convert silent merge failures to MergeIncomplete with diagnostics"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```

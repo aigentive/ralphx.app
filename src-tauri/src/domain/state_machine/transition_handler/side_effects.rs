@@ -272,7 +272,24 @@ pub async fn resolve_merge_branches(
     let base_branch = project.base_branch.as_deref().unwrap_or("main").to_string();
     let task_branch = task.task_branch.clone().unwrap_or_default();
 
+    tracing::debug!(
+        task_id = task.id.as_str(),
+        category = %task.category,
+        plan_branch_repo_available = plan_branch_repo.is_some(),
+        ideation_session_id = ?task.ideation_session_id.as_ref().map(|s| s.as_str()),
+        task_branch = %task_branch,
+        base_branch = %base_branch,
+        "resolve_merge_branches: entry"
+    );
+
     let Some(ref plan_branch_repo) = plan_branch_repo else {
+        if task.category == "plan_merge" {
+            tracing::warn!(
+                task_id = task.id.as_str(),
+                "resolve_merge_branches: plan_branch_repo is None for plan_merge task — \
+                 merge branch resolution will fall back to task_branch/base_branch"
+            );
+        }
         return (task_branch, base_branch);
     };
 
@@ -886,9 +903,13 @@ impl<'a> super::TransitionHandler<'a> {
             &self.machine.context.services.task_repo,
             &self.machine.context.services.project_repo,
         ) else {
-            tracing::warn!(
+            tracing::error!(
                 task_id = task_id_str,
-                "Skipping programmatic merge: repos not available"
+                project_id = project_id_str,
+                task_repo_available = self.machine.context.services.task_repo.is_some(),
+                project_repo_available = self.machine.context.services.project_repo.is_some(),
+                "Programmatic merge BLOCKED: repos not available — \
+                 task will remain stuck in PendingMerge"
             );
             return;
         };
@@ -901,9 +922,11 @@ impl<'a> super::TransitionHandler<'a> {
         let project_result = project_repo.get_by_id(&project_id).await;
 
         let (Ok(Some(mut task)), Ok(Some(project))) = (task_result, project_result) else {
-            tracing::warn!(
+            tracing::error!(
                 task_id = task_id_str,
-                "Skipping programmatic merge: failed to fetch task or project"
+                project_id = project_id_str,
+                "Programmatic merge BLOCKED: failed to fetch task or project from database — \
+                 task will remain stuck in PendingMerge"
             );
             return;
         };
@@ -914,14 +937,46 @@ impl<'a> super::TransitionHandler<'a> {
 
         // Ensure we have a source branch to merge
         if source_branch.is_empty() {
-            // For regular tasks, source_branch comes from task_branch which may be None
-            if task.task_branch.is_none() {
-                tracing::warn!(
-                    task_id = task_id_str,
-                    "Skipping programmatic merge: task has no branch"
-                );
+            tracing::error!(
+                task_id = task_id_str,
+                category = %task.category,
+                task_branch = ?task.task_branch,
+                "Programmatic merge failed: empty source branch resolved — \
+                 transitioning to MergeIncomplete"
+            );
+
+            task.metadata = Some(serde_json::json!({
+                "error": "Empty source branch resolved. This typically means plan_branch_repo \
+                          was unavailable when resolving merge branches for a plan_merge task.",
+                "source_branch": source_branch,
+                "target_branch": target_branch,
+                "category": task.category,
+            }).to_string());
+            task.internal_status = InternalStatus::MergeIncomplete;
+            task.touch();
+
+            if let Err(e) = task_repo.update(&task).await {
+                tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
                 return;
             }
+
+            if let Err(e) = task_repo.persist_status_change(
+                &task_id,
+                InternalStatus::PendingMerge,
+                InternalStatus::MergeIncomplete,
+                "merge_incomplete",
+            ).await {
+                tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
+            }
+
+            self.machine
+                .context
+                .services
+                .event_emitter
+                .emit("task:status_changed", task_id_str)
+                .await;
+
+            return;
         }
 
         let repo_path = Path::new(&project.working_directory);
@@ -1003,7 +1058,26 @@ impl<'a> super::TransitionHandler<'a> {
                             task_repo,
                             app_handle,
                         ).await {
-                            tracing::error!(error = %e, task_id = task_id_str, "Failed to complete programmatic merge");
+                            tracing::error!(error = %e, task_id = task_id_str, "Failed to complete programmatic merge, falling back to MergeIncomplete");
+
+                            task.metadata = Some(serde_json::json!({
+                                "error": format!("complete_merge_internal failed: {}", e),
+                                "source_branch": source_branch,
+                                "target_branch": target_branch,
+                            }).to_string());
+                            task.internal_status = InternalStatus::MergeIncomplete;
+                            task.touch();
+
+                            let _ = task_repo.update(&task).await;
+                            let _ = task_repo.persist_status_change(
+                                &task_id,
+                                InternalStatus::PendingMerge,
+                                InternalStatus::MergeIncomplete,
+                                "merge_incomplete",
+                            ).await;
+
+                            self.machine.context.services.event_emitter
+                                .emit("task:status_changed", task_id_str).await;
                         } else {
                             self.post_merge_cleanup(task_id_str, &task_id, repo_path, plan_branch_repo).await;
                         }
@@ -1152,7 +1226,26 @@ impl<'a> super::TransitionHandler<'a> {
                             task_repo,
                             app_handle,
                         ).await {
-                            tracing::error!(error = %e, task_id = task_id_str, "Failed to complete programmatic merge");
+                            tracing::error!(error = %e, task_id = task_id_str, "Failed to complete programmatic merge, falling back to MergeIncomplete");
+
+                            task.metadata = Some(serde_json::json!({
+                                "error": format!("complete_merge_internal failed: {}", e),
+                                "source_branch": source_branch,
+                                "target_branch": target_branch,
+                            }).to_string());
+                            task.internal_status = InternalStatus::MergeIncomplete;
+                            task.touch();
+
+                            let _ = task_repo.update(&task).await;
+                            let _ = task_repo.persist_status_change(
+                                &task_id,
+                                InternalStatus::PendingMerge,
+                                InternalStatus::MergeIncomplete,
+                                "merge_incomplete",
+                            ).await;
+
+                            self.machine.context.services.event_emitter
+                                .emit("task:status_changed", task_id_str).await;
                         } else {
                             self.post_merge_cleanup(task_id_str, &task_id, repo_path, plan_branch_repo).await;
                         }
@@ -1281,7 +1374,26 @@ impl<'a> super::TransitionHandler<'a> {
                         task_repo,
                         app_handle,
                     ).await {
-                        tracing::error!(error = %e, task_id = task_id_str, "Failed to complete programmatic merge");
+                        tracing::error!(error = %e, task_id = task_id_str, "Failed to complete programmatic merge, falling back to MergeIncomplete");
+
+                        task.metadata = Some(serde_json::json!({
+                            "error": format!("complete_merge_internal failed: {}", e),
+                            "source_branch": source_branch,
+                            "target_branch": target_branch,
+                        }).to_string());
+                        task.internal_status = InternalStatus::MergeIncomplete;
+                        task.touch();
+
+                        let _ = task_repo.update(&task).await;
+                        let _ = task_repo.persist_status_change(
+                            &task_id,
+                            InternalStatus::PendingMerge,
+                            InternalStatus::MergeIncomplete,
+                            "merge_incomplete",
+                        ).await;
+
+                        self.machine.context.services.event_emitter
+                            .emit("task:status_changed", task_id_str).await;
                     } else {
                         self.post_merge_cleanup(task_id_str, &task_id, repo_path, plan_branch_repo).await;
                     }
