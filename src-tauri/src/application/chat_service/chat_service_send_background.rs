@@ -735,6 +735,32 @@ async fn attempt_merge_auto_complete<R: Runtime>(
         return;
     }
 
+    if GitService::is_merge_in_progress(worktree) {
+        tracing::info!(
+            task_id = task_id_str,
+            "attempt_merge_auto_complete: merge in progress (MERGE_HEAD exists), transitioning to MergeConflict"
+        );
+        transition_to_merge_conflict(
+            &task_id,
+            "Agent exited with incomplete merge (MERGE_HEAD exists)",
+            task_repo,
+            task_dependency_repo,
+            project_repo,
+            chat_message_repo,
+            conversation_repo,
+            agent_run_repo,
+            ideation_session_repo,
+            activity_event_repo,
+            message_queue,
+            running_agent_registry,
+            execution_state,
+            plan_branch_repo,
+            app_handle,
+        )
+        .await;
+        return;
+    }
+
     match GitService::has_conflict_markers(worktree) {
         Ok(true) => {
             tracing::info!(
