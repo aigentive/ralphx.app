@@ -694,6 +694,33 @@ impl GitService {
         git_dir.join("rebase-merge").exists() || git_dir.join("rebase-apply").exists()
     }
 
+    /// Detects an incomplete `git merge` by checking for the MERGE_HEAD file.
+    ///
+    /// MERGE_HEAD exists when a merge has been started but not yet committed
+    /// (e.g., the agent resolved conflicts but forgot `git merge --continue`).
+    ///
+    /// # Arguments
+    /// * `worktree` - Path to the git worktree or repository
+    pub fn is_merge_in_progress(worktree: &Path) -> bool {
+        let git_path = worktree.join(".git");
+
+        let git_dir = if git_path.is_file() {
+            if let Ok(content) = std::fs::read_to_string(&git_path) {
+                if let Some(path) = content.strip_prefix("gitdir: ") {
+                    PathBuf::from(path.trim())
+                } else {
+                    git_path
+                }
+            } else {
+                git_path
+            }
+        } else {
+            git_path
+        };
+
+        git_dir.join("MERGE_HEAD").exists()
+    }
+
     /// Check for conflict markers in tracked files
     ///
     /// Scans all tracked files for the standard git conflict marker `<<<<<<<`.
