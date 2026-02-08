@@ -12,7 +12,7 @@ export type GitMode = z.infer<typeof GitModeSchema>;
 /**
  * Merge validation mode for post-merge build checks
  */
-export const MergeValidationModeSchema = z.enum(["block", "warn", "off"]);
+export const MergeValidationModeSchema = z.enum(["block", "auto_fix", "warn", "off"]);
 export type MergeValidationMode = z.infer<typeof MergeValidationModeSchema>;
 
 /**
