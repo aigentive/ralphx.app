@@ -763,7 +763,7 @@
       "phase": 107,
       "name": "Fix Plan Merge Task Scheduling + Timeline",
       "prd": "specs/phases/prd_phase_107_fix_plan_merge_scheduling_timeline.md",
-      "status": "active",
+      "status": "complete",
       "description": "Fix plan merge task not auto-scheduled after unblock and empty timeline"
     }
   ]
