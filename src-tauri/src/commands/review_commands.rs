@@ -365,8 +365,9 @@ pub async fn get_fix_task_attempts(
 // ============================================================================
 
 use super::review_commands_types::{ApproveTaskInput, RequestTaskChangesInput};
-use crate::application::TaskTransitionService;
+use crate::application::{TaskSchedulerService, TaskTransitionService};
 use crate::commands::execution_commands::ExecutionState;
+use crate::domain::state_machine::services::TaskScheduler;
 use std::sync::Arc;
 
 /// Approve a task after AI review has passed or escalated
@@ -411,7 +412,26 @@ pub async fn approve_task_for_review(
         .await
         .map_err(|e| e.to_string())?;
 
-    // 3. Transition to Approved using TaskTransitionService
+    // 3. Create scheduler for post-merge scheduling (Approved → PendingMerge path)
+    let scheduler_concrete = Arc::new(TaskSchedulerService::new(
+        Arc::clone(&execution_state),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.task_dependency_repo),
+        Arc::clone(&state.chat_message_repo),
+        Arc::clone(&state.chat_conversation_repo),
+        Arc::clone(&state.agent_run_repo),
+        Arc::clone(&state.ideation_session_repo),
+        Arc::clone(&state.activity_event_repo),
+        Arc::clone(&state.message_queue),
+        Arc::clone(&state.running_agent_registry),
+        Some(app.clone()),
+    )
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo)));
+    scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
+    let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
+
+    // 4. Transition to Approved using TaskTransitionService
     let transition_service = TaskTransitionService::new(
         Arc::clone(&state.task_repo),
         Arc::clone(&state.task_dependency_repo),
@@ -426,6 +446,7 @@ pub async fn approve_task_for_review(
         Arc::clone(&execution_state),
         Some(app.clone()),
     )
+    .with_task_scheduler(task_scheduler)
     .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
 
     let old_status = task.internal_status.as_str().to_string();
@@ -434,7 +455,7 @@ pub async fn approve_task_for_review(
         .await
         .map_err(|e| e.to_string())?;
 
-    // 4. Emit events
+    // 5. Emit events
     let _ = app.emit("review:human_approved", serde_json::json!({
         "task_id": task_id.as_str(),
     }));
