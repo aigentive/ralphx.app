@@ -770,7 +770,7 @@
       "phase": 108,
       "name": "Make MergeIncomplete View Useful",
       "prd": "specs/phases/prd_phase_108_merge_incomplete_view_useful.md",
-      "status": "active",
+      "status": "complete",
       "description": "Persist merge error context to task metadata and display in MergeIncomplete view"
     }
   ]
