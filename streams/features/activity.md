@@ -4,6 +4,29 @@
 
 ---
 
+### 2026-02-08 18:30:00 - Phase 112 Task 1: Emit merge:validation_step events + store full validation log
+**What:**
+- Added `ValidationLogEntry` struct with phase, command, path, label, status, exit_code, stdout, stderr, duration_ms fields
+- Added `log: Vec<ValidationLogEntry>` field to `ValidationResult` struct
+- Added `truncate_output()` helper (2000 char limit)
+- Extended `run_validation_commands` signature with `task_id_str: &str` and `app_handle: Option<&tauri::AppHandle>` params
+- For each setup and validate command: emit `merge:validation_step` event with "running" status before execution, then emit completed event with full output/timing after
+- Updated all 3 production call sites (in-repo, worktree, local modes) to pass `task_id_str` and `app_handle`
+- On validation success: store `validation_log` in task.metadata before `complete_merge_internal`
+- Updated `format_validation_error_metadata` to accept and include `log: &[ValidationLogEntry]` in JSON output
+- Updated `handle_validation_failure` to accept and pass the full log
+- Updated all 8 test call sites to pass `""` and `None`
+- Extended passing/failing test assertions to verify `log` field population
+- Updated `format_validation_error_metadata` test with log param and `validation_log` assertion
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean (no warnings)
+- `cargo test side_effects` — all 25 tests pass
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-09 12:00:00 - Phase 111 Complete
 **What:**
 - All 2 tasks already passed from prior iterations
