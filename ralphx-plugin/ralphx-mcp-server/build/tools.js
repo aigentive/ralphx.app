@@ -622,6 +622,76 @@ export const ALL_TOOLS = [
     // ISSUE TOOLS (worker + reviewer agents)
     // ========================================================================
     ...ISSUE_TOOLS,
+    // ========================================================================
+    // PROJECT ANALYSIS TOOLS (worker/reviewer/merger + project-analyzer agents)
+    // ========================================================================
+    {
+        name: "get_project_analysis",
+        description: "Get project analysis data including build commands, validation commands, and worktree setup instructions. " +
+            "Returns path-scoped entries with resolved template variables ({project_root}, {worktree_path}, {task_branch}). " +
+            "If analysis hasn't been run yet, returns { status: 'analyzing', retry_after_secs: 30 }.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                project_id: {
+                    type: "string",
+                    description: "The project ID (from RALPHX_PROJECT_ID env var)",
+                },
+                task_id: {
+                    type: "string",
+                    description: "Optional task ID for resolving {worktree_path} and {task_branch} template variables",
+                },
+            },
+            required: ["project_id"],
+        },
+    },
+    {
+        name: "save_project_analysis",
+        description: "Save auto-detected project analysis data. Updates detected_analysis and analyzed_at fields. " +
+            "Never touches custom_analysis (user overrides). Only callable by the project-analyzer agent.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                project_id: {
+                    type: "string",
+                    description: "The project ID",
+                },
+                entries: {
+                    type: "array",
+                    items: {
+                        type: "object",
+                        properties: {
+                            path: {
+                                type: "string",
+                                description: "Subpath relative to project root (e.g., '.', 'src-tauri/')",
+                            },
+                            label: {
+                                type: "string",
+                                description: "Human-readable label (e.g., 'Node.js root', 'Rust backend')",
+                            },
+                            install: {
+                                type: "string",
+                                description: "Install command (e.g., 'npm install'). Null if not needed.",
+                            },
+                            validate: {
+                                type: "array",
+                                items: { type: "string" },
+                                description: "Validation commands (e.g., ['npm run typecheck', 'npm run lint'])",
+                            },
+                            worktree_setup: {
+                                type: "array",
+                                items: { type: "string" },
+                                description: "Commands to run in worktree setup (e.g., ['ln -s {project_root}/node_modules {worktree_path}/node_modules'])",
+                            },
+                        },
+                        required: ["path", "label"],
+                    },
+                    description: "Array of path-scoped analysis entries",
+                },
+            },
+            required: ["project_id", "entries"],
+        },
+    },
 ];
 /**
  * Tool scoping per agent type
@@ -652,6 +722,8 @@ export const TOOL_ALLOWLIST = {
         "get_task_issues",
         "get_step_progress",
         "get_issue_progress",
+        // project analysis tools
+        "get_project_analysis",
         // common context tools
         "get_task_context",
         "get_artifact",
@@ -688,6 +760,8 @@ export const TOOL_ALLOWLIST = {
         "get_task_issues",
         "mark_issue_in_progress",
         "mark_issue_addressed",
+        // project analysis tools
+        "get_project_analysis",
         // common context tools
         "get_task_context",
         "get_artifact",
@@ -708,8 +782,15 @@ export const TOOL_ALLOWLIST = {
         "report_conflict",
         "report_incomplete",
         "get_merge_target",
+        // project analysis tools
+        "get_project_analysis",
         // common context tools
         "get_task_context",
+    ],
+    // Project analyzer agent - detects build/validation commands
+    "project-analyzer": [
+        "save_project_analysis",
+        "get_project_analysis",
     ],
     // These agents have NO MCP tools - they use filesystem tools only
     supervisor: [],

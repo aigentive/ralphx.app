@@ -53,6 +53,8 @@ else {
 }
 // Task ID from environment (for task-level scoping enforcement)
 const RALPHX_TASK_ID = process.env.RALPHX_TASK_ID;
+// Project ID from environment (for project-level scoping enforcement)
+const RALPHX_PROJECT_ID = process.env.RALPHX_PROJECT_ID;
 /**
  * Validate that a tool call's task_id parameter matches the assigned task
  * @param toolName - Name of the tool being called
@@ -101,6 +103,29 @@ function validateTaskScope(toolName, args) {
         return `ERROR: Task scope violation.\n\nYou are assigned to task "${RALPHX_TASK_ID}" but attempted to modify task "${providedTaskId}".\n\nYour assigned task details:\n- Task ID: ${RALPHX_TASK_ID}\n- You should only call ${toolName} with this task_id.\n\nPlease correct your tool call and try again.`;
     }
     return null; // Validation passed
+}
+/**
+ * Validate that a tool call's project_id parameter matches the assigned project
+ * @param toolName - Name of the tool being called
+ * @param args - Arguments passed to the tool
+ * @returns Error message if validation fails, null if validation passes or not applicable
+ */
+function validateProjectScope(toolName, args) {
+    const projectScopedTools = [
+        "get_project_analysis",
+        "save_project_analysis",
+    ];
+    if (!projectScopedTools.includes(toolName)) {
+        return null;
+    }
+    if (!RALPHX_PROJECT_ID) {
+        return null; // No project scope set, allow (backward compatibility)
+    }
+    const providedProjectId = args.project_id;
+    if (providedProjectId !== RALPHX_PROJECT_ID) {
+        return `ERROR: Project scope violation.\n\nYou are assigned to project "${RALPHX_PROJECT_ID}" but attempted to access project "${providedProjectId}".\n\nPlease correct your tool call and try again.`;
+    }
+    return null;
 }
 /**
  * Create and configure the MCP server
@@ -168,7 +193,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             isError: true,
         };
     }
-    // Task scope validation (NEW)
+    // Task scope validation
     const scopeError = validateTaskScope(name, args || {});
     if (scopeError) {
         console.error(`[RalphX MCP] Task scope violation: ${name}`);
@@ -177,6 +202,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 {
                     type: "text",
                     text: scopeError,
+                },
+            ],
+            isError: true,
+        };
+    }
+    // Project scope validation
+    const projectScopeError = validateProjectScope(name, args || {});
+    if (projectScopeError) {
+        console.error(`[RalphX MCP] Project scope violation: ${name}`);
+        return {
+            content: [
+                {
+                    type: "text",
+                    text: projectScopeError,
                 },
             ],
             isError: true,
@@ -283,6 +322,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const { issue_id, resolution_notes, attempt_number } = args;
             result = await callTauri("mark_issue_addressed", { issue_id, resolution_notes, attempt_number });
         }
+        else if (name === "get_project_analysis") {
+            // GET /api/projects/:project_id/analysis?task_id=
+            const { project_id, task_id } = args;
+            const query = task_id ? `?task_id=${task_id}` : "";
+            result = await callTauriGet(`projects/${project_id}/analysis${query}`);
+        }
+        else if (name === "save_project_analysis") {
+            // POST /api/projects/:project_id/analysis
+            const { project_id, entries } = args;
+            result = await callTauri(`projects/${project_id}/analysis`, { entries });
+        }
         else {
             // Default: POST request
             result = await callTauri(name, args || {});
@@ -330,6 +380,9 @@ async function main() {
     console.error(`[RalphX MCP] Agent type: ${AGENT_TYPE}`);
     if (RALPHX_TASK_ID) {
         console.error(`[RalphX MCP] Task scope: ${RALPHX_TASK_ID}`);
+    }
+    if (RALPHX_PROJECT_ID) {
+        console.error(`[RalphX MCP] Project scope: ${RALPHX_PROJECT_ID}`);
     }
     console.error(`[RalphX MCP] Tauri API URL: ${process.env.TAURI_API_URL || "http://127.0.0.1:3847"}`);
     // Log all tools if in debug mode or if RALPHX_DEBUG_TOOLS is set
