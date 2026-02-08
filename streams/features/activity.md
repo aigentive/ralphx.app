@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-02-08 14:30:00 - Phase 105 Task 2: Extract RunningAgentRegistry trait, create SQLite impl
+**What:**
+- Extracted `#[async_trait] pub trait RunningAgentRegistry` from concrete struct
+- Renamed concrete struct to `MemoryRunningAgentRegistry` (used in tests)
+- Created `SqliteRunningAgentRegistry` in `infrastructure/sqlite/` backed by `running_agents` table
+- Extracted shared `kill_process()` helper for SIGTERM logic reuse
+- Updated all 11 call sites across 9 files from `Arc<RunningAgentRegistry>` to `Arc<dyn RunningAgentRegistry>`
+- Wired `SqliteRunningAgentRegistry` in `AppState::new_production()` and `with_db_path()`
+- Kept `MemoryRunningAgentRegistry` in `AppState::new_test()` and `with_repos()`
+- Added 6 tests for SqliteRunningAgentRegistry: register_and_get, unregister, is_running, list_all, stop_all_clears_table, register_replaces_existing
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — passes
+- `cargo test` — 3661 tests pass
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-08 12:00:00 - Phase 105 Task 1: Add DB migration for running_agents table
 **What:**
 - Created v17_running_agents.rs migration with CREATE TABLE IF NOT EXISTS running_agents

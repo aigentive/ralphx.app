@@ -39,7 +39,7 @@ pub struct ChatResumptionRunner<R: Runtime = tauri::Wry> {
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     activity_event_repo: Arc<dyn ActivityEventRepository>,
     message_queue: Arc<MessageQueue>,
-    running_agent_registry: Arc<RunningAgentRegistry>,
+    running_agent_registry: Arc<dyn RunningAgentRegistry>,
     execution_state: Arc<ExecutionState>,
     plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
     app_handle: Option<AppHandle<R>>,
@@ -58,7 +58,7 @@ impl<R: Runtime> ChatResumptionRunner<R> {
         ideation_session_repo: Arc<dyn IdeationSessionRepository>,
         activity_event_repo: Arc<dyn ActivityEventRepository>,
         message_queue: Arc<MessageQueue>,
-        running_agent_registry: Arc<RunningAgentRegistry>,
+        running_agent_registry: Arc<dyn RunningAgentRegistry>,
         execution_state: Arc<ExecutionState>,
     ) -> Self {
         Self {

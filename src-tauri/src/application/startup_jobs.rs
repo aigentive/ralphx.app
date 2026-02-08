@@ -71,7 +71,7 @@ impl<R: Runtime> StartupJobRunner<R> {
         ideation_session_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository>,
         activity_event_repo: Arc<dyn crate::domain::repositories::ActivityEventRepository>,
         message_queue: Arc<crate::domain::services::MessageQueue>,
-        running_agent_registry: Arc<crate::domain::services::RunningAgentRegistry>,
+        running_agent_registry: Arc<dyn crate::domain::services::RunningAgentRegistry>,
         agent_run_repo: Arc<dyn AgentRunRepository>,
         transition_service: Arc<TaskTransitionService<R>>,
         execution_state: Arc<ExecutionState>,

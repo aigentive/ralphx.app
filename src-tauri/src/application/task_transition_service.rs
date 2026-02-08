@@ -390,7 +390,7 @@ impl<R: Runtime> TaskTransitionService<R> {
         ideation_session_repo: Arc<dyn IdeationSessionRepository>,
         activity_event_repo: Arc<dyn ActivityEventRepository>,
         message_queue: Arc<MessageQueue>,
-        running_agent_registry: Arc<RunningAgentRegistry>,
+        running_agent_registry: Arc<dyn RunningAgentRegistry>,
         execution_state: Arc<ExecutionState>,
         app_handle: Option<AppHandle<R>>,
     ) -> Self {

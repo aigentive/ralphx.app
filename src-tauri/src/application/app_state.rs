@@ -12,7 +12,7 @@ use crate::application::QuestionState;
 use crate::domain::entities::IdeationSessionId;
 use crate::domain::agents::AgenticClient;
 use crate::domain::qa::QASettings;
-use crate::domain::services::{MessageQueue, RunningAgentRegistry};
+use crate::domain::services::{MemoryRunningAgentRegistry, MessageQueue, RunningAgentRegistry};
 use crate::domain::repositories::{
     ActivityEventRepository, AgentProfileRepository, AgentRunRepository, AppStateRepository,
     ArtifactBucketRepository, ArtifactFlowRepository, ArtifactRepository,
@@ -48,7 +48,7 @@ use crate::infrastructure::sqlite::{
     SqliteProposalDependencyRepository, SqliteReviewIssueRepository, SqliteReviewRepository,
     SqliteReviewSettingsRepository, SqliteTaskDependencyRepository, SqliteTaskProposalRepository,
     SqliteTaskQARepository, SqliteTaskRepository, SqliteTaskStepRepository,
-    SqliteWorkflowRepository,
+    SqliteRunningAgentRegistry, SqliteWorkflowRepository,
 };
 use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
 
@@ -118,7 +118,7 @@ pub struct AppState {
     /// Unified message queue for all chat contexts
     pub message_queue: Arc<MessageQueue>,
     /// Registry for tracking running agent processes
-    pub running_agent_registry: Arc<RunningAgentRegistry>,
+    pub running_agent_registry: Arc<dyn RunningAgentRegistry>,
     /// Sessions currently undergoing dependency analysis (for status reporting in MCP tools)
     pub analyzing_dependencies: Arc<tokio::sync::RwLock<HashSet<IdeationSessionId>>>,
     /// Plan branch repository for feature branch tracking
@@ -226,11 +226,11 @@ impl AppState {
             ))),
             methodology_repo: Arc::new(SqliteMethodologyRepository::from_shared(Arc::clone(&shared_conn))),
             plan_branch_repo: Arc::new(SqlitePlanBranchRepository::from_shared(Arc::clone(&shared_conn))),
-            app_state_repo: Arc::new(SqliteAppStateRepository::from_shared(shared_conn)),
+            app_state_repo: Arc::new(SqliteAppStateRepository::from_shared(Arc::clone(&shared_conn))),
             permission_state: Arc::new(PermissionState::new()),
             question_state: Arc::new(QuestionState::new()),
             message_queue: Arc::new(MessageQueue::new()),
-            running_agent_registry: Arc::new(RunningAgentRegistry::new()),
+            running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(shared_conn)),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
             app_handle: Some(app_handle),
         })
@@ -326,11 +326,11 @@ impl AppState {
             ))),
             methodology_repo: Arc::new(SqliteMethodologyRepository::from_shared(Arc::clone(&shared_conn))),
             plan_branch_repo: Arc::new(SqlitePlanBranchRepository::from_shared(Arc::clone(&shared_conn))),
-            app_state_repo: Arc::new(SqliteAppStateRepository::from_shared(shared_conn)),
+            app_state_repo: Arc::new(SqliteAppStateRepository::from_shared(Arc::clone(&shared_conn))),
             permission_state: Arc::new(PermissionState::new()),
             question_state: Arc::new(QuestionState::new()),
             message_queue: Arc::new(MessageQueue::new()),
-            running_agent_registry: Arc::new(RunningAgentRegistry::new()),
+            running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(shared_conn)),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
             app_handle: Some(app_handle),
         })
@@ -378,7 +378,7 @@ impl AppState {
             permission_state: Arc::new(PermissionState::new()),
             question_state: Arc::new(QuestionState::new()),
             message_queue: Arc::new(MessageQueue::new()),
-            running_agent_registry: Arc::new(RunningAgentRegistry::new()),
+            running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
             app_handle: None,
         }
@@ -428,7 +428,7 @@ impl AppState {
             permission_state: Arc::new(PermissionState::new()),
             question_state: Arc::new(QuestionState::new()),
             message_queue: Arc::new(MessageQueue::new()),
-            running_agent_registry: Arc::new(RunningAgentRegistry::new()),
+            running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
             app_handle: None,
         }

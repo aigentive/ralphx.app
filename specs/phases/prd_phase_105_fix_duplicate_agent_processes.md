@@ -114,7 +114,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: feat(agents): SQLite-backed RunningAgentRegistry with trait extraction"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 3,

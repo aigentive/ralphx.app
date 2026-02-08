@@ -21,7 +21,7 @@ pub struct SessionReopenService {
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     plan_branch_repo: Arc<dyn PlanBranchRepository>,
     project_repo: Arc<dyn ProjectRepository>,
-    running_agent_registry: Arc<RunningAgentRegistry>,
+    running_agent_registry: Arc<dyn RunningAgentRegistry>,
 }
 
 impl SessionReopenService {
@@ -31,7 +31,7 @@ impl SessionReopenService {
         ideation_session_repo: Arc<dyn IdeationSessionRepository>,
         plan_branch_repo: Arc<dyn PlanBranchRepository>,
         project_repo: Arc<dyn ProjectRepository>,
-        running_agent_registry: Arc<RunningAgentRegistry>,
+        running_agent_registry: Arc<dyn RunningAgentRegistry>,
     ) -> Self {
         Self {
             task_repo,

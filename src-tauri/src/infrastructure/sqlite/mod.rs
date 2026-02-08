@@ -31,6 +31,7 @@ pub mod sqlite_task_qa_repo;
 pub mod sqlite_task_repo;
 pub mod sqlite_task_step_repo;
 pub mod sqlite_workflow_repo;
+pub mod sqlite_running_agent_registry;
 pub mod state_machine_repository;
 
 // Re-export commonly used items
@@ -64,4 +65,5 @@ pub use sqlite_task_qa_repo::SqliteTaskQARepository;
 pub use sqlite_task_repo::SqliteTaskRepository;
 pub use sqlite_task_step_repo::SqliteTaskStepRepository;
 pub use sqlite_workflow_repo::SqliteWorkflowRepository;
+pub use sqlite_running_agent_registry::SqliteRunningAgentRegistry;
 pub use state_machine_repository::TaskStateMachineRepository;

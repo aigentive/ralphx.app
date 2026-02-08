@@ -53,7 +53,7 @@ pub struct TaskSchedulerService<R: Runtime = tauri::Wry> {
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     activity_event_repo: Arc<dyn ActivityEventRepository>,
     message_queue: Arc<MessageQueue>,
-    running_agent_registry: Arc<RunningAgentRegistry>,
+    running_agent_registry: Arc<dyn RunningAgentRegistry>,
     app_handle: Option<AppHandle<R>>,
     /// Optional plan branch repository for feature branch resolution.
     plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
@@ -76,7 +76,7 @@ impl<R: Runtime> TaskSchedulerService<R> {
         ideation_session_repo: Arc<dyn IdeationSessionRepository>,
         activity_event_repo: Arc<dyn ActivityEventRepository>,
         message_queue: Arc<MessageQueue>,
-        running_agent_registry: Arc<RunningAgentRegistry>,
+        running_agent_registry: Arc<dyn RunningAgentRegistry>,
         app_handle: Option<AppHandle<R>>,
     ) -> Self {
         Self {
