@@ -175,7 +175,7 @@ export const TaskEventSchema = z.discriminatedUnion("type", [
     taskId: z.string().uuid(),
     from: InternalStatusSchema,
     to: InternalStatusSchema,
-    changedBy: z.enum(["user", "system", "agent"]),
+    changedBy: z.enum(["user", "system", "agent", "auto"]),
   }),
 ]);
 

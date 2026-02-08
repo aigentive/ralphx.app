@@ -129,6 +129,19 @@ describe("TaskEventSchema", () => {
       expect(result.success).toBe(false);
     });
 
+    it("validates status_changed event with auto changedBy", () => {
+      const event = {
+        type: "status_changed",
+        taskId: "550e8400-e29b-41d4-a716-446655440000",
+        from: "pending_review",
+        to: "reviewing",
+        changedBy: "auto",
+      };
+
+      const result = TaskEventSchema.safeParse(event);
+      expect(result.success).toBe(true);
+    });
+
     it("rejects status_changed event with invalid changedBy", () => {
       const event = {
         type: "status_changed",
