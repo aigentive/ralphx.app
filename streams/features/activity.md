@@ -4,6 +4,24 @@
 
 ---
 
+### 2026-02-09 06:45:00 - Phase 113 Task 4: Show validation recovery context in MergingTaskDetail
+**What:**
+- Added `parseValidationRecovery()` helper to detect `validation_recovery` flag and extract `validation_failures` array from task metadata
+- Added `ValidationFailuresList` component: collapsible list of failed validation commands with stderr output, exit codes, and expand/collapse per entry
+- Updated `MergeProgressSteps` with `isValidationRecovery` prop: shows recovery-specific steps (merge completed, validation failed, agent fixing, re-validating) instead of conflict resolution steps
+- Updated `StatusBanner` messaging: "Fixing Validation Errors..." title, "AI agent is fixing post-merge build errors" subtitle, Wrench icon, accent variant
+- Updated `StatusPill` label: "Fixing" instead of "Resolving" when in recovery mode
+- Added `Validation Failures` section between progress and validation log, showing command failures with expandable stderr
+- Conflict files section hidden during validation recovery (no conflicts in this mode)
+
+**Commands:**
+- `npx eslint src/components/tasks/detail-views/MergingTaskDetail.tsx` — clean
+- `npm run typecheck` — clean
+
+**Visual Verification:** N/A - Tauri native app, no web mode test for this state (requires backend metadata)
+
+**Result:** Success
+
 ### 2026-02-09 05:30:00 - Phase 113 Task 3: Update merger agent context for validation recovery
 **What:**
 - Modified `on_enter(Merging)` in `side_effects.rs` to detect `validation_recovery` flag in task metadata
