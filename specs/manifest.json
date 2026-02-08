@@ -777,7 +777,7 @@
       "phase": 109,
       "name": "Fix Worktree-Mode Plan Merge Base Branch",
       "prd": "specs/phases/prd_phase_109_fix_worktree_plan_merge.md",
-      "status": "active",
+      "status": "complete",
       "description": "Fix plan merge failing when target branch (main) is already checked out in worktree mode"
     }
   ]
