@@ -129,6 +129,7 @@ export function PlanningView({
   const lastProposalUpdatedAt = useProposalStore((state) => state.lastProposalUpdatedAt);
   const lastUpdatedProposalId = useProposalStore((state) => state.lastUpdatedProposalId);
   const autoOpenedPlanRef = useRef(false);
+  const userOverrideRef = useRef(false);
 
   // Read-only mode: plans that are not active are read-only
   const isReadOnly = session?.status !== "active";
@@ -379,6 +380,7 @@ export function PlanningView({
 
   // Auto-expand plan when there are no proposals
   useEffect(() => {
+    if (userOverrideRef.current) return;
     if (isSessionLoading) return;
     if (planArtifact && proposals.length === 0 && !isPlanExpanded) {
       autoOpenedPlanRef.current = true;
@@ -389,6 +391,7 @@ export function PlanningView({
   // Auto-collapse plan when new proposal arrives
   const lastProposalAddedAt = useProposalStore((state) => state.lastProposalAddedAt);
   useEffect(() => {
+    if (userOverrideRef.current) return;
     if (lastProposalAddedAt !== null && isPlanExpanded) {
       autoOpenedPlanRef.current = false;
       setIsPlanExpanded(false);
@@ -397,6 +400,7 @@ export function PlanningView({
 
   // If proposals load after an auto-open, collapse the plan
   useEffect(() => {
+    if (userOverrideRef.current) return;
     if (isSessionLoading) return;
     if (proposals.length > 0 && isPlanExpanded && autoOpenedPlanRef.current) {
       autoOpenedPlanRef.current = false;
@@ -411,12 +415,15 @@ export function PlanningView({
     if (lastSessionIdRef.current !== session.id) {
       lastSessionIdRef.current = session.id;
       autoOpenedPlanRef.current = false;
+      userOverrideRef.current = false;
       setIsPlanExpanded(false);
     }
-  }, [session?.id, proposals.length, setIsPlanExpanded, isSessionLoading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.id]);
 
   const handlePlanExpandedChange = useCallback((expanded: boolean) => {
     autoOpenedPlanRef.current = false;
+    userOverrideRef.current = true;
     setIsPlanExpanded(expanded);
   }, [setIsPlanExpanded]);
 
