@@ -4,6 +4,27 @@
 
 ---
 
+### 2026-02-09 08:00:00 - Phase 110 Task 2: Fix build_transition_service() to propagate task_scheduler
+**What:**
+- Added `self_ref: Mutex<Option<Arc<dyn TaskScheduler>>>` field to `TaskSchedulerService` struct
+- Added `set_self_ref(&self, scheduler)` method for setting self-reference after Arc-wrapping
+- Updated `build_transition_service()` to call `.with_task_scheduler()` when self_ref is set
+- Updated 12 construction sites across 6 files to call `set_self_ref()` after `Arc::new()`:
+  - `lib.rs` (1 site): startup scheduler
+  - `task_commands/mutation.rs` (3 sites): move_task, block_task_with_reason, unblock_task
+  - `execution_commands.rs` (4 sites): resume_execution, set_max_concurrent, update_execution_settings, update_global_execution_settings
+  - `http_server/handlers/git.rs` (1 site): complete_merge
+  - `http_server/handlers/reviews.rs` (1 site): complete_review
+  - `chat_service_send_background.rs` (2 sites): execution complete handler, reconcile_merge_auto_complete
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — all 3672 tests pass, 0 failures
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-09 07:00:00 - Phase 110 Task 1: Add plan_branch_repo to scheduler construction sites
 **What:**
 - Added `.with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))` to 4 `TaskSchedulerService::new()` sites in execution_commands.rs

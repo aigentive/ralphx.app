@@ -167,7 +167,7 @@ pub async fn move_task(
     let project_id = old_task.project_id.clone();
 
     // Create the task scheduler for auto-scheduling Ready tasks
-    let task_scheduler: Arc<dyn TaskScheduler> = Arc::new(TaskSchedulerService::new(
+    let scheduler_concrete = Arc::new(TaskSchedulerService::new(
         Arc::clone(&execution_state),
         Arc::clone(&state.project_repo),
         Arc::clone(&state.task_repo),
@@ -181,6 +181,8 @@ pub async fn move_task(
         Arc::clone(&state.running_agent_registry),
         Some(app.clone()),
     ));
+    scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
+    let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
     // Create the transition service with all required dependencies
     let transition_service = TaskTransitionService::new(
@@ -558,7 +560,7 @@ pub async fn block_task(
     let project_id = task.project_id.clone();
 
     // Create the task scheduler for auto-scheduling Ready tasks
-    let task_scheduler: Arc<dyn TaskScheduler> = Arc::new(TaskSchedulerService::new(
+    let scheduler_concrete = Arc::new(TaskSchedulerService::new(
         Arc::clone(&execution_state),
         Arc::clone(&state.project_repo),
         Arc::clone(&state.task_repo),
@@ -572,6 +574,8 @@ pub async fn block_task(
         Arc::clone(&state.running_agent_registry),
         Some(app.clone()),
     ));
+    scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
+    let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
     // Create the transition service
     let transition_service = TaskTransitionService::new(
@@ -660,7 +664,7 @@ pub async fn unblock_task(
     let project_id = task.project_id.clone();
 
     // Create the task scheduler for auto-scheduling Ready tasks
-    let task_scheduler: Arc<dyn TaskScheduler> = Arc::new(TaskSchedulerService::new(
+    let scheduler_concrete = Arc::new(TaskSchedulerService::new(
         Arc::clone(&execution_state),
         Arc::clone(&state.project_repo),
         Arc::clone(&state.task_repo),
@@ -674,6 +678,8 @@ pub async fn unblock_task(
         Arc::clone(&state.running_agent_registry),
         Some(app.clone()),
     ));
+    scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
+    let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
     // Create the transition service
     let transition_service = TaskTransitionService::new(

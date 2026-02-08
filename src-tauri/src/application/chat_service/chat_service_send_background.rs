@@ -192,7 +192,7 @@ pub fn spawn_send_message_background<R: Runtime>(
                                 || task.internal_status == InternalStatus::ReExecuting
                             {
                                 // Create scheduler for auto-scheduling next Ready task
-                                let task_scheduler: Arc<dyn TaskScheduler> = Arc::new(TaskSchedulerService::new(
+                                let scheduler_concrete = Arc::new(TaskSchedulerService::new(
                                     Arc::clone(exec_state),
                                     Arc::clone(&project_repo),
                                     Arc::clone(&task_repo),
@@ -206,6 +206,8 @@ pub fn spawn_send_message_background<R: Runtime>(
                                     Arc::clone(&running_agent_registry),
                                     app_handle.clone(),
                                 ));
+                                scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
+                                let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
                                 let transition_service = TaskTransitionService::new(
                                     Arc::clone(&task_repo),
@@ -1000,6 +1002,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
             scheduler
         };
         let scheduler = Arc::new(scheduler);
+        scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
         tokio::spawn(async move {
             tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
             scheduler.try_schedule_ready_tasks().await;
