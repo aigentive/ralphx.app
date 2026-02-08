@@ -1124,6 +1124,37 @@ impl GitService {
         )))
     }
 
+    /// Reset the current branch to a specific commit (hard reset)
+    ///
+    /// Used to revert a merge commit when post-merge validation fails.
+    /// This discards the merge commit and restores the branch to its pre-merge state.
+    ///
+    /// # Arguments
+    /// * `path` - Path to the git repository or worktree
+    /// * `target` - The commit ref to reset to (e.g., "HEAD~1", a SHA)
+    pub fn reset_hard(path: &Path, target: &str) -> AppResult<()> {
+        debug!("Hard resetting to '{}' in {:?}", target, path);
+
+        let output = Command::new("git")
+            .args(["reset", "--hard", target])
+            .current_dir(path)
+            .output()
+            .map_err(|e| {
+                AppError::GitOperation(format!("Failed to run git reset --hard: {}", e))
+            })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AppError::GitOperation(format!(
+                "git reset --hard '{}' failed: {}",
+                target, stderr
+            )));
+        }
+
+        debug!("Hard reset to '{}' succeeded in {:?}", target, path);
+        Ok(())
+    }
+
     // =========================================================================
     // Query Operations
     // =========================================================================
