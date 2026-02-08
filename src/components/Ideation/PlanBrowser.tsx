@@ -345,6 +345,16 @@ function PlanItem({
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();
+                  onStartRename();
+                }}
+                className="text-[13px] cursor-pointer gap-2.5 py-2"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                Rename
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
                   onReopen?.();
                 }}
                 className="text-[13px] cursor-pointer gap-2.5 py-2"
