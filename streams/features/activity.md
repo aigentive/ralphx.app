@@ -4,6 +4,25 @@
 
 ---
 
+### 2026-02-09 03:00:00 - Phase 113 Task 1: Add AutoFix validation mode and recovery flow
+**What:**
+- Added `AutoFix` variant to `MergeValidationMode` enum in `project.rs` (between Block and Warn)
+- Updated `Display` impl to format `AutoFix` as `"auto_fix"`
+- Updated `FromStr` impl to parse `"auto_fix"` string
+- Updated all 5 existing tests to include AutoFix assertions (serializes, deserializes, from_str, display, default)
+- Added `validation_mode: &MergeValidationMode` parameter to `handle_validation_failure` in `side_effects.rs`
+- Implemented AutoFix branch: DON'T revert merge, set `validation_recovery: true` metadata with failure details, transition to `Merging`, spawn merger agent with "Fix validation failures" prompt
+- Preserved existing Block behavior in `else` branch (revert → MergeIncomplete)
+- Updated all 3 call sites (~lines 1506, 1696, 1884) to pass `validation_mode` to `handle_validation_failure`
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — 3705 tests passed, 0 failed
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-09 01:45:00 - Phase 112 Complete, Activate Phase 113
 **What:**
 - All 4 PRD tasks passed — ran code gap verification (wiring, API, events, types): zero gaps found

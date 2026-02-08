@@ -72,6 +72,8 @@ pub enum MergeValidationMode {
     /// Validation failure → MergeIncomplete (user decides)
     #[default]
     Block,
+    /// Validation failure → spawn merger agent to attempt fix, then fall back to Block
+    AutoFix,
     /// Validation failure → proceed to Merged, store warnings
     Warn,
     /// Skip validation entirely
@@ -82,6 +84,7 @@ impl std::fmt::Display for MergeValidationMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             MergeValidationMode::Block => write!(f, "block"),
+            MergeValidationMode::AutoFix => write!(f, "auto_fix"),
             MergeValidationMode::Warn => write!(f, "warn"),
             MergeValidationMode::Off => write!(f, "off"),
         }
@@ -94,6 +97,7 @@ impl FromStr for MergeValidationMode {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "block" => Ok(MergeValidationMode::Block),
+            "auto_fix" => Ok(MergeValidationMode::AutoFix),
             "warn" => Ok(MergeValidationMode::Warn),
             "off" => Ok(MergeValidationMode::Off),
             _ => Err(format!("unknown merge validation mode: '{}'", s)),
@@ -576,6 +580,7 @@ mod tests {
     #[test]
     fn merge_validation_mode_serializes() {
         assert_eq!(serde_json::to_string(&MergeValidationMode::Block).unwrap(), "\"block\"");
+        assert_eq!(serde_json::to_string(&MergeValidationMode::AutoFix).unwrap(), "\"auto_fix\"");
         assert_eq!(serde_json::to_string(&MergeValidationMode::Warn).unwrap(), "\"warn\"");
         assert_eq!(serde_json::to_string(&MergeValidationMode::Off).unwrap(), "\"off\"");
     }
@@ -583,9 +588,11 @@ mod tests {
     #[test]
     fn merge_validation_mode_deserializes() {
         let block: MergeValidationMode = serde_json::from_str("\"block\"").unwrap();
+        let auto_fix: MergeValidationMode = serde_json::from_str("\"auto_fix\"").unwrap();
         let warn: MergeValidationMode = serde_json::from_str("\"warn\"").unwrap();
         let off: MergeValidationMode = serde_json::from_str("\"off\"").unwrap();
         assert_eq!(block, MergeValidationMode::Block);
+        assert_eq!(auto_fix, MergeValidationMode::AutoFix);
         assert_eq!(warn, MergeValidationMode::Warn);
         assert_eq!(off, MergeValidationMode::Off);
     }
@@ -593,6 +600,7 @@ mod tests {
     #[test]
     fn merge_validation_mode_from_str() {
         assert_eq!("block".parse::<MergeValidationMode>().unwrap(), MergeValidationMode::Block);
+        assert_eq!("auto_fix".parse::<MergeValidationMode>().unwrap(), MergeValidationMode::AutoFix);
         assert_eq!("warn".parse::<MergeValidationMode>().unwrap(), MergeValidationMode::Warn);
         assert_eq!("off".parse::<MergeValidationMode>().unwrap(), MergeValidationMode::Off);
         assert!("invalid".parse::<MergeValidationMode>().is_err());
@@ -601,6 +609,7 @@ mod tests {
     #[test]
     fn merge_validation_mode_display() {
         assert_eq!(format!("{}", MergeValidationMode::Block), "block");
+        assert_eq!(format!("{}", MergeValidationMode::AutoFix), "auto_fix");
         assert_eq!(format!("{}", MergeValidationMode::Warn), "warn");
         assert_eq!(format!("{}", MergeValidationMode::Off), "off");
     }
