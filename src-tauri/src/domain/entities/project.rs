@@ -87,6 +87,12 @@ pub struct Project {
     /// Whether to use feature branches for plan groups (default: true)
     #[serde(default = "default_use_feature_branches")]
     pub use_feature_branches: bool,
+    /// Auto-detected analysis commands (JSON array, written by analyzer agent)
+    pub detected_analysis: Option<String>,
+    /// User-overridden analysis commands (JSON array, written by user via Settings UI)
+    pub custom_analysis: Option<String>,
+    /// Last analysis timestamp (RFC3339)
+    pub analyzed_at: Option<String>,
     /// When the project was created
     pub created_at: DateTime<Utc>,
     /// When the project was last updated
@@ -108,6 +114,9 @@ impl Project {
             base_branch: None,
             worktree_parent_directory: None,
             use_feature_branches: true,
+            detected_analysis: None,
+            custom_analysis: None,
+            analyzed_at: None,
             created_at: now,
             updated_at: now,
         }
@@ -132,6 +141,9 @@ impl Project {
             base_branch,
             worktree_parent_directory: None,
             use_feature_branches: true,
+            detected_analysis: None,
+            custom_analysis: None,
+            analyzed_at: None,
             created_at: now,
             updated_at: now,
         }
@@ -180,6 +192,9 @@ impl Project {
             base_branch: row.get("base_branch")?,
             worktree_parent_directory: row.get("worktree_parent_directory")?,
             use_feature_branches: row.get::<_, i64>("use_feature_branches").unwrap_or(1) != 0,
+            detected_analysis: row.get("detected_analysis").unwrap_or(None),
+            custom_analysis: row.get("custom_analysis").unwrap_or(None),
+            analyzed_at: row.get("analyzed_at").unwrap_or(None),
             created_at: Self::parse_datetime(row.get("created_at")?),
             updated_at: Self::parse_datetime(row.get("updated_at")?),
         })
