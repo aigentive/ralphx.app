@@ -153,176 +153,125 @@ function ValidationFailuresList({ failures }: { failures: ValidationFailureEntry
 }
 
 /**
- * MergeProgressSteps - Shows progress through merge phases
+ * MergeProgressSteps - Compact collapsible progress indicator.
+ * Shows only the active step by default; expand to see all steps.
  */
 function MergeProgressSteps({
   isProgrammaticPhase,
   isHistorical,
   historicalMode,
   isValidationRecovery,
+  isValidating,
 }: {
   isProgrammaticPhase: boolean;
   isHistorical?: boolean | undefined;
   historicalMode?: "attempted" | "resolving" | undefined;
   isValidationRecovery?: boolean;
+  isValidating?: boolean;
 }) {
-  // Validation recovery mode: different steps (no conflict resolution)
-  if (isValidationRecovery && !isProgrammaticPhase) {
-    const agentStepStatus = isHistorical ? ("completed" as const) : ("active" as const);
-    const recoverySteps = [
-      { label: "Merge completed", status: "completed" as const },
-      { label: "Merge validation failed", status: "completed" as const },
-      { label: "AI agent fixing build errors", status: agentStepStatus },
-      { label: "Re-validating fixes", status: "pending" as const },
-    ];
+  const [expanded, setExpanded] = useState(false);
 
-    return (
-      <div className="divide-y divide-white/5">
-        {recoverySteps.map((step, index) => (
-          <div key={index} className="flex items-center gap-3 py-2.5">
-            <div className="relative">
-              {step.status === "completed" && (
-                <CheckCircle2 className="w-5 h-5" style={{ color: "#34c759" }} />
-              )}
-              {step.status === "active" && !isHistorical && (
-                <div className="relative">
-                  <Loader2
-                    className="w-5 h-5 animate-spin"
-                    style={{ color: "#ff6b35" }}
-                  />
-                  <div
-                    className="absolute inset-0 rounded-full animate-pulse"
-                    style={{
-                      background: "radial-gradient(circle, rgba(255,107,53,0.3) 0%, transparent 70%)",
-                    }}
-                  />
-                </div>
-              )}
-              {step.status === "active" && isHistorical && (
-                <div
-                  className="w-5 h-5 rounded-full border-2"
-                  style={{
-                    borderColor: "rgba(255,255,255,0.2)",
-                    backgroundColor: "rgba(255, 107, 53, 0.35)",
-                  }}
-                />
-              )}
-              {step.status === "pending" && (
-                <div
-                  className="w-5 h-5 rounded-full border-2"
-                  style={{ borderColor: "rgba(255,255,255,0.2)" }}
-                />
-              )}
-            </div>
-            <span
-              className="text-[13px] font-medium"
-              style={{
-                color:
-                  step.status === "completed"
-                    ? "rgba(255,255,255,0.6)"
-                    : step.status === "active"
-                    ? isHistorical
-                      ? "rgba(255,255,255,0.35)"
-                      : "#ff6b35"
-                    : "rgba(255,255,255,0.35)",
-              }}
-            >
-              {step.label}
-            </span>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  const steps = isHistorical
+  type StepStatus = "completed" | "active" | "pending";
+  const steps: { label: string; status: StepStatus }[] = isValidationRecovery && !isProgrammaticPhase
+    ? [
+        { label: "Merge completed", status: "completed" },
+        { label: "Validation failed", status: "completed" },
+        { label: "AI agent fixing build errors", status: isHistorical ? "completed" : "active" },
+        { label: "Re-validating fixes", status: "pending" },
+      ]
+    : isHistorical
     ? historicalMode === "attempted"
-      ? ([
-          { label: "Fetching latest changes", status: "completed" },
-          { label: "Rebasing onto base branch", status: "completed" },
-          { label: "Resolving conflicts", status: "pending" },
+      ? [
+          { label: "Merging branches", status: "completed" },
+          { label: "Running validation", status: "pending" },
+        ]
+      : [
+          { label: "Merging branches", status: "completed" },
+          { label: "Agent resolving conflicts", status: "active" },
+        ]
+    : isProgrammaticPhase
+    ? isValidating
+      ? [
+          { label: "Merging branches", status: "completed" },
+          { label: "Running validation", status: "active" },
           { label: "Completing merge", status: "pending" },
-        ] as const)
-      : ([
-          { label: "Fetching latest changes", status: "completed" },
-          { label: "Rebasing onto base branch", status: "completed" },
-          { label: "Resolving conflicts", status: "active" },
+        ]
+      : [
+          { label: "Merging branches", status: "active" },
+          { label: "Running validation", status: "pending" },
           { label: "Completing merge", status: "pending" },
-        ] as const)
-    : ([
-        {
-          label: "Fetching latest changes",
-          status: isProgrammaticPhase ? "active" : "completed",
-        },
-        {
-          label: "Rebasing onto base branch",
-          status: isProgrammaticPhase ? "pending" : "completed",
-        },
-        {
-          label: "Resolving conflicts",
-          status: isProgrammaticPhase ? "pending" : "active",
-        },
-        {
-          label: "Completing merge",
-          status: "pending",
-        },
-      ] as const);
+        ]
+    : [
+        { label: "Merging branches", status: "completed" },
+        { label: "Agent resolving conflicts", status: "active" },
+        { label: "Completing merge", status: "pending" },
+      ];
+
+  const activeStep = steps.find((s) => s.status === "active");
+  const completedCount = steps.filter((s) => s.status === "completed").length;
 
   return (
-    <div className="divide-y divide-white/5">
-      {steps.map((step, index) => (
-        <div key={index} className="flex items-center gap-3 py-2.5">
-          <div className="relative">
-            {step.status === "completed" && (
-              <CheckCircle2 className="w-5 h-5" style={{ color: "#34c759" }} />
-            )}
-            {step.status === "active" && !isHistorical && (
-              <div className="relative">
-                <Loader2
-                  className="w-5 h-5 animate-spin"
-                  style={{ color: "#0a84ff" }}
-                />
-                <div
-                  className="absolute inset-0 rounded-full animate-pulse"
-                  style={{
-                    background: "radial-gradient(circle, rgba(10,132,255,0.3) 0%, transparent 70%)",
-                  }}
-                />
-              </div>
-            )}
-            {step.status === "active" && isHistorical && (
-              <div
-                className="w-5 h-5 rounded-full border-2"
-                style={{
-                  borderColor: "rgba(255,255,255,0.2)",
-                  backgroundColor: "rgba(255, 159, 10, 0.35)",
-                }}
-              />
-            )}
-            {step.status === "pending" && (
-              <div
-                className="w-5 h-5 rounded-full border-2"
-                style={{ borderColor: "rgba(255,255,255,0.2)" }}
-              />
-            )}
-          </div>
-          <span
-            className="text-[13px] font-medium"
-            style={{
-              color:
-                step.status === "completed"
-                  ? "rgba(255,255,255,0.6)"
-                  : step.status === "active"
-                  ? isHistorical
-                    ? "rgba(255,255,255,0.35)"
-                    : "#64d2ff"
-                  : "rgba(255,255,255,0.35)",
-            }}
-          >
-            {step.label}
+    <div
+      className="rounded-lg overflow-hidden"
+      style={{ backgroundColor: "rgba(0, 0, 0, 0.2)" }}
+    >
+      <button
+        type="button"
+        className="w-full flex items-center gap-2.5 px-3 py-2 text-left cursor-pointer"
+        onClick={() => setExpanded(!expanded)}
+      >
+        {activeStep && !isHistorical ? (
+          <Loader2 className="w-4 h-4 animate-spin shrink-0" style={{ color: "#0a84ff" }} />
+        ) : (
+          <CheckCircle2 className="w-4 h-4 shrink-0" style={{ color: "#34c759" }} />
+        )}
+        <span className="text-[12px] text-white/70 flex-1">
+          {activeStep ? activeStep.label : steps[steps.length - 1]?.label ?? "Merge"}
+        </span>
+        {completedCount > 0 && !expanded && (
+          <span className="text-[10px] text-white/30 shrink-0">
+            {completedCount}/{steps.length}
           </span>
+        )}
+        {expanded
+          ? <ChevronDown className="w-3.5 h-3.5 text-white/30 shrink-0" />
+          : <ChevronRight className="w-3.5 h-3.5 text-white/30 shrink-0" />}
+      </button>
+      {expanded && (
+        <div className="px-3 pb-2.5 space-y-1">
+          {steps.map((step, index) => (
+            <div key={index} className="flex items-center gap-2 py-0.5">
+              {step.status === "completed" ? (
+                <CheckCircle2 className="w-3 h-3 shrink-0" style={{ color: "#34c759" }} />
+              ) : step.status === "active" && !isHistorical ? (
+                <Loader2 className="w-3 h-3 animate-spin shrink-0" style={{ color: "#0a84ff" }} />
+              ) : step.status === "active" && isHistorical ? (
+                <div
+                  className="w-3 h-3 rounded-full border"
+                  style={{ borderColor: "rgba(255,255,255,0.3)", backgroundColor: "rgba(255, 159, 10, 0.35)" }}
+                />
+              ) : (
+                <div
+                  className="w-3 h-3 rounded-full border"
+                  style={{ borderColor: "rgba(255,255,255,0.15)" }}
+                />
+              )}
+              <span
+                className="text-[11px]"
+                style={{
+                  color: step.status === "completed"
+                    ? "rgba(255,255,255,0.5)"
+                    : step.status === "active"
+                    ? "rgba(255,255,255,0.7)"
+                    : "rgba(255,255,255,0.25)",
+                }}
+              >
+                {step.label}
+              </span>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
 }
@@ -749,29 +698,13 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
       {/* Merge Progress */}
       <section data-testid="merge-progress-section">
         <SectionTitle>{isHistorical ? "Process Details" : "Merge Progress"}</SectionTitle>
-        <DetailCard variant="default">
-          <p className="text-[12px] text-white/50 mb-3">
-            {historicalOutcome
-              ? "Process context captured during the merge lifecycle."
-              : isHistorical
-              ? historicalMode === "attempted"
-                ? "Programmatic merge attempt captured in history."
-                : isValidationRecovery
-                ? "Agent was fixing validation errors at this point."
-                : "Agent was resolving conflicts at this point."
-              : isProgrammaticPhase
-              ? "Programmatic merge attempt in progress."
-              : isValidationRecovery
-              ? "Agent is fixing validation errors; falls back to manual if unsuccessful."
-              : "Agent is resolving conflicts; manual resolution may be required."}
-          </p>
-          <MergeProgressSteps
-            isProgrammaticPhase={isProgrammaticPhase}
-            isHistorical={isHistorical}
-            historicalMode={historicalMode}
-            isValidationRecovery={isValidationRecovery}
-          />
-        </DetailCard>
+        <MergeProgressSteps
+          isProgrammaticPhase={isProgrammaticPhase}
+          isHistorical={isHistorical}
+          historicalMode={historicalMode}
+          isValidationRecovery={isValidationRecovery}
+          isValidating={liveSteps.length > 0}
+        />
       </section>
 
       {/* Validation Failures (only in recovery mode during agent phase) */}
