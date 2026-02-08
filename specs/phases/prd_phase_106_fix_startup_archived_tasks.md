@@ -111,7 +111,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings",
       "Commit: fix(startup): skip archived tasks in startup recovery loops"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
