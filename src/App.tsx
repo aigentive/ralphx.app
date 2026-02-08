@@ -618,6 +618,8 @@ function AppContent() {
     return testPage;
   }
 
+  const toastBottomOffset = (currentView === "kanban" || currentView === "graph") ? "92px" : "16px";
+
   return (
     <main
       className="h-screen flex flex-col overflow-hidden"
@@ -963,7 +965,7 @@ function AppContent() {
       <ConfirmationDialog {...confirmationDialogProps} />
 
       {/* Toast notifications */}
-      <Toaster />
+      <Toaster position="bottom-left" offset={toastBottomOffset} />
     </main>
   );
 }
