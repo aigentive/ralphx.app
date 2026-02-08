@@ -213,6 +213,16 @@ impl<R: Runtime> DependencyManager for RepoBackedDependencyManager<R> {
                         continue;
                     }
 
+                    // Record state transition history for timeline visibility
+                    if let Err(e) = self.task_repo.persist_status_change(
+                        &dependent_id,
+                        InternalStatus::Blocked,
+                        InternalStatus::Ready,
+                        "blockers_resolved",
+                    ).await {
+                        tracing::warn!(error = %e, task_id = %dependent_id, "Failed to record unblock transition (non-fatal)");
+                    }
+
                     tracing::info!(
                         task_id = %dependent_id,
                         task_title = %dependent_task.title,
