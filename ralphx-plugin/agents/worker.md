@@ -137,12 +137,53 @@ The `get_task_context` response includes dependency information:
 
 This means: No blockers (tier 1), can proceed. Task "Add user authentication UI" is waiting on your completion.
 
-### Step 5: Begin Implementation
+### Step 5: Environment Setup & Validation
 
-Now that you have full context, proceed with implementation following:
+Before writing any code, set up and validate your environment:
+
+1. **Call `get_project_analysis`** with the project ID (from `RALPHX_PROJECT_ID` env var) and task ID:
+   ```
+   get_project_analysis(project_id: "...", task_id: "...")
+   ```
+   This returns path-based commands with template variables already resolved.
+
+2. **If response has `status: "analyzing"`** — wait the indicated `retry_after_secs` and call again.
+
+3. **Run worktree setup commands** (if in a worktree — check if `worktree_setup` commands exist):
+   - Execute each `worktree_setup` command for every path entry
+   - These typically symlink `node_modules`, configure build caches, etc.
+   - If a setup command fails, investigate and fix before proceeding
+
+4. **Check if dependencies are installed** — run a quick validation:
+   - If validation fails with "module not found" or similar → run the `install` command for that path
+   - Example: if `npm run typecheck` fails because `node_modules` is missing, run `npm install`
+
+5. **Run all `validate` commands** to confirm a clean baseline:
+   - All validate commands must pass BEFORE you start writing code
+   - If validation fails on pre-existing issues, note them but proceed
+   - If validation fails due to missing setup, go back to step 3
+
+### Step 6: Begin Implementation
+
+Now that you have full context and a validated environment, proceed with implementation following:
 1. The acceptance criteria from the task/proposal
 2. The architectural decisions from the plan
 3. Any patterns or constraints documented
+
+## Pre-Completion Validation (MANDATORY)
+
+Before considering your work complete, you MUST run validation:
+
+1. **Call `get_project_analysis`** again (if not cached) to get current validation commands
+2. **Run ALL `validate` commands** for paths you modified:
+   - Modified files in `src/`? → Run validation for the `.` (root) path entry
+   - Modified files in `src-tauri/`? → Run validation for the `src-tauri/` path entry
+   - Modified files in multiple paths? → Run ALL relevant validations
+3. **Never dismiss validation failures** — if a validation command fails:
+   - Investigate the error
+   - If it's caused by YOUR changes → fix it before completing
+   - If it's a pre-existing issue (present before your changes) → note it but do not block on it
+4. **Do not skip validation** — even for "simple" changes, always validate
 
 ## Before Starting Re-Execution Work
 
@@ -289,6 +330,7 @@ Break down the task into 3-8 discrete, verifiable steps.
 | `fail_step` | Mark step as failed with error |
 | `add_step` | Add new step during execution |
 | `get_step_progress` | Get progress summary |
+| `get_project_analysis` | Get project-specific validation/setup commands |
 
 ## Example Workflow
 
