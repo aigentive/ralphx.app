@@ -4,6 +4,23 @@
 
 ---
 
+### 2026-02-09 05:00:00 - Phase 109 Task 2: Detect base-branch case in attempt_programmatic_merge()
+**What:**
+- Added base-branch detection in `attempt_programmatic_merge()` worktree-mode path
+- When target branch is already checked out (e.g., plan merge → main): uses `try_merge_in_repo()` directly in primary repo
+- Success path: calls `complete_merge_internal()` + `post_merge_cleanup()` (no merge worktree to manage)
+- Conflict path: sets `task.worktree_path = project.working_directory` so merger agent CWD resolves to primary repo
+- Error path: transitions to MergeIncomplete with error metadata (identical pattern to existing error handling)
+- When target is NOT checked out: existing `try_merge_in_worktree()` path preserved unchanged
+
+**Commands:**
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test` — all 3672 tests pass, 0 failures
+
+**Visual Verification:** N/A - backend only
+
+**Result:** Success
+
 ### 2026-02-09 04:00:00 - Phase 109 Task 1: Add try_merge_in_repo() method to GitService
 **What:**
 - Added `try_merge_in_repo()` method to GitService that merges directly in the primary repo without aborting on conflict
