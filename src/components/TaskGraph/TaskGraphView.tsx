@@ -962,10 +962,17 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   // content is unchanged (web mode mock layer triggers this). We stabilize
   // by comparing node IDs and visual state, returning the previous array ref
   // when structurally unchanged to prevent infinite re-render loops.
-  // Uses synchronous state derivation (setState-during-render) to avoid ref
-  // access during render which violates react-hooks/refs.
+  //
+  // IMPORTANT: useRef + useMemo is intentional here. DO NOT convert to
+  // useState-during-render — it causes infinite re-render cascades when
+  // combined with the plan/tier collapse setState-during-render blocks above.
+  // The ref reads inside useMemo are a well-known React stabilization pattern.
 
-  const nextNodesCandidate = useMemo<Node[]>(() => {
+  const prevNodesRef = useRef<Node[]>([]);
+  const prevEdgesRef = useRef<Edge[]>([]);
+
+  /* eslint-disable react-hooks/refs -- ref read/write in useMemo is intentional (stabilization pattern to prevent infinite re-renders) */
+  const nodes = useMemo<Node[]>(() => {
     const groupNodesWithSelection = groupNodes.map((node) => {
       if (node.type === PLAN_GROUP_NODE_TYPE) {
         const planArtifactId = (node.data as PlanGroupData | undefined)?.planArtifactId;
@@ -1001,21 +1008,13 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
       },
       selected: graphSelection?.kind === "task" && graphSelection.id === node.id,
     }));
-    return [...groupNodesWithSelection, ...taskNodesWithData];
-  }, [layoutNodes, groupNodes, graphSelection, highlightedTaskId, focusedNodeId, nodeHandlers]);
-
-  // Stabilize nodes: only update state when structurally changed
-  const [nodes, setNodes] = useState<Node[]>([]);
-  const [prevNodesCandidate, setPrevNodesCandidate] = useState(nextNodesCandidate);
-  if (nextNodesCandidate !== prevNodesCandidate) {
-    setPrevNodesCandidate(nextNodesCandidate);
+    const next = [...groupNodesWithSelection, ...taskNodesWithData];
     // Lightweight identity check — IDs, positions, visual state, task data.
     // Must include positions so dagre re-layout after expand/collapse propagates.
     // Must include internalStatus so real-time status changes propagate to nodes.
-    const prev = nodes;
-    const next = nextNodesCandidate;
-    let changed = next.length !== prev.length;
-    if (!changed) {
+    const prev = prevNodesRef.current;
+    if (next.length === prev.length) {
+      let unchanged = true;
       for (let i = 0; i < next.length; i++) {
         const n = next[i]!;
         const p = prev[i]!;
@@ -1033,29 +1032,25 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
           || nd?.internalStatus !== pd?.internalStatus
           || nd?.label !== pd?.label
         ) {
-          changed = true;
+          unchanged = false;
           break;
         }
       }
+      if (unchanged) return prev;
     }
-    if (changed) {
-      setNodes(next);
-    }
-  }
+    prevNodesRef.current = next;
+    return next;
+  }, [layoutNodes, groupNodes, graphSelection, highlightedTaskId, focusedNodeId, nodeHandlers]);
 
-  // Edges: stabilize reference with lightweight identity check
-  const nextEdgesCandidate = useMemo<Edge[]>(() => layoutEdges, [layoutEdges]);
-  const [edges, setEdges] = useState<Edge[]>([]);
-  const [prevEdgesCandidate, setPrevEdgesCandidate] = useState(nextEdgesCandidate);
-  if (nextEdgesCandidate !== prevEdgesCandidate) {
-    setPrevEdgesCandidate(nextEdgesCandidate);
-    const prev = edges;
-    if (nextEdgesCandidate.length === prev.length && nextEdgesCandidate.every((e, i) => e.id === prev[i]!.id)) {
-      // unchanged
-    } else {
-      setEdges(nextEdgesCandidate);
+  const edges = useMemo<Edge[]>(() => {
+    const prev = prevEdgesRef.current;
+    if (layoutEdges.length === prev.length && layoutEdges.every((e, i) => e.id === prev[i]!.id)) {
+      return prev;
     }
-  }
+    prevEdgesRef.current = layoutEdges;
+    return layoutEdges;
+  }, [layoutEdges]);
+  /* eslint-enable react-hooks/refs */
 
   // Handle node changes (for selection, dragging etc.) in controlled mode
   const onNodesChange: OnNodesChange = useCallback(() => {
@@ -1243,8 +1238,9 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
           </div>
         ) : (
           <ReactFlow
+            // eslint-disable-next-line react-hooks/refs -- nodes/edges are ref-stabilized (see useMemo blocks above)
             nodes={nodes}
-            edges={edges}
+            edges={edges} // eslint-disable-line react-hooks/refs
             nodeTypes={activeNodeTypes}
             edgeTypes={edgeTypes}
             onNodesChange={onNodesChange}
