@@ -151,6 +151,11 @@ impl InternalStatus {
         ]
     }
 
+    /// Returns true if this status is terminal (task is done, no agent needed).
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, Self::Merged | Self::Failed | Self::Cancelled | Self::Stopped)
+    }
+
     /// Returns the snake_case string representation (matches serde serialization)
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -984,5 +989,25 @@ mod tests {
         use InternalStatus::*;
         let parsed = InternalStatus::from_str("stopped").unwrap();
         assert_eq!(parsed, Stopped);
+    }
+
+    // ===== is_terminal Tests =====
+
+    #[test]
+    fn test_is_terminal() {
+        use InternalStatus::*;
+
+        let terminal = [Merged, Failed, Cancelled, Stopped];
+        for status in &terminal {
+            assert!(status.is_terminal(), "{:?} should be terminal", status);
+        }
+
+        let non_terminal: Vec<&InternalStatus> = InternalStatus::all_variants()
+            .iter()
+            .filter(|s| !terminal.contains(s))
+            .collect();
+        for status in non_terminal {
+            assert!(!status.is_terminal(), "{:?} should NOT be terminal", status);
+        }
     }
 }

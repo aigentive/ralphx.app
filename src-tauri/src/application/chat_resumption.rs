@@ -202,8 +202,17 @@ impl<R: Runtime> ChatResumptionRunner<R> {
                                 status = ?task.internal_status,
                                 "[CHAT_RESUMPTION] Task in agent-active status, handled by StartupJobRunner"
                             );
+                            return true;
                         }
-                        is_agent_active
+                        if task.internal_status.is_terminal() {
+                            info!(
+                                task_id = task.id.as_str(),
+                                status = ?task.internal_status,
+                                "[CHAT_RESUMPTION] Task in terminal state, skipping"
+                            );
+                            return true;
+                        }
+                        false
                     }
                     Ok(None) => {
                         // Task doesn't exist, skip this conversation
@@ -471,5 +480,54 @@ mod tests {
         // Project should NOT be handled by task resumption
         let is_handled = runner.is_handled_by_task_resumption(&interrupted).await;
         assert!(!is_handled, "Project should NOT be handled by StartupJobRunner");
+    }
+
+    async fn create_terminal_state_test(status: InternalStatus) -> bool {
+        let (execution_state, app_state) = setup_test_state().await;
+
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        let mut task = Task::new(project.id.clone(), format!("{:?} Task", status));
+        task.internal_status = status;
+        let task_id = task.id.clone();
+        app_state.task_repo.create(task).await.unwrap();
+
+        let mut conv = ChatConversation::new_task_execution(task_id);
+        conv.claude_session_id = Some("test-session".to_string());
+
+        let run = AgentRun::new(conv.id);
+
+        let interrupted = InterruptedConversation {
+            conversation: conv,
+            last_run: run,
+        };
+
+        let runner = build_runner(&app_state, &execution_state);
+        runner.is_handled_by_task_resumption(&interrupted).await
+    }
+
+    #[tokio::test]
+    async fn test_is_handled_for_merged_task() {
+        let is_handled = create_terminal_state_test(InternalStatus::Merged).await;
+        assert!(is_handled, "Merged task should be skipped (terminal state)");
+    }
+
+    #[tokio::test]
+    async fn test_is_handled_for_failed_task() {
+        let is_handled = create_terminal_state_test(InternalStatus::Failed).await;
+        assert!(is_handled, "Failed task should be skipped (terminal state)");
+    }
+
+    #[tokio::test]
+    async fn test_is_handled_for_cancelled_task() {
+        let is_handled = create_terminal_state_test(InternalStatus::Cancelled).await;
+        assert!(is_handled, "Cancelled task should be skipped (terminal state)");
+    }
+
+    #[tokio::test]
+    async fn test_is_handled_for_stopped_task() {
+        let is_handled = create_terminal_state_test(InternalStatus::Stopped).await;
+        assert!(is_handled, "Stopped task should be skipped (terminal state)");
     }
 }

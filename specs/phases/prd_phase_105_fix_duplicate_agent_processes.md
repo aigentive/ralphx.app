@@ -151,7 +151,7 @@ After completing the task: update `"passes": true`, commit, and stop.
       "Run cargo clippy --all-targets --all-features -- -D warnings && cargo test",
       "Commit: fix(chat-resumption): skip terminal-state tasks on startup"
     ],
-    "passes": false
+    "passes": true
   }
 ]
 ```
