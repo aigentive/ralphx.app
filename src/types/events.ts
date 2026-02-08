@@ -310,3 +310,26 @@ export const PlanArtifactEventSchema = z.discriminatedUnion("type", [
 ]);
 
 export type PlanArtifactEvent = z.infer<typeof PlanArtifactEventSchema>;
+
+// ============================================================================
+// Merge Validation Events
+// ============================================================================
+
+/**
+ * Schema for merge validation step events
+ * Emitted during post-merge validation for real-time progress streaming
+ */
+export const MergeValidationStepEventSchema = z.object({
+  task_id: z.string(),
+  phase: z.enum(["setup", "validate"]),
+  command: z.string(),
+  path: z.string(),
+  label: z.string(),
+  status: z.enum(["running", "success", "failed"]),
+  exit_code: z.number().nullable().optional(),
+  stdout: z.string().optional(),
+  stderr: z.string().optional(),
+  duration_ms: z.number().optional(),
+});
+
+export type MergeValidationStepEvent = z.infer<typeof MergeValidationStepEventSchema>;

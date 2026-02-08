@@ -8,7 +8,19 @@
  * PendingMerge is typically very brief (1-3 seconds).
  */
 
-import { Loader2, GitMerge, AlertTriangle, Bot, FileWarning, CheckCircle2 } from "lucide-react";
+import { useState, useMemo } from "react";
+import {
+  Loader2,
+  GitMerge,
+  AlertTriangle,
+  Bot,
+  FileWarning,
+  CheckCircle2,
+  XCircle,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+} from "lucide-react";
 import {
   SectionTitle,
   DetailCard,
@@ -16,7 +28,9 @@ import {
   StatusPill,
   TwoColumnLayout,
 } from "./shared";
+import { useMergeValidationEvents } from "@/hooks/useMergeValidationEvents";
 import type { Task } from "@/types/task";
+import type { MergeValidationStepEvent } from "@/types/events";
 
 interface MergingTaskDetailProps {
   task: Task;
@@ -155,6 +169,155 @@ function MergeProgressSteps({
   );
 }
 
+/**
+ * ValidationStepRow - Single validation command row with collapsible output
+ */
+function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) {
+  const isRunning = step.status === "running";
+  const isFailed = step.status === "failed";
+  const hasOutput = (step.stdout && step.stdout.trim().length > 0) ||
+    (step.stderr && step.stderr.trim().length > 0);
+  const [expanded, setExpanded] = useState(isRunning || isFailed);
+
+  const statusIcon = isRunning ? (
+    <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#0a84ff" }} />
+  ) : isFailed ? (
+    <XCircle className="w-4 h-4" style={{ color: "#ff453a" }} />
+  ) : (
+    <CheckCircle2 className="w-4 h-4" style={{ color: "#34c759" }} />
+  );
+
+  const phaseBg = step.phase === "setup"
+    ? "rgba(10, 132, 255, 0.15)"
+    : "rgba(255, 107, 53, 0.15)";
+  const phaseColor = step.phase === "setup" ? "#64d2ff" : "#ff6b35";
+
+  return (
+    <div
+      className="rounded-lg overflow-hidden"
+      style={{ backgroundColor: "rgba(0, 0, 0, 0.3)" }}
+    >
+      <button
+        type="button"
+        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left"
+        onClick={() => hasOutput && setExpanded(!expanded)}
+        style={{ cursor: hasOutput ? "pointer" : "default" }}
+      >
+        {statusIcon}
+        <span
+          className="text-[10px] uppercase font-semibold tracking-wider px-1.5 py-0.5 rounded"
+          style={{ backgroundColor: phaseBg, color: phaseColor }}
+        >
+          {step.phase}
+        </span>
+        <span className="text-[12px] text-white/80 font-mono truncate flex-1" title={step.label}>
+          {step.label}
+        </span>
+        {step.duration_ms != null && (
+          <span className="flex items-center gap-1 text-[11px] text-white/40 shrink-0">
+            <Clock className="w-3 h-3" />
+            {step.duration_ms < 1000
+              ? `${step.duration_ms}ms`
+              : `${(step.duration_ms / 1000).toFixed(1)}s`}
+          </span>
+        )}
+        {hasOutput && (
+          expanded
+            ? <ChevronDown className="w-3.5 h-3.5 text-white/30 shrink-0" />
+            : <ChevronRight className="w-3.5 h-3.5 text-white/30 shrink-0" />
+        )}
+      </button>
+      {expanded && hasOutput && (
+        <div
+          className="px-3 pb-3 max-h-[200px] overflow-y-auto"
+          style={{ scrollbarWidth: "thin" }}
+        >
+          {step.stdout && step.stdout.trim() && (
+            <pre className="text-[11px] font-mono text-white/50 whitespace-pre-wrap break-all leading-relaxed">
+              {step.stdout}
+            </pre>
+          )}
+          {step.stderr && step.stderr.trim() && (
+            <pre className="text-[11px] font-mono whitespace-pre-wrap break-all leading-relaxed" style={{ color: "#ff6961" }}>
+              {step.stderr}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Parse validation log entries from task metadata (historical data).
+ * Returns entries matching MergeValidationStepEvent shape.
+ */
+function parseMetadataValidationLog(metadata: string | Record<string, unknown> | null | undefined): MergeValidationStepEvent[] {
+  if (!metadata) return [];
+  try {
+    const parsed = typeof metadata === "string" ? JSON.parse(metadata) : metadata;
+    const log = parsed?.validation_log;
+    if (!Array.isArray(log)) return [];
+    return log.map((entry: Record<string, unknown>) => ({
+      task_id: String(entry.task_id ?? ""),
+      phase: (entry.phase === "setup" || entry.phase === "validate") ? entry.phase : "validate",
+      command: String(entry.command ?? ""),
+      path: String(entry.path ?? ""),
+      label: String(entry.label ?? entry.command ?? ""),
+      status: (entry.status === "running" || entry.status === "success" || entry.status === "failed")
+        ? entry.status
+        : "success",
+      exit_code: typeof entry.exit_code === "number" ? entry.exit_code : null,
+      stdout: typeof entry.stdout === "string" ? entry.stdout : undefined,
+      stderr: typeof entry.stderr === "string" ? entry.stderr : undefined,
+      duration_ms: typeof entry.duration_ms === "number" ? entry.duration_ms : undefined,
+    })) as MergeValidationStepEvent[];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * ValidationProgress - Shows real-time or historical validation command progress
+ *
+ * Data sources:
+ * - Live: useMergeValidationEvents(task.id) — real-time events during pending_merge
+ * - Historical: task.metadata.validation_log — stored after merge attempt
+ * - Merge: prefer live events; fall back to metadata if live is empty
+ */
+export function ValidationProgress({
+  taskId,
+  metadata,
+  liveSteps,
+}: {
+  taskId: string;
+  metadata?: string | Record<string, unknown> | null | undefined;
+  liveSteps?: MergeValidationStepEvent[] | undefined;
+}) {
+  const metadataSteps = useMemo(() => parseMetadataValidationLog(metadata), [metadata]);
+  const steps = liveSteps && liveSteps.length > 0 ? liveSteps : metadataSteps;
+
+  if (steps.length === 0) return null;
+
+  const source = liveSteps && liveSteps.length > 0 ? "live" : "historical";
+
+  return (
+    <section data-testid={`validation-progress-${taskId}`}>
+      <SectionTitle>
+        Post-Merge Validation
+        {source === "live" && (
+          <span className="ml-2 text-[10px] font-normal text-white/30">(live)</span>
+        )}
+      </SectionTitle>
+      <div className="space-y-1.5">
+        {steps.map((step, index) => (
+          <ValidationStepRow key={`${step.phase}-${step.command}-${index}`} step={step} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTaskDetailProps) {
   const status = isHistorical && viewStatus ? viewStatus : task.internalStatus;
   const isProgrammaticPhase = status === "pending_merge";
@@ -169,6 +332,9 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
       ? "attempted"
       : "resolving"
     : undefined;
+
+  // Live validation events (only meaningful during active pending_merge)
+  const liveSteps = useMergeValidationEvents(task.id);
 
   // Parse conflict files from task metadata if available
   const conflictFiles: string[] = (() => {
@@ -308,6 +474,13 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
           />
         </DetailCard>
       </section>
+
+      {/* Validation Progress (live or historical) */}
+      <ValidationProgress
+        taskId={task.id}
+        metadata={task.metadata}
+        liveSteps={liveSteps}
+      />
 
       {/* Conflict Files (only for agent phase) */}
       {isAgentPhase && conflictFiles.length > 0 && (
