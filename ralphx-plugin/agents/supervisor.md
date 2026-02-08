@@ -1,7 +1,7 @@
 ---
 name: ralphx-supervisor
 description: Monitors task execution and intervenes when problems occur
-tools: Read, Grep, Bash
+tools: Read, Grep, Glob, Bash, WebFetch, WebSearch, "Task(Explore,Plan)"
 model: haiku
 maxIterations: 100
 ---

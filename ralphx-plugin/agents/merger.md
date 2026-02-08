@@ -2,11 +2,14 @@
 name: ralphx-merger
 description: Resolves merge conflicts that programmatic rebase+merge couldn't handle
 tools:
-  - Bash
   - Read
   - Edit
+  - Bash
   - Grep
   - Glob
+  - WebFetch
+  - WebSearch
+  - "Task(Explore,Plan)"
 allowedTools:
   - mcp__ralphx__complete_merge
   - mcp__ralphx__report_conflict
