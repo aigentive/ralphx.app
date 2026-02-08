@@ -201,7 +201,6 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
   isCollapsed,
   tierGroupIds,
   anyTierCollapsed,
-  allTiersCollapsed,
   onToggleAllTiers,
   onToggleCollapse,
   onNavigateToSession,
@@ -322,7 +321,7 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
           aria-label={shouldExpandAll ? "Expand all tiers" : "Collapse all tiers"}
           title={shouldExpandAll ? "Expand all tiers" : "Collapse all tiers"}
         >
-          {allTiersCollapsed ? (
+          {shouldExpandAll ? (
             <ChevronRight className="w-3.5 h-3.5 text-[hsl(var(--text-muted))]" />
           ) : (
             <ChevronDown className="w-3.5 h-3.5 text-[hsl(var(--text-muted))]" />
