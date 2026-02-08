@@ -107,6 +107,28 @@ If the worker is unable to resolve critical issues after multiple attempts → c
 - Efficient data structures
 - Avoid unnecessary work
 
+## Code Validation (IMPORTANT)
+
+Use project-specific validation commands to verify the code actually compiles and passes checks:
+
+1. **Call `get_project_analysis`** with the project ID (from `RALPHX_PROJECT_ID` env var) and task ID:
+   ```
+   get_project_analysis(project_id: "...", task_id: "...")
+   ```
+
+2. **If response has `status: "analyzing"`** — wait and retry. If analysis is unavailable, skip this section.
+
+3. **Run validation for paths affected by the task's changes:**
+   - Use `git diff` to identify which paths were modified
+   - Run `validate` commands only for the relevant path entries
+   - Example: if only `src/` files changed, run the root path validation (e.g., `npm run typecheck`)
+   - Example: if only `src-tauri/` files changed, run the Rust path validation (e.g., `cargo check`)
+
+4. **Interpret results:**
+   - Validation passes → good, continue with review
+   - Validation fails on code the worker changed → report as `needs_changes` with issues
+   - Validation fails on pre-existing code (not modified by the worker) → note but do not block approval
+
 ## Completing the Review
 
 After your review is complete, you MUST call the `complete_review` MCP tool to submit your decision. This is REQUIRED to transition the task to the next state.
