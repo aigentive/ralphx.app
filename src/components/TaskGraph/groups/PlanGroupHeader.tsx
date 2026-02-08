@@ -21,8 +21,6 @@ import {
   GitBranch,
   Settings,
   X,
-  ChevronsDownUp,
-  ChevronsUpDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -108,8 +106,8 @@ const ProgressBar = memo(function ProgressBar({
   const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
 
   return (
-    <div className="flex items-center gap-2 min-w-[120px]">
-      <div className="flex-1 h-1 bg-[hsla(220,10%,20%,0.5)] rounded-full overflow-hidden">
+    <div className="flex items-center gap-1.5 min-w-[100px]">
+      <div className="flex-1 h-[2px] bg-[hsla(220,10%,20%,0.5)] rounded-full overflow-hidden">
         <div
           className="h-full bg-[hsla(145,60%,45%,0.6)] rounded-full transition-all duration-300"
           style={{ width: `${percentage}%` }}
@@ -170,18 +168,21 @@ const FeatureBranchBadge = memo(function FeatureBranchBadge({
     ? <Check className="w-2.5 h-2.5" />
     : <X className="w-2.5 h-2.5" />;
 
-  // Show only the last segment of the branch name for compactness
-  const shortName = branchName.split("/").pop() ?? branchName;
+  // Abbreviate: last segment, truncated to 12 chars
+  const lastSegment = branchName.split("/").pop() ?? branchName;
+  const shortName = lastSegment.length > 12
+    ? lastSegment.slice(0, 12) + "\u2026"
+    : lastSegment;
 
   return (
     <div
-      className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-[hsl(var(--bg-surface))]"
+      className="flex items-center gap-0.5 px-1 py-px rounded text-[9px] font-mono bg-[hsl(var(--bg-surface))]"
       style={{ color: statusColor }}
       title={`Feature branch: ${branchName} (${status})`}
     >
-      <GitBranch className="w-3 h-3" />
+      <GitBranch className="w-2.5 h-2.5 flex-shrink-0" />
       {statusIcon}
-      <span className="truncate max-w-[80px]">{shortName}</span>
+      <span>{shortName}</span>
     </div>
   );
 });
@@ -246,8 +247,6 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
   const displayTitle = sessionTitle || "Unnamed Plan";
   const hasTiers = (tierGroupIds?.length ?? 0) > 0;
   const shouldExpandAll = Boolean(anyTierCollapsed);
-  const disableExpand = !anyTierCollapsed;
-  const disableCollapse = Boolean(allTiersCollapsed);
 
   // Collapsed: two-row layout with text count
   if (isCollapsed) {
@@ -280,13 +279,13 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
 
   // Expanded: single-row inline layout
   return (
-    <div className="flex items-center justify-between gap-3 px-3 py-2 bg-[hsl(var(--bg-elevated)/0.8)] rounded-t-lg cursor-pointer">
+    <div className="flex items-center justify-between gap-2 px-2 py-1.5 bg-[hsl(var(--bg-elevated)/0.8)] rounded-t-lg cursor-pointer">
       {/* Left: toggle + title + branch badge */}
-      <div className="flex items-center gap-2 min-w-0 flex-1">
+      <div className="flex items-center gap-1.5 min-w-0 flex-1">
         <CollapseToggle isCollapsed={false} onClick={onToggleCollapse} />
         <span
           className={cn(
-            "text-sm font-medium text-[hsl(var(--text-primary))] truncate",
+            "text-sm font-medium text-[hsl(var(--text-primary))]",
             onNavigateToSession &&
               "hover:text-[hsl(var(--accent-primary))] transition-colors cursor-pointer"
           )}
@@ -306,68 +305,33 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
       {/* Middle: progress bar */}
       <ProgressBar completed={counts.done} total={counts.total} />
 
-      {/* Tier controls */}
+      {/* Tier toggle */}
       {hasTiers && (
-        <div className="flex items-center gap-1.5">
-          <button
-            className={cn(
-              "p-1 rounded transition-colors",
-              "hover:bg-[hsl(var(--bg-surface))]",
-              disableExpand && "opacity-50 pointer-events-none"
-            )}
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggleAllTiers?.(
-                planArtifactId,
-                shouldExpandAll ? "expand" : "collapse"
-              );
-            }}
-            aria-label={shouldExpandAll ? "Expand all tiers" : "Collapse all tiers"}
-            title={shouldExpandAll ? "Expand all tiers" : "Collapse all tiers"}
-          >
-            {shouldExpandAll ? (
-              <ChevronsDownUp className="w-3.5 h-3.5 text-[hsl(var(--text-muted))]" />
-            ) : (
-              <ChevronsUpDown className="w-3.5 h-3.5 text-[hsl(var(--text-muted))]" />
-            )}
-          </button>
-          <button
-            className={cn(
-              "flex items-center gap-1 px-2 py-1 rounded text-[11px] text-[hsl(var(--text-muted))] transition-colors",
-              "hover:bg-[hsl(var(--bg-surface))]",
-              disableExpand && "opacity-50 pointer-events-none"
-            )}
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggleAllTiers?.(planArtifactId, "expand");
-            }}
-            aria-label="Expand all tiers"
-            title="Expand all tiers"
-          >
-            <ChevronsDownUp className="w-3 h-3" />
-            Expand tiers
-          </button>
-          <button
-            className={cn(
-              "flex items-center gap-1 px-2 py-1 rounded text-[11px] text-[hsl(var(--text-muted))] transition-colors",
-              "hover:bg-[hsl(var(--bg-surface))]",
-              disableCollapse && "opacity-50 pointer-events-none"
-            )}
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggleAllTiers?.(planArtifactId, "collapse");
-            }}
-            aria-label="Collapse all tiers"
-            title="Collapse all tiers"
-          >
-            <ChevronsUpDown className="w-3 h-3" />
-            Collapse tiers
-          </button>
-        </div>
+        <button
+          className={cn(
+            "flex-shrink-0 p-0.5 rounded transition-colors",
+            "hover:bg-[hsl(var(--bg-surface))]",
+          )}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleAllTiers?.(
+              planArtifactId,
+              shouldExpandAll ? "expand" : "collapse"
+            );
+          }}
+          aria-label={shouldExpandAll ? "Expand all tiers" : "Collapse all tiers"}
+          title={shouldExpandAll ? "Expand all tiers" : "Collapse all tiers"}
+        >
+          {allTiersCollapsed ? (
+            <ChevronRight className="w-3.5 h-3.5 text-[hsl(var(--text-muted))]" />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5 text-[hsl(var(--text-muted))]" />
+          )}
+        </button>
       )}
 
       {/* Right: status badges + settings gear */}
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1">
         <StatusBadge
           icon={<Check className="w-3 h-3" />}
           count={counts.done}
