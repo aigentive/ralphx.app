@@ -978,6 +978,32 @@ async fn attempt_merge_auto_complete<R: Runtime>(
             app_handle.cloned(),
         );
         dependency_manager.unblock_dependents(task_id_str).await;
+
+        // Schedule newly-unblocked tasks (e.g. plan_merge tasks that just became Ready)
+        let scheduler = TaskSchedulerService::new(
+            Arc::clone(execution_state),
+            Arc::clone(project_repo),
+            Arc::clone(task_repo),
+            Arc::clone(task_dependency_repo),
+            Arc::clone(chat_message_repo),
+            Arc::clone(conversation_repo),
+            Arc::clone(agent_run_repo),
+            Arc::clone(ideation_session_repo),
+            Arc::clone(activity_event_repo),
+            Arc::clone(message_queue),
+            Arc::clone(running_agent_registry),
+            app_handle.cloned(),
+        );
+        let scheduler = if let Some(ref repo) = plan_branch_repo {
+            scheduler.with_plan_branch_repo(Arc::clone(repo))
+        } else {
+            scheduler
+        };
+        let scheduler = Arc::new(scheduler);
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
+            scheduler.try_schedule_ready_tasks().await;
+        });
     }
 }
 
