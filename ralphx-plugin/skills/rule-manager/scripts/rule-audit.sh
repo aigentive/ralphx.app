@@ -92,7 +92,7 @@ EOF
     [[ $unscoped_count -gt 6 ]] && issues="$issues $unscoped_count unscoped rules," && issue_count=$((issue_count + 1))
 
     if [[ $issue_count -gt 0 ]]; then
-      echo "Rule health: $total_files files, ~${total_tokens} tokens | ${issue_count} issue(s):${issues%, }"
+      echo "Rule health: $total_files files, ~${total_tokens} tokens | ${issue_count} issue(s):${issues%,}"
       echo "Run /rule-manager to apply next optimization."
     else
       echo "Rules healthy. $total_files files, ~${total_tokens} tokens, $files_with_paths scoped."
