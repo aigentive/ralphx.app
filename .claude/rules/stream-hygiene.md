@@ -1,6 +1,6 @@
 # Hygiene Stream
 
-**Required Context:** @.claude/rules/code-quality-standards.md | @.claude/rules/git-workflow.md
+**Required Context:** code-quality-standards.md | git-workflow.md
 
 ## Overview
 
@@ -16,7 +16,7 @@ The hygiene stream handles **backlog maintenance, refilling via Explore, and arc
 4. **Archive completed items when count > 10**
 5. **Refill backlogs when active items < 3**
 6. **Validate strikethroughs periodically**
-7. **Follow git workflow rules** — see @.claude/rules/git-workflow.md (Recovery Check does not apply — this stream doesn't write code)
+7. **Follow git workflow rules** — see git-workflow.md (Recovery Check does not apply — this stream doesn't write code)
 
 ## Workflow
 
@@ -81,7 +81,7 @@ Scan src/ and src-tauri/ for P1 code quality issues. Find ONLY:
 - Large file split opportunities (>400 LOC is refactor trigger)
 - Architectural extraction opportunities
 
-LOC limits reference: @.claude/rules/code-quality-standards.md
+LOC limits reference: code-quality-standards.md
 
 Output as markdown checklist:
 - [ ] Split [filename] ([LOC] LOC) - extract [description] - file:line
@@ -202,7 +202,7 @@ Log entries go in `streams/hygiene/activity.md`:
 
 ## Reference
 
-- LOC limits: @.claude/rules/code-quality-standards.md
-- Verify stream (produces P0s): @.claude/rules/stream-verify.md
-- Refactor stream (consumes P1s): @.claude/rules/stream-refactor.md
-- Polish stream (consumes P2/P3s): @.claude/rules/stream-polish.md
+- LOC limits: code-quality-standards.md
+- Verify stream (produces P0s): stream-verify.md
+- Refactor stream (consumes P1s): stream-refactor.md
+- Polish stream (consumes P2/P3s): stream-polish.md
