@@ -18,8 +18,8 @@ import type { AskUserQuestionPayload } from "@/types/ask-user-question";
 // ============================================================================
 
 export interface QuestionInputBannerProps {
-  /** The active question payload from the agent */
-  question: AskUserQuestionPayload;
+  /** The active question payload (null when showing answered-only state) */
+  question: AskUserQuestionPayload | null;
   /** Currently selected option indices (controlled from parent for input sync) */
   selectedIndices: Set<number>;
   /** Called when user clicks a chip */
@@ -142,6 +142,9 @@ export function QuestionInputBanner({
 
   const isAnswered = answeredValue !== undefined;
 
+  // Nothing to show: no active question and no answered state
+  if (!question && !isAnswered) return null;
+
   return (
     <div
       data-testid="question-input-banner"
@@ -215,7 +218,7 @@ export function QuestionInputBanner({
               </button>
             )}
           </div>
-        ) : (
+        ) : question ? (
           /* ── Active question state ── */
           <>
             {/* Header row */}
@@ -302,7 +305,7 @@ export function QuestionInputBanner({
               </div>
             </div>
           </>
-        )}
+        ) : null}
       </div>
     </div>
   );
