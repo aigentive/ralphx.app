@@ -5,7 +5,10 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { taskContextApi } from "@/api/task-context";
+import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Collapsible,
@@ -85,9 +88,11 @@ function ProposalSummarySection({ context }: { context: TaskContext }) {
                 {proposal.title}
               </h4>
               {proposal.description && (
-                <p className="text-sm text-[var(--text-muted)] mt-1">
-                  {proposal.description}
-                </p>
+                <div className="text-sm text-[var(--text-muted)] mt-1" style={{ wordBreak: "break-word" }}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                    {proposal.description}
+                  </ReactMarkdown>
+                </div>
               )}
             </div>
 

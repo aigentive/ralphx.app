@@ -11,6 +11,7 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
 import {
   X,
   Loader2,
@@ -84,13 +85,15 @@ function TaskContextSection({
         </span>
       </div>
       {description && (
-        <p
+        <div
           data-testid="modal-task-description"
           className="text-[12px] text-white/60"
           style={{ lineHeight: "1.5", wordBreak: "break-word", overflowWrap: "anywhere" }}
         >
-          {description}
-        </p>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            {description}
+          </ReactMarkdown>
+        </div>
       )}
     </div>
   );
