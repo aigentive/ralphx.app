@@ -134,7 +134,10 @@ export function formatValue(value: unknown): { text: string; isPlainText: boolea
  * Check if this tool call is for artifact context
  */
 export function isArtifactContextTool(name: string): boolean {
-  return ["get_artifact", "get_artifact_version", "get_related_artifacts", "search_project_artifacts"].includes(name);
+  // get_artifact, get_artifact_version, get_plan_artifact are handled by ArtifactWidget
+  // get_task_context is handled by ContextWidget
+  return ["get_related_artifacts", "search_project_artifacts"].includes(name);
+
 }
 
 /**
@@ -146,44 +149,6 @@ export function renderArtifactPreview(toolCall: ToolCall): React.ReactNode {
   if (!result) return null;
 
   switch (name) {
-    case "get_artifact": {
-      const artifact = result as { id?: string; title?: string; artifactType?: string; content?: string };
-      return (
-        <div className="space-y-2">
-          {artifact.title && (
-            <div>
-              <div className="text-xs font-medium mb-1" style={{ color: "var(--text-muted)" }}>
-                Title
-              </div>
-              <div className="text-xs px-2 py-1.5 rounded" style={{ backgroundColor: "var(--bg-base)", color: "var(--text-primary)", fontWeight: 500 }}>
-                {artifact.title}
-              </div>
-            </div>
-          )}
-          {artifact.artifactType && (
-            <div>
-              <div className="text-xs font-medium mb-1" style={{ color: "var(--text-muted)" }}>
-                Type
-              </div>
-              <div className="text-xs px-2 py-1 rounded inline-block" style={{ backgroundColor: "var(--bg-base)", color: "var(--text-secondary)" }}>
-                {artifact.artifactType}
-              </div>
-            </div>
-          )}
-          {artifact.content && (
-            <div>
-              <div className="text-xs font-medium mb-1" style={{ color: "var(--text-muted)" }}>
-                Content Preview
-              </div>
-              <pre className="text-xs px-2 py-1.5 rounded overflow-x-auto" style={{ backgroundColor: "var(--bg-base)", color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>
-                {truncate(artifact.content, 300)}
-              </pre>
-            </div>
-          )}
-        </div>
-      );
-    }
-
     case "get_related_artifacts": {
       const artifacts = result as ArtifactSummary[] | undefined;
       if (!artifacts || artifacts.length === 0) {
