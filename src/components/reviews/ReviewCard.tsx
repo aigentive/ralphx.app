@@ -7,10 +7,13 @@
  * - Action buttons with proper styling
  */
 import { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Bot, User, GitCompare, Loader2, Eye } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
 import type { Review, ReviewStatus } from "@/types/review";
 import { ReviewStatusBadge } from "./ReviewStatusBadge";
 
@@ -75,12 +78,15 @@ function NotesPreview({
           "bg-[var(--bg-base)]"
         )}
       >
-        <p
+        <div
           data-testid="review-notes"
-          className="text-sm text-[var(--text-secondary)] italic line-clamp-2 leading-normal"
+          className="text-sm text-[var(--text-secondary)] line-clamp-2 leading-normal"
+          style={{ wordBreak: "break-word" }}
         >
-          &ldquo;{notes}&rdquo;
-        </p>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            {notes}
+          </ReactMarkdown>
+        </div>
       </div>
       {isLong && onViewFull && (
         <button
