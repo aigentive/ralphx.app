@@ -996,9 +996,10 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   const handleRemoveAllInGroup = useCallback(
     async (sessionId: string) => {
       try {
+        const isUncategorized = sessionId === "";
         await cleanupTasksInGroupMutation.mutateAsync({
-          groupKind: "session",
-          groupId: sessionId,
+          groupKind: isUncategorized ? "uncategorized" : "session",
+          groupId: isUncategorized ? "" : sessionId,
           projectId,
         });
         queryClient.invalidateQueries({ queryKey: taskGraphKeys.graphPrefix(projectId) });
