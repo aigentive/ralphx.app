@@ -1,3 +1,12 @@
+---
+paths:
+  - "src/api/**"
+  - "src/types/**"
+  - "src/lib/tauri*.ts"
+  - "src/api-mock/**"
+  - "src-tauri/src/commands/**"
+---
+
 # API Layer Patterns
 
 **Required Context:** code-quality-standards.md
