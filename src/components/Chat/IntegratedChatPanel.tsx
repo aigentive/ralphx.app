@@ -93,8 +93,9 @@ export function IntegratedChatPanel({
     : false;
 
   // Review states: reviewer agent conversation (only when NOT in ideation mode)
+  // Include 'approved' so historical view loads the reviewer's conversation
   const isReviewMode = !ideationSessionId && effectiveStatus
-    ? (ALL_REVIEW_STATUSES as readonly string[]).includes(effectiveStatus)
+    ? (ALL_REVIEW_STATUSES as readonly string[]).includes(effectiveStatus) || effectiveStatus === "approved"
     : false;
 
   // Merge states: merger agent conversation (only when NOT in ideation mode)
