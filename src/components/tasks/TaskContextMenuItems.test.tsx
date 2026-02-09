@@ -1,0 +1,387 @@
+/**
+ * TaskContextMenuItems.test.tsx - Tests for shared TaskContextMenuItems component
+ *
+ * Verifies correct actions render for different statuses and surfaces,
+ * and that handlers are invoked properly.
+ */
+
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import {
+  TaskContextMenuItems,
+  TaskContextMenuDialogs,
+  TaskContextMenuProvider,
+  useTaskContextMenu,
+  type TaskContextMenuHandlers,
+} from "./TaskContextMenuItems";
+import type { Task } from "@/types/task";
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function createMockTask(overrides: Partial<Task> = {}): Task {
+  return {
+    id: "task-1",
+    projectId: "project-1",
+    category: "feature",
+    title: "Test Task",
+    description: "Test description",
+    priority: 3,
+    internalStatus: "backlog",
+    needsReviewPoint: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    startedAt: null,
+    completedAt: null,
+    archivedAt: null,
+    blockedReason: null,
+    taskBranch: null,
+    worktreePath: null,
+    mergeCommitSha: null,
+    metadata: null,
+    ...overrides,
+  };
+}
+
+function createMockHandlers(): TaskContextMenuHandlers {
+  return {
+    onViewDetails: vi.fn(),
+    onEdit: vi.fn(),
+    onArchive: vi.fn(),
+    onRestore: vi.fn(),
+    onPermanentDelete: vi.fn(),
+    onStatusChange: vi.fn(),
+    onBlockWithReason: vi.fn(),
+    onUnblock: vi.fn(),
+    onStartExecution: vi.fn(),
+    onApprove: vi.fn(),
+    onReject: vi.fn(),
+    onRequestChanges: vi.fn(),
+    onMarkResolved: vi.fn(),
+    onStartIdeation: vi.fn(),
+    onViewAgentChat: vi.fn(),
+  };
+}
+
+/** Test wrapper that provides the required Provider + Dialogs */
+function TestWrapper({
+  task,
+  handlers,
+  context,
+}: {
+  task: Task;
+  handlers: TaskContextMenuHandlers;
+  context?: "kanban" | "graph";
+}) {
+  const state = useTaskContextMenu();
+  return (
+    <TaskContextMenuProvider state={state}>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <div data-testid="trigger">Trigger</div>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <TaskContextMenuItems
+            task={task}
+            handlers={handlers}
+            context={context}
+          />
+        </ContextMenuContent>
+        <TaskContextMenuDialogs task={task} handlers={handlers} />
+      </ContextMenu>
+    </TaskContextMenuProvider>
+  );
+}
+
+function renderWithContextMenu(
+  task: Task,
+  handlers: TaskContextMenuHandlers,
+  context?: "kanban" | "graph",
+) {
+  const result = render(
+    <TestWrapper task={task} handlers={handlers} context={context} />,
+  );
+
+  // Open the context menu
+  fireEvent.contextMenu(screen.getByTestId("trigger"));
+
+  return result;
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+describe("TaskContextMenuItems", () => {
+  let handlers: TaskContextMenuHandlers;
+
+  beforeEach(() => {
+    handlers = createMockHandlers();
+  });
+
+  // --------------------------------------------------------------------------
+  // Common items (both surfaces)
+  // --------------------------------------------------------------------------
+
+  describe("common items", () => {
+    it("always shows View Details", () => {
+      renderWithContextMenu(createMockTask(), handlers);
+      expect(screen.getByText("View Details")).toBeInTheDocument();
+    });
+
+    it("calls onViewDetails when clicked", () => {
+      renderWithContextMenu(createMockTask(), handlers);
+      fireEvent.click(screen.getByText("View Details"));
+      expect(handlers.onViewDetails).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows Edit for non-archived, non-system-controlled tasks", () => {
+      renderWithContextMenu(createMockTask({ internalStatus: "backlog" }), handlers);
+      expect(screen.getByText("Edit")).toBeInTheDocument();
+    });
+
+    it("hides Edit for system-controlled tasks", () => {
+      renderWithContextMenu(createMockTask({ internalStatus: "executing" }), handlers);
+      expect(screen.queryByText("Edit")).not.toBeInTheDocument();
+    });
+
+    it("hides Edit for archived tasks", () => {
+      renderWithContextMenu(
+        createMockTask({ archivedAt: new Date().toISOString() }),
+        handlers,
+      );
+      expect(screen.queryByText("Edit")).not.toBeInTheDocument();
+    });
+
+    it("hides Edit when onEdit handler not provided", () => {
+      handlers.onEdit = undefined;
+      renderWithContextMenu(createMockTask({ internalStatus: "backlog" }), handlers);
+      expect(screen.queryByText("Edit")).not.toBeInTheDocument();
+    });
+
+    it("shows Start Ideation for backlog tasks when handler provided", () => {
+      renderWithContextMenu(createMockTask({ internalStatus: "backlog" }), handlers);
+      expect(screen.getByText("Start Ideation")).toBeInTheDocument();
+    });
+
+    it("hides Start Ideation for non-backlog tasks", () => {
+      renderWithContextMenu(createMockTask({ internalStatus: "ready" }), handlers);
+      expect(screen.queryByText("Start Ideation")).not.toBeInTheDocument();
+    });
+
+    it("hides Start Ideation when handler not provided", () => {
+      handlers.onStartIdeation = undefined;
+      renderWithContextMenu(createMockTask({ internalStatus: "backlog" }), handlers);
+      expect(screen.queryByText("Start Ideation")).not.toBeInTheDocument();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Archive/Restore/Delete
+  // --------------------------------------------------------------------------
+
+  describe("archive/restore/delete", () => {
+    it("shows Archive for non-archived tasks", () => {
+      renderWithContextMenu(createMockTask(), handlers);
+      expect(screen.getByText("Archive")).toBeInTheDocument();
+    });
+
+    it("hides Archive for archived tasks", () => {
+      renderWithContextMenu(
+        createMockTask({ archivedAt: new Date().toISOString() }),
+        handlers,
+      );
+      expect(screen.queryByText("Archive")).not.toBeInTheDocument();
+    });
+
+    it("shows Restore and Delete Permanently for archived tasks", () => {
+      renderWithContextMenu(
+        createMockTask({ archivedAt: new Date().toISOString() }),
+        handlers,
+      );
+      expect(screen.getByText("Restore")).toBeInTheDocument();
+      expect(screen.getByText("Delete Permanently")).toBeInTheDocument();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Kanban surface — status-specific actions
+  // --------------------------------------------------------------------------
+
+  describe("kanban surface", () => {
+    it("shows Cancel for backlog tasks", () => {
+      renderWithContextMenu(
+        createMockTask({ internalStatus: "backlog" }),
+        handlers,
+        "kanban",
+      );
+      expect(screen.getByText("Cancel")).toBeInTheDocument();
+    });
+
+    it("shows Block and Cancel for ready tasks", () => {
+      renderWithContextMenu(
+        createMockTask({ internalStatus: "ready" }),
+        handlers,
+        "kanban",
+      );
+      expect(screen.getByText("Block")).toBeInTheDocument();
+      expect(screen.getByText("Cancel")).toBeInTheDocument();
+    });
+
+    it("shows Unblock and Cancel for blocked tasks", () => {
+      renderWithContextMenu(
+        createMockTask({ internalStatus: "blocked" }),
+        handlers,
+        "kanban",
+      );
+      expect(screen.getByText("Unblock")).toBeInTheDocument();
+      expect(screen.getByText("Cancel")).toBeInTheDocument();
+    });
+
+    it("shows Re-open for approved tasks", () => {
+      renderWithContextMenu(
+        createMockTask({ internalStatus: "approved" }),
+        handlers,
+        "kanban",
+      );
+      expect(screen.getByText("Re-open")).toBeInTheDocument();
+    });
+
+    it("shows Retry for failed tasks", () => {
+      renderWithContextMenu(
+        createMockTask({ internalStatus: "failed" }),
+        handlers,
+        "kanban",
+      );
+      expect(screen.getByText("Retry")).toBeInTheDocument();
+    });
+
+    it("shows Re-open for cancelled tasks", () => {
+      renderWithContextMenu(
+        createMockTask({ internalStatus: "cancelled" }),
+        handlers,
+        "kanban",
+      );
+      expect(screen.getByText("Re-open")).toBeInTheDocument();
+    });
+
+    it("shows no status actions for executing tasks", () => {
+      renderWithContextMenu(
+        createMockTask({ internalStatus: "executing" }),
+        handlers,
+        "kanban",
+      );
+      expect(screen.queryByText("Cancel")).not.toBeInTheDocument();
+      expect(screen.queryByText("Block")).not.toBeInTheDocument();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Graph surface — status-specific actions
+  // --------------------------------------------------------------------------
+
+  describe("graph surface", () => {
+    it("shows Start Execution and Block for ready tasks", () => {
+      renderWithContextMenu(
+        createMockTask({ internalStatus: "ready" }),
+        handlers,
+        "graph",
+      );
+      expect(screen.getByText("Start Execution")).toBeInTheDocument();
+      expect(screen.getByText("Block")).toBeInTheDocument();
+    });
+
+    it("shows Unblock and View Blockers for blocked tasks", () => {
+      renderWithContextMenu(
+        createMockTask({ internalStatus: "blocked" }),
+        handlers,
+        "graph",
+      );
+      expect(screen.getByText("Unblock")).toBeInTheDocument();
+      expect(screen.getByText("View Blockers")).toBeInTheDocument();
+    });
+
+    it("shows View Agent Chat for executing tasks", () => {
+      renderWithContextMenu(
+        createMockTask({ internalStatus: "executing" }),
+        handlers,
+        "graph",
+      );
+      expect(screen.getByText("View Agent Chat")).toBeInTheDocument();
+    });
+
+    it("shows View Work Summary for pending_review tasks", () => {
+      renderWithContextMenu(
+        createMockTask({ internalStatus: "pending_review" }),
+        handlers,
+        "graph",
+      );
+      expect(screen.getByText("View Work Summary")).toBeInTheDocument();
+    });
+
+    it("shows Approve and Request Changes for review_passed tasks", () => {
+      renderWithContextMenu(
+        createMockTask({ internalStatus: "review_passed" }),
+        handlers,
+        "graph",
+      );
+      expect(screen.getByText("Approve")).toBeInTheDocument();
+      expect(screen.getByText("Request Changes")).toBeInTheDocument();
+    });
+
+    it("shows Approve, Reject, and Request Changes for escalated tasks", () => {
+      renderWithContextMenu(
+        createMockTask({ internalStatus: "escalated" }),
+        handlers,
+        "graph",
+      );
+      expect(screen.getByText("Approve")).toBeInTheDocument();
+      expect(screen.getByText("Reject")).toBeInTheDocument();
+      expect(screen.getByText("Request Changes")).toBeInTheDocument();
+    });
+
+    it("shows View Feedback for revision_needed tasks", () => {
+      renderWithContextMenu(
+        createMockTask({ internalStatus: "revision_needed" }),
+        handlers,
+        "graph",
+      );
+      expect(screen.getByText("View Feedback")).toBeInTheDocument();
+    });
+
+    it("shows View Conflicts and Mark Resolved for merge_conflict tasks", () => {
+      renderWithContextMenu(
+        createMockTask({ internalStatus: "merge_conflict" }),
+        handlers,
+        "graph",
+      );
+      expect(screen.getByText("View Conflicts")).toBeInTheDocument();
+      expect(screen.getByText("Mark Resolved")).toBeInTheDocument();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Block dialog
+  // --------------------------------------------------------------------------
+
+  describe("block dialog", () => {
+    it("opens BlockReasonDialog when Block action clicked", async () => {
+      renderWithContextMenu(
+        createMockTask({ internalStatus: "ready" }),
+        handlers,
+        "kanban",
+      );
+      fireEvent.click(screen.getByText("Block"));
+      // Dialog is rendered by TaskContextMenuDialogs (outside ContextMenuContent)
+      await waitFor(() => {
+        expect(screen.getByTestId("block-reason-dialog")).toBeInTheDocument();
+      });
+    });
+  });
+});
