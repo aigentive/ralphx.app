@@ -283,6 +283,7 @@ pub async fn reopen_ideation_session(
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     use crate::application::session_reopen_service::SessionReopenService;
+    use crate::application::task_cleanup_service::TaskCleanupService;
 
     let session_id = IdeationSessionId::from_string(id.clone());
 
@@ -295,13 +296,20 @@ pub async fn reopen_ideation_session(
         .ok_or_else(|| format!("Session not found: {}", id))?;
     let project_id_str = session.project_id.as_str().to_string();
 
+    let task_cleanup = TaskCleanupService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.running_agent_registry),
+        Some(app.clone()),
+    );
+
     let service = SessionReopenService::new(
         Arc::clone(&state.task_repo),
         Arc::clone(&state.task_proposal_repo),
         Arc::clone(&state.ideation_session_repo),
         Arc::clone(&state.plan_branch_repo),
         Arc::clone(&state.project_repo),
-        Arc::clone(&state.running_agent_registry),
+        task_cleanup,
     );
 
     service.reopen(&session_id).await.map_err(|e| e.to_string())?;
