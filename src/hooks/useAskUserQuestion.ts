@@ -1,9 +1,9 @@
 /**
  * useAskUserQuestion hook - Handle agent questions requiring user input
  *
- * Listens for agent:ask_user_question Tauri events, stores the question
- * payload in uiStore, and provides functions to submit answers back to
- * the agent.
+ * Listens for agent:ask_user_question Tauri events, stores per-session
+ * question payloads in uiStore, and provides functions to submit answers
+ * or dismiss questions.
  */
 
 import { useEffect, useState, useCallback } from "react";
@@ -16,48 +16,31 @@ import {
 } from "@/types/ask-user-question";
 
 /**
- * Hook to handle agent questions requiring user input
+ * Hook to handle agent questions requiring user input, scoped to a session.
  *
- * Listens to 'agent:ask_user_question' events and manages the question
- * lifecycle including display and answer submission.
- *
- * @returns Object with activeQuestion, submitAnswer, clearQuestion, and isLoading
- *
- * @example
- * ```tsx
- * function AskUserQuestionModal() {
- *   const { activeQuestion, submitAnswer, clearQuestion, isLoading } = useAskUserQuestion();
- *
- *   if (!activeQuestion) return null;
- *
- *   return (
- *     <Modal onClose={clearQuestion}>
- *       <h2>{activeQuestion.header}</h2>
- *       <p>{activeQuestion.question}</p>
- *       <Options
- *         options={activeQuestion.options}
- *         multiSelect={activeQuestion.multiSelect}
- *         onSubmit={(selected) => submitAnswer({
- *           taskId: activeQuestion.taskId,
- *           selectedOptions: selected,
- *         })}
- *       />
- *     </Modal>
- *   );
- * }
- * ```
+ * @param currentSessionId - The session/conversation ID to scope questions to.
+ *   When undefined, no question is returned (but events are still stored).
  */
-export function useAskUserQuestion() {
+export function useAskUserQuestion(currentSessionId: string | undefined) {
   const [isLoading, setIsLoading] = useState(false);
-  const activeQuestion = useUiStore((s) => s.activeQuestion);
+
+  const activeQuestion = useUiStore((s) =>
+    currentSessionId ? s.activeQuestions[currentSessionId] ?? null : null
+  );
+  const answeredQuestion = useUiStore((s) =>
+    currentSessionId ? s.answeredQuestions[currentSessionId] ?? undefined : undefined
+  );
+
   const setActiveQuestion = useUiStore((s) => s.setActiveQuestion);
   const clearActiveQuestion = useUiStore((s) => s.clearActiveQuestion);
+  const dismissQuestionAction = useUiStore((s) => s.dismissQuestion);
+  const setAnsweredQuestion = useUiStore((s) => s.setAnsweredQuestion);
+  const clearAnsweredQuestion = useUiStore((s) => s.clearAnsweredQuestion);
   const eventBus = useEventBus();
 
-  // Set up event listener for agent questions
+  // Set up event listener for agent questions — stores ALL incoming questions by sessionId
   useEffect(() => {
     const unsubscribe = eventBus.subscribe<unknown>("agent:ask_user_question", (payload) => {
-      // Runtime validation of event payload
       const parsed = AskUserQuestionPayloadSchema.safeParse(payload);
 
       if (!parsed.success) {
@@ -65,20 +48,26 @@ export function useAskUserQuestion() {
         return;
       }
 
-      setActiveQuestion(parsed.data);
+      const sessionId = parsed.data.sessionId;
+      if (!sessionId) {
+        console.warn("[useAskUserQuestion] No sessionId in payload, ignoring");
+        return;
+      }
+
+      setActiveQuestion(sessionId, parsed.data);
     });
 
     return unsubscribe;
   }, [setActiveQuestion, eventBus]);
 
   /**
-   * Submit an answer to the agent's question
+   * Submit an answer to the agent's question.
    * Routes to resolveQuestion (MCP flow) when requestId is present,
    * or answerQuestion (legacy task flow) otherwise.
    */
   const submitAnswer = useCallback(
     async (response: AskUserQuestionResponse) => {
-      if (!activeQuestion) {
+      if (!activeQuestion || !currentSessionId) {
         return;
       }
 
@@ -94,28 +83,59 @@ export function useAskUserQuestion() {
           await api.askUserQuestion.answerQuestion(response);
         }
 
-        clearActiveQuestion();
+        // Move to answered state
+        const summary = response.selectedOptions.length > 0
+          ? response.selectedOptions.join(", ")
+          : response.customResponse ?? "";
+        setAnsweredQuestion(currentSessionId, summary);
+        clearActiveQuestion(currentSessionId);
       } catch {
         // Don't clear question on error so user can retry
       } finally {
         setIsLoading(false);
       }
     },
-    [activeQuestion, clearActiveQuestion]
+    [activeQuestion, currentSessionId, clearActiveQuestion, setAnsweredQuestion]
   );
 
   /**
-   * Clear the active question without submitting an answer
-   * Use when user dismisses the modal
+   * Dismiss the question — clears both question and answered state for this session,
+   * and sends a dismiss response to the backend so the waiting agent unblocks.
    */
-  const clearQuestion = useCallback(() => {
-    clearActiveQuestion();
-  }, [clearActiveQuestion]);
+  const dismissQuestion = useCallback(async () => {
+    if (!currentSessionId) return;
+
+    const question = activeQuestion;
+    dismissQuestionAction(currentSessionId);
+
+    // If there's an active question with a requestId, send dismiss to backend
+    if (question?.requestId) {
+      try {
+        await api.askUserQuestion.resolveQuestion({
+          requestId: question.requestId,
+          selectedOptions: [],
+          customResponse: "[dismissed]",
+        });
+      } catch {
+        // Best-effort dismiss — don't block UI
+      }
+    }
+  }, [currentSessionId, activeQuestion, dismissQuestionAction]);
+
+  /**
+   * Clear just the answered summary for this session
+   */
+  const clearAnswered = useCallback(() => {
+    if (!currentSessionId) return;
+    clearAnsweredQuestion(currentSessionId);
+  }, [currentSessionId, clearAnsweredQuestion]);
 
   return {
     activeQuestion,
+    answeredQuestion,
     submitAnswer,
-    clearQuestion,
+    dismissQuestion,
+    clearAnswered,
     isLoading,
   };
 }

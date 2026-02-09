@@ -107,7 +107,8 @@ function resetStores() {
     notifications: [],
     loading: {},
     confirmation: null,
-    activeQuestion: null,
+    activeQuestions: {},
+    answeredQuestions: {},
     executionStatus: {
       isPaused: false,
       runningCount: 0,
