@@ -814,6 +814,9 @@ fn format_validation_warn_metadata(
 ///
 /// Returns `Some(entries)` when the previous validation ran against the same source SHA,
 /// meaning the branch code has not changed and previously-passed checks can be skipped.
+///
+/// Note: Caching is effective in worktree mode. In local mode, rebase rewrites the source
+/// branch SHA on each retry, so cache hits are rare.
 fn extract_cached_validation(task: &Task, current_sha: &str) -> Option<Vec<ValidationLogEntry>> {
     let meta_str = task.metadata.as_ref()?;
     let val: serde_json::Value = serde_json::from_str(meta_str).ok()?;
