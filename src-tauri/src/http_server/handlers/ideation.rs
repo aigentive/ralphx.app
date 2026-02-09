@@ -10,6 +10,12 @@ use axum::{
 use tauri::Emitter;
 use tracing::error;
 
+type JsonError = (StatusCode, Json<serde_json::Value>);
+
+fn json_error(status: StatusCode, error: impl Into<String>) -> JsonError {
+    (status, Json(serde_json::json!({ "error": error.into() })))
+}
+
 use crate::application::{CreateProposalOptions, UpdateProposalOptions};
 use crate::commands::ideation_commands::TaskProposalResponse;
 use crate::domain::entities::{IdeationSessionId, Priority, TaskProposalId};
@@ -28,13 +34,13 @@ use super::super::types::{
 pub async fn create_task_proposal(
     State(state): State<HttpServerState>,
     Json(req): Json<CreateProposalRequest>,
-) -> Result<Json<ProposalResponse>, StatusCode> {
+) -> Result<Json<ProposalResponse>, JsonError> {
     let session_id = IdeationSessionId::from_string(req.session_id.clone());
 
     // Parse category
     let category = parse_category(&req.category).map_err(|e| {
         error!("Invalid category '{}': {}", req.category, e);
-        StatusCode::BAD_REQUEST
+        json_error(StatusCode::BAD_REQUEST, e)
     })?;
 
     // Parse priority (default to Medium if not provided)
@@ -45,7 +51,7 @@ pub async fn create_task_proposal(
         .transpose()
         .map_err(|e| {
             error!("Invalid priority: {}", e);
-            StatusCode::BAD_REQUEST
+            json_error(StatusCode::BAD_REQUEST, e)
         })?
         .unwrap_or(Priority::Medium);
 
@@ -54,14 +60,14 @@ pub async fn create_task_proposal(
         .steps
         .map(|s| serde_json::to_string(&s).map_err(|e| {
             error!("Failed to serialize steps: {}", e);
-            StatusCode::BAD_REQUEST
+            json_error(StatusCode::BAD_REQUEST, format!("Failed to serialize steps: {}", e))
         }))
         .transpose()?;
     let acceptance_criteria = req
         .acceptance_criteria
         .map(|ac| serde_json::to_string(&ac).map_err(|e| {
             error!("Failed to serialize acceptance_criteria: {}", e);
-            StatusCode::BAD_REQUEST
+            json_error(StatusCode::BAD_REQUEST, format!("Failed to serialize acceptance_criteria: {}", e))
         }))
         .transpose()?;
 
@@ -80,7 +86,7 @@ pub async fn create_task_proposal(
         .await
         .map_err(|e| {
             error!("Failed to create proposal for session {}: {}", session_id_str, e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            json_error(StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to create proposal: {}", e))
         })?;
 
     // Emit event for real-time UI update
@@ -103,7 +109,7 @@ pub async fn create_task_proposal(
 pub async fn update_task_proposal(
     State(state): State<HttpServerState>,
     Json(req): Json<UpdateProposalRequest>,
-) -> Result<Json<ProposalResponse>, StatusCode> {
+) -> Result<Json<ProposalResponse>, JsonError> {
     let proposal_id = TaskProposalId::from_string(req.proposal_id);
 
     // Parse category if provided
@@ -114,7 +120,7 @@ pub async fn update_task_proposal(
         .transpose()
         .map_err(|e| {
             error!("Invalid category: {}", e);
-            StatusCode::BAD_REQUEST
+            json_error(StatusCode::BAD_REQUEST, e)
         })?;
 
     // Parse priority if provided
@@ -125,7 +131,7 @@ pub async fn update_task_proposal(
         .transpose()
         .map_err(|e| {
             error!("Invalid priority: {}", e);
-            StatusCode::BAD_REQUEST
+            json_error(StatusCode::BAD_REQUEST, e)
         })?;
 
     // Convert steps and acceptance criteria to JSON strings
@@ -133,14 +139,14 @@ pub async fn update_task_proposal(
         .steps
         .map(|s| serde_json::to_string(&s).map_err(|e| {
             error!("Failed to serialize steps: {}", e);
-            StatusCode::BAD_REQUEST
+            json_error(StatusCode::BAD_REQUEST, format!("Failed to serialize steps: {}", e))
         }))
         .transpose()?;
     let acceptance_criteria = req
         .acceptance_criteria
         .map(|ac| serde_json::to_string(&ac).map_err(|e| {
             error!("Failed to serialize acceptance_criteria: {}", e);
-            StatusCode::BAD_REQUEST
+            json_error(StatusCode::BAD_REQUEST, format!("Failed to serialize acceptance_criteria: {}", e))
         }))
         .transpose()?;
 
@@ -157,7 +163,7 @@ pub async fn update_task_proposal(
         .await
         .map_err(|e| {
             error!("Failed to update proposal {}: {}", proposal_id.as_str(), e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            json_error(StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to update proposal: {}", e))
         })?;
 
     // Emit event for real-time UI update

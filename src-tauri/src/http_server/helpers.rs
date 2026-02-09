@@ -23,7 +23,9 @@ use tauri::Emitter;
 /// Parse a category string to TaskCategory enum
 ///
 /// Accepts: "feature", "fix"/"bug", "refactor", "test"/"testing",
-/// "docs"/"documentation", "setup"/"infrastructure"/"infra"
+/// "docs"/"documentation", "setup"/"infrastructure"/"infra",
+/// "performance"/"perf", "security"/"sec", "devops"/"dev_ops"/"ci_cd"/"cicd",
+/// "research"/"investigation", "design", "chore"/"maintenance"
 pub fn parse_category(s: &str) -> Result<TaskCategory, String> {
     match s.to_lowercase().as_str() {
         "feature" => Ok(TaskCategory::Feature),
@@ -32,7 +34,16 @@ pub fn parse_category(s: &str) -> Result<TaskCategory, String> {
         "test" | "testing" => Ok(TaskCategory::Test),
         "docs" | "documentation" => Ok(TaskCategory::Docs),
         "setup" | "infrastructure" | "infra" => Ok(TaskCategory::Setup),
-        _ => Err(format!("Invalid category: {}", s)),
+        "performance" | "perf" => Ok(TaskCategory::Performance),
+        "security" | "sec" => Ok(TaskCategory::Security),
+        "devops" | "dev_ops" | "ci_cd" | "cicd" => Ok(TaskCategory::DevOps),
+        "research" | "investigation" => Ok(TaskCategory::Research),
+        "design" => Ok(TaskCategory::Design),
+        "chore" | "maintenance" => Ok(TaskCategory::Chore),
+        _ => Err(format!(
+            "Invalid category: '{}'. Valid: setup, feature, fix, refactor, docs, test, performance, security, devops, research, design, chore",
+            s
+        )),
     }
 }
 
