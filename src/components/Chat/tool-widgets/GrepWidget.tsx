@@ -12,7 +12,7 @@ import React from "react";
 import { Search, FileText } from "lucide-react";
 import { WidgetCard, WidgetHeader, Badge } from "./shared";
 import type { ToolCallWidgetProps } from "./shared";
-import { colors } from "./shared.constants";
+import { colors, parseToolResultAsLines } from "./shared.constants";
 
 const MAX_INLINE_RESULTS = 3;
 
@@ -34,45 +34,12 @@ function parseGrepArgs(args: unknown): {
   };
 }
 
-/**
- * Parse Grep result into file paths.
- * Grep returns a text string with one file path per line (files_with_matches mode),
- * or matched content lines (content mode), or an MCP result wrapper [{text: "..."}].
- */
-function parseGrepResult(result: unknown): string[] {
-  if (!result) return [];
-
-  let text = "";
-
-  if (typeof result === "string") {
-    text = result;
-  } else if (Array.isArray(result)) {
-    // MCP result wrapper: [{type: "text", text: "..."}]
-    const first = result[0];
-    if (first && typeof first === "object" && "text" in first) {
-      text = String((first as { text: string }).text);
-    } else {
-      // Array of strings
-      return result.filter((item): item is string => typeof item === "string");
-    }
-  } else if (typeof result === "object" && result !== null && "text" in result) {
-    text = String((result as { text: string }).text);
-  }
-
-  if (!text) return [];
-
-  return text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
 export const GrepWidget = React.memo(function GrepWidget({
   toolCall,
   compact = false,
 }: ToolCallWidgetProps) {
   const { pattern, path } = parseGrepArgs(toolCall.arguments);
-  const files = parseGrepResult(toolCall.result);
+  const files = parseToolResultAsLines(toolCall.result);
   const fileCount = files.length;
   const isInline = fileCount <= MAX_INLINE_RESULTS;
 
@@ -93,7 +60,7 @@ export const GrepWidget = React.memo(function GrepWidget({
       mono
       compact={compact}
       badge={
-        <Badge variant={fileCount === 0 ? "muted" : "muted"}>
+        <Badge variant="muted">
           {badgeText}
         </Badge>
       }
