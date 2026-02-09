@@ -15,6 +15,7 @@ import { StepIndicator } from "./StepIndicator";
 import { ContextWidget } from "./ContextWidget";
 import { StepsManifestWidget } from "./StepsManifestWidget";
 import { IssuesSummaryWidget } from "./IssuesSummaryWidget";
+import { ArtifactWidget } from "./ArtifactWidget";
 
 /** Registry type: tool name (lowercase) → React component */
 export type ToolCallWidgetRegistry = Record<string, ComponentType<ToolCallWidgetProps>>;
@@ -37,6 +38,10 @@ export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
   "get_task_steps": StepsManifestWidget,
   // Issues summary → IssuesSummaryWidget (severity-badged issue list)
   "get_task_issues": IssuesSummaryWidget,
+  // Artifact tools → ArtifactWidget (type badge + title + markdown preview)
+  "get_artifact": ArtifactWidget,
+  "get_artifact_version": ArtifactWidget,
+  "get_plan_artifact": ArtifactWidget,
 };
 
 /**
