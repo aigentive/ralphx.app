@@ -1,3 +1,12 @@
+---
+paths:
+  - "streams/hygiene/**"
+  - "streams/archive/**"
+  - "streams/refactor/backlog.md"
+  - "streams/polish/backlog.md"
+  - "streams/features/backlog.md"
+---
+
 # Hygiene Stream
 
 **Required Context:** code-quality-standards.md | git-workflow.md
