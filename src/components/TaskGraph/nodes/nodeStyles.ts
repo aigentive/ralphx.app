@@ -59,13 +59,13 @@ export const NODE_WIDTH = 240;
 export const NODE_HEIGHT = 140;
 
 /** Compact node width - smaller TaskNodeCompact for large graphs (50+ tasks) */
-export const COMPACT_NODE_WIDTH = 160;
+export const COMPACT_NODE_WIDTH = 220;
 
 /** Compact node height - smaller for dense layouts */
-export const COMPACT_NODE_HEIGHT = 48;
+export const COMPACT_NODE_HEIGHT = 60;
 
 /** Maximum title characters for compact nodes */
-export const COMPACT_TITLE_MAX_CHARS = 20;
+export const COMPACT_TITLE_MAX_CHARS = 40;
 
 // ============================================================================
 // Glass Morphism Constants

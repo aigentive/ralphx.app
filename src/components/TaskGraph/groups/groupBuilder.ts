@@ -16,7 +16,7 @@ import {
 import { UNGROUPED_PLAN_ID, type TierGroupInfo } from "./tierGroupUtils";
 
 /** Collapsed group dimensions */
-export const COLLAPSED_GROUP_WIDTH = 320;
+export const COLLAPSED_GROUP_WIDTH = 420;
 export const COLLAPSED_GROUP_HEIGHT = HEADER_HEIGHT + 8;
 export const COLLAPSED_TIER_WIDTH = COLLAPSED_GROUP_WIDTH;
 export const COLLAPSED_TIER_HEIGHT = TIER_HEADER_HEIGHT + 8;
