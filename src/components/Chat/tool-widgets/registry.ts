@@ -11,20 +11,22 @@
 
 import type { ComponentType } from "react";
 import type { ToolCallWidgetProps } from "./shared";
+import { GrepWidget } from "./GrepWidget";
+import { GlobWidget } from "./GlobWidget";
 
 /** Registry type: tool name (lowercase) → React component */
 export type ToolCallWidgetRegistry = Record<string, ComponentType<ToolCallWidgetProps>>;
 
 /**
- * The widget registry. Subsequent tasks will populate this with specialized widgets.
+ * The widget registry. Maps tool names to specialized React widget components.
  * Tool names should be lowercase to match normalized lookup in ToolCallIndicator.
  */
 export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
+  grep: GrepWidget,
+  glob: GlobWidget,
   // Populated by subsequent tasks:
   // "bash": BashWidget,
   // "read": ReadWidget,
-  // "grep": GrepWidget,
-  // "glob": GlobWidget,
   // "start_step": StepIndicatorWidget,
   // "complete_step": StepIndicatorWidget,
   // etc.
