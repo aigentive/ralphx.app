@@ -3,7 +3,7 @@
  *
  * Two layouts:
  * - Collapsed: two rows (title + count, progress bar)
- * - Expanded: single row inline (toggle, title, progress, badges)
+ * - Expanded: two rows (toggle + title + badges, branch badge + progress bar)
  *
  * Shows feature branch badge and settings gear when a plan branch exists.
  */
@@ -276,134 +276,138 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
     );
   }
 
-  // Expanded: single-row inline layout
+  // Expanded: two-row layout
   return (
-    <div className="flex items-center justify-between gap-2 px-2 py-1.5 bg-[hsl(var(--bg-elevated)/0.8)] rounded-t-lg cursor-pointer">
-      {/* Left: toggle + title + branch badge */}
-      <div className="flex items-center gap-1.5 min-w-0 flex-1">
-        <CollapseToggle isCollapsed={false} onClick={onToggleCollapse} />
-        <span
-          className={cn(
-            "text-sm font-medium text-[hsl(var(--text-primary))] truncate",
-            onNavigateToSession &&
-              "hover:text-[hsl(var(--accent-primary))] transition-colors cursor-pointer"
+    <div className="flex flex-col gap-1 px-2 py-1.5 bg-[hsl(var(--bg-elevated)/0.8)] rounded-t-lg cursor-pointer">
+      {/* Row 1: toggle + title + tier toggle + status badges + settings */}
+      <div className="flex items-center justify-between gap-2 w-full">
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          <CollapseToggle isCollapsed={false} onClick={onToggleCollapse} />
+          <span
+            className={cn(
+              "text-sm font-medium text-[hsl(var(--text-primary))] truncate",
+              onNavigateToSession &&
+                "hover:text-[hsl(var(--accent-primary))] transition-colors cursor-pointer"
+            )}
+            title={`Plan: ${displayTitle}`}
+            onClick={onNavigateToSession}
+          >
+            {displayTitle}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {/* Tier toggle */}
+          {hasTiers && (
+            <button
+              className={cn(
+                "flex-shrink-0 p-0.5 rounded transition-colors",
+                "hover:bg-[hsl(var(--bg-surface))]",
+              )}
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleAllTiers?.(
+                  planArtifactId,
+                  shouldExpandAll ? "expand" : "collapse"
+                );
+              }}
+              aria-label={shouldExpandAll ? "Expand all tiers" : "Collapse all tiers"}
+              title={shouldExpandAll ? "Expand all tiers" : "Collapse all tiers"}
+            >
+              {shouldExpandAll ? (
+                <ChevronRight className="w-3.5 h-3.5 text-[hsl(var(--text-muted))]" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 text-[hsl(var(--text-muted))]" />
+              )}
+            </button>
           )}
-          title={`Plan: ${displayTitle}`}
-          onClick={onNavigateToSession}
-        >
-          {displayTitle}
-        </span>
+
+          {/* Status badges */}
+          <StatusBadge
+            icon={<Check className="w-3 h-3" />}
+            count={counts.done}
+            label={`${counts.done} completed`}
+            colorClass="bg-[hsla(145,60%,45%,0.15)] text-[hsl(145,60%,45%)]"
+          />
+          <StatusBadge
+            icon={<Play className="w-3 h-3" />}
+            count={counts.executing}
+            label={`${counts.executing} executing`}
+            colorClass="bg-[hsla(14,100%,55%,0.15)] text-[hsl(14,100%,55%)]"
+          />
+          <StatusBadge
+            icon={<AlertTriangle className="w-3 h-3" />}
+            count={counts.blocked}
+            label={`${counts.blocked} blocked`}
+            colorClass="bg-[hsla(45,90%,55%,0.15)] text-[hsl(45,90%,55%)]"
+          />
+          <StatusBadge
+            icon={<Eye className="w-3 h-3" />}
+            count={counts.review}
+            label={`${counts.review} in review`}
+            colorClass="bg-[hsla(220,80%,60%,0.15)] text-[hsl(220,80%,60%)]"
+          />
+          <StatusBadge
+            icon={<GitMerge className="w-3 h-3" />}
+            count={counts.merge}
+            label={`${counts.merge} merging`}
+            colorClass="bg-[hsla(180,60%,50%,0.15)] text-[hsl(180,60%,50%)]"
+          />
+
+          {/* Settings gear - opens PlanGroupSettings popover */}
+          {projectId && (
+            <Popover open={settingsOpen} onOpenChange={setSettingsOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  className={cn(
+                    "p-1 rounded transition-colors",
+                    "hover:bg-[hsl(var(--bg-surface))]",
+                    settingsOpen && "bg-[hsl(var(--bg-surface))]"
+                  )}
+                  onClick={(event) => event.stopPropagation()}
+                  aria-label="Plan group settings"
+                  title="Feature branch settings"
+                >
+                  <Settings className="w-3.5 h-3.5 text-[hsl(var(--text-muted))]" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="end"
+                sideOffset={8}
+                className="w-auto p-3"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <PlanGroupSettings
+                  planArtifactId={planArtifactId}
+                  sessionId={sessionId}
+                  projectId={projectId}
+                  planBranch={planBranch ?? null}
+                  hasMergedTasks={hasMergedTasks}
+                  onBranchChange={handleBranchChange}
+                  onNavigateToMergeTask={(taskId) => {
+                    setSettingsOpen(false);
+                    onNavigateToTask?.(taskId);
+                  }}
+                  {...(onDeletePlan ? { onDeletePlan: () => {
+                    setSettingsOpen(false);
+                    onDeletePlan();
+                  }} : {})}
+                />
+              </PopoverContent>
+            </Popover>
+          )}
+        </div>
+      </div>
+
+      {/* Row 2: branch badge + progress bar */}
+      <div className="flex items-center gap-2 pl-6 w-full">
         {planBranch && planBranch.status !== "abandoned" && (
           <FeatureBranchBadge
             branchName={planBranch.branchName}
             status={planBranch.status}
           />
         )}
-      </div>
-
-      {/* Middle: progress bar */}
-      <ProgressBar completed={counts.done} total={counts.total} />
-
-      {/* Tier toggle */}
-      {hasTiers && (
-        <button
-          className={cn(
-            "flex-shrink-0 p-0.5 rounded transition-colors",
-            "hover:bg-[hsl(var(--bg-surface))]",
-          )}
-          onClick={(event) => {
-            event.stopPropagation();
-            onToggleAllTiers?.(
-              planArtifactId,
-              shouldExpandAll ? "expand" : "collapse"
-            );
-          }}
-          aria-label={shouldExpandAll ? "Expand all tiers" : "Collapse all tiers"}
-          title={shouldExpandAll ? "Expand all tiers" : "Collapse all tiers"}
-        >
-          {shouldExpandAll ? (
-            <ChevronRight className="w-3.5 h-3.5 text-[hsl(var(--text-muted))]" />
-          ) : (
-            <ChevronDown className="w-3.5 h-3.5 text-[hsl(var(--text-muted))]" />
-          )}
-        </button>
-      )}
-
-      {/* Right: status badges + settings gear */}
-      <div className="flex items-center gap-1">
-        <StatusBadge
-          icon={<Check className="w-3 h-3" />}
-          count={counts.done}
-          label={`${counts.done} completed`}
-          colorClass="bg-[hsla(145,60%,45%,0.15)] text-[hsl(145,60%,45%)]"
-        />
-        <StatusBadge
-          icon={<Play className="w-3 h-3" />}
-          count={counts.executing}
-          label={`${counts.executing} executing`}
-          colorClass="bg-[hsla(14,100%,55%,0.15)] text-[hsl(14,100%,55%)]"
-        />
-        <StatusBadge
-          icon={<AlertTriangle className="w-3 h-3" />}
-          count={counts.blocked}
-          label={`${counts.blocked} blocked`}
-          colorClass="bg-[hsla(45,90%,55%,0.15)] text-[hsl(45,90%,55%)]"
-        />
-        <StatusBadge
-          icon={<Eye className="w-3 h-3" />}
-          count={counts.review}
-          label={`${counts.review} in review`}
-          colorClass="bg-[hsla(220,80%,60%,0.15)] text-[hsl(220,80%,60%)]"
-        />
-        <StatusBadge
-          icon={<GitMerge className="w-3 h-3" />}
-          count={counts.merge}
-          label={`${counts.merge} merging`}
-          colorClass="bg-[hsla(180,60%,50%,0.15)] text-[hsl(180,60%,50%)]"
-        />
-
-        {/* Settings gear - opens PlanGroupSettings popover */}
-        {projectId && (
-          <Popover open={settingsOpen} onOpenChange={setSettingsOpen}>
-            <PopoverTrigger asChild>
-              <button
-                className={cn(
-                  "p-1 rounded transition-colors",
-                  "hover:bg-[hsl(var(--bg-surface))]",
-                  settingsOpen && "bg-[hsl(var(--bg-surface))]"
-                )}
-                onClick={(event) => event.stopPropagation()}
-                aria-label="Plan group settings"
-                title="Feature branch settings"
-              >
-                <Settings className="w-3.5 h-3.5 text-[hsl(var(--text-muted))]" />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent
-              align="end"
-              sideOffset={8}
-              className="w-auto p-3"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <PlanGroupSettings
-                planArtifactId={planArtifactId}
-                sessionId={sessionId}
-                projectId={projectId}
-                planBranch={planBranch ?? null}
-                hasMergedTasks={hasMergedTasks}
-                onBranchChange={handleBranchChange}
-                onNavigateToMergeTask={(taskId) => {
-                  setSettingsOpen(false);
-                  onNavigateToTask?.(taskId);
-                }}
-                {...(onDeletePlan ? { onDeletePlan: () => {
-                  setSettingsOpen(false);
-                  onDeletePlan();
-                }} : {})}
-              />
-            </PopoverContent>
-          </Popover>
-        )}
+        <ProgressBar completed={counts.done} total={counts.total} />
       </div>
     </div>
   );
