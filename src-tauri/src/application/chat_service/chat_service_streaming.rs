@@ -14,7 +14,7 @@ use crate::domain::entities::{
 use crate::domain::repositories::{ActivityEventRepository, ChatMessageRepository, TaskRepository};
 use crate::infrastructure::agents::claude::{ContentBlockItem, DiffContext, StreamEvent, StreamProcessor, ToolCall};
 
-use super::{events, AgentChunkPayload, AgentTaskCompletedPayload, AgentTaskStartedPayload, AgentToolCallPayload};
+use super::{events, AgentChunkPayload, AgentHookPayload, AgentTaskCompletedPayload, AgentTaskStartedPayload, AgentToolCallPayload};
 
 // ============================================================================
 // Background stream processing
@@ -347,10 +347,69 @@ pub async fn process_stream_background<R: Runtime>(
                             );
                         }
                     }
-                    // Hook events: parsed by stream_processor, emitted to frontend in a later task
-                    StreamEvent::HookStarted { .. }
-                    | StreamEvent::HookCompleted { .. }
-                    | StreamEvent::HookBlock { .. } => {}
+                    StreamEvent::HookStarted { hook_id, hook_name, hook_event } => {
+                        if let Some(ref handle) = app_handle {
+                            let _ = handle.emit(
+                                events::AGENT_HOOK,
+                                AgentHookPayload {
+                                    hook_type: "started".to_string(),
+                                    hook_name: Some(hook_name),
+                                    hook_event: Some(hook_event),
+                                    hook_id: Some(hook_id),
+                                    output: None,
+                                    outcome: None,
+                                    exit_code: None,
+                                    reason: None,
+                                    conversation_id: conversation_id_str.clone(),
+                                    context_type: context_type_str.clone(),
+                                    context_id: context_id_str.clone(),
+                                    timestamp: chrono::Utc::now().timestamp_millis(),
+                                },
+                            );
+                        }
+                    }
+                    StreamEvent::HookCompleted { hook_id, hook_name, hook_event, output, exit_code, outcome } => {
+                        if let Some(ref handle) = app_handle {
+                            let _ = handle.emit(
+                                events::AGENT_HOOK,
+                                AgentHookPayload {
+                                    hook_type: "completed".to_string(),
+                                    hook_name: Some(hook_name),
+                                    hook_event: Some(hook_event),
+                                    hook_id: Some(hook_id),
+                                    output,
+                                    outcome,
+                                    exit_code,
+                                    reason: None,
+                                    conversation_id: conversation_id_str.clone(),
+                                    context_type: context_type_str.clone(),
+                                    context_id: context_id_str.clone(),
+                                    timestamp: chrono::Utc::now().timestamp_millis(),
+                                },
+                            );
+                        }
+                    }
+                    StreamEvent::HookBlock { reason } => {
+                        if let Some(ref handle) = app_handle {
+                            let _ = handle.emit(
+                                events::AGENT_HOOK,
+                                AgentHookPayload {
+                                    hook_type: "block".to_string(),
+                                    hook_name: None,
+                                    hook_event: None,
+                                    hook_id: None,
+                                    output: None,
+                                    outcome: None,
+                                    exit_code: None,
+                                    reason: Some(reason),
+                                    conversation_id: conversation_id_str.clone(),
+                                    context_type: context_type_str.clone(),
+                                    context_id: context_id_str.clone(),
+                                    timestamp: chrono::Utc::now().timestamp_millis(),
+                                },
+                            );
+                        }
+                    }
 
                     StreamEvent::ToolResultReceived { tool_use_id, result, parent_tool_use_id } => {
                         if let Some(ref handle) = app_handle {
