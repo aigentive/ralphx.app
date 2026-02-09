@@ -5,6 +5,9 @@
  */
 
 import { useState, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -72,9 +75,11 @@ function EscalationReasonCard({ review }: { review: ReviewNoteResponse | null })
 
       {/* Reason text */}
       {review?.notes ? (
-        <p className="text-[13px] text-white/55 leading-relaxed pl-12">
-          {review.notes}
-        </p>
+        <div className="text-[13px] text-white/55 leading-relaxed pl-12" style={{ wordBreak: "break-word" }}>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            {review.notes}
+          </ReactMarkdown>
+        </div>
       ) : (
         <p className="text-[13px] text-white/35 italic pl-12">
           No escalation reason provided

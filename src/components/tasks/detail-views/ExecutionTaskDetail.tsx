@@ -5,6 +5,9 @@
  * and revision context when re-executing.
  */
 
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
 import { Loader2, Radio, AlertTriangle, Bot, User, Zap } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { StepList } from "../StepList";
@@ -98,9 +101,11 @@ function RevisionFeedbackCard({
               size="sm"
             />
           </div>
-          <p className="text-[13px] text-white/55 leading-relaxed">
-            {feedback.notes || "No specific feedback provided"}
-          </p>
+          <div className="text-[13px] text-white/55 leading-relaxed" style={{ wordBreak: "break-word" }}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+              {feedback.notes || "No specific feedback provided"}
+            </ReactMarkdown>
+          </div>
         </div>
       </div>
     </DetailCard>
