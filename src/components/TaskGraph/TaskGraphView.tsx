@@ -867,6 +867,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     moveMutation,
     blockMutation,
     unblockMutation,
+    cleanupTasksInGroupMutation,
   } = useTaskMutation(projectId);
 
   // ============================================================================
@@ -991,6 +992,23 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     [graphData?.planGroups, confirm, deleteSessionMutation, removeSession, clearMessages, clearGraphSelection, queryClient, projectId]
   );
 
+  // Remove all tasks in a group (bulk cleanup via context menu)
+  const handleRemoveAllInGroup = useCallback(
+    async (sessionId: string) => {
+      try {
+        await cleanupTasksInGroupMutation.mutateAsync({
+          groupKind: "session",
+          groupId: sessionId,
+          projectId,
+        });
+        queryClient.invalidateQueries({ queryKey: taskGraphKeys.graphPrefix(projectId) });
+      } catch {
+        // Error toast is handled by the mutation's onError
+      }
+    },
+    [cleanupTasksInGroupMutation, projectId, queryClient]
+  );
+
   // Task deletion handler (Delete key on task node)
   const handleDeleteTask = useCallback(
     async (taskId: string) => {
@@ -1033,7 +1051,8 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     handleToggleAllTiers,
     projectId,
     handleViewDetails,
-    handleDeletePlan
+    handleDeletePlan,
+    handleRemoveAllInGroup
   );
 
   useEffect(() => {
