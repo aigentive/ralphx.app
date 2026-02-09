@@ -9,12 +9,13 @@
  * - Code blocks with copy functionality
  */
 
-import React from "react";
+import React, { useMemo } from "react";
 import { Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ToolCallIndicator, type ToolCall } from "./ToolCallIndicator";
 import { TextBubble } from "./TextBubble";
 import { formatTimestamp } from "./MessageItem.utils";
+import { isTaskToolCall } from "./DiffToolCallView.utils";
 
 // ============================================================================
 // Types
@@ -65,6 +66,33 @@ export const MessageItem = React.memo(function MessageItem({
   const parsedToolCalls = toolCalls ?? [];
   const hasContentBlocks = parsedContentBlocks.length > 0;
 
+  // Collect IDs of child tool calls that belong to Task subagents.
+  // These are embedded in Task result content blocks and should NOT render as top-level cards.
+  const childToolCallIds = useMemo(() => {
+    const blocks = contentBlocks ?? [];
+    if (blocks.length === 0) return new Set<string>();
+    const ids = new Set<string>();
+    for (const block of blocks) {
+      if (block.type === "tool_use" && block.name && isTaskToolCall(block.name) && block.result) {
+        // Task result may be an array of content blocks containing child tool_use/tool_result
+        const result = block.result;
+        if (Array.isArray(result)) {
+          for (const child of result) {
+            if (child && typeof child === "object") {
+              const c = child as Record<string, unknown>;
+              if (c.type === "tool_use" && typeof c.id === "string") {
+                ids.add(c.id);
+              } else if (c.type === "tool_result" && typeof c.tool_use_id === "string") {
+                ids.add(c.tool_use_id);
+              }
+            }
+          }
+        }
+      }
+    }
+    return ids;
+  }, [contentBlocks]);
+
   return (
     <div
       className={cn(
@@ -80,10 +108,15 @@ export const MessageItem = React.memo(function MessageItem({
       <div className="flex flex-col gap-3 max-w-[85%] min-w-0">
         {hasContentBlocks ? (
           // Render content blocks in order (interleaved text and tool calls)
+          // Skip child tool calls that belong to Task subagents (they render inside TaskToolCallCard)
           parsedContentBlocks.map((block, index) => {
             if (block.type === "text" && block.text) {
               return <TextBubble key={`block-${index}`} text={block.text} isUser={isUser} />;
             } else if (block.type === "tool_use" && block.name) {
+              // Skip child tool calls — they're rendered inside their parent TaskToolCallCard
+              if (block.id && childToolCallIds.has(block.id)) {
+                return null;
+              }
               const toolCall: ToolCall = {
                 id: block.id || `tool-${index}`,
                 name: block.name,
