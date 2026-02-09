@@ -123,6 +123,14 @@ impl From<Task> for TaskResponse {
     }
 }
 
+/// Response for task cleanup operations
+#[derive(Debug, Serialize)]
+pub struct CleanupReportResponse {
+    pub deleted_count: usize,
+    pub failed_count: usize,
+    pub stopped_agents: usize,
+}
+
 /// Response for paginated task list
 #[derive(Debug, Serialize)]
 pub struct TaskListResponse {
