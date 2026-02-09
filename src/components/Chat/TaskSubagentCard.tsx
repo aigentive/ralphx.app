@@ -14,8 +14,8 @@ import React, { useState, useMemo, useRef, useEffect } from "react";
 import { ChevronDown, ChevronRight, Loader2, Bot } from "lucide-react";
 import type { StreamingTask } from "@/types/streaming-task";
 import type { ToolCall } from "./ToolCallIndicator";
+import { ToolCallIndicator } from "./ToolCallIndicator";
 import { isDiffToolCall } from "./DiffToolCallView.utils";
-import { DiffToolCallView } from "./DiffToolCallView";
 
 // ============================================================================
 // Constants
@@ -91,93 +91,8 @@ function useElapsedTimer(startedAt: number, isRunning: boolean): string {
 }
 
 // ============================================================================
-// Tool Summary Helpers (reused from StreamingToolIndicator patterns)
-// ============================================================================
-
-function getToolVerb(name: string): string {
-  const n = name.toLowerCase();
-  switch (n) {
-    case "bash": return "Running";
-    case "read": return "Reading";
-    case "write": return "Writing";
-    case "edit": return "Editing";
-    case "glob": return "Finding";
-    case "grep": return "Searching";
-    default: return "Calling";
-  }
-}
-
-function getToolPrimary(toolCall: ToolCall): string {
-  const { name, arguments: args } = toolCall;
-  const n = name.toLowerCase();
-  const typedArgs = args as Record<string, unknown> | undefined;
-
-  switch (n) {
-    case "bash": {
-      const desc = typedArgs?.description as string | undefined;
-      const cmd = typedArgs?.command as string | undefined;
-      return desc || (cmd ? `$ ${cmd.slice(0, 50)}${(cmd.length ?? 0) > 50 ? "..." : ""}` : "Running command");
-    }
-    case "read":
-      return (typedArgs?.file_path as string) || "Reading file";
-    case "write":
-      return (typedArgs?.file_path as string) || "Writing file";
-    case "edit":
-      return (typedArgs?.file_path as string) || "Editing file";
-    case "glob":
-      return (typedArgs?.pattern as string) || "Searching files";
-    case "grep":
-      return typedArgs?.pattern ? `"${typedArgs.pattern}"` : "Searching content";
-    default:
-      return name.replace(/_/g, " ");
-  }
-}
-
-// ============================================================================
 // Sub-components
 // ============================================================================
-
-/** Single tool call line in the numbered list */
-const ToolCallLine = React.memo(function ToolCallLine({
-  toolCall,
-  index,
-}: {
-  toolCall: ToolCall;
-  index: number;
-}) {
-  const verb = getToolVerb(toolCall.name);
-  const primary = getToolPrimary(toolCall);
-  const hasError = Boolean(toolCall.error);
-
-  return (
-    <div
-      className="flex items-start gap-2 text-xs"
-      style={{
-        color: hasError ? "var(--status-error)" : "var(--text-secondary)",
-      }}
-    >
-      <span
-        className="flex-shrink-0 w-4 text-right tabular-nums"
-        style={{ color: "var(--text-muted)" }}
-      >
-        {index + 1}.
-      </span>
-      <div className="flex-1 min-w-0">
-        <span className="font-medium" style={{ color: "var(--text-primary)" }}>
-          {verb}
-        </span>{" "}
-        <span
-          className="font-mono break-all"
-          style={{
-            color: hasError ? "var(--status-error)" : "var(--text-secondary)",
-          }}
-        >
-          {primary}
-        </span>
-      </div>
-    </div>
-  );
-});
 
 /** Completed state summary line */
 function CompletedSummary({ task }: { task: StreamingTask }) {
@@ -329,19 +244,23 @@ export const TaskSubagentCard = React.memo(function TaskSubagentCard({
       {/* Body */}
       {isExpanded && (
         <div className="px-3 py-2">
-          {/* Running state: numbered list of tool calls + inline diffs */}
+          {/* Child tool calls rendered as compact ToolCallIndicators */}
           {(isRunning || (isCompleted && (otherCalls.length > 0 || diffCalls.length > 0))) && (
             <>
               {/* Scrollable tool call list */}
-              {otherCalls.length > 0 && (
+              {(otherCalls.length > 0 || diffCalls.length > 0) && (
                 <div
                   ref={contentRef}
-                  className="space-y-1.5 overflow-y-auto"
+                  className="space-y-1 overflow-y-auto"
                   style={{ maxHeight: `${MAX_CONTENT_HEIGHT}px` }}
                 >
-                  {otherCalls.map((tc, i) => (
-                    <ToolCallLine key={tc.id || i} toolCall={tc} index={i} />
-                  ))}
+                  {/* All child calls rendered with compact ToolCallIndicator */}
+                  {task.childToolCalls
+                    .filter((tc) => !tc.name.startsWith("result:toolu"))
+                    .map((tc) => (
+                      <ToolCallIndicator key={tc.id} toolCall={tc} compact />
+                    ))
+                  }
 
                   {/* Active indicator */}
                   {isRunning && (
@@ -363,15 +282,6 @@ export const TaskSubagentCard = React.memo(function TaskSubagentCard({
                       </div>
                     </div>
                   )}
-                </div>
-              )}
-
-              {/* Inline DiffToolCallViews for Edit/Write child calls */}
-              {diffCalls.length > 0 && (
-                <div className={otherCalls.length > 0 ? "mt-2 space-y-2" : "space-y-2"}>
-                  {diffCalls.map((tc) => (
-                    <DiffToolCallView key={tc.id} toolCall={tc} isStreaming={isRunning} className="" />
-                  ))}
                 </div>
               )}
             </>
