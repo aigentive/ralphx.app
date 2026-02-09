@@ -68,6 +68,7 @@ import { toast } from "sonner";
 import { Filter, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { buildTierGroups, UNGROUPED_PLAN_ID } from "./groups/tierGroupUtils";
+import type { GroupInfo } from "@/lib/task-actions";
 
 // ============================================================================
 // Types
@@ -1119,6 +1120,31 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   // combined with the plan/tier collapse setState-during-render blocks above.
   // The ref reads inside useMemo are a well-known React stabilization pattern.
 
+  // Build task-to-group lookup for injecting groupInfo into task node context menus
+  const taskGroupInfoMap = useMemo(() => {
+    const map = new Map<string, GroupInfo>();
+    if (!filteredGraphData?.planGroups) return map;
+
+    for (const pg of filteredGraphData.planGroups) {
+      const isUncategorized = pg.planArtifactId === UNGROUPED_PLAN_ID;
+      const groupKind = isUncategorized ? "uncategorized" as const : "plan" as const;
+      const groupLabel = pg.sessionTitle ?? "Unnamed plan";
+      const sessionId = pg.sessionId;
+
+      for (const taskId of pg.taskIds) {
+        map.set(taskId, {
+          groupLabel,
+          groupKind,
+          taskCount: pg.taskIds.length,
+          groupId: isUncategorized ? "" : sessionId,
+          projectId,
+          onRemoveAll: () => handleRemoveAllInGroup(isUncategorized ? "" : sessionId),
+        });
+      }
+    }
+    return map;
+  }, [filteredGraphData?.planGroups, projectId, handleRemoveAllInGroup]);
+
   const prevNodesRef = useRef<Node[]>([]);
   const prevEdgesRef = useRef<Edge[]>([]);
 
@@ -1149,16 +1175,20 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
       }
       return node;
     });
-    const taskNodesWithData = layoutNodes.map((node) => ({
-      ...node,
-      data: {
-        ...node.data,
-        isHighlighted: node.id === highlightedTaskId,
-        isFocused: node.id === focusedNodeId,
-        handlers: nodeHandlers,
-      },
-      selected: graphSelection?.kind === "task" && graphSelection.id === node.id,
-    }));
+    const taskNodesWithData = layoutNodes.map((node) => {
+      const gi = taskGroupInfoMap.get(node.id);
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          isHighlighted: node.id === highlightedTaskId,
+          isFocused: node.id === focusedNodeId,
+          handlers: nodeHandlers,
+          ...(gi !== undefined && { groupInfo: gi }),
+        },
+        selected: graphSelection?.kind === "task" && graphSelection.id === node.id,
+      };
+    });
     const next = [...groupNodesWithSelection, ...taskNodesWithData];
     // Lightweight identity check — IDs, positions, visual state, task data.
     // Must include positions so dagre re-layout after expand/collapse propagates.
@@ -1192,7 +1222,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     }
     prevNodesRef.current = next;
     return next;
-  }, [layoutNodes, groupNodes, graphSelection, highlightedTaskId, focusedNodeId, nodeHandlers]);
+  }, [layoutNodes, groupNodes, graphSelection, highlightedTaskId, focusedNodeId, nodeHandlers, taskGroupInfoMap]);
 
   const edges = useMemo<Edge[]>(() => {
     const prev = prevEdgesRef.current;
