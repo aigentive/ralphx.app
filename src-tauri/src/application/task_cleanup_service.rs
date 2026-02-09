@@ -1,9 +1,11 @@
-// Service for cleaning up tasks: force-stop agents, delete from DB, cleanup git branches/worktrees
-// Extracted from delete_ideation_session and session_reopen_service patterns
+// Service for cleaning up tasks: force-stop agents, transition to Stopped, delete from DB,
+// cleanup git branches/worktrees.
+// Extracted from delete_ideation_session and session_reopen_service patterns.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::commands::execution_commands::AGENT_ACTIVE_STATUSES;
@@ -14,6 +16,15 @@ use crate::domain::repositories::{ProjectRepository, TaskRepository};
 use crate::domain::services::{RunningAgentKey, RunningAgentRegistry};
 use crate::application::git_service::GitService;
 use crate::error::AppResult;
+
+/// Trait for transitioning tasks to Stopped status during cleanup.
+/// Decouples TaskCleanupService from TaskTransitionService's full dependency tree.
+#[async_trait]
+pub trait TaskStopper: Send + Sync {
+    /// Transition a task to Stopped, triggering on_exit side effects
+    /// (decrement running_count, emit execution:status_changed, auto_commit).
+    async fn stop_task(&self, task_id: &TaskId) -> AppResult<()>;
+}
 
 /// Identifies a group of tasks for bulk cleanup
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,6 +61,7 @@ pub struct TaskCleanupService {
     task_repo: Arc<dyn TaskRepository>,
     project_repo: Arc<dyn ProjectRepository>,
     running_agent_registry: Arc<dyn RunningAgentRegistry>,
+    task_stopper: Option<Arc<dyn TaskStopper>>,
 }
 
 impl TaskCleanupService {
@@ -62,20 +74,21 @@ impl TaskCleanupService {
             task_repo,
             project_repo,
             running_agent_registry,
+            task_stopper: None,
         }
     }
 
-    /// Clean delete a single task: force-stop agent if active, cleanup branch/worktree, delete from DB
-    pub async fn cleanup_task(&self, task_id: &TaskId) -> AppResult<()> {
-        let task = self
-            .task_repo
-            .get_by_id(task_id)
-            .await?
-            .ok_or_else(|| crate::error::AppError::NotFound(
-                format!("Task not found: {}", task_id.as_str())
-            ))?;
+    /// Set a TaskStopper for transitioning active tasks to Stopped before deletion.
+    /// This triggers on_exit side effects (decrement running_count, auto_commit, etc.).
+    pub fn with_task_stopper(mut self, stopper: Arc<dyn TaskStopper>) -> Self {
+        self.task_stopper = Some(stopper);
+        self
+    }
 
-        self.cleanup_single_task(&task).await
+    /// Clean delete a single task by reference.
+    /// Returns whether an agent was stopped.
+    pub async fn cleanup_task_ref(&self, task: &Task) -> AppResult<bool> {
+        self.cleanup_single_task(task).await
     }
 
     /// Clean delete all tasks matching a group
@@ -94,9 +107,9 @@ impl TaskCleanupService {
             }
 
             match self.cleanup_single_task(task).await {
-                Ok(()) => {
+                Ok(agent_stopped) => {
                     report.deleted_count += 1;
-                    if AGENT_ACTIVE_STATUSES.contains(&task.internal_status) {
+                    if agent_stopped {
                         report.stopped_agents += 1;
                     }
                 }
@@ -114,10 +127,13 @@ impl TaskCleanupService {
         Ok(report)
     }
 
-    /// Internal: clean up a single task (stop agent, cleanup git, delete from DB)
-    async fn cleanup_single_task(&self, task: &Task) -> AppResult<()> {
+    /// Internal: clean up a single task (stop agent, transition to Stopped, cleanup git, delete from DB).
+    /// Returns true if an active agent was stopped.
+    async fn cleanup_single_task(&self, task: &Task) -> AppResult<bool> {
+        let was_active = AGENT_ACTIVE_STATUSES.contains(&task.internal_status);
+
         // 1. Force-stop agent if active
-        if AGENT_ACTIVE_STATUSES.contains(&task.internal_status) {
+        if was_active {
             let context_type = match task.internal_status {
                 InternalStatus::Reviewing => "review",
                 InternalStatus::Merging => "merge",
@@ -125,9 +141,21 @@ impl TaskCleanupService {
             };
             let key = RunningAgentKey::new(context_type, task.id.as_str());
             let _ = self.running_agent_registry.stop(&key).await;
+
+            // 2. Transition to Stopped (triggers on_exit handlers: decrement running_count,
+            //    emit execution:status_changed, auto_commit_on_execution_done)
+            if let Some(ref stopper) = self.task_stopper {
+                if let Err(e) = stopper.stop_task(&task.id).await {
+                    tracing::warn!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Failed to transition task to Stopped during cleanup"
+                    );
+                }
+            }
         }
 
-        // 2. Cleanup git branch/worktree (best-effort)
+        // 3. Cleanup git branch/worktree (best-effort)
         if task.task_branch.is_some() || task.worktree_path.is_some() {
             let project = self
                 .project_repo
@@ -151,8 +179,9 @@ impl TaskCleanupService {
             }
         }
 
-        // 3. Delete task from DB
-        self.task_repo.delete(&task.id).await
+        // 4. Delete task from DB
+        self.task_repo.delete(&task.id).await?;
+        Ok(was_active)
     }
 
     /// Resolve a TaskGroup into a list of tasks
@@ -190,20 +219,7 @@ mod tests {
     use crate::domain::entities::{ProjectId, Task};
 
     #[tokio::test]
-    async fn test_cleanup_task_not_found() {
-        let state = AppState::new_test();
-        let service = TaskCleanupService::new(
-            Arc::clone(&state.task_repo),
-            Arc::clone(&state.project_repo),
-            Arc::clone(&state.running_agent_registry),
-        );
-
-        let result = service.cleanup_task(&TaskId::new()).await;
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_cleanup_task_deletes_from_db() {
+    async fn test_cleanup_task_ref_deletes_from_db() {
         let state = AppState::new_test();
         let project_id = ProjectId::new();
 
@@ -215,7 +231,8 @@ mod tests {
             Arc::clone(&state.project_repo),
             Arc::clone(&state.running_agent_registry),
         );
-        service.cleanup_task(&created.id).await.unwrap();
+        let agent_stopped = service.cleanup_task_ref(&created).await.unwrap();
+        assert!(!agent_stopped); // backlog task has no active agent
 
         assert!(state.task_repo.get_by_id(&created.id).await.unwrap().is_none());
     }
@@ -246,6 +263,7 @@ mod tests {
 
         assert_eq!(report.deleted_count, 2);
         assert_eq!(report.failed_count, 0);
+        assert_eq!(report.stopped_agents, 0);
         assert!(state.task_repo.get_by_id(&created1.id).await.unwrap().is_none());
         assert!(state.task_repo.get_by_id(&created2.id).await.unwrap().is_none());
     }
@@ -298,5 +316,6 @@ mod tests {
 
         assert_eq!(report.deleted_count, 0);
         assert_eq!(report.failed_count, 0);
+        assert_eq!(report.stopped_agents, 0);
     }
 }
