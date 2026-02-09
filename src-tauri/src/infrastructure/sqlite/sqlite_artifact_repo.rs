@@ -1327,4 +1327,36 @@ mod tests {
         let resolved = repo.resolve_latest_artifact_id(&v2_id).await.unwrap();
         assert_eq!(resolved, v3_id, "V2 (middle) should resolve to V3 (latest)");
     }
+
+    #[tokio::test]
+    async fn test_resolve_stale_id_for_link_proposals_scenario() {
+        // Simulates the link_proposals_to_plan fix: agent passes stale V1 ID,
+        // resolve_latest_artifact_id returns V3 ID, proposals get linked to V3.
+        let conn = setup_test_db();
+        let repo = SqliteArtifactRepository::new(conn);
+
+        // Create V1 → V2 → V3 chain
+        let v1 = Artifact::new_inline("Plan", ArtifactType::Specification, "V1 content", "orchestrator");
+        let v1_id = v1.id.clone();
+        repo.create(v1).await.unwrap();
+
+        let mut v2 = Artifact::new_inline("Plan", ArtifactType::Specification, "V2 content", "orchestrator");
+        v2.metadata.version = 2;
+        let v2_id = v2.id.clone();
+        repo.create_with_previous_version(v2, v1_id.clone()).await.unwrap();
+
+        let mut v3 = Artifact::new_inline("Plan", ArtifactType::Specification, "V3 content", "orchestrator");
+        v3.metadata.version = 3;
+        let v3_id = v3.id.clone();
+        repo.create_with_previous_version(v3, v2_id).await.unwrap();
+
+        // Agent holds stale V1 ID — resolve to latest
+        let resolved_id = repo.resolve_latest_artifact_id(&v1_id).await.unwrap();
+        assert_eq!(resolved_id, v3_id, "Stale V1 ID should resolve to V3");
+
+        // Fetch resolved artifact — this is what proposals would be linked to
+        let resolved_artifact = repo.get_by_id(&resolved_id).await.unwrap().unwrap();
+        assert_eq!(resolved_artifact.metadata.version, 3, "Resolved artifact should be version 3");
+        assert_eq!(resolved_artifact.id, v3_id, "Resolved artifact ID should be V3");
+    }
 }

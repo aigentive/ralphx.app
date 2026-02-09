@@ -237,9 +237,20 @@ pub async fn link_proposals_to_plan(
     State(state): State<HttpServerState>,
     Json(req): Json<LinkProposalsToPlanRequest>,
 ) -> Result<Json<SuccessResponse>, StatusCode> {
-    let artifact_id = ArtifactId::from_string(req.artifact_id);
+    let input_artifact_id = ArtifactId::from_string(req.artifact_id);
 
-    // Verify artifact exists
+    // Resolve stale artifact ID to latest version in the chain
+    let artifact_id = state
+        .app_state
+        .artifact_repo
+        .resolve_latest_artifact_id(&input_artifact_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to resolve latest artifact ID for {}: {}", input_artifact_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // Verify resolved artifact exists
     let artifact = state
         .app_state
         .artifact_repo
