@@ -8,6 +8,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
+# Source shared milestones config
+source "$SCRIPT_DIR/milestones.sh"
+
 # Colors
 BOLD='\033[1m'
 CYAN='\033[0;36m'
@@ -207,6 +210,17 @@ draw_bar() {
     echo -e "${color}${bar}${NC}"
 }
 
+# Print a milestone marker line for charts
+print_milestone_marker() {
+    local label="$1"
+    local width=${2:-60}
+    local dashes=""
+    for ((d=0; d<width; d++)); do
+        dashes="${dashes}-"
+    done
+    echo -e "       ${YELLOW}★${NC} ${DIM}${dashes}${NC} ${YELLOW}${label}${NC}"
+}
+
 # Chart view - visual bar chart
 print_chart() {
     cd "$PROJECT_ROOT"
@@ -273,6 +287,11 @@ print_chart() {
         local commit="${commits[$i]}"
         local short_date=$(echo "$date" | cut -c6-)  # MM-DD
 
+        # Check for milestone on current day
+        local ms_label
+        ms_label=$(milestone_label_for_date "$date" 2>/dev/null) && \
+            print_milestone_marker "$ms_label"
+
         # Color based on magnitude
         local color=$GREEN
         [ $net -lt 5000 ] && color=$YELLOW
@@ -297,6 +316,11 @@ print_chart() {
         local date="${dates[$i]}"
         local commit="${commits[$i]}"
         local short_date=$(echo "$date" | cut -c6-)
+
+        # Check for milestone on current day
+        local ms_label
+        ms_label=$(milestone_label_for_date "$date" 2>/dev/null) && \
+            print_milestone_marker "$ms_label"
 
         printf "${BOLD}%s${NC} %6d │ " "$short_date" "$commit"
         draw_bar $commit $max_commits $bar_width "$CYAN"
@@ -337,6 +361,23 @@ analyze_trends() {
             else
                 next_date=$(date -d "$((i-1)) days ago" "+%Y-%m-%d")
             fi
+        fi
+
+        # Check for milestone on this date — print highlighted banner
+        if date_has_milestone "$date_str"; then
+            # Find the matching entry for full details
+            for _ms_entry in "${MILESTONES[@]}"; do
+                parse_milestone "$_ms_entry"
+                if [ "$MS_DATE" = "$date_str" ]; then
+                    break
+                fi
+            done
+            echo ""
+            echo -e "${YELLOW}╔══════════════════════════════════════════════════════════════════════════╗${NC}"
+            printf "${YELLOW}║  ★  %-67s ║${NC}\n" "$MS_LABEL"
+            printf "${YELLOW}║     %-67s ║${NC}\n" "$MS_DESC"
+            printf "${YELLOW}║     %-67s ║${NC}\n" "$MS_DATE $MS_TIME"
+            echo -e "${YELLOW}╚══════════════════════════════════════════════════════════════════════════╝${NC}"
         fi
 
         process_day "$date_str" "$next_date"
