@@ -3,9 +3,14 @@
  *
  * Renders ContextMenuItems (no wrapper) to be used inside both
  * Kanban (TaskCardContextMenu) and Graph (TaskNodeContextMenu) context menus.
+ *
+ * IMPORTANT: Dialogs must be rendered OUTSIDE ContextMenuContent because
+ * Radix unmounts content on menu close. Use useTaskContextMenuActions() hook
+ * to share state between items and dialogs, then render TaskContextMenuDialogs
+ * as a sibling of <ContextMenu>.
  */
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import {
   ContextMenuItem,
   ContextMenuSeparator,
@@ -87,22 +92,43 @@ export interface TaskContextMenuItemsHandlers {
   onStartIdeation?: () => void;
 }
 
-interface TaskContextMenuItemsProps {
-  task: Task;
-  handlers: TaskContextMenuItemsHandlers;
-  context: "kanban" | "graph";
+export interface TaskContextMenuActionsReturn {
+  menuHandlers: {
+    handleArchive: () => Promise<void>;
+    handleRestore: () => Promise<void>;
+    handlePermanentDelete: () => Promise<void>;
+    handleStatusChange: (newStatus: string, label: string) => Promise<void>;
+    handleUnblock: () => Promise<void>;
+    openBlockDialog: (taskTitle: string) => void;
+  };
+  dialogProps: {
+    confirmationDialogProps: ReturnType<typeof useConfirmation>["confirmationDialogProps"];
+    ConfirmationDialog: ReturnType<typeof useConfirmation>["ConfirmationDialog"];
+    showBlockDialog: boolean;
+    setShowBlockDialog: (show: boolean) => void;
+    blockTaskTitle: string;
+  };
 }
 
-export function TaskContextMenuItems({ task, handlers, context: _context }: TaskContextMenuItemsProps) {
+/**
+ * Hook that manages dialog state for task context menu actions.
+ * Returns menu item handlers and dialog rendering props.
+ *
+ * Usage:
+ * ```tsx
+ * const { menuHandlers, dialogProps } = useTaskContextMenuActions(handlers);
+ * // Inside ContextMenuContent:
+ * <TaskContextMenuItems task={task} menuHandlers={menuHandlers} handlers={handlers} />
+ * // Outside ContextMenuContent (sibling of ContextMenu):
+ * <TaskContextMenuDialogs dialogProps={dialogProps} onBlockWithReason={handlers.onBlockWithReason} />
+ * ```
+ */
+export function useTaskContextMenuActions(handlers: TaskContextMenuItemsHandlers): TaskContextMenuActionsReturn {
   const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
   const [showBlockDialog, setShowBlockDialog] = useState(false);
+  const [blockTaskTitle, setBlockTaskTitle] = useState("");
 
-  const isArchived = task.archivedAt !== null;
-  const canEditTask = canEdit(task);
-  const statusActions = getStatusActions(task.internalStatus);
-  const isBacklog = task.internalStatus === "backlog";
-
-  const handleArchive = async () => {
+  const handleArchive = useCallback(async () => {
     const confirmed = await confirm({
       title: "Archive this task?",
       description: "The task will be moved to the archive.",
@@ -110,9 +136,9 @@ export function TaskContextMenuItems({ task, handlers, context: _context }: Task
       variant: "default",
     });
     if (confirmed) handlers.onArchive();
-  };
+  }, [confirm, handlers]);
 
-  const handleRestore = async () => {
+  const handleRestore = useCallback(async () => {
     const confirmed = await confirm({
       title: "Restore this task?",
       description: "The task will be restored to the backlog.",
@@ -120,9 +146,9 @@ export function TaskContextMenuItems({ task, handlers, context: _context }: Task
       variant: "default",
     });
     if (confirmed) handlers.onRestore();
-  };
+  }, [confirm, handlers]);
 
-  const handlePermanentDelete = async () => {
+  const handlePermanentDelete = useCallback(async () => {
     const confirmed = await confirm({
       title: "Delete permanently?",
       description: "This will permanently delete the task. This action cannot be undone.",
@@ -130,9 +156,9 @@ export function TaskContextMenuItems({ task, handlers, context: _context }: Task
       variant: "destructive",
     });
     if (confirmed) handlers.onPermanentDelete();
-  };
+  }, [confirm, handlers]);
 
-  const handleStatusChange = async (newStatus: string, label: string) => {
+  const handleStatusChange = useCallback(async (newStatus: string, label: string) => {
     const isRetry = label === "Retry";
     const messages = isRetry
       ? { title: "Retry this task?", description: "The task will be queued for re-execution.", variant: "default" as const }
@@ -145,9 +171,9 @@ export function TaskContextMenuItems({ task, handlers, context: _context }: Task
       variant: messages.variant,
     });
     if (confirmed) handlers.onStatusChange(newStatus);
-  };
+  }, [confirm, handlers]);
 
-  const handleUnblock = async () => {
+  const handleUnblock = useCallback(async () => {
     const confirmed = await confirm({
       title: "Unblock this task?",
       description: "The task will be moved back to ready and the blocked reason will be cleared.",
@@ -155,7 +181,73 @@ export function TaskContextMenuItems({ task, handlers, context: _context }: Task
       variant: "default",
     });
     if (confirmed) handlers.onUnblock();
+  }, [confirm, handlers]);
+
+  const openBlockDialog = useCallback((taskTitle: string) => {
+    setBlockTaskTitle(taskTitle);
+    setShowBlockDialog(true);
+  }, []);
+
+  return {
+    menuHandlers: {
+      handleArchive,
+      handleRestore,
+      handlePermanentDelete,
+      handleStatusChange,
+      handleUnblock,
+      openBlockDialog,
+    },
+    dialogProps: {
+      confirmationDialogProps,
+      ConfirmationDialog,
+      showBlockDialog,
+      setShowBlockDialog,
+      blockTaskTitle,
+    },
   };
+}
+
+/**
+ * Renders the confirmation and block reason dialogs.
+ * MUST be rendered OUTSIDE of ContextMenuContent (as sibling of ContextMenu)
+ * because Radix unmounts ContextMenuContent on close.
+ */
+export function TaskContextMenuDialogs({
+  dialogProps,
+  onBlockWithReason,
+}: {
+  dialogProps: TaskContextMenuActionsReturn["dialogProps"];
+  onBlockWithReason: (reason?: string) => void;
+}) {
+  const { confirmationDialogProps, ConfirmationDialog, showBlockDialog, setShowBlockDialog, blockTaskTitle } = dialogProps;
+
+  return (
+    <>
+      <ConfirmationDialog {...confirmationDialogProps} />
+      <BlockReasonDialog
+        isOpen={showBlockDialog}
+        onClose={() => setShowBlockDialog(false)}
+        onConfirm={(reason) => {
+          onBlockWithReason(reason);
+          setShowBlockDialog(false);
+        }}
+        taskTitle={blockTaskTitle}
+      />
+    </>
+  );
+}
+
+interface TaskContextMenuItemsProps {
+  task: Task;
+  handlers: TaskContextMenuItemsHandlers;
+  menuHandlers: TaskContextMenuActionsReturn["menuHandlers"];
+}
+
+export function TaskContextMenuItems({ task, handlers, menuHandlers }: TaskContextMenuItemsProps) {
+  const isArchived = task.archivedAt !== null;
+  const canEditTask = canEdit(task);
+  const statusActions = getStatusActions(task.internalStatus);
+  const isBacklog = task.internalStatus === "backlog";
 
   return (
     <>
@@ -187,7 +279,7 @@ export function TaskContextMenuItems({ task, handlers, context: _context }: Task
       {!isArchived && (
         <>
           {/* Archive */}
-          <ContextMenuItem onClick={handleArchive}>
+          <ContextMenuItem onClick={menuHandlers.handleArchive}>
             <Archive className="w-4 h-4 mr-2" />
             Archive
           </ContextMenuItem>
@@ -198,11 +290,11 @@ export function TaskContextMenuItems({ task, handlers, context: _context }: Task
               key={action.status}
               onClick={() => {
                 if (action.label === "Block") {
-                  setShowBlockDialog(true);
+                  menuHandlers.openBlockDialog(task.title);
                 } else if (action.label === "Unblock") {
-                  handleUnblock();
+                  menuHandlers.handleUnblock();
                 } else {
-                  handleStatusChange(action.status, action.label);
+                  menuHandlers.handleStatusChange(action.status, action.label);
                 }
               }}
             >
@@ -217,30 +309,18 @@ export function TaskContextMenuItems({ task, handlers, context: _context }: Task
       {isArchived && (
         <>
           {/* Restore */}
-          <ContextMenuItem onClick={handleRestore}>
+          <ContextMenuItem onClick={menuHandlers.handleRestore}>
             <RotateCcw className="w-4 h-4 mr-2" />
             Restore
           </ContextMenuItem>
 
           {/* Permanent Delete */}
-          <ContextMenuItem onClick={handlePermanentDelete} className="text-destructive">
+          <ContextMenuItem onClick={menuHandlers.handlePermanentDelete} className="text-destructive">
             <Trash className="w-4 h-4 mr-2" />
             Delete Permanently
           </ContextMenuItem>
         </>
       )}
-
-      {/* Dialogs - rendered as siblings */}
-      <ConfirmationDialog {...confirmationDialogProps} />
-      <BlockReasonDialog
-        isOpen={showBlockDialog}
-        onClose={() => setShowBlockDialog(false)}
-        onConfirm={(reason) => {
-          handlers.onBlockWithReason(reason);
-          setShowBlockDialog(false);
-        }}
-        taskTitle={task.title}
-      />
     </>
   );
 }
