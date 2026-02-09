@@ -1,3 +1,11 @@
+---
+paths:
+  - "streams/features/**"
+  - "specs/phases/**"
+  - "specs/manifest.json"
+  - "screenshots/features/**"
+---
+
 # Features Stream
 
 **Required Context:** code-quality-standards.md | git-workflow.md | gap-verification.md | visual-verification.md | commit-lock.md
