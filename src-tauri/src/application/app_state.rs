@@ -31,9 +31,10 @@ use crate::infrastructure::memory::{
     MemoryArtifactRepository, MemoryChatConversationRepository, MemoryChatMessageRepository,
     MemoryExecutionSettingsRepository, MemoryGlobalExecutionSettingsRepository,
     MemoryIdeationSessionRepository, MemoryIdeationSettingsRepository, MemoryMethodologyRepository,
-    MemoryPlanBranchRepository, MemoryProcessRepository, MemoryProjectRepository,
-    MemoryProposalDependencyRepository, MemoryReviewIssueRepository, MemoryReviewRepository,
-    MemoryReviewSettingsRepository, MemoryTaskDependencyRepository, MemoryTaskProposalRepository,
+    MemoryPermissionRepository, MemoryPlanBranchRepository, MemoryProcessRepository,
+    MemoryProjectRepository, MemoryProposalDependencyRepository, MemoryQuestionRepository,
+    MemoryReviewIssueRepository, MemoryReviewRepository, MemoryReviewSettingsRepository,
+    MemoryTaskDependencyRepository, MemoryTaskProposalRepository,
     MemoryTaskQARepository, MemoryTaskRepository, MemoryTaskStepRepository,
     MemoryWorkflowRepository,
 };
@@ -44,11 +45,12 @@ use crate::infrastructure::sqlite::{
     SqliteArtifactRepository, SqliteChatConversationRepository, SqliteChatMessageRepository,
     SqliteExecutionSettingsRepository, SqliteGlobalExecutionSettingsRepository,
     SqliteIdeationSessionRepository, SqliteIdeationSettingsRepository, SqliteMethodologyRepository,
-    SqlitePlanBranchRepository, SqliteProcessRepository, SqliteProjectRepository,
-    SqliteProposalDependencyRepository, SqliteReviewIssueRepository, SqliteReviewRepository,
-    SqliteReviewSettingsRepository, SqliteTaskDependencyRepository, SqliteTaskProposalRepository,
-    SqliteTaskQARepository, SqliteTaskRepository, SqliteTaskStepRepository,
-    SqliteRunningAgentRegistry, SqliteWorkflowRepository,
+    SqlitePermissionRepository, SqlitePlanBranchRepository, SqliteProcessRepository,
+    SqliteProjectRepository, SqliteProposalDependencyRepository, SqliteQuestionRepository,
+    SqliteReviewIssueRepository, SqliteReviewRepository, SqliteReviewSettingsRepository,
+    SqliteTaskDependencyRepository, SqliteTaskProposalRepository, SqliteTaskQARepository,
+    SqliteTaskRepository, SqliteTaskStepRepository, SqliteRunningAgentRegistry,
+    SqliteWorkflowRepository,
 };
 use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
 
@@ -227,8 +229,12 @@ impl AppState {
             methodology_repo: Arc::new(SqliteMethodologyRepository::from_shared(Arc::clone(&shared_conn))),
             plan_branch_repo: Arc::new(SqlitePlanBranchRepository::from_shared(Arc::clone(&shared_conn))),
             app_state_repo: Arc::new(SqliteAppStateRepository::from_shared(Arc::clone(&shared_conn))),
-            permission_state: Arc::new(PermissionState::new()),
-            question_state: Arc::new(QuestionState::new()),
+            permission_state: Arc::new(PermissionState::with_repo(
+                Arc::new(SqlitePermissionRepository::from_shared(Arc::clone(&shared_conn)))
+            )),
+            question_state: Arc::new(QuestionState::with_repo(
+                Arc::new(SqliteQuestionRepository::from_shared(Arc::clone(&shared_conn)))
+            )),
             message_queue: Arc::new(MessageQueue::new()),
             running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(shared_conn)),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
@@ -327,8 +333,12 @@ impl AppState {
             methodology_repo: Arc::new(SqliteMethodologyRepository::from_shared(Arc::clone(&shared_conn))),
             plan_branch_repo: Arc::new(SqlitePlanBranchRepository::from_shared(Arc::clone(&shared_conn))),
             app_state_repo: Arc::new(SqliteAppStateRepository::from_shared(Arc::clone(&shared_conn))),
-            permission_state: Arc::new(PermissionState::new()),
-            question_state: Arc::new(QuestionState::new()),
+            permission_state: Arc::new(PermissionState::with_repo(
+                Arc::new(SqlitePermissionRepository::from_shared(Arc::clone(&shared_conn)))
+            )),
+            question_state: Arc::new(QuestionState::with_repo(
+                Arc::new(SqliteQuestionRepository::from_shared(Arc::clone(&shared_conn)))
+            )),
             message_queue: Arc::new(MessageQueue::new()),
             running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(shared_conn)),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
@@ -375,8 +385,12 @@ impl AppState {
             methodology_repo: Arc::new(MemoryMethodologyRepository::new()),
             plan_branch_repo: Arc::new(MemoryPlanBranchRepository::new()),
             app_state_repo: Arc::new(MemoryAppStateRepository::new()),
-            permission_state: Arc::new(PermissionState::new()),
-            question_state: Arc::new(QuestionState::new()),
+            permission_state: Arc::new(PermissionState::with_repo(
+                Arc::new(MemoryPermissionRepository::new())
+            )),
+            question_state: Arc::new(QuestionState::with_repo(
+                Arc::new(MemoryQuestionRepository::new())
+            )),
             message_queue: Arc::new(MessageQueue::new()),
             running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
@@ -425,8 +439,12 @@ impl AppState {
             methodology_repo: Arc::new(MemoryMethodologyRepository::new()),
             plan_branch_repo: Arc::new(MemoryPlanBranchRepository::new()),
             app_state_repo: Arc::new(MemoryAppStateRepository::new()),
-            permission_state: Arc::new(PermissionState::new()),
-            question_state: Arc::new(QuestionState::new()),
+            permission_state: Arc::new(PermissionState::with_repo(
+                Arc::new(MemoryPermissionRepository::new())
+            )),
+            question_state: Arc::new(QuestionState::with_repo(
+                Arc::new(MemoryQuestionRepository::new())
+            )),
             message_queue: Arc::new(MessageQueue::new()),
             running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
