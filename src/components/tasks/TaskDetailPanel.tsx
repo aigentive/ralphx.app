@@ -27,6 +27,9 @@ import type { Task, InternalStatus } from "@/types/task";
 import type { ComponentType } from "react";
 import { Bot, User, Loader2, FileText } from "lucide-react";
 import { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
 
 // Import state-specific detail view components
 import {
@@ -458,17 +461,17 @@ export function TaskDetailPanel({
 
       {/* Description Section */}
       {task.description ? (
-        <div>
-          <p
-            data-testid="task-detail-description"
-            className="text-[13px] text-white/60"
-            style={{
-              lineHeight: "1.6",
-              wordBreak: "break-word",
-            }}
-          >
+        <div
+          data-testid="task-detail-description"
+          className="text-[13px] text-white/60"
+          style={{
+            lineHeight: "1.6",
+            wordBreak: "break-word",
+          }}
+        >
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
             {task.description}
-          </p>
+          </ReactMarkdown>
         </div>
       ) : (
         <p className="text-[13px] italic text-white/35">
