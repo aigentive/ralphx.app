@@ -2,8 +2,5 @@
   "name": "ralphx",
   "description": "Autonomous development loop with extensible workflows",
   "version": "1.0.0",
-  "author": { "name": "RalphX" },
-  "agents": "./agents/",
-  "skills": "./skills/",
-  "hooks": "./hooks/hooks.json"
+  "author": { "name": "RalphX" }
 }

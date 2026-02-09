@@ -26,6 +26,15 @@
       {
         "hooks": [
           {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/enforce-rule-manager.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
             "type": "prompt",
             "prompt": "Before ending this session, do two things:\n\n1. KNOWLEDGE CAPTURE: Evaluate if specialized project knowledge was discovered during this work that should be captured as scoped .claude/rules/ files. Worth capturing: complex multi-component interactions, error recovery procedures, deep system patterns, framework/library quirks, patterns that would save significant time if known upfront. NOT worth capturing: one-off fixes, knowledge already in existing rules, generic programming knowledge. If significant knowledge was discovered, invoke the /knowledge-capture skill to package it.\n\n2. COMMIT MEMORY FILES: After knowledge capture (or if skipped), check git status for changes to any of these memory-related paths:\n   - .claude/rules/*.md (rule files)\n   - .claude/rules/.optimization-log.md (optimization log)\n   If any were created or modified during this session (by /rule-manager, /knowledge-capture, or the SessionStart hook), commit ONLY those files with message: 'chore(memory): update rules and optimization log'. Do NOT include non-memory files in this commit.\n\nIf neither action is needed, proceed with stopping."
           }
