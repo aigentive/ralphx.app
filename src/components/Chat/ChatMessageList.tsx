@@ -80,6 +80,10 @@ interface ChatMessageListProps {
   isSubmittingAnswer?: boolean | undefined;
   /** Summary of the previously answered question */
   answeredQuestion?: string | undefined;
+  /** Called when user dismisses the active question */
+  onDismissQuestion?: (() => void) | undefined;
+  /** Called when user dismisses the answered summary */
+  onDismissAnswered?: (() => void) | undefined;
 }
 
 // ============================================================================
@@ -103,6 +107,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       onSubmitAnswer,
       isSubmittingAnswer = false,
       answeredQuestion,
+      onDismissQuestion,
+      onDismissAnswered,
     },
     ref
   ) {
@@ -234,6 +240,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                       onSubmit={onSubmitAnswer}
                       isSubmitting={isSubmittingAnswer}
                       answeredWith={answeredQuestion}
+                      onDismiss={onDismissQuestion}
+                      onDismissAnswered={onDismissAnswered}
                     />
                   )}
                   <div ref={messagesEndRef} />
