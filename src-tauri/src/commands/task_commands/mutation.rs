@@ -720,3 +720,110 @@ pub async fn unblock_task(
 
     Ok(TaskResponse::from(unblocked_task))
 }
+
+/// Clean delete a single task: force-stop agent if active, cleanup branch/worktree, delete from DB, emit events
+///
+/// Unlike `permanently_delete_task`, this does not require the task to be archived first.
+/// It handles full cleanup including stopping active agents and removing git resources.
+///
+/// # Arguments
+/// * `task_id` - The task ID to clean delete
+///
+/// # Events
+/// * Emits 'task:deleted' with { task_id, project_id }
+#[tauri::command]
+pub async fn cleanup_task(
+    task_id: String,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    use crate::application::TaskCleanupService;
+
+    let task_id_obj = TaskId::from_string(task_id.clone());
+
+    // Get task first for project_id (needed for event emission)
+    let task = state
+        .task_repo
+        .get_by_id(&task_id_obj)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+
+    let project_id_str = task.project_id.as_str().to_string();
+
+    let service = TaskCleanupService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.running_agent_registry),
+    );
+
+    service
+        .cleanup_task(&task_id_obj)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    emit_task_lifecycle_event(&app, "task:deleted", &task_id, &project_id_str);
+
+    Ok(())
+}
+
+/// Clean delete all tasks in a group: force-stop agents, cleanup branches, delete from DB, emit events
+///
+/// group_kind: "status" | "session" | "uncategorized"
+/// group_id: the status name (e.g. "ready") or session ID (for "session"), ignored for "uncategorized"
+/// project_id: required for all group kinds
+///
+/// Skips plan_merge tasks (system-managed).
+///
+/// # Events
+/// * Emits 'task:list_changed' with { project_id } after bulk deletion
+#[tauri::command]
+pub async fn cleanup_tasks_in_group(
+    group_kind: String,
+    group_id: String,
+    project_id: String,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<super::types::CleanupReportResponse, String> {
+    use crate::application::{TaskCleanupService, TaskGroup};
+
+    let group = match group_kind.as_str() {
+        "status" => TaskGroup::Status {
+            status: group_id,
+            project_id: project_id.clone(),
+        },
+        "session" => TaskGroup::Session {
+            session_id: group_id,
+            project_id: project_id.clone(),
+        },
+        "uncategorized" => TaskGroup::Uncategorized {
+            project_id: project_id.clone(),
+        },
+        _ => return Err(format!("Invalid group_kind: {}. Expected 'status', 'session', or 'uncategorized'", group_kind)),
+    };
+
+    let service = TaskCleanupService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.running_agent_registry),
+    );
+
+    let report = service
+        .cleanup_tasks_in_group(group)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Emit task:list_changed for UI refresh
+    let _ = app.emit(
+        "task:list_changed",
+        serde_json::json!({
+            "projectId": project_id,
+        }),
+    );
+
+    Ok(super::types::CleanupReportResponse {
+        deleted_count: report.deleted_count,
+        failed_count: report.failed_count,
+        stopped_agents: report.stopped_agents,
+    })
+}

@@ -21,6 +21,7 @@ pub use types::{
     TaskListResponse,
     StatusTransition,
     StateTransitionResponse,
+    CleanupReportResponse,
     // Task graph types (Phase 67)
     TaskGraphNode,
     TaskGraphEdge,
@@ -65,4 +66,6 @@ pub use mutation::{
     archive_task,
     restore_task,
     permanently_delete_task,
+    cleanup_task,
+    cleanup_tasks_in_group,
 };

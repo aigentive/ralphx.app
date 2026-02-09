@@ -19,6 +19,7 @@ pub mod review_service;
 pub mod session_reopen_service;
 pub mod startup_jobs;
 pub mod supervisor_service;
+pub mod task_cleanup_service;
 pub mod task_context_service;
 pub mod task_scheduler_service;
 pub mod task_transition_service;
@@ -47,6 +48,7 @@ pub use question_state::{PendingQuestionInfo, QuestionAnswer, QuestionOption, Qu
 pub use chat_resumption::ChatResumptionRunner;
 pub use reconciliation::ReconciliationRunner;
 pub use startup_jobs::StartupJobRunner;
+pub use task_cleanup_service::{CleanupReport, TaskCleanupService, TaskGroup};
 pub use task_context_service::TaskContextService;
 pub use task_scheduler_service::TaskSchedulerService;
 pub use task_transition_service::TaskTransitionService;
