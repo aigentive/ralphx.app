@@ -56,6 +56,8 @@ export function useChatPanelContext({
   const activeConversationId = useChatStore(selectActiveConversationId);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
   const clearMessages = useChatStore((s) => s.clearMessages);
+  const setAgentRunning = useChatStore((s) => s.setAgentRunning);
+  const setSending = useChatStore((s) => s.setSending);
 
   // Streaming tool calls - accumulated during agent execution
   const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCall[]>([]);
@@ -139,6 +141,17 @@ export function useChatPanelContext({
       setStreamingToolCalls([]);
       setStreamingText("");
 
+      // Cancel and remove the old conversation's agent run query to prevent
+      // stale cached data from triggering recovery effects in the new context
+      if (currentConversationId) {
+        queryClient.cancelQueries({
+          queryKey: chatKeys.agentRun(currentConversationId),
+        });
+        queryClient.removeQueries({
+          queryKey: chatKeys.agentRun(currentConversationId),
+        });
+      }
+
       // Clear the query cache for the old conversation to prevent stale data
       if (currentConversationId) {
         queryClient.removeQueries({
@@ -159,12 +172,17 @@ export function useChatPanelContext({
         clearMessages(prevContextKeyRef.current);
       }
 
+      // Clear agent running and sending state for the NEW context to prevent stale state
+      // from the previous context leaking (e.g., spinner showing in idle session)
+      setAgentRunning(storeContextKey, false);
+      setSending(storeContextKey, false);
+
       // Reset auto-select flag when context changes
       hasAutoSelectedRef.current = false;
 
       prevContextKeyRef.current = contextKey;
     }
-  }, [contextKey, setActiveConversation, queryClient, clearMessages]);
+  }, [contextKey, storeContextKey, setActiveConversation, queryClient, clearMessages, setAgentRunning, setSending]);
 
   // Track previous override conversation ID to detect changes
   const prevOverrideConversationIdRef = useRef<string | undefined>(undefined);

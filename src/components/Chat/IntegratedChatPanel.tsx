@@ -12,7 +12,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { type VirtuosoHandle } from "react-virtuoso";
 import { useChat, chatKeys } from "@/hooks/useChat";
-import { useChatStore, selectQueuedMessages, selectIsAgentRunning } from "@/stores/chatStore";
+import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectIsSending } from "@/stores/chatStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useTasks, taskKeys } from "@/hooks/useTasks";
 import { useChatPanelContext } from "@/hooks/useChatPanelContext";
@@ -159,6 +159,8 @@ export function IntegratedChatPanel({
   const queuedMessages = useChatStore(queuedMessagesSelector);
   const isAgentRunningSelector = useMemo(() => selectIsAgentRunning(storeContextKey), [storeContextKey]);
   const isAgentRunning = useChatStore(isAgentRunningSelector);
+  const isSendingSelector = useMemo(() => selectIsSending(storeContextKey), [storeContextKey]);
+  const isSending = useChatStore(isSendingSelector);
   const setAgentRunning = useChatStore((s) => s.setAgentRunning);
 
   // For execution/review mode, fetch conversations directly with specific context type
@@ -204,6 +206,12 @@ export function IntegratedChatPanel({
     );
   }, [autoSelectConversation, conversations, executionConversationsQuery.isLoading, reviewConversationsQuery.isLoading, mergeConversationsQuery.isLoading]);
 
+  // Check if active conversation belongs to current context (needed by recovery effects below)
+  const activeConversationContext = regularChatData.messages.data?.conversation;
+  const isConversationInCurrentContext =
+    activeConversationContext?.contextType === currentContextType &&
+    activeConversationContext?.contextId === currentContextId;
+
   // Fetch agent run status for the active conversation
   const agentRunQuery = useQuery({
     queryKey: chatKeys.agentRun(activeConversationId ?? ""),
@@ -213,21 +221,26 @@ export function IntegratedChatPanel({
   });
 
   // Recovery fallback: if agent is running but events were missed, reflect it in UI
+  // Guard: only apply if conversation belongs to current context (prevents cross-context pollution)
   useEffect(() => {
-    if (agentRunQuery.data?.status === "running") {
+    if (agentRunQuery.data?.status === "running" && isConversationInCurrentContext) {
       setAgentRunning(storeContextKey, true);
     }
-  }, [agentRunQuery.data?.status, setAgentRunning, storeContextKey]);
+  }, [agentRunQuery.data?.status, isConversationInCurrentContext, setAgentRunning, storeContextKey]);
 
   // Recovery fallback: clear stuck "running" state when backend says run finished
+  // Guard: only clear if conversation is in current context OR no active conversation
   useEffect(() => {
     if (!activeConversationId) {
+      return;
+    }
+    if (!isConversationInCurrentContext) {
       return;
     }
     if (!agentRunQuery.data || agentRunQuery.data.status !== "running") {
       setAgentRunning(storeContextKey, false);
     }
-  }, [activeConversationId, agentRunQuery.data, setAgentRunning, storeContextKey]);
+  }, [activeConversationId, agentRunQuery.data, isConversationInCurrentContext, setAgentRunning, storeContextKey]);
 
   // Recovery fallback: poll conversation while agent is running to show live updates
   useEffect(() => {
@@ -430,13 +443,6 @@ export function IntegratedChatPanel({
     return () => clearTimeout(timeoutId);
   }, [activeConversationId, activeConversation.isLoading]);
 
-  // Extract messages array from active conversation
-  // Only show messages if conversation belongs to current context
-  const conversationContext = activeConversation.data?.conversation;
-  const isConversationInCurrentContext =
-    conversationContext?.contextType === currentContextType &&
-    conversationContext?.contextId === currentContextId;
-
   // Memoize messagesData to avoid dependency chain issues in useEffect hooks
   // No time-based filtering needed - we switch context types based on historical state
   const messagesData = useMemo(
@@ -544,8 +550,6 @@ export function IntegratedChatPanel({
   const isConversationsLoading = conversations.isLoading;
   const isActiveConversationLoading = activeConversationId ? activeConversation.isLoading : false;
   const isLoading = isConversationsLoading || isActiveConversationLoading || isScrollSettling;
-
-  const isSending = sendMessage.isPending;
 
   // Status badge helpers - disabled in history mode (no live agent)
   const isAgentActive = !isHistoryMode && (isSending || isAgentRunning || isExecutionMode);

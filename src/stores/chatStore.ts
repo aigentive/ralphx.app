@@ -60,6 +60,8 @@ interface ChatState {
   queuedMessages: Record<string, QueuedMessage[]>;
   /** Whether an agent is currently running, keyed by context key */
   isAgentRunning: Record<string, boolean>;
+  /** Whether a message is currently being sent, keyed by context key */
+  isSending: Record<string, boolean>;
 }
 
 // ============================================================================
@@ -83,6 +85,8 @@ interface ChatActions {
   setActiveConversation: (conversationId: string | null) => void;
   /** Set whether an agent is currently running for a context */
   setAgentRunning: (contextKey: string, isRunning: boolean) => void;
+  /** Set whether a message is currently being sent for a context */
+  setSending: (contextKey: string, isSending: boolean) => void;
   /** Clear all agent running states for a task (all context types) */
   clearAgentRunningForTask: (taskId: string) => void;
   /** Queue a message to be sent when the agent finishes */
@@ -113,6 +117,7 @@ export const useChatStore = create<ChatState & ChatActions>()(
     activeConversationId: null,
     queuedMessages: {},
     isAgentRunning: {},
+    isSending: {},
 
     // Actions
     setContext: (context) =>
@@ -159,6 +164,15 @@ export const useChatStore = create<ChatState & ChatActions>()(
           state.isAgentRunning[contextKey] = true;
         } else {
           delete state.isAgentRunning[contextKey];
+        }
+      }),
+
+    setSending: (contextKey, isSending) =>
+      set((state) => {
+        if (isSending) {
+          state.isSending[contextKey] = true;
+        } else {
+          delete state.isSending[contextKey];
         }
       }),
 
@@ -316,6 +330,16 @@ export const selectIsAgentRunning =
   (contextKey: string) =>
   (state: ChatState): boolean =>
     state.isAgentRunning[contextKey] ?? false;
+
+/**
+ * Select whether a message is currently being sent for a context
+ * @param contextKey - The context key to check
+ * @returns Selector function returning sending state
+ */
+export const selectIsSending =
+  (contextKey: string) =>
+  (state: ChatState): boolean =>
+    state.isSending[contextKey] ?? false;
 
 /**
  * Select active conversation ID
