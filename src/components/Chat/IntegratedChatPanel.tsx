@@ -500,7 +500,6 @@ export function IntegratedChatPanel({
     activeConversationId,
     contextId: currentContextId,
     contextType: currentContextType,
-    messagesEndRef,
     setStreamingToolCalls,
     setStreamingText,
     setStreamingTasks,

@@ -8,7 +8,7 @@
  * - Streaming tool calls / typing indicator footer
  */
 
-import React, { forwardRef, useEffect, useMemo, useRef, useImperativeHandle } from "react";
+import React, { forwardRef, useCallback, useEffect, useMemo, useRef, useImperativeHandle } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { MessageItem } from "./MessageItem";
 import { StreamingToolIndicator } from "./StreamingToolIndicator";
@@ -31,9 +31,6 @@ import { TaskSubagentCard } from "./TaskSubagentCard";
 
 /** Delay for markdown content to render and expand before scroll correction */
 const MARKDOWN_RENDER_DELAY_MS = 300;
-
-/** Delay for footer to render new tool calls before scrolling */
-const FOOTER_RENDER_DELAY_MS = 50;
 
 /** Shared styles for content containers to handle long text */
 const contentContainerStyle: React.CSSProperties = {
@@ -123,38 +120,21 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     // Forward the ref to parent
     useImperativeHandle(ref, () => virtuosoRef.current!, []);
 
-    /** Scroll to absolute bottom of the list */
-    const scrollToBottom = () => {
-      virtuosoRef.current?.scrollTo({ top: Number.MAX_SAFE_INTEGER });
-    };
+    // Track whether user is at the bottom — drives followOutput behavior
+    const isAtBottomRef = useRef(true);
+    const handleAtBottomStateChange = useCallback((atBottom: boolean) => {
+      isAtBottomRef.current = atBottom;
+    }, []);
 
-    // Delayed scroll correction to handle markdown rendering height changes
-    // Markdown content can expand after initial render, throwing off scroll position
-    useEffect(() => {
-      if (!conversationId || messages.length === 0) return;
+    // followOutput callback: only auto-scroll when user is already at bottom
+    const handleFollowOutput = useCallback((isAtBottom: boolean) => {
+      if (isAtBottom) return "smooth" as const;
+      return false as const;
+    }, []);
 
-      const timeoutId = setTimeout(scrollToBottom, MARKDOWN_RENDER_DELAY_MS);
-      return () => clearTimeout(timeoutId);
-    }, [conversationId, messages.length]);
-
-    // Scroll to bottom when streaming tool calls change (footer height changes)
-    // Virtuoso's followOutput only tracks data changes, not footer expansion
-    useEffect(() => {
-      if (streamingToolCalls.length === 0) return;
-
-      const timeoutId = setTimeout(scrollToBottom, FOOTER_RENDER_DELAY_MS);
-      return () => clearTimeout(timeoutId);
-    }, [streamingToolCalls.length]);
-
-    // Scroll to bottom when streaming text changes (footer content expanding)
-    useEffect(() => {
-      if (!streamingText) return;
-
-      const timeoutId = setTimeout(scrollToBottom, FOOTER_RENDER_DELAY_MS);
-      return () => clearTimeout(timeoutId);
-    }, [streamingText]);
-
-    // Scroll to bottom when streaming tasks change (subagent cards expanding)
+    // Footer content hash — makes Virtuoso aware of footer height changes
+    // without manual scrollTo calls. Virtuoso re-evaluates followOutput when
+    // context changes, triggering a smooth scroll if user is at bottom.
     const totalChildCalls = useMemo(() => {
       if (!streamingTasks || streamingTasks.size === 0) return 0;
       let count = 0;
@@ -164,12 +144,12 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       return count;
     }, [streamingTasks]);
 
-    useEffect(() => {
-      if (totalChildCalls === 0) return;
-
-      const timeoutId = setTimeout(scrollToBottom, FOOTER_RENDER_DELAY_MS);
-      return () => clearTimeout(timeoutId);
-    }, [totalChildCalls, streamingTasks?.size]);
+    const footerContentHash = useMemo(() => ({
+      toolCallCount: streamingToolCalls.length,
+      childCallCount: totalChildCalls,
+      taskCount: streamingTasks?.size ?? 0,
+      hasText: !!streamingText,
+    }), [streamingToolCalls.length, totalChildCalls, streamingTasks?.size, streamingText]);
 
     // Scroll to specific timestamp for history mode (time-travel feature)
     // Finds the first message at or after the given timestamp and scrolls to it
@@ -202,9 +182,12 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
           key={conversationId ?? "empty"}
           ref={virtuosoRef}
           data={messages}
+          context={footerContentHash}
           // Start at the last message on mount
           initialTopMostItemIndex={messages.length > 0 ? messages.length - 1 : 0}
-          followOutput="smooth"
+          followOutput={handleFollowOutput}
+          atBottomStateChange={handleAtBottomStateChange}
+          atBottomThreshold={150}
           alignToBottom
           className="h-full"
           components={{

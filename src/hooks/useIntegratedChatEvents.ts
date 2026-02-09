@@ -21,7 +21,6 @@ interface UseIntegratedChatEventsProps {
   activeConversationId: string | null;
   contextId: string | null;
   contextType: string | null;
-  messagesEndRef: React.RefObject<HTMLDivElement | null>;
   setStreamingToolCalls: Dispatch<SetStateAction<ToolCall[]>>;
   setStreamingText: Dispatch<SetStateAction<string>>;
   setStreamingTasks: Dispatch<SetStateAction<Map<string, StreamingTask>>>;
@@ -31,7 +30,6 @@ export function useIntegratedChatEvents({
   activeConversationId,
   contextId,
   contextType,
-  messagesEndRef,
   setStreamingToolCalls,
   setStreamingText,
   setStreamingTasks,
@@ -266,11 +264,6 @@ export function useIntegratedChatEvents({
         queryClient.invalidateQueries({
           queryKey: chatKeys.conversation(conversation_id),
         });
-        setTimeout(() => {
-          if (messagesEndRef.current) {
-            messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-          }
-        }, 100);
       })
     );
 
@@ -280,5 +273,5 @@ export function useIntegratedChatEvents({
       setStreamingTasks(new Map());
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [bus, queryClient, messagesEndRef, setStreamingToolCalls, setStreamingText, setStreamingTasks, activeConversationId, contextId, contextType]);
+  }, [bus, queryClient, setStreamingToolCalls, setStreamingText, setStreamingTasks, activeConversationId, contextId, contextType]);
 }
