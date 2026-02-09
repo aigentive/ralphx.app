@@ -12,7 +12,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { type VirtuosoHandle } from "react-virtuoso";
 import { useChat, chatKeys } from "@/hooks/useChat";
-import { useChatStore, selectQueuedMessages, selectIsAgentRunning } from "@/stores/chatStore";
+import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectIsSending } from "@/stores/chatStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useTasks, taskKeys } from "@/hooks/useTasks";
 import { useChatPanelContext } from "@/hooks/useChatPanelContext";
@@ -159,6 +159,8 @@ export function IntegratedChatPanel({
   const queuedMessages = useChatStore(queuedMessagesSelector);
   const isAgentRunningSelector = useMemo(() => selectIsAgentRunning(storeContextKey), [storeContextKey]);
   const isAgentRunning = useChatStore(isAgentRunningSelector);
+  const isSendingSelector = useMemo(() => selectIsSending(storeContextKey), [storeContextKey]);
+  const isSending = useChatStore(isSendingSelector);
   const setAgentRunning = useChatStore((s) => s.setAgentRunning);
 
   // For execution/review mode, fetch conversations directly with specific context type
@@ -548,8 +550,6 @@ export function IntegratedChatPanel({
   const isConversationsLoading = conversations.isLoading;
   const isActiveConversationLoading = activeConversationId ? activeConversation.isLoading : false;
   const isLoading = isConversationsLoading || isActiveConversationLoading || isScrollSettling;
-
-  const isSending = sendMessage.isPending;
 
   // Status badge helpers - disabled in history mode (no live agent)
   const isAgentActive = !isHistoryMode && (isSending || isAgentRunning || isExecutionMode);
