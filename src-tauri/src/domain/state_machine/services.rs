@@ -66,6 +66,15 @@ pub trait EventEmitter: Send + Sync {
     /// * `task_id` - The ID of the task
     /// * `payload` - JSON string with additional event data
     async fn emit_with_payload(&self, event_type: &str, task_id: &str, payload: &str);
+
+    /// Emits a `task:status_changed` event with the correct payload format
+    /// expected by the frontend (`{ task_id, old_status, new_status }`).
+    ///
+    /// Default implementation falls back to `emit("task:status_changed", task_id)`
+    /// for backwards compatibility.
+    async fn emit_status_change(&self, task_id: &str, _old_status: &str, _new_status: &str) {
+        self.emit("task:status_changed", task_id).await;
+    }
 }
 
 /// Trait for sending notifications to users.

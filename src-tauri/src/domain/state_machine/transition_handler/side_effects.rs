@@ -1587,7 +1587,7 @@ impl<'a> super::TransitionHandler<'a> {
                 .context
                 .services
                 .event_emitter
-                .emit("task:status_changed", task_id_str)
+                .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
                 .await;
 
             return;
@@ -1894,7 +1894,7 @@ impl<'a> super::TransitionHandler<'a> {
                             ).await;
 
                             self.machine.context.services.event_emitter
-                                .emit("task:status_changed", task_id_str).await;
+                                .emit_status_change(task_id_str, "pending_merge", "merge_incomplete").await;
                         } else {
                             self.post_merge_cleanup(task_id_str, &task_id, repo_path, plan_branch_repo).await;
                         }
@@ -1934,7 +1934,7 @@ impl<'a> super::TransitionHandler<'a> {
                             .context
                             .services
                             .event_emitter
-                            .emit("task:merge_conflict", task_id_str)
+                            .emit_status_change(task_id_str, "pending_merge", "merging")
                             .await;
 
                         // Spawn merger agent — CWD is primary repo
@@ -1996,7 +1996,7 @@ impl<'a> super::TransitionHandler<'a> {
                             .context
                             .services
                             .event_emitter
-                            .emit("task:status_changed", task_id_str)
+                            .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
                             .await;
                     }
                 }
@@ -2101,7 +2101,7 @@ impl<'a> super::TransitionHandler<'a> {
                             ).await;
 
                             self.machine.context.services.event_emitter
-                                .emit("task:status_changed", task_id_str).await;
+                                .emit_status_change(task_id_str, "pending_merge", "merge_incomplete").await;
                         } else {
                             self.post_merge_cleanup(task_id_str, &task_id, repo_path, plan_branch_repo).await;
                         }
@@ -2140,7 +2140,7 @@ impl<'a> super::TransitionHandler<'a> {
                             .context
                             .services
                             .event_emitter
-                            .emit("task:merge_conflict", task_id_str)
+                            .emit_status_change(task_id_str, "pending_merge", "merging")
                             .await;
 
                         let prompt = format!("Resolve merge conflicts for task: {}", task_id_str);
@@ -2206,7 +2206,7 @@ impl<'a> super::TransitionHandler<'a> {
                             .context
                             .services
                             .event_emitter
-                            .emit("task:status_changed", task_id_str)
+                            .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
                             .await;
                     }
                 }
@@ -2283,7 +2283,7 @@ impl<'a> super::TransitionHandler<'a> {
                         ).await;
 
                         self.machine.context.services.event_emitter
-                            .emit("task:status_changed", task_id_str).await;
+                            .emit_status_change(task_id_str, "pending_merge", "merge_incomplete").await;
                     } else {
                         self.post_merge_cleanup(task_id_str, &task_id, repo_path, plan_branch_repo).await;
                     }
@@ -2320,7 +2320,7 @@ impl<'a> super::TransitionHandler<'a> {
                         .context
                         .services
                         .event_emitter
-                        .emit("task:merge_conflict", task_id_str)
+                        .emit_status_change(task_id_str, "pending_merge", "merging")
                         .await;
 
                     let prompt = format!("Resolve merge conflicts for task: {}", task_id_str);
@@ -2382,7 +2382,7 @@ impl<'a> super::TransitionHandler<'a> {
                         .context
                         .services
                         .event_emitter
-                        .emit("task:status_changed", task_id_str)
+                        .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
                         .await;
                 }
             }
@@ -2543,7 +2543,7 @@ impl<'a> super::TransitionHandler<'a> {
             ).await;
 
             self.machine.context.services.event_emitter
-                .emit("task:status_changed", task_id_str).await;
+                .emit_status_change(task_id_str, "pending_merge", "merging").await;
 
             // Spawn merger agent to attempt fix (same pattern as conflict resolution)
             let prompt = format!("Fix validation failures for task: {}", task_id_str);
@@ -2601,7 +2601,7 @@ impl<'a> super::TransitionHandler<'a> {
             ).await;
 
             self.machine.context.services.event_emitter
-                .emit("task:status_changed", task_id_str).await;
+                .emit_status_change(task_id_str, "pending_merge", "merge_incomplete").await;
         }
     }
 }
