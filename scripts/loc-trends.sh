@@ -8,6 +8,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
+# Source shared milestones config
+source "$SCRIPT_DIR/milestones.sh"
+
 # Colors
 BOLD='\033[1m'
 CYAN='\033[0;36m'
@@ -207,6 +210,17 @@ draw_bar() {
     echo -e "${color}${bar}${NC}"
 }
 
+# Print a milestone marker line for charts
+print_milestone_marker() {
+    local label="$1"
+    local width=${2:-60}
+    local dashes=""
+    for ((d=0; d<width; d++)); do
+        dashes="${dashes}-"
+    done
+    echo -e "       ${YELLOW}★${NC} ${DIM}${dashes}${NC} ${YELLOW}${label}${NC}"
+}
+
 # Chart view - visual bar chart
 print_chart() {
     cd "$PROJECT_ROOT"
@@ -273,6 +287,11 @@ print_chart() {
         local commit="${commits[$i]}"
         local short_date=$(echo "$date" | cut -c6-)  # MM-DD
 
+        # Check for milestone on current day
+        local ms_label
+        ms_label=$(milestone_label_for_date "$date" 2>/dev/null) && \
+            print_milestone_marker "$ms_label"
+
         # Color based on magnitude
         local color=$GREEN
         [ $net -lt 5000 ] && color=$YELLOW
@@ -297,6 +316,11 @@ print_chart() {
         local date="${dates[$i]}"
         local commit="${commits[$i]}"
         local short_date=$(echo "$date" | cut -c6-)
+
+        # Check for milestone on current day
+        local ms_label
+        ms_label=$(milestone_label_for_date "$date" 2>/dev/null) && \
+            print_milestone_marker "$ms_label"
 
         printf "${BOLD}%s${NC} %6d │ " "$short_date" "$commit"
         draw_bar $commit $max_commits $bar_width "$CYAN"
@@ -339,6 +363,23 @@ analyze_trends() {
             fi
         fi
 
+        # Check for milestone on this date — print highlighted banner
+        if date_has_milestone "$date_str"; then
+            # Find the matching entry for full details
+            for _ms_entry in "${MILESTONES[@]}"; do
+                parse_milestone "$_ms_entry"
+                if [ "$MS_DATE" = "$date_str" ]; then
+                    break
+                fi
+            done
+            echo ""
+            echo -e "${YELLOW}╔══════════════════════════════════════════════════════════════════════════╗${NC}"
+            printf "${YELLOW}║  ★  %-67s ║${NC}\n" "$MS_LABEL"
+            printf "${YELLOW}║     %-67s ║${NC}\n" "$MS_DESC"
+            printf "${YELLOW}║     %-67s ║${NC}\n" "$MS_DATE $MS_TIME"
+            echo -e "${YELLOW}╚══════════════════════════════════════════════════════════════════════════╝${NC}"
+        fi
+
         process_day "$date_str" "$next_date"
     done
 
@@ -370,6 +411,112 @@ print_summary() {
     echo ""
 
     rm -f "${TMPFILE}.totals"
+}
+
+# Era comparison — before/after stats for each milestone in the analyzed range
+print_era_comparison() {
+    [[ ${#MILESTONES[@]} -eq 0 ]] && return
+
+    cd "$PROJECT_ROOT"
+
+    # Get project start epoch (first commit)
+    local first_commit
+    first_commit=$(git log --reverse --format="%H" 2>/dev/null | head -1)
+    [[ -z "$first_commit" ]] && return
+
+    local project_start_epoch
+    project_start_epoch=$(git show -s --format="%ct" "$first_commit" 2>/dev/null)
+    local now_epoch
+    now_epoch=$(date +%s)
+
+    # Compute the epoch for the start of the analyzed range (DAYS ago at 00:00)
+    local range_start_epoch
+    if [[ "$(uname)" == "Darwin" ]]; then
+        range_start_epoch=$(date -v-${DAYS}d -j -f "%Y-%m-%d %H:%M:%S" "$(date "+%Y-%m-%d") 00:00:00" "+%s" 2>/dev/null)
+    else
+        range_start_epoch=$(date -d "$DAYS days ago 00:00:00" "+%s" 2>/dev/null)
+    fi
+    [[ -z "$range_start_epoch" ]] && range_start_epoch=$((now_epoch - DAYS * 86400))
+
+    # Clamp project start to range start
+    local effective_start=$range_start_epoch
+    [[ $project_start_epoch -gt $effective_start ]] && effective_start=$project_start_epoch
+
+    # Build sorted boundary list: effective_start, milestones (within range), now
+    local boundaries=("$effective_start")
+    local labels=()
+
+    for entry in "${MILESTONES[@]}"; do
+        parse_milestone "$entry"
+        # Only include milestones within the analyzed range
+        if [[ $MS_EPOCH -gt $effective_start && $MS_EPOCH -lt $now_epoch ]]; then
+            boundaries+=("$MS_EPOCH")
+            labels+=("$MS_LABEL")
+        fi
+    done
+    boundaries+=("$now_epoch")
+
+    # Need at least one milestone in range to show comparison
+    [[ ${#labels[@]} -eq 0 ]] && return
+
+    echo ""
+    echo -e "${BOLD}Era Comparison:${NC}"
+    echo "───────────────────────────────────────────────────────────────────────"
+
+    local i=0
+    local total_eras=$(( ${#boundaries[@]} - 1 ))
+
+    while [[ $i -lt $total_eras ]]; do
+        local era_start=${boundaries[$i]}
+        local era_end=${boundaries[$((i + 1))]}
+
+        # Era label
+        local era_label
+        if [[ $i -eq 0 && ${#labels[@]} -gt 0 ]]; then
+            local first_label="${labels[0]}"
+            era_label="${first_label%%->*}"
+            era_label=$(echo "$era_label" | sed 's/^ *//;s/ *$//')
+        elif [[ $i -gt 0 && $i -le ${#labels[@]} ]]; then
+            local label="${labels[$((i - 1))]}"
+            if [[ "$label" == *"->"* ]]; then
+                era_label="${label##*->}"
+                era_label=$(echo "$era_label" | sed 's/^ *//;s/ *$//')
+            else
+                era_label="$label"
+            fi
+        else
+            era_label="Era $((i + 1))"
+        fi
+
+        # Days in era
+        local era_days=$(( (era_end - era_start) / 86400 ))
+        [[ $era_days -eq 0 ]] && era_days=1
+
+        # Commits in era
+        local era_commits
+        era_commits=$(git rev-list --count --after="$era_start" --before="$era_end" HEAD 2>/dev/null || echo "0")
+
+        # Commits per day
+        local era_cpd
+        era_cpd=$(echo "scale=1; $era_commits / $era_days" | bc)
+
+        # Date range for display
+        local start_date end_date
+        if [[ "$(uname)" == "Darwin" ]]; then
+            start_date=$(date -r "$era_start" "+%Y-%m-%d" 2>/dev/null)
+            end_date=$(date -r "$era_end" "+%Y-%m-%d" 2>/dev/null)
+        else
+            start_date=$(date -d "@$era_start" "+%Y-%m-%d" 2>/dev/null)
+            end_date=$(date -d "@$era_end" "+%Y-%m-%d" 2>/dev/null)
+        fi
+
+        printf "  ${CYAN}%-25s${NC} %3d days  %5s commits  %5s/day  (%s → %s)\n" \
+            "$era_label" "$era_days" "$era_commits" "$era_cpd" "$start_date" "$end_date"
+
+        i=$((i + 1))
+    done
+
+    echo ""
 }
 
 # Velocity indicator
@@ -449,10 +596,12 @@ main() {
     if $chart_only; then
         print_chart
         print_summary
+        print_era_comparison
     else
         print_chart
         analyze_trends
         print_summary
+        print_era_comparison
         print_velocity
     fi
 }
