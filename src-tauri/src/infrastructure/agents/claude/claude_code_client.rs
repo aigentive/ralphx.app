@@ -602,7 +602,7 @@ mod tests {
         let args = client.build_cli_args(&config, None);
 
         let tools_idx = args.iter().position(|a| a == "--tools").expect("--tools flag must be present");
-        assert_eq!(args[tools_idx + 1], "Read,Grep,Glob,Bash,WebFetch,WebSearch,Task",
+        assert_eq!(args[tools_idx + 1], "Read,Grep,Glob,Bash,WebFetch,WebSearch,Skill,Task",
             "orchestrator-ideation should have base tools + Task");
     }
 
