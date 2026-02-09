@@ -146,10 +146,14 @@ export function MergeConflictTaskDetail({ task, isHistorical = false }: MergeCon
   // Parse conflict files from task metadata if available
   const conflictFiles: string[] = (() => {
     if (!task.metadata) return [];
-    const metadata = typeof task.metadata === "string"
-      ? JSON.parse(task.metadata)
-      : task.metadata;
-    return Array.isArray(metadata?.conflict_files) ? metadata.conflict_files : [];
+    try {
+      const metadata = typeof task.metadata === "string"
+        ? JSON.parse(task.metadata)
+        : task.metadata;
+      return Array.isArray(metadata?.conflict_files) ? metadata.conflict_files : [];
+    } catch {
+      return [];
+    }
   })();
 
   const branchName = task.taskBranch ?? "task branch";
