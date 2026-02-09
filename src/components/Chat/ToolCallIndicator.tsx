@@ -14,6 +14,9 @@ import { createSummary, formatValue, isArtifactContextTool, renderArtifactPrevie
 import { isDiffToolCall, isTaskToolCall } from "./DiffToolCallView.utils";
 import { DiffToolCallView } from "./DiffToolCallView";
 import { TaskToolCallCard } from "./TaskToolCallCard";
+import { getWidget } from "./tool-widgets/registry";
+// Side-effect imports: register widgets
+import "./tool-widgets/ReviewWidget";
 
 // ============================================================================
 // Types
@@ -97,6 +100,12 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
   // Delegate Task tool calls to TaskToolCallCard for subagent rendering (never compact — tasks don't nest)
   if (isTaskToolCall(toolCall.name)) {
     return <TaskToolCallCard toolCall={toolCall} className={className} />;
+  }
+
+  // Delegate to registered widget if one exists for this tool
+  const Widget = getWidget(toolCall.name);
+  if (Widget) {
+    return <Widget toolCall={toolCall} className={className} compact={compact} />;
   }
 
   const iconSize = compact ? 12 : 14;
