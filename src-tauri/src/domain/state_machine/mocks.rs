@@ -150,6 +150,17 @@ impl EventEmitter for MockEventEmitter {
             ],
         ));
     }
+
+    async fn emit_status_change(&self, task_id: &str, old_status: &str, new_status: &str) {
+        self.events.lock().unwrap().push(ServiceCall::new(
+            "emit_status_change",
+            vec![
+                task_id.to_string(),
+                old_status.to_string(),
+                new_status.to_string(),
+            ],
+        ));
+    }
 }
 
 /// Mock implementation of Notifier that records all notifications.
