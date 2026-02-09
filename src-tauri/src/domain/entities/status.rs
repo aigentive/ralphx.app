@@ -95,7 +95,7 @@ impl InternalStatus {
             Approved => &[PendingMerge, Ready],
 
             // Merge states
-            PendingMerge => &[Merged, Merging], // Success → Merged, Conflict → Merging (agent)
+            PendingMerge => &[Merged, Merging, MergeIncomplete], // Success → Merged, Conflict → Merging (agent), Error → MergeIncomplete
             Merging => &[Merged, MergeConflict, MergeIncomplete, Stopped, Paused], // Agent success → Merged, Agent failure → MergeConflict, Non-conflict error → MergeIncomplete
             MergeIncomplete => &[PendingMerge, Merging, Merged], // Retry → PendingMerge (re-attempt programmatic merge), Agent spawn → Merging, Manual resolution → Merged
             MergeConflict => &[Merged], // Manual resolution → Merged
@@ -737,7 +737,7 @@ mod tests {
     fn pending_merge_transitions() {
         use InternalStatus::*;
         let transitions = PendingMerge.valid_transitions();
-        assert_eq!(transitions, &[Merged, Merging]);
+        assert_eq!(transitions, &[Merged, Merging, MergeIncomplete]);
     }
 
     #[test]
