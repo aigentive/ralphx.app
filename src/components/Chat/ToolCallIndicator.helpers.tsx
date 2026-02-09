@@ -84,6 +84,16 @@ export function createSummary(toolCall: ToolCall): { title: string; subtitle?: s
       const query = (args as { query?: string })?.query;
       return { title: query ? `"${truncate(query, 40)}"` : "Searched artifacts" };
     }
+    case "complete_review": {
+      const decision = (args as { decision?: string })?.decision;
+      const label = decision === "approved" ? "Approved" : decision === "needs_changes" ? "Changes requested" : decision === "escalate" ? "Escalated" : "Review submitted";
+      return { title: label };
+    }
+    case "get_review_notes": {
+      const reviewResult = result as { reviews?: unknown[] } | undefined;
+      const count = reviewResult?.reviews?.length;
+      return { title: count != null ? `${count} review note${count !== 1 ? "s" : ""}` : "Fetched review notes" };
+    }
     default: {
       // For unknown tools, just show the tool name in readable form
       return { title: name.replace(/_/g, " ") };
