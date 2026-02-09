@@ -150,6 +150,17 @@ pub fn run() {
                 }
             });
 
+            // Expire stale pending questions/permissions from previous runs.
+            // Must happen before the HTTP server starts accepting agent requests.
+            {
+                let qs = Arc::clone(&app_state.question_state);
+                let ps = Arc::clone(&app_state.permission_state);
+                tauri::async_runtime::block_on(async move {
+                    qs.expire_stale_on_startup().await;
+                    ps.expire_stale_on_startup().await;
+                });
+            }
+
             // Start HTTP server for MCP proxy on port 3847
             // Create a second AppState for HTTP server with its own DB connection,
             // but share in-memory state (question_state, permission_state, message_queue)
