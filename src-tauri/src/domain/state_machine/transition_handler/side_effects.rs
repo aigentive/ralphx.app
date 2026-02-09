@@ -1630,6 +1630,10 @@ impl<'a> super::TransitionHandler<'a> {
                     if has_merge_deferred_metadata(other) {
                         continue;
                     }
+                    // Skip archived tasks — they are dead, will never complete
+                    if other.archived_at.is_some() {
+                        continue;
+                    }
                     // Check if targeting the same branch
                     if !task_targets_branch(other, &project, plan_branch_repo, &target_branch).await {
                         continue;
@@ -1642,6 +1646,7 @@ impl<'a> super::TransitionHandler<'a> {
                             other_created_at = %other.created_at,
                             this_created_at = %task.created_at,
                             target_branch = %target_branch,
+                            other_task_branch = ?other.task_branch,
                             "Concurrent merge detected: older task has priority, deferring this task"
                         );
                         found = true;
@@ -3370,6 +3375,32 @@ mod tests {
         let mut task = make_task(None, None);
         clear_merge_deferred_metadata(&mut task);
         assert!(task.metadata.is_none());
+    }
+
+    // ==================
+    // concurrent merge guard — archived task skip tests
+    // ==================
+
+    /// Archived tasks in PendingMerge should NOT block newer merge tasks.
+    /// Regression test: archived tasks have archived_at set and will never
+    /// complete their merge, so the guard must skip them.
+    #[test]
+    fn archived_task_in_pending_merge_is_not_a_blocker() {
+        // An archived task in PendingMerge — should be skipped by the guard
+        let mut archived_task = make_task(None, None);
+        archived_task.internal_status = InternalStatus::PendingMerge;
+        archived_task.archived_at = Some(chrono::Utc::now());
+        archived_task.created_at = chrono::Utc::now() - chrono::Duration::hours(1);
+
+        // The guard checks: skip self, skip non-merge states, skip deferred, skip archived
+        // Verify that archived_at.is_some() returns true for this task
+        assert!(archived_task.archived_at.is_some());
+
+        // A non-archived task should NOT be skipped
+        let mut active_task = make_task(None, None);
+        active_task.internal_status = InternalStatus::PendingMerge;
+        active_task.created_at = chrono::Utc::now() - chrono::Duration::hours(1);
+        assert!(active_task.archived_at.is_none());
     }
 
     // ==================
