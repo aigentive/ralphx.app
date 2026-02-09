@@ -18,11 +18,15 @@ function createMockTask(overrides: Partial<Task> = {}): Task {
     description: "Test description",
     priority: 3,
     internalStatus: "backlog",
+    needsReviewPoint: false,
     sourceProposalId: null,
     planArtifactId: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    startedAt: null,
+    completedAt: null,
     archivedAt: null,
+    blockedReason: null,
     ...overrides,
   };
 }
