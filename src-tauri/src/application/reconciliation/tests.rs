@@ -48,6 +48,7 @@ fn execution_policy_advances_on_completed_run() {
         registry_running: false,
         can_start: true,
         is_stale: false,
+        is_deferred: false,
     };
 
     let decision = policy.decide_reconciliation(RecoveryContext::Execution, evidence);
@@ -65,6 +66,7 @@ fn execution_policy_restarts_when_run_missing() {
         registry_running: false,
         can_start: true,
         is_stale: false,
+        is_deferred: false,
     };
 
     let decision = policy.decide_reconciliation(RecoveryContext::Execution, evidence);
@@ -79,6 +81,7 @@ fn execution_policy_prompts_on_conflict() {
         registry_running: false,
         can_start: true,
         is_stale: false,
+        is_deferred: false,
     };
 
     let decision = policy.decide_reconciliation(RecoveryContext::Execution, evidence);
@@ -93,6 +96,7 @@ fn review_policy_restarts_on_completed_run() {
         registry_running: false,
         can_start: true,
         is_stale: false,
+        is_deferred: false,
     };
 
     let decision = policy.decide_reconciliation(RecoveryContext::Review, evidence);
@@ -107,6 +111,7 @@ fn merge_policy_verifies_on_completed_run() {
         registry_running: false,
         can_start: true,
         is_stale: false,
+        is_deferred: false,
     };
 
     let decision = policy.decide_reconciliation(RecoveryContext::Merge, evidence);
@@ -121,6 +126,7 @@ fn qa_policy_retries_when_stale() {
         registry_running: false,
         can_start: true,
         is_stale: true,
+        is_deferred: false,
     };
 
     let decision = policy.decide_reconciliation(RecoveryContext::QaTesting, evidence);
@@ -135,6 +141,7 @@ fn stop_policy_resets_when_not_completed() {
         registry_running: true,
         can_start: true,
         is_stale: false,
+        is_deferred: false,
     };
 
     let decision = policy.decide_execution_stop(evidence);
@@ -176,4 +183,52 @@ async fn recover_execution_stop_noops_for_stopped_task() {
 
     let recovered = reconciler.recover_execution_stop(&task.id).await;
     assert!(!recovered, "Stopped tasks should not be recovered on stop");
+}
+
+#[test]
+fn pending_merge_policy_noop_when_not_stale() {
+    let policy = RecoveryPolicy;
+    let evidence = RecoveryEvidence {
+        run_status: None,
+        registry_running: false,
+        can_start: true,
+        is_stale: false,
+        is_deferred: false,
+    };
+
+    let decision = policy.decide_reconciliation(RecoveryContext::PendingMerge, evidence);
+    assert_eq!(decision.action, RecoveryActionKind::None);
+}
+
+#[test]
+fn pending_merge_policy_retriggers_when_stale_and_deferred() {
+    let policy = RecoveryPolicy;
+    let evidence = RecoveryEvidence {
+        run_status: None,
+        registry_running: false,
+        can_start: true,
+        is_stale: true,
+        is_deferred: true,
+    };
+
+    let decision = policy.decide_reconciliation(RecoveryContext::PendingMerge, evidence);
+    assert_eq!(decision.action, RecoveryActionKind::ExecuteEntryActions);
+}
+
+#[test]
+fn pending_merge_policy_transitions_to_merge_incomplete_when_stale_not_deferred() {
+    let policy = RecoveryPolicy;
+    let evidence = RecoveryEvidence {
+        run_status: None,
+        registry_running: false,
+        can_start: true,
+        is_stale: true,
+        is_deferred: false,
+    };
+
+    let decision = policy.decide_reconciliation(RecoveryContext::PendingMerge, evidence);
+    assert_eq!(
+        decision.action,
+        RecoveryActionKind::Transition(InternalStatus::MergeIncomplete)
+    );
 }
