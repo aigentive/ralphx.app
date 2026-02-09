@@ -205,12 +205,12 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
           </div>
         )}
 
-        {/* Abbreviated title - no status badge */}
+        {/* Two-line title with line-clamp - no status badge */}
         <div
-          className="text-xs font-medium text-[hsl(220_10%_90%)] leading-tight text-center"
-          title={label}
+          className="text-xs font-medium text-[hsl(220_10%_90%)] leading-tight line-clamp-2"
+          title={abbreviateTitle(label)}
         >
-          {abbreviateTitle(label)}
+          {label}
         </div>
       </div>
 
