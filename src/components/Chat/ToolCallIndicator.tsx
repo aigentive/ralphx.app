@@ -14,6 +14,7 @@ import { createSummary, formatValue, isArtifactContextTool, renderArtifactPrevie
 import { isDiffToolCall, isTaskToolCall } from "./DiffToolCallView.utils";
 import { DiffToolCallView } from "./DiffToolCallView";
 import { TaskToolCallCard } from "./TaskToolCallCard";
+import { getWidgetForTool, type WidgetProps } from "./tool-widgets";
 
 // ============================================================================
 // Types
@@ -52,6 +53,14 @@ interface ToolCallIndicatorProps {
 // ============================================================================
 // Component
 // ============================================================================
+
+/**
+ * Renders a registered widget for a tool call.
+ * Declared outside render to satisfy react-hooks/static-components.
+ */
+function ToolWidget({ toolCall, compact, Component }: { toolCall: ToolCall; compact?: boolean; Component: React.ComponentType<WidgetProps> }) {
+  return <Component toolCall={toolCall} compact={compact ?? false} />;
+}
 
 /**
  * Render tool icon based on tool name
@@ -97,6 +106,12 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
   // Delegate Task tool calls to TaskToolCallCard for subagent rendering (never compact — tasks don't nest)
   if (isTaskToolCall(toolCall.name)) {
     return <TaskToolCallCard toolCall={toolCall} className={className} />;
+  }
+
+  // Delegate to specialized widget if registered (e.g. StepsManifest, IssuesSummary)
+  const WidgetComponent = !hasError ? getWidgetForTool(toolCall.name) : null;
+  if (WidgetComponent) {
+    return <ToolWidget toolCall={toolCall} compact={compact} Component={WidgetComponent} />;
   }
 
   const iconSize = compact ? 12 : 14;
