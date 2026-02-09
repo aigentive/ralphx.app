@@ -11,8 +11,9 @@
 import React, { useState, useMemo } from "react";
 import { Wrench, ChevronDown, ChevronRight, FileText, Terminal, FileEdit, Search, FolderSearch } from "lucide-react";
 import { createSummary, formatValue, isArtifactContextTool, renderArtifactPreview } from "./ToolCallIndicator.helpers";
-import { isDiffToolCall } from "./DiffToolCallView.utils";
+import { isDiffToolCall, isTaskToolCall } from "./DiffToolCallView.utils";
 import { DiffToolCallView } from "./DiffToolCallView";
+import { TaskToolCallCard } from "./TaskToolCallCard";
 
 // ============================================================================
 // Types
@@ -89,6 +90,11 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
     if (hasFilePath && !hasError) {
       return <DiffToolCallView toolCall={toolCall} className={className} />;
     }
+  }
+
+  // Delegate Task tool calls to TaskToolCallCard for subagent rendering
+  if (isTaskToolCall(toolCall.name)) {
+    return <TaskToolCallCard toolCall={toolCall} className={className} />;
   }
 
   return (
