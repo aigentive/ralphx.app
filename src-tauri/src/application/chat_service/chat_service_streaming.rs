@@ -437,10 +437,6 @@ pub async fn process_stream_background<R: Runtime>(
             conversation_id = %conversation_id_str,
             "Wrote stream debug log"
         );
-        tracing::debug!(
-            path = %debug_path.display(),
-            "Wrote stream debug log"
-        );
     }
 
     if result.is_error {
