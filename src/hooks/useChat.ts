@@ -193,12 +193,25 @@ export function useChat(context: ChatContext) {
   // Update agent running state when status changes
   // NOTE: This only sets to true on initial load (when backend shows agent is running).
   // The false state is handled by the agent:run_completed event to avoid race conditions.
+  // Track previous contextKey to detect session switches and skip stale recovery
+  const prevContextKeyRef = useRef(contextKey);
+
   const isRunning = agentRunStatus.data?.status === "running";
   const isFailed = agentRunStatus.data?.status === "failed";
   const errorMessage = agentRunStatus.data?.errorMessage;
 
   useEffect(() => {
-    // Only set to true based on backend status (for initial load recovery)
+    const contextChanged = prevContextKeyRef.current !== contextKey;
+    prevContextKeyRef.current = contextKey;
+
+    // On context change, skip recovery — useChatPanelContext cleanup handles clearing.
+    // Without this guard, stale cached isRunning from the old conversation overrides
+    // the cleanup and permanently sticks the new session in "agent responding" state.
+    if (contextChanged) {
+      return;
+    }
+
+    // Normal recovery: sync UI with backend state (e.g., page refresh with running agent)
     // Don't set to false here - let the agent:run_completed event handle that
     if (isRunning) {
       setAgentRunning(contextKey, true);
