@@ -53,7 +53,9 @@ count_lines() {
 # Count @ references to .claude/rules/ in a file
 count_at_refs() {
   local file="$1"
-  grep -c '@\.claude/rules/' "$file" 2>/dev/null || echo "0"
+  local count
+  count=$(grep -c '@\.claude/rules/' "$file" 2>/dev/null) || count=0
+  echo "$count"
 }
 
 # Extract @ reference targets from a file
