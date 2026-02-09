@@ -1069,10 +1069,10 @@ impl<'a> super::TransitionHandler<'a> {
 
                 // Use ChatService for persistent worker execution (Phase 15B)
                 let prompt = format!("Execute task: {}", task_id_str);
-                eprintln!(
-                    "[STREAM_DEBUG] transition handler sending task_execution message (task_id={}, prompt_len={})",
-                    task_id_str,
-                    prompt.len()
+                tracing::debug!(
+                    task_id = task_id_str,
+                    prompt_len = prompt.len(),
+                    "Transition handler sending task_execution message"
                 );
 
                 // send_message handles:
@@ -1218,7 +1218,6 @@ impl<'a> super::TransitionHandler<'a> {
                 let task_id = &self.machine.context.task_id;
                 let prompt = format!("Review task: {}", task_id);
 
-                eprintln!("[REVIEWING] on_enter(Reviewing) called for task: {}", task_id);
                 tracing::info!(
                     task_id = task_id,
                     "on_enter(Reviewing): Spawning reviewer agent via ChatService"
@@ -1238,11 +1237,9 @@ impl<'a> super::TransitionHandler<'a> {
 
                 match &result {
                     Ok(_) => {
-                        eprintln!("[REVIEWING] Reviewer agent spawned successfully for task: {}", task_id);
                         tracing::info!(task_id = task_id, "Reviewer agent spawned successfully");
                     }
                     Err(e) => {
-                        eprintln!("[REVIEWING] FAILED to spawn reviewer agent: {}", e);
                         tracing::error!(task_id = task_id, error = %e, "Failed to spawn reviewer agent");
                     }
                 }
