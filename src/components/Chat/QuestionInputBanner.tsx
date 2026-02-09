@@ -9,7 +9,7 @@
  * multi-select (chip click toggles, checkmarks shown) modes.
  */
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Check, X } from "lucide-react";
 import type { AskUserQuestionPayload } from "@/types/ask-user-question";
 
@@ -119,7 +119,6 @@ export function QuestionInputBanner({
   onDismissAnswered,
 }: QuestionInputBannerProps) {
   const [visible, setVisible] = useState(false);
-  const bannerRef = useRef<HTMLDivElement>(null);
 
   // Trigger slide-in on mount
   useEffect(() => {
@@ -145,7 +144,6 @@ export function QuestionInputBanner({
 
   return (
     <div
-      ref={bannerRef}
       data-testid="question-input-banner"
       style={{
         overflow: "hidden",
