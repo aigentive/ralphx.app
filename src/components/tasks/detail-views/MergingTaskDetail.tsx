@@ -22,6 +22,7 @@ import {
   Clock,
   Wrench,
   Terminal,
+  Archive,
 } from "lucide-react";
 import {
   SectionTitle,
@@ -304,6 +305,7 @@ function formatDuration(ms: number): string {
 function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) {
   const isRunning = step.status === "running";
   const isFailed = step.status === "failed";
+  const isCached = step.status === "cached";
   const hasOutput = (step.stdout && step.stdout.trim().length > 0) ||
     (step.stderr && step.stderr.trim().length > 0);
   const [expanded, setExpanded] = useState(isRunning || isFailed);
@@ -312,6 +314,8 @@ function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) {
     <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#0a84ff" }} />
   ) : isFailed ? (
     <XCircle className="w-4 h-4" style={{ color: "#ff453a" }} />
+  ) : isCached ? (
+    <Archive className="w-4 h-4" style={{ color: "#34c759" }} />
   ) : (
     <CheckCircle2 className="w-4 h-4" style={{ color: "#34c759" }} />
   );
@@ -337,6 +341,14 @@ function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) {
         <span className="text-[12px] text-white/80 font-mono truncate flex-1" title={step.label}>
           {step.label}
         </span>
+        {isCached && (
+          <span
+            className="text-[9px] uppercase font-semibold tracking-wider px-1.5 py-0.5 rounded shrink-0"
+            style={{ backgroundColor: "rgba(52, 199, 89, 0.15)", color: "#34c759" }}
+          >
+            Cached
+          </span>
+        )}
         {step.duration_ms != null && (
           <span className="flex items-center gap-1 text-[11px] text-white/40 shrink-0">
             <Clock className="w-3 h-3" />
@@ -497,7 +509,7 @@ function parseMetadataValidationLog(metadata: string | Record<string, unknown> |
       command: String(entry.command ?? ""),
       path: String(entry.path ?? ""),
       label: String(entry.label ?? entry.command ?? ""),
-      status: (entry.status === "running" || entry.status === "success" || entry.status === "failed")
+      status: (entry.status === "running" || entry.status === "success" || entry.status === "failed" || entry.status === "cached")
         ? entry.status
         : "success",
       exit_code: typeof entry.exit_code === "number" ? entry.exit_code : null,
@@ -535,8 +547,8 @@ export function ValidationProgress({
   const source = liveSteps && liveSteps.length > 0 ? "live" : "historical";
   const setupSteps = steps.filter((s) => s.phase === "setup");
   const validateSteps = steps.filter((s) => s.phase !== "setup");
-  const passedValidateSteps = validateSteps.filter((s) => s.status === "success");
-  const nonPassedValidateSteps = validateSteps.filter((s) => s.status !== "success");
+  const passedValidateSteps = validateSteps.filter((s) => s.status === "success" || s.status === "cached");
+  const nonPassedValidateSteps = validateSteps.filter((s) => s.status !== "success" && s.status !== "cached");
 
   return (
     <section data-testid={`validation-progress-${taskId}`}>

@@ -21,6 +21,7 @@ import {
   TwoColumnLayout,
 } from "./shared";
 import { ReviewTimeline } from "./shared/ReviewTimeline";
+import { ValidationProgress } from "./MergingTaskDetail";
 import { useTaskStateHistory } from "@/hooks/useReviews";
 import { useGitDiff } from "@/hooks/useGitDiff";
 import type { Task } from "@/types/task";
@@ -224,6 +225,12 @@ export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: 
           <CommitSummaryCard taskId={task.id} />
         </DetailCard>
       </section>
+
+      {/* Merge Validation History */}
+      <ValidationProgress
+        taskId={task.id}
+        metadata={task.metadata}
+      />
 
       {/* Review History */}
       <section data-testid="review-history-section">
