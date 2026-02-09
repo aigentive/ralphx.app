@@ -12,14 +12,17 @@ import { useCallback, useEffect, useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { TaskDetailPanel } from "./TaskDetailPanel";
 import { TaskEditForm } from "./TaskEditForm";
 import { StatusDropdown } from "./StatusDropdown";
 import { StateTimelineNav } from "./StateTimelineNav";
+import { useQuery } from "@tanstack/react-query";
 import { useTaskMutation } from "@/hooks/useTaskMutation";
 import { useUiStore } from "@/stores/uiStore";
 import { useTaskStore } from "@/stores/taskStore";
-import { useTasks } from "@/hooks/useTasks";
+import { useTasks, taskKeys } from "@/hooks/useTasks";
+import { api } from "@/lib/tauri";
 import type { Task, InternalStatus } from "@/types/task";
 import {
   X,
@@ -252,8 +255,17 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
   // Fetch all tasks to ensure we have the latest data
   const { data: tasks = [] } = useTasks(projectId);
 
-  // Find the task from fetched tasks if not in store
-  const task: Task | undefined = taskFromStore || tasks.find((t) => t.id === selectedTaskId);
+  // Find the task from the list query
+  const taskFromList = tasks.find((t) => t.id === selectedTaskId);
+
+  // Fallback: fetch the specific task by ID when not found in store or paginated list
+  const { data: taskFromDetail } = useQuery<Task, Error>({
+    queryKey: taskKeys.detail(selectedTaskId ?? ""),
+    queryFn: () => api.tasks.get(selectedTaskId!),
+    enabled: Boolean(selectedTaskId) && !taskFromStore && !taskFromList,
+  });
+
+  const task: Task | undefined = taskFromStore || taskFromList || taskFromDetail;
 
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -405,6 +417,9 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
 
   // Don't render if no task is selected
   if (!selectedTaskId || !task) {
+    if (selectedTaskId && !task) {
+      console.warn('[TaskDetailOverlay] Task not found for selectedTaskId:', selectedTaskId);
+    }
     return null;
   }
 
@@ -655,17 +670,19 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
             /* Read-only View */
             <ScrollArea className="flex-1">
               <div className="px-6 py-4">
-                <TaskDetailPanel
-                  task={task}
-                  showHeader={false}
-                  showContext={true}
-                  showHistory={true}
-                  useViewRegistry={true}
-                  {...(isHistoryMode && viewStatus ? { viewAsStatus: viewStatus } : {})}
-                  {...(isHistoryMode && historyState?.timestamp
-                    ? { viewTimestamp: historyState.timestamp }
-                    : {})}
-                />
+                <ErrorBoundary>
+                  <TaskDetailPanel
+                    task={task}
+                    showHeader={false}
+                    showContext={true}
+                    showHistory={true}
+                    useViewRegistry={true}
+                    {...(isHistoryMode && viewStatus ? { viewAsStatus: viewStatus } : {})}
+                    {...(isHistoryMode && historyState?.timestamp
+                      ? { viewTimestamp: historyState.timestamp }
+                      : {})}
+                  />
+                </ErrorBoundary>
               </div>
             </ScrollArea>
           )}
