@@ -19,6 +19,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { InternalStatus } from "@/types/task";
+import { isTerminalStatus } from "@/types/status";
 
 // macOS Tahoe system colors (dark mode)
 const STATUS_CONFIG: Record<
@@ -329,6 +330,18 @@ export function StateTimelineNav({
       "merging",
     ];
 
+    // Intermediate retry/failure states that add noise once a task reaches
+    // a terminal status (merged, failed, cancelled, stopped, approved).
+    // These are still shown when they ARE the current status.
+    const intermediateRetryStatuses: InternalStatus[] = [
+      "merge_incomplete",
+      "merge_conflict",
+      "revision_needed",
+      "qa_failed",
+      "blocked",
+      "paused",
+    ];
+
     if (!transitions || transitions.length === 0) {
       // Don't show timeline for transient states with no history
       if (transientStatuses.includes(currentStatus)) {
@@ -351,6 +364,16 @@ export function StateTimelineNav({
       // Skip transient states - they're brief transitions not worth showing
       // (but keep current status visible)
       if (transientStatuses.includes(transition.toStatus) && transition.toStatus !== currentStatus) {
+        continue;
+      }
+      // Skip intermediate retry/failure states once the task has reached a
+      // terminal status — they add noise to the timeline. Still show them
+      // when they ARE the current status (task is currently in that state).
+      if (
+        isTerminalStatus(currentStatus) &&
+        intermediateRetryStatuses.includes(transition.toStatus) &&
+        transition.toStatus !== currentStatus
+      ) {
         continue;
       }
       if (seenStatuses.has(transition.toStatus)) {
