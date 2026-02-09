@@ -79,7 +79,7 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
     return <TaskToolCallCard toolCall={toolCall} className={className} />;
   }
 
-  // Check widget registry for specialized renderers (added by subsequent tasks)
+  // Check widget registry for specialized renderers
   const SpecializedWidget = getToolCallWidget(toolCall.name);
   if (SpecializedWidget) {
     return React.createElement(SpecializedWidget, { toolCall, compact, className });
