@@ -19,7 +19,11 @@
 
 /// Base CLI tools shared by all non-MCP-only agents.
 /// Agents that need more (Write, Edit, Task, etc.) declare them in `extra_cli_tools`.
-pub const BASE_CLI_TOOLS: &[&str] = &["Read", "Grep", "Glob", "Bash", "WebFetch", "WebSearch"];
+pub const BASE_CLI_TOOLS: &[&str] = &["Read", "Grep", "Glob", "Bash", "WebFetch", "WebSearch", "Skill"];
+
+/// Plugin skills pre-approved for all non-MCP-only agents.
+/// These support the Stop hook enforcement (rule-manager, knowledge-capture).
+pub const MEMORY_SKILLS: &[&str] = &["Skill(ralphx:rule-manager)", "Skill(ralphx:knowledge-capture)"];
 
 /// Configuration for an agent's CLI tool access
 #[derive(Debug, Clone)]
@@ -321,6 +325,13 @@ pub fn get_preapproved_tools(agent_name: &str) -> Option<String> {
             tools.push((*t).to_string());
         }
 
+        // Add memory skills for all non-MCP-only agents (Stop hook enforcement)
+        if !c.mcp_only {
+            for t in MEMORY_SKILLS {
+                tools.push((*t).to_string());
+            }
+        }
+
         if tools.is_empty() {
             None
         } else {
@@ -336,7 +347,7 @@ mod tests {
     #[test]
     fn test_get_allowed_tools_restricted_agent() {
         let tools = get_allowed_tools("orchestrator-ideation");
-        assert_eq!(tools, Some("Read,Grep,Glob,Bash,WebFetch,WebSearch,Task".to_string()));
+        assert_eq!(tools, Some("Read,Grep,Glob,Bash,WebFetch,WebSearch,Skill,Task".to_string()));
     }
 
     #[test]
@@ -588,5 +599,57 @@ mod tests {
         // Preapproved CLI tools
         assert!(tools.contains("Task(Explore)"));
         assert!(tools.contains("Task(Plan)"));
+    }
+}
+
+#[cfg(test)]
+mod memory_skill_tests {
+    use super::*;
+
+    #[test]
+    fn test_non_mcp_only_agents_have_memory_skills_preapproved() {
+        for config in AGENT_CONFIGS {
+            if config.mcp_only {
+                continue;
+            }
+            let tools = get_preapproved_tools(config.name)
+                .unwrap_or_else(|| panic!("Agent {} should have preapproved tools", config.name));
+            for skill in MEMORY_SKILLS {
+                assert!(
+                    tools.contains(skill),
+                    "Agent {} missing memory skill: {}",
+                    config.name,
+                    skill
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_mcp_only_agents_do_not_have_memory_skills() {
+        for config in AGENT_CONFIGS {
+            if !config.mcp_only {
+                continue;
+            }
+            let tools = get_preapproved_tools(config.name);
+            if let Some(tools) = tools {
+                for skill in MEMORY_SKILLS {
+                    assert!(
+                        !tools.contains(skill),
+                        "MCP-only agent {} should NOT have memory skill: {}",
+                        config.name,
+                        skill
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_skill_in_base_cli_tools() {
+        assert!(
+            BASE_CLI_TOOLS.contains(&"Skill"),
+            "Skill must be in BASE_CLI_TOOLS"
+        );
     }
 }
