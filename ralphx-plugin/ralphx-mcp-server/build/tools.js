@@ -748,6 +748,19 @@ export const TOOL_ALLOWLIST = {
         "get_review_notes",
         "get_task_steps",
     ],
+    // Historical review discussion agent - read-only, no mutation tools (approved tasks)
+    "ralphx-review-history": [
+        "get_review_notes",
+        "get_task_context",
+        "get_task_issues",
+        "get_task_steps",
+        "get_step_progress",
+        "get_issue_progress",
+        "get_artifact",
+        "get_artifact_version",
+        "get_related_artifacts",
+        "search_project_artifacts",
+    ],
     "ralphx-worker": [
         // step management tools
         "start_step",

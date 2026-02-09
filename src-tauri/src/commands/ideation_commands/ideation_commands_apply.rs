@@ -200,9 +200,11 @@ pub async fn apply_proposals_to_kanban(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Project not found: {}", session.project_id.as_str()))?;
 
-    let use_feature_branch = input
-        .use_feature_branch
-        .unwrap_or(project.use_feature_branches);
+    let use_feature_branch = should_create_feature_branch(
+        input.use_feature_branch,
+        project.use_feature_branches,
+        created_tasks.len(),
+    );
 
     if use_feature_branch {
         // Check if a feature branch already exists for this session
@@ -416,6 +418,22 @@ pub async fn apply_proposals_to_kanban(
         warnings,
         session_converted,
     })
+}
+
+/// Determine whether a feature branch should be created for this plan apply.
+///
+/// Returns `false` when only a single task was created — single-task plans
+/// merge directly to the project base branch, avoiding a double-merge.
+pub(crate) fn should_create_feature_branch(
+    per_plan_override: Option<bool>,
+    project_default: bool,
+    created_task_count: usize,
+) -> bool {
+    let mut use_fb = per_plan_override.unwrap_or(project_default);
+    if use_fb && created_task_count == 1 {
+        use_fb = false;
+    }
+    use_fb
 }
 
 /// Get blockers for a task (tasks it depends on)
