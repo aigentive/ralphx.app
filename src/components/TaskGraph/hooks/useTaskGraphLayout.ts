@@ -532,7 +532,8 @@ function computeLayoutWithCache(
     layoutTierGroups,
     collapsedPlanIds,
     collapsedTierIds,
-    includeUncategorized
+    includeUncategorized,
+    config.isCompact ?? false
   );
 
   // Check if we can use cached positions
@@ -1114,7 +1115,7 @@ interface LayoutTierGroup {
 
 /**
  * Compute a structural hash of the graph for cache key.
- * Hash includes: node IDs (sorted), edge pairs (sorted), config direction, plan groups, and collapsed state.
+ * Hash includes: node IDs (sorted), edge pairs (sorted), config direction, compact mode, plan groups, and collapsed state.
  * Does NOT include node data (status, title, priority) since those don't affect layout.
  */
 function computeGraphHash(
@@ -1125,7 +1126,8 @@ function computeGraphHash(
   tierGroups: LayoutTierGroup[] = [],
   collapsedPlanIds: Set<string> = new Set(),
   collapsedTierIds: Set<string> = new Set(),
-  includeUncategorized: boolean = true
+  includeUncategorized: boolean = true,
+  isCompact: boolean = false
 ): string {
   // Sort for consistent ordering
   const sortedNodes = [...nodeIds].sort().join(",");
@@ -1145,7 +1147,7 @@ function computeGraphHash(
   // Include collapsed state so layout recalculates when groups collapse/expand
   const sortedCollapsed = [...collapsedPlanIds].sort().join(",");
   const sortedCollapsedTiers = [...collapsedTierIds].sort().join(",");
-  return `${direction}:${sortedNodes}|${sortedEdges}|${sortedGroups}|${sortedTierGroups}|${sortedCollapsed}|${sortedCollapsedTiers}|${includeUncategorized ? "uncategorized" : "no-uncategorized"}`;
+  return `${direction}:${isCompact ? "compact" : "standard"}:${sortedNodes}|${sortedEdges}|${sortedGroups}|${sortedTierGroups}|${sortedCollapsed}|${sortedCollapsedTiers}|${includeUncategorized ? "uncategorized" : "no-uncategorized"}`;
 }
 
 /**
