@@ -83,6 +83,10 @@ pub trait ArtifactRepository: Send + Sync {
     /// Get version history for an artifact by walking the previous_version_id chain
     /// Returns summaries in order from newest to oldest
     async fn get_version_history(&self, id: &ArtifactId) -> AppResult<Vec<ArtifactVersionSummary>>;
+
+    /// Walk the version chain forward from any artifact ID to find the latest version.
+    /// Given A(v1) → B(v2) → C(v3): resolve_latest(A) → C, resolve_latest(C) → C.
+    async fn resolve_latest_artifact_id(&self, id: &ArtifactId) -> AppResult<ArtifactId>;
 }
 
 /// Summary of an artifact version for history display
@@ -214,6 +218,10 @@ mod tests {
 
         async fn get_version_history(&self, _id: &ArtifactId) -> AppResult<Vec<ArtifactVersionSummary>> {
             Ok(vec![])
+        }
+
+        async fn resolve_latest_artifact_id(&self, id: &ArtifactId) -> AppResult<ArtifactId> {
+            Ok(id.clone())
         }
     }
 

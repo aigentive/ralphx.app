@@ -228,6 +228,10 @@ impl ArtifactRepository for MemoryArtifactRepository {
             Ok(vec![])
         }
     }
+
+    async fn resolve_latest_artifact_id(&self, id: &ArtifactId) -> AppResult<ArtifactId> {
+        Ok(id.clone())
+    }
 }
 
 #[cfg(test)]

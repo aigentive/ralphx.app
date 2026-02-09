@@ -565,6 +565,32 @@ impl ArtifactRepository for SqliteArtifactRepository {
 
         Ok(history)
     }
+
+    async fn resolve_latest_artifact_id(&self, id: &ArtifactId) -> AppResult<ArtifactId> {
+        let conn = self.conn.lock().await;
+        let mut current_id = id.clone();
+
+        loop {
+            let result = conn.query_row(
+                "SELECT id FROM artifacts WHERE previous_version_id = ?1",
+                [current_id.as_str()],
+                |row| {
+                    let next_id: String = row.get(0)?;
+                    Ok(next_id)
+                },
+            );
+
+            match result {
+                Ok(next_id) => {
+                    current_id = ArtifactId::from_string(next_id);
+                }
+                Err(rusqlite::Error::QueryReturnedNoRows) => {
+                    return Ok(current_id);
+                }
+                Err(e) => return Err(AppError::Database(e.to_string())),
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1237,5 +1263,68 @@ mod tests {
         // Read via repo2
         let found = repo2.get_by_id(&artifact.id).await.unwrap();
         assert!(found.is_some());
+    }
+
+    // ==================== RESOLVE LATEST ARTIFACT ID TESTS ====================
+
+    #[tokio::test]
+    async fn test_resolve_latest_single_version_returns_itself() {
+        let conn = setup_test_db();
+        let repo = SqliteArtifactRepository::new(conn);
+
+        let v1 = Artifact::new_inline("Plan", ArtifactType::Specification, "V1", "orchestrator");
+        let v1_id = v1.id.clone();
+        repo.create(v1).await.unwrap();
+
+        let resolved = repo.resolve_latest_artifact_id(&v1_id).await.unwrap();
+        assert_eq!(resolved, v1_id, "Single version should resolve to itself");
+    }
+
+    #[tokio::test]
+    async fn test_resolve_latest_three_version_chain_from_v1() {
+        let conn = setup_test_db();
+        let repo = SqliteArtifactRepository::new(conn);
+
+        // Create V1 → V2 → V3 chain
+        let v1 = Artifact::new_inline("Plan", ArtifactType::Specification, "V1", "orchestrator");
+        let v1_id = v1.id.clone();
+        repo.create(v1).await.unwrap();
+
+        let mut v2 = Artifact::new_inline("Plan", ArtifactType::Specification, "V2", "orchestrator");
+        v2.metadata.version = 2;
+        let v2_id = v2.id.clone();
+        repo.create_with_previous_version(v2, v1_id.clone()).await.unwrap();
+
+        let mut v3 = Artifact::new_inline("Plan", ArtifactType::Specification, "V3", "orchestrator");
+        v3.metadata.version = 3;
+        let v3_id = v3.id.clone();
+        repo.create_with_previous_version(v3, v2_id).await.unwrap();
+
+        let resolved = repo.resolve_latest_artifact_id(&v1_id).await.unwrap();
+        assert_eq!(resolved, v3_id, "V1 should resolve to V3 (latest)");
+    }
+
+    #[tokio::test]
+    async fn test_resolve_latest_three_version_chain_from_middle() {
+        let conn = setup_test_db();
+        let repo = SqliteArtifactRepository::new(conn);
+
+        // Create V1 → V2 → V3 chain
+        let v1 = Artifact::new_inline("Plan", ArtifactType::Specification, "V1", "orchestrator");
+        let v1_id = v1.id.clone();
+        repo.create(v1).await.unwrap();
+
+        let mut v2 = Artifact::new_inline("Plan", ArtifactType::Specification, "V2", "orchestrator");
+        v2.metadata.version = 2;
+        let v2_id = v2.id.clone();
+        repo.create_with_previous_version(v2, v1_id).await.unwrap();
+
+        let mut v3 = Artifact::new_inline("Plan", ArtifactType::Specification, "V3", "orchestrator");
+        v3.metadata.version = 3;
+        let v3_id = v3.id.clone();
+        repo.create_with_previous_version(v3, v2_id.clone()).await.unwrap();
+
+        let resolved = repo.resolve_latest_artifact_id(&v2_id).await.unwrap();
+        assert_eq!(resolved, v3_id, "V2 (middle) should resolve to V3 (latest)");
     }
 }
