@@ -284,7 +284,7 @@ export function useChatPanelContext({
         setActiveConversation(mostRecent.id);
       }
     }
-  }, [activeConversationId, isMergeMode, isExecutionMode, isReviewMode, isHistoryMode, setActiveConversation]);
+  }, [activeConversationId, isMergeMode, isExecutionMode, isReviewMode, isHistoryMode, overrideConversationId, setActiveConversation]);
 
   return {
     chatContext,
