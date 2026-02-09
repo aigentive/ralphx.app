@@ -178,6 +178,12 @@ pub trait TaskScheduler: Send + Sync {
     /// - startup when resuming after app restart
     /// - unpause/capacity increase commands
     async fn try_schedule_ready_tasks(&self);
+
+    /// Re-trigger deferred merges for a project after a competing merge completes.
+    ///
+    /// Finds tasks in PendingMerge with `merge_deferred` metadata, clears the flag,
+    /// and re-invokes their entry actions so `attempt_programmatic_merge()` runs again.
+    async fn try_retry_deferred_merges(&self, project_id: &str);
 }
 
 #[cfg(test)]
