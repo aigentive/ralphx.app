@@ -30,6 +30,10 @@ pub mod events {
     pub const AGENT_QUEUE_SENT: &str = "agent:queue_sent";
     /// Activity stream message event (for execution bar)
     pub const AGENT_MESSAGE: &str = "agent:message";
+    /// Agent task (subagent) started event
+    pub const AGENT_TASK_STARTED: &str = "agent:task_started";
+    /// Agent task (subagent) completed event
+    pub const AGENT_TASK_COMPLETED: &str = "agent:task_completed";
 }
 
 // ============================================================================
@@ -88,6 +92,8 @@ pub struct AgentToolCallPayload {
     pub context_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub diff_context: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_tool_use_id: Option<String>,
 }
 
 /// Payload for agent:message_created event
@@ -118,6 +124,38 @@ pub struct AgentErrorPayload {
     pub context_id: String,
     pub error: String,
     pub stderr: Option<String>,
+}
+
+/// Payload for agent:task_started event
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentTaskStartedPayload {
+    pub tool_use_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subagent_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    pub conversation_id: String,
+    pub context_type: String,
+    pub context_id: String,
+}
+
+/// Payload for agent:task_completed event
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentTaskCompletedPayload {
+    pub tool_use_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_duration_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_tool_use_count: Option<u64>,
+    pub conversation_id: String,
+    pub context_type: String,
+    pub context_id: String,
 }
 
 /// Payload for agent:queue_sent event
