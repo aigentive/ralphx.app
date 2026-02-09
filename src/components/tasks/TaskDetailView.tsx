@@ -9,6 +9,9 @@ import { useReviewsByTaskId, useTaskStateHistory } from "@/hooks/useReviews";
 import { StateHistoryTimeline } from "./StateHistoryTimeline";
 import type { Task, InternalStatus } from "@/types/task";
 import { FileText, Lightbulb } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
 import {
   Tooltip,
   TooltipContent,
@@ -166,9 +169,11 @@ export function TaskDetailView({ task, fixTaskCount }: TaskDetailViewProps) {
 
       {/* Description */}
       {task.description && (
-        <p data-testid="task-detail-description" className="mt-4 text-sm" style={{ color: "var(--text-secondary)" }}>
-          {task.description}
-        </p>
+        <div data-testid="task-detail-description" className="mt-4 text-sm" style={{ color: "var(--text-secondary)", wordBreak: "break-word" }}>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            {task.description}
+          </ReactMarkdown>
+        </div>
       )}
 
       {/* Reviews Section */}
