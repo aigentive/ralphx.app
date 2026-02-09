@@ -258,16 +258,26 @@ pub struct StreamProcessor {
     current_thinking_block: String,
 }
 
+/// Parsed line with optional parent_tool_use_id extracted from top-level JSON
+pub struct ParsedLine {
+    pub message: StreamMessage,
+    pub parent_tool_use_id: Option<String>,
+}
+
 impl StreamProcessor {
     /// Create a new stream processor
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Parsed line with optional parent_tool_use_id extracted from top-level JSON
-    pub struct ParsedLine {
-        pub message: StreamMessage,
-        pub parent_tool_use_id: Option<String>,
+    /// Process a stream message without parent context (backward compat)
+    pub fn process_message(&mut self, msg: StreamMessage) -> Vec<StreamEvent> {
+        self.process_message_with_parent(msg, None)
+    }
+
+    /// Process a parsed line (message + parent_tool_use_id)
+    pub fn process_parsed_line(&mut self, parsed: ParsedLine) -> Vec<StreamEvent> {
+        self.process_message_with_parent(parsed.message, parsed.parent_tool_use_id)
     }
 
     /// Parse a stream-json line, extracting parent_tool_use_id from the top-level JSON envelope
@@ -299,11 +309,12 @@ impl StreamProcessor {
         })
     }
 
-    /// Process a stream message and return events
-    ///
-    /// The returned events can be used by callers to emit Tauri events
-    /// or perform other actions as needed.
-    pub fn process_message(&mut self, msg: StreamMessage) -> Vec<StreamEvent> {
+    /// Process a stream message with optional parent_tool_use_id context
+    fn process_message_with_parent(
+        &mut self,
+        msg: StreamMessage,
+        parent_tool_use_id: Option<String>,
+    ) -> Vec<StreamEvent> {
         let mut events = Vec::new();
 
         match msg {
@@ -324,6 +335,7 @@ impl StreamProcessor {
                     events.push(StreamEvent::ToolCallStarted {
                         name: self.current_tool_name.clone(),
                         id: self.current_tool_id.clone(),
+                        parent_tool_use_id: parent_tool_use_id.clone(),
                     });
                 } else if content_block.block_type == "thinking" {
                     // Start of a thinking block - mark state for thinking delta handling
@@ -356,6 +368,18 @@ impl StreamProcessor {
                     let args: serde_json::Value =
                         serde_json::from_str(&self.current_tool_input).unwrap_or_default();
 
+                    // Detect Task tool_use and emit TaskStarted (streaming mode)
+                    if self.current_tool_name == "Task" {
+                        if let Some(ref tool_id) = self.current_tool_id {
+                            events.push(StreamEvent::TaskStarted {
+                                tool_use_id: tool_id.clone(),
+                                description: args.get("description").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                                subagent_type: args.get("subagent_type").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                                model: args.get("model").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                            });
+                        }
+                    }
+
                     let tool_call = ToolCall {
                         id: self.current_tool_id.clone(),
                         name: self.current_tool_name.clone(),
@@ -375,7 +399,10 @@ impl StreamProcessor {
                         diff_context: None,
                     });
 
-                    events.push(StreamEvent::ToolCallCompleted(tool_call));
+                    events.push(StreamEvent::ToolCallCompleted {
+                        tool_call,
+                        parent_tool_use_id: parent_tool_use_id.clone(),
+                    });
 
                     // Reset tool state
                     self.current_tool_name.clear();
@@ -422,6 +449,16 @@ impl StreamProcessor {
                             events.push(StreamEvent::TextChunk(text));
                         }
                         AssistantContent::ToolUse { id, name, input } => {
+                            // Detect Task tool_use and emit TaskStarted
+                            if name == "Task" {
+                                events.push(StreamEvent::TaskStarted {
+                                    tool_use_id: id.clone(),
+                                    description: input.get("description").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                                    subagent_type: input.get("subagent_type").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                                    model: input.get("model").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                                });
+                            }
+
                             let tool_call = ToolCall {
                                 id: Some(id.clone()),
                                 name: name.clone(),
@@ -439,7 +476,10 @@ impl StreamProcessor {
                                 result: None,
                                 diff_context: None,
                             });
-                            events.push(StreamEvent::ToolCallCompleted(tool_call));
+                            events.push(StreamEvent::ToolCallCompleted {
+                                tool_call,
+                                parent_tool_use_id: parent_tool_use_id.clone(),
+                            });
                         }
                         AssistantContent::Thinking { thinking } => {
                             // Emit complete thinking block from verbose mode
@@ -470,6 +510,12 @@ impl StreamProcessor {
                         is_error: _,
                     } = content
                     {
+                        // Check if this is a Task tool_result by finding the matching tool_call
+                        let is_task_result = self
+                            .tool_calls
+                            .iter()
+                            .any(|tc| tc.id.as_ref() == Some(&tool_use_id) && tc.name == "Task");
+
                         // Find the tool call by ID and update its result
                         if let Some(tool_call) = self
                             .tool_calls
@@ -489,10 +535,30 @@ impl StreamProcessor {
                             }
                         }
 
+                        // Emit TaskCompleted if this is a Task tool_result
+                        if is_task_result {
+                            // Extract metadata: try tool_use_result sub-object first, fall back to content itself
+                            let metadata = content.get("tool_use_result").unwrap_or(&content);
+
+                            events.push(StreamEvent::TaskCompleted {
+                                tool_use_id: tool_use_id.clone(),
+                                agent_id: metadata.get("agentId")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string()),
+                                total_duration_ms: metadata.get("totalDurationMs")
+                                    .and_then(|v| v.as_u64()),
+                                total_tokens: metadata.get("totalTokens")
+                                    .and_then(|v| v.as_u64()),
+                                total_tool_use_count: metadata.get("totalToolUseCount")
+                                    .and_then(|v| v.as_u64()),
+                            });
+                        }
+
                         // Emit event with updated tool call
                         events.push(StreamEvent::ToolResultReceived {
                             tool_use_id,
                             result: content,
+                            parent_tool_use_id: parent_tool_use_id.clone(),
                         });
                     }
                 }
@@ -548,14 +614,15 @@ mod tests {
     #[test]
     fn test_parse_text_delta() {
         let line = r#"{"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello"}}"#;
-        let msg = StreamProcessor::parse_line(line);
+        let parsed = StreamProcessor::parse_line(line);
 
-        let msg = msg.expect("Expected Some(StreamMessage)");
+        let parsed = parsed.expect("Expected Some(ParsedLine)");
+        assert!(parsed.parent_tool_use_id.is_none());
         assert!(
-            matches!(msg, StreamMessage::ContentBlockDelta { .. }),
+            matches!(parsed.message, StreamMessage::ContentBlockDelta { .. }),
             "Expected ContentBlockDelta, got different variant"
         );
-        let StreamMessage::ContentBlockDelta { delta, .. } = msg else {
+        let StreamMessage::ContentBlockDelta { delta, .. } = parsed.message else {
             unreachable!()
         };
         assert_eq!(delta.delta_type, "text_delta");
@@ -565,23 +632,23 @@ mod tests {
     #[test]
     fn test_parse_line_with_data_prefix() {
         let line = r#"data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hi"}}"#;
-        let msg = StreamProcessor::parse_line(line);
+        let parsed = StreamProcessor::parse_line(line);
 
-        let msg = msg.expect("Expected Some(StreamMessage)");
-        assert!(matches!(msg, StreamMessage::ContentBlockDelta { .. }));
+        let parsed = parsed.expect("Expected Some(ParsedLine)");
+        assert!(matches!(parsed.message, StreamMessage::ContentBlockDelta { .. }));
     }
 
     #[test]
     fn test_parse_tool_use_start() {
         let line = r#"{"type":"content_block_start","content_block":{"type":"tool_use","id":"toolu_123","name":"create_task_proposal"}}"#;
-        let msg = StreamProcessor::parse_line(line);
+        let parsed = StreamProcessor::parse_line(line);
 
-        let msg = msg.expect("Expected Some(StreamMessage)");
+        let parsed = parsed.expect("Expected Some(ParsedLine)");
         assert!(
-            matches!(msg, StreamMessage::ContentBlockStart { .. }),
+            matches!(parsed.message, StreamMessage::ContentBlockStart { .. }),
             "Expected ContentBlockStart, got different variant"
         );
-        let StreamMessage::ContentBlockStart { content_block, .. } = msg else {
+        let StreamMessage::ContentBlockStart { content_block, .. } = parsed.message else {
             unreachable!()
         };
         assert_eq!(content_block.block_type, "tool_use");
@@ -592,14 +659,14 @@ mod tests {
     #[test]
     fn test_parse_result() {
         let line = r#"{"type":"result","session_id":"550e8400-e29b-41d4-a716-446655440000","result":"Done","is_error":false,"cost_usd":0.05}"#;
-        let msg = StreamProcessor::parse_line(line);
+        let parsed = StreamProcessor::parse_line(line);
 
-        let msg = msg.expect("Expected Some(StreamMessage)");
+        let parsed = parsed.expect("Expected Some(ParsedLine)");
         assert!(
-            matches!(msg, StreamMessage::Result { .. }),
+            matches!(parsed.message, StreamMessage::Result { .. }),
             "Expected Result, got different variant"
         );
-        let StreamMessage::Result { session_id, .. } = msg else {
+        let StreamMessage::Result { session_id, .. } = parsed.message else {
             unreachable!()
         };
         assert_eq!(session_id, Some("550e8400-e29b-41d4-a716-446655440000".to_string()));
@@ -608,14 +675,14 @@ mod tests {
     #[test]
     fn test_parse_assistant_message() {
         let line = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Hello world"}],"stop_reason":"end_turn"},"session_id":"sess-123"}"#;
-        let msg = StreamProcessor::parse_line(line);
+        let parsed = StreamProcessor::parse_line(line);
 
-        let msg = msg.expect("Expected Some(StreamMessage)");
+        let parsed = parsed.expect("Expected Some(ParsedLine)");
         assert!(
-            matches!(msg, StreamMessage::Assistant { .. }),
+            matches!(parsed.message, StreamMessage::Assistant { .. }),
             "Expected Assistant message, got different variant"
         );
-        let StreamMessage::Assistant { message, session_id } = msg else {
+        let StreamMessage::Assistant { message, session_id } = parsed.message else {
             unreachable!()
         };
         assert_eq!(session_id, Some("sess-123".to_string()));
@@ -697,7 +764,7 @@ mod tests {
 
         assert!(matches!(events1[0], StreamEvent::ToolCallStarted { .. }));
         assert!(events2.is_empty()); // input_json_delta doesn't emit events
-        assert!(matches!(events3[0], StreamEvent::ToolCallCompleted(_)));
+        assert!(matches!(events3[0], StreamEvent::ToolCallCompleted { .. }));
 
         let result = processor.finish();
         assert_eq!(result.tool_calls.len(), 1);
@@ -729,7 +796,7 @@ mod tests {
         // Should emit: TextChunk, ToolCallCompleted, SessionId
         assert_eq!(events.len(), 3);
         assert!(matches!(&events[0], StreamEvent::TextChunk(t) if t == "Here's my response"));
-        assert!(matches!(&events[1], StreamEvent::ToolCallCompleted(tc) if tc.name == "search"));
+        assert!(matches!(&events[1], StreamEvent::ToolCallCompleted { ref tool_call, .. } if tool_call.name == "search"));
         assert!(matches!(&events[2], StreamEvent::SessionId(id) if id == "session-abc"));
 
         let result = processor.finish();
@@ -779,7 +846,7 @@ mod tests {
 
         let events1 = processor.process_message(assistant_msg);
         assert_eq!(events1.len(), 1);
-        assert!(matches!(&events1[0], StreamEvent::ToolCallCompleted(tc) if tc.name == "bash"));
+        assert!(matches!(&events1[0], StreamEvent::ToolCallCompleted { ref tool_call, .. } if tool_call.name == "bash"));
 
         // Verify tool call is stored with no result
         assert_eq!(processor.tool_calls.len(), 1);
@@ -965,14 +1032,14 @@ mod tests {
     fn test_parse_thinking_content() {
         // Test parsing thinking content from assistant message JSON
         let line = r#"{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"Let me think..."}],"stop_reason":"end_turn"},"session_id":"sess-789"}"#;
-        let msg = StreamProcessor::parse_line(line);
+        let parsed = StreamProcessor::parse_line(line);
 
-        let msg = msg.expect("Expected Some(StreamMessage)");
+        let parsed = parsed.expect("Expected Some(ParsedLine)");
         assert!(
-            matches!(msg, StreamMessage::Assistant { .. }),
+            matches!(parsed.message, StreamMessage::Assistant { .. }),
             "Expected Assistant message, got different variant"
         );
-        let StreamMessage::Assistant { message, .. } = msg else {
+        let StreamMessage::Assistant { message, .. } = parsed.message else {
             unreachable!()
         };
         assert_eq!(message.content.len(), 1);
@@ -984,5 +1051,298 @@ mod tests {
             unreachable!()
         };
         assert_eq!(thinking, "Let me think...");
+    }
+
+    // ====================================================================
+    // parent_tool_use_id and Task subagent tests
+    // ====================================================================
+
+    #[test]
+    fn test_parse_line_extracts_parent_tool_use_id() {
+        let line = r#"{"type":"assistant","parent_tool_use_id":"toolu_01CdYLhs","message":{"content":[{"type":"text","text":"subagent text"}],"stop_reason":"end_turn"}}"#;
+        let parsed = StreamProcessor::parse_line(line).expect("Expected Some(ParsedLine)");
+
+        assert_eq!(parsed.parent_tool_use_id, Some("toolu_01CdYLhs".to_string()));
+        assert!(matches!(parsed.message, StreamMessage::Assistant { .. }));
+    }
+
+    #[test]
+    fn test_parse_line_null_parent_tool_use_id() {
+        let line = r#"{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"text","text":"parent text"}],"stop_reason":"end_turn"}}"#;
+        let parsed = StreamProcessor::parse_line(line).expect("Expected Some(ParsedLine)");
+
+        assert!(parsed.parent_tool_use_id.is_none());
+    }
+
+    #[test]
+    fn test_parent_tool_use_id_propagates_to_tool_call_started() {
+        let mut processor = StreamProcessor::new();
+
+        let parsed = ParsedLine {
+            message: StreamMessage::ContentBlockStart {
+                index: Some(0),
+                content_block: ContentBlock {
+                    block_type: "tool_use".to_string(),
+                    id: Some("toolu_sub1".to_string()),
+                    name: Some("Grep".to_string()),
+                    text: None,
+                    input: None,
+                },
+            },
+            parent_tool_use_id: Some("toolu_parent".to_string()),
+        };
+
+        let events = processor.process_parsed_line(parsed);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::ToolCallStarted { name, id, parent_tool_use_id } => {
+                assert_eq!(name, "Grep");
+                assert_eq!(id, &Some("toolu_sub1".to_string()));
+                assert_eq!(parent_tool_use_id, &Some("toolu_parent".to_string()));
+            }
+            other => panic!("Expected ToolCallStarted, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parent_tool_use_id_propagates_to_tool_call_completed() {
+        let mut processor = StreamProcessor::new();
+
+        // Start tool call
+        processor.process_message(StreamMessage::ContentBlockStart {
+            index: Some(0),
+            content_block: ContentBlock {
+                block_type: "tool_use".to_string(),
+                id: Some("toolu_sub2".to_string()),
+                name: Some("Read".to_string()),
+                text: None,
+                input: None,
+            },
+        });
+
+        // Delta
+        processor.process_message(StreamMessage::ContentBlockDelta {
+            index: Some(0),
+            delta: ContentDelta {
+                delta_type: "input_json_delta".to_string(),
+                text: None,
+                partial_json: Some(r#"{"file":"test.rs"}"#.to_string()),
+            },
+        });
+
+        // Stop with parent_tool_use_id
+        let parsed = ParsedLine {
+            message: StreamMessage::ContentBlockStop { index: Some(0) },
+            parent_tool_use_id: Some("toolu_parent".to_string()),
+        };
+
+        let events = processor.process_parsed_line(parsed);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::ToolCallCompleted { tool_call, parent_tool_use_id } => {
+                assert_eq!(tool_call.name, "Read");
+                assert_eq!(parent_tool_use_id, &Some("toolu_parent".to_string()));
+            }
+            other => panic!("Expected ToolCallCompleted, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_task_started_emitted_verbose_mode() {
+        let mut processor = StreamProcessor::new();
+
+        let msg = StreamMessage::Assistant {
+            message: AssistantMessage {
+                content: vec![AssistantContent::ToolUse {
+                    id: "toolu_task1".to_string(),
+                    name: "Task".to_string(),
+                    input: serde_json::json!({
+                        "description": "Search codebase",
+                        "subagent_type": "Explore",
+                        "model": "sonnet",
+                        "prompt": "Find all files"
+                    }),
+                }],
+                stop_reason: None,
+            },
+            session_id: None,
+        };
+
+        let events = processor.process_message(msg);
+
+        // Should emit: TaskStarted, ToolCallCompleted
+        assert_eq!(events.len(), 2);
+        match &events[0] {
+            StreamEvent::TaskStarted { tool_use_id, description, subagent_type, model } => {
+                assert_eq!(tool_use_id, "toolu_task1");
+                assert_eq!(description, &Some("Search codebase".to_string()));
+                assert_eq!(subagent_type, &Some("Explore".to_string()));
+                assert_eq!(model, &Some("sonnet".to_string()));
+            }
+            other => panic!("Expected TaskStarted, got {:?}", other),
+        }
+        assert!(matches!(&events[1], StreamEvent::ToolCallCompleted { .. }));
+    }
+
+    #[test]
+    fn test_task_started_emitted_streaming_mode() {
+        let mut processor = StreamProcessor::new();
+
+        // Start Task tool call
+        processor.process_message(StreamMessage::ContentBlockStart {
+            index: Some(0),
+            content_block: ContentBlock {
+                block_type: "tool_use".to_string(),
+                id: Some("toolu_task2".to_string()),
+                name: Some("Task".to_string()),
+                text: None,
+                input: None,
+            },
+        });
+
+        // Input delta
+        processor.process_message(StreamMessage::ContentBlockDelta {
+            index: Some(0),
+            delta: ContentDelta {
+                delta_type: "input_json_delta".to_string(),
+                text: None,
+                partial_json: Some(r#"{"description":"Run tests","subagent_type":"Bash","model":"haiku"}"#.to_string()),
+            },
+        });
+
+        // Stop
+        let events = processor.process_message(StreamMessage::ContentBlockStop { index: Some(0) });
+
+        // Should emit: TaskStarted, ToolCallCompleted
+        assert_eq!(events.len(), 2);
+        match &events[0] {
+            StreamEvent::TaskStarted { tool_use_id, description, subagent_type, model } => {
+                assert_eq!(tool_use_id, "toolu_task2");
+                assert_eq!(description, &Some("Run tests".to_string()));
+                assert_eq!(subagent_type, &Some("Bash".to_string()));
+                assert_eq!(model, &Some("haiku".to_string()));
+            }
+            other => panic!("Expected TaskStarted, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_task_completed_emitted_on_tool_result() {
+        let mut processor = StreamProcessor::new();
+
+        // First, register a Task tool_use
+        let task_msg = StreamMessage::Assistant {
+            message: AssistantMessage {
+                content: vec![AssistantContent::ToolUse {
+                    id: "toolu_task3".to_string(),
+                    name: "Task".to_string(),
+                    input: serde_json::json!({
+                        "description": "Search files",
+                        "subagent_type": "Explore"
+                    }),
+                }],
+                stop_reason: None,
+            },
+            session_id: None,
+        };
+        processor.process_message(task_msg);
+
+        // Now send the tool_result with metadata
+        let result_msg = StreamMessage::User {
+            message: UserMessage {
+                content: vec![UserContent::ToolResult {
+                    tool_use_id: "toolu_task3".to_string(),
+                    content: serde_json::json!({
+                        "tool_use_result": {
+                            "agentId": "agent-abc-123",
+                            "totalDurationMs": 12500,
+                            "totalTokens": 4500,
+                            "totalToolUseCount": 8
+                        }
+                    }),
+                    is_error: false,
+                }],
+            },
+        };
+
+        let events = processor.process_message(result_msg);
+
+        // Should emit: TaskCompleted, ToolResultReceived
+        assert_eq!(events.len(), 2);
+        match &events[0] {
+            StreamEvent::TaskCompleted { tool_use_id, agent_id, total_duration_ms, total_tokens, total_tool_use_count } => {
+                assert_eq!(tool_use_id, "toolu_task3");
+                assert_eq!(agent_id, &Some("agent-abc-123".to_string()));
+                assert_eq!(total_duration_ms, &Some(12500));
+                assert_eq!(total_tokens, &Some(4500));
+                assert_eq!(total_tool_use_count, &Some(8));
+            }
+            other => panic!("Expected TaskCompleted, got {:?}", other),
+        }
+        assert!(matches!(&events[1], StreamEvent::ToolResultReceived { .. }));
+    }
+
+    #[test]
+    fn test_non_task_tool_use_does_not_emit_task_started() {
+        let mut processor = StreamProcessor::new();
+
+        let msg = StreamMessage::Assistant {
+            message: AssistantMessage {
+                content: vec![AssistantContent::ToolUse {
+                    id: "toolu_other".to_string(),
+                    name: "Grep".to_string(),
+                    input: serde_json::json!({"pattern": "test"}),
+                }],
+                stop_reason: None,
+            },
+            session_id: None,
+        };
+
+        let events = processor.process_message(msg);
+        // Should only emit ToolCallCompleted, NOT TaskStarted
+        assert_eq!(events.len(), 1);
+        assert!(matches!(&events[0], StreamEvent::ToolCallCompleted { .. }));
+    }
+
+    #[test]
+    fn test_parent_tool_use_id_propagates_to_tool_result() {
+        let mut processor = StreamProcessor::new();
+
+        // Register a tool call
+        processor.process_message(StreamMessage::Assistant {
+            message: AssistantMessage {
+                content: vec![AssistantContent::ToolUse {
+                    id: "toolu_sub_result".to_string(),
+                    name: "Grep".to_string(),
+                    input: serde_json::json!({"pattern": "foo"}),
+                }],
+                stop_reason: None,
+            },
+            session_id: None,
+        });
+
+        // Send tool result with parent_tool_use_id
+        let parsed = ParsedLine {
+            message: StreamMessage::User {
+                message: UserMessage {
+                    content: vec![UserContent::ToolResult {
+                        tool_use_id: "toolu_sub_result".to_string(),
+                        content: serde_json::json!("found 3 matches"),
+                        is_error: false,
+                    }],
+                },
+            },
+            parent_tool_use_id: Some("toolu_parent_task".to_string()),
+        };
+
+        let events = processor.process_parsed_line(parsed);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::ToolResultReceived { tool_use_id, parent_tool_use_id, .. } => {
+                assert_eq!(tool_use_id, "toolu_sub_result");
+                assert_eq!(parent_tool_use_id, &Some("toolu_parent_task".to_string()));
+            }
+            other => panic!("Expected ToolResultReceived, got {:?}", other),
+        }
     }
 }
