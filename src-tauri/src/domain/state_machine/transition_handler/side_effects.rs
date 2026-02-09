@@ -227,6 +227,29 @@ fn compute_merge_worktree_path(project: &Project, task_id: &str) -> String {
     format!("{}/{}/merge-{}", expanded, slugify(&project.name), task_id)
 }
 
+/// Extract a task ID from a merge worktree path.
+///
+/// Merge worktree paths follow the convention: `{parent}/{slug}/merge-{task_id}`
+/// Returns `Some(task_id)` if the path matches, `None` otherwise.
+fn extract_task_id_from_merge_path(path: &str) -> Option<&str> {
+    let basename = path.rsplit('/').next()?;
+    basename.strip_prefix("merge-")
+}
+
+/// Check if a task is currently in the `Merging` state (active agent-assisted merge).
+///
+/// Used to avoid deleting merge worktrees that belong to tasks actively being resolved.
+async fn is_task_actively_merging(
+    task_repo: &Arc<dyn TaskRepository>,
+    task_id_str: &str,
+) -> bool {
+    let task_id = TaskId::from_string(task_id_str.to_string());
+    match task_repo.get_by_id(&task_id).await {
+        Ok(Some(task)) => task.internal_status == InternalStatus::Merging,
+        _ => false,
+    }
+}
+
 /// Resolve the base branch for a task's working branch.
 ///
 /// If the task belongs to a plan with an active feature branch, returns the feature
@@ -1541,6 +1564,83 @@ impl<'a> super::TransitionHandler<'a> {
                             "Failed to delete task worktree before merge"
                         );
                         // Continue anyway - merge will fail with a clear error
+                    }
+                }
+            }
+
+            // --- Stale merge worktree cleanup ---
+            // Step 1: Prune stale worktree references (metadata pointing to deleted dirs)
+            if let Err(e) = GitService::prune_worktrees(repo_path) {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    error = %e,
+                    "Failed to prune stale worktrees (non-fatal)"
+                );
+            }
+
+            // Step 2: Force-delete our own merge worktree if it exists from a prior attempt
+            let own_merge_wt = compute_merge_worktree_path(&project, task_id_str);
+            let own_merge_wt_path = PathBuf::from(&own_merge_wt);
+            if own_merge_wt_path.exists() {
+                tracing::info!(
+                    task_id = task_id_str,
+                    merge_worktree_path = %own_merge_wt,
+                    "Cleaning up stale merge worktree from previous attempt"
+                );
+                if let Err(e) = GitService::delete_worktree(repo_path, &own_merge_wt_path) {
+                    tracing::warn!(
+                        task_id = task_id_str,
+                        error = %e,
+                        merge_worktree_path = %own_merge_wt,
+                        "Failed to delete stale merge worktree (non-fatal)"
+                    );
+                }
+            }
+
+            // Step 3: Scan for orphaned merge worktrees on the same target branch.
+            // Another task's merge may have crashed/failed, leaving a worktree that locks
+            // the target branch. We only clean up if the owning task is NOT actively merging.
+            if let Ok(worktrees) = GitService::list_worktrees(repo_path) {
+                for wt in &worktrees {
+                    // Only consider merge worktrees (path contains "/merge-")
+                    let Some(other_task_id) = extract_task_id_from_merge_path(&wt.path) else {
+                        continue;
+                    };
+                    // Skip our own — already handled above
+                    if other_task_id == task_id_str {
+                        continue;
+                    }
+                    // Only care about worktrees on the same target branch
+                    let wt_branch = wt.branch.as_deref().unwrap_or("");
+                    if wt_branch != target_branch {
+                        continue;
+                    }
+                    // Check if the owning task is actively merging — if so, leave it alone
+                    if is_task_actively_merging(task_repo, other_task_id).await {
+                        tracing::info!(
+                            task_id = task_id_str,
+                            other_task_id = other_task_id,
+                            worktree_path = %wt.path,
+                            "Skipping orphaned merge worktree — owning task is actively merging"
+                        );
+                        continue;
+                    }
+                    tracing::info!(
+                        task_id = task_id_str,
+                        other_task_id = other_task_id,
+                        worktree_path = %wt.path,
+                        target_branch = %target_branch,
+                        "Cleaning up orphaned merge worktree from non-active task"
+                    );
+                    let orphan_path = PathBuf::from(&wt.path);
+                    if let Err(e) = GitService::delete_worktree(repo_path, &orphan_path) {
+                        tracing::warn!(
+                            task_id = task_id_str,
+                            other_task_id = other_task_id,
+                            error = %e,
+                            worktree_path = %wt.path,
+                            "Failed to delete orphaned merge worktree (non-fatal)"
+                        );
                     }
                 }
             }
@@ -2970,5 +3070,46 @@ mod tests {
         assert!(r.all_passed);
         assert_eq!(r.log.len(), 1);
         assert_eq!(r.log[0].status, "success"); // actually ran, not "cached"
+    }
+
+    // ==================
+    // extract_task_id_from_merge_path tests
+    // ==================
+
+    #[test]
+    fn test_extract_task_id_from_merge_path_valid() {
+        let path = "/home/user/ralphx-worktrees/my-app/merge-abc123def456";
+        assert_eq!(extract_task_id_from_merge_path(path), Some("abc123def456"));
+    }
+
+    #[test]
+    fn test_extract_task_id_from_merge_path_uuid() {
+        let path = "/tmp/wt/merge-e0ce32e7-eaef-4a07-b81d-2126d0dee5d9";
+        assert_eq!(
+            extract_task_id_from_merge_path(path),
+            Some("e0ce32e7-eaef-4a07-b81d-2126d0dee5d9"),
+        );
+    }
+
+    #[test]
+    fn test_extract_task_id_from_merge_path_not_merge() {
+        let path = "/home/user/ralphx-worktrees/my-app/task-abc123";
+        assert_eq!(extract_task_id_from_merge_path(path), None);
+    }
+
+    #[test]
+    fn test_extract_task_id_from_merge_path_bare_name() {
+        assert_eq!(extract_task_id_from_merge_path("merge-xyz"), Some("xyz"));
+    }
+
+    #[test]
+    fn test_extract_task_id_from_merge_path_empty() {
+        assert_eq!(extract_task_id_from_merge_path(""), None);
+    }
+
+    #[test]
+    fn test_extract_task_id_from_merge_path_just_merge_prefix() {
+        // "merge-" with empty task ID should return empty string
+        assert_eq!(extract_task_id_from_merge_path("/dir/merge-"), Some(""));
     }
 }
