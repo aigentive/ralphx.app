@@ -328,7 +328,26 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     new Set()
   );
 
+  // Track user-toggled groups so data refreshes don't override manual expand/collapse.
+  // Two sets per axis: one for explicit expansions, one for explicit collapses.
+  // Refs (not state) because they annotate existing state transitions — no extra renders.
+  const userExpandedPlanIds = useRef(new Set<string>());
+  const userCollapsedPlanIds = useRef(new Set<string>());
+  const userExpandedTierIds = useRef(new Set<string>());
+  const userCollapsedTierIds = useRef(new Set<string>());
+
   const [grouping, setGrouping] = useState<GroupingState>(DEFAULT_GROUPING);
+
+  // Clear user-tracking refs on project switch (stale IDs from previous project)
+  /* eslint-disable react-hooks/refs -- ref read/write during render is intentional ("adjust state during render" pattern for synchronous collapse-state derivation) */
+  const prevProjectIdRef = useRef(projectId);
+  if (projectId !== prevProjectIdRef.current) {
+    prevProjectIdRef.current = projectId;
+    userExpandedPlanIds.current.clear();
+    userCollapsedPlanIds.current.clear();
+    userExpandedTierIds.current.clear();
+    userCollapsedTierIds.current.clear();
+  }
 
   // ---- Synchronous collapsed-state derivation --------------------------------
   // React "adjust state during render" pattern: compute which plan/tier groups
@@ -399,14 +418,27 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     expandedPlanIdRef.current = expandedPlanId;
   }, [expandedPlanId]);
 
-  // Plan group collapse: recompute defaults synchronously when graphData changes
+  // Plan group collapse: recompute defaults synchronously when graphData changes.
+  // Respects user-toggled groups: manually expanded groups stay expanded,
+  // manually collapsed groups stay collapsed, regardless of the heuristic.
   const [prevPlanCollapseData, setPrevPlanCollapseData] = useState<typeof graphData>(undefined);
   if (graphData !== prevPlanCollapseData) {
     setPrevPlanCollapseData(graphData);
     if (planGroupInfos.length > 0 && expandedPlanId !== null) {
-      const toCollapse = new Set(
-        planGroupInfos.filter((g) => g.id !== expandedPlanId).map((g) => g.id)
-      );
+      const toCollapse = new Set<string>();
+      for (const g of planGroupInfos) {
+        // User explicitly expanded → keep expanded (don't collapse)
+        if (userExpandedPlanIds.current.has(g.id)) continue;
+        // User explicitly collapsed → keep collapsed
+        if (userCollapsedPlanIds.current.has(g.id)) {
+          toCollapse.add(g.id);
+          continue;
+        }
+        // Heuristic default: expand only the first incomplete group
+        if (g.id !== expandedPlanId) {
+          toCollapse.add(g.id);
+        }
+      }
       setCollapsedPlanIds(toCollapse);
     } else {
       setCollapsedPlanIds(new Set());
@@ -440,6 +472,20 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     || grouping.showUncategorized !== prevTierCollapseInputs.showUncategorized;
 
   if (tierInputsChanged) {
+    // Detect if grouping mode changed (not just a data refresh).
+    // On mode change, clear all user tracking refs — fresh heuristic.
+    const groupingModeChanged = prevTierCollapseInputs !== null && (
+      grouping.byPlan !== prevTierCollapseInputs.byPlan
+      || grouping.byTier !== prevTierCollapseInputs.byTier
+      || grouping.showUncategorized !== prevTierCollapseInputs.showUncategorized
+    );
+    if (groupingModeChanged) {
+      userExpandedPlanIds.current.clear();
+      userCollapsedPlanIds.current.clear();
+      userExpandedTierIds.current.clear();
+      userCollapsedTierIds.current.clear();
+    }
+
     setPrevTierCollapseInputs({
       graphData,
       byPlan: grouping.byPlan,
@@ -475,8 +521,16 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
 
         const toCollapseTiers = new Set<string>();
         for (const [planArtifactId, tiers] of tiersByPlanLocal) {
-          // Match "Expand tiers" behavior for the default active plan group.
-          if (planArtifactId === expandedPlanId) continue;
+          // For the expanded plan group, all tiers default to expanded.
+          // But respect user-collapsed tiers within it.
+          if (planArtifactId === expandedPlanId) {
+            for (const tg of tiers) {
+              if (userCollapsedTierIds.current.has(tg.id)) {
+                toCollapseTiers.add(tg.id);
+              }
+            }
+            continue;
+          }
 
           const tierInfos = tiers.map((tg) => {
             let completed = 0;
@@ -501,6 +555,14 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
           }
 
           for (const tier of tierInfos) {
+            // User explicitly expanded → keep expanded (don't collapse)
+            if (userExpandedTierIds.current.has(tier.id)) continue;
+            // User explicitly collapsed → keep collapsed
+            if (userCollapsedTierIds.current.has(tier.id)) {
+              toCollapseTiers.add(tier.id);
+              continue;
+            }
+            // Heuristic default
             if (tier.id !== expandedTierId) {
               toCollapseTiers.add(tier.id);
             }
@@ -528,6 +590,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     }
   });
 
+  /* eslint-enable react-hooks/refs */
   // ---- End synchronous collapsed-state derivation ----------------------------
 
   useEffect(() => {
@@ -693,6 +756,14 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
       }
       return next;
     });
+    // Record user intent so data refreshes don't override this toggle
+    if (expanding) {
+      userExpandedPlanIds.current.add(planArtifactId);
+      userCollapsedPlanIds.current.delete(planArtifactId);
+    } else {
+      userCollapsedPlanIds.current.add(planArtifactId);
+      userExpandedPlanIds.current.delete(planArtifactId);
+    }
     const tierIds = tierGroupsByPlan.get(planArtifactId) ?? [];
     if (tierIds.length > 0) {
       setCollapsedTierIds((prev) => {
@@ -708,6 +779,16 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
         }
         return next;
       });
+      // Also record tier intent when toggling parent plan group
+      for (const tierId of tierIds) {
+        if (expanding) {
+          userExpandedTierIds.current.add(tierId);
+          userCollapsedTierIds.current.delete(tierId);
+        } else {
+          userCollapsedTierIds.current.add(tierId);
+          userExpandedTierIds.current.delete(tierId);
+        }
+      }
     }
     setTimeout(() => centerOnPlanGroupNode(planArtifactId), 50);
   }, [centerOnPlanGroupNode, tierGroupsByPlan]);
@@ -725,6 +806,14 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
       }
       return next;
     });
+    // Record user intent for this tier
+    if (expanding) {
+      userExpandedTierIds.current.add(tierGroupId);
+      userCollapsedTierIds.current.delete(tierGroupId);
+    } else {
+      userCollapsedTierIds.current.add(tierGroupId);
+      userExpandedTierIds.current.delete(tierGroupId);
+    }
     setTimeout(() => {
       if (expanding) {
         // Expanding tier → center on the tier group
@@ -758,6 +847,16 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
         }
         return next;
       });
+      // Record user intent for all affected tiers
+      for (const tierId of tierIds) {
+        if (action === "expand") {
+          userExpandedTierIds.current.add(tierId);
+          userCollapsedTierIds.current.delete(tierId);
+        } else {
+          userCollapsedTierIds.current.add(tierId);
+          userExpandedTierIds.current.delete(tierId);
+        }
+      }
       setTimeout(() => centerOnPlanGroupNode(planArtifactId), 50);
     },
     [centerOnPlanGroupNode, tierGroupsByPlan]
