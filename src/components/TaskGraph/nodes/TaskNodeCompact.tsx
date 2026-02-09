@@ -233,15 +233,17 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
   return (
     <TaskNodeContextMenu
       task={minimalTask}
-      onViewDetails={handleViewDetails}
-      onStartExecution={handleStartExecution}
-      onBlockWithReason={handleBlockWithReason}
-      onUnblock={handleUnblock}
-      onViewAgentChat={handleViewDetails}
-      onApprove={handleApprove}
-      onReject={handleReject}
-      onRequestChanges={handleRequestChanges}
-      onMarkResolved={handleMarkResolved}
+      handlers={{
+        onViewDetails: handleViewDetails,
+        onStartExecution: handleStartExecution,
+        onBlockWithReason: handleBlockWithReason,
+        onUnblock: handleUnblock,
+        onViewAgentChat: handleViewDetails,
+        onApprove: handleApprove,
+        onReject: handleReject,
+        onRequestChanges: handleRequestChanges,
+        onMarkResolved: handleMarkResolved,
+      }}
     >
       {nodeContent}
     </TaskNodeContextMenu>
