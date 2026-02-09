@@ -347,6 +347,11 @@ pub async fn process_stream_background<R: Runtime>(
                             );
                         }
                     }
+                    // Hook events: parsed by stream_processor, emitted to frontend in a later task
+                    StreamEvent::HookStarted { .. }
+                    | StreamEvent::HookCompleted { .. }
+                    | StreamEvent::HookBlock { .. } => {}
+
                     StreamEvent::ToolResultReceived { tool_use_id, result, parent_tool_use_id } => {
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
