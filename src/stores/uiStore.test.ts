@@ -14,7 +14,8 @@ describe("uiStore", () => {
       notifications: [],
       loading: {},
       confirmation: null,
-      activeQuestion: null,
+      activeQuestions: {},
+      answeredQuestions: {},
       selectedTaskId: null,
       graphSelection: null,
       executionStatus: {
@@ -241,10 +242,12 @@ describe("uiStore", () => {
     });
   });
 
-  describe("active question", () => {
+  describe("active question (per-session)", () => {
+    const sessionId = "session-abc";
     const mockQuestion: AskUserQuestionPayload = {
       requestId: "req-123",
       taskId: "task-123",
+      sessionId,
       question: "Which authentication method should we use?",
       header: "Auth method",
       options: [
@@ -254,28 +257,28 @@ describe("uiStore", () => {
       multiSelect: false,
     };
 
-    it("sets active question", () => {
-      useUiStore.getState().setActiveQuestion(mockQuestion);
+    it("sets active question for session", () => {
+      useUiStore.getState().setActiveQuestion(sessionId, mockQuestion);
 
       const state = useUiStore.getState();
-      expect(state.activeQuestion).toEqual(mockQuestion);
+      expect(state.activeQuestions[sessionId]).toEqual(mockQuestion);
     });
 
-    it("clears active question", () => {
-      useUiStore.setState({ activeQuestion: mockQuestion });
-
-      useUiStore.getState().clearActiveQuestion();
+    it("clears active question for session", () => {
+      useUiStore.getState().setActiveQuestion(sessionId, mockQuestion);
+      useUiStore.getState().clearActiveQuestion(sessionId);
 
       const state = useUiStore.getState();
-      expect(state.activeQuestion).toBeNull();
+      expect(state.activeQuestions[sessionId]).toBeUndefined();
     });
 
-    it("replaces existing question when setting new one", () => {
-      useUiStore.setState({ activeQuestion: mockQuestion });
+    it("replaces existing question for same session", () => {
+      useUiStore.getState().setActiveQuestion(sessionId, mockQuestion);
 
       const newQuestion: AskUserQuestionPayload = {
         requestId: "req-456",
         taskId: "task-456",
+        sessionId,
         question: "Which database?",
         header: "Database",
         options: [
@@ -285,16 +288,16 @@ describe("uiStore", () => {
         multiSelect: false,
       };
 
-      useUiStore.getState().setActiveQuestion(newQuestion);
+      useUiStore.getState().setActiveQuestion(sessionId, newQuestion);
 
       const state = useUiStore.getState();
-      expect(state.activeQuestion?.taskId).toBe("task-456");
-      expect(state.activeQuestion?.question).toBe("Which database?");
+      expect(state.activeQuestions[sessionId]?.taskId).toBe("task-456");
+      expect(state.activeQuestions[sessionId]?.question).toBe("Which database?");
     });
 
-    it("initializes with null active question", () => {
+    it("initializes with empty activeQuestions", () => {
       const state = useUiStore.getState();
-      expect(state.activeQuestion).toBeNull();
+      expect(Object.keys(state.activeQuestions)).toHaveLength(0);
     });
 
     it("preserves multiSelect in question", () => {
@@ -303,10 +306,36 @@ describe("uiStore", () => {
         multiSelect: true,
       };
 
-      useUiStore.getState().setActiveQuestion(multiSelectQuestion);
+      useUiStore.getState().setActiveQuestion(sessionId, multiSelectQuestion);
 
       const state = useUiStore.getState();
-      expect(state.activeQuestion?.multiSelect).toBe(true);
+      expect(state.activeQuestions[sessionId]?.multiSelect).toBe(true);
+    });
+
+    it("dismissQuestion clears both question and answered for session", () => {
+      useUiStore.getState().setActiveQuestion(sessionId, mockQuestion);
+      useUiStore.getState().setAnsweredQuestion(sessionId, "JWT tokens");
+
+      useUiStore.getState().dismissQuestion(sessionId);
+
+      const state = useUiStore.getState();
+      expect(state.activeQuestions[sessionId]).toBeUndefined();
+      expect(state.answeredQuestions[sessionId]).toBeUndefined();
+    });
+
+    it("setAnsweredQuestion stores per-session summary", () => {
+      useUiStore.getState().setAnsweredQuestion(sessionId, "JWT tokens");
+
+      const state = useUiStore.getState();
+      expect(state.answeredQuestions[sessionId]).toBe("JWT tokens");
+    });
+
+    it("clearAnsweredQuestion removes session summary", () => {
+      useUiStore.getState().setAnsweredQuestion(sessionId, "JWT tokens");
+      useUiStore.getState().clearAnsweredQuestion(sessionId);
+
+      const state = useUiStore.getState();
+      expect(state.answeredQuestions[sessionId]).toBeUndefined();
     });
   });
 

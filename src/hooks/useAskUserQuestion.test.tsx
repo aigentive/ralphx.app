@@ -2,7 +2,7 @@
  * Tests for useAskUserQuestion hook
  *
  * Tests event listening for agent:ask_user_question events,
- * storing question payloads in uiStore, and submitting answers.
+ * storing per-session question payloads in uiStore, and submitting/dismissing answers.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -11,15 +11,17 @@ import { useAskUserQuestion } from "./useAskUserQuestion";
 import { useUiStore } from "@/stores/uiStore";
 import type { AskUserQuestionPayload, AskUserQuestionResponse } from "@/types/ask-user-question";
 
-// Mock Tauri event listener
-const mockListeners = new Map<string, (event: { payload: unknown }) => void>();
+// Mock EventBus
+const mockSubscribers = new Map<string, (payload: unknown) => void>();
 
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn((eventName: string, callback: (event: { payload: unknown }) => void) => {
-    mockListeners.set(eventName, callback);
-    return Promise.resolve(() => {
-      mockListeners.delete(eventName);
-    });
+vi.mock("@/providers/EventProvider", () => ({
+  useEventBus: () => ({
+    subscribe: (event: string, handler: (payload: unknown) => void) => {
+      mockSubscribers.set(event, handler);
+      return () => {
+        mockSubscribers.delete(event);
+      };
+    },
   }),
 }));
 
@@ -29,18 +31,35 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
 }));
 
+// Mock the api module
+vi.mock("@/lib/tauri", () => ({
+  api: {
+    askUserQuestion: {
+      resolveQuestion: vi.fn(),
+      answerQuestion: vi.fn(),
+    },
+  },
+}));
+
+import { api } from "@/lib/tauri";
+const mockResolve = vi.mocked(api.askUserQuestion.resolveQuestion);
+const mockAnswer = vi.mocked(api.askUserQuestion.answerQuestion);
+
 // Helper to emit events
 function emitEvent(eventName: string, payload: unknown) {
-  const listener = mockListeners.get(eventName);
-  if (listener) {
-    listener({ payload });
+  const handler = mockSubscribers.get(eventName);
+  if (handler) {
+    handler(payload);
   }
 }
+
+const TEST_SESSION = "session-abc";
 
 // Valid test payload
 const validPayload: AskUserQuestionPayload = {
   requestId: "req-test-123",
   taskId: "task-123",
+  sessionId: TEST_SESSION,
   question: "Which authentication method should we use?",
   header: "Auth method",
   options: [
@@ -53,72 +72,103 @@ const validPayload: AskUserQuestionPayload = {
 describe("useAskUserQuestion", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockListeners.clear();
-    mockInvoke.mockResolvedValue(undefined);
+    mockSubscribers.clear();
+    mockResolve.mockResolvedValue(undefined);
+    mockAnswer.mockResolvedValue(undefined);
     // Reset store state
     useUiStore.setState({
-      sidebarOpen: true,
-      activeModal: null,
-      modalContext: undefined,
-      notifications: [],
-      loading: {},
-      confirmation: null,
-      activeQuestion: null,
+      activeQuestions: {},
+      answeredQuestions: {},
     });
   });
 
   afterEach(() => {
-    mockListeners.clear();
+    mockSubscribers.clear();
   });
 
   describe("listener registration", () => {
-    it("should register agent:ask_user_question listener on mount", async () => {
-      renderHook(() => useAskUserQuestion());
-
-      await waitFor(() => {
-        expect(mockListeners.has("agent:ask_user_question")).toBe(true);
-      });
+    it("should register agent:ask_user_question listener on mount", () => {
+      renderHook(() => useAskUserQuestion(TEST_SESSION));
+      expect(mockSubscribers.has("agent:ask_user_question")).toBe(true);
     });
 
-    it("should unregister listener on unmount", async () => {
-      const { unmount } = renderHook(() => useAskUserQuestion());
-
-      await waitFor(() => {
-        expect(mockListeners.has("agent:ask_user_question")).toBe(true);
-      });
+    it("should unregister listener on unmount", () => {
+      const { unmount } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+      expect(mockSubscribers.has("agent:ask_user_question")).toBe(true);
 
       unmount();
-
-      await waitFor(() => {
-        expect(mockListeners.has("agent:ask_user_question")).toBe(false);
-      });
+      expect(mockSubscribers.has("agent:ask_user_question")).toBe(false);
     });
   });
 
-  describe("event handling", () => {
-    it("should store question payload in uiStore on valid event", async () => {
-      renderHook(() => useAskUserQuestion());
-
-      await waitFor(() => {
-        expect(mockListeners.has("agent:ask_user_question")).toBe(true);
-      });
+  describe("session scoping", () => {
+    it("should store question payload keyed by sessionId", () => {
+      renderHook(() => useAskUserQuestion(TEST_SESSION));
 
       act(() => {
         emitEvent("agent:ask_user_question", validPayload);
       });
 
       const state = useUiStore.getState();
-      expect(state.activeQuestion).toEqual(validPayload);
+      expect(state.activeQuestions[TEST_SESSION]).toEqual(validPayload);
     });
 
-    it("should ignore invalid events with missing fields", async () => {
-      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    it("should only return question for current session", () => {
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
 
-      renderHook(() => useAskUserQuestion());
-
-      await waitFor(() => {
-        expect(mockListeners.has("agent:ask_user_question")).toBe(true);
+      // Store question for a DIFFERENT session
+      act(() => {
+        emitEvent("agent:ask_user_question", {
+          ...validPayload,
+          sessionId: "other-session",
+        });
       });
+
+      expect(result.current.activeQuestion).toBeNull();
+    });
+
+    it("should return question when sessionId matches", () => {
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      act(() => {
+        emitEvent("agent:ask_user_question", validPayload);
+      });
+
+      expect(result.current.activeQuestion).toEqual(validPayload);
+    });
+
+    it("should return null when currentSessionId is undefined", () => {
+      const { result } = renderHook(() => useAskUserQuestion(undefined));
+
+      // Store a question
+      act(() => {
+        emitEvent("agent:ask_user_question", validPayload);
+      });
+
+      expect(result.current.activeQuestion).toBeNull();
+    });
+
+    it("should ignore events without sessionId", () => {
+      const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      act(() => {
+        emitEvent("agent:ask_user_question", {
+          ...validPayload,
+          sessionId: undefined,
+        });
+      });
+
+      const state = useUiStore.getState();
+      expect(Object.keys(state.activeQuestions)).toHaveLength(0);
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe("event handling", () => {
+    it("should ignore invalid events with missing fields", () => {
+      const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      renderHook(() => useAskUserQuestion(TEST_SESSION));
 
       const invalidPayload = { taskId: "task-123" }; // Missing required fields
 
@@ -127,80 +177,43 @@ describe("useAskUserQuestion", () => {
       });
 
       const state = useUiStore.getState();
-      expect(state.activeQuestion).toBeNull();
-      expect(consoleSpy).toHaveBeenCalledWith(
-        "Invalid ask_user_question event:",
-        expect.any(String)
-      );
-
-      consoleSpy.mockRestore();
-    });
-
-    it("should ignore events with less than 2 options", async () => {
-      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
-      renderHook(() => useAskUserQuestion());
-
-      await waitFor(() => {
-        expect(mockListeners.has("agent:ask_user_question")).toBe(true);
-      });
-
-      const invalidPayload = {
-        ...validPayload,
-        options: [{ label: "Only one", description: "Not enough" }],
-      };
-
-      act(() => {
-        emitEvent("agent:ask_user_question", invalidPayload);
-      });
-
-      const state = useUiStore.getState();
-      expect(state.activeQuestion).toBeNull();
-
+      expect(Object.keys(state.activeQuestions)).toHaveLength(0);
       consoleSpy.mockRestore();
     });
   });
 
   describe("return values", () => {
-    it("should return activeQuestion from store", async () => {
-      // Pre-populate store with question
-      useUiStore.getState().setActiveQuestion(validPayload);
-
-      const { result } = renderHook(() => useAskUserQuestion());
-
+    it("should return activeQuestion from store for current session", () => {
+      useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
       expect(result.current.activeQuestion).toEqual(validPayload);
     });
 
-    it("should return null activeQuestion when no question is active", async () => {
-      const { result } = renderHook(() => useAskUserQuestion());
-
+    it("should return null activeQuestion when no question is active", () => {
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
       expect(result.current.activeQuestion).toBeNull();
     });
 
-    it("should return submitAnswer function", async () => {
-      const { result } = renderHook(() => useAskUserQuestion());
-
+    it("should return submitAnswer function", () => {
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
       expect(typeof result.current.submitAnswer).toBe("function");
     });
 
-    it("should return clearQuestion function", async () => {
-      const { result } = renderHook(() => useAskUserQuestion());
-
-      expect(typeof result.current.clearQuestion).toBe("function");
+    it("should return dismissQuestion function", () => {
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+      expect(typeof result.current.dismissQuestion).toBe("function");
     });
 
-    it("should return isLoading state", async () => {
-      const { result } = renderHook(() => useAskUserQuestion());
-
+    it("should return isLoading state", () => {
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
       expect(result.current.isLoading).toBe(false);
     });
   });
 
   describe("submitAnswer", () => {
-    it("should call resolve_user_question when requestId is present (MCP flow)", async () => {
-      useUiStore.getState().setActiveQuestion(validPayload);
-
-      const { result } = renderHook(() => useAskUserQuestion());
+    it("should call resolveQuestion when requestId is present (MCP flow)", async () => {
+      useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
 
       const response: AskUserQuestionResponse = {
         requestId: "req-test-123",
@@ -212,17 +225,15 @@ describe("useAskUserQuestion", () => {
         await result.current.submitAnswer(response);
       });
 
-      expect(mockInvoke).toHaveBeenCalledWith("resolve_user_question", {
+      expect(mockResolve).toHaveBeenCalledWith({
         requestId: "req-test-123",
         selectedOptions: ["JWT tokens"],
-        customResponse: undefined,
       });
     });
 
-    it("should call answer_user_question when no requestId (legacy flow)", async () => {
-      useUiStore.getState().setActiveQuestion(validPayload);
-
-      const { result } = renderHook(() => useAskUserQuestion());
+    it("should call answerQuestion when no requestId (legacy flow)", async () => {
+      useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
 
       const response: AskUserQuestionResponse = {
         taskId: "task-123",
@@ -233,219 +244,130 @@ describe("useAskUserQuestion", () => {
         await result.current.submitAnswer(response);
       });
 
-      expect(mockInvoke).toHaveBeenCalledWith("answer_user_question", {
-        taskId: "task-123",
-        selectedOptions: ["JWT tokens"],
-        customResponse: undefined,
-      });
+      expect(mockAnswer).toHaveBeenCalledWith(response);
     });
 
-    it("should include customResponse when provided", async () => {
-      useUiStore.getState().setActiveQuestion(validPayload);
-
-      const { result } = renderHook(() => useAskUserQuestion());
+    it("should clear active question and set answered after successful submission", async () => {
+      useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
 
       const response: AskUserQuestionResponse = {
+        requestId: "req-test-123",
+        selectedOptions: ["JWT tokens"],
+      };
+
+      await act(async () => {
+        await result.current.submitAnswer(response);
+      });
+
+      const state = useUiStore.getState();
+      expect(state.activeQuestions[TEST_SESSION]).toBeUndefined();
+      expect(state.answeredQuestions[TEST_SESSION]).toBe("JWT tokens");
+    });
+
+    it("should not call api if no active question", async () => {
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      const response: AskUserQuestionResponse = {
+        taskId: "task-123",
+        selectedOptions: ["JWT tokens"],
+      };
+
+      await act(async () => {
+        await result.current.submitAnswer(response);
+      });
+
+      expect(mockResolve).not.toHaveBeenCalled();
+      expect(mockAnswer).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("dismissQuestion", () => {
+    it("should clear both question and answered state for session", async () => {
+      useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      useUiStore.getState().setAnsweredQuestion(TEST_SESSION, "prev answer");
+
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      await act(async () => {
+        await result.current.dismissQuestion();
+      });
+
+      const state = useUiStore.getState();
+      expect(state.activeQuestions[TEST_SESSION]).toBeUndefined();
+      expect(state.answeredQuestions[TEST_SESSION]).toBeUndefined();
+    });
+
+    it("should send dismiss to backend when question has requestId", async () => {
+      useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      await act(async () => {
+        await result.current.dismissQuestion();
+      });
+
+      expect(mockResolve).toHaveBeenCalledWith({
         requestId: "req-test-123",
         selectedOptions: [],
-        customResponse: "Use OAuth2 instead",
-      };
-
-      await act(async () => {
-        await result.current.submitAnswer(response);
-      });
-
-      expect(mockInvoke).toHaveBeenCalledWith("resolve_user_question", {
-        requestId: "req-test-123",
-        selectedOptions: [],
-        customResponse: "Use OAuth2 instead",
+        customResponse: "[dismissed]",
       });
     });
 
-    it("should clear active question after successful submission", async () => {
-      useUiStore.getState().setActiveQuestion(validPayload);
-
-      const { result } = renderHook(() => useAskUserQuestion());
-
-      const response: AskUserQuestionResponse = {
-        taskId: "task-123",
-        selectedOptions: ["JWT tokens"],
-      };
+    it("should not send to backend when no active question", async () => {
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
 
       await act(async () => {
-        await result.current.submitAnswer(response);
+        await result.current.dismissQuestion();
       });
 
-      const state = useUiStore.getState();
-      expect(state.activeQuestion).toBeNull();
-    });
-
-    it("should set isLoading true during submission", async () => {
-      useUiStore.getState().setActiveQuestion(validPayload);
-
-      // Make invoke take some time
-      let resolveInvoke: () => void;
-      mockInvoke.mockImplementation(
-        () =>
-          new Promise((resolve) => {
-            resolveInvoke = () => resolve(undefined);
-          })
-      );
-
-      const { result } = renderHook(() => useAskUserQuestion());
-
-      const response: AskUserQuestionResponse = {
-        taskId: "task-123",
-        selectedOptions: ["JWT tokens"],
-      };
-
-      // Start submission
-      act(() => {
-        result.current.submitAnswer(response);
-      });
-
-      // Check loading state
-      expect(result.current.isLoading).toBe(true);
-
-      // Complete submission
-      await act(async () => {
-        resolveInvoke!();
-      });
-
-      expect(result.current.isLoading).toBe(false);
-    });
-
-    it("should handle submission errors gracefully", async () => {
-      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-      useUiStore.getState().setActiveQuestion(validPayload);
-
-      mockInvoke.mockRejectedValue(new Error("Network error"));
-
-      const { result } = renderHook(() => useAskUserQuestion());
-
-      const response: AskUserQuestionResponse = {
-        taskId: "task-123",
-        selectedOptions: ["JWT tokens"],
-      };
-
-      await act(async () => {
-        await result.current.submitAnswer(response);
-      });
-
-      // Should not clear question on error
-      const state = useUiStore.getState();
-      expect(state.activeQuestion).toEqual(validPayload);
-      expect(consoleSpy).toHaveBeenCalledWith(
-        "Failed to submit answer:",
-        expect.any(Error)
-      );
-
-      consoleSpy.mockRestore();
-    });
-
-    it("should not call invoke if no active question", async () => {
-      const { result } = renderHook(() => useAskUserQuestion());
-
-      const response: AskUserQuestionResponse = {
-        taskId: "task-123",
-        selectedOptions: ["JWT tokens"],
-      };
-
-      await act(async () => {
-        await result.current.submitAnswer(response);
-      });
-
-      expect(mockInvoke).not.toHaveBeenCalled();
+      expect(mockResolve).not.toHaveBeenCalled();
     });
   });
 
-  describe("clearQuestion", () => {
-    it("should clear active question from store", async () => {
-      useUiStore.getState().setActiveQuestion(validPayload);
+  describe("clearAnswered", () => {
+    it("should clear answered summary for session", () => {
+      useUiStore.getState().setAnsweredQuestion(TEST_SESSION, "some answer");
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
 
-      const { result } = renderHook(() => useAskUserQuestion());
+      expect(result.current.answeredQuestion).toBe("some answer");
 
       act(() => {
-        result.current.clearQuestion();
+        result.current.clearAnswered();
       });
 
-      const state = useUiStore.getState();
-      expect(state.activeQuestion).toBeNull();
+      expect(result.current.answeredQuestion).toBeUndefined();
     });
   });
 
-  describe("multiple questions", () => {
-    it("should replace existing question with new one", async () => {
-      renderHook(() => useAskUserQuestion());
+  describe("answeredQuestion", () => {
+    it("should return answered summary for current session", () => {
+      useUiStore.getState().setAnsweredQuestion(TEST_SESSION, "JWT tokens");
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+      expect(result.current.answeredQuestion).toBe("JWT tokens");
+    });
 
-      await waitFor(() => {
-        expect(mockListeners.has("agent:ask_user_question")).toBe(true);
-      });
-
-      const firstPayload = { ...validPayload, requestId: "req-1", taskId: "task-1" };
-      const secondPayload = { ...validPayload, requestId: "req-2", taskId: "task-2" };
-
-      act(() => {
-        emitEvent("agent:ask_user_question", firstPayload);
-      });
-
-      expect(useUiStore.getState().activeQuestion?.taskId).toBe("task-1");
-
-      act(() => {
-        emitEvent("agent:ask_user_question", secondPayload);
-      });
-
-      expect(useUiStore.getState().activeQuestion?.taskId).toBe("task-2");
+    it("should not return answered summary from other sessions", () => {
+      useUiStore.getState().setAnsweredQuestion("other-session", "other answer");
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+      expect(result.current.answeredQuestion).toBeUndefined();
     });
   });
 
-  describe("multi-select questions", () => {
-    it("should handle multi-select question payloads", async () => {
-      renderHook(() => useAskUserQuestion());
+  describe("multiple sessions", () => {
+    it("should store questions for different sessions independently", () => {
+      renderHook(() => useAskUserQuestion(TEST_SESSION));
 
-      await waitFor(() => {
-        expect(mockListeners.has("agent:ask_user_question")).toBe(true);
-      });
-
-      const multiSelectPayload: AskUserQuestionPayload = {
-        ...validPayload,
-        multiSelect: true,
-        question: "Which features do you want to enable?",
-      };
+      const payload1 = { ...validPayload, sessionId: "session-1", requestId: "req-1" };
+      const payload2 = { ...validPayload, sessionId: "session-2", requestId: "req-2" };
 
       act(() => {
-        emitEvent("agent:ask_user_question", multiSelectPayload);
+        emitEvent("agent:ask_user_question", payload1);
+        emitEvent("agent:ask_user_question", payload2);
       });
 
       const state = useUiStore.getState();
-      expect(state.activeQuestion).toEqual(multiSelectPayload);
-      expect(state.activeQuestion?.multiSelect).toBe(true);
-    });
-
-    it("should submit multiple selected options for multi-select (MCP flow)", async () => {
-      const multiSelectPayload: AskUserQuestionPayload = {
-        ...validPayload,
-        multiSelect: true,
-      };
-      useUiStore.getState().setActiveQuestion(multiSelectPayload);
-
-      const { result } = renderHook(() => useAskUserQuestion());
-
-      const response: AskUserQuestionResponse = {
-        requestId: "req-test-123",
-        taskId: "task-123",
-        selectedOptions: ["JWT tokens", "Session cookies"],
-      };
-
-      await act(async () => {
-        await result.current.submitAnswer(response);
-      });
-
-      expect(mockInvoke).toHaveBeenCalledWith("resolve_user_question", {
-        requestId: "req-test-123",
-        selectedOptions: ["JWT tokens", "Session cookies"],
-        customResponse: undefined,
-      });
+      expect(state.activeQuestions["session-1"]?.requestId).toBe("req-1");
+      expect(state.activeQuestions["session-2"]?.requestId).toBe("req-2");
     });
   });
 });

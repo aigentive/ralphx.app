@@ -404,14 +404,30 @@ export const useUiStore = create<UiState & UiActions>()(
         state.confirmation = null;
       }),
 
-    setActiveQuestion: (question) =>
+    setActiveQuestion: (sessionId, question) =>
       set((state) => {
-        state.activeQuestion = question;
+        state.activeQuestions[sessionId] = question;
       }),
 
-    clearActiveQuestion: () =>
+    clearActiveQuestion: (sessionId) =>
       set((state) => {
-        state.activeQuestion = null;
+        delete state.activeQuestions[sessionId];
+      }),
+
+    dismissQuestion: (sessionId) =>
+      set((state) => {
+        delete state.activeQuestions[sessionId];
+        delete state.answeredQuestions[sessionId];
+      }),
+
+    setAnsweredQuestion: (sessionId, summary) =>
+      set((state) => {
+        state.answeredQuestions[sessionId] = summary;
+      }),
+
+    clearAnsweredQuestion: (sessionId) =>
+      set((state) => {
+        delete state.answeredQuestions[sessionId];
       }),
 
     setRecoveryPrompt: (prompt) =>
