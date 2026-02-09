@@ -2,9 +2,9 @@
 
 ## Project: RalphX
 Native Mac GUI for autonomous AI dev: Kanban, multi-agent orchestration, ideation chat.
-Full spec: `specs/plan.md` | Code quality: @.claude/rules/code-quality-standards.md
-Task detail views (Kanban UI): @.claude/rules/task-detail-views.md
-Git modes, state machine, agents, merges: @.claude/rules/task-execution-git-workflows.md
+Full spec: `specs/plan.md` | Code quality: `.claude/rules/code-quality-standards.md`
+Task detail views (Kanban UI): `.claude/rules/task-detail-views.md`
+Git modes, state machine, agents, merges: `.claude/rules/task-execution-git-workflows.md`
 
 ## Structure
 ```
@@ -28,7 +28,7 @@ Claude Agent → MCP Protocol → ralphx-mcp-server (TS) → HTTP :3847 → Taur
 Plugin: `claude --plugin-dir ./ralphx-plugin --agent worker -p "Execute"`
 
 ## Agent Tool Scopes
-Adding/modifying MCP tools for agents: @.claude/rules/agent-mcp-tools.md (three-layer allowlist — all required)
+Adding/modifying MCP tools for agents: `.claude/rules/agent-mcp-tools.md` (three-layer allowlist — all required)
 
 | Agent | MCP Tools |
 |-------|-----------|
