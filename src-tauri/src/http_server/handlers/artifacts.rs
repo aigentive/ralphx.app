@@ -104,9 +104,21 @@ pub async fn update_plan_artifact(
     State(state): State<HttpServerState>,
     Json(req): Json<UpdatePlanArtifactRequest>,
 ) -> Result<Json<ArtifactResponse>, StatusCode> {
-    let old_artifact_id = ArtifactId::from_string(req.artifact_id);
+    let input_artifact_id = ArtifactId::from_string(req.artifact_id);
 
-    // Get existing artifact
+    // Resolve stale IDs: walk the version chain forward to find the latest version.
+    // This makes the endpoint idempotent — agents can pass any version ID and it works.
+    let old_artifact_id = state
+        .app_state
+        .artifact_repo
+        .resolve_latest_artifact_id(&input_artifact_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to resolve latest artifact ID for {}: {}", input_artifact_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // Get existing artifact (using resolved ID)
     let old_artifact = state
         .app_state
         .artifact_repo
@@ -164,7 +176,7 @@ pub async fn update_plan_artifact(
             })?;
     }
 
-    // Get proposals linked to the old artifact for the sync notification
+    // Get proposals linked to the old artifact and re-link them to the new version
     let linked_proposals = state
         .app_state
         .task_proposal_repo
@@ -174,6 +186,24 @@ pub async fn update_plan_artifact(
             error!("Failed to get proposals linked to artifact {}: {}", old_artifact_id.as_str(), e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
+
+    // Auto-cascade: update each proposal's plan_artifact_id to the new version,
+    // preserving plan_version_at_creation (the version when the proposal was born)
+    for proposal in &linked_proposals {
+        let mut updated_proposal = proposal.clone();
+        updated_proposal.plan_artifact_id = Some(created.id.clone());
+        // plan_version_at_creation is intentionally NOT changed
+
+        state
+            .app_state
+            .task_proposal_repo
+            .update(&updated_proposal)
+            .await
+            .map_err(|e| {
+                error!("Failed to re-link proposal {} to new artifact {}: {}", proposal.id.as_str(), created.id.as_str(), e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+    }
 
     // Emit event for real-time UI update
     if let Some(app_handle) = &state.app_state.app_handle {
@@ -205,12 +235,17 @@ pub async fn update_plan_artifact(
                 proposal_ids: linked_proposals.iter().map(|p| p.id.to_string()).collect(),
                 new_version: created.metadata.version,
                 session_id: sessions.first().map(|s| s.id.to_string()),
+                proposals_relinked: true,
             };
             let _ = app_handle.emit("plan:proposals_may_need_update", payload);
         }
     }
 
-    Ok(Json(ArtifactResponse::from(created)))
+    let mut response = ArtifactResponse::from(created);
+    response.previous_artifact_id = Some(old_artifact_id.to_string());
+    response.session_id = sessions.first().map(|s| s.id.to_string());
+
+    Ok(Json(response))
 }
 
 pub async fn get_plan_artifact(

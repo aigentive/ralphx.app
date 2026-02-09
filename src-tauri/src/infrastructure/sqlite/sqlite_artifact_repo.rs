@@ -1359,4 +1359,55 @@ mod tests {
         assert_eq!(resolved_artifact.metadata.version, 3, "Resolved artifact should be version 3");
         assert_eq!(resolved_artifact.id, v3_id, "Resolved artifact ID should be V3");
     }
+
+    /// Integration test: simulates the update_plan_artifact flow twice using the original v1 ID.
+    /// First update: v1 → resolve to v1 (latest) → create v2
+    /// Second update: v1 → resolve to v2 (latest) → create v3
+    /// Validates that resolve_latest_artifact_id makes stale IDs work for repeated updates.
+    #[tokio::test]
+    async fn test_two_updates_with_original_id_both_succeed() {
+        let conn = setup_test_db();
+        let repo = SqliteArtifactRepository::new(conn);
+
+        // Create V1 (original artifact)
+        let v1 = Artifact::new_inline("Plan", ArtifactType::Specification, "V1 content", "orchestrator");
+        let v1_id = v1.id.clone();
+        repo.create(v1).await.unwrap();
+
+        // --- First update: agent passes v1_id ---
+        let resolved1 = repo.resolve_latest_artifact_id(&v1_id).await.unwrap();
+        assert_eq!(resolved1, v1_id, "First resolve should return v1 itself");
+
+        let old1 = repo.get_by_id(&resolved1).await.unwrap().unwrap();
+        let mut v2 = Artifact::new_inline("Plan", ArtifactType::Specification, "V2 content", "orchestrator");
+        v2.metadata.version = old1.metadata.version + 1;
+        let v2_id = v2.id.clone();
+        repo.create_with_previous_version(v2, resolved1).await.unwrap();
+
+        // --- Second update: agent passes SAME v1_id (stale) ---
+        let resolved2 = repo.resolve_latest_artifact_id(&v1_id).await.unwrap();
+        assert_eq!(resolved2, v2_id, "Second resolve should walk v1 → v2 (latest)");
+
+        let old2 = repo.get_by_id(&resolved2).await.unwrap().unwrap();
+        assert_eq!(old2.metadata.version, 2, "Resolved artifact should be v2");
+
+        let mut v3 = Artifact::new_inline("Plan", ArtifactType::Specification, "V3 content", "orchestrator");
+        v3.metadata.version = old2.metadata.version + 1;
+        let v3_id = v3.id.clone();
+        repo.create_with_previous_version(v3, resolved2).await.unwrap();
+
+        // Verify final state: v1 → v2 → v3 chain
+        let final_resolved = repo.resolve_latest_artifact_id(&v1_id).await.unwrap();
+        assert_eq!(final_resolved, v3_id, "After two updates, v1 should resolve to v3");
+
+        let v3_artifact = repo.get_by_id(&v3_id).await.unwrap().unwrap();
+        assert_eq!(v3_artifact.metadata.version, 3);
+
+        // Verify version history from v3
+        let history = repo.get_version_history(&v3_id).await.unwrap();
+        assert_eq!(history.len(), 3, "Should have 3 versions in history");
+        assert_eq!(history[0].version, 3);
+        assert_eq!(history[1].version, 2);
+        assert_eq!(history[2].version, 1);
+    }
 }

@@ -388,6 +388,9 @@ pub struct PlanProposalsSyncPayload {
     pub new_version: u32,
     /// The ideation session this plan belongs to (for scoped notifications)
     pub session_id: Option<String>,
+    /// Whether proposals were already re-linked to the new artifact ID server-side.
+    /// When true, the UI only needs to refresh — no client-side re-linking is needed.
+    pub proposals_relinked: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -399,6 +402,12 @@ pub struct ArtifactResponse {
     pub version: u32,
     pub created_at: String,
     pub created_by: String,
+    /// The artifact ID that was replaced (only set on update responses)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_artifact_id: Option<String>,
+    /// The ideation session this artifact belongs to (only set on update responses)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
 }
 
 impl From<Artifact> for ArtifactResponse {
@@ -416,6 +425,8 @@ impl From<Artifact> for ArtifactResponse {
             version: artifact.metadata.version,
             created_at: artifact.metadata.created_at.to_rfc3339(),
             created_by: artifact.metadata.created_by.clone(),
+            previous_artifact_id: None,
+            session_id: None,
         }
     }
 }
