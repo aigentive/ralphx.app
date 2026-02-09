@@ -24,6 +24,9 @@ import { useTaskMutation } from "@/hooks/useTaskMutation";
 import type { Task } from "@/types/task";
 import { X, Loader2, FileText, Pencil, Archive, RotateCcw, Trash } from "lucide-react";
 import { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
 import {
   PriorityBadge,
   StatusBadge,
@@ -396,17 +399,17 @@ export function TaskDetailModal({
 
                 {/* Description Section */}
                 {task.description ? (
-                  <div>
-                    <p
-                      data-testid="task-detail-description"
-                      className="text-[13px] text-white/60"
-                      style={{
-                        lineHeight: "1.6",
-                        wordBreak: "break-word",
-                      }}
-                    >
+                  <div
+                    data-testid="task-detail-description"
+                    className="text-[13px] text-white/60"
+                    style={{
+                      lineHeight: "1.6",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                       {task.description}
-                    </p>
+                    </ReactMarkdown>
                   </div>
                 ) : (
                   <p className="text-[13px] italic text-white/35">
