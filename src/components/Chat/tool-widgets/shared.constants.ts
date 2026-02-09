@@ -182,7 +182,7 @@ export interface InlineIndicatorProps {
 export interface StepLineProps {
   variant: StepLineVariant;
   title: string;
-  note?: string;
+  note?: string | undefined;
   compact?: boolean;
 }
 
