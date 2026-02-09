@@ -26,6 +26,7 @@ enum RecoveryContext {
     Execution,
     Review,
     Merge,
+    PendingMerge,
     QaRefining,
     QaTesting,
 }
@@ -51,6 +52,7 @@ struct RecoveryEvidence {
     registry_running: bool,
     can_start: bool,
     is_stale: bool,
+    is_deferred: bool,
 }
 
 impl RecoveryEvidence {
@@ -172,6 +174,24 @@ impl RecoveryPolicy {
                 RecoveryDecision {
                     action: RecoveryActionKind::None,
                     reason: None,
+                }
+            }
+            RecoveryContext::PendingMerge => {
+                if !evidence.is_stale {
+                    return RecoveryDecision {
+                        action: RecoveryActionKind::None,
+                        reason: None,
+                    };
+                }
+                if evidence.is_deferred {
+                    return RecoveryDecision {
+                        action: RecoveryActionKind::ExecuteEntryActions,
+                        reason: Some("Stale deferred merge — re-triggering entry actions.".to_string()),
+                    };
+                }
+                RecoveryDecision {
+                    action: RecoveryActionKind::Transition(InternalStatus::MergeIncomplete),
+                    reason: Some("Stale pending merge with no deferred flag — surfacing to user.".to_string()),
                 }
             }
             RecoveryContext::QaRefining | RecoveryContext::QaTesting => {
@@ -326,6 +346,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 InternalStatus::ReExecuting,
                 InternalStatus::Reviewing,
                 InternalStatus::Merging,
+                InternalStatus::PendingMerge,
                 InternalStatus::QaRefining,
                 InternalStatus::QaTesting,
             ] {
@@ -356,6 +377,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             }
             InternalStatus::Reviewing => self.reconcile_reviewing_task(task, status).await,
             InternalStatus::Merging => self.reconcile_merging_task(task, status).await,
+            InternalStatus::PendingMerge => self.reconcile_pending_merge_task(task, status).await,
             InternalStatus::QaRefining | InternalStatus::QaTesting => {
                 self.reconcile_qa_task(task, status).await
             }
@@ -447,6 +469,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             registry_running: false,
             can_start: self.execution_state.can_start_task(),
             is_stale: age >= chrono::Duration::minutes(5),
+            is_deferred: false,
         };
         let context = if status == InternalStatus::QaRefining {
             RecoveryContext::QaRefining
@@ -456,6 +479,32 @@ impl<R: Runtime> ReconciliationRunner<R> {
         let decision = self.policy.decide_reconciliation(context, evidence);
 
         self.apply_recovery_decision(task, status, context, decision)
+            .await
+    }
+
+    async fn reconcile_pending_merge_task(&self, task: &Task, status: InternalStatus) -> bool {
+        use crate::domain::state_machine::transition_handler::has_merge_deferred_metadata;
+
+        if status != InternalStatus::PendingMerge {
+            return false;
+        }
+
+        let age = match self.latest_status_transition_age(task, status).await {
+            Some(age) => age,
+            None => return false,
+        };
+
+        let is_deferred = has_merge_deferred_metadata(task);
+        let evidence = RecoveryEvidence {
+            run_status: None,
+            registry_running: false,
+            can_start: true,
+            is_stale: age >= chrono::Duration::minutes(5),
+            is_deferred,
+        };
+        let decision = self.policy.decide_reconciliation(RecoveryContext::PendingMerge, evidence);
+
+        self.apply_recovery_decision(task, status, RecoveryContext::PendingMerge, decision)
             .await
     }
 
@@ -493,6 +542,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             registry_running,
             can_start: self.execution_state.can_start_task(),
             is_stale: false,
+            is_deferred: false,
         };
         let decision = self.policy.decide_execution_stop(evidence);
 
@@ -519,6 +569,16 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 },
                 UserRecoveryAction::Cancel => RecoveryDecision {
                     action: RecoveryActionKind::Transition(InternalStatus::Ready),
+                    reason: None,
+                },
+            },
+            InternalStatus::PendingMerge => match action {
+                UserRecoveryAction::Restart => RecoveryDecision {
+                    action: RecoveryActionKind::ExecuteEntryActions,
+                    reason: None,
+                },
+                UserRecoveryAction::Cancel => RecoveryDecision {
+                    action: RecoveryActionKind::Transition(InternalStatus::MergeIncomplete),
                     reason: None,
                 },
             },
@@ -554,6 +614,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             InternalStatus::Executing | InternalStatus::ReExecuting => RecoveryContext::Execution,
             InternalStatus::Reviewing => RecoveryContext::Review,
             InternalStatus::Merging => RecoveryContext::Merge,
+            InternalStatus::PendingMerge => RecoveryContext::PendingMerge,
             InternalStatus::QaRefining => RecoveryContext::QaRefining,
             InternalStatus::QaTesting => RecoveryContext::QaTesting,
             _ => return false,
@@ -642,6 +703,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             registry_running,
             can_start: self.execution_state.can_start_task(),
             is_stale: false,
+            is_deferred: false,
         }
     }
 
@@ -730,6 +792,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             RecoveryContext::Execution => "execution",
             RecoveryContext::Review => "review",
             RecoveryContext::Merge => "merge",
+            RecoveryContext::PendingMerge => "pending_merge",
             RecoveryContext::QaRefining => "qa_refining",
             RecoveryContext::QaTesting => "qa_testing",
         };
