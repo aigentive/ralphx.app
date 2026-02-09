@@ -4,7 +4,7 @@
  */
 
 import { memo } from "react";
-import type { NodeProps, Node } from "@xyflow/react";
+import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 import { TierGroupHeader } from "./TierGroupHeader";
 import { getTierGroupNodeId } from "./groupTypes";
@@ -76,6 +76,20 @@ export const TierGroup = memo(function TierGroup({ data, selected }: TierGroupPr
           }}
         />
       )}
+
+      {/* Invisible handles for tier-connector edges */}
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="!bg-transparent !border-0 !w-4 !h-1"
+        style={{ top: 0, left: "50%", visibility: "hidden" }}
+      />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="!bg-transparent !border-0 !w-4 !h-1"
+        style={{ bottom: 0, left: "50%", visibility: "hidden" }}
+      />
     </div>
   );
 });
