@@ -9,7 +9,7 @@
  * Design spec: specs/design/refined-studio-patterns.md
  */
 
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { type VirtuosoHandle } from "react-virtuoso";
 import { useChat, chatKeys } from "@/hooks/useChat";
 import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectIsSending } from "@/stores/chatStore";
@@ -35,7 +35,6 @@ import { useIntegratedChatHandlers } from "@/hooks/useIntegratedChatHandlers";
 import { useIntegratedChatEvents } from "@/hooks/useIntegratedChatEvents";
 import { useAgentEvents } from "@/hooks/useAgentEvents";
 import { useAskUserQuestion } from "@/hooks/useAskUserQuestion";
-import type { AskUserQuestionResponse } from "@/types/ask-user-question";
 import { RecoveryPromptDialog } from "@/components/recovery/RecoveryPromptDialog";
 import { useEventBus } from "@/providers/EventProvider";
 
@@ -502,27 +501,15 @@ export function IntegratedChatPanel({
     setStreamingText,
   });
 
-  // Ask user question state
-  const { activeQuestion, submitAnswer, isLoading: isSubmittingAnswer } = useAskUserQuestion();
-  const [answeredQuestion, setAnsweredQuestion] = useState<string | undefined>();
-
-  const handleSubmitAnswer = useCallback(
-    async (response: AskUserQuestionResponse) => {
-      const summary = response.selectedOptions.length > 0
-        ? response.selectedOptions.join(", ")
-        : response.customResponse ?? "";
-      await submitAnswer(response);
-      setAnsweredQuestion(summary);
-    },
-    [submitAnswer]
-  );
-
-  // Clear answered state when a new question comes in
-  useEffect(() => {
-    if (activeQuestion) {
-      setAnsweredQuestion(undefined);
-    }
-  }, [activeQuestion]);
+  // Ask user question state — scoped to current context (ideation session, task, or project)
+  const {
+    activeQuestion,
+    answeredQuestion,
+    submitAnswer,
+    dismissQuestion,
+    clearAnswered,
+    isLoading: isSubmittingAnswer,
+  } = useAskUserQuestion(currentContextId);
 
   // Handle Escape key to close panel
   useEffect(() => {
@@ -671,9 +658,11 @@ export function IntegratedChatPanel({
               messagesEndRef={messagesEndRef}
               scrollToTimestamp={isHistoryMode ? taskHistoryState?.timestamp : null}
               activeQuestion={activeQuestion}
-              onSubmitAnswer={handleSubmitAnswer}
+              onSubmitAnswer={submitAnswer}
               isSubmittingAnswer={isSubmittingAnswer}
               answeredQuestion={answeredQuestion}
+              onDismissQuestion={dismissQuestion}
+              onDismissAnswered={clearAnswered}
             />
           )}
 

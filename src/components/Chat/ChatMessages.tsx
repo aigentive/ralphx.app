@@ -144,6 +144,8 @@ export interface ChatMessagesProps {
   onSubmitAnswer?: ((response: AskUserQuestionResponse) => void) | undefined;
   isSubmittingAnswer?: boolean | undefined;
   answeredQuestion?: string | undefined;
+  onDismissQuestion?: (() => void) | undefined;
+  onDismissAnswered?: (() => void) | undefined;
 }
 
 export function ChatMessages({
@@ -159,6 +161,8 @@ export function ChatMessages({
   onSubmitAnswer,
   isSubmittingAnswer = false,
   answeredQuestion,
+  onDismissQuestion,
+  onDismissAnswered,
 }: ChatMessagesProps) {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
 
@@ -224,6 +228,8 @@ export function ChatMessages({
                   onSubmit={onSubmitAnswer}
                   isSubmitting={isSubmittingAnswer}
                   answeredWith={answeredQuestion}
+                  onDismiss={onDismissQuestion}
+                  onDismissAnswered={onDismissAnswered}
                 />
               )}
               <div ref={messagesEndRef} />

@@ -9,7 +9,7 @@
  */
 
 import { useState, useCallback } from "react";
-import { HelpCircle, Check, Loader2, ChevronDown, ChevronRight } from "lucide-react";
+import { HelpCircle, Check, Loader2, ChevronDown, ChevronRight, X } from "lucide-react";
 import type {
   AskUserQuestionPayload,
   AskUserQuestionResponse,
@@ -25,6 +25,10 @@ interface AskUserQuestionCardProps {
   isSubmitting: boolean;
   /** When set, shows collapsed summary instead of interactive form */
   answeredWith?: string | undefined;
+  /** Called when user clicks dismiss on the active question card */
+  onDismiss?: (() => void) | undefined;
+  /** Called when user clicks dismiss on the answered summary card */
+  onDismissAnswered?: (() => void) | undefined;
 }
 
 // ============================================================================
@@ -140,6 +144,8 @@ export function AskUserQuestionCard({
   onSubmit,
   isSubmitting,
   answeredWith,
+  onDismiss,
+  onDismissAnswered,
 }: AskUserQuestionCardProps) {
   const [selectedOptions, setSelectedOptions] = useState<Set<string>>(new Set());
   const [showOther, setShowOther] = useState(false);
@@ -206,11 +212,21 @@ export function AskUserQuestionCard({
             Answered:
           </span>
           <span
-            className="text-xs font-medium truncate"
+            className="text-xs font-medium truncate flex-1 min-w-0"
             style={{ color: "var(--text-secondary)" }}
           >
             {answeredWith}
           </span>
+          {onDismissAnswered && (
+            <button
+              type="button"
+              onClick={onDismissAnswered}
+              className="flex-shrink-0 rounded p-0.5 transition-colors hover:bg-white/10"
+              aria-label="Dismiss answered summary"
+            >
+              <X size={12} style={{ color: "var(--text-muted)" }} />
+            </button>
+          )}
         </div>
       </div>
     );
@@ -236,11 +252,21 @@ export function AskUserQuestionCard({
           style={{ color: "var(--accent-primary)" }}
         />
         <span
-          className="text-xs font-medium"
+          className="text-xs font-medium flex-1"
           style={{ color: "var(--text-secondary)" }}
         >
           {question.header}
         </span>
+        {onDismiss && (
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="flex-shrink-0 rounded p-0.5 transition-colors hover:bg-white/10"
+            aria-label="Dismiss question"
+          >
+            <X size={14} style={{ color: "var(--text-muted)" }} />
+          </button>
+        )}
       </div>
 
       {/* Question text */}

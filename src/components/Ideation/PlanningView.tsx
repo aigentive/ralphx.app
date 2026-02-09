@@ -271,9 +271,14 @@ export function PlanningView({
   }, [session?.planArtifactId, planArtifactId]);
 
   useEffect(() => {
-    const unsubProposalsUpdate = eventBus.subscribe<{ artifact_id: string; proposal_ids: string[] }>(
+    const unsubProposalsUpdate = eventBus.subscribe<{ artifact_id: string; proposal_ids: string[]; session_id?: string }>(
       "plan:proposals_may_need_update",
       (payload) => {
+        // Only show notification for the active session
+        if (payload.session_id && session?.id && payload.session_id !== session.id) {
+          return;
+        }
+
         const affectedProposals = proposals.filter((p) => payload.proposal_ids.includes(p.id));
         const previousStates: Record<string, unknown> = {};
         affectedProposals.forEach((p) => { previousStates[p.id] = { ...p }; });
@@ -288,7 +293,7 @@ export function PlanningView({
     );
 
     return () => { unsubProposalsUpdate(); };
-  }, [eventBus, proposals, showSyncNotification]);
+  }, [eventBus, proposals, showSyncNotification, session?.id]);
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
