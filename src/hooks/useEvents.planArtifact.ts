@@ -99,6 +99,15 @@ export function usePlanArtifactEvents() {
             setPlanArtifactRef.current(planArtifact);
           }
 
+          // Update session's planArtifactId so the subsequent `updated`
+          // handler can match on it (avoids stale-null race).
+          const session = sessionsRef.current[sessionId];
+          if (session && session.planArtifactId !== artifact.id) {
+            updateSessionRef.current(sessionId, {
+              planArtifactId: artifact.id,
+            });
+          }
+
           // Invalidate session query to refetch with new plan artifact link
           queryClientRef.current.invalidateQueries({
             queryKey: ideationKeys.sessionWithData(sessionId),
