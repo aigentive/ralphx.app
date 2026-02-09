@@ -34,10 +34,12 @@ import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { ChatInput } from "./ChatInput";
 import { ChatMessages } from "./ChatMessages";
+import { QuestionInputBanner } from "./QuestionInputBanner";
 import { ResizeablePanel } from "./ResizeablePanel";
 import { useResizePanel } from "./useResizePanel";
 import { useChatPanelHandlers } from "@/hooks/useChatPanelHandlers";
 import { useAskUserQuestion } from "@/hooks/useAskUserQuestion";
+import type { AskUserQuestionResponse } from "@/types/ask-user-question";
 
 // ============================================================================
 // Constants
@@ -326,6 +328,79 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     isLoading: isSubmittingAnswer,
   } = useAskUserQuestion(questionSessionId);
 
+  // Question UI state — selectedOptions tracks which chips are highlighted
+  const [selectedOptions, setSelectedOptions] = useState<Set<number>>(new Set());
+  // Controlled input value for syncing chip clicks → input text
+  const [questionInputValue, setQuestionInputValue] = useState("");
+
+  // Reset selection when question changes
+  useEffect(() => {
+    setSelectedOptions(new Set());
+    setQuestionInputValue("");
+  }, [activeQuestion?.requestId]);
+
+  // Handle chip click → update selection + sync to input
+  const handleChipClick = useCallback(
+    (index: number) => {
+      if (!activeQuestion) return;
+      setSelectedOptions((prev: Set<number>) => {
+        const next = new Set(prev);
+        if (activeQuestion.multiSelect) {
+          if (next.has(index)) next.delete(index);
+          else next.add(index);
+        } else {
+          if (next.has(index)) next.clear();
+          else { next.clear(); next.add(index); }
+        }
+        // Sync input value to show selected option labels
+        const labels = Array.from(next)
+          .sort()
+          .map((i) => String(i + 1));
+        setQuestionInputValue(labels.join(", "));
+        return next;
+      });
+    },
+    [activeQuestion]
+  );
+
+  // onMatchedOptions callback — called by ChatInput when user types numbers
+  const handleMatchedOptions = useCallback((indices: number[]) => {
+    setSelectedOptions(new Set(indices));
+  }, []);
+
+  // Question-aware send: if question active, build response and submitAnswer
+  const handleQuestionSend = useCallback(
+    async (text: string) => {
+      if (!activeQuestion) {
+        await handleSend(text);
+        return;
+      }
+
+      const response: AskUserQuestionResponse = {
+        requestId: activeQuestion.requestId,
+        taskId: activeQuestion.taskId,
+        selectedOptions: [],
+      };
+
+      // If there are selected options, use them
+      if (selectedOptions.size > 0) {
+        response.selectedOptions = Array.from(selectedOptions)
+          .sort()
+          .map((i) => activeQuestion.options[i]?.value ?? activeQuestion.options[i]?.label ?? "");
+      } else if (text.trim()) {
+        // Otherwise it's a custom text response
+        response.customResponse = text.trim();
+      } else {
+        return; // Nothing to submit
+      }
+
+      await submitAnswer(response);
+      setSelectedOptions(new Set());
+      setQuestionInputValue("");
+    },
+    [activeQuestion, selectedOptions, submitAnswer, handleSend]
+  );
+
   // Close with animation
   const handleClose = useCallback(() => {
     setIsExiting(true);
@@ -451,12 +526,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
           failedErrorMessage={showFailedBanner && failedRun?.errorMessage ? failedRun.errorMessage : undefined}
           onDismissError={failedRun ? () => setDismissedErrorId(failedRun.id) : undefined}
           messagesEndRef={messagesEndRef}
-          activeQuestion={activeQuestion}
-          onSubmitAnswer={submitAnswer}
-          isSubmittingAnswer={isSubmittingAnswer}
-          answeredQuestion={answeredQuestion}
-          onDismissQuestion={dismissQuestion}
-          onDismissAnswered={clearAnswered}
         />
 
         {/* Input Area */}
@@ -472,14 +541,26 @@ function ChatPanelContent({ context }: ChatPanelProps) {
             </div>
           )}
 
+          {/* Question Input Banner - renders above ChatInput when question is active */}
+          {(activeQuestion || answeredQuestion) && (
+            <QuestionInputBanner
+              question={activeQuestion ?? { requestId: "", question: "", options: [], multiSelect: false }}
+              selectedIndices={selectedOptions}
+              onChipClick={handleChipClick}
+              onDismiss={dismissQuestion}
+              answeredValue={answeredQuestion}
+              onDismissAnswered={clearAnswered}
+            />
+          )}
+
           {/* Chat Input */}
           <div className="p-3">
             <ChatInput
-              onSend={handleSend}
+              onSend={activeQuestion ? handleQuestionSend : handleSend}
               onQueue={handleQueue}
               onStop={handleStopAgent}
               isAgentRunning={isExecutionMode || isAgentRunning}
-              isSending={isSending}
+              isSending={isSending || isSubmittingAnswer}
               hasQueuedMessages={queuedMessages.length > 0}
               onEditLastQueued={handleEditLastQueued}
               placeholder={
@@ -487,7 +568,16 @@ function ChatPanelContent({ context }: ChatPanelProps) {
                   ? "Message worker... (will be sent when current response completes)"
                   : "Send a message..."
               }
-              showHelperText={queuedMessages.length > 0}
+              showHelperText={queuedMessages.length > 0 || !!activeQuestion}
+              {...(activeQuestion ? {
+                value: questionInputValue,
+                onChange: setQuestionInputValue,
+                questionMode: {
+                  optionCount: activeQuestion.options.length,
+                  multiSelect: activeQuestion.multiSelect,
+                  onMatchedOptions: handleMatchedOptions,
+                },
+              } : {})}
               autoFocus
             />
           </div>
