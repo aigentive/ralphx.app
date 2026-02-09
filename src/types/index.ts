@@ -386,6 +386,9 @@ export type {
   SessionWithData,
 } from "./ideation";
 
+// Streaming task types (subagent task cards in chat)
+export type { StreamingTask, StreamingTaskStatus } from "./streaming-task";
+
 // Chat context types and schemas
 export {
   ViewTypeSchema,

@@ -114,6 +114,8 @@ export function IntegratedChatPanel({
     setStreamingToolCalls,
     streamingText,
     setStreamingText,
+    streamingTasks,
+    setStreamingTasks,
     autoSelectConversation,
     // overrideAgentRunId is available but we use taskHistoryState.timestamp for scroll positioning
   } = useChatPanelContext({
@@ -491,6 +493,7 @@ export function IntegratedChatPanel({
     await handleStopAgent();
     setStreamingToolCalls([]);
     setStreamingText("");
+    setStreamingTasks(new Map());
   };
 
   useIntegratedChatEvents({
@@ -500,6 +503,7 @@ export function IntegratedChatPanel({
     messagesEndRef,
     setStreamingToolCalls,
     setStreamingText,
+    setStreamingTasks,
   });
 
   // Ask user question state — scoped to current context (ideation session, task, or project)
@@ -655,6 +659,7 @@ export function IntegratedChatPanel({
               isSending={isSending}
               isAgentRunning={isAgentRunning}
               streamingToolCalls={streamingToolCalls}
+              streamingTasks={streamingTasks}
               streamingText={streamingText}
               messagesEndRef={messagesEndRef}
               scrollToTimestamp={isHistoryMode ? taskHistoryState?.timestamp : null}

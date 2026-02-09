@@ -16,4 +16,6 @@ export const AGENT_MESSAGE_CREATED = "agent:message_created";
 export const AGENT_ERROR = "agent:error";
 export const AGENT_QUEUE_SENT = "agent:queue_sent";
 export const AGENT_MESSAGE = "agent:message";
+export const AGENT_TASK_STARTED = "agent:task_started";
+export const AGENT_TASK_COMPLETED = "agent:task_completed";
 
