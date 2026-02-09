@@ -4,6 +4,9 @@
  * Shows the revision feedback and attempt count with native styling.
  */
 
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
 import { StepList } from "../StepList";
 import {
   SectionTitle,
@@ -101,9 +104,11 @@ function FeedbackCard({ review, issues }: FeedbackCardProps) {
 
       {/* Main feedback text (show notes only if no structured issues) */}
       {issues.length === 0 && review.notes && (
-        <p className="text-[13px] text-white/55 leading-relaxed mb-4 pl-12">
-          {review.notes}
-        </p>
+        <div className="text-[13px] text-white/55 leading-relaxed mb-4 pl-12" style={{ wordBreak: "break-word" }}>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            {review.notes}
+          </ReactMarkdown>
+        </div>
       )}
 
       {/* Structured Issues list */}
