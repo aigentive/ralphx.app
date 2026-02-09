@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RalphX — Tool Call Widget Redesign</title>
+<style>
+  :root {
+    --bg-base: hsl(220 10% 8%);
+    --bg-surface: hsl(220 10% 12%);
+    --bg-elevated: hsl(220 10% 14%);
+    --bg-hover: hsl(220 10% 16%);
+    --bg-terminal: hsl(220 10% 10%);
+    --text-primary: hsl(220 10% 90%);
+    --text-secondary: hsl(220 10% 60%);
+    --text-muted: hsl(220 10% 45%);
+    --accent: hsl(14 100% 60%);
+    --accent-dim: hsla(14 100% 60% / 0.10);
+    --accent-border: hsla(14 100% 60% / 0.30);
+    --success: #34c759;
+    --success-dim: hsla(145 60% 45% / 0.10);
+    --error: #ff453a;
+    --error-dim: hsla(0 70% 55% / 0.10);
+    --blue: hsl(220 60% 50%);
+    --blue-dim: hsla(220 60% 50% / 0.12);
+    --blue-selection: hsla(220 60% 50% / 0.20);
+    --border: hsl(220 10% 18%);
+    --border-subtle: hsl(220 10% 15%);
+    --radius: 10px;
+    --radius-sm: 7px;
+    --radius-xs: 4px;
+    --font-body: 'SF Pro Text', 'SF Pro', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, monospace;
+    --collapse-height: 73px;
+    --transition-speed: 200ms;
+  }
+
+  .compact-mode {
+    --collapse-height: 52px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--font-body);
+    background: hsl(220 10% 5%);
+    color: var(--text-primary);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    padding: 40px 16px;
+  }
+
+  .outer-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    width: 100%;
+    max-width: 560px;
+  }
+
+  .page-header {
+    text-align: center;
+    padding: 0 12px;
+  }
+  .page-header h1 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+  }
+  .page-header p {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  /* Panel */
+  .panel {
+    width: 100%;
+    max-width: 520px;
+    background: var(--bg-base);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+  }
+
+  .panel-toolbar {
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-surface);
+    flex-shrink: 0;
+  }
+  .panel-toolbar-left { display: flex; align-items: center; gap: 8px; }
+  .panel-toolbar-left svg { width: 14px; height: 14px; color: var(--text-muted); }
+  .panel-toolbar-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); letter-spacing: 0.02em; }
+  .status-pill {
+    font-size: 10px; padding: 2px 8px; border-radius: 10px;
+    background: var(--accent-dim); color: var(--accent);
+    font-weight: 500; display: flex; align-items: center; gap: 4px;
+  }
+  .status-pill .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+
+  .compact-toggle {
+    display: flex; align-items: center; gap: 6px; padding: 6px 14px;
+    border-bottom: 1px solid var(--border); background: var(--bg-base); flex-shrink: 0;
+  }
+  .compact-toggle label {
+    font-size: 11px; color: var(--text-muted); cursor: pointer;
+    user-select: none; display: flex; align-items: center; gap: 6px;
+  }
+  .toggle-switch {
+    position: relative; width: 28px; height: 16px;
+    appearance: none; -webkit-appearance: none;
+    background: hsl(220 10% 22%); border-radius: 8px;
+    cursor: pointer; transition: background 0.2s; flex-shrink: 0;
+  }
+  .toggle-switch:checked { background: var(--accent); }
+  .toggle-switch::after {
+    content: ''; position: absolute; width: 12px; height: 12px;
+    border-radius: 50%; background: white; top: 2px; left: 2px; transition: transform 0.2s;
+  }
+  .toggle-switch:checked::after { transform: translateX(12px); }
+
+  /* Feed area */
+  .feed {
+    flex: 1; overflow-y: auto; padding: 12px 12px 20px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .feed::-webkit-scrollbar { width: 4px; }
+  .feed::-webkit-scrollbar-track { background: transparent; }
+  .feed::-webkit-scrollbar-thumb { background: hsl(220 10% 22%); border-radius: 2px; }
+
+  /* Agent narration text */
+  .narration {
+    font-size: 12px; line-height: 1.5; color: var(--text-secondary);
+    padding: 6px 10px; background: var(--bg-surface); border-radius: var(--radius-sm);
+    margin: 2px 0;
+  }
+  .compact-mode .narration { font-size: 11px; padding: 4px 8px; }
+
+  /* ============================================= */
+  /*  SHARED CARD STYLES                           */
+  /* ============================================= */
+
+  .widget-card {
+    background: var(--bg-surface);
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid var(--border-subtle);
+  }
+
+  .widget-header {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 10px;
+    cursor: pointer;
+    user-select: none;
+    transition: background var(--transition-speed);
+    min-height: 32px;
+  }
+  .widget-header:hover { background: var(--bg-hover); }
+
+  .widget-header .icon {
+    width: 14px; height: 14px; color: var(--text-muted); flex-shrink: 0;
+  }
+  .widget-header .chevron {
+    width: 10px; height: 10px; color: var(--text-muted); flex-shrink: 0;
+    transition: transform var(--transition-speed);
+  }
+  .widget-card.open > .widget-header > .chevron { transform: rotate(90deg); }
+
+  .widget-header .title {
+    font-size: 11.5px; font-weight: 500; color: var(--text-secondary);
+    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .widget-header .badge {
+    font-size: 9.5px; padding: 1px 6px; border-radius: 6px;
+    font-weight: 500; flex-shrink: 0; white-space: nowrap;
+  }
+  .badge-muted { background: hsl(220 10% 18%); color: var(--text-muted); }
+  .badge-success { background: var(--success-dim); color: var(--success); }
+  .badge-accent { background: var(--accent-dim); color: var(--accent); }
+  .badge-error { background: var(--error-dim); color: var(--error); }
+  .badge-blue { background: var(--blue-dim); color: var(--blue); }
+
+  .compact-mode .widget-header { padding: 5px 8px; min-height: 28px; }
+  .compact-mode .widget-header .title { font-size: 11px; }
+
+  /* Collapsible body with gradient fade */
+  .widget-body {
+    max-height: var(--collapse-height);
+    overflow: hidden;
+    position: relative;
+    transition: max-height var(--transition-speed) ease;
+  }
+  .widget-body-inner {
+    padding: 0 10px 8px;
+  }
+  .widget-body .fade-overlay {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 36px;
+    background: linear-gradient(to bottom, transparent, var(--bg-surface));
+    pointer-events: none;
+    transition: opacity var(--transition-speed);
+  }
+  .widget-card.open > .widget-body {
+    max-height: 2000px;
+  }
+  .widget-card.open > .widget-body .fade-overlay {
+    opacity: 0;
+  }
+
+  /* Border separator for body */
+  .widget-body-inner { border-top: 1px solid var(--border-subtle); padding-top: 8px; }
+
+  /* ============================================= */
+  /*  WIDGET 1: Context Loaded                     */
+  /* ============================================= */
+
+  .context-card {
+    background: var(--bg-surface);
+    border-radius: var(--radius);
+    border: 1px solid var(--border-subtle);
+    border-left: 2px solid var(--accent);
+    padding: 8px 10px;
+  }
+  .context-card-top {
+    display: flex; align-items: flex-start; justify-content: space-between;
+  }
+  .context-card-top .label {
+    font-size: 10px; color: var(--text-muted); font-weight: 500;
+    letter-spacing: 0.02em; text-transform: uppercase;
+  }
+  .context-card .task-title {
+    font-size: 12px; font-weight: 600; color: var(--text-primary);
+    margin-top: 4px; line-height: 1.35;
+  }
+  .context-card .chips {
+    display: flex; gap: 5px; margin-top: 6px; flex-wrap: wrap;
+  }
+  .chip {
+    font-size: 10px; padding: 1px 7px; border-radius: 6px;
+    font-weight: 500;
+  }
+  .chip-category { background: var(--accent-dim); color: var(--accent); }
+  .chip-priority { background: var(--error-dim); color: var(--error); }
+  .chip-steps { background: hsl(220 10% 18%); color: var(--text-muted); }
+  .context-card .source {
+    font-size: 10.5px; color: var(--text-muted); margin-top: 5px;
+  }
+  .compact-mode .context-card .task-title { font-size: 11px; }
+  .compact-mode .context-card { padding: 6px 8px; }
+
+  /* ============================================= */
+  /*  WIDGET 2: Steps Manifest                     */
+  /* ============================================= */
+
+  .steps-list {
+    list-style: none; padding: 0; margin: 0;
+  }
+  .steps-list li {
+    display: flex; align-items: flex-start; gap: 7px;
+    padding: 3px 0; font-size: 11.5px; line-height: 1.4;
+  }
+  .step-indicator {
+    width: 16px; height: 16px; flex-shrink: 0; margin-top: 1px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .step-indicator svg { width: 14px; height: 14px; }
+  .step-indicator .done { color: var(--success); }
+  .step-indicator .in-progress { color: var(--accent); }
+  .step-indicator .pending { color: hsl(220 10% 25%); }
+  .step-text { color: var(--text-secondary); }
+  .step-text.done-text { color: var(--text-muted); }
+  .step-text.active-text { color: var(--text-primary); font-weight: 500; }
+  .step-number {
+    font-size: 9px; color: var(--text-muted); font-weight: 600;
+    min-width: 14px; text-align: right; margin-top: 2px; flex-shrink: 0;
+  }
+  .compact-mode .steps-list li { font-size: 11px; padding: 2px 0; }
+
+  /* ============================================= */
+  /*  WIDGET 3: Empty Issues (inline)              */
+  /* ============================================= */
+
+  .inline-indicator {
+    display: flex; align-items: center; gap: 5px;
+    padding: 2px 0; margin: 2px 0;
+  }
+  .inline-indicator svg { width: 12px; height: 12px; }
+  .inline-indicator span { font-size: 10.5px; color: var(--text-muted); }
+
+  /* ============================================= */
+  /*  WIDGET 5 & 7: Step Started / Completed       */
+  /* ============================================= */
+
+  .step-indicator-line {
+    display: flex; align-items: flex-start; gap: 7px;
+    padding: 4px 10px; margin: 2px 0;
+  }
+  .step-indicator-line .dot-container {
+    width: 14px; height: 14px; display: flex;
+    align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px;
+  }
+  .step-indicator-line .dot-container svg { width: 12px; height: 12px; }
+  .step-indicator-line .step-info { flex: 1; min-width: 0; }
+  .step-indicator-line .step-line {
+    font-size: 11px; color: var(--text-secondary); display: flex;
+    align-items: center; gap: 6px; line-height: 1.3;
+  }
+  .step-indicator-line .step-line .step-title {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;
+  }
+  .step-indicator-line .step-note {
+    font-size: 10px; color: var(--text-muted); margin-top: 2px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+  .pulse { animation: pulse-dot 1.5s ease-in-out infinite; }
+
+  .compact-mode .step-indicator-line { padding: 2px 8px; }
+  .compact-mode .step-indicator-line .step-line { font-size: 10.5px; }
+
+  /* ============================================= */
+  /*  WIDGET 6: File Preview (Read)                */
+  /* ============================================= */
+
+  .code-preview {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.55;
+    color: var(--text-secondary);
+    white-space: pre;
+    overflow-x: hidden;
+    padding: 6px 0;
+  }
+  .code-preview .line-num {
+    display: inline-block; width: 28px; text-align: right;
+    color: hsl(220 10% 28%); margin-right: 12px; user-select: none;
+  }
+
+  /* ============================================= */
+  /*  WIDGET 4: Artifact Preview                   */
+  /* ============================================= */
+
+  .artifact-type-badge {
+    font-size: 9px; padding: 1px 6px; border-radius: 4px;
+    background: hsl(220 10% 18%); color: var(--text-muted);
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+    flex-shrink: 0;
+  }
+
+  .markdown-preview {
+    font-size: 11.5px; line-height: 1.55; color: var(--text-secondary);
+    padding: 6px 0;
+  }
+  .markdown-preview .md-h1 {
+    font-size: 13px; font-weight: 600; color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+  .markdown-preview .md-h2 {
+    font-size: 11.5px; font-weight: 600; color: var(--text-primary);
+    margin-top: 6px;
+  }
+  .markdown-preview .md-p {
+    font-size: 11px; color: var(--text-secondary); margin-top: 2px;
+  }
+
+  /* ============================================= */
+  /*  WIDGET 8: Edit Diff (gold standard)          */
+  /* ============================================= */
+
+  .diff-stats {
+    display: flex; gap: 6px; flex-shrink: 0;
+  }
+  .diff-add { font-size: 10px; color: var(--success); font-family: var(--font-mono); font-weight: 500; }
+  .diff-del { font-size: 10px; color: var(--error); font-family: var(--font-mono); font-weight: 500; }
+
+  .diff-view {
+    font-family: var(--font-mono); font-size: 11px; line-height: 1.6;
+    padding: 6px 0;
+  }
+  .diff-line {
+    padding: 0 4px; border-radius: 2px; white-space: pre;
+  }
+  .diff-line.add { background: hsla(145 60% 45% / 0.08); color: var(--success); }
+  .diff-line.del { background: hsla(0 70% 55% / 0.08); color: var(--error); }
+  .diff-line.ctx { color: var(--text-muted); }
+  .diff-line .line-prefix { display: inline-block; width: 14px; user-select: none; }
+
+  /* ============================================= */
+  /*  WIDGET 9 & 10: Glob / Grep Results           */
+  /* ============================================= */
+
+  .file-list {
+    font-family: var(--font-mono); font-size: 11px; line-height: 1.6;
+    color: var(--text-secondary); padding: 4px 0;
+  }
+  .file-list-item {
+    display: flex; align-items: center; gap: 6px; padding: 1px 0;
+  }
+  .file-list-item svg { width: 12px; height: 12px; color: var(--text-muted); flex-shrink: 0; }
+  .file-list-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ============================================= */
+  /*  WIDGET 11: Bash Terminal Output              */
+  /* ============================================= */
+
+  .bash-command {
+    font-family: var(--font-mono); font-size: 10.5px;
+    color: var(--text-muted); padding: 4px 0 2px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .bash-command .prompt { color: var(--success); margin-right: 6px; }
+
+  .terminal-output {
+    font-family: var(--font-mono); font-size: 11px;
+    line-height: 1.55; color: var(--text-secondary);
+    background: var(--bg-terminal); border-radius: var(--radius-xs);
+    padding: 6px 8px; margin-top: 4px;
+    white-space: pre-wrap; word-break: break-word;
+  }
+
+  .exit-badge {
+    font-size: 9px; padding: 1px 5px; border-radius: 4px;
+    font-weight: 600; font-family: var(--font-mono);
+  }
+
+  /* ============================================= */
+  /*  Separator                                    */
+  /* ============================================= */
+
+  .feed-separator {
+    height: 1px; background: var(--border-subtle); margin: 4px 0;
+    opacity: 0.5;
+  }
+
+  /* ============================================= */
+  /*  Animations                                   */
+  /* ============================================= */
+
+  @keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .feed > * {
+    animation: fadeSlideIn 0.3s ease-out both;
+  }
+  .feed > *:nth-child(1)  { animation-delay: 0.05s; }
+  .feed > *:nth-child(2)  { animation-delay: 0.15s; }
+  .feed > *:nth-child(3)  { animation-delay: 0.25s; }
+  .feed > *:nth-child(4)  { animation-delay: 0.40s; }
+  .feed > *:nth-child(5)  { animation-delay: 0.55s; }
+  .feed > *:nth-child(6)  { animation-delay: 0.65s; }
+  .feed > *:nth-child(7)  { animation-delay: 0.75s; }
+  .feed > *:nth-child(8)  { animation-delay: 0.90s; }
+  .feed > *:nth-child(9)  { animation-delay: 1.00s; }
+  .feed > *:nth-child(10) { animation-delay: 1.10s; }
+  .feed > *:nth-child(11) { animation-delay: 1.20s; }
+  .feed > *:nth-child(12) { animation-delay: 1.35s; }
+  .feed > *:nth-child(13) { animation-delay: 1.45s; }
+  .feed > *:nth-child(14) { animation-delay: 1.55s; }
+  .feed > *:nth-child(15) { animation-delay: 1.65s; }
+  .feed > *:nth-child(16) { animation-delay: 1.75s; }
+  .feed > *:nth-child(17) { animation-delay: 1.85s; }
+  .feed > *:nth-child(18) { animation-delay: 1.95s; }
+  .feed > *:nth-child(19) { animation-delay: 2.05s; }
+  .feed > *:nth-child(20) { animation-delay: 2.15s; }
+  .feed > *:nth-child(21) { animation-delay: 2.25s; }
+  .feed > *:nth-child(22) { animation-delay: 2.35s; }
+  .feed > *:nth-child(23) { animation-delay: 2.45s; }
+  .feed > *:nth-child(24) { animation-delay: 2.55s; }
+  .feed > *:nth-child(25) { animation-delay: 2.65s; }
+  .feed > *:nth-child(26) { animation-delay: 2.75s; }
+
+  /* Annotation */
+  .annotation {
+    font-size: 11px; color: var(--text-muted); text-align: center;
+    opacity: 0.5; padding: 8px 0;
+  }
+</style>
+</head>
+<body>
+
+<div class="outer-wrapper">
+  <div class="page-header">
+    <h1>Tool Call Widget Redesign &mdash; Interactive Mockup</h1>
+    <p>Execution feed for task: Parse hook events in stream processor</p>
+  </div>
+
+  <div class="panel" id="mainPanel">
+    <div class="panel-toolbar">
+      <div class="panel-toolbar-left">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span class="panel-toolbar-title">Execution Feed</span>
+      </div>
+      <div class="status-pill"><span class="dot pulse"></span> Executing</div>
+    </div>
+
+    <div class="compact-toggle">
+      <label>
+        <input type="checkbox" class="toggle-switch" id="compactToggle">
+        <span>Compact mode</span>
+      </label>
+    </div>
+
+    <div class="feed" id="feed">
+
+      <!-- ======================================== -->
+      <!-- NARRATION 1                              -->
+      <!-- ======================================== -->
+      <div class="narration">I'll start by fetching the task context, steps, and any review issues.</div>
+
+      <!-- ======================================== -->
+      <!-- WIDGET 1: get_task_context               -->
+      <!-- ======================================== -->
+      <div class="context-card">
+        <div class="context-card-top">
+          <div></div>
+          <span class="label">Context loaded</span>
+        </div>
+        <div class="task-title">Parse hook events in stream processor</div>
+        <div class="chips">
+          <span class="chip chip-category">feature</span>
+          <span class="chip chip-priority">high</span>
+          <span class="chip chip-steps">7 steps</span>
+        </div>
+        <div class="source">Source: Hook Event Visibility in Chat UI</div>
+      </div>
+
+      <!-- ======================================== -->
+      <!-- WIDGET 2: get_task_steps                 -->
+      <!-- ======================================== -->
+      <div class="widget-card" id="stepsWidget" onclick="toggleWidget('stepsWidget')">
+        <div class="widget-header">
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          <span class="title">Implementation Steps</span>
+          <span class="badge badge-accent">4/7</span>
+        </div>
+        <div class="widget-body">
+          <div class="widget-body-inner">
+            <ol class="steps-list">
+              <li>
+                <span class="step-number">1</span>
+                <span class="step-indicator">
+                  <svg class="done" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </span>
+                <span class="step-text done-text">Read stream_processor.rs to understand current definitions</span>
+              </li>
+              <li>
+                <span class="step-number">2</span>
+                <span class="step-indicator">
+                  <svg class="done" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </span>
+                <span class="step-text done-text">Add hook-specific fields to StreamMessage::System</span>
+              </li>
+              <li>
+                <span class="step-number">3</span>
+                <span class="step-indicator">
+                  <svg class="done" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </span>
+                <span class="step-text done-text">Add UserContent::Text variant</span>
+              </li>
+              <li>
+                <span class="step-number">4</span>
+                <span class="step-indicator">
+                  <svg class="in-progress" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
+                </span>
+                <span class="step-text active-text">Update ParsedLine and process_parsed_line for hook data</span>
+              </li>
+              <li>
+                <span class="step-number">5</span>
+                <span class="step-indicator">
+                  <svg class="pending" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="8"/></svg>
+                </span>
+                <span class="step-text">Add HookStarted/HookCompleted to StreamEvent</span>
+              </li>
+              <li>
+                <span class="step-number">6</span>
+                <span class="step-indicator">
+                  <svg class="pending" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="8"/></svg>
+                </span>
+                <span class="step-text">Update system message processing for hook events</span>
+              </li>
+              <li>
+                <span class="step-number">7</span>
+                <span class="step-indicator">
+                  <svg class="pending" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="8"/></svg>
+                </span>
+                <span class="step-text">Run cargo check and fix compilation errors</span>
+              </li>
+            </ol>
+          </div>
+          <div class="fade-overlay"></div>
+        </div>
+      </div>
+
+      <!-- ======================================== -->
+      <!-- WIDGET 3: get_task_issues (empty)        -->
+      <!-- ======================================== -->
+      <div class="inline-indicator">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        <span>No open issues</span>
+      </div>
+
+      <!-- ======================================== -->
+      <!-- NARRATION 2                              -->
+      <!-- ======================================== -->
+      <div class="narration">Good, I have the implementation plan. Let me read the plan artifact for detailed architecture.</div>
+
+      <!-- ======================================== -->
+      <!-- WIDGET 4: get_artifact                   -->
+      <!-- ======================================== -->
+      <div class="widget-card" id="artifactWidget" onclick="toggleWidget('artifactWidget')">
+        <div class="widget-header">
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          <span class="artifact-type-badge">Spec</span>
+          <span class="title">Hook Event Visibility in Chat UI</span>
+        </div>
+        <div class="widget-body">
+          <div class="widget-body-inner">
+            <div class="markdown-preview">
+              <div class="md-h1"># Hook Event Visibility in Chat UI</div>
+              <div class="md-h2">## Problem</div>
+              <div class="md-p">Hook events (SessionStart, PostToolUse, Stop) are currently invisible in the chat feed. Users cannot see when hooks fire, what output they produce, or when hooks block agent progress.</div>
+              <div class="md-h2">## Solution</div>
+              <div class="md-p">Parse hook-related system messages from the Claude stream and render them as lightweight, inline UI elements in the chat feed. The design should be unobtrusive by default with expand-to-inspect capability.</div>
+              <div class="md-h2">## Architecture</div>
+              <div class="md-p">StreamProcessor receives raw text lines from the Claude process stdout. We need to detect hook lifecycle markers within the system message stream and emit typed StreamEvent variants that the frontend can render.</div>
+            </div>
+          </div>
+          <div class="fade-overlay"></div>
+        </div>
+      </div>
+
+      <!-- ======================================== -->
+      <!-- NARRATION 3                              -->
+      <!-- ======================================== -->
+      <div class="narration">Now let me start with Step 1 &mdash; reading the current code.</div>
+
+      <!-- ======================================== -->
+      <!-- WIDGET 5: start_step                     -->
+      <!-- ======================================== -->
+      <div class="step-indicator-line">
+        <div class="dot-container">
+          <svg class="pulse" viewBox="0 0 16 16" fill="var(--accent)"><circle cx="8" cy="8" r="5"/></svg>
+        </div>
+        <div class="step-info">
+          <div class="step-line">
+            <span class="step-title" style="color: var(--text-secondary);">Read stream_processor.rs to understand current definitions</span>
+            <span class="badge badge-muted" style="font-size:9px">started</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ======================================== -->
+      <!-- WIDGET 9: Glob — File Search             -->
+      <!-- ======================================== -->
+      <div class="widget-card" id="globWidget" onclick="toggleWidget('globWidget')">
+        <div class="widget-header">
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><circle cx="15" cy="14" r="3"/><path d="m18 17 2 2"/></svg>
+          <span class="title" style="font-family:var(--font-mono);font-size:11px">**/stream_processor.rs</span>
+          <span class="badge badge-muted">1 match</span>
+        </div>
+        <div class="widget-body" style="max-height:none">
+          <div class="widget-body-inner">
+            <div class="file-list">
+              <div class="file-list-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
+                <span>src-tauri/src/infrastructure/agents/claude/stream_processor.rs</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ======================================== -->
+      <!-- WIDGET 6: Read — File Preview            -->
+      <!-- ======================================== -->
+      <div class="widget-card" id="readWidget" onclick="toggleWidget('readWidget')">
+        <div class="widget-header">
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
+          <span class="title" style="font-family:var(--font-mono);font-size:11px">...claude/stream_processor.rs</span>
+          <span class="badge badge-muted">1674 lines</span>
+        </div>
+        <div class="widget-body">
+          <div class="widget-body-inner">
+            <div class="code-preview"><span class="line-num">1</span>use std::collections::HashMap;
+<span class="line-num">2</span>use std::sync::Arc;
+<span class="line-num">3</span>use tokio::sync::mpsc;
+<span class="line-num">4</span>
+<span class="line-num">5</span>use crate::domain::entities::stream::{
+<span class="line-num">6</span>    StreamMessage, StreamEvent, ParsedLine,
+<span class="line-num">7</span>};
+<span class="line-num">8</span>use crate::domain::entities::task::TaskId;
+<span class="line-num">9</span>
+<span class="line-num">10</span>/// Processes raw stdout lines from Claude CLI
+<span class="line-num">11</span>/// into typed StreamMessage variants.
+<span class="line-num">12</span>pub struct StreamProcessor {
+<span class="line-num">13</span>    task_id: TaskId,
+<span class="line-num">14</span>    session_id: Option&lt;String&gt;,
+<span class="line-num">15</span>    buffer: String,
+<span class="line-num">16</span>    event_tx: mpsc::Sender&lt;StreamEvent&gt;,
+<span class="line-num">17</span>}</span></div>
+          </div>
+          <div class="fade-overlay"></div>
+        </div>
+      </div>
+
+      <!-- ======================================== -->
+      <!-- NARRATION 4                              -->
+      <!-- ======================================== -->
+      <div class="narration">I've read the file. 1674 lines. Now I understand the current structure. Let me move to Step 2.</div>
+
+      <!-- ======================================== -->
+      <!-- WIDGET 7: complete_step                  -->
+      <!-- ======================================== -->
+      <div class="step-indicator-line">
+        <div class="dot-container">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div class="step-info">
+          <div class="step-line">
+            <span class="step-title" style="color: var(--text-muted);">Read stream_processor.rs to understand current definitions</span>
+            <span class="badge badge-success" style="font-size:9px">completed</span>
+          </div>
+          <div class="step-note">Read stream_processor.rs (1674 lines). Current: StreamMessage::System has message+session_id only. Need to add hook_name, hook_event, hook_output fields.</div>
+        </div>
+      </div>
+
+      <!-- ======================================== -->
+      <!-- WIDGET 10: Grep — Content Search         -->
+      <!-- ======================================== -->
+      <div class="widget-card" id="grepWidget" onclick="toggleWidget('grepWidget')">
+        <div class="widget-header">
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <span class="title" style="font-family:var(--font-mono);font-size:11px">"ParsedLine"</span>
+          <span class="badge badge-muted">2 files</span>
+        </div>
+        <div class="widget-body" style="max-height:none">
+          <div class="widget-body-inner">
+            <div class="file-list">
+              <div class="file-list-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
+                <span>src-tauri/src/domain/entities/stream.rs</span>
+              </div>
+              <div class="file-list-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
+                <span>src-tauri/src/infrastructure/agents/claude/stream_processor.rs</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ======================================== -->
+      <!-- WIDGET 8: Edit — Diff View (Gold Std)    -->
+      <!-- ======================================== -->
+      <div class="widget-card" id="editWidget" onclick="toggleWidget('editWidget')">
+        <div class="widget-header">
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/></svg>
+          <span class="title" style="font-family:var(--font-mono);font-size:11px">...domain/entities/stream.rs</span>
+          <div class="diff-stats">
+            <span class="diff-add">+12</span>
+            <span class="diff-del">-3</span>
+          </div>
+        </div>
+        <div class="widget-body">
+          <div class="widget-body-inner">
+            <div class="diff-view"><div class="diff-line ctx"><span class="line-prefix"> </span>pub enum StreamMessage {</div>
+<div class="diff-line ctx"><span class="line-prefix"> </span>    Assistant(AssistantMessage),</div>
+<div class="diff-line del"><span class="line-prefix">-</span>    System { message: String, session_id: Option&lt;String&gt; },</div>
+<div class="diff-line add"><span class="line-prefix">+</span>    System {</div>
+<div class="diff-line add"><span class="line-prefix">+</span>        message: String,</div>
+<div class="diff-line add"><span class="line-prefix">+</span>        session_id: Option&lt;String&gt;,</div>
+<div class="diff-line add"><span class="line-prefix">+</span>        hook_name: Option&lt;String&gt;,</div>
+<div class="diff-line add"><span class="line-prefix">+</span>        hook_event: Option&lt;HookEvent&gt;,</div>
+<div class="diff-line add"><span class="line-prefix">+</span>        hook_output: Option&lt;String&gt;,</div>
+<div class="diff-line add"><span class="line-prefix">+</span>    },</div>
+<div class="diff-line ctx"><span class="line-prefix"> </span>    Tool(ToolMessage),</div>
+<div class="diff-line ctx"><span class="line-prefix"> </span>}</div>
+<div class="diff-line ctx"><span class="line-prefix"> </span></div>
+<div class="diff-line add"><span class="line-prefix">+</span>#[derive(Debug, Clone, Serialize, Deserialize)]</div>
+<div class="diff-line add"><span class="line-prefix">+</span>pub enum HookEvent {</div>
+<div class="diff-line add"><span class="line-prefix">+</span>    Started,</div>
+<div class="diff-line add"><span class="line-prefix">+</span>    Completed { exit_code: i32 },</div>
+<div class="diff-line add"><span class="line-prefix">+</span>    Blocked { reason: String },</div>
+<div class="diff-line add"><span class="line-prefix">+</span>}</div></div>
+          </div>
+          <div class="fade-overlay"></div>
+        </div>
+      </div>
+
+      <!-- ======================================== -->
+      <!-- NARRATION 5                              -->
+      <!-- ======================================== -->
+      <div class="narration">Added the new fields to StreamMessage::System. Moving to the next step.</div>
+
+      <!-- ======================================== -->
+      <!-- Another start_step                       -->
+      <!-- ======================================== -->
+      <div class="step-indicator-line">
+        <div class="dot-container">
+          <svg class="pulse" viewBox="0 0 16 16" fill="var(--accent)"><circle cx="8" cy="8" r="5"/></svg>
+        </div>
+        <div class="step-info">
+          <div class="step-line">
+            <span class="step-title" style="color: var(--text-secondary);">Update ParsedLine and process_parsed_line for hook data</span>
+            <span class="badge badge-muted" style="font-size:9px">started</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ======================================== -->
+      <!-- WIDGET 11: Bash — Terminal Output        -->
+      <!-- ======================================== -->
+      <div class="widget-card" id="bashWidget" onclick="toggleWidget('bashWidget')">
+        <div class="widget-header">
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+          <span class="title">Check compilation and run tests</span>
+          <span class="badge badge-success" style="font-size:9px">exit 0</span>
+        </div>
+        <div class="widget-body">
+          <div class="widget-body-inner">
+            <div class="bash-command"><span class="prompt">$</span>cargo check --all-targets --all-features 2>&amp;1 &amp;&amp; cargo test -- --quiet</div>
+            <div class="terminal-output">    Checking ralphx v0.1.0 (/Users/dev/Code/ralphx/src-tauri)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.2s
+   Compiling ralphx v0.1.0 (/Users/dev/Code/ralphx/src-tauri)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.1s
+     Running unittests src/main.rs
+
+running 247 tests
+.............................................
+.............................................
+.............................................
+.............................................
+.............................................
+..
+
+test result: ok. 247 passed; 0 failed; 0 ignored</div>
+          </div>
+          <div class="fade-overlay"></div>
+        </div>
+      </div>
+
+      <!-- ======================================== -->
+      <!-- NARRATION 6                              -->
+      <!-- ======================================== -->
+      <div class="narration">All checks pass. The implementation compiles correctly.</div>
+
+      <!-- ======================================== -->
+      <!-- Final complete_step                      -->
+      <!-- ======================================== -->
+      <div class="step-indicator-line">
+        <div class="dot-container">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div class="step-info">
+          <div class="step-line">
+            <span class="step-title" style="color: var(--text-muted);">Update ParsedLine and process_parsed_line for hook data</span>
+            <span class="badge badge-success" style="font-size:9px">completed</span>
+          </div>
+          <div class="step-note">Added HookStarted/HookCompleted variants to ParsedLine. Updated process_parsed_line to detect hook markers and emit typed events. All 247 tests pass.</div>
+        </div>
+      </div>
+
+      <!-- ======================================== -->
+      <!-- Bash with non-zero exit (error example)  -->
+      <!-- ======================================== -->
+      <!-- Commented out to keep flow clean, but here's the pattern:
+      <div class="widget-card" id="bashErrorWidget" onclick="toggleWidget('bashErrorWidget')">
+        <div class="widget-header">
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+          <span class="title">Run clippy lints</span>
+          <span class="badge badge-error exit-badge">exit 1</span>
+        </div>
+        ...
+      </div>
+      -->
+
+    </div>
+  </div>
+
+  <div class="annotation">RalphX &mdash; Tool Call Widget Redesign &middot; Click cards to expand &middot; Toggle compact mode</div>
+</div>
+
+<script>
+  // Toggle collapsible widgets
+  function toggleWidget(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.classList.toggle('open');
+  }
+
+  // Compact mode toggle
+  document.getElementById('compactToggle').addEventListener('change', function() {
+    document.getElementById('mainPanel').classList.toggle('compact-mode', this.checked);
+  });
+
+  // Auto-scroll to bottom after animations settle
+  var feed = document.getElementById('feed');
+  setTimeout(function() {
+    feed.scrollTop = feed.scrollHeight;
+  }, 3000);
+</script>
+</body>
+</html>
