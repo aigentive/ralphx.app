@@ -1,18 +1,3 @@
----
-paths:
-  - "src-tauri/src/domain/state_machine/**"
-  - "src-tauri/src/application/git_service.rs"
-  - "src-tauri/src/application/task_transition_service.rs"
-  - "src-tauri/src/application/task_scheduler_service.rs"
-  - "src-tauri/src/infrastructure/agents/**"
-  - "src-tauri/src/domain/entities/status.rs"
-  - "src-tauri/src/domain/entities/plan_branch.rs"
-  - "src-tauri/src/http_server/handlers/git.rs"
-  - "ralphx-plugin/agents/**"
-  - "src/api/plan-branch.ts"
-  - "src/components/settings/GitSettingsSection.tsx"
----
-
 # Task Execution & Git Workflows
 
 > **Maintainer note:** This file optimizes for LLM context efficiency. Rules: (1) Tables > prose (2) One example max per concept (3) No redundant explanations (4) Use symbols: → = leads to, | = or, ❌/✅ = wrong/right (5) Before adding content, ask: "Can this be a single line?" If yes, make it one line.
