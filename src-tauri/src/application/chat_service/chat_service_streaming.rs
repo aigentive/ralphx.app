@@ -14,7 +14,7 @@ use crate::domain::entities::{
 use crate::domain::repositories::{ActivityEventRepository, ChatMessageRepository, TaskRepository};
 use crate::infrastructure::agents::claude::{ContentBlockItem, DiffContext, StreamEvent, StreamProcessor, ToolCall};
 
-use super::{events, AgentChunkPayload, AgentToolCallPayload};
+use super::{events, AgentChunkPayload, AgentTaskCompletedPayload, AgentTaskStartedPayload, AgentToolCallPayload};
 
 // ============================================================================
 // Background stream processing
@@ -109,9 +109,9 @@ pub async fn process_stream_background<R: Runtime>(
         if debug_lines.len() < 50 {
             debug_lines.push(line.clone());
         }
-        if let Some(msg) = StreamProcessor::parse_line(&line) {
+        if let Some(parsed) = StreamProcessor::parse_line(&line) {
             lines_parsed += 1;
-            let stream_events = processor.process_message(msg);
+            let stream_events = processor.process_parsed_line(parsed);
 
             for event in stream_events {
                 match event {
@@ -202,7 +202,7 @@ pub async fn process_stream_background<R: Runtime>(
                             }
                         }
                     }
-                    StreamEvent::ToolCallStarted { name, id } => {
+                    StreamEvent::ToolCallStarted { name, id, parent_tool_use_id } => {
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
                                 events::AGENT_TOOL_CALL,
@@ -215,12 +215,13 @@ pub async fn process_stream_background<R: Runtime>(
                                     context_type: context_type_str.clone(),
                                     context_id: context_id_str.clone(),
                                     diff_context: None,
+                                    parent_tool_use_id,
                                 },
                             );
 
                         }
                     }
-                    StreamEvent::ToolCallCompleted(mut tool_call) => {
+                    StreamEvent::ToolCallCompleted { mut tool_call, parent_tool_use_id } => {
                         // Capture old file content for Edit/Write tool calls
                         let name_lower = tool_call.name.to_lowercase();
                         if name_lower == "edit" || name_lower == "write" {
@@ -258,6 +259,7 @@ pub async fn process_stream_background<R: Runtime>(
                                     context_type: context_type_str.clone(),
                                     context_id: context_id_str.clone(),
                                     diff_context: diff_context_value,
+                                    parent_tool_use_id: parent_tool_use_id.clone(),
                                 },
                             );
 
@@ -312,7 +314,40 @@ pub async fn process_stream_background<R: Runtime>(
                     StreamEvent::SessionId(_) => {
                         // Captured in processor.finish()
                     }
-                    StreamEvent::ToolResultReceived { tool_use_id, result } => {
+                    StreamEvent::TaskStarted { tool_use_id, description, subagent_type, model } => {
+                        if let Some(ref handle) = app_handle {
+                            let _ = handle.emit(
+                                events::AGENT_TASK_STARTED,
+                                AgentTaskStartedPayload {
+                                    tool_use_id,
+                                    description,
+                                    subagent_type,
+                                    model,
+                                    conversation_id: conversation_id_str.clone(),
+                                    context_type: context_type_str.clone(),
+                                    context_id: context_id_str.clone(),
+                                },
+                            );
+                        }
+                    }
+                    StreamEvent::TaskCompleted { tool_use_id, agent_id, total_duration_ms, total_tokens, total_tool_use_count } => {
+                        if let Some(ref handle) = app_handle {
+                            let _ = handle.emit(
+                                events::AGENT_TASK_COMPLETED,
+                                AgentTaskCompletedPayload {
+                                    tool_use_id,
+                                    agent_id,
+                                    total_duration_ms,
+                                    total_tokens,
+                                    total_tool_use_count,
+                                    conversation_id: conversation_id_str.clone(),
+                                    context_type: context_type_str.clone(),
+                                    context_id: context_id_str.clone(),
+                                },
+                            );
+                        }
+                    }
+                    StreamEvent::ToolResultReceived { tool_use_id, result, parent_tool_use_id } => {
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
                                 events::AGENT_TOOL_CALL,
@@ -325,6 +360,7 @@ pub async fn process_stream_background<R: Runtime>(
                                     context_type: context_type_str.clone(),
                                     context_id: context_id_str.clone(),
                                     diff_context: None,
+                                    parent_tool_use_id,
                                 },
                             );
 

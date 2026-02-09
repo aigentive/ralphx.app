@@ -44,7 +44,8 @@ pub use chat_service_streaming::process_stream_background;
 pub(crate) use chat_service_send_background::reconcile_merge_auto_complete;
 pub use chat_service_types::{
     events, AgentChunkPayload, AgentErrorPayload, AgentMessageCreatedPayload,
-    AgentQueueSentPayload, AgentRunCompletedPayload, AgentRunStartedPayload, AgentToolCallPayload,
+    AgentQueueSentPayload, AgentRunCompletedPayload, AgentRunStartedPayload,
+    AgentTaskCompletedPayload, AgentTaskStartedPayload, AgentToolCallPayload,
     ChatConversationWithMessages, ChatServiceError, SendResult,
 };
 
