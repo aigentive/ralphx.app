@@ -20,6 +20,15 @@ import { ColumnGroup } from "./ColumnGroup";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InlineTaskAdd } from "../InlineTaskAdd";
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import { GroupContextMenuItems } from "@/components/tasks/GroupContextMenuItems";
+import { resolveGroupCleanupParams } from "@/lib/task-actions";
+import { useConfirmation } from "@/hooks/useConfirmation";
+import { useTaskMutation } from "@/hooks/useTaskMutation";
+import {
   useInfiniteTasksQuery,
   flattenPages,
 } from "@/hooks/useInfiniteTasksQuery";
@@ -228,6 +237,16 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
     };
   };
 
+  // Confirmation dialog for column context menu
+  const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
+  const { cleanupTasksInGroupMutation } = useTaskMutation(projectId);
+
+  // Handler for "Remove all" group action
+  const handleRemoveAll = useCallback(() => {
+    const { groupKind, groupId } = resolveGroupCleanupParams("column", column.mapsTo);
+    cleanupTasksInGroupMutation.mutate({ groupKind, groupId, projectId });
+  }, [column.mapsTo, projectId, cleanupTasksInGroupMutation]);
+
   // Determine if this column should show InlineTaskAdd
   // Always visible in draft/backlog columns (not during drag)
   const showInlineAdd =
@@ -282,6 +301,8 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
       </div>
 
       {/* Drop zone with task list - clean, minimal */}
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
       <div
         ref={setNodeRef}
         data-testid={`drop-zone-${column.id}`}
@@ -369,6 +390,20 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
           />
         )}
       </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <GroupContextMenuItems
+            groupLabel={column.name}
+            groupKind="column"
+            taskCount={tasks.length}
+            projectId={projectId}
+            groupId={column.mapsTo}
+            onRemoveAll={handleRemoveAll}
+            confirm={confirm}
+          />
+        </ContextMenuContent>
+        <ConfirmationDialog {...confirmationDialogProps} />
+      </ContextMenu>
     </div>
   );
 }
