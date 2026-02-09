@@ -420,6 +420,13 @@ impl TaskScheduler for MockTaskScheduler {
             vec![],
         ));
     }
+
+    async fn try_retry_deferred_merges(&self, project_id: &str) {
+        self.calls.lock().unwrap().push(ServiceCall::new(
+            "try_retry_deferred_merges",
+            vec![project_id.to_string()],
+        ));
+    }
 }
 
 #[cfg(test)]
