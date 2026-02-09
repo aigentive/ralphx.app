@@ -43,10 +43,10 @@ pub use chat_service_mock::{MockChatResponse, MockChatService};
 pub use chat_service_streaming::process_stream_background;
 pub(crate) use chat_service_send_background::reconcile_merge_auto_complete;
 pub use chat_service_types::{
-    events, AgentChunkPayload, AgentErrorPayload, AgentMessageCreatedPayload,
-    AgentQueueSentPayload, AgentRunCompletedPayload, AgentRunStartedPayload,
-    AgentTaskCompletedPayload, AgentTaskStartedPayload, AgentToolCallPayload,
-    ChatConversationWithMessages, ChatServiceError, SendResult,
+    events, AgentChunkPayload, AgentErrorPayload, AgentHookPayload,
+    AgentMessageCreatedPayload, AgentQueueSentPayload, AgentRunCompletedPayload,
+    AgentRunStartedPayload, AgentTaskCompletedPayload, AgentTaskStartedPayload,
+    AgentToolCallPayload, ChatConversationWithMessages, ChatServiceError, SendResult,
 };
 
 // Types and errors are now in chat_service_types.rs

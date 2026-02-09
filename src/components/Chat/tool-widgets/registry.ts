@@ -12,6 +12,7 @@
 import type { ComponentType } from "react";
 import type { ToolCallWidgetProps } from "./shared";
 import { StepIndicator } from "./StepIndicator";
+import { ContextWidget } from "./ContextWidget";
 
 /** Registry type: tool name (lowercase) → React component */
 export type ToolCallWidgetRegistry = Record<string, ComponentType<ToolCallWidgetProps>>;
@@ -21,6 +22,8 @@ export type ToolCallWidgetRegistry = Record<string, ComponentType<ToolCallWidget
  * Tool names should be lowercase to match normalized lookup in ToolCallIndicator.
  */
 export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
+  // Context tool → ContextWidget (always-visible context card)
+  "get_task_context": ContextWidget,
   // Step lifecycle tools → StepIndicator (ultra-compact inline indicators)
   "mcp__ralphx__start_step": StepIndicator,
   "mcp__ralphx__complete_step": StepIndicator,
