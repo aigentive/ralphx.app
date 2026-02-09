@@ -73,6 +73,17 @@ pub struct DiffStats {
     pub changed_files: Vec<String>,
 }
 
+/// Information about a git worktree, parsed from `git worktree list --porcelain`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorktreeInfo {
+    /// Absolute path to the worktree directory
+    pub path: String,
+    /// Branch checked out in this worktree (None for detached HEAD or bare repos)
+    pub branch: Option<String>,
+    /// HEAD commit SHA (None for bare repos)
+    pub head: Option<String>,
+}
+
 /// Git Service for branch, worktree, and merge operations
 pub struct GitService;
 
@@ -1504,6 +1515,117 @@ impl GitService {
 
         (files, insertions, deletions)
     }
+
+    // =========================================================================
+    // Worktree Query Operations
+    // =========================================================================
+
+    /// List all worktrees in the repository
+    ///
+    /// Runs `git worktree list --porcelain` and parses the output into
+    /// structured `WorktreeInfo` entries.
+    ///
+    /// # Arguments
+    /// * `repo` - Path to the git repository
+    pub fn list_worktrees(repo: &Path) -> AppResult<Vec<WorktreeInfo>> {
+        debug!("Listing worktrees in {:?}", repo);
+
+        let output = Command::new("git")
+            .args(["worktree", "list", "--porcelain"])
+            .current_dir(repo)
+            .output()
+            .map_err(|e| {
+                AppError::GitOperation(format!("Failed to run git worktree list: {}", e))
+            })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AppError::GitOperation(format!(
+                "Failed to list worktrees: {}",
+                stderr
+            )));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        Ok(Self::parse_worktree_porcelain(&stdout))
+    }
+
+    /// Parse `git worktree list --porcelain` output into `WorktreeInfo` entries
+    ///
+    /// Porcelain format outputs blocks separated by blank lines. Each block has:
+    /// - `worktree <path>` (always present)
+    /// - `HEAD <sha>` (absent for bare repos)
+    /// - `branch refs/heads/<name>` (absent for detached HEAD or bare)
+    /// - Optional flags: `bare`, `detached`, `prunable`
+    fn parse_worktree_porcelain(output: &str) -> Vec<WorktreeInfo> {
+        let mut worktrees = Vec::new();
+        let mut path: Option<String> = None;
+        let mut head: Option<String> = None;
+        let mut branch: Option<String> = None;
+
+        for line in output.lines() {
+            if line.is_empty() {
+                // End of a worktree block — flush
+                if let Some(p) = path.take() {
+                    worktrees.push(WorktreeInfo {
+                        path: p,
+                        branch: branch.take(),
+                        head: head.take(),
+                    });
+                }
+                head = None;
+                branch = None;
+            } else if let Some(rest) = line.strip_prefix("worktree ") {
+                path = Some(rest.to_string());
+            } else if let Some(rest) = line.strip_prefix("HEAD ") {
+                head = Some(rest.to_string());
+            } else if let Some(rest) = line.strip_prefix("branch ") {
+                // Strip refs/heads/ prefix to get the short branch name
+                let short = rest
+                    .strip_prefix("refs/heads/")
+                    .unwrap_or(rest);
+                branch = Some(short.to_string());
+            }
+            // Ignore `bare`, `detached`, `prunable` lines
+        }
+
+        // Flush last block (porcelain output may not end with a blank line)
+        if let Some(p) = path.take() {
+            worktrees.push(WorktreeInfo {
+                path: p,
+                branch: branch.take(),
+                head: head.take(),
+            });
+        }
+
+        worktrees
+    }
+
+    /// Prune stale worktree references
+    ///
+    /// Runs `git worktree prune` to clean up stale worktree metadata entries
+    /// that reference directories that no longer exist on disk.
+    ///
+    /// # Arguments
+    /// * `repo` - Path to the git repository
+    pub fn prune_worktrees(repo: &Path) -> AppResult<()> {
+        debug!("Pruning stale worktrees in {:?}", repo);
+
+        let output = Command::new("git")
+            .args(["worktree", "prune"])
+            .current_dir(repo)
+            .output()
+            .map_err(|e| {
+                AppError::GitOperation(format!("Failed to run git worktree prune: {}", e))
+            })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            warn!("Failed to prune worktrees in {:?}: {}", repo, stderr);
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -2889,5 +3011,125 @@ mod tests {
 
         // Clean up
         let _ = GitService::delete_worktree(repo, &merge_wt);
+    }
+
+    // =========================================================================
+    // Worktree porcelain parsing tests
+    // =========================================================================
+
+    #[test]
+    fn test_parse_worktree_porcelain_normal() {
+        let output = "\
+worktree /home/user/project
+HEAD abc1234567890abcdef1234567890abcdef123456
+branch refs/heads/main
+
+worktree /home/user/worktrees/feature
+HEAD def4567890abcdef1234567890abcdef12345678
+branch refs/heads/feature-branch
+
+";
+        let result = GitService::parse_worktree_porcelain(output);
+        assert_eq!(result.len(), 2);
+
+        assert_eq!(result[0].path, "/home/user/project");
+        assert_eq!(result[0].head.as_deref(), Some("abc1234567890abcdef1234567890abcdef123456"));
+        assert_eq!(result[0].branch.as_deref(), Some("main"));
+
+        assert_eq!(result[1].path, "/home/user/worktrees/feature");
+        assert_eq!(result[1].head.as_deref(), Some("def4567890abcdef1234567890abcdef12345678"));
+        assert_eq!(result[1].branch.as_deref(), Some("feature-branch"));
+    }
+
+    #[test]
+    fn test_parse_worktree_porcelain_bare_repo() {
+        let output = "\
+worktree /home/user/project.git
+bare
+
+";
+        let result = GitService::parse_worktree_porcelain(output);
+        assert_eq!(result.len(), 1);
+
+        assert_eq!(result[0].path, "/home/user/project.git");
+        assert!(result[0].head.is_none());
+        assert!(result[0].branch.is_none());
+    }
+
+    #[test]
+    fn test_parse_worktree_porcelain_detached_head() {
+        let output = "\
+worktree /home/user/project
+HEAD abc1234567890abcdef1234567890abcdef123456
+branch refs/heads/main
+
+worktree /home/user/worktrees/detached
+HEAD 9876543210abcdef1234567890abcdef12345678
+detached
+
+";
+        let result = GitService::parse_worktree_porcelain(output);
+        assert_eq!(result.len(), 2);
+
+        assert_eq!(result[1].path, "/home/user/worktrees/detached");
+        assert_eq!(result[1].head.as_deref(), Some("9876543210abcdef1234567890abcdef12345678"));
+        assert!(result[1].branch.is_none());
+    }
+
+    #[test]
+    fn test_parse_worktree_porcelain_no_trailing_newline() {
+        // Some git versions may not emit a trailing blank line
+        let output = "\
+worktree /home/user/project
+HEAD abc1234567890abcdef1234567890abcdef123456
+branch refs/heads/main";
+
+        let result = GitService::parse_worktree_porcelain(output);
+        assert_eq!(result.len(), 1);
+
+        assert_eq!(result[0].path, "/home/user/project");
+        assert_eq!(result[0].branch.as_deref(), Some("main"));
+    }
+
+    #[test]
+    fn test_parse_worktree_porcelain_empty_output() {
+        let result = GitService::parse_worktree_porcelain("");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_parse_worktree_porcelain_nested_branch_name() {
+        let output = "\
+worktree /home/user/worktrees/task
+HEAD abc1234567890abcdef1234567890abcdef123456
+branch refs/heads/ralphx/my-app/task-abc123
+
+";
+        let result = GitService::parse_worktree_porcelain(output);
+        assert_eq!(result.len(), 1);
+
+        // Nested branch names should be preserved after stripping refs/heads/
+        assert_eq!(result[0].branch.as_deref(), Some("ralphx/my-app/task-abc123"));
+    }
+
+    #[test]
+    fn test_parse_worktree_porcelain_prunable() {
+        let output = "\
+worktree /home/user/project
+HEAD abc1234567890abcdef1234567890abcdef123456
+branch refs/heads/main
+
+worktree /tmp/stale-wt
+HEAD def4567890abcdef1234567890abcdef12345678
+branch refs/heads/old-branch
+prunable gitdir file points to non-existent location
+
+";
+        let result = GitService::parse_worktree_porcelain(output);
+        assert_eq!(result.len(), 2);
+
+        // Prunable flag is ignored (we just parse path/head/branch)
+        assert_eq!(result[1].path, "/tmp/stale-wt");
+        assert_eq!(result[1].branch.as_deref(), Some("old-branch"));
     }
 }
