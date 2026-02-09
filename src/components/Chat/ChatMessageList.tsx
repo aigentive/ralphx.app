@@ -12,7 +12,6 @@ import React, { forwardRef, useCallback, useEffect, useMemo, useRef, useImperati
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { MessageItem } from "./MessageItem";
 import { StreamingToolIndicator } from "./StreamingToolIndicator";
-import { AskUserQuestionCard } from "./AskUserQuestionCard";
 import {
   TypingIndicator,
   FailedRunBanner,
@@ -20,7 +19,6 @@ import {
 import type { ToolCall } from "./ToolCallIndicator";
 import type { StreamingTask } from "@/types/streaming-task";
 import type { ContentBlockItem } from "./MessageItem";
-import type { AskUserQuestionPayload, AskUserQuestionResponse } from "@/types/ask-user-question";
 import { isDiffToolCall } from "./DiffToolCallView.utils";
 import { DiffToolCallView } from "./DiffToolCallView";
 import { TaskSubagentCard } from "./TaskSubagentCard";
@@ -73,18 +71,6 @@ interface ChatMessageListProps {
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
   /** Optional timestamp to scroll to (for history mode) - scrolls to first message at or after this time */
   scrollToTimestamp?: string | null;
-  /** Active question from agent (ask-user-question) */
-  activeQuestion?: AskUserQuestionPayload | null | undefined;
-  /** Callback when user submits an answer */
-  onSubmitAnswer?: ((response: AskUserQuestionResponse) => void) | undefined;
-  /** Whether answer submission is in progress */
-  isSubmittingAnswer?: boolean | undefined;
-  /** Summary of the previously answered question */
-  answeredQuestion?: string | undefined;
-  /** Called when user dismisses the active question */
-  onDismissQuestion?: (() => void) | undefined;
-  /** Called when user dismisses the answered summary */
-  onDismissAnswered?: (() => void) | undefined;
 }
 
 // ============================================================================
@@ -105,12 +91,6 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       streamingText,
       messagesEndRef,
       scrollToTimestamp,
-      activeQuestion,
-      onSubmitAnswer,
-      isSubmittingAnswer = false,
-      answeredQuestion,
-      onDismissQuestion,
-      onDismissAnswered,
     },
     ref
   ) {
@@ -249,17 +229,6 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                     ) : !streamingText && diffToolCalls.length === 0 ? (
                       <TypingIndicator />
                     ) : null
-                  )}
-                  {/* Show inline question card when agent asks a question or answered summary */}
-                  {(activeQuestion || answeredQuestion) && onSubmitAnswer && (
-                    <AskUserQuestionCard
-                      question={activeQuestion ?? { requestId: "", taskId: "", header: "", question: "", options: [], multiSelect: false }}
-                      onSubmit={onSubmitAnswer}
-                      isSubmitting={isSubmittingAnswer}
-                      answeredWith={answeredQuestion}
-                      onDismiss={onDismissQuestion}
-                      onDismissAnswered={onDismissAnswered}
-                    />
                   )}
                   <div ref={messagesEndRef} />
                 </div>
