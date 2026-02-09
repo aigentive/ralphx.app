@@ -250,6 +250,56 @@ async fn is_task_actively_merging(
     }
 }
 
+/// Check if a task's merge would target the given branch.
+///
+/// Resolves the task's merge target branch the same way `resolve_merge_branches()` does,
+/// then compares against `target_branch`. Used by the concurrent merge guard to detect
+/// tasks that would conflict with the same target.
+async fn task_targets_branch(
+    task: &Task,
+    project: &Project,
+    plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
+    target_branch: &str,
+) -> bool {
+    let (_, resolved_target) = resolve_merge_branches(task, project, plan_branch_repo).await;
+    resolved_target == target_branch
+}
+
+/// Parse a task's metadata JSON string into a `serde_json::Value`.
+///
+/// Returns `None` if the task has no metadata or if parsing fails.
+pub(crate) fn parse_metadata(task: &Task) -> Option<serde_json::Value> {
+    task.metadata
+        .as_ref()
+        .and_then(|m| serde_json::from_str(m).ok())
+}
+
+/// Check if a task has the `merge_deferred` flag set in its metadata.
+pub(crate) fn has_merge_deferred_metadata(task: &Task) -> bool {
+    parse_metadata(task)
+        .and_then(|v| v.get("merge_deferred")?.as_bool())
+        .unwrap_or(false)
+}
+
+/// Clear the `merge_deferred` and `merge_deferred_at` fields from a task's metadata.
+///
+/// Mutates the task in-place. If the metadata becomes an empty object after removal,
+/// clears metadata entirely.
+pub(crate) fn clear_merge_deferred_metadata(task: &mut Task) {
+    let Some(mut meta) = parse_metadata(task) else {
+        return;
+    };
+    if let Some(obj) = meta.as_object_mut() {
+        obj.remove("merge_deferred");
+        obj.remove("merge_deferred_at");
+        if obj.is_empty() {
+            task.metadata = None;
+        } else {
+            task.metadata = Some(meta.to_string());
+        }
+    }
+}
+
 /// Resolve the base branch for a task's working branch.
 ///
 /// If the task belongs to a plan with an active feature branch, returns the feature
@@ -1544,6 +1594,93 @@ impl<'a> super::TransitionHandler<'a> {
             "Attempting programmatic merge (Phase 1)"
         );
 
+        // --- Concurrent merge guard (worktree mode only) ---
+        // In worktree mode, git only allows one worktree per branch. If another task
+        // is already merging (PendingMerge or Merging) into the same target branch,
+        // we must defer this task to avoid the "branch already checked out" error.
+        // Priority: older task (by created_at) wins; newer task gets deferred.
+        if project.git_mode == GitMode::Worktree {
+            let all_tasks = task_repo.get_by_project(&project.id).await.unwrap_or_default();
+            let merge_states = [InternalStatus::PendingMerge, InternalStatus::Merging];
+
+            let has_older_merge = {
+                let mut found = false;
+                for other in &all_tasks {
+                    // Skip self
+                    if other.id == task.id {
+                        continue;
+                    }
+                    // Only consider tasks in merge states
+                    if !merge_states.contains(&other.internal_status) {
+                        continue;
+                    }
+                    // Skip tasks that are themselves deferred
+                    if has_merge_deferred_metadata(other) {
+                        continue;
+                    }
+                    // Check if targeting the same branch
+                    if !task_targets_branch(other, &project, plan_branch_repo, &target_branch).await {
+                        continue;
+                    }
+                    // Older task has priority
+                    if other.created_at < task.created_at {
+                        tracing::info!(
+                            task_id = task_id_str,
+                            other_task_id = other.id.as_str(),
+                            other_created_at = %other.created_at,
+                            this_created_at = %task.created_at,
+                            target_branch = %target_branch,
+                            "Concurrent merge detected: older task has priority, deferring this task"
+                        );
+                        found = true;
+                        break;
+                    }
+                }
+                found
+            };
+
+            if has_older_merge {
+                // Set merge_deferred metadata and return early — task stays in PendingMerge
+                let now = chrono::Utc::now().to_rfc3339();
+                let mut meta = parse_metadata(&task).unwrap_or_else(|| serde_json::json!({}));
+                if let Some(obj) = meta.as_object_mut() {
+                    obj.insert("merge_deferred".to_string(), serde_json::json!(true));
+                    obj.insert("merge_deferred_at".to_string(), serde_json::json!(now));
+                }
+                task.metadata = Some(meta.to_string());
+                task.touch();
+
+                if let Err(e) = task_repo.update(&task).await {
+                    tracing::error!(
+                        task_id = task_id_str,
+                        error = %e,
+                        "Failed to update task with merge_deferred metadata"
+                    );
+                }
+
+                self.machine
+                    .context
+                    .services
+                    .event_emitter
+                    .emit("task:status_changed", task_id_str)
+                    .await;
+
+                tracing::info!(
+                    task_id = task_id_str,
+                    target_branch = %target_branch,
+                    "Merge deferred — task stays in PendingMerge until competing merge completes"
+                );
+                return;
+            }
+
+            // If this task was previously deferred, clear the flag now that we're proceeding
+            if has_merge_deferred_metadata(&task) {
+                clear_merge_deferred_metadata(&mut task);
+                task.touch();
+                let _ = task_repo.update(&task).await;
+            }
+        }
+
         // In worktree mode, delete the task worktree first to unlock the branch.
         // Git refuses to checkout a branch that's checked out in another worktree,
         // so we must remove the task worktree before creating the merge worktree.
@@ -2303,6 +2440,19 @@ impl<'a> super::TransitionHandler<'a> {
             tokio::spawn(async move {
                 tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
                 scheduler.try_schedule_ready_tasks().await;
+            });
+        }
+
+        // Retry deferred merges: after a merge completes, re-trigger any tasks that
+        // were deferred because they targeted the same branch. We use the scheduler's
+        // try_retry_deferred_merges() method which builds a fresh TaskTransitionService
+        // and re-invokes attempt_programmatic_merge for each deferred task.
+        if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
+            let scheduler = Arc::clone(scheduler);
+            let project_id = self.machine.context.project_id.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
+                scheduler.try_retry_deferred_merges(&project_id).await;
             });
         }
     }
@@ -3111,5 +3261,143 @@ mod tests {
     fn test_extract_task_id_from_merge_path_just_merge_prefix() {
         // "merge-" with empty task ID should return empty string
         assert_eq!(extract_task_id_from_merge_path("/dir/merge-"), Some(""));
+    }
+
+    // ==================
+    // parse_metadata tests
+    // ==================
+
+    #[test]
+    fn parse_metadata_returns_none_when_no_metadata() {
+        let task = make_task(None, None);
+        assert!(parse_metadata(&task).is_none());
+    }
+
+    #[test]
+    fn parse_metadata_returns_none_for_invalid_json() {
+        let mut task = make_task(None, None);
+        task.metadata = Some("not json".to_string());
+        assert!(parse_metadata(&task).is_none());
+    }
+
+    #[test]
+    fn parse_metadata_returns_value_for_valid_json() {
+        let mut task = make_task(None, None);
+        task.metadata = Some(r#"{"key": "value"}"#.to_string());
+        let meta = parse_metadata(&task).unwrap();
+        assert_eq!(meta["key"], "value");
+    }
+
+    // ==================
+    // has_merge_deferred_metadata tests
+    // ==================
+
+    #[test]
+    fn has_merge_deferred_returns_false_when_no_metadata() {
+        let task = make_task(None, None);
+        assert!(!has_merge_deferred_metadata(&task));
+    }
+
+    #[test]
+    fn has_merge_deferred_returns_false_when_no_flag() {
+        let mut task = make_task(None, None);
+        task.metadata = Some(r#"{"other": "data"}"#.to_string());
+        assert!(!has_merge_deferred_metadata(&task));
+    }
+
+    #[test]
+    fn has_merge_deferred_returns_false_when_flag_is_false() {
+        let mut task = make_task(None, None);
+        task.metadata = Some(r#"{"merge_deferred": false}"#.to_string());
+        assert!(!has_merge_deferred_metadata(&task));
+    }
+
+    #[test]
+    fn has_merge_deferred_returns_true_when_flag_is_true() {
+        let mut task = make_task(None, None);
+        task.metadata = Some(r#"{"merge_deferred": true}"#.to_string());
+        assert!(has_merge_deferred_metadata(&task));
+    }
+
+    // ==================
+    // clear_merge_deferred_metadata tests
+    // ==================
+
+    #[test]
+    fn clear_merge_deferred_removes_flags_from_metadata() {
+        let mut task = make_task(None, None);
+        task.metadata = Some(serde_json::json!({
+            "merge_deferred": true,
+            "merge_deferred_at": "2026-01-01T00:00:00Z",
+            "other": "keep"
+        }).to_string());
+
+        clear_merge_deferred_metadata(&mut task);
+
+        let meta = parse_metadata(&task).unwrap();
+        assert!(meta.get("merge_deferred").is_none());
+        assert!(meta.get("merge_deferred_at").is_none());
+        assert_eq!(meta["other"], "keep");
+    }
+
+    #[test]
+    fn clear_merge_deferred_clears_metadata_when_only_deferred_fields() {
+        let mut task = make_task(None, None);
+        task.metadata = Some(serde_json::json!({
+            "merge_deferred": true,
+            "merge_deferred_at": "2026-01-01T00:00:00Z",
+        }).to_string());
+
+        clear_merge_deferred_metadata(&mut task);
+
+        assert!(task.metadata.is_none());
+    }
+
+    #[test]
+    fn clear_merge_deferred_noop_when_no_metadata() {
+        let mut task = make_task(None, None);
+        clear_merge_deferred_metadata(&mut task);
+        assert!(task.metadata.is_none());
+    }
+
+    // ==================
+    // task_targets_branch tests
+    // ==================
+
+    #[tokio::test]
+    async fn task_targets_branch_returns_true_for_matching_target() {
+        let project = make_project(Some("main"));
+        let mut task = make_task(None, Some("ralphx/test/task-123"));
+        task.id = TaskId::from_string("task-123".to_string());
+
+        let repo: Option<Arc<dyn PlanBranchRepository>> = None;
+        // A standalone task merges into project base branch (main)
+        assert!(task_targets_branch(&task, &project, &repo, "main").await);
+    }
+
+    #[tokio::test]
+    async fn task_targets_branch_returns_false_for_non_matching_target() {
+        let project = make_project(Some("main"));
+        let mut task = make_task(None, Some("ralphx/test/task-123"));
+        task.id = TaskId::from_string("task-123".to_string());
+
+        let repo: Option<Arc<dyn PlanBranchRepository>> = None;
+        assert!(!task_targets_branch(&task, &project, &repo, "develop").await);
+    }
+
+    #[tokio::test]
+    async fn task_targets_branch_plan_task_targets_feature_branch() {
+        let project = make_project(Some("main"));
+        let mut task = make_task_with_session(Some("art-1"), Some("ralphx/test/task-456"), Some("sess-1"));
+        task.id = TaskId::from_string("task-456".to_string());
+
+        let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
+        let pb = make_plan_branch("art-1", "ralphx/test/plan-abc123", PlanBranchStatus::Active, None);
+        mem_repo.create(pb).await.unwrap();
+
+        let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
+        // Plan task merges into feature branch, not main
+        assert!(task_targets_branch(&task, &project, &repo, "ralphx/test/plan-abc123").await);
+        assert!(!task_targets_branch(&task, &project, &repo, "main").await);
     }
 }

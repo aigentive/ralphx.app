@@ -318,6 +318,70 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
             // Continue loop - try to fill next slot
         }
     }
+
+    /// Re-trigger deferred merges for a project after a competing merge completes.
+    ///
+    /// Finds tasks in PendingMerge with `merge_deferred` metadata, clears the flag,
+    /// and re-invokes their entry actions so `attempt_programmatic_merge()` runs again.
+    async fn try_retry_deferred_merges(&self, project_id: &str) {
+        use crate::domain::state_machine::transition_handler::{
+            clear_merge_deferred_metadata, has_merge_deferred_metadata,
+        };
+
+        let pid = ProjectId::from_string(project_id.to_string());
+        let all_tasks = match self.task_repo.get_by_project(&pid).await {
+            Ok(tasks) => tasks,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    project_id = project_id,
+                    "Failed to fetch tasks for deferred merge retry"
+                );
+                return;
+            }
+        };
+
+        for task in &all_tasks {
+            if task.internal_status != InternalStatus::PendingMerge {
+                continue;
+            }
+            if !has_merge_deferred_metadata(task) {
+                continue;
+            }
+
+            tracing::info!(
+                task_id = task.id.as_str(),
+                project_id = project_id,
+                "Re-triggering deferred merge"
+            );
+
+            // Clear the deferred flag
+            let mut updated = task.clone();
+            clear_merge_deferred_metadata(&mut updated);
+            updated.touch();
+            if let Err(e) = self.task_repo.update(&updated).await {
+                tracing::warn!(
+                    error = %e,
+                    task_id = task.id.as_str(),
+                    "Failed to clear merge_deferred metadata"
+                );
+                continue;
+            }
+
+            // Re-invoke entry actions for PendingMerge to re-run attempt_programmatic_merge
+            let transition_service = self.build_transition_service();
+            transition_service
+                .execute_entry_actions(
+                    &task.id,
+                    &updated,
+                    InternalStatus::PendingMerge,
+                )
+                .await;
+
+            // Only retry one deferred merge at a time to serialize them properly
+            break;
+        }
+    }
 }
 
 #[cfg(test)]
