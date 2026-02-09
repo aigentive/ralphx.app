@@ -44,8 +44,9 @@
       {
         "hooks": [
           {
-            "type": "prompt",
-            "prompt": "Evaluate if specialized project knowledge was discovered during this session that should be captured as scoped .claude/rules/ files. Worth capturing: complex multi-component interactions, error recovery procedures, deep system patterns, framework/library quirks, patterns that would save significant time if known upfront. NOT worth capturing: one-off fixes, knowledge already in existing rules, generic programming knowledge. If significant knowledge was discovered, respond {\"ok\": false, \"reason\": \"Significant knowledge was discovered. Please invoke /knowledge-capture to package it before stopping.\"}. Otherwise respond {\"ok\": true}. Context: $ARGUMENTS"
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/enforce-knowledge-capture.sh",
+            "timeout": 10
           }
         ]
       },
