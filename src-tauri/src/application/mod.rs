@@ -48,7 +48,7 @@ pub use question_state::{PendingQuestionInfo, QuestionAnswer, QuestionOption, Qu
 pub use chat_resumption::ChatResumptionRunner;
 pub use reconciliation::ReconciliationRunner;
 pub use startup_jobs::StartupJobRunner;
-pub use task_cleanup_service::{CleanupReport, StopMode, TaskCleanupService, TaskGroup};
+pub use task_cleanup_service::{CleanupReport, StopMode, TaskCleanupService, TaskGroup, TaskStopper};
 pub use task_context_service::TaskContextService;
 pub use task_scheduler_service::TaskSchedulerService;
 pub use task_transition_service::TaskTransitionService;
