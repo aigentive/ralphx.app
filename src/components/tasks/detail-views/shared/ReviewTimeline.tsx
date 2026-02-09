@@ -144,8 +144,14 @@ function TimelineItem({ entry, isLast, attemptNumber }: TimelineItemProps) {
             >
               <div className="text-[12px] text-white/50 leading-relaxed">
                 {hasSummary ? (
-                  // Show summary as plain text
-                  <p>{entry.summary}</p>
+                  <div className="prose prose-sm prose-invert max-w-none">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={markdownComponents}
+                    >
+                      {entry.summary ?? ""}
+                    </ReactMarkdown>
+                  </div>
                 ) : (
                   // No summary - show notes as markdown
                   <div className="prose prose-sm prose-invert max-w-none">
