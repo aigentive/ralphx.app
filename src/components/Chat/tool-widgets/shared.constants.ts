@@ -81,6 +81,38 @@ export const badgeStyles: Record<BadgeVariant, { bg: string; color: string }> = 
 // Utility Functions
 // ============================================================================
 
+/**
+ * Parse a tool result into an array of non-empty lines.
+ * Handles: plain string, MCP wrapper [{text: "..."}], object with text property, and string arrays.
+ */
+export function parseToolResultAsLines(result: unknown): string[] {
+  if (!result) return [];
+
+  let text = "";
+
+  if (typeof result === "string") {
+    text = result;
+  } else if (Array.isArray(result)) {
+    // MCP result wrapper: [{type: "text", text: "..."}]
+    const first = result[0];
+    if (first && typeof first === "object" && "text" in first) {
+      text = String((first as { text: string }).text);
+    } else {
+      // Array of strings
+      return result.filter((item): item is string => typeof item === "string");
+    }
+  } else if (typeof result === "object" && result !== null && "text" in result) {
+    text = String((result as { text: string }).text);
+  }
+
+  if (!text) return [];
+
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
 /** Shorten a file path by collapsing middle directories */
 export function shortenPath(path: string, maxLength: number): string {
   if (path.length <= maxLength) return path;
