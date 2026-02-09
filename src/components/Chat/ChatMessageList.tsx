@@ -8,7 +8,7 @@
  * - Streaming tool calls / typing indicator footer
  */
 
-import React, { forwardRef, useEffect, useRef, useImperativeHandle } from "react";
+import React, { forwardRef, useEffect, useMemo, useRef, useImperativeHandle } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { MessageItem } from "./MessageItem";
 import { StreamingToolIndicator } from "./StreamingToolIndicator";
@@ -23,6 +23,7 @@ import type { ContentBlockItem } from "./MessageItem";
 import type { AskUserQuestionPayload, AskUserQuestionResponse } from "@/types/ask-user-question";
 import { isDiffToolCall } from "./DiffToolCallView.utils";
 import { DiffToolCallView } from "./DiffToolCallView";
+import { TaskSubagentCard } from "./TaskSubagentCard";
 
 // ============================================================================
 // Constants
@@ -103,6 +104,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       isSending,
       isAgentRunning,
       streamingToolCalls,
+      streamingTasks,
       streamingText,
       messagesEndRef,
       scrollToTimestamp,
@@ -151,6 +153,23 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       const timeoutId = setTimeout(scrollToBottom, FOOTER_RENDER_DELAY_MS);
       return () => clearTimeout(timeoutId);
     }, [streamingText]);
+
+    // Scroll to bottom when streaming tasks change (subagent cards expanding)
+    const totalChildCalls = useMemo(() => {
+      if (!streamingTasks || streamingTasks.size === 0) return 0;
+      let count = 0;
+      for (const task of streamingTasks.values()) {
+        count += task.childToolCalls.length;
+      }
+      return count;
+    }, [streamingTasks]);
+
+    useEffect(() => {
+      if (totalChildCalls === 0) return;
+
+      const timeoutId = setTimeout(scrollToBottom, FOOTER_RENDER_DELAY_MS);
+      return () => clearTimeout(timeoutId);
+    }, [totalChildCalls, streamingTasks?.size]);
 
     // Scroll to specific timestamp for history mode (time-travel feature)
     // Finds the first message at or after the given timestamp and scrolls to it
@@ -222,6 +241,13 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                       contentBlocks={null}
                     />
                   )}
+
+                  {/* Task subagent cards — above everything else */}
+                  {streamingTasks && streamingTasks.size > 0 &&
+                    Array.from(streamingTasks.values()).map((task: StreamingTask) => (
+                      <TaskSubagentCard key={task.toolUseId} task={task} />
+                    ))
+                  }
 
                   {/* Diff views for Edit/Write — shown as individual cards */}
                   {diffToolCalls.map((tc) => (
