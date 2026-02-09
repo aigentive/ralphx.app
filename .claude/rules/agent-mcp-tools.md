@@ -1,9 +1,9 @@
 ---
 paths:
-  - "src-tauri/src/infrastructure/agents/claude/agent_config.rs"
-  - "ralphx-plugin/ralphx-mcp-server/src/**"
+  - "src-tauri/src/infrastructure/agents/**"
+  - "ralphx-plugin/ralphx-mcp-server/**"
   - "ralphx-plugin/agents/**"
-  - "src-tauri/src/http_server/handlers/**"
+  - "src-tauri/src/http_server/**"
 ---
 
 # Adding MCP Tools to Agents
