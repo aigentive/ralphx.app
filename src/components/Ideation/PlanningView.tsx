@@ -395,7 +395,11 @@ export function PlanningView({
 
   // Auto-collapse plan when new proposal arrives
   const lastProposalAddedAt = useProposalStore((state) => state.lastProposalAddedAt);
+  const prevProposalAddedAtRef = useRef(lastProposalAddedAt);
   useEffect(() => {
+    const changed = lastProposalAddedAt !== prevProposalAddedAtRef.current;
+    prevProposalAddedAtRef.current = lastProposalAddedAt;
+    if (!changed) return;
     if (userOverrideRef.current) return;
     if (lastProposalAddedAt !== null && isPlanExpanded) {
       autoOpenedPlanRef.current = false;
