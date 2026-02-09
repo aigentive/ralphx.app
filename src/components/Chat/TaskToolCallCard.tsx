@@ -10,7 +10,7 @@
 
 import React, { useState, useMemo } from "react";
 import { ChevronDown, ChevronRight, Bot } from "lucide-react";
-import type { ToolCall } from "./ToolCallIndicator";
+import { ToolCallIndicator, type ToolCall } from "./ToolCallIndicator";
 
 // ============================================================================
 // Types
@@ -115,6 +115,40 @@ const EMPTY_STATS: TaskStats = {
   textOutput: undefined,
 };
 
+/**
+ * Extract child tool calls from the Task result content blocks.
+ *
+ * When result is an array of content blocks, tool_use blocks represent
+ * tool calls made by the subagent. We pair each tool_use with its
+ * subsequent tool_result (matched by tool_use_id) to build ToolCall objects.
+ */
+function extractChildToolCalls(result: unknown): ToolCall[] {
+  if (!Array.isArray(result)) return [];
+
+  const toolUseBlocks: Array<{ id: string; name: string; input: unknown }> = [];
+  const toolResultMap = new Map<string, unknown>();
+
+  for (const block of result) {
+    if (!block || typeof block !== "object") continue;
+    const b = block as Record<string, unknown>;
+
+    if (b.type === "tool_use" && typeof b.name === "string" && typeof b.id === "string") {
+      toolUseBlocks.push({ id: b.id, name: b.name, input: b.input });
+    } else if (b.type === "tool_result" && typeof b.tool_use_id === "string") {
+      toolResultMap.set(b.tool_use_id, b.content);
+    }
+  }
+
+  return toolUseBlocks.map((tu) => {
+    const tc: ToolCall = { id: tu.id, name: tu.name, arguments: tu.input };
+    const resultContent = toolResultMap.get(tu.id);
+    if (resultContent != null) {
+      tc.result = resultContent;
+    }
+    return tc;
+  });
+}
+
 function extractTaskStats(result: unknown): TaskStats {
   if (result == null) return EMPTY_STATS;
 
@@ -184,6 +218,7 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
 
   const taskArgs = useMemo(() => extractTaskArgs(toolCall.arguments), [toolCall.arguments]);
   const taskStats = useMemo(() => extractTaskStats(toolCall.result), [toolCall.result]);
+  const childToolCalls = useMemo(() => extractChildToolCalls(toolCall.result), [toolCall.result]);
 
   const description = taskArgs.description || "Subagent task";
   const subagentType = taskArgs.subagent_type || "agent";
@@ -204,7 +239,7 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
     statParts.push(`${taskStats.totalToolUseCount} tool${taskStats.totalToolUseCount !== 1 ? "s" : ""}`);
   }
 
-  const hasBody = Boolean(taskStats.textOutput) || hasError;
+  const hasBody = Boolean(taskStats.textOutput) || hasError || childToolCalls.length > 0;
 
   return (
     <div
@@ -298,7 +333,7 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
         </div>
       )}
 
-      {/* Expanded body: subagent text output */}
+      {/* Expanded body: child tool calls + subagent text output */}
       {isExpanded && hasBody && (
         <div
           className="px-3 pb-3 pt-2"
@@ -322,6 +357,15 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
             >
               {toolCall.error}
             </pre>
+          )}
+
+          {/* Child tool calls — rendered as compact ToolCallIndicators */}
+          {childToolCalls.length > 0 && (
+            <div className="space-y-1 max-h-64 overflow-y-auto mb-2">
+              {childToolCalls.map((tc) => (
+                <ToolCallIndicator key={tc.id} toolCall={tc} compact />
+              ))}
+            </div>
           )}
 
           {/* Subagent text output */}

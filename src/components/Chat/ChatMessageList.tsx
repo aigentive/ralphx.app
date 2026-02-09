@@ -220,11 +220,16 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
               </div>
             ),
             Footer: () => {
+              // Filter out Task tool calls — they're already represented by TaskSubagentCard
+              const topLevelToolCalls = streamingToolCalls.filter(
+                (tc) => tc.name.toLowerCase() !== "task"
+              );
+
               // Split Edit/Write tool calls (with arguments) for individual diff rendering
-              const diffToolCalls = streamingToolCalls.filter(
+              const diffToolCalls = topLevelToolCalls.filter(
                 (tc) => isDiffToolCall(tc.name) && tc.arguments != null
               );
-              const otherToolCalls = streamingToolCalls.filter(
+              const otherToolCalls = topLevelToolCalls.filter(
                 (tc) => !isDiffToolCall(tc.name) || tc.arguments == null
               );
 
