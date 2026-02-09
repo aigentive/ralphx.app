@@ -140,6 +140,17 @@ export function useChatPanelContext({
       setStreamingToolCalls([]);
       setStreamingText("");
 
+      // Cancel and remove the old conversation's agent run query to prevent
+      // stale cached data from triggering recovery effects in the new context
+      if (currentConversationId) {
+        queryClient.cancelQueries({
+          queryKey: chatKeys.agentRun(currentConversationId),
+        });
+        queryClient.removeQueries({
+          queryKey: chatKeys.agentRun(currentConversationId),
+        });
+      }
+
       // Clear the query cache for the old conversation to prevent stale data
       if (currentConversationId) {
         queryClient.removeQueries({
