@@ -10,6 +10,16 @@ import type { ConfirmConfig } from "./types";
 /** Which kind of task group this is */
 export type GroupKind = "column" | "plan" | "uncategorized";
 
+/** Group context passed to task-level context menus for rendering group actions */
+export interface GroupInfo {
+  groupLabel: string;
+  groupKind: GroupKind;
+  taskCount: number;
+  groupId: string;
+  projectId: string;
+  onRemoveAll: () => void;
+}
+
 /** A group-level action definition */
 export interface GroupAction {
   id: string;
