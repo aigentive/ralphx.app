@@ -324,6 +324,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_expire_all_pending_via_question_state() {
+        use crate::application::question_state::QuestionState;
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+        let repo = Arc::new(SqliteQuestionRepository::new(conn));
+
+        // Seed pending questions (simulating leftover from a previous app run)
+        for i in 0..3 {
+            let info = PendingQuestionInfo {
+                request_id: format!("stale-{}", i),
+                session_id: "old-session".to_string(),
+                question: format!("Stale Q{}", i),
+                header: None,
+                options: vec![],
+                multi_select: false,
+            };
+            repo.create_pending(&info).await.unwrap();
+        }
+
+        // Resolve one so only 2 remain pending
+        let answer = QuestionAnswer {
+            selected_options: vec![],
+            text: Some("answered".to_string()),
+        };
+        repo.resolve("stale-0", &answer).await.unwrap();
+
+        assert_eq!(repo.get_pending().await.unwrap().len(), 2);
+
+        // Simulate startup: create QuestionState with the repo, call expire
+        let state = QuestionState::with_repo(repo.clone() as Arc<dyn crate::domain::repositories::question_repository::QuestionRepository>);
+        state.expire_stale_on_startup().await;
+
+        // All pending should be expired
+        assert!(repo.get_pending().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
     async fn test_multi_select_round_trip() {
         let repo = setup();
         let info = PendingQuestionInfo {
