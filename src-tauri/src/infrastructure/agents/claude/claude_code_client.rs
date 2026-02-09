@@ -336,8 +336,7 @@ impl ClaudeCodeClient {
         // NOT for direct CLI invocations with --agent -p. We must pass --tools flag.
         if let Some(agent_name) = &config.agent {
             if let Some(allowed_tools) = get_allowed_tools(agent_name) {
-                eprintln!("[CLI] Agent {} restricted to CLI tools: {:?}", agent_name,
-                    if allowed_tools.is_empty() { "(MCP only)" } else { allowed_tools.as_str() });
+                tracing::debug!(agent = %agent_name, tools = if allowed_tools.is_empty() { "(MCP only)" } else { allowed_tools.as_str() }, "Agent restricted to CLI tools");
                 args.extend(["--tools".to_string(), allowed_tools]);
             }
         }

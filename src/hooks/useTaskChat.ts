@@ -13,6 +13,7 @@ import { useEffect, useCallback, useRef, useMemo } from "react";
 import { chatApi, type SendAgentMessageResult, type ChatMessageResponse } from "@/api/chat";
 import type { ChatConversation, AgentRun } from "@/types/chat-conversation";
 import { useChatStore } from "@/stores/chatStore";
+import { logger } from "@/lib/logger";
 import { chatKeys, useConversation } from "./useChat";
 import { useAgentEvents } from "./useAgentEvents";
 import { useTaskStateTransitions } from "./useTaskStateTransitions";
@@ -68,7 +69,7 @@ export function useTaskChat(taskId: string, contextType: TaskContextType, histor
   const queryClient = useQueryClient();
   const contextKey = buildTaskContextKey(contextType, taskId);
   const isHistoricalMode = !!historicalStatus;
-  console.log(`[useTaskChat] taskId=${taskId}, contextType=${contextType}, contextKey=${contextKey}, historicalStatus=${historicalStatus}`);
+  logger.debug(`[useTaskChat] taskId=${taskId}, contextType=${contextType}, contextKey=${contextKey}, historicalStatus=${historicalStatus}`);
 
   // Fetch state transitions for historical message filtering
   const stateTransitions = useTaskStateTransitions(isHistoricalMode ? taskId : undefined);
@@ -83,9 +84,9 @@ export function useTaskChat(taskId: string, contextType: TaskContextType, histor
   const conversations = useQuery<ChatConversation[], Error>({
     queryKey: chatKeys.conversationList(contextType, taskId),
     queryFn: async () => {
-      console.log(`[useTaskChat] Fetching conversations: contextType=${contextType}, taskId=${taskId}`);
+      logger.debug(`[useTaskChat] Fetching conversations: contextType=${contextType}, taskId=${taskId}`);
       const result = await chatApi.listConversations(contextType, taskId);
-      console.log(`[useTaskChat] Fetched ${result.length} conversations`);
+      logger.debug(`[useTaskChat] Fetched ${result.length} conversations`);
       return result;
     },
   });
@@ -144,7 +145,7 @@ export function useTaskChat(taskId: string, contextType: TaskContextType, histor
     if (activeConversationId && conversations.data && conversations.data.length > 0) {
       const belongsToContext = conversations.data.some(c => c.id === activeConversationId);
       if (!belongsToContext) {
-        console.log(`[useTaskChat] Stale activeConversationId=${activeConversationId} not in context ${contextKey}, resetting`);
+        logger.debug(`[useTaskChat] Stale activeConversationId=${activeConversationId} not in context ${contextKey}, resetting`);
         // Reset both the ID and the flag so auto-select can run
         hasAutoSelectedRef.current = false;
         setActiveConversation(null);
@@ -167,7 +168,7 @@ export function useTaskChat(taskId: string, contextType: TaskContextType, histor
       const mostRecent = sorted[0];
 
       if (mostRecent) {
-        console.log(`[useTaskChat] Auto-selecting conversation ${mostRecent.id} for context ${contextKey}`);
+        logger.debug(`[useTaskChat] Auto-selecting conversation ${mostRecent.id} for context ${contextKey}`);
         hasAutoSelectedRef.current = true;
         setActiveConversation(mostRecent.id);
       }

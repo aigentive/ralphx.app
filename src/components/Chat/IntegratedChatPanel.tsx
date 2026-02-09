@@ -37,6 +37,7 @@ import { useAgentEvents } from "@/hooks/useAgentEvents";
 import { useAskUserQuestion } from "@/hooks/useAskUserQuestion";
 import { RecoveryPromptDialog } from "@/components/recovery/RecoveryPromptDialog";
 import { useEventBus } from "@/providers/EventProvider";
+import { logger } from "@/lib/logger";
 
 // ============================================================================
 // Main Component
@@ -454,7 +455,7 @@ export function IntegratedChatPanel({
   );
 
   // Debug logging for history mode
-  console.log('[IntegratedChatPanel] Context mode:', {
+  logger.debug('[IntegratedChatPanel] Context mode:', {
     isHistoryMode,
     effectiveStatus,
     isExecutionMode,

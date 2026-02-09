@@ -12,6 +12,7 @@ import { useIdeationStore } from "@/stores/ideationStore";
 import { ideationKeys } from "./useIdeation";
 import { dependencyKeys } from "./useDependencyGraph";
 import type { Unsubscribe } from "@/lib/event-bus";
+import { logger } from "@/lib/logger";
 
 /**
  * Schema for session title updated event payload
@@ -83,13 +84,13 @@ export function useIdeationEvents() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    console.log("[IdeationEvents] Setting up event listeners");
+    logger.debug("[IdeationEvents] Setting up event listeners");
     const unsubscribes: Unsubscribe[] = [];
 
     // Listen for session title updates (from session-namer agent)
     unsubscribes.push(
       bus.subscribe<unknown>("ideation:session_title_updated", (payload) => {
-        console.log("[IdeationEvents] Received session_title_updated:", payload);
+        logger.debug("[IdeationEvents] Received session_title_updated:", payload);
         const parsed = SessionTitleUpdatedEventSchema.safeParse(payload);
 
         if (!parsed.success) {
@@ -100,7 +101,7 @@ export function useIdeationEvents() {
           return;
         }
 
-        console.log("[IdeationEvents] Updating session title:", parsed.data.sessionId, "->", parsed.data.title);
+        logger.debug("[IdeationEvents] Updating session title:", parsed.data.sessionId, "->", parsed.data.title);
         updateSession(parsed.data.sessionId, { title: parsed.data.title });
         queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() });
       })
@@ -109,7 +110,7 @@ export function useIdeationEvents() {
     // Listen for single proposal priority assessment
     unsubscribes.push(
       bus.subscribe<unknown>("proposal:priority_assessed", (payload) => {
-        console.log("[IdeationEvents] Received proposal:priority_assessed:", payload);
+        logger.debug("[IdeationEvents] Received proposal:priority_assessed:", payload);
         const parsed = ProposalPriorityAssessedEventSchema.safeParse(payload);
 
         if (!parsed.success) {
@@ -128,7 +129,7 @@ export function useIdeationEvents() {
     // Listen for batch session priorities assessment
     unsubscribes.push(
       bus.subscribe<unknown>("session:priorities_assessed", (payload) => {
-        console.log("[IdeationEvents] Received session:priorities_assessed:", payload);
+        logger.debug("[IdeationEvents] Received session:priorities_assessed:", payload);
         const parsed = SessionPrioritiesAssessedEventSchema.safeParse(payload);
 
         if (!parsed.success) {
@@ -147,7 +148,7 @@ export function useIdeationEvents() {
     // Listen for dependency added
     unsubscribes.push(
       bus.subscribe<unknown>("dependency:added", (payload) => {
-        console.log("[IdeationEvents] Received dependency:added:", payload);
+        logger.debug("[IdeationEvents] Received dependency:added:", payload);
         const parsed = DependencyEventSchema.safeParse(payload);
 
         if (!parsed.success) {
@@ -163,7 +164,7 @@ export function useIdeationEvents() {
     // Listen for dependency removed
     unsubscribes.push(
       bus.subscribe<unknown>("dependency:removed", (payload) => {
-        console.log("[IdeationEvents] Received dependency:removed:", payload);
+        logger.debug("[IdeationEvents] Received dependency:removed:", payload);
         const parsed = DependencyEventSchema.safeParse(payload);
 
         if (!parsed.success) {
@@ -179,7 +180,7 @@ export function useIdeationEvents() {
     // Listen for dependency analysis started (AI suggestion in progress)
     unsubscribes.push(
       bus.subscribe<unknown>("dependencies:analysis_started", (payload) => {
-        console.log("[IdeationEvents] Received dependencies:analysis_started:", payload);
+        logger.debug("[IdeationEvents] Received dependencies:analysis_started:", payload);
         const parsed = DependencyAnalysisStartedEventSchema.safeParse(payload);
 
         if (!parsed.success) {
@@ -195,7 +196,7 @@ export function useIdeationEvents() {
     // Listen for dependency suggestions applied (AI suggestion completed)
     unsubscribes.push(
       bus.subscribe<unknown>("dependencies:suggestions_applied", (payload) => {
-        console.log("[IdeationEvents] Received dependencies:suggestions_applied:", payload);
+        logger.debug("[IdeationEvents] Received dependencies:suggestions_applied:", payload);
         const parsed = DependencySuggestionsAppliedEventSchema.safeParse(payload);
 
         if (!parsed.success) {
