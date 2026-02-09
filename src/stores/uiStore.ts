@@ -130,8 +130,10 @@ interface UiState {
   loading: Record<string, boolean>;
   /** Active confirmation dialog */
   confirmation: ConfirmationConfig | null;
-  /** Active question from agent requiring user response */
-  activeQuestion: AskUserQuestionPayload | null;
+  /** Active questions from agents, keyed by sessionId */
+  activeQuestions: Record<string, AskUserQuestionPayload>;
+  /** Answered question summaries, keyed by sessionId */
+  answeredQuestions: Record<string, string>;
   /** Active recovery prompt from backend */
   recoveryPrompt: RecoveryPromptEvent | null;
   /** Surface that currently owns the recovery prompt dialog */
@@ -206,10 +208,16 @@ interface UiActions {
   showConfirmation: (config: ConfirmationConfig) => void;
   /** Hide the confirmation dialog */
   hideConfirmation: () => void;
-  /** Set active question from agent */
-  setActiveQuestion: (question: AskUserQuestionPayload) => void;
-  /** Clear active question after answer submitted */
-  clearActiveQuestion: () => void;
+  /** Set active question for a session */
+  setActiveQuestion: (sessionId: string, question: AskUserQuestionPayload) => void;
+  /** Clear active question for a session */
+  clearActiveQuestion: (sessionId: string) => void;
+  /** Dismiss question for a session (clears both question and answered state) */
+  dismissQuestion: (sessionId: string) => void;
+  /** Set answered summary for a session */
+  setAnsweredQuestion: (sessionId: string, summary: string) => void;
+  /** Clear answered summary for a session */
+  clearAnsweredQuestion: (sessionId: string) => void;
   /** Set active recovery prompt */
   setRecoveryPrompt: (prompt: RecoveryPromptEvent) => void;
   /** Clear active recovery prompt */
@@ -286,7 +294,8 @@ export const useUiStore = create<UiState & UiActions>()(
     notifications: [],
     loading: {},
     confirmation: null,
-    activeQuestion: null,
+    activeQuestions: {},
+    answeredQuestions: {},
     recoveryPrompt: null,
     recoveryPromptSurface: null,
     executionStatus: {
