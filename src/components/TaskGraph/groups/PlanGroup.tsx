@@ -17,6 +17,13 @@ import type { StatusSummary } from "@/api/task-graph.types";
 import { cn } from "@/lib/utils";
 import { HEADER_HEIGHT } from "./groupUtils";
 import { getPlanGroupNodeId } from "./groupTypes";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import { GroupContextMenuItems } from "@/components/tasks/GroupContextMenuItems";
+import type { GroupKind } from "@/lib/task-actions";
 
 // ============================================================================
 // Types
@@ -60,6 +67,17 @@ export interface PlanGroupData extends Record<string, unknown> {
   onNavigateToTask?: (taskId: string) => void;
   /** Delete this plan group (shows confirmation) */
   onDeletePlan?: (planArtifactId: string) => void;
+  /** Context menu: group kind for this container */
+  groupKind?: GroupKind;
+  /** Context menu: handler called after user confirms bulk removal */
+  onRemoveAllTasks?: () => void;
+  /** Context menu: confirm function from useConfirmation hook */
+  confirm?: (opts: {
+    title: string;
+    description: string;
+    confirmText?: string;
+    variant?: "default" | "destructive";
+  }) => Promise<boolean>;
 }
 
 export type PlanGroupNode = Node<PlanGroupData, "planGroup">;
@@ -118,6 +136,9 @@ export const PlanGroup = memo(function PlanGroup({
     isSelected,
     onNavigateToTask,
     onDeletePlan,
+    groupKind,
+    onRemoveAllTasks,
+    confirm,
   } = data;
   const hasTierControls = Boolean(
     tierGroupIds && tierGroupIds.length > 0 && onToggleAllTiers
@@ -136,7 +157,9 @@ export const PlanGroup = memo(function PlanGroup({
 
   const isGroupSelected = isSelected ?? selected;
 
-  return (
+  const hasContextMenu = Boolean(groupKind && onRemoveAllTasks && confirm && projectId);
+
+  const groupContent = (
     <div
       className={cn(
         // Base styles
@@ -198,6 +221,25 @@ export const PlanGroup = memo(function PlanGroup({
       />
     </div>
   );
+
+  if (!hasContextMenu) return groupContent;
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{groupContent}</ContextMenuTrigger>
+      <ContextMenuContent data-testid={`group-context-menu-${planArtifactId}`}>
+        <GroupContextMenuItems
+          groupLabel={sessionTitle ?? "Uncategorized"}
+          groupKind={groupKind!}
+          taskCount={taskIds.length}
+          projectId={projectId!}
+          groupId={sessionId}
+          onRemoveAll={onRemoveAllTasks!}
+          confirm={confirm!}
+        />
+      </ContextMenuContent>
+    </ContextMenu>
+  );
 });
 
 // ============================================================================
@@ -236,7 +278,15 @@ export function createPlanGroupNode(
   onToggleAllTiers?: (planArtifactId: string, action: "expand" | "collapse") => void,
   projectId?: string,
   onNavigateToTask?: (taskId: string) => void,
-  onDeletePlan?: (planArtifactId: string) => void
+  onDeletePlan?: (planArtifactId: string) => void,
+  groupKind?: GroupKind,
+  onRemoveAllTasks?: () => void,
+  confirm?: (opts: {
+    title: string;
+    description: string;
+    confirmText?: string;
+    variant?: "default" | "destructive";
+  }) => Promise<boolean>
 ): PlanGroupNode {
   return {
     id: getPlanGroupNodeId(planArtifactId),
@@ -261,6 +311,9 @@ export function createPlanGroupNode(
       ...(projectId && { projectId }),
       ...(onNavigateToTask && { onNavigateToTask }),
       ...(onDeletePlan && { onDeletePlan }),
+      ...(groupKind && { groupKind }),
+      ...(onRemoveAllTasks && { onRemoveAllTasks }),
+      ...(confirm && { confirm }),
     },
     // Group node properties
     style: {
