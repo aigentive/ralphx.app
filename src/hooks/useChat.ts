@@ -178,6 +178,7 @@ export function useChat(context: ChatContext) {
     activeConversationId,
     setActiveConversation,
     setAgentRunning,
+    setSending,
   } = useChatStore();
 
   // Fetch conversations for this context
@@ -228,6 +229,12 @@ export function useChat(context: ChatContext) {
       // Set agent running immediately so subsequent messages get queued
       setAgentRunning(contextKey, true);
       return chatApi.sendAgentMessage(contextType, contextId, content);
+    },
+    onMutate: () => {
+      setSending(contextKey, true);
+    },
+    onSettled: () => {
+      setSending(contextKey, false);
     },
     onSuccess: () => {
       // Invalidate active conversation to refetch messages
