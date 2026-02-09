@@ -14,32 +14,11 @@ import { createSummary, formatValue, isArtifactContextTool, renderArtifactPrevie
 import { isDiffToolCall, isTaskToolCall } from "./DiffToolCallView.utils";
 import { DiffToolCallView } from "./DiffToolCallView";
 import { TaskToolCallCard } from "./TaskToolCallCard";
-import { TOOL_CALL_WIDGETS } from "./tool-widgets/registry";
+import { getToolCallWidget } from "./tool-widgets/registry";
 
-// ============================================================================
-// Types
-// ============================================================================
-
-/**
- * Tool call structure from Claude CLI stream-json output
- */
-export interface ToolCall {
-  /** Unique identifier for this tool call */
-  id: string;
-  /** Name of the tool that was called */
-  name: string;
-  /** Arguments passed to the tool (can be any JSON value) */
-  arguments: unknown;
-  /** Result returned from the tool (can be any JSON value) */
-  result?: unknown;
-  /** Error message if tool call failed */
-  error?: string;
-  /** Diff context for Edit/Write tool calls (old file content for computing diffs) */
-  diffContext?: {
-    oldContent?: string;
-    filePath: string;
-  };
-}
+// Re-export ToolCall from canonical location for backwards compatibility
+export type { ToolCall } from "./tool-widgets/shared.constants";
+import type { ToolCall } from "./tool-widgets/shared.constants";
 
 interface ToolCallIndicatorProps {
   /** The tool call to display */
@@ -101,9 +80,9 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
   }
 
   // Check widget registry for specialized renderers (added by subsequent tasks)
-  const SpecializedWidget = TOOL_CALL_WIDGETS[toolCall.name.toLowerCase()];
+  const SpecializedWidget = getToolCallWidget(toolCall.name);
   if (SpecializedWidget) {
-    return <SpecializedWidget toolCall={toolCall} compact={compact} className={className} />;
+    return React.createElement(SpecializedWidget, { toolCall, compact, className });
   }
 
   const iconSize = compact ? 12 : 14;
