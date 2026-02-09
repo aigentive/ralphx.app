@@ -242,6 +242,7 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
   const { cleanupTasksInGroupMutation } = useTaskMutation(projectId);
 
   // Handler for "Remove all" group action
+  // Note: For multi-state columns, this only removes tasks matching the primary status (column.mapsTo)
   const handleRemoveAll = useCallback(() => {
     const { groupKind, groupId } = resolveGroupCleanupParams("column", column.mapsTo);
     cleanupTasksInGroupMutation.mutate({ groupKind, groupId, projectId });
@@ -303,93 +304,93 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
       {/* Drop zone with task list - clean, minimal */}
       <ContextMenu>
         <ContextMenuTrigger asChild>
-      <div
-        ref={setNodeRef}
-        data-testid={`drop-zone-${column.id}`}
-        className="flex-1 flex flex-col gap-1.5 p-1 overflow-y-auto transition-colors duration-150"
-        style={getDropZoneStyles()}
-      >
-        {/* Show skeleton cards during initial load */}
-        {isLoading ? (
-          <>
-            <TaskSkeleton />
-            <TaskSkeleton />
-            <TaskSkeleton />
-          </>
-        ) : tasks.length === 0 ? (
-          <EmptyState />
-        ) : groups && groups.length > 0 && tasksByGroup ? (
-          /* Grouped rendering - render ColumnGroup for each group */
-          <>
-            {groups.map((group) => {
-              const groupTasks = tasksByGroup.get(group.id) || [];
-              // Only render groups that have tasks
-              if (groupTasks.length === 0) return null;
+          <div
+            ref={setNodeRef}
+            data-testid={`drop-zone-${column.id}`}
+            className="flex-1 flex flex-col gap-1.5 p-1 overflow-y-auto transition-colors duration-150"
+            style={getDropZoneStyles()}
+          >
+            {/* Show skeleton cards during initial load */}
+            {isLoading ? (
+              <>
+                <TaskSkeleton />
+                <TaskSkeleton />
+                <TaskSkeleton />
+              </>
+            ) : tasks.length === 0 ? (
+              <EmptyState />
+            ) : groups && groups.length > 0 && tasksByGroup ? (
+              /* Grouped rendering - render ColumnGroup for each group */
+              <>
+                {groups.map((group) => {
+                  const groupTasks = tasksByGroup.get(group.id) || [];
+                  // Only render groups that have tasks
+                  if (groupTasks.length === 0) return null;
 
-              return (
-                <ColumnGroup
-                  key={group.id}
-                  label={group.label}
-                  count={groupTasks.length}
-                  icon={getGroupIcon(group.icon)}
-                  {...(group.accentColor && { accentColor: group.accentColor })}
-                  collapsed={collapsedGroups.has(group.id)}
-                  onToggle={() => handleToggleGroup(group.id)}
-                >
-                  {groupTasks.map((task) => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      isHidden={task.id === hiddenTaskId}
-                      {...(onTaskSelect !== undefined && { onSelect: onTaskSelect })}
-                    />
-                  ))}
-                </ColumnGroup>
-              );
-            })}
+                  return (
+                    <ColumnGroup
+                      key={group.id}
+                      label={group.label}
+                      count={groupTasks.length}
+                      icon={getGroupIcon(group.icon)}
+                      {...(group.accentColor && { accentColor: group.accentColor })}
+                      collapsed={collapsedGroups.has(group.id)}
+                      onToggle={() => handleToggleGroup(group.id)}
+                    >
+                      {groupTasks.map((task) => (
+                        <TaskCard
+                          key={task.id}
+                          task={task}
+                          isHidden={task.id === hiddenTaskId}
+                          {...(onTaskSelect !== undefined && { onSelect: onTaskSelect })}
+                        />
+                      ))}
+                    </ColumnGroup>
+                  );
+                })}
 
-            {/* Sentinel element for infinite scroll */}
-            <div ref={sentinelRef} className="h-1" aria-hidden="true" />
+                {/* Sentinel element for infinite scroll */}
+                <div ref={sentinelRef} className="h-1" aria-hidden="true" />
 
-            {/* Loading spinner when fetching next page - simple */}
-            {isFetchingNextPage && (
-              <div className="flex items-center justify-center py-3">
-                <Loader2 className="w-4 h-4 animate-spin" style={{ color: "hsl(220 10% 40%)" }} />
-              </div>
+                {/* Loading spinner when fetching next page - simple */}
+                {isFetchingNextPage && (
+                  <div className="flex items-center justify-center py-3">
+                    <Loader2 className="w-4 h-4 animate-spin" style={{ color: "hsl(220 10% 40%)" }} />
+                  </div>
+                )}
+              </>
+            ) : (
+              /* Ungrouped rendering - render tasks directly */
+              <>
+                {tasks.map((task) => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    isHidden={task.id === hiddenTaskId}
+                    {...(onTaskSelect !== undefined && { onSelect: onTaskSelect })}
+                  />
+                ))}
+
+                {/* Sentinel element for infinite scroll */}
+                <div ref={sentinelRef} className="h-1" aria-hidden="true" />
+
+                {/* Loading spinner when fetching next page - simple */}
+                {isFetchingNextPage && (
+                  <div className="flex items-center justify-center py-3">
+                    <Loader2 className="w-4 h-4 animate-spin" style={{ color: "hsl(220 10% 40%)" }} />
+                  </div>
+                )}
+              </>
             )}
-          </>
-        ) : (
-          /* Ungrouped rendering - render tasks directly */
-          <>
-            {tasks.map((task) => (
-              <TaskCard
-                key={task.id}
-                task={task}
-                isHidden={task.id === hiddenTaskId}
-                {...(onTaskSelect !== undefined && { onSelect: onTaskSelect })}
+
+            {/* Inline task add - always visible in draft/backlog columns (hidden during drag) */}
+            {showInlineAdd && (
+              <InlineTaskAdd
+                projectId={projectId}
+                columnId={column.id}
               />
-            ))}
-
-            {/* Sentinel element for infinite scroll */}
-            <div ref={sentinelRef} className="h-1" aria-hidden="true" />
-
-            {/* Loading spinner when fetching next page - simple */}
-            {isFetchingNextPage && (
-              <div className="flex items-center justify-center py-3">
-                <Loader2 className="w-4 h-4 animate-spin" style={{ color: "hsl(220 10% 40%)" }} />
-              </div>
             )}
-          </>
-        )}
-
-        {/* Inline task add - always visible in draft/backlog columns (hidden during drag) */}
-        {showInlineAdd && (
-          <InlineTaskAdd
-            projectId={projectId}
-            columnId={column.id}
-          />
-        )}
-      </div>
+          </div>
         </ContextMenuTrigger>
         <ContextMenuContent>
           <GroupContextMenuItems
