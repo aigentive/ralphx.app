@@ -42,6 +42,21 @@ pub async fn create_task_proposal(
         return Err("Cannot create proposals in archived or converted sessions".to_string());
     }
 
+    // Enforce plan artifact requirement
+    let plan_artifact_id = session.plan_artifact_id.as_ref().ok_or_else(|| {
+        "Proposals can only be created when a plan artifact exists for this session. \
+         Use create_plan_artifact first."
+            .to_string()
+    })?;
+
+    // Fetch current artifact version for auto-linking
+    let artifact = state
+        .artifact_repo
+        .get_by_id(plan_artifact_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Plan artifact {} not found", plan_artifact_id))?;
+
     // Parse category
     let category: TaskCategory = input
         .category
@@ -54,8 +69,10 @@ pub async fn create_task_proposal(
         .map(|p| p.parse().unwrap_or(Priority::Medium))
         .unwrap_or(Priority::Medium);
 
-    // Create proposal
+    // Create proposal with auto-linked plan artifact
     let mut proposal = TaskProposal::new(session_id, &input.title, category, priority);
+    proposal.plan_artifact_id = Some(plan_artifact_id.clone());
+    proposal.plan_version_at_creation = Some(artifact.metadata.version);
 
     // Set optional fields
     if let Some(desc) = input.description {

@@ -127,27 +127,47 @@ pub async fn create_proposal_impl(
     options: CreateProposalOptions,
 ) -> AppResult<TaskProposal> {
     // Verify session exists and is active
-    let session = state.ideation_session_repo.get_by_id(&session_id).await?;
-    match session {
-        None => {
-            return Err(AppError::NotFound(format!(
-                "Session {} not found",
-                session_id
-            )))
-        }
-        Some(s) if s.status != IdeationSessionStatus::Active => {
-            return Err(AppError::Validation(format!(
-                "Cannot add proposal to {} session",
-                s.status
-            )));
-        }
-        _ => {}
+    let session = state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Session {} not found", session_id)))?;
+
+    if session.status != IdeationSessionStatus::Active {
+        return Err(AppError::Validation(format!(
+            "Cannot add proposal to {} session",
+            session.status
+        )));
     }
 
-    // Get current proposal count for sort_order
-    let count = state.task_proposal_repo.count_by_session(&session_id).await?;
+    // Enforce plan artifact requirement
+    let plan_artifact_id = session.plan_artifact_id.as_ref().ok_or_else(|| {
+        AppError::Validation(
+            "Proposals can only be created when a plan artifact exists for this session. \
+             Use create_plan_artifact first."
+                .to_string(),
+        )
+    })?;
 
-    // Create proposal
+    // Fetch current artifact version for auto-linking
+    let artifact = state
+        .artifact_repo
+        .get_by_id(plan_artifact_id)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(format!(
+                "Plan artifact {} not found",
+                plan_artifact_id
+            ))
+        })?;
+
+    // Get current proposal count for sort_order
+    let count = state
+        .task_proposal_repo
+        .count_by_session(&session_id)
+        .await?;
+
+    // Create proposal with auto-linked plan artifact
     let mut proposal = TaskProposal::new(
         session_id,
         options.title,
@@ -158,6 +178,8 @@ pub async fn create_proposal_impl(
     proposal.steps = options.steps;
     proposal.acceptance_criteria = options.acceptance_criteria;
     proposal.sort_order = count as i32;
+    proposal.plan_artifact_id = Some(plan_artifact_id.clone());
+    proposal.plan_version_at_creation = Some(artifact.metadata.version);
 
     // Save to database
     state.task_proposal_repo.create(proposal.clone()).await?;
@@ -616,4 +638,148 @@ fn find_project_root() -> PathBuf {
             }
         })
         .unwrap_or_else(|_| PathBuf::from("."))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::application::AppState;
+    use crate::domain::entities::{
+        Artifact, ArtifactType, IdeationSession, ProjectId, TaskCategory,
+    };
+
+    #[tokio::test]
+    async fn test_create_proposal_without_plan_artifact_returns_validation_error() {
+        let state = AppState::new_test();
+        let project_id = ProjectId::new();
+
+        // Create a session WITHOUT a plan artifact
+        let session =
+            IdeationSession::new_with_title(project_id.clone(), "Test Session");
+        let session_id = session.id.clone();
+        state
+            .ideation_session_repo
+            .create(session)
+            .await
+            .unwrap();
+
+        let options = CreateProposalOptions {
+            title: "Test Proposal".to_string(),
+            description: None,
+            category: TaskCategory::Feature,
+            suggested_priority: Priority::Medium,
+            steps: None,
+            acceptance_criteria: None,
+        };
+
+        let result = create_proposal_impl(&state, session_id, options).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        match &err {
+            AppError::Validation(msg) => {
+                assert!(
+                    msg.contains("plan artifact"),
+                    "Error message should mention plan artifact, got: {}",
+                    msg
+                );
+            }
+            other => panic!("Expected AppError::Validation, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_create_proposal_with_plan_artifact_succeeds_and_auto_links() {
+        let state = AppState::new_test();
+        let project_id = ProjectId::new();
+
+        // Create artifact first
+        let artifact = Artifact::new_inline(
+            "Test Plan",
+            ArtifactType::Specification,
+            "# Plan content",
+            "test",
+        );
+        let artifact_id = artifact.id.clone();
+        state.artifact_repo.create(artifact).await.unwrap();
+
+        // Create a session WITH a plan artifact
+        let session = IdeationSession::builder()
+            .project_id(project_id.clone())
+            .title("Test Session")
+            .plan_artifact_id(artifact_id.clone())
+            .build();
+        let session_id = session.id.clone();
+        state
+            .ideation_session_repo
+            .create(session)
+            .await
+            .unwrap();
+
+        let options = CreateProposalOptions {
+            title: "Test Proposal".to_string(),
+            description: Some("A test proposal".to_string()),
+            category: TaskCategory::Feature,
+            suggested_priority: Priority::High,
+            steps: None,
+            acceptance_criteria: None,
+        };
+
+        let result = create_proposal_impl(&state, session_id, options).await;
+        assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+
+        let proposal = result.unwrap();
+        assert_eq!(
+            proposal.plan_artifact_id,
+            Some(artifact_id),
+            "Proposal should have plan_artifact_id auto-set from session"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_create_proposal_sets_plan_version_at_creation() {
+        let state = AppState::new_test();
+        let project_id = ProjectId::new();
+
+        // Create artifact with version 1 (default)
+        let artifact = Artifact::new_inline(
+            "Test Plan",
+            ArtifactType::Specification,
+            "# Plan v1",
+            "test",
+        );
+        let artifact_id = artifact.id.clone();
+        state.artifact_repo.create(artifact).await.unwrap();
+
+        // Create session with plan artifact
+        let session = IdeationSession::builder()
+            .project_id(project_id.clone())
+            .title("Test Session")
+            .plan_artifact_id(artifact_id.clone())
+            .build();
+        let session_id = session.id.clone();
+        state
+            .ideation_session_repo
+            .create(session)
+            .await
+            .unwrap();
+
+        let options = CreateProposalOptions {
+            title: "Versioned Proposal".to_string(),
+            description: None,
+            category: TaskCategory::Feature,
+            suggested_priority: Priority::Medium,
+            steps: None,
+            acceptance_criteria: None,
+        };
+
+        let proposal = create_proposal_impl(&state, session_id, options)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            proposal.plan_version_at_creation,
+            Some(1),
+            "Proposal should have plan_version_at_creation set to artifact's current version"
+        );
+    }
 }
