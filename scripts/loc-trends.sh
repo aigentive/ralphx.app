@@ -8,6 +8,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
+# Source shared milestones config
+source "$SCRIPT_DIR/milestones.sh"
+
 # Colors
 BOLD='\033[1m'
 CYAN='\033[0;36m'
@@ -207,6 +210,17 @@ draw_bar() {
     echo -e "${color}${bar}${NC}"
 }
 
+# Print a milestone marker line for charts
+print_milestone_marker() {
+    local label="$1"
+    local width=${2:-60}
+    local dashes=""
+    for ((d=0; d<width; d++)); do
+        dashes="${dashes}-"
+    done
+    echo -e "       ${YELLOW}★${NC} ${DIM}${dashes}${NC} ${YELLOW}${label}${NC}"
+}
+
 # Chart view - visual bar chart
 print_chart() {
     cd "$PROJECT_ROOT"
@@ -267,11 +281,19 @@ print_chart() {
     # Draw chart
     local bar_width=45
 
+    local prev_date=""
     for ((i=0; i<${#dates[@]}; i++)); do
         local date="${dates[$i]}"
         local net="${nets[$i]}"
         local commit="${commits[$i]}"
         local short_date=$(echo "$date" | cut -c6-)  # MM-DD
+
+        # Check for milestone between previous and current day
+        if [ -n "$prev_date" ]; then
+            local ms_label
+            ms_label=$(milestone_label_for_date "$date" 2>/dev/null) && \
+                print_milestone_marker "$ms_label"
+        fi
 
         # Color based on magnitude
         local color=$GREEN
@@ -280,6 +302,7 @@ print_chart() {
 
         printf "${BOLD}%s${NC} %6d │ " "$short_date" "$net"
         draw_bar $net $max_net $bar_width "$color"
+        prev_date="$date"
     done
 
     echo ""
@@ -293,13 +316,22 @@ print_chart() {
         [ $c -gt $max_commits ] && max_commits=$c
     done
 
+    prev_date=""
     for ((i=0; i<${#dates[@]}; i++)); do
         local date="${dates[$i]}"
         local commit="${commits[$i]}"
         local short_date=$(echo "$date" | cut -c6-)
 
+        # Check for milestone between previous and current day
+        if [ -n "$prev_date" ]; then
+            local ms_label
+            ms_label=$(milestone_label_for_date "$date" 2>/dev/null) && \
+                print_milestone_marker "$ms_label"
+        fi
+
         printf "${BOLD}%s${NC} %6d │ " "$short_date" "$commit"
         draw_bar $commit $max_commits $bar_width "$CYAN"
+        prev_date="$date"
     done
 
     echo ""
@@ -337,6 +369,26 @@ analyze_trends() {
             else
                 next_date=$(date -d "$((i-1)) days ago" "+%Y-%m-%d")
             fi
+        fi
+
+        # Check for milestone on this date — print highlighted banner
+        if date_has_milestone "$date_str"; then
+            local ms_label
+            ms_label=$(milestone_label_for_date "$date_str")
+            parse_milestone "${MILESTONES[0]}"  # re-parse for description
+            # Find the matching entry for full details
+            for _ms_entry in "${MILESTONES[@]}"; do
+                parse_milestone "$_ms_entry"
+                if [ "$MS_DATE" = "$date_str" ]; then
+                    break
+                fi
+            done
+            echo ""
+            echo -e "${YELLOW}╔══════════════════════════════════════════════════════════════════════════╗${NC}"
+            printf "${YELLOW}║  ★  %-67s ║${NC}\n" "$MS_LABEL"
+            printf "${YELLOW}║     %-67s ║${NC}\n" "$MS_DESC"
+            printf "${YELLOW}║     %-67s ║${NC}\n" "$MS_DATE $MS_TIME"
+            echo -e "${YELLOW}╚══════════════════════════════════════════════════════════════════════════╝${NC}"
         fi
 
         process_day "$date_str" "$next_date"
