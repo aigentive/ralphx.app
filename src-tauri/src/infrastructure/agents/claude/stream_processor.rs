@@ -225,6 +225,87 @@ pub enum StreamEvent {
 // Stream Processor State
 // ============================================================================
 
+/// Parse a `<usage>...</usage>` block from text to extract task completion stats.
+///
+/// The Claude CLI Task tool result format is:
+/// ```text
+/// [subagent text output]
+/// agentId: abc1234 (for resuming...)
+/// <usage>total_tokens: 12345
+/// tool_uses: 8
+/// duration_ms: 45000</usage>
+/// ```
+fn parse_usage_text(text: &str) -> (Option<String>, Option<u64>, Option<u64>, Option<u64>) {
+    let agent_id = text
+        .find("agentId:")
+        .and_then(|start| {
+            let after = &text[start + "agentId:".len()..];
+            let trimmed = after.trim_start();
+            // agentId is a hex string, take chars until non-hex
+            let end = trimmed
+                .find(|c: char| !c.is_ascii_hexdigit())
+                .unwrap_or(trimmed.len());
+            if end > 0 {
+                Some(trimmed[..end].to_string())
+            } else {
+                None
+            }
+        });
+
+    let (duration_ms, total_tokens, tool_use_count) =
+        if let Some(usage_start) = text.find("<usage>") {
+            let usage_end = text.find("</usage>").unwrap_or(text.len());
+            let usage_block = &text[usage_start + "<usage>".len()..usage_end];
+
+            let duration = extract_stat(usage_block, "duration_ms:");
+            let tokens = extract_stat(usage_block, "total_tokens:");
+            let tools = extract_stat(usage_block, "tool_uses:");
+
+            (duration, tokens, tools)
+        } else {
+            (None, None, None)
+        };
+
+    (agent_id, duration_ms, total_tokens, tool_use_count)
+}
+
+/// Extract a numeric stat value from a line like "key: 12345"
+fn extract_stat(block: &str, key: &str) -> Option<u64> {
+    block.find(key).and_then(|start| {
+        let after = &block[start + key.len()..];
+        let trimmed = after.trim_start();
+        let end = trimmed
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(trimmed.len());
+        if end > 0 {
+            trimmed[..end].parse::<u64>().ok()
+        } else {
+            None
+        }
+    })
+}
+
+/// Convert a serde_json::Value to a flat text string for usage tag parsing.
+/// Handles: plain strings, arrays of content blocks (with "text" type), and JSON objects.
+fn value_to_text(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Array(arr) => {
+            arr.iter()
+                .filter_map(|item| {
+                    if item.get("type").and_then(|t| t.as_str()) == Some("text") {
+                        item.get("text").and_then(|t| t.as_str()).map(|s| s.to_string())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+        other => other.to_string(),
+    }
+}
+
 /// Accumulator for processing Claude CLI stream output
 ///
 /// This struct handles the stateful parsing of stream-json output,
@@ -537,20 +618,44 @@ impl StreamProcessor {
 
                         // Emit TaskCompleted if this is a Task tool_result
                         if is_task_result {
-                            // Extract metadata: try tool_use_result sub-object first, fall back to content itself
+                            // Try JSON extraction first (tool_use_result sub-object or content itself)
                             let metadata = content.get("tool_use_result").unwrap_or(&content);
+                            let json_agent_id = metadata.get("agentId")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string());
+                            let json_duration = metadata.get("totalDurationMs")
+                                .and_then(|v| v.as_u64());
+                            let json_tokens = metadata.get("totalTokens")
+                                .and_then(|v| v.as_u64());
+                            let json_tools = metadata.get("totalToolUseCount")
+                                .and_then(|v| v.as_u64());
+
+                            let has_json_stats = json_duration.is_some()
+                                || json_tokens.is_some()
+                                || json_tools.is_some();
+
+                            // Fall back to text-based <usage> tag parsing if JSON extraction found nothing
+                            let (agent_id, total_duration_ms, total_tokens, total_tool_use_count) =
+                                if has_json_stats {
+                                    (json_agent_id, json_duration, json_tokens, json_tools)
+                                } else {
+                                    let text = value_to_text(&content);
+                                    let (text_agent, text_dur, text_tok, text_tools) =
+                                        parse_usage_text(&text);
+                                    (
+                                        json_agent_id.or(text_agent),
+                                        text_dur,
+                                        text_tok,
+                                        text_tools,
+                                    )
+                                };
 
                             events.push(StreamEvent::TaskCompleted {
                                 tool_use_id: tool_use_id.clone(),
-                                agent_id: metadata.get("agentId")
-                                    .and_then(|v| v.as_str())
-                                    .map(|s| s.to_string()),
-                                total_duration_ms: metadata.get("totalDurationMs")
-                                    .and_then(|v| v.as_u64()),
-                                total_tokens: metadata.get("totalTokens")
-                                    .and_then(|v| v.as_u64()),
-                                total_tool_use_count: metadata.get("totalToolUseCount")
-                                    .and_then(|v| v.as_u64()),
+                                agent_id,
+                                total_duration_ms,
+                                total_tokens,
+                                total_tool_use_count,
                             });
                         }
 
@@ -1343,6 +1448,226 @@ mod tests {
                 assert_eq!(parent_tool_use_id, &Some("toolu_parent_task".to_string()));
             }
             other => panic!("Expected ToolResultReceived, got {:?}", other),
+        }
+    }
+
+    // ====================================================================
+    // <usage> text format parsing tests
+    // ====================================================================
+
+    #[test]
+    fn test_parse_usage_text_basic() {
+        let text = "Some output\nagentId: a7db0f4 (for resuming...)\n<usage>total_tokens: 12345\ntool_uses: 8\nduration_ms: 45000</usage>";
+        let (agent_id, duration, tokens, tools) = parse_usage_text(text);
+
+        assert_eq!(agent_id, Some("a7db0f4".to_string()));
+        assert_eq!(duration, Some(45000));
+        assert_eq!(tokens, Some(12345));
+        assert_eq!(tools, Some(8));
+    }
+
+    #[test]
+    fn test_parse_usage_text_no_usage_block() {
+        let text = "Just some plain text output\nagentId: abc123";
+        let (agent_id, duration, tokens, tools) = parse_usage_text(text);
+
+        assert_eq!(agent_id, Some("abc123".to_string()));
+        assert_eq!(duration, None);
+        assert_eq!(tokens, None);
+        assert_eq!(tools, None);
+    }
+
+    #[test]
+    fn test_parse_usage_text_no_agent_id() {
+        let text = "<usage>total_tokens: 500\ntool_uses: 2\nduration_ms: 3000</usage>";
+        let (agent_id, duration, tokens, tools) = parse_usage_text(text);
+
+        assert_eq!(agent_id, None);
+        assert_eq!(duration, Some(3000));
+        assert_eq!(tokens, Some(500));
+        assert_eq!(tools, Some(2));
+    }
+
+    #[test]
+    fn test_value_to_text_string() {
+        let val = serde_json::json!("plain text result");
+        assert_eq!(value_to_text(&val), "plain text result");
+    }
+
+    #[test]
+    fn test_value_to_text_content_blocks() {
+        let val = serde_json::json!([
+            {"type": "text", "text": "output line 1"},
+            {"type": "tool_use", "id": "t1", "name": "Read"},
+            {"type": "text", "text": "agentId: abc\n<usage>total_tokens: 100\ntool_uses: 1\nduration_ms: 2000</usage>"}
+        ]);
+        let text = value_to_text(&val);
+        assert!(text.contains("output line 1"));
+        assert!(text.contains("<usage>"));
+        assert!(text.contains("agentId: abc"));
+    }
+
+    #[test]
+    fn test_task_completed_parses_usage_text_format() {
+        let mut processor = StreamProcessor::new();
+
+        // Register a Task tool_use
+        processor.process_message(StreamMessage::Assistant {
+            message: AssistantMessage {
+                content: vec![AssistantContent::ToolUse {
+                    id: "toolu_task_text".to_string(),
+                    name: "Task".to_string(),
+                    input: serde_json::json!({
+                        "description": "Search codebase",
+                        "subagent_type": "Explore"
+                    }),
+                }],
+                stop_reason: None,
+            },
+            session_id: None,
+        });
+
+        // Send tool_result as plain text with <usage> block (actual Claude CLI format)
+        let result_msg = StreamMessage::User {
+            message: UserMessage {
+                content: vec![UserContent::ToolResult {
+                    tool_use_id: "toolu_task_text".to_string(),
+                    content: serde_json::json!(
+                        "Found 3 matching files in src/components/\nagentId: a7db0f4 (for resuming to continue this agent's work if needed)\n<usage>total_tokens: 44969\ntool_uses: 12\nduration_ms: 7900</usage>"
+                    ),
+                    is_error: false,
+                }],
+            },
+        };
+
+        let events = processor.process_message(result_msg);
+
+        // Should emit: TaskCompleted, ToolResultReceived
+        assert_eq!(events.len(), 2);
+        match &events[0] {
+            StreamEvent::TaskCompleted {
+                tool_use_id,
+                agent_id,
+                total_duration_ms,
+                total_tokens,
+                total_tool_use_count,
+            } => {
+                assert_eq!(tool_use_id, "toolu_task_text");
+                assert_eq!(agent_id, &Some("a7db0f4".to_string()));
+                assert_eq!(total_duration_ms, &Some(7900));
+                assert_eq!(total_tokens, &Some(44969));
+                assert_eq!(total_tool_use_count, &Some(12));
+            }
+            other => panic!("Expected TaskCompleted, got {:?}", other),
+        }
+        assert!(matches!(&events[1], StreamEvent::ToolResultReceived { .. }));
+    }
+
+    #[test]
+    fn test_task_completed_parses_content_blocks_format() {
+        let mut processor = StreamProcessor::new();
+
+        // Register a Task tool_use
+        processor.process_message(StreamMessage::Assistant {
+            message: AssistantMessage {
+                content: vec![AssistantContent::ToolUse {
+                    id: "toolu_task_blocks".to_string(),
+                    name: "Task".to_string(),
+                    input: serde_json::json!({
+                        "description": "Run tests",
+                        "subagent_type": "Bash"
+                    }),
+                }],
+                stop_reason: None,
+            },
+            session_id: None,
+        });
+
+        // Send tool_result as content block array (text blocks with usage info)
+        let result_msg = StreamMessage::User {
+            message: UserMessage {
+                content: vec![UserContent::ToolResult {
+                    tool_use_id: "toolu_task_blocks".to_string(),
+                    content: serde_json::json!([
+                        {"type": "text", "text": "All tests passed.\n"},
+                        {"type": "text", "text": "agentId: ff0011 (for resuming...)\n<usage>total_tokens: 8000\ntool_uses: 3\nduration_ms: 15000</usage>"}
+                    ]),
+                    is_error: false,
+                }],
+            },
+        };
+
+        let events = processor.process_message(result_msg);
+
+        assert_eq!(events.len(), 2);
+        match &events[0] {
+            StreamEvent::TaskCompleted {
+                tool_use_id,
+                agent_id,
+                total_duration_ms,
+                total_tokens,
+                total_tool_use_count,
+            } => {
+                assert_eq!(tool_use_id, "toolu_task_blocks");
+                assert_eq!(agent_id, &Some("ff0011".to_string()));
+                assert_eq!(total_duration_ms, &Some(15000));
+                assert_eq!(total_tokens, &Some(8000));
+                assert_eq!(total_tool_use_count, &Some(3));
+            }
+            other => panic!("Expected TaskCompleted, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_task_completed_no_stats_still_emits_event() {
+        let mut processor = StreamProcessor::new();
+
+        // Register a Task tool_use
+        processor.process_message(StreamMessage::Assistant {
+            message: AssistantMessage {
+                content: vec![AssistantContent::ToolUse {
+                    id: "toolu_task_nostats".to_string(),
+                    name: "Task".to_string(),
+                    input: serde_json::json!({
+                        "description": "Simple task",
+                        "subagent_type": "Bash"
+                    }),
+                }],
+                stop_reason: None,
+            },
+            session_id: None,
+        });
+
+        // Send tool_result with no stats at all
+        let result_msg = StreamMessage::User {
+            message: UserMessage {
+                content: vec![UserContent::ToolResult {
+                    tool_use_id: "toolu_task_nostats".to_string(),
+                    content: serde_json::json!("Just some plain output with no stats"),
+                    is_error: false,
+                }],
+            },
+        };
+
+        let events = processor.process_message(result_msg);
+
+        // TaskCompleted should still be emitted, just with None stats
+        assert_eq!(events.len(), 2);
+        match &events[0] {
+            StreamEvent::TaskCompleted {
+                tool_use_id,
+                agent_id,
+                total_duration_ms,
+                total_tokens,
+                total_tool_use_count,
+            } => {
+                assert_eq!(tool_use_id, "toolu_task_nostats");
+                assert_eq!(agent_id, &None);
+                assert_eq!(total_duration_ms, &None);
+                assert_eq!(total_tokens, &None);
+                assert_eq!(total_tool_use_count, &None);
+            }
+            other => panic!("Expected TaskCompleted, got {:?}", other),
         }
     }
 }
