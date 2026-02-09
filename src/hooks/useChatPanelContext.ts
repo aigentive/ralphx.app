@@ -15,6 +15,7 @@ import { chatKeys } from "@/hooks/useChat";
 import type { ChatContext } from "@/types/chat";
 import type { ContextType } from "@/types/chat-conversation";
 import type { ToolCall } from "@/components/Chat/ToolCallIndicator";
+import type { StreamingTask } from "@/types/streaming-task";
 
 interface UseChatPanelContextProps {
   projectId: string;
@@ -64,6 +65,9 @@ export function useChatPanelContext({
 
   // Streaming text - accumulated from agent:chunk events for real-time display
   const [streamingText, setStreamingText] = useState<string>("");
+
+  // Streaming tasks - subagent Task tool calls during agent execution
+  const [streamingTasks, setStreamingTasks] = useState<Map<string, StreamingTask>>(new Map());
 
   // Build chat context based on selected task or ideation session
   const chatContext: ChatContext = useMemo(() => {
@@ -140,6 +144,7 @@ export function useChatPanelContext({
       // Clear streaming state
       setStreamingToolCalls([]);
       setStreamingText("");
+      setStreamingTasks(new Map());
 
       // Cancel and remove the old conversation's agent run query to prevent
       // stale cached data from triggering recovery effects in the new context
@@ -297,6 +302,8 @@ export function useChatPanelContext({
     setStreamingToolCalls,
     streamingText,
     setStreamingText,
+    streamingTasks,
+    setStreamingTasks,
     autoSelectConversation,
     /** Override agent run ID for scroll positioning in history mode */
     overrideAgentRunId,

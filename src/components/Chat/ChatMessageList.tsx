@@ -18,6 +18,7 @@ import {
   FailedRunBanner,
 } from "./IntegratedChatPanel.components";
 import type { ToolCall } from "./ToolCallIndicator";
+import type { StreamingTask } from "@/types/streaming-task";
 import type { ContentBlockItem } from "./MessageItem";
 import type { AskUserQuestionPayload, AskUserQuestionResponse } from "@/types/ask-user-question";
 import { isDiffToolCall } from "./DiffToolCallView.utils";
@@ -66,6 +67,8 @@ interface ChatMessageListProps {
   isAgentRunning: boolean;
   /** Streaming tool calls to display */
   streamingToolCalls: ToolCall[];
+  /** Streaming subagent tasks — Map keyed by tool_use_id */
+  streamingTasks?: Map<string, StreamingTask>;
   /** Streaming assistant text from agent:chunk events */
   streamingText?: string;
   /** Ref to scroll to */
