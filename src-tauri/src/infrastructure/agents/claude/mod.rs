@@ -96,7 +96,7 @@ pub fn build_base_cli_command(
             let temp_path = std::env::temp_dir().join(format!("ralphx-mcp-{}.json", std::process::id()));
             if std::fs::write(&temp_path, &config_json).is_ok() {
                 cmd.args(["--mcp-config", temp_path.to_str().unwrap_or("")]);
-                eprintln!("[MCP] Dynamic config written to {} with agent_type={}", temp_path.display(), agent);
+                tracing::debug!(path = %temp_path.display(), agent_type = agent, "Dynamic MCP config written");
             }
         }
     }
@@ -127,14 +127,13 @@ pub fn add_prompt_args(cmd: &mut Command, prompt: &str, agent: Option<&str>, res
         if let Some(allowed_tools) = get_allowed_tools(agent_name) {
             // Pass --tools even if empty (restricts to MCP-only)
             cmd.args(["--tools", &allowed_tools]);
-            eprintln!("[CLI] Agent {} restricted to CLI tools: {:?}", agent_name,
-                if allowed_tools.is_empty() { "(MCP only)" } else { allowed_tools.as_str() });
+            tracing::debug!(agent = agent_name, tools = if allowed_tools.is_empty() { "(MCP only)" } else { allowed_tools.as_str() }, "Agent restricted to CLI tools");
         }
 
         // Pre-approve tools to bypass permission prompts (MCP + CLI permissions)
         if let Some(preapproved) = get_preapproved_tools(agent_name) {
             cmd.args(["--allowedTools", &preapproved]);
-            eprintln!("[CLI] Agent {} pre-approved tools: {}", agent_name, preapproved);
+            tracing::debug!(agent = agent_name, preapproved = %preapproved, "Agent pre-approved tools");
         }
     }
 
