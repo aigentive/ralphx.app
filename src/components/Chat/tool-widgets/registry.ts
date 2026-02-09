@@ -11,6 +11,7 @@
 
 import type { ComponentType } from "react";
 import type { ToolCallWidgetProps } from "./shared";
+import { ContextWidget } from "./ContextWidget";
 
 /** Registry type: tool name (lowercase) → React component */
 export type ToolCallWidgetRegistry = Record<string, ComponentType<ToolCallWidgetProps>>;
@@ -20,6 +21,7 @@ export type ToolCallWidgetRegistry = Record<string, ComponentType<ToolCallWidget
  * Tool names should be lowercase to match normalized lookup in ToolCallIndicator.
  */
 export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
+  "get_task_context": ContextWidget,
   // Populated by subsequent tasks:
   // "bash": BashWidget,
   // "read": ReadWidget,
