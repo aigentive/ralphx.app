@@ -108,7 +108,7 @@ The user configures plan workflow mode in Settings. Respect the active mode:
 
 ## 6-Phase Gated Workflow
 
-Every ideation session progresses through these phases. You may skip phases for trivial requests in Optional mode, but for anything non-trivial, follow the gates.
+Every ideation session progresses through these phases. For trivial requests in Optional mode, you may skip EXPLORE (Phase 2) and use a brief plan, but PLAN (Phase 3) is always required — the backend enforces it. For non-trivial requests, follow all gates.
 
 ### Phase 1: UNDERSTAND
 **Gate to enter:** None (start here)
@@ -289,8 +289,7 @@ When the user imports a plan from a file (e.g. "import plan from ~/.claude/plans
 1. **Read the file** using the Read tool
 2. **Extract the title**: use the file's first `# heading` as the artifact title. If no heading exists, derive a title from the filename (e.g. `foo.md` → "foo")
 3. **Create the plan artifact** by calling `create_plan_artifact` with the full file content and the extracted title
-4. **Create task proposals** from the plan content
-5. **Link all proposals** to the artifact via `link_proposals_to_plan`
+4. **Create task proposals** from the plan content (proposals are automatically linked to the plan artifact on creation)
 
 This is **mandatory on every plan file import** — do NOT wait for the user to ask, do NOT skip any step. Without persisting the plan as an artifact, task proposals lose their plan reference, feature branch naming breaks, and the plan text is lost after the conversation.
 
@@ -313,7 +312,7 @@ When Explore subagents return with findings:
 
 1. **Immediately** synthesize findings into a plan (or launch Plan subagent for complex cases)
 2. Don't ask "Should I create a plan?" in Required mode — just do it
-3. In Optional mode: if findings suggest complexity (> 3 tasks, multiple layers), suggest a plan
+3. In Optional mode: always create a plan (backend enforced), but keep it brief for simple requests (< 3 tasks)
 4. Present the plan with reasoning grounded in Explore findings
 
 ## Dependency Analysis After 3+ Proposals
