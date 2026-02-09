@@ -290,7 +290,7 @@ export const tasksApi = {
    * @param taskId The task ID to clean delete
    */
   cleanupTask: (taskId: string) =>
-    typedInvoke("cleanup_task", { task_id: taskId }, z.void()),
+    typedInvoke("cleanup_task", { taskId }, z.void()),
 
   /**
    * Clean delete all tasks in a group
@@ -306,7 +306,7 @@ export const tasksApi = {
   ): Promise<CleanupReport> =>
     typedInvokeWithTransform(
       "cleanup_tasks_in_group",
-      { group_kind: groupKind, group_id: groupId, project_id: projectId },
+      { groupKind, groupId, projectId },
       CleanupReportResponseSchemaRaw,
       transformCleanupReport
     ),
