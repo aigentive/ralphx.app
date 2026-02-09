@@ -132,6 +132,25 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
         ],
         preapproved_cli_tools: &["Task(Explore)", "Task(Plan)"],
     },
+    // Read-only agent for discussing historical review findings (approved tasks)
+    AgentConfig {
+        name: "ralphx-review-history",
+        mcp_only: false,
+        extra_cli_tools: &["Task"],
+        allowed_mcp_tools: &[
+            "get_review_notes",
+            "get_task_context",
+            "get_task_issues",
+            "get_task_steps",
+            "get_step_progress",
+            "get_issue_progress",
+            "get_artifact",
+            "get_artifact_version",
+            "get_related_artifacts",
+            "search_project_artifacts",
+        ],
+        preapproved_cli_tools: &["Task(Explore)", "Task(Plan)"],
+    },
     // =========================================================================
     // EXECUTION AGENTS
     // =========================================================================
@@ -541,5 +560,33 @@ mod tests {
         assert!(tools.contains("Glob"));
         assert!(tools.contains("Bash"));
         assert!(tools.contains("Grep"));
+    }
+
+    #[test]
+    fn test_get_allowed_mcp_tools_review_history() {
+        let config = get_agent_config("ralphx-review-history").unwrap();
+        assert!(!config.mcp_only);
+        assert!(config.extra_cli_tools.contains(&"Task"));
+        // All tools are read-only — no mutation tools
+        let tools = get_preapproved_tools("ralphx-review-history");
+        assert!(tools.is_some());
+        let tools = tools.unwrap();
+        assert!(tools.contains("mcp__ralphx__get_review_notes"));
+        assert!(tools.contains("mcp__ralphx__get_task_context"));
+        assert!(tools.contains("mcp__ralphx__get_task_issues"));
+        assert!(tools.contains("mcp__ralphx__get_task_steps"));
+        assert!(tools.contains("mcp__ralphx__get_step_progress"));
+        assert!(tools.contains("mcp__ralphx__get_issue_progress"));
+        assert!(tools.contains("mcp__ralphx__get_artifact"));
+        assert!(tools.contains("mcp__ralphx__get_artifact_version"));
+        assert!(tools.contains("mcp__ralphx__get_related_artifacts"));
+        assert!(tools.contains("mcp__ralphx__search_project_artifacts"));
+        // Must NOT contain mutation tools
+        assert!(!tools.contains("mcp__ralphx__approve_task"));
+        assert!(!tools.contains("mcp__ralphx__request_task_changes"));
+        assert!(!tools.contains("mcp__ralphx__complete_review"));
+        // Preapproved CLI tools
+        assert!(tools.contains("Task(Explore)"));
+        assert!(tools.contains("Task(Plan)"));
     }
 }
