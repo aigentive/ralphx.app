@@ -569,9 +569,54 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   // null means "auto" - will be determined by task count
   const [nodeModeOverride, setNodeModeOverride] = useState<NodeMode | null>(null);
 
-  // Calculate task count and determine effective node mode
-  const taskCount = graphData?.nodes.length ?? 0;
-  const isAutoCompact = taskCount >= COMPACT_MODE_THRESHOLD;
+  // Apply filters to graph data before layout computation
+  const filteredGraphData = useMemo(() => {
+    if (!graphData) {
+      return { nodes: [], edges: [], planGroups: [] };
+    }
+    return applyGraphFilters(
+      graphData.nodes,
+      graphData.edges,
+      graphData.planGroups,
+      filters
+    );
+  }, [graphData, filters]);
+
+  // Calculate task count scoped to expanded (non-collapsed) plan groups.
+  // Only tasks in currently visible/expanded containers count toward the auto-compact threshold.
+  const scopedTaskCount = useMemo(() => {
+    if (!graphData || !grouping.byPlan) {
+      // No plan grouping → count all filtered tasks
+      return filteredGraphData.nodes.length;
+    }
+
+    const planGroups = filteredGraphData.planGroups;
+    const allFilteredNodes = filteredGraphData.nodes;
+
+    // Collect task IDs from expanded (non-collapsed) plan groups
+    let count = 0;
+    const groupedTaskIds = new Set<string>();
+    for (const pg of planGroups) {
+      for (const taskId of pg.taskIds) {
+        groupedTaskIds.add(taskId);
+      }
+      if (!collapsedPlanIds.has(pg.planArtifactId)) {
+        count += pg.taskIds.length;
+      }
+    }
+
+    // Count ungrouped tasks if the ungrouped pseudo-group is expanded
+    if (!collapsedPlanIds.has(UNGROUPED_PLAN_ID)) {
+      const ungroupedCount = allFilteredNodes.filter(
+        (n) => !groupedTaskIds.has(n.taskId)
+      ).length;
+      count += ungroupedCount;
+    }
+
+    return count;
+  }, [filteredGraphData.nodes, filteredGraphData.planGroups, collapsedPlanIds, graphData, grouping.byPlan]);
+
+  const isAutoCompact = scopedTaskCount >= COMPACT_MODE_THRESHOLD;
   const effectiveNodeMode: NodeMode = nodeModeOverride ?? (isAutoCompact ? "compact" : "standard");
 
   // Select the appropriate node types based on mode
@@ -587,19 +632,6 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
       setNodeModeOverride(mode);
     }
   }, [isAutoCompact]);
-
-  // Apply filters to graph data before layout computation
-  const filteredGraphData = useMemo(() => {
-    if (!graphData) {
-      return { nodes: [], edges: [], planGroups: [] };
-    }
-    return applyGraphFilters(
-      graphData.nodes,
-      graphData.edges,
-      graphData.planGroups,
-      filters
-    );
-  }, [graphData, filters]);
 
   const tierGroups = useMemo(
     () => buildTierGroups(filteredGraphData.nodes, filteredGraphData.planGroups, {
