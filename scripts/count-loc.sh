@@ -8,6 +8,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+source "$SCRIPT_DIR/milestones.sh"
 
 # Colors
 BOLD='\033[1m'
@@ -333,6 +334,94 @@ print_productivity() {
     fi
 }
 
+# Development era breakdown using milestones
+print_era_stats() {
+    [[ ${#MILESTONES[@]} -eq 0 ]] && return
+
+    cd "$PROJECT_ROOT"
+
+    echo ""
+    echo -e "${BOLD}Development Eras:${NC}"
+    echo "─────────────────────────────────────────────────────"
+
+    # Get project start epoch (first commit)
+    local first_commit
+    first_commit=$(git log --reverse --format="%H" 2>/dev/null | head -1)
+    [[ -z "$first_commit" ]] && return
+
+    local project_start_epoch
+    project_start_epoch=$(git show -s --format="%ct" "$first_commit" 2>/dev/null)
+    local now_epoch
+    now_epoch=$(date +%s)
+
+    # Build sorted list of boundary epochs: project_start, milestone1, ..., now
+    local boundaries=("$project_start_epoch")
+    local labels=()
+
+    for entry in "${MILESTONES[@]}"; do
+        parse_milestone "$entry"
+        boundaries+=("$MS_EPOCH")
+        labels+=("$MS_LABEL")
+    done
+    boundaries+=("$now_epoch")
+
+    # Print each era
+    local i=0
+    local total_eras=$(( ${#boundaries[@]} - 1 ))
+
+    while [[ $i -lt $total_eras ]]; do
+        local era_start=${boundaries[$i]}
+        local era_end=${boundaries[$((i + 1))]}
+
+        # Era label
+        local era_label
+        if [[ $i -eq 0 && ${#labels[@]} -gt 0 ]]; then
+            # Before first milestone — use the label's "from" side
+            local first_label="${labels[0]}"
+            era_label="${first_label%%->*}"
+            era_label=$(echo "$era_label" | sed 's/^ *//;s/ *$//')
+        elif [[ $i -gt 0 && $i -le ${#labels[@]} ]]; then
+            local label="${labels[$((i - 1))]}"
+            # After milestone — use the label's "to" side if it has ->
+            if [[ "$label" == *"->"* ]]; then
+                era_label="${label##*->}"
+                era_label=$(echo "$era_label" | sed 's/^ *//;s/ *$//')
+            else
+                era_label="$label"
+            fi
+        else
+            era_label="Era $((i + 1))"
+        fi
+
+        # Days in era
+        local era_days=$(( (era_end - era_start) / 86400 ))
+        [[ $era_days -eq 0 ]] && era_days=1
+
+        # Commits in era (using --after/--before with epoch)
+        local era_commits
+        era_commits=$(git rev-list --count --after="$era_start" --before="$era_end" HEAD 2>/dev/null || echo "0")
+
+        # Commits per day
+        local era_cpd
+        era_cpd=$(echo "scale=1; $era_commits / $era_days" | bc)
+
+        # Date range for display
+        local start_date end_date
+        if [[ "$(uname)" == "Darwin" ]]; then
+            start_date=$(date -r "$era_start" "+%Y-%m-%d" 2>/dev/null)
+            end_date=$(date -r "$era_end" "+%Y-%m-%d" 2>/dev/null)
+        else
+            start_date=$(date -d "@$era_start" "+%Y-%m-%d" 2>/dev/null)
+            end_date=$(date -d "@$era_end" "+%Y-%m-%d" 2>/dev/null)
+        fi
+
+        printf "  ${CYAN}%-25s${NC} %3d days  %5s commits  %5s/day  (%s → %s)\n" \
+            "$era_label" "$era_days" "$era_commits" "$era_cpd" "$start_date" "$end_date"
+
+        i=$((i + 1))
+    done
+}
+
 # Main
 main() {
     print_header
@@ -346,6 +435,7 @@ main() {
     print_area_summary
     print_git_stats
     print_productivity
+    print_era_stats
     print_exclusions
     echo ""
 }
