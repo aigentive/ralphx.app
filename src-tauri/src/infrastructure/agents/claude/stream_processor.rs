@@ -189,16 +189,36 @@ pub enum StreamEvent {
     ToolCallStarted {
         name: String,
         id: Option<String>,
+        parent_tool_use_id: Option<String>,
     },
     /// Tool call completed (arguments parsed)
-    ToolCallCompleted(ToolCall),
+    ToolCallCompleted {
+        tool_call: ToolCall,
+        parent_tool_use_id: Option<String>,
+    },
     /// Tool result received (from user message with tool_result)
     ToolResultReceived {
         tool_use_id: String,
         result: serde_json::Value,
+        parent_tool_use_id: Option<String>,
     },
     /// Session ID received (from Result or Assistant message)
     SessionId(String),
+    /// Task subagent started (detected from Task tool_use)
+    TaskStarted {
+        tool_use_id: String,
+        description: Option<String>,
+        subagent_type: Option<String>,
+        model: Option<String>,
+    },
+    /// Task subagent completed (detected from Task tool_result)
+    TaskCompleted {
+        tool_use_id: String,
+        agent_id: Option<String>,
+        total_duration_ms: Option<u64>,
+        total_tokens: Option<u64>,
+        total_tool_use_count: Option<u64>,
+    },
 }
 
 // ============================================================================
@@ -244,8 +264,14 @@ impl StreamProcessor {
         Self::default()
     }
 
-    /// Parse a stream-json line
-    pub fn parse_line(line: &str) -> Option<StreamMessage> {
+    /// Parsed line with optional parent_tool_use_id extracted from top-level JSON
+    pub struct ParsedLine {
+        pub message: StreamMessage,
+        pub parent_tool_use_id: Option<String>,
+    }
+
+    /// Parse a stream-json line, extracting parent_tool_use_id from the top-level JSON envelope
+    pub fn parse_line(line: &str) -> Option<ParsedLine> {
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed == "[DONE]" {
             return None;
@@ -257,7 +283,20 @@ impl StreamProcessor {
             trimmed
         };
 
-        serde_json::from_str(candidate).ok()
+        // First extract parent_tool_use_id from raw JSON before typed parsing
+        let parent_tool_use_id = serde_json::from_str::<serde_json::Value>(candidate)
+            .ok()
+            .and_then(|v| {
+                v.get("parent_tool_use_id")
+                    .and_then(|p| p.as_str())
+                    .map(|s| s.to_string())
+            });
+
+        let message: StreamMessage = serde_json::from_str(candidate).ok()?;
+        Some(ParsedLine {
+            message,
+            parent_tool_use_id,
+        })
     }
 
     /// Process a stream message and return events
