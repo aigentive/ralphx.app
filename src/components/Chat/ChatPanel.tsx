@@ -15,7 +15,7 @@ import { useChat, chatKeys } from "@/hooks/useChat";
 import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, getContextKey } from "@/stores/chatStore";
 import { useUiStore } from "@/stores/uiStore";
 import type { ChatContext } from "@/types/chat";
-import type { AskUserQuestionResponse } from "@/types/ask-user-question";
+
 import { useTaskStore } from "@/stores/taskStore";
 import { useQuery } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
@@ -315,27 +315,16 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     messagesEndRef,
   });
 
-  // Ask user question state
-  const { activeQuestion, submitAnswer, isLoading: isSubmittingAnswer } = useAskUserQuestion();
-  const [answeredQuestion, setAnsweredQuestion] = useState<string | undefined>();
-
-  const handleSubmitAnswer = useCallback(
-    async (response: AskUserQuestionResponse) => {
-      const summary = response.selectedOptions.length > 0
-        ? response.selectedOptions.join(", ")
-        : response.customResponse ?? "";
-      await submitAnswer(response);
-      setAnsweredQuestion(summary);
-    },
-    [submitAnswer]
-  );
-
-  // Clear answered state when a new question comes in
-  useEffect(() => {
-    if (activeQuestion) {
-      setAnsweredQuestion(undefined);
-    }
-  }, [activeQuestion]);
+  // Ask user question state — scoped to current context
+  const questionSessionId = context.ideationSessionId ?? context.selectedTaskId ?? context.projectId;
+  const {
+    activeQuestion,
+    answeredQuestion,
+    submitAnswer,
+    dismissQuestion,
+    clearAnswered,
+    isLoading: isSubmittingAnswer,
+  } = useAskUserQuestion(questionSessionId);
 
   // Close with animation
   const handleClose = useCallback(() => {
@@ -463,9 +452,11 @@ function ChatPanelContent({ context }: ChatPanelProps) {
           onDismissError={failedRun ? () => setDismissedErrorId(failedRun.id) : undefined}
           messagesEndRef={messagesEndRef}
           activeQuestion={activeQuestion}
-          onSubmitAnswer={handleSubmitAnswer}
+          onSubmitAnswer={submitAnswer}
           isSubmittingAnswer={isSubmittingAnswer}
           answeredQuestion={answeredQuestion}
+          onDismissQuestion={dismissQuestion}
+          onDismissAnswered={clearAnswered}
         />
 
         {/* Input Area */}
