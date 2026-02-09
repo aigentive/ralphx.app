@@ -386,6 +386,8 @@ pub struct PlanProposalsSyncPayload {
     pub proposal_ids: Vec<String>,
     /// The new version number
     pub new_version: u32,
+    /// The ideation session this plan belongs to (for scoped notifications)
+    pub session_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
