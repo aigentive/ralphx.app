@@ -10,12 +10,10 @@
  * - Styling matches StreamingToolIndicator aesthetic (bg-elevated, border-subtle, orange accent)
  */
 
-import React, { useState, useMemo, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { ChevronDown, ChevronRight, Loader2, Bot } from "lucide-react";
 import type { StreamingTask } from "@/types/streaming-task";
-import type { ToolCall } from "./ToolCallIndicator";
 import { ToolCallIndicator } from "./ToolCallIndicator";
-import { isDiffToolCall } from "./DiffToolCallView.utils";
 
 // ============================================================================
 // Constants
@@ -138,20 +136,10 @@ export const TaskSubagentCard = React.memo(function TaskSubagentCard({
     }
   }, [isCompleted]);
 
-  // Split child tool calls: Edit/Write get rendered as DiffToolCallViews, rest as list items
-  const { diffCalls, otherCalls } = useMemo(() => {
-    const diff: ToolCall[] = [];
-    const other: ToolCall[] = [];
-    for (const tc of task.childToolCalls) {
-      if (tc.name.startsWith("result:toolu")) continue;
-      if (isDiffToolCall(tc.name) && tc.arguments != null) {
-        diff.push(tc);
-      } else {
-        other.push(tc);
-      }
-    }
-    return { diffCalls: diff, otherCalls: other };
-  }, [task.childToolCalls]);
+  // Check if there are any displayable child tool calls (excludes result markers)
+  const hasChildCalls = task.childToolCalls.some(
+    (tc) => !tc.name.startsWith("result:toolu")
+  );
 
   // Auto-scroll content when new tool calls arrive
   useEffect(() => {
@@ -245,10 +233,10 @@ export const TaskSubagentCard = React.memo(function TaskSubagentCard({
       {isExpanded && (
         <div className="px-3 py-2">
           {/* Child tool calls rendered as compact ToolCallIndicators */}
-          {(isRunning || (isCompleted && (otherCalls.length > 0 || diffCalls.length > 0))) && (
+          {(isRunning || (isCompleted && hasChildCalls)) && (
             <>
               {/* Scrollable tool call list */}
-              {(otherCalls.length > 0 || diffCalls.length > 0) && (
+              {hasChildCalls && (
                 <div
                   ref={contentRef}
                   className="space-y-1 overflow-y-auto"
@@ -288,7 +276,7 @@ export const TaskSubagentCard = React.memo(function TaskSubagentCard({
           )}
 
           {/* Completed state: summary */}
-          {isCompleted && otherCalls.length === 0 && diffCalls.length === 0 && (
+          {isCompleted && !hasChildCalls && (
             <CompletedSummary task={task} />
           )}
         </div>
