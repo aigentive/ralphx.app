@@ -10,6 +10,7 @@ pnpm-debug.log*
 
 # Cache
 .cache/
+.claude/cache/
 node_modules
 node_modules/
 
