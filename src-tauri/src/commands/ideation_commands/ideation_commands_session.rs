@@ -6,15 +6,12 @@ use std::sync::Arc;
 use tauri::{Emitter, State};
 
 use crate::application::git_service::GitService;
-use crate::application::task_transition_service::TaskTransitionService;
+use crate::application::{StopMode, TaskCleanupService};
 use crate::application::AppState;
-use crate::commands::execution_commands::{ExecutionState, AGENT_ACTIVE_STATUSES};
-use crate::commands::task_commands::helpers::emit_task_lifecycle_event;
 use crate::domain::entities::{
-    IdeationSession, IdeationSessionId, IdeationSessionStatus, InternalStatus, ProjectId, TaskId,
+    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, TaskId,
 };
 use crate::domain::entities::plan_branch::PlanBranchStatus;
-use crate::domain::services::RunningAgentKey;
 
 use super::ideation_commands_types::{
     ChatMessageResponse, CreateSessionInput, IdeationSessionResponse,
@@ -148,7 +145,6 @@ pub async fn archive_ideation_session(
 pub async fn delete_ideation_session(
     id: String,
     state: State<'_, AppState>,
-    execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     let session_id = IdeationSessionId::from_string(id.clone());
@@ -161,8 +157,6 @@ pub async fn delete_ideation_session(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Session not found: {}", id))?;
 
-    let project_id_str = session.project_id.as_str().to_string();
-
     // 1. Get all tasks for this session
     let tasks = state
         .task_repo
@@ -170,65 +164,25 @@ pub async fn delete_ideation_session(
         .await
         .map_err(|e| e.to_string())?;
 
-    // 2. Force-stop any active agent tasks
-    if tasks.iter().any(|t| AGENT_ACTIVE_STATUSES.contains(&t.internal_status)) {
-        let transition_service = TaskTransitionService::new(
-            Arc::clone(&state.task_repo),
-            Arc::clone(&state.task_dependency_repo),
-            Arc::clone(&state.project_repo),
-            Arc::clone(&state.chat_message_repo),
-            Arc::clone(&state.chat_conversation_repo),
-            Arc::clone(&state.agent_run_repo),
-            Arc::clone(&state.ideation_session_repo),
-            Arc::clone(&state.activity_event_repo),
-            Arc::clone(&state.message_queue),
-            Arc::clone(&state.running_agent_registry),
-            Arc::clone(&execution_state),
-            state.app_handle.clone(),
-        )
-        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
-
-        for task in &tasks {
-            if AGENT_ACTIVE_STATUSES.contains(&task.internal_status) {
-                // Determine context type based on task status
-                let context_type = match task.internal_status {
-                    InternalStatus::Reviewing => "review",
-                    InternalStatus::Merging => "merge",
-                    _ => "task_execution",
-                };
-                let key = RunningAgentKey::new(context_type, task.id.as_str());
-                let _ = state.running_agent_registry.stop(&key).await;
-
-                // Transition to Stopped (triggers on_exit handlers)
-                if let Err(e) = transition_service
-                    .transition_task(&task.id, InternalStatus::Stopped)
-                    .await
-                {
-                    tracing::warn!(
-                        task_id = task.id.as_str(),
-                        session_id = id.as_str(),
-                        error = %e,
-                        "Failed to transition task to Stopped during session deletion"
-                    );
-                }
-            }
-        }
+    // 2. Clean up tasks: stop agents, clean git branches/worktrees, delete from DB, emit events
+    let cleanup_service = TaskCleanupService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.running_agent_registry),
+        Some(app.clone()),
+    );
+    let report = cleanup_service
+        .cleanup_tasks(&tasks, StopMode::Graceful, true)
+        .await;
+    if !report.errors.is_empty() {
+        tracing::warn!(
+            session_id = id.as_str(),
+            errors = ?report.errors,
+            "Some tasks failed during session deletion cleanup"
+        );
     }
 
-    // 3. Delete each task and emit events
-    for task in &tasks {
-        if let Err(e) = state.task_repo.delete(&task.id).await {
-            tracing::warn!(
-                task_id = task.id.as_str(),
-                session_id = id.as_str(),
-                error = %e,
-                "Failed to delete task during session deletion"
-            );
-        }
-        emit_task_lifecycle_event(&app, "task:deleted", task.id.as_str(), &project_id_str);
-    }
-
-    // 4. Clean up plan branch (best-effort)
+    // 3. Clean up plan branch (best-effort)
     if let Ok(Some(plan_branch)) = state.plan_branch_repo.get_by_session_id(&session_id).await {
         // Best-effort delete the git feature branch
         let project = state
@@ -263,7 +217,7 @@ pub async fn delete_ideation_session(
         }
     }
 
-    // 5. Delete the session (existing CASCADE handles proposals/messages)
+    // 4. Delete the session (existing CASCADE handles proposals/messages)
     state
         .ideation_session_repo
         .delete(&session_id)
