@@ -32,7 +32,7 @@
 | DRY | 2+ times → helper |
 
 ## Tauri API Layer
-See @.claude/rules/api-layer.md for complete API patterns.
+See api-layer.md for complete API patterns.
 
 ## Database
 
