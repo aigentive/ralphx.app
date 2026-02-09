@@ -12,18 +12,19 @@
 import { memo } from "react";
 import type { NodeProps, Node } from "@xyflow/react";
 import { Handle, Position } from "@xyflow/react";
-import { PlanGroupHeader } from "./PlanGroupHeader";
-import type { StatusSummary } from "@/api/task-graph.types";
-import { cn } from "@/lib/utils";
-import { HEADER_HEIGHT } from "./groupUtils";
-import { getPlanGroupNodeId } from "./groupTypes";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { GroupContextMenuItems } from "@/components/tasks/GroupContextMenuItems";
-import type { GroupKind } from "@/lib/task-actions";
+import { useConfirmation } from "@/hooks/useConfirmation";
+import { PlanGroupHeader } from "./PlanGroupHeader";
+import { UNGROUPED_PLAN_ID } from "./tierGroupUtils";
+import type { StatusSummary } from "@/api/task-graph.types";
+import { cn } from "@/lib/utils";
+import { HEADER_HEIGHT } from "./groupUtils";
+import { getPlanGroupNodeId } from "./groupTypes";
 
 // ============================================================================
 // Types
@@ -67,17 +68,8 @@ export interface PlanGroupData extends Record<string, unknown> {
   onNavigateToTask?: (taskId: string) => void;
   /** Delete this plan group (shows confirmation) */
   onDeletePlan?: (planArtifactId: string) => void;
-  /** Context menu: group kind for this container */
-  groupKind?: GroupKind;
-  /** Context menu: handler called after user confirms bulk removal */
-  onRemoveAllTasks?: () => void;
-  /** Context menu: confirm function from useConfirmation hook */
-  confirm?: (opts: {
-    title: string;
-    description: string;
-    confirmText?: string;
-    variant?: "default" | "destructive";
-  }) => Promise<boolean>;
+  /** Remove all tasks in this group (bulk cleanup) */
+  onRemoveAll?: (sessionId: string) => void;
 }
 
 export type PlanGroupNode = Node<PlanGroupData, "planGroup">;
@@ -136,9 +128,7 @@ export const PlanGroup = memo(function PlanGroup({
     isSelected,
     onNavigateToTask,
     onDeletePlan,
-    groupKind,
-    onRemoveAllTasks,
-    confirm,
+    onRemoveAll,
   } = data;
   const hasTierControls = Boolean(
     tierGroupIds && tierGroupIds.length > 0 && onToggleAllTiers
@@ -157,7 +147,12 @@ export const PlanGroup = memo(function PlanGroup({
 
   const isGroupSelected = isSelected ?? selected;
 
-  const hasContextMenu = Boolean(groupKind && onRemoveAllTasks && confirm && projectId);
+  const isUncategorized = planArtifactId === UNGROUPED_PLAN_ID;
+  const groupKind = isUncategorized ? "uncategorized" as const : "plan" as const;
+  const groupLabel = sessionTitle ?? "Unnamed plan";
+  const hasContextMenu = Boolean(onRemoveAll && projectId);
+
+  const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
 
   const groupContent = (
     <div
@@ -222,23 +217,31 @@ export const PlanGroup = memo(function PlanGroup({
     </div>
   );
 
-  if (!hasContextMenu) return groupContent;
+  if (!hasContextMenu) {
+    return groupContent;
+  }
 
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>{groupContent}</ContextMenuTrigger>
-      <ContextMenuContent data-testid={`group-context-menu-${planArtifactId}`}>
-        <GroupContextMenuItems
-          groupLabel={sessionTitle ?? "Uncategorized"}
-          groupKind={groupKind!}
-          taskCount={taskIds.length}
-          projectId={projectId!}
-          groupId={sessionId}
-          onRemoveAll={onRemoveAllTasks!}
-          confirm={confirm!}
-        />
-      </ContextMenuContent>
-    </ContextMenu>
+    <>
+      <ConfirmationDialog {...confirmationDialogProps} />
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          {groupContent}
+        </ContextMenuTrigger>
+        <ContextMenuContent data-testid={`plan-group-context-menu-${planArtifactId}`}>
+          <GroupContextMenuItems
+            groupLabel={groupLabel}
+            groupKind={groupKind}
+            taskCount={taskIds.length}
+            projectId={projectId!}
+            groupId={isUncategorized ? "" : sessionId}
+            onRemoveAll={() => onRemoveAll!(sessionId)}
+            confirm={confirm}
+          />
+        </ContextMenuContent>
+      </ContextMenu>
+    </>
+
   );
 });
 
@@ -279,14 +282,7 @@ export function createPlanGroupNode(
   projectId?: string,
   onNavigateToTask?: (taskId: string) => void,
   onDeletePlan?: (planArtifactId: string) => void,
-  groupKind?: GroupKind,
-  onRemoveAllTasks?: () => void,
-  confirm?: (opts: {
-    title: string;
-    description: string;
-    confirmText?: string;
-    variant?: "default" | "destructive";
-  }) => Promise<boolean>
+  onRemoveAll?: (sessionId: string) => void
 ): PlanGroupNode {
   return {
     id: getPlanGroupNodeId(planArtifactId),
@@ -311,9 +307,7 @@ export function createPlanGroupNode(
       ...(projectId && { projectId }),
       ...(onNavigateToTask && { onNavigateToTask }),
       ...(onDeletePlan && { onDeletePlan }),
-      ...(groupKind && { groupKind }),
-      ...(onRemoveAllTasks && { onRemoveAllTasks }),
-      ...(confirm && { confirm }),
+      ...(onRemoveAll && { onRemoveAll }),
     },
     // Group node properties
     style: {

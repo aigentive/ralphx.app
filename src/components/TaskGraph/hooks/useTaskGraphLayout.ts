@@ -172,13 +172,7 @@ function createGroupNodes(
   projectId?: string,
   onNavigateToTask?: (taskId: string) => void,
   onDeletePlan?: (planArtifactId: string) => void,
-  onRemoveAllUncategorized?: () => void,
-  confirm?: (opts: {
-    title: string;
-    description: string;
-    confirmText?: string;
-    variant?: "default" | "destructive";
-  }) => Promise<boolean>
+  onRemoveAll?: (sessionId: string) => void
 ): PlanGroupNode[] {
   const args = {
     taskNodes,
@@ -196,8 +190,7 @@ function createGroupNodes(
     ...(projectId && { projectId }),
     ...(onNavigateToTask && { onNavigateToTask }),
     ...(onDeletePlan && { onDeletePlan }),
-    ...(onRemoveAllUncategorized && { onRemoveAllUncategorized }),
-    ...(confirm && { confirm }),
+    ...(onRemoveAll && { onRemoveAll }),
   };
   return buildPlanGroupNodes(args);
 }
@@ -471,13 +464,7 @@ function computeLayoutWithCache(
   projectId?: string,
   onNavigateToTask?: (taskId: string) => void,
   onDeletePlan?: (planArtifactId: string) => void,
-  onRemoveAllUncategorized?: () => void,
-  confirm?: (opts: {
-    title: string;
-    description: string;
-    confirmText?: string;
-    variant?: "default" | "destructive";
-  }) => Promise<boolean>
+  onRemoveAll?: (sessionId: string) => void
 ): LayoutResult {
   // Use correct node dimensions based on compact mode
   const nodeWidth = config.isCompact ? COMPACT_NODE_WIDTH : NODE_WIDTH;
@@ -755,8 +742,7 @@ function computeLayoutWithCache(
     projectId,
     onNavigateToTask,
     onDeletePlan,
-    onRemoveAllUncategorized,
-    confirm
+    onRemoveAll
   );
 
   const planGroupBounds = new Map<string, { position: { x: number; y: number }; width: number }>();
@@ -1052,13 +1038,7 @@ export function useTaskGraphLayout(
   projectId?: string,
   onNavigateToTask?: (taskId: string) => void,
   onDeletePlan?: (planArtifactId: string) => void,
-  onRemoveAllUncategorized?: () => void,
-  confirm?: (opts: {
-    title: string;
-    description: string;
-    confirmText?: string;
-    variant?: "default" | "destructive";
-  }) => Promise<boolean>
+  onRemoveAll?: (sessionId: string) => void
 ): LayoutResult {
   // Merge with default config
   const fullConfig = useMemo(
@@ -1090,8 +1070,7 @@ export function useTaskGraphLayout(
       projectId,
       onNavigateToTask,
       onDeletePlan,
-      onRemoveAllUncategorized,
-      confirm
+      onRemoveAll
     );
   }, [
     graphNodes,
@@ -1108,8 +1087,7 @@ export function useTaskGraphLayout(
     projectId,
     onNavigateToTask,
     onDeletePlan,
-    onRemoveAllUncategorized,
-    confirm,
+    onRemoveAll,
   ]);
 
   return layout;

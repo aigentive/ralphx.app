@@ -14,8 +14,6 @@ import {
   TIER_HEADER_HEIGHT,
 } from "./TierGroup";
 import { UNGROUPED_PLAN_ID, type TierGroupInfo } from "./tierGroupUtils";
-import type { GroupKind } from "@/lib/task-actions";
-
 /** Collapsed group dimensions */
 export const COLLAPSED_GROUP_WIDTH = 420;
 export const COLLAPSED_GROUP_HEIGHT = HEADER_HEIGHT + 8;
@@ -38,15 +36,7 @@ interface PlanGroupBuilderArgs {
   projectId?: string;
   onNavigateToTask?: (taskId: string) => void;
   onDeletePlan?: (planArtifactId: string) => void;
-  /** Context menu: handler for removing all uncategorized tasks */
-  onRemoveAllUncategorized?: () => void;
-  /** Context menu: confirm function from useConfirmation hook */
-  confirm?: (opts: {
-    title: string;
-    description: string;
-    confirmText?: string;
-    variant?: "default" | "destructive";
-  }) => Promise<boolean>;
+  onRemoveAll?: (sessionId: string) => void;
 }
 
 interface TierGroupBuilderArgs {
@@ -77,8 +67,7 @@ export function buildPlanGroupNodes({
   projectId,
   onNavigateToTask,
   onDeletePlan,
-  onRemoveAllUncategorized,
-  confirm,
+  onRemoveAll,
 }: PlanGroupBuilderArgs): PlanGroupNode[] {
   if (planGroups.length === 0 && !includeUncategorized) {
     return [];
@@ -169,7 +158,8 @@ export function buildPlanGroupNodes({
       hasTierGroups && onToggleAllTiers ? onToggleAllTiers : undefined,
       projectId,
       onNavigateToTask,
-      onDeletePlan
+      onDeletePlan,
+      onRemoveAll
     );
 
     groupNodes.push(groupNode);
@@ -255,7 +245,6 @@ export function buildPlanGroupNodes({
         ungroupedSummary.terminal++;
     }
 
-    const uncategorizedGroupKind: GroupKind = "uncategorized";
     const groupNode = createPlanGroupNode(
       UNGROUPED_PLAN_ID,
       "",
@@ -273,10 +262,8 @@ export function buildPlanGroupNodes({
       hasTierGroups && onToggleAllTiers ? onToggleAllTiers : undefined,
       projectId,
       onNavigateToTask,
-      undefined, // onDeletePlan - not applicable for uncategorized
-      uncategorizedGroupKind,
-      onRemoveAllUncategorized,
-      confirm
+      undefined, // onDeletePlan — not applicable for uncategorized
+      onRemoveAll
     );
 
     groupNodes.push(groupNode);
