@@ -1418,6 +1418,18 @@ impl<'a> super::TransitionHandler<'a> {
                         scheduler.try_schedule_ready_tasks().await;
                     });
                 }
+
+                // Retry deferred merges — covers the HTTP handler path (e.g. ConflictResolved)
+                // where on_enter(Merged) is called directly without going through
+                // post_merge_cleanup(). Uses 800ms delay to serialize after scheduling.
+                if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
+                    let scheduler = Arc::clone(scheduler);
+                    let project_id = self.machine.context.project_id.clone();
+                    tokio::spawn(async move {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
+                        scheduler.try_retry_deferred_merges(&project_id).await;
+                    });
+                }
             }
             _ => {}
         }
