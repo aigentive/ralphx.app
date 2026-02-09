@@ -373,7 +373,7 @@ export function Badge({ variant, children, compact = false }: BadgeProps) {
   return (
     <span
       style={{
-        fontSize: compact ? 9 : 9.5,
+        fontSize: compact ? 10 : 10.5,
         padding: "1px 6px",
         borderRadius: 6,
         fontWeight: 500,

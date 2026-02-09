@@ -24,15 +24,10 @@ interface RawPlanArtifact {
   title?: string;
 }
 
-interface RawStep {
-  id?: string;
-  status?: string;
-}
-
 interface RawTaskContext {
   task?: RawTask;
   plan_artifact?: RawPlanArtifact;
-  steps?: RawStep[];
+  steps?: unknown[];
   step_progress?: { total?: number };
 }
 
