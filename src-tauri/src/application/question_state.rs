@@ -4,7 +4,11 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::sync::{watch, Mutex};
+use tracing::{error, info};
+
+use crate::domain::repositories::QuestionRepository;
 
 /// Answer provided by the user in the UI
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,14 +47,26 @@ pub struct PendingQuestion {
 /// Uses tokio::sync::watch channels to allow long-polling:
 /// - MCP server registers a question and waits on a receiver
 /// - Frontend resolves the question by sending through the channel
+///
+/// Optionally backed by a repository for persistence (SQLite).
+/// Repo calls are fire-and-forget: errors are logged but never block channel ops.
 pub struct QuestionState {
     pub pending: Mutex<HashMap<String, PendingQuestion>>,
+    repo: Option<Arc<dyn QuestionRepository>>,
 }
 
 impl QuestionState {
     pub fn new() -> Self {
         Self {
             pending: Mutex::new(HashMap::new()),
+            repo: None,
+        }
+    }
+
+    pub fn with_repo(repo: Arc<dyn QuestionRepository>) -> Self {
+        Self {
+            pending: Mutex::new(HashMap::new()),
+            repo: Some(repo),
         }
     }
 
@@ -71,17 +87,23 @@ impl QuestionState {
         multi_select: bool,
     ) -> watch::Receiver<Option<QuestionAnswer>> {
         let (tx, rx) = watch::channel(None);
-        let request = PendingQuestion {
-            info: PendingQuestionInfo {
-                request_id: request_id.clone(),
-                session_id,
-                question,
-                header,
-                options,
-                multi_select,
-            },
-            sender: tx,
+        let info = PendingQuestionInfo {
+            request_id: request_id.clone(),
+            session_id,
+            question,
+            header,
+            options,
+            multi_select,
         };
+
+        // Fire-and-forget persist to repo
+        if let Some(repo) = &self.repo {
+            if let Err(e) = repo.create_pending(&info).await {
+                error!("Failed to persist pending question {}: {}", request_id, e);
+            }
+        }
+
+        let request = PendingQuestion { info, sender: tx };
         self.pending.lock().await.insert(request_id, request);
         rx
     }
@@ -91,7 +113,15 @@ impl QuestionState {
     pub async fn resolve(&self, request_id: &str, answer: QuestionAnswer) -> bool {
         let pending = self.pending.lock().await;
         if let Some(question) = pending.get(request_id) {
-            let _ = question.sender.send(Some(answer));
+            let _ = question.sender.send(Some(answer.clone()));
+
+            // Fire-and-forget persist to repo
+            if let Some(repo) = &self.repo {
+                if let Err(e) = repo.resolve(request_id, &answer).await {
+                    error!("Failed to persist question resolution {}: {}", request_id, e);
+                }
+            }
+
             true
         } else {
             false
@@ -100,7 +130,35 @@ impl QuestionState {
 
     /// Remove a pending question
     pub async fn remove(&self, request_id: &str) -> bool {
-        self.pending.lock().await.remove(request_id).is_some()
+        let removed = self.pending.lock().await.remove(request_id).is_some();
+
+        // Fire-and-forget persist to repo
+        if removed {
+            if let Some(repo) = &self.repo {
+                if let Err(e) = repo.remove(request_id).await {
+                    error!("Failed to persist question removal {}: {}", request_id, e);
+                }
+            }
+        }
+
+        removed
+    }
+
+    /// Expire all stale pending questions in the repository on startup.
+    /// Call this once after constructing with `with_repo()` to clean up
+    /// questions from agents that are no longer running.
+    pub async fn expire_stale_on_startup(&self) {
+        if let Some(repo) = &self.repo {
+            match repo.expire_all_pending().await {
+                Ok(count) if count > 0 => {
+                    info!("Expired {} stale pending questions on startup", count);
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    error!("Failed to expire stale pending questions: {}", e);
+                }
+            }
+        }
     }
 }
 
@@ -300,5 +358,141 @@ mod tests {
             )
             .await;
         assert!(!resolved);
+    }
+
+    // --- Tests with repo persistence ---
+
+    mod with_repo {
+        use super::*;
+        use crate::domain::repositories::QuestionRepository;
+        use crate::infrastructure::memory::MemoryQuestionRepository;
+        use std::sync::Arc;
+
+        fn make_state_with_repo() -> (QuestionState, Arc<MemoryQuestionRepository>) {
+            let repo = Arc::new(MemoryQuestionRepository::new());
+            let state = QuestionState::with_repo(repo.clone());
+            (state, repo)
+        }
+
+        #[tokio::test]
+        async fn test_with_repo_constructor() {
+            let (state, _repo) = make_state_with_repo();
+            assert!(state.repo.is_some());
+            let pending = state.pending.lock().await;
+            assert!(pending.is_empty());
+        }
+
+        #[tokio::test]
+        async fn test_register_persists_to_repo() {
+            let (state, repo) = make_state_with_repo();
+
+            state
+                .register(
+                    "req-1".to_string(),
+                    "session-1".to_string(),
+                    "Which framework?".to_string(),
+                    None,
+                    vec![QuestionOption {
+                        value: "react".to_string(),
+                        label: "React".to_string(),
+                        description: None,
+                    }],
+                    false,
+                )
+                .await;
+
+            // Verify persisted in repo
+            let repo_pending = repo.get_pending().await.unwrap();
+            assert_eq!(repo_pending.len(), 1);
+            assert_eq!(repo_pending[0].request_id, "req-1");
+            assert_eq!(repo_pending[0].question, "Which framework?");
+        }
+
+        #[tokio::test]
+        async fn test_resolve_persists_to_repo() {
+            let (state, repo) = make_state_with_repo();
+
+            state
+                .register(
+                    "req-1".to_string(),
+                    "session-1".to_string(),
+                    "Pick one".to_string(),
+                    None,
+                    vec![],
+                    false,
+                )
+                .await;
+
+            let answer = QuestionAnswer {
+                selected_options: vec!["a".to_string()],
+                text: None,
+            };
+            let resolved = state.resolve("req-1", answer).await;
+            assert!(resolved);
+
+            // After resolve, repo should have no pending
+            let repo_pending = repo.get_pending().await.unwrap();
+            assert!(repo_pending.is_empty());
+
+            // But the record still exists
+            let found = repo.get_by_request_id("req-1").await.unwrap();
+            assert!(found.is_some());
+        }
+
+        #[tokio::test]
+        async fn test_remove_persists_to_repo() {
+            let (state, repo) = make_state_with_repo();
+
+            state
+                .register(
+                    "req-rm".to_string(),
+                    "session-1".to_string(),
+                    "Remove me".to_string(),
+                    None,
+                    vec![],
+                    false,
+                )
+                .await;
+
+            let removed = state.remove("req-rm").await;
+            assert!(removed);
+
+            // Repo record should be gone
+            let found = repo.get_by_request_id("req-rm").await.unwrap();
+            assert!(found.is_none());
+        }
+
+        #[tokio::test]
+        async fn test_expire_stale_on_startup() {
+            let repo = Arc::new(MemoryQuestionRepository::new());
+
+            // Seed repo with pending questions (simulating leftover from previous run)
+            for i in 0..3 {
+                let info = PendingQuestionInfo {
+                    request_id: format!("stale-{}", i),
+                    session_id: "old-session".to_string(),
+                    question: format!("Stale question {}", i),
+                    header: None,
+                    options: vec![],
+                    multi_select: false,
+                };
+                repo.create_pending(&info).await.unwrap();
+            }
+
+            assert_eq!(repo.get_pending().await.unwrap().len(), 3);
+
+            let state = QuestionState::with_repo(repo.clone());
+            state.expire_stale_on_startup().await;
+
+            // All stale questions should be expired
+            assert!(repo.get_pending().await.unwrap().is_empty());
+        }
+
+        #[tokio::test]
+        async fn test_expire_stale_noop_without_repo() {
+            let state = QuestionState::new();
+            // Should not panic when no repo
+            state.expire_stale_on_startup().await;
+        }
     }
 }
