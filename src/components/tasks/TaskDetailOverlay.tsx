@@ -47,6 +47,7 @@ import {
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useCreateIdeationSession } from "@/hooks/useIdeation";
 import { useConfirmation } from "@/hooks/useConfirmation";
+import { logger } from "@/lib/logger";
 import { toast } from "sonner";
 
 // ============================================================================
@@ -240,7 +241,7 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
   const setHistoryState = useUiStore((s) => s.setTaskHistoryState);
 
   // Debug logging for history state
-  console.log('[TaskDetailOverlay] History state from store:', historyState);
+  logger.debug('[TaskDetailOverlay] History state from store:', historyState);
 
   // Ideation hooks
   const addSession = useIdeationStore((state) => state.addSession);

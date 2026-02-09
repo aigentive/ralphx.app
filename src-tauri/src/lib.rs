@@ -38,6 +38,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tauri::Manager;
 use tracing::{info, warn};
+use tracing_subscriber::EnvFilter;
 
 use application::{
     ChatResumptionRunner, ReconciliationRunner, StartupJobRunner, TaskSchedulerService,
@@ -52,6 +53,15 @@ fn greet(name: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Initialize tracing subscriber so tracing macros produce visible output.
+    // Respects RUST_LOG env var; defaults to ralphx=info plus warn for everything else.
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("ralphx=info,warn")),
+        )
+        .init();
+
     // Create execution state for global execution control
     let execution_state = Arc::new(commands::ExecutionState::new());
     // Create active project state for per-project execution scoping (Phase 82)

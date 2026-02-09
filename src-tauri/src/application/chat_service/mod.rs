@@ -345,20 +345,20 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         context_id: &str,
         message: &str,
     ) -> Result<SendResult, ChatServiceError> {
-        eprintln!(
-            "[STREAM_DEBUG] chat_service.send_message start (context_type={}, context_id={}, message_len={})",
-            context_type,
+        tracing::debug!(
+            %context_type,
             context_id,
-            message.len()
+            message_len = message.len(),
+            "chat_service.send_message start"
         );
         // 1. Get or create conversation
         let conversation = self
             .get_or_create_conversation(context_type, context_id)
             .await?;
-        eprintln!(
-            "[STREAM_DEBUG] chat_service.send_message conversation (id={}, session_id={:?})",
-            conversation.id.as_str(),
-            conversation.claude_session_id
+        tracing::debug!(
+            conversation_id = conversation.id.as_str(),
+            session_id = ?conversation.claude_session_id,
+            "chat_service.send_message conversation"
         );
         let conversation_id = conversation.id;
         let is_new_conversation = conversation.claude_session_id.is_none();
@@ -371,9 +371,9 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             .create(agent_run)
             .await
             .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?;
-        eprintln!(
-            "[STREAM_DEBUG] chat_service.send_message agent_run created (run_id={})",
-            agent_run_id
+        tracing::debug!(
+            run_id = %agent_run_id,
+            "chat_service.send_message agent_run created"
         );
 
         // 2a. Update state history metadata for task-related contexts
@@ -416,9 +416,9 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             .create(user_msg)
             .await
             .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?;
-        eprintln!(
-            "[STREAM_DEBUG] chat_service.send_message user message stored (message_id={})",
-            user_msg_id
+        tracing::debug!(
+            message_id = %user_msg_id,
+            "chat_service.send_message user message stored"
         );
 
         // 5. Emit message created event
@@ -439,15 +439,15 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             .resolve_working_directory(context_type, context_id)
             .await;
         if !working_directory.exists() {
-            eprintln!(
-                "[STREAM_DEBUG] chat_service.send_message working_directory missing, falling back to default (missing={})",
-                working_directory.display()
+            tracing::debug!(
+                missing = %working_directory.display(),
+                "chat_service.send_message working_directory missing, falling back to default"
             );
             working_directory = self.default_working_directory.clone();
         }
-        eprintln!(
-            "[STREAM_DEBUG] chat_service.send_message working_directory={}",
-            working_directory.display()
+        tracing::debug!(
+            working_directory = %working_directory.display(),
+            "chat_service.send_message working_directory resolved"
         );
 
         // 6a. Fetch entity status for dynamic agent resolution
@@ -478,9 +478,9 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
 
         // 7a. Build and spawn command
         if !self.cli_path.exists() && which(&self.cli_path).is_err() {
-            eprintln!(
-                "[STREAM_DEBUG] chat_service.send_message missing Claude CLI at {}",
-                self.cli_path.display()
+            tracing::warn!(
+                cli_path = %self.cli_path.display(),
+                "chat_service.send_message missing Claude CLI"
             );
             return Err(ChatServiceError::SpawnFailed(format!(
                 "Claude CLI not found at {}",
@@ -488,9 +488,9 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             )));
         }
 
-        eprintln!(
-            "[STREAM_DEBUG] chat_service.send_message building command (cli_path={})",
-            self.cli_path.display()
+        tracing::debug!(
+            cli_path = %self.cli_path.display(),
+            "chat_service.send_message building command"
         );
         let mut cmd = self.build_command(
             &conversation,
@@ -499,22 +499,15 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             entity_status.as_deref(),
             project_id.as_deref(),
         )?;
-        eprintln!("[STREAM_DEBUG] chat_service.send_message command built");
-        eprintln!("[STREAM_DEBUG] chat_service.send_message spawning CLI");
+        tracing::debug!("chat_service.send_message command built, spawning CLI");
         let child = match cmd.spawn() {
             Ok(child) => child,
             Err(e) => {
-                eprintln!(
-                    "[STREAM_DEBUG] chat_service.send_message spawn failed: {}",
-                    e
-                );
+                tracing::error!(error = %e, "chat_service.send_message spawn failed");
                 return Err(ChatServiceError::SpawnFailed(e.to_string()));
             }
         };
-        eprintln!(
-            "[STREAM_DEBUG] chat_service.send_message spawn ok (pid={:?})",
-            child.id()
-        );
+        tracing::debug!(pid = ?child.id(), "chat_service.send_message spawn ok");
 
         // 7b. Register the process in the running agent registry
         let child_pid = child.id();
@@ -576,9 +569,9 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             plan_branch_repo,
             app_handle,
         );
-        eprintln!(
-            "[STREAM_DEBUG] chat_service.send_message background spawn kicked (conversation_id={})",
-            conversation_id.as_str()
+        tracing::debug!(
+            conversation_id = conversation_id.as_str(),
+            "chat_service.send_message background spawn kicked"
         );
 
         // Return immediately

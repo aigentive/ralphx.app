@@ -142,9 +142,11 @@ pub async fn process_message_queue<R: Runtime + 'static>(
             let mut cmd = match build_base_cli_command(cli_path, plugin_dir, Some(agent_name)) {
                 Ok(cmd) => cmd,
                 Err(err) => {
-                    eprintln!(
-                        "[STREAM_DEBUG] queue spawn blocked: {} (context_type={}, context_id={})",
-                        err, context_type, context_id
+                    tracing::warn!(
+                        error = %err,
+                        %context_type,
+                        context_id,
+                        "queue spawn blocked"
                     );
                     return total_processed;
                 }
@@ -169,11 +171,11 @@ pub async fn process_message_queue<R: Runtime + 'static>(
 
             match cmd.spawn() {
                 Ok(child) => {
-                    eprintln!(
-                        "[STREAM_DEBUG] queue spawn ok (context_type={}, context_id={}, conversation_id={})",
-                        context_type,
+                    tracing::debug!(
+                        %context_type,
                         context_id,
-                        conversation_id.as_str()
+                        conversation_id = conversation_id.as_str(),
+                        "queue spawn ok"
                     );
 
                     // Create empty assistant message before queue stream
