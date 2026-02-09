@@ -70,7 +70,7 @@ export interface FloatingGraphFiltersProps {
   nodeMode: NodeMode;
   /** Callback when node mode changes */
   onNodeModeChange: (mode: NodeMode) => void;
-  /** Whether compact mode was auto-activated (50+ tasks) */
+  /** Whether any group has auto-compact active (8+ tasks in group) */
   isAutoCompact: boolean;
   /** Current grouping state */
   grouping: GroupingState;
@@ -592,7 +592,7 @@ function FloatingGraphFiltersComponent({
               nodeMode === "standard"
                 ? "Switch to compact nodes"
                 : isAutoCompact
-                  ? "Auto-compacted (50+ tasks)"
+                  ? "Some groups auto-compacted (8+ tasks)"
                   : "Switch to standard nodes"
             }
             isCompact={isCompact}

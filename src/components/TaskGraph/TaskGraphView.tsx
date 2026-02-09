@@ -32,8 +32,8 @@ import { useTaskGraph } from "./hooks/useTaskGraph";
 import { useTaskGraphLayout } from "./hooks/useTaskGraphLayout";
 import { useTaskGraphViewport } from "./hooks/useTaskGraphViewport";
 import { useGraphSelectionController } from "./hooks/useGraphSelectionController";
-import { TaskNode, type TaskNodeHandlers } from "./nodes/TaskNode";
-import { TaskNodeCompact } from "./nodes/TaskNodeCompact";
+import { type TaskNodeHandlers } from "./nodes/TaskNode";
+import { UnifiedTaskNode } from "./nodes/UnifiedTaskNode";
 import { DependencyEdge } from "./edges/DependencyEdge";
 import { MARKER_IDS, NORMAL_STROKE, CRITICAL_STROKE, EDGE_FADE_COLOR } from "./edges/edgeStyles";
 import { PlanGroup, PLAN_GROUP_NODE_TYPE, type PlanGroupData } from "./groups/PlanGroup";
@@ -254,21 +254,11 @@ function EdgeMarkerDefinitions() {
 }
 
 /**
- * Node types for standard mode (full-size nodes with status badges)
- * IMPORTANT: Defined outside component to prevent unnecessary re-renders
+ * Unified node types - single TaskNode component reads per-node mode from data.nodeMode.
+ * IMPORTANT: Defined outside component to prevent unnecessary re-renders.
  */
-const standardNodeTypes: NodeTypes = {
-  task: TaskNode,
-  [PLAN_GROUP_NODE_TYPE]: PlanGroup,
-  [TIER_GROUP_NODE_TYPE]: TierGroup,
-};
-
-/**
- * Node types for compact mode (smaller nodes for 50+ task graphs)
- * IMPORTANT: Defined outside component to prevent unnecessary re-renders
- */
-const compactNodeTypes: NodeTypes = {
-  task: TaskNodeCompact,
+const unifiedNodeTypes: NodeTypes = {
+  task: UnifiedTaskNode,
   [PLAN_GROUP_NODE_TYPE]: PlanGroup,
   [TIER_GROUP_NODE_TYPE]: TierGroup,
 };
@@ -647,56 +637,81 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     );
   }, [graphData, filters]);
 
-  // Calculate task count scoped to expanded (non-collapsed) plan groups.
-  // Only tasks in currently visible/expanded containers count toward the auto-compact threshold.
-  const scopedTaskCount = useMemo(() => {
-    if (!graphData || !grouping.byPlan) {
-      // No plan grouping → count all filtered tasks
-      return filteredGraphData.nodes.length;
-    }
+  // Per-group auto-compact: each expanded plan group independently checks taskIds.length >= threshold.
+  const autoCompactGroupIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (!graphData || !grouping.byPlan) return ids;
 
     const planGroups = filteredGraphData.planGroups;
-    const allFilteredNodes = filteredGraphData.nodes;
 
-    // Collect task IDs from expanded (non-collapsed) plan groups
-    let count = 0;
-    const groupedTaskIds = new Set<string>();
     for (const pg of planGroups) {
-      for (const taskId of pg.taskIds) {
-        groupedTaskIds.add(taskId);
-      }
-      if (!collapsedPlanIds.has(pg.planArtifactId)) {
-        count += pg.taskIds.length;
+      if (!collapsedPlanIds.has(pg.planArtifactId) && pg.taskIds.length >= COMPACT_MODE_THRESHOLD) {
+        ids.add(pg.planArtifactId);
       }
     }
 
-    // Count ungrouped tasks if the ungrouped pseudo-group is expanded
+    // Check ungrouped pseudo-group
     if (!collapsedPlanIds.has(UNGROUPED_PLAN_ID)) {
-      const ungroupedCount = allFilteredNodes.filter(
-        (n) => !groupedTaskIds.has(n.taskId)
-      ).length;
-      count += ungroupedCount;
+      const groupedTaskIds = new Set(planGroups.flatMap((pg) => pg.taskIds));
+      const ungroupedCount = filteredGraphData.nodes.filter((n) => !groupedTaskIds.has(n.taskId)).length;
+      if (ungroupedCount >= COMPACT_MODE_THRESHOLD) {
+        ids.add(UNGROUPED_PLAN_ID);
+      }
+    }
+    return ids;
+  }, [filteredGraphData, collapsedPlanIds, graphData, grouping.byPlan]);
+
+  const hasAnyAutoCompact = autoCompactGroupIds.size > 0;
+
+  // Per-node mode lookup: resolves each node's effective display mode.
+  const nodeModeLookup = useMemo(() => {
+    const map = new Map<string, NodeMode>();
+
+    // If user set compact globally → all compact
+    if (nodeModeOverride === "compact") {
+      for (const n of filteredGraphData.nodes) {
+        map.set(n.taskId, "compact");
+      }
+      return map;
     }
 
-    return count;
-  }, [filteredGraphData.nodes, filteredGraphData.planGroups, collapsedPlanIds, graphData, grouping.byPlan]);
+    // Build taskId → groupId mapping
+    const taskToGroup = new Map<string, string>();
+    for (const pg of filteredGraphData.planGroups) {
+      for (const taskId of pg.taskIds) {
+        taskToGroup.set(taskId, pg.planArtifactId);
+      }
+    }
 
-  const isAutoCompact = scopedTaskCount >= COMPACT_MODE_THRESHOLD;
-  const effectiveNodeMode: NodeMode = nodeModeOverride ?? (isAutoCompact ? "compact" : "standard");
+    // Per-group auto-compact applies regardless of user "standard" override
+    for (const n of filteredGraphData.nodes) {
+      const groupId = taskToGroup.get(n.taskId) ?? UNGROUPED_PLAN_ID;
+      const isGroupAutoCompact = autoCompactGroupIds.has(groupId);
+      map.set(n.taskId, isGroupAutoCompact ? "compact" : "standard");
+    }
+    return map;
+  }, [filteredGraphData, nodeModeOverride, autoCompactGroupIds]);
 
-  // Select the appropriate node types based on mode
-  const activeNodeTypes = effectiveNodeMode === "compact" ? compactNodeTypes : standardNodeTypes;
+  // Derive a global effective mode for backward-compat (toolbar display).
+  // If user forced compact → "compact"; if any auto-compact → "compact"; else "standard".
+  const effectiveNodeMode: NodeMode = nodeModeOverride === "compact"
+    ? "compact"
+    : hasAnyAutoCompact
+      ? "compact"
+      : (nodeModeOverride ?? "standard");
 
   // Handler for manual node mode toggle
   const handleNodeModeChange = useCallback((mode: NodeMode) => {
-    // If user sets to what auto would be, clear override (return to auto)
-    const autoMode: NodeMode = isAutoCompact ? "compact" : "standard";
-    if (mode === autoMode) {
+    if (mode === "compact" && hasAnyAutoCompact && nodeModeOverride === null) {
+      // User is clicking compact when auto-compact is already active → no-op or set explicitly
+      setNodeModeOverride("compact");
+    } else if (mode === "standard" && !hasAnyAutoCompact) {
+      // Return to auto when selecting what auto would choose
       setNodeModeOverride(null);
     } else {
-      setNodeModeOverride(mode);
+      setNodeModeOverride(mode === "compact" ? "compact" : "standard");
     }
-  }, [isAutoCompact, setNodeModeOverride]);
+  }, [hasAnyAutoCompact, nodeModeOverride, setNodeModeOverride]);
 
   const tierGroups = useMemo(
     () => buildTierGroups(filteredGraphData.nodes, filteredGraphData.planGroups, {
@@ -958,10 +973,10 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     handleMarkResolved,
   ]);
 
-  // Layout config with compact mode flag
+  // Layout config with per-node mode lookup for mixed dimensions
   const layoutConfig = useMemo(() => ({
-    isCompact: effectiveNodeMode === "compact",
-  }), [effectiveNodeMode]);
+    nodeModeLookup,
+  }), [nodeModeLookup]);
 
   // Plan deletion handler (Backspace on plan group or Delete button in settings)
   const handleDeletePlan = useCallback(
@@ -1182,6 +1197,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
         ...node,
         data: {
           ...node.data,
+          nodeMode: nodeModeLookup.get(node.id) ?? "standard",
           isHighlighted: node.id === highlightedTaskId,
           isFocused: node.id === focusedNodeId,
           handlers: nodeHandlers,
@@ -1214,6 +1230,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
           || nd?.internalStatus !== pd?.internalStatus
           || nd?.label !== pd?.label
           || nd?.isCriticalPath !== pd?.isCriticalPath
+          || nd?.nodeMode !== pd?.nodeMode
         ) {
           unchanged = false;
           break;
@@ -1223,7 +1240,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     }
     prevNodesRef.current = next;
     return next;
-  }, [layoutNodes, groupNodes, graphSelection, highlightedTaskId, focusedNodeId, nodeHandlers, taskGroupInfoMap]);
+  }, [layoutNodes, groupNodes, graphSelection, highlightedTaskId, focusedNodeId, nodeHandlers, taskGroupInfoMap, nodeModeLookup]);
 
   const edges = useMemo<Edge[]>(() => {
     const prev = prevEdgesRef.current;
@@ -1399,7 +1416,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
           onLayoutDirectionChange={setLayoutDirection}
           nodeMode={effectiveNodeMode}
           onNodeModeChange={handleNodeModeChange}
-          isAutoCompact={isAutoCompact && nodeModeOverride === null}
+          isAutoCompact={hasAnyAutoCompact && nodeModeOverride !== "compact"}
           grouping={grouping}
           onGroupingChange={setGrouping}
           planGroups={graphData?.planGroups ?? []}
@@ -1427,7 +1444,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
             // eslint-disable-next-line react-hooks/refs -- nodes/edges are ref-stabilized (see useMemo blocks above)
             nodes={nodes}
             edges={edges} // eslint-disable-line react-hooks/refs
-            nodeTypes={activeNodeTypes}
+            nodeTypes={unifiedNodeTypes}
             edgeTypes={edgeTypes}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
