@@ -280,10 +280,10 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
     moveMutation,
     archiveMutation,
     restoreMutation,
-    permanentlyDeleteMutation,
+    cleanupTaskMutation,
     isArchiving,
     isRestoring,
-    isPermanentlyDeleting,
+    isCleaningTask,
   } = useTaskMutation(projectId);
 
   // Confirmation dialog for archive/restore
@@ -385,7 +385,7 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
   // Handle permanent delete
   const handlePermanentDelete = () => {
     if (!task) return;
-    permanentlyDeleteMutation.mutate(task.id, {
+    cleanupTaskMutation.mutate(task.id, {
       onSuccess: () => {
         setShowDeleteDialog(false);
         handleClose();
@@ -601,13 +601,13 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
                   variant="ghost"
                   size="icon-sm"
                   onClick={() => setShowDeleteDialog(true)}
-                  disabled={isPermanentlyDeleting}
+                  disabled={isCleaningTask}
                   data-testid="task-overlay-delete-button"
                   aria-label="Delete permanently"
                   style={{ color: "hsl(0 70% 60%)" }}
                   className="hover:bg-[hsla(0_70%_55%/0.1)]"
                 >
-                  {isPermanentlyDeleting ? (
+                  {isCleaningTask ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
                     <Trash className="w-4 h-4" />
@@ -703,10 +703,10 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handlePermanentDelete}
-              disabled={isPermanentlyDeleting}
+              disabled={isCleaningTask}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {isPermanentlyDeleting ? (
+              {isCleaningTask ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Deleting...

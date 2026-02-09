@@ -1026,7 +1026,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
       if (!confirmed) return;
 
       try {
-        await api.tasks.delete(taskId);
+        await api.tasks.cleanupTask(taskId);
         clearGraphSelection();
         queryClient.invalidateQueries({ queryKey: taskGraphKeys.graphPrefix(projectId) });
         toast.success("Task deleted");

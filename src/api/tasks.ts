@@ -161,7 +161,8 @@ export const tasksApi = {
     typedInvokeWithTransform("update_task", { taskId, input }, TaskSchema, transformTask),
 
   /**
-   * Delete a task
+   * Delete a task (bare delete, no cleanup)
+   * @deprecated Use `cleanupTask` instead — it handles force-stop, branch cleanup, and event emission.
    * @param taskId The task ID
    * @returns true if deleted
    */
@@ -186,6 +187,7 @@ export const tasksApi = {
 
   /**
    * Permanently delete a task (only works on archived tasks)
+   * @deprecated Use `cleanupTask` instead — it handles force-stop, branch cleanup, and event emission.
    * @param taskId The task ID
    * @returns void on success
    */

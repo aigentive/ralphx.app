@@ -109,7 +109,7 @@ export function TaskCard({
   const {
     archiveMutation,
     restoreMutation,
-    permanentlyDeleteMutation,
+    cleanupTaskMutation,
     moveMutation,
     blockMutation,
     unblockMutation,
@@ -170,7 +170,7 @@ export function TaskCard({
   };
 
   const confirmPermanentDelete = () => {
-    permanentlyDeleteMutation.mutate(task.id);
+    cleanupTaskMutation.mutate(task.id);
     setShowDeleteConfirm(false);
   };
 
