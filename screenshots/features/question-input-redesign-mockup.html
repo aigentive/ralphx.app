@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RalphX — AskUserQuestion Redesign Mockup</title>
+<style>
+  :root {
+    --accent: #ff6b35;
+    --accent-dim: rgba(255, 107, 53, 0.15);
+    --accent-border: rgba(255, 107, 53, 0.4);
+    --bg: hsl(220 10% 8%);
+    --surface: hsl(220 10% 12%);
+    --surface-hover: hsl(220 10% 15%);
+    --border: hsla(220 10% 100% / 0.06);
+    --border-strong: hsla(220 10% 100% / 0.12);
+    --text: hsl(220 10% 90%);
+    --text-muted: hsl(220 10% 45%);
+    --text-dim: hsl(220 10% 35%);
+    --input-bg: hsl(220 10% 10%);
+    --success: #34d399;
+    --success-dim: rgba(52, 211, 153, 0.12);
+    --radius: 8px;
+    --radius-sm: 6px;
+    --radius-lg: 12px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro", system-ui, sans-serif;
+    background: hsl(220 10% 5%);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Page chrome ── */
+  .page-header {
+    text-align: center;
+    margin-bottom: 20px;
+    max-width: 440px;
+    width: 100%;
+  }
+  .page-header h1 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.2px;
+    margin-bottom: 4px;
+  }
+  .page-header p {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+
+  /* ── Controls bar ── */
+  .controls {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-bottom: 20px;
+    max-width: 440px;
+    width: 100%;
+  }
+  .controls button {
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .controls button:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+    border-color: hsla(220 10% 100% / 0.18);
+  }
+  .controls button.active-ctrl {
+    background: var(--accent-dim);
+    color: var(--accent);
+    border-color: var(--accent-border);
+  }
+
+  /* ── Chat panel frame ── */
+  .chat-panel {
+    width: 420px;
+    max-width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: 560px;
+  }
+
+  /* ── Panel header ── */
+  .panel-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+  .panel-header .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+  }
+  .panel-header .title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    flex: 1;
+  }
+  .panel-header .status {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  /* ── Messages area ── */
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .messages::-webkit-scrollbar { width: 4px; }
+  .messages::-webkit-scrollbar-track { background: transparent; }
+  .messages::-webkit-scrollbar-thumb { background: hsla(220 10% 100% / 0.08); border-radius: 2px; }
+
+  .msg {
+    max-width: 85%;
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    line-height: 1.55;
+    animation: msgIn 0.25s ease;
+  }
+  @keyframes msgIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .msg.agent {
+    align-self: flex-start;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .msg.user {
+    align-self: flex-end;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+  }
+  .msg .sender {
+    font-size: 11px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--text-muted);
+  }
+  .msg.user .sender { color: rgba(255,255,255,0.7); }
+
+  /* ── Input area container ── */
+  .input-area {
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+    padding: 0;
+    flex-shrink: 0;
+  }
+
+  /* ── Question banner ── */
+  .question-banner {
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    transition: max-height 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+                opacity 0.25s ease,
+                padding 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+    padding: 0 12px;
+    background: var(--bg);
+  }
+  .question-banner.visible {
+    max-height: 320px;
+    opacity: 1;
+    padding: 12px 12px 0;
+  }
+  .question-banner.answered {
+    max-height: 56px;
+  }
+
+  .qb-inner {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  /* Banner header row */
+  .qb-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .qb-icon {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: var(--accent-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+  .qb-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    flex: 1;
+  }
+  .qb-dismiss {
+    width: 20px; height: 20px;
+    border-radius: 4px;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    line-height: 1;
+    transition: all 0.12s ease;
+    flex-shrink: 0;
+    font-family: inherit;
+  }
+  .qb-dismiss:hover {
+    background: hsla(220 10% 100% / 0.06);
+    color: var(--text-muted);
+  }
+
+  /* Banner body */
+  .qb-body {
+    padding: 10px 12px 12px;
+  }
+  .qb-question {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    line-height: 1.45;
+    margin-bottom: 10px;
+  }
+
+  /* Option chips */
+  .qb-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px 5px 8px;
+    border-radius: 100px;
+    border: 1px solid var(--border-strong);
+    background: var(--input-bg);
+    font-size: 12px;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+  }
+  .chip:hover {
+    border-color: hsla(220 10% 100% / 0.2);
+    background: var(--surface-hover);
+  }
+  .chip .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: hsla(220 10% 100% / 0.06);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+  }
+  .chip .chip-label { font-weight: 500; }
+  .chip .check {
+    display: none;
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-left: -2px;
+  }
+
+  /* Chip selected */
+  .chip.selected {
+    border-color: var(--accent-border);
+    background: var(--accent-dim);
+  }
+  .chip.selected .num {
+    background: var(--accent);
+    color: #fff;
+  }
+  .chip.dimmed {
+    opacity: 0.45;
+  }
+  .chip.dimmed:hover { opacity: 0.65; }
+
+  /* Multi-select: show checkmark */
+  .qb-options.multi .chip .check { display: inline; }
+  .qb-options.multi .chip.selected .check { color: var(--accent); }
+  .qb-options.multi .chip:not(.selected) .check { color: var(--text-dim); }
+
+  /* Answered banner */
+  .qb-answered {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+  .qb-answered .a-icon {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--success-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: var(--success);
+    flex-shrink: 0;
+  }
+  .qb-answered .a-text {
+    font-size: 12px;
+    color: var(--text-muted);
+    flex: 1;
+  }
+  .qb-answered .a-text strong {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  /* ── Text input row ── */
+  .input-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 12px;
+  }
+  .input-wrapper {
+    flex: 1;
+    position: relative;
+  }
+  .input-wrapper input {
+    width: 100%;
+    font-family: inherit;
+    font-size: 13px;
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border-strong);
+    background: var(--input-bg);
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+  .input-wrapper input::placeholder { color: var(--text-dim); }
+  .input-wrapper input:focus { border-color: hsla(220 10% 100% / 0.18); }
+
+  .send-btn {
+    width: 38px; height: 38px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--text-dim);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+  }
+  .send-btn:hover {
+    background: var(--surface-hover);
+    color: var(--text-muted);
+  }
+  .send-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .send-btn.active:hover {
+    filter: brightness(1.1);
+  }
+  .send-btn svg { width: 16px; height: 16px; }
+
+  /* Helper text */
+  .input-helper {
+    padding: 0 12px 10px;
+    font-size: 11px;
+    color: var(--text-dim);
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    transition: max-height 0.25s ease, opacity 0.2s ease, padding 0.25s ease;
+  }
+  .input-helper.visible {
+    max-height: 24px;
+    opacity: 1;
+    padding: 0 12px 10px;
+  }
+
+  /* ── Scenario toggle ── */
+  .scenario-bar {
+    display: flex;
+    gap: 4px;
+    background: var(--surface);
+    border-radius: var(--radius-sm);
+    padding: 3px;
+    border: 1px solid var(--border);
+  }
+  .scenario-bar button {
+    border: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.12s ease;
+    font-family: inherit;
+    background: transparent;
+    color: var(--text-muted);
+  }
+  .scenario-bar button.active {
+    background: var(--accent-dim);
+    color: var(--accent);
+  }
+  .scenario-bar button:hover:not(.active) {
+    color: var(--text);
+  }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>AskUserQuestion — Input Integration Mockup</h1>
+  <p>Question UI integrates into the chat input area instead of floating cards.</p>
+</div>
+
+<div class="controls">
+  <div class="scenario-bar" id="scenarioBar">
+    <button class="active" data-scenario="single">Single Select</button>
+    <button data-scenario="multi">Multi Select</button>
+  </div>
+
+  <button id="btnSimulate" class="active-ctrl">Simulate Question</button>
+  <button id="btnReset">Reset</button>
+</div>
+
+<div class="chat-panel">
+  <div class="panel-header">
+    <div class="dot"></div>
+    <div class="title">Ideation Chat</div>
+    <div class="status">orchestrator-ideation</div>
+  </div>
+
+  <div class="messages" id="messages">
+    <div class="msg agent">
+      <div class="sender">Agent</div>
+      I've analyzed the requirements. Before I create the implementation plan, I need to clarify a few things.
+    </div>
+    <div class="msg user">
+      <div class="sender">You</div>
+      Sure, go ahead and ask.
+    </div>
+    <div class="msg agent">
+      <div class="sender">Agent</div>
+      Great. Let me check our options for the persistence layer.
+    </div>
+  </div>
+
+  <div class="input-area">
+    <div class="question-banner" id="questionBanner">
+      <div class="qb-inner" id="qbInner">
+        <div class="qb-header" id="qbHeader">
+          <div class="qb-icon">?</div>
+          <div class="qb-label" id="qbLabel">Question from agent</div>
+          <button class="qb-dismiss" id="qbDismiss" title="Dismiss">&#215;</button>
+        </div>
+        <div class="qb-body" id="qbBody">
+          <div class="qb-question" id="qbQuestion"></div>
+          <div class="qb-options" id="qbOptions"></div>
+        </div>
+        <div class="qb-answered" id="qbAnswered">
+          <div class="a-icon">&#10003;</div>
+          <div class="a-text">Answered: <strong id="answeredText"></strong></div>
+          <button class="qb-dismiss" id="qbDismissAnswered" title="Dismiss">&#215;</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="input-row">
+      <div class="input-wrapper">
+        <input type="text"
+               id="chatInput"
+               placeholder="Send a message..."
+               autocomplete="off"
+               spellcheck="false" />
+      </div>
+      <button class="send-btn" id="sendBtn" title="Send">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+          <polyline points="12 5 19 12 12 19"></polyline>
+        </svg>
+      </button>
+    </div>
+
+    <div class="input-helper" id="inputHelper"></div>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────
+// Scenarios
+// ─────────────────────────────────────────────────────
+var SCENARIOS = {
+  single: {
+    header: "Confirm Plan",
+    question: "Which database should we use for the persistence layer?",
+    options: ["PostgreSQL", "SQLite", "MongoDB"],
+    multi: false
+  },
+  multi: {
+    header: "Select Features",
+    question: "Which features should we include in the MVP?",
+    options: ["Authentication", "Dark Mode", "Export to PDF", "Real-time Sync", "Notifications"],
+    multi: true
+  }
+};
+
+// ─────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────
+var currentScenario = "single";
+var questionActive = false;
+var answered = false;
+var selectedIndices = new Set();
+
+// DOM refs
+var banner = document.getElementById("questionBanner");
+var qbInner = document.getElementById("qbInner");
+var qbHeader = document.getElementById("qbHeader");
+var qbBody = document.getElementById("qbBody");
+var qbLabel = document.getElementById("qbLabel");
+var qbQuestion = document.getElementById("qbQuestion");
+var qbOptions = document.getElementById("qbOptions");
+var qbAnswered = document.getElementById("qbAnswered");
+var answeredText = document.getElementById("answeredText");
+var qbDismiss = document.getElementById("qbDismiss");
+var qbDismissAnswered = document.getElementById("qbDismissAnswered");
+var chatInput = document.getElementById("chatInput");
+var sendBtn = document.getElementById("sendBtn");
+var inputHelper = document.getElementById("inputHelper");
+var messagesEl = document.getElementById("messages");
+var btnSimulate = document.getElementById("btnSimulate");
+var btnReset = document.getElementById("btnReset");
+var scenarioBar = document.getElementById("scenarioBar");
+
+// ─────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────
+function scenario() { return SCENARIOS[currentScenario]; }
+
+function scrollMessages() {
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function addMessage(sender, text) {
+  var div = document.createElement("div");
+  div.className = "msg " + sender;
+  div.innerHTML = '<div class="sender">' + (sender === "agent" ? "Agent" : "You") + "</div>" + text;
+  messagesEl.appendChild(div);
+  scrollMessages();
+}
+
+// ─────────────────────────────────────────────────────
+// Render options
+// ─────────────────────────────────────────────────────
+function renderOptions() {
+  var s = scenario();
+  qbOptions.className = "qb-options" + (s.multi ? " multi" : "");
+  qbOptions.innerHTML = "";
+
+  s.options.forEach(function(label, i) {
+    var chip = document.createElement("div");
+    chip.className = "chip";
+    chip.setAttribute("data-index", i);
+
+    var numSpan = document.createElement("span");
+    numSpan.className = "num";
+    numSpan.textContent = i + 1;
+
+    var labelSpan = document.createElement("span");
+    labelSpan.className = "chip-label";
+    labelSpan.textContent = label;
+
+    chip.appendChild(numSpan);
+
+    if (s.multi) {
+      var check = document.createElement("span");
+      check.className = "check";
+      check.innerHTML = "&#10003;";
+      chip.appendChild(check);
+    }
+
+    chip.appendChild(labelSpan);
+
+    (function(idx) {
+      chip.addEventListener("click", function() { onChipClick(idx); });
+    })(i);
+
+    qbOptions.appendChild(chip);
+  });
+
+  syncChipVisuals();
+}
+
+// ─────────────────────────────────────────────────────
+// Chip click
+// ─────────────────────────────────────────────────────
+function onChipClick(index) {
+  if (answered) return;
+  var s = scenario();
+
+  if (s.multi) {
+    if (selectedIndices.has(index)) {
+      selectedIndices.delete(index);
+    } else {
+      selectedIndices.add(index);
+    }
+    var nums = Array.from(selectedIndices).sort(function(a,b){ return a-b; }).map(function(i){ return i+1; });
+    chatInput.value = nums.join(", ");
+  } else {
+    selectedIndices.clear();
+    selectedIndices.add(index);
+    chatInput.value = s.options[index];
+  }
+
+  syncChipVisuals();
+  updateSendButton();
+  chatInput.focus();
+}
+
+// ─────────────────────────────────────────────────────
+// Sync chip visuals with selection state
+// ─────────────────────────────────────────────────────
+function syncChipVisuals() {
+  var chips = qbOptions.querySelectorAll(".chip");
+  var hasSelection = selectedIndices.size > 0;
+  var s = scenario();
+
+  chips.forEach(function(chip, i) {
+    var isSelected = selectedIndices.has(i);
+    chip.classList.toggle("selected", isSelected);
+
+    if (!s.multi) {
+      chip.classList.toggle("dimmed", hasSelection && !isSelected);
+    } else {
+      chip.classList.remove("dimmed");
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────
+// Input typing -> chip matching
+// ─────────────────────────────────────────────────────
+chatInput.addEventListener("input", function() {
+  if (!questionActive || answered) {
+    updateSendButton();
+    return;
+  }
+
+  var val = chatInput.value.trim();
+  var s = scenario();
+
+  if (s.multi) {
+    var parts = val.split(/[,\s]+/).filter(Boolean);
+    var allNumbers = parts.length > 0 && parts.every(function(p) { return /^\d+$/.test(p); });
+    selectedIndices.clear();
+
+    if (allNumbers) {
+      parts.forEach(function(p) {
+        var idx = parseInt(p, 10) - 1;
+        if (idx >= 0 && idx < s.options.length) {
+          selectedIndices.add(idx);
+        }
+      });
+    }
+  } else {
+    selectedIndices.clear();
+    if (/^\d+$/.test(val)) {
+      var idx = parseInt(val, 10) - 1;
+      if (idx >= 0 && idx < s.options.length) {
+        selectedIndices.add(idx);
+      }
+    }
+  }
+
+  syncChipVisuals();
+  updateSendButton();
+});
+
+// ─────────────────────────────────────────────────────
+// Send button state
+// ─────────────────────────────────────────────────────
+function updateSendButton() {
+  var hasText = chatInput.value.trim().length > 0;
+  sendBtn.classList.toggle("active", hasText);
+}
+
+// ─────────────────────────────────────────────────────
+// Submit answer
+// ─────────────────────────────────────────────────────
+function submitAnswer() {
+  var val = chatInput.value.trim();
+  if (!val) return;
+
+  var s = scenario();
+  var answerLabel;
+
+  if (questionActive && !answered) {
+    if (s.multi && selectedIndices.size > 0) {
+      answerLabel = Array.from(selectedIndices).sort(function(a,b){ return a-b; }).map(function(i){ return s.options[i]; }).join(", ");
+    } else if (!s.multi && selectedIndices.size === 1) {
+      answerLabel = s.options[Array.from(selectedIndices)[0]];
+    } else {
+      answerLabel = val;
+    }
+
+    answered = true;
+    answeredText.textContent = answerLabel;
+
+    qbBody.style.display = "none";
+    qbHeader.style.display = "none";
+    qbAnswered.style.display = "flex";
+    banner.classList.add("answered");
+
+    addMessage("user", answerLabel);
+
+    chatInput.value = "";
+    chatInput.placeholder = "Send a message...";
+    inputHelper.classList.remove("visible");
+    updateSendButton();
+
+    setTimeout(function() {
+      addMessage("agent", "Got it \u2014 I'll proceed with <strong>" + answerLabel + "</strong>. Let me update the plan.");
+    }, 600);
+  } else {
+    addMessage("user", val);
+    chatInput.value = "";
+    updateSendButton();
+  }
+}
+
+sendBtn.addEventListener("click", submitAnswer);
+chatInput.addEventListener("keydown", function(e) {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    submitAnswer();
+  }
+});
+
+// ─────────────────────────────────────────────────────
+// Show question
+// ─────────────────────────────────────────────────────
+function showQuestion() {
+  if (questionActive) return;
+  var s = scenario();
+
+  questionActive = true;
+  answered = false;
+  selectedIndices.clear();
+
+  qbLabel.textContent = s.header;
+  qbQuestion.textContent = s.question;
+  renderOptions();
+
+  qbBody.style.display = "";
+  qbHeader.style.display = "";
+  qbAnswered.style.display = "none";
+  banner.classList.remove("answered");
+
+  banner.classList.add("visible");
+
+  var count = s.options.length;
+  chatInput.placeholder = s.multi
+    ? "Type numbers (e.g. 1,3) or a custom response..."
+    : "Type 1-" + count + " or a custom response...";
+
+  inputHelper.textContent = s.multi
+    ? "Enter to send \u00b7 Type option numbers separated by commas, or custom text"
+    : "Enter to send \u00b7 Type option number or custom text";
+  inputHelper.classList.add("visible");
+
+  chatInput.value = "";
+  updateSendButton();
+
+  addMessage("agent", s.question);
+
+  setTimeout(function() { chatInput.focus(); }, 100);
+}
+
+// ─────────────────────────────────────────────────────
+// Dismiss / reset
+// ─────────────────────────────────────────────────────
+function dismissQuestion() {
+  banner.classList.remove("visible", "answered");
+  questionActive = false;
+  answered = false;
+  selectedIndices.clear();
+  chatInput.placeholder = "Send a message...";
+  chatInput.value = "";
+  inputHelper.classList.remove("visible");
+  updateSendButton();
+}
+
+qbDismiss.addEventListener("click", dismissQuestion);
+qbDismissAnswered.addEventListener("click", dismissQuestion);
+
+var INITIAL_MESSAGES = '<div class="msg agent"><div class="sender">Agent</div>I\'ve analyzed the requirements. Before I create the implementation plan, I need to clarify a few things.</div><div class="msg user"><div class="sender">You</div>Sure, go ahead and ask.</div><div class="msg agent"><div class="sender">Agent</div>Great. Let me check our options for the persistence layer.</div>';
+
+function fullReset() {
+  dismissQuestion();
+  messagesEl.innerHTML = INITIAL_MESSAGES;
+}
+
+btnSimulate.addEventListener("click", showQuestion);
+btnReset.addEventListener("click", fullReset);
+
+// ─────────────────────────────────────────────────────
+// Scenario switching
+// ─────────────────────────────────────────────────────
+scenarioBar.addEventListener("click", function(e) {
+  var btn = e.target.closest("button[data-scenario]");
+  if (!btn) return;
+
+  scenarioBar.querySelectorAll("button").forEach(function(b) { b.classList.remove("active"); });
+  btn.classList.add("active");
+  currentScenario = btn.getAttribute("data-scenario");
+
+  if (questionActive && !answered) {
+    var s = scenario();
+    qbLabel.textContent = s.header;
+    qbQuestion.textContent = s.question;
+    selectedIndices.clear();
+    renderOptions();
+
+    var count = s.options.length;
+    chatInput.placeholder = s.multi
+      ? "Type numbers (e.g. 1,3) or a custom response..."
+      : "Type 1-" + count + " or a custom response...";
+
+    inputHelper.textContent = s.multi
+      ? "Enter to send \u00b7 Type option numbers separated by commas, or custom text"
+      : "Enter to send \u00b7 Type option number or custom text";
+
+    chatInput.value = "";
+    updateSendButton();
+  }
+});
+
+// ─────────────────────────────────────────────────────
+// Init
+// ─────────────────────────────────────────────────────
+scrollMessages();
+</script>
+</body>
+</html>
