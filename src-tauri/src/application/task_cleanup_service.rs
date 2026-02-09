@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
 use crate::application::git_service::GitService;
@@ -42,23 +43,48 @@ pub enum StopMode {
 }
 
 /// Identifies a group of tasks for bulk operations.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind")]
 pub enum TaskGroup {
     /// All tasks belonging to an ideation session.
-    BySession(IdeationSessionId),
+    #[serde(rename = "session")]
+    Session {
+        session_id: String,
+        project_id: String,
+    },
     /// All tasks with a given status in a project.
-    ByStatusAndProject(InternalStatus, ProjectId),
+    #[serde(rename = "status")]
+    Status {
+        status: String,
+        project_id: String,
+    },
     /// All tasks in a project with no ideation_session_id (standalone tasks).
-    Uncategorized(ProjectId),
+    #[serde(rename = "uncategorized")]
+    Uncategorized {
+        project_id: String,
+    },
 }
 
 /// Report of cleanup results for batch operations.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct CleanupReport {
     pub tasks_stopped: usize,
     pub tasks_deleted: usize,
     pub git_cleanups: usize,
     pub errors: Vec<String>,
+}
+
+impl CleanupReport {
+    /// Convenience accessors matching the Tauri command response field names.
+    pub fn deleted_count(&self) -> usize {
+        self.tasks_deleted
+    }
+    pub fn failed_count(&self) -> usize {
+        self.errors.len()
+    }
+    pub fn stopped_agents(&self) -> usize {
+        self.tasks_stopped
+    }
 }
 
 pub struct TaskCleanupService {
@@ -135,6 +161,14 @@ impl TaskCleanupService {
         Ok(())
     }
 
+    /// Clean delete a single task by reference (convenience wrapper).
+    /// Uses Graceful stop mode, no event emission. Returns whether an agent was stopped.
+    pub async fn cleanup_task_ref(&self, task: &Task) -> AppResult<bool> {
+        let was_active = AGENT_ACTIVE_STATUSES.contains(&task.internal_status);
+        self.cleanup_single_task(task, StopMode::Graceful, false).await?;
+        Ok(was_active)
+    }
+
     /// Clean up multiple tasks in batch.
     pub async fn cleanup_tasks(
         &self,
@@ -184,9 +218,15 @@ impl TaskCleanupService {
     }
 
     /// Clean up all tasks in a group. Uses Graceful stop mode and emits events.
+    /// Skips plan_merge tasks (system-managed).
     pub async fn cleanup_tasks_in_group(&self, group: TaskGroup) -> AppResult<CleanupReport> {
         let tasks = self.resolve_group_tasks(&group).await?;
-        Ok(self.cleanup_tasks(&tasks, StopMode::Graceful, true).await)
+        // Filter out plan_merge tasks (system-managed)
+        let filtered: Vec<Task> = tasks
+            .into_iter()
+            .filter(|t| t.category != "plan_merge")
+            .collect();
+        Ok(self.cleanup_tasks(&filtered, StopMode::Graceful, true).await)
     }
 
     // ── Private helpers ──────────────────────────────────────────────────
@@ -301,14 +341,22 @@ impl TaskCleanupService {
     /// Resolve a TaskGroup to the actual tasks.
     async fn resolve_group_tasks(&self, group: &TaskGroup) -> AppResult<Vec<Task>> {
         match group {
-            TaskGroup::BySession(session_id) => {
-                self.task_repo.get_by_ideation_session(session_id).await
+            TaskGroup::Session { session_id, .. } => {
+                let session_id = IdeationSessionId::from_string(session_id.clone());
+                self.task_repo.get_by_ideation_session(&session_id).await
             }
-            TaskGroup::ByStatusAndProject(status, project_id) => {
-                self.task_repo.get_by_status(project_id, *status).await
+            TaskGroup::Status { status, project_id } => {
+                let project_id = ProjectId::from_string(project_id.clone());
+                let internal_status: InternalStatus = status
+                    .parse()
+                    .map_err(|_| crate::error::AppError::Validation(
+                        format!("Invalid status: {}", status)
+                    ))?;
+                self.task_repo.get_by_status(&project_id, internal_status).await
             }
-            TaskGroup::Uncategorized(project_id) => {
-                let all_tasks = self.task_repo.get_by_project(project_id).await?;
+            TaskGroup::Uncategorized { project_id } => {
+                let project_id = ProjectId::from_string(project_id.clone());
+                let all_tasks = self.task_repo.get_by_project(&project_id).await?;
                 Ok(all_tasks
                     .into_iter()
                     .filter(|t| t.ideation_session_id.is_none())
@@ -378,6 +426,26 @@ mod tests {
             .await
             .unwrap()
             .is_none());
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_task_ref_deletes_from_db() {
+        let state = AppState::new_test();
+        let project_id = ProjectId::new();
+
+        let task = Task::new(project_id, "Test Task".to_string());
+        let created = state.task_repo.create(task).await.unwrap();
+
+        let service = TaskCleanupService::new(
+            Arc::clone(&state.task_repo),
+            Arc::clone(&state.project_repo),
+            Arc::clone(&state.running_agent_registry),
+            None,
+        );
+        let agent_stopped = service.cleanup_task_ref(&created).await.unwrap();
+        assert!(!agent_stopped); // backlog task has no active agent
+
+        assert!(state.task_repo.get_by_id(&created.id).await.unwrap().is_none());
     }
 
     #[tokio::test]
@@ -471,7 +539,10 @@ mod tests {
         );
 
         let report = service
-            .cleanup_tasks_in_group(TaskGroup::BySession(session_id))
+            .cleanup_tasks_in_group(TaskGroup::Session {
+                session_id: session_id.as_str().to_string(),
+                project_id: project_id.as_str().to_string(),
+            })
             .await
             .unwrap();
 
@@ -484,6 +555,46 @@ mod tests {
             .await
             .unwrap()
             .is_some());
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_tasks_in_group_by_status() {
+        let state = AppState::new_test();
+        let project_id = ProjectId::new();
+
+        let project = Project::new("Test".to_string(), "/tmp/test".to_string());
+        state
+            .project_repo
+            .create(Project {
+                id: project_id.clone(),
+                ..project
+            })
+            .await
+            .unwrap();
+
+        // Create two backlog tasks
+        let task1 = Task::new(project_id.clone(), "Task 1".to_string());
+        let created1 = state.task_repo.create(task1).await.unwrap();
+
+        let task2 = Task::new(project_id.clone(), "Task 2".to_string());
+        let created2 = state.task_repo.create(task2).await.unwrap();
+
+        let service = TaskCleanupService::new(
+            Arc::clone(&state.task_repo),
+            Arc::clone(&state.project_repo),
+            Arc::clone(&state.running_agent_registry),
+            None,
+        );
+
+        let group = TaskGroup::Status {
+            status: "backlog".to_string(),
+            project_id: project_id.as_str().to_string(),
+        };
+        let report = service.cleanup_tasks_in_group(group).await.unwrap();
+
+        assert_eq!(report.tasks_deleted, 2);
+        assert!(state.task_repo.get_by_id(&created1.id).await.unwrap().is_none());
+        assert!(state.task_repo.get_by_id(&created2.id).await.unwrap().is_none());
     }
 
     #[tokio::test]
@@ -527,7 +638,9 @@ mod tests {
         );
 
         let report = service
-            .cleanup_tasks_in_group(TaskGroup::Uncategorized(project_id.clone()))
+            .cleanup_tasks_in_group(TaskGroup::Uncategorized {
+                project_id: project_id.as_str().to_string(),
+            })
             .await
             .unwrap();
 
@@ -540,6 +653,46 @@ mod tests {
             .await
             .unwrap()
             .is_some());
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_skips_plan_merge_tasks() {
+        let state = AppState::new_test();
+        let project_id = ProjectId::new();
+
+        let project = Project::new("Test".to_string(), "/tmp/test".to_string());
+        state
+            .project_repo
+            .create(Project {
+                id: project_id.clone(),
+                ..project
+            })
+            .await
+            .unwrap();
+
+        let task = Task::new_with_category(
+            project_id.clone(),
+            "Merge Plan".to_string(),
+            "plan_merge".to_string(),
+        );
+        let created = state.task_repo.create(task).await.unwrap();
+
+        let service = TaskCleanupService::new(
+            Arc::clone(&state.task_repo),
+            Arc::clone(&state.project_repo),
+            Arc::clone(&state.running_agent_registry),
+            None,
+        );
+
+        let group = TaskGroup::Status {
+            status: "backlog".to_string(),
+            project_id: project_id.as_str().to_string(),
+        };
+        let report = service.cleanup_tasks_in_group(group).await.unwrap();
+
+        assert_eq!(report.tasks_deleted, 0);
+        // plan_merge task should still exist
+        assert!(state.task_repo.get_by_id(&created.id).await.unwrap().is_some());
     }
 
     #[tokio::test]
@@ -566,6 +719,28 @@ mod tests {
 
         assert_eq!(report.tasks_deleted, 0);
         assert_eq!(report.tasks_stopped, 0);
+        assert!(report.errors.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_empty_group() {
+        let state = AppState::new_test();
+        let project_id = ProjectId::new();
+
+        let service = TaskCleanupService::new(
+            Arc::clone(&state.task_repo),
+            Arc::clone(&state.project_repo),
+            Arc::clone(&state.running_agent_registry),
+            None,
+        );
+
+        let group = TaskGroup::Status {
+            status: "backlog".to_string(),
+            project_id: project_id.as_str().to_string(),
+        };
+        let report = service.cleanup_tasks_in_group(group).await.unwrap();
+
+        assert_eq!(report.tasks_deleted, 0);
         assert!(report.errors.is_empty());
     }
 }
