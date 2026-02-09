@@ -3,8 +3,7 @@
  */
 
 import React from "react";
-import { Lightbulb, FileText, Package } from "lucide-react";
-import type { TaskContext, ArtifactSummary } from "../../types/task-context";
+import type { ArtifactSummary } from "../../types/task-context";
 import type { ToolCall } from "./ToolCallIndicator";
 
 /**
@@ -66,9 +65,9 @@ export function createSummary(toolCall: ToolCall): { title: string; subtitle?: s
     case "add_task_note":
       return { title: "Added note" };
     case "get_task_context": {
-      const taskContext = result as TaskContext | undefined;
-      if (taskContext?.task) {
-        return { title: (taskContext.task as { title?: string })?.title || "Fetched context" };
+      const ctx = result as { task?: { title?: string } } | undefined;
+      if (ctx?.task?.title) {
+        return { title: ctx.task.title };
       }
       return { title: "Fetched task context" };
     }
@@ -135,7 +134,7 @@ export function formatValue(value: unknown): { text: string; isPlainText: boolea
  * Check if this tool call is for artifact context
  */
 export function isArtifactContextTool(name: string): boolean {
-  return ["get_task_context", "get_artifact", "get_artifact_version", "get_related_artifacts", "search_project_artifacts"].includes(name);
+  return ["get_artifact", "get_artifact_version", "get_related_artifacts", "search_project_artifacts"].includes(name);
 }
 
 /**
@@ -147,105 +146,6 @@ export function renderArtifactPreview(toolCall: ToolCall): React.ReactNode {
   if (!result) return null;
 
   switch (name) {
-    case "get_task_context": {
-      const taskContext = result as TaskContext;
-      return (
-        <div className="space-y-3">
-          {/* Task info */}
-          {taskContext.task && (
-            <div>
-              <div className="text-xs font-medium mb-1" style={{ color: "var(--text-muted)" }}>
-                Task
-              </div>
-              <div className="text-xs px-2 py-1.5 rounded" style={{ backgroundColor: "var(--bg-base)", color: "var(--text-primary)" }}>
-                {(taskContext.task as { title?: string })?.title || "Untitled"}
-              </div>
-            </div>
-          )}
-
-          {/* Source proposal */}
-          {taskContext.sourceProposal && (
-            <div>
-              <div className="flex items-center gap-1 mb-1">
-                <Lightbulb size={12} style={{ color: "var(--accent-primary)" }} />
-                <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
-                  Source Proposal
-                </span>
-              </div>
-              <div className="text-xs px-2 py-1.5 rounded" style={{ backgroundColor: "var(--bg-base)" }}>
-                <div style={{ color: "var(--text-primary)", fontWeight: 500 }}>
-                  {taskContext.sourceProposal.title}
-                </div>
-                {taskContext.sourceProposal.description && (
-                  <div className="mt-1" style={{ color: "var(--text-secondary)" }}>
-                    {truncate(taskContext.sourceProposal.description, 100)}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Plan artifact */}
-          {taskContext.planArtifact && (
-            <div>
-              <div className="flex items-center gap-1 mb-1">
-                <FileText size={12} style={{ color: "var(--accent-primary)" }} />
-                <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
-                  Implementation Plan
-                </span>
-              </div>
-              <div className="text-xs px-2 py-1.5 rounded" style={{ backgroundColor: "var(--bg-base)" }}>
-                <div style={{ color: "var(--text-primary)", fontWeight: 500 }}>
-                  {taskContext.planArtifact.title}
-                </div>
-                <div className="mt-1" style={{ color: "var(--text-secondary)", fontFamily: "var(--font-mono)", fontSize: "0.7rem" }}>
-                  {truncate(taskContext.planArtifact.contentPreview, 150)}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Related artifacts */}
-          {taskContext.relatedArtifacts && taskContext.relatedArtifacts.length > 0 && (
-            <div>
-              <div className="flex items-center gap-1 mb-1">
-                <Package size={12} style={{ color: "var(--text-muted)" }} />
-                <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
-                  Related Artifacts ({taskContext.relatedArtifacts.length})
-                </span>
-              </div>
-              <div className="space-y-1">
-                {taskContext.relatedArtifacts.slice(0, 3).map((artifact: ArtifactSummary, idx: number) => (
-                  <div key={idx} className="text-xs px-2 py-1 rounded" style={{ backgroundColor: "var(--bg-base)", color: "var(--text-secondary)" }}>
-                    {artifact.title}
-                  </div>
-                ))}
-                {taskContext.relatedArtifacts.length > 3 && (
-                  <div className="text-xs px-2 py-1" style={{ color: "var(--text-muted)" }}>
-                    +{taskContext.relatedArtifacts.length - 3} more
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Context hints */}
-          {taskContext.contextHints && taskContext.contextHints.length > 0 && (
-            <div>
-              <div className="text-xs font-medium mb-1" style={{ color: "var(--text-muted)" }}>
-                Hints
-              </div>
-              <ul className="text-xs space-y-0.5 pl-4" style={{ color: "var(--text-secondary)" }}>
-                {taskContext.contextHints.map((hint: string, idx: number) => (
-                  <li key={idx} className="list-disc">{hint}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      );
-    }
-
     case "get_artifact": {
       const artifact = result as { id?: string; title?: string; artifactType?: string; content?: string };
       return (

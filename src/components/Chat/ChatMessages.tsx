@@ -1,12 +1,17 @@
 /**
  * ChatMessages - Message rendering and display logic
+ *
+ * Renders messages and hook events interleaved chronologically.
+ * Hook events appear as thin annotations between message bubbles.
  */
 
 import { useMemo, useRef, type RefObject } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { MessageItem, type ContentBlockItem } from "./MessageItem";
 import { StreamingToolIndicator } from "./StreamingToolIndicator";
+import { HookEventMessage } from "./HookEventMessage";
 import { type ToolCall } from "./ToolCallIndicator";
+import type { HookEvent, HookStartedEvent } from "@/types/hook-event";
 import { Bot, MessageSquare, Loader2, Activity, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -20,6 +25,11 @@ interface Message {
   /** Pre-parsed content blocks array (parsed at API layer) */
   contentBlocks: ContentBlockItem[] | null | undefined;
 }
+
+/** Discriminated union for timeline items */
+type TimelineItem =
+  | { kind: "message"; data: Message; sortTime: number }
+  | { kind: "hook"; data: HookEvent | HookStartedEvent; sortTime: number };
 
 // ============================================================================
 // Sub-components
@@ -138,6 +148,10 @@ export interface ChatMessagesProps {
   failedErrorMessage: string | undefined;
   onDismissError: (() => void) | undefined;
   messagesEndRef: RefObject<HTMLDivElement | null>;
+  /** Resolved hook events (completed + blocks) */
+  hookEvents?: HookEvent[];
+  /** Currently running hooks */
+  activeHooks?: HookStartedEvent[];
 }
 
 export function ChatMessages({
@@ -149,17 +163,49 @@ export function ChatMessages({
   failedErrorMessage,
   onDismissError,
   messagesEndRef,
+  hookEvents = [],
+  activeHooks = [],
 }: ChatMessagesProps) {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
 
-  // Sort messages by createdAt - render in chronological order
-  const sortedMessages = useMemo(() => {
-    return [...messages].sort((a, b) =>
-      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-    );
-  }, [messages]);
+  // Build merged timeline: messages + hook events sorted chronologically
+  const timeline = useMemo(() => {
+    const items: TimelineItem[] = [];
 
-  const isEmpty = !isLoading && sortedMessages.length === 0;
+    // Add messages
+    for (const msg of messages) {
+      items.push({
+        kind: "message",
+        data: msg,
+        sortTime: new Date(msg.createdAt).getTime(),
+      });
+    }
+
+    // Add resolved hook events (completed + blocks)
+    for (const ev of hookEvents) {
+      items.push({
+        kind: "hook",
+        data: ev,
+        sortTime: ev.timestamp,
+      });
+    }
+
+    // Add active (running) hooks — they sort by their own timestamp
+    for (const ev of activeHooks) {
+      items.push({
+        kind: "hook",
+        data: ev,
+        sortTime: ev.timestamp,
+      });
+    }
+
+    // Sort chronologically
+    items.sort((a, b) => a.sortTime - b.sortTime);
+
+    return items;
+  }, [messages, hookEvents, activeHooks]);
+
+  const isEmpty = !isLoading && timeline.length === 0;
 
   if (isLoading) {
     return (
@@ -181,7 +227,7 @@ export function ChatMessages({
     <div className="flex-1 overflow-hidden" data-testid="chat-panel-messages">
       <Virtuoso
         ref={virtuosoRef}
-        data={sortedMessages}
+        data={timeline}
         followOutput="smooth"
         alignToBottom
         className="h-full"
@@ -211,18 +257,28 @@ export function ChatMessages({
             </div>
           ),
         }}
-        itemContent={(_, msg) => (
-          <div className="px-3">
-            <MessageItem
-              key={msg.id}
-              role={msg.role}
-              content={msg.content}
-              createdAt={msg.createdAt}
-              toolCalls={msg.toolCalls ?? null}
-              contentBlocks={msg.contentBlocks ?? null}
-            />
-          </div>
-        )}
+        itemContent={(_, item) => {
+          if (item.kind === "hook") {
+            return (
+              <div className="px-3">
+                <HookEventMessage event={item.data} />
+              </div>
+            );
+          }
+          const msg = item.data;
+          return (
+            <div className="px-3">
+              <MessageItem
+                key={msg.id}
+                role={msg.role}
+                content={msg.content}
+                createdAt={msg.createdAt}
+                toolCalls={msg.toolCalls ?? null}
+                contentBlocks={msg.contentBlocks ?? null}
+              />
+            </div>
+          );
+        }}
       />
     </div>
   );

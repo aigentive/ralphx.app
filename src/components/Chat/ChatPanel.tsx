@@ -30,6 +30,7 @@ import { useResizePanel } from "./useResizePanel";
 import { useChatPanelHandlers } from "@/hooks/useChatPanelHandlers";
 import { useAskUserQuestion } from "@/hooks/useAskUserQuestion";
 import { useQuestionInput } from "@/hooks/useQuestionInput";
+import { useAgentHookEvents, useHookEventsStore } from "@/hooks/useAgentHookEvents";
 
 const COLLAPSED_WIDTH = 40;
 
@@ -287,6 +288,12 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     messagesEndRef,
   });
 
+  // Hook events — listen for agent:hook Tauri events scoped to active conversation
+  useAgentHookEvents(activeConversationId);
+  const hookEvents = useHookEventsStore((s) => s.events);
+  const activeHooksMap = useHookEventsStore((s) => s.activeHooks);
+  const activeHooksList = useMemo(() => Array.from(activeHooksMap.values()), [activeHooksMap]);
+
   // Ask user question state — scoped to current context
   const questionSessionId = context.ideationSessionId ?? context.selectedTaskId ?? context.projectId;
   const {
@@ -437,6 +444,8 @@ function ChatPanelContent({ context }: ChatPanelProps) {
           failedErrorMessage={showFailedBanner && failedRun?.errorMessage ? failedRun.errorMessage : undefined}
           onDismissError={failedRun ? () => setDismissedErrorId(failedRun.id) : undefined}
           messagesEndRef={messagesEndRef}
+          hookEvents={hookEvents}
+          activeHooks={activeHooksList}
         />
 
         {/* Input Area */}
