@@ -9,9 +9,11 @@
 import {
   ContextMenu,
   ContextMenuContent,
+  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import type { Task } from "@/types/task";
+import type { GroupInfo } from "@/lib/task-actions";
 import {
   TaskContextMenuItems,
   TaskContextMenuDialogs,
@@ -19,15 +21,18 @@ import {
   useTaskContextMenu,
   type TaskContextMenuHandlers,
 } from "./TaskContextMenuItems";
+import { GroupContextMenuItems } from "./GroupContextMenuItems";
 
 interface TaskCardContextMenuProps extends TaskContextMenuHandlers {
   task: Task;
   children: React.ReactNode;
+  groupInfo?: GroupInfo;
 }
 
 export function TaskCardContextMenu({
   task,
   children,
+  groupInfo,
   ...handlers
 }: TaskCardContextMenuProps) {
   const menuState = useTaskContextMenu();
@@ -38,6 +43,20 @@ export function TaskCardContextMenu({
         <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
         <ContextMenuContent>
           <TaskContextMenuItems task={task} handlers={handlers} context="kanban" />
+          {groupInfo && (
+            <>
+              <ContextMenuSeparator />
+              <GroupContextMenuItems
+                groupLabel={groupInfo.groupLabel}
+                groupKind={groupInfo.groupKind}
+                taskCount={groupInfo.taskCount}
+                projectId={groupInfo.projectId}
+                groupId={groupInfo.groupId}
+                onRemoveAll={groupInfo.onRemoveAll}
+                confirm={menuState.confirm}
+              />
+            </>
+          )}
         </ContextMenuContent>
         <TaskContextMenuDialogs task={task} handlers={handlers} />
       </ContextMenu>
