@@ -86,7 +86,7 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
   if (isDiffToolCall(toolCall.name)) {
     const args = toolCall.arguments;
     const hasFilePath = args != null && typeof args === "object" && typeof (args as Record<string, unknown>).file_path === "string" && (args as Record<string, unknown>).file_path !== "";
-    if (hasFilePath) {
+    if (hasFilePath && !hasError) {
       return <DiffToolCallView toolCall={toolCall} className={className} />;
     }
   }
