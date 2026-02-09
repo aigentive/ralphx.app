@@ -204,6 +204,7 @@ pub async fn update_plan_artifact(
                 previous_artifact_id: old_artifact_id.to_string(),
                 proposal_ids: linked_proposals.iter().map(|p| p.id.to_string()).collect(),
                 new_version: created.metadata.version,
+                session_id: sessions.first().map(|s| s.id.to_string()),
             };
             let _ = app_handle.emit("plan:proposals_may_need_update", payload);
         }
