@@ -26,6 +26,7 @@ pub use ideation_commands_dependencies::build_dependency_graph;
 mod tests {
     use super::*;
     use crate::application::AppState;
+    use crate::commands::ideation_commands::ideation_commands_apply::should_create_feature_branch;
     use crate::domain::entities::{
         ChatMessage, IdeationSession, IdeationSessionId, IdeationSessionStatus,
         Priority, ProjectId, TaskCategory, TaskProposal, TaskProposalId,
@@ -1157,6 +1158,105 @@ mod tests {
             .await
             .unwrap()
             .is_none());
+    }
+
+    // ========================================================================
+    // Feature Branch Skip for Single-Proposal Plans
+    // ========================================================================
+
+    #[test]
+    fn test_single_proposal_skips_feature_branch_even_when_project_enabled() {
+        // When project has use_feature_branches=true but only 1 task created,
+        // feature branch should be skipped.
+        assert!(!should_create_feature_branch(None, true, 1));
+    }
+
+    #[test]
+    fn test_single_proposal_skips_feature_branch_with_explicit_override() {
+        // Even with explicit use_feature_branch=true, single proposal skips.
+        assert!(!should_create_feature_branch(Some(true), true, 1));
+    }
+
+    #[test]
+    fn test_zero_tasks_still_allows_feature_branch_flag() {
+        // Edge case: 0 tasks created (all proposals failed) — flag stays true,
+        // but no tasks exist so the feature branch block is effectively a no-op.
+        assert!(should_create_feature_branch(None, true, 0));
+    }
+
+    #[test]
+    fn test_multi_proposal_creates_feature_branch_when_enabled() {
+        // Regression guard: 2+ proposals with feature branches enabled should create branch.
+        assert!(should_create_feature_branch(None, true, 2));
+        assert!(should_create_feature_branch(None, true, 5));
+        assert!(should_create_feature_branch(Some(true), true, 3));
+    }
+
+    #[test]
+    fn test_multi_proposal_respects_disabled_setting() {
+        // Even with multiple proposals, disabled feature branches stay disabled.
+        assert!(!should_create_feature_branch(None, false, 3));
+        assert!(!should_create_feature_branch(Some(false), true, 3));
+    }
+
+    #[test]
+    fn test_single_proposal_respects_disabled_project_default() {
+        // Project has use_feature_branches=false — should stay false regardless.
+        assert!(!should_create_feature_branch(None, false, 1));
+    }
+
+    #[tokio::test]
+    async fn test_single_proposal_no_plan_branch_or_merge_task() {
+        // Integration test: simulate applying 1 proposal with feature branches enabled.
+        // Verify no plan branch record is created and no merge task exists.
+        let state = setup_test_state();
+        let project_id = ProjectId::new();
+
+        // Create session
+        let session = IdeationSession::new(project_id.clone());
+        let created_session = state
+            .ideation_session_repo
+            .create(session)
+            .await
+            .expect("Failed to create session");
+
+        // Create 1 proposal
+        let proposal = TaskProposal::new(
+            created_session.id.clone(),
+            "Solo Proposal",
+            TaskCategory::Feature,
+            Priority::Medium,
+        );
+        let p1 = state.task_proposal_repo.create(proposal).await.expect("Failed to create proposal");
+
+        // Create the corresponding task (simulating what apply_proposals_to_kanban does)
+        let mut task = crate::domain::entities::Task::new(project_id.clone(), p1.title.clone());
+        task.ideation_session_id = Some(created_session.id.clone());
+        let _created_task = state.task_repo.create(task).await.expect("Failed to create task");
+
+        // Decision: should_create_feature_branch returns false for 1 task
+        let should_create = should_create_feature_branch(None, true, 1);
+        assert!(!should_create, "Feature branch should be skipped for single-proposal plan");
+
+        // Verify no plan branch record exists for this session
+        let plan_branch = state
+            .plan_branch_repo
+            .get_by_session_id(&created_session.id)
+            .await
+            .expect("Failed to query plan branch");
+        assert!(plan_branch.is_none(), "No plan branch should exist for single-proposal plan");
+
+        // Verify no plan_merge tasks exist for this project
+        let all_tasks = state
+            .task_repo
+            .get_by_project(&project_id)
+            .await
+            .expect("Failed to query tasks");
+        let merge_tasks: Vec<_> = all_tasks
+            .iter()
+            .filter(|t| t.category == "plan_merge")
+            .collect();
+        assert!(merge_tasks.is_empty(), "No merge task should exist for single-proposal plan");
     }
 
     #[tokio::test]
