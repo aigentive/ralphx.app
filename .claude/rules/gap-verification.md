@@ -1,6 +1,6 @@
 # Gap Verification Workflow
 
-**Required Context:** @.claude/rules/stream-features.md | @.claude/rules/stream-verify.md | @.claude/rules/api-layer.md
+**Required Context:** stream-features.md | stream-verify.md | api-layer.md
 
 ## When to Run
 
@@ -14,7 +14,7 @@
 1. Read entire PRD + referenced specs/plans
 2. Build mental model of what was supposed to be implemented
 3. Run CODE VERIFICATION CHECKS (below) for each feature
-4. Run VISUAL GAP VERIFICATION (@.claude/rules/visual-gap-verification.md)
+4. Run VISUAL GAP VERIFICATION (visual-gap-verification.md)
 5. Gaps found? → Log to backlog as P0/P1 → Continue iterations
 6. No gaps? → Phase complete, update manifest
 ```
@@ -182,6 +182,6 @@ Gap verification feeds into the features stream:
 2. Gap items are picked FIRST regardless of task size
 3. A phase is NOT complete until all P0 items are resolved
 
-See @.claude/rules/stream-features.md for the features stream workflow.
-See @.claude/rules/stream-verify.md for the verify stream that produces P0s.
-See @.claude/rules/visual-gap-verification.md for visual verification at phase completion.
+See stream-features.md for the features stream workflow.
+See stream-verify.md for the verify stream that produces P0s.
+See visual-gap-verification.md for visual verification at phase completion.
