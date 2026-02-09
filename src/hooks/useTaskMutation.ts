@@ -60,6 +60,7 @@ export function useTaskMutation(projectId: string) {
     },
   });
 
+  /** @deprecated Use cleanupTaskMutation instead */
   const deleteMutation = useMutation({
     mutationFn: (taskId: string) => api.tasks.delete(taskId),
     onSuccess: () => {
@@ -103,6 +104,7 @@ export function useTaskMutation(projectId: string) {
     },
   });
 
+  /** @deprecated Use cleanupTaskMutation instead */
   const permanentlyDeleteMutation = useMutation({
     mutationFn: (taskId: string) => api.tasks.permanentlyDelete(taskId),
     onSuccess: () => {
@@ -141,6 +143,38 @@ export function useTaskMutation(projectId: string) {
     },
   });
 
+  const cleanupTaskMutation = useMutation({
+    mutationFn: (taskId: string) => api.tasks.cleanupTask(taskId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.list(projectId) });
+      queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
+      toast.success("Task cleaned up");
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to cleanup task: ${error.message}`);
+    },
+  });
+
+  const cleanupTasksInGroupMutation = useMutation({
+    mutationFn: ({
+      groupKind,
+      groupId,
+      projectId: pid,
+    }: {
+      groupKind: string;
+      groupId: string;
+      projectId: string;
+    }) => api.tasks.cleanupTasksInGroup(groupKind, groupId, pid),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.list(projectId) });
+      queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
+      toast.success(`Cleaned up ${data.deletedCount} task${data.deletedCount === 1 ? "" : "s"}`);
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to cleanup tasks: ${error.message}`);
+    },
+  });
+
   return {
     createMutation,
     updateMutation,
@@ -151,10 +185,14 @@ export function useTaskMutation(projectId: string) {
     permanentlyDeleteMutation,
     blockMutation,
     unblockMutation,
+    cleanupTaskMutation,
+    cleanupTasksInGroupMutation,
     isArchiving: archiveMutation.isPending,
     isRestoring: restoreMutation.isPending,
     isPermanentlyDeleting: permanentlyDeleteMutation.isPending,
     isBlocking: blockMutation.isPending,
     isUnblocking: unblockMutation.isPending,
+    isCleaningTask: cleanupTaskMutation.isPending,
+    isCleaningGroup: cleanupTasksInGroupMutation.isPending,
   };
 }

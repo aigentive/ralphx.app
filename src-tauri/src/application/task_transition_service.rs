@@ -758,5 +758,15 @@ impl<R: Runtime> TaskTransitionService<R> {
     }
 }
 
+/// TaskStopper implementation — delegates to transition_task for graceful stop.
+#[async_trait]
+impl<R: Runtime> crate::application::TaskStopper for TaskTransitionService<R> {
+    async fn transition_to_stopped(&self, task_id: &TaskId) -> AppResult<()> {
+        self.transition_task(task_id, InternalStatus::Stopped)
+            .await
+            .map(|_| ())
+    }
+}
+
 #[cfg(test)]
 mod tests;
