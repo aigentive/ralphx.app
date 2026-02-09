@@ -92,11 +92,11 @@ pub fn spawn_send_message_background<R: Runtime>(
     app_handle: Option<AppHandle<R>>,
 ) {
     tokio::spawn(async move {
-        eprintln!(
-            "[STREAM_DEBUG] send_background start (context_type={}, context_id={}, conversation_id={})",
-            context_type,
-            context_id,
-            conversation_id.as_str()
+        tracing::debug!(
+            %context_type,
+            context_id = %context_id,
+            conversation_id = conversation_id.as_str(),
+            "send_background start"
         );
 
         // Resolve project ID for RALPHX_PROJECT_ID env var (used in queue processing)
@@ -118,9 +118,9 @@ pub fn spawn_send_message_background<R: Runtime>(
         let pre_assistant_msg_id = pre_assistant_msg.id.as_str().to_string();
         let _ = chat_message_repo.create(pre_assistant_msg).await;
 
-        eprintln!(
-            "[STREAM_DEBUG] send_background calling process_stream_background (conversation_id={})",
-            conversation_id.as_str()
+        tracing::debug!(
+            conversation_id = conversation_id.as_str(),
+            "send_background calling process_stream_background"
         );
         let result = process_stream_background(
             child,
@@ -430,9 +430,11 @@ pub fn spawn_send_message_background<R: Runtime>(
                         ) {
                             Ok(cmd) => cmd,
                             Err(err) => {
-                                eprintln!(
-                                    "[STREAM_DEBUG] send_background spawn blocked: {} (context_type={}, context_id={})",
-                                    err, context_type, context_id
+                                tracing::warn!(
+                                    error = %err,
+                                    %context_type,
+                                    context_id = %context_id,
+                                    "send_background spawn blocked"
                                 );
                                 return;
                             }

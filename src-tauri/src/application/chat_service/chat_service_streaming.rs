@@ -43,11 +43,11 @@ pub async fn process_stream_background<R: Runtime>(
     chat_message_repo: Option<Arc<dyn ChatMessageRepository>>,
     assistant_message_id: Option<String>,
 ) -> Result<(String, Vec<ToolCall>, Vec<ContentBlockItem>, Option<String>), String> {
-    eprintln!(
-        "[STREAM_DEBUG] process_stream_background start (conversation_id={}, context_type={}, context_id={})",
-        conversation_id.as_str(),
-        context_type,
-        context_id
+    tracing::debug!(
+        conversation_id = conversation_id.as_str(),
+        %context_type,
+        context_id,
+        "process_stream_background start"
     );
     let stdout = child
         .stdout
@@ -64,9 +64,9 @@ pub async fn process_stream_background<R: Runtime>(
     let context_id_str = context_id.to_string();
     let debug_path = std::env::temp_dir()
         .join(format!("ralphx-stream-debug-{}.log", conversation_id_str));
-    eprintln!(
-        "[STREAM_DEBUG] Debug log path (written on parse failure): {}",
-        debug_path.display()
+    tracing::debug!(
+        path = %debug_path.display(),
+        "Debug log path (written on parse failure)"
     );
 
     // Parse task_id for activity persistence (only for TaskExecution context)
@@ -392,13 +392,13 @@ pub async fn process_stream_background<R: Runtime>(
         }
 
         if lines_seen % 50 == 0 {
-            eprintln!(
-                "[STREAM_DEBUG] Progress (conversation_id={}, lines_seen={}, lines_parsed={}, response_len={}, tool_calls={})",
-                conversation_id_str,
+            tracing::debug!(
+                conversation_id = %conversation_id_str,
                 lines_seen,
                 lines_parsed,
-                processor.response_text.len(),
-                processor.tool_calls.len()
+                response_len = processor.response_text.len(),
+                tool_calls = processor.tool_calls.len(),
+                "Stream progress"
             );
         }
     }
@@ -410,12 +410,12 @@ pub async fn process_stream_background<R: Runtime>(
 
     // Wait for process
     let status = child.wait().await.map_err(|e| e.to_string())?;
-    eprintln!(
-        "[STREAM_DEBUG] Stream finished (conversation_id={}, success={}, response_len={}, tool_calls={})",
-        conversation_id_str,
-        status.success(),
-        result.response_text.len(),
-        result.tool_calls.len()
+    tracing::debug!(
+        conversation_id = %conversation_id_str,
+        success = status.success(),
+        response_len = result.response_text.len(),
+        tool_calls = result.tool_calls.len(),
+        "Stream finished"
     );
 
     if result.response_text.is_empty() {
@@ -436,10 +436,6 @@ pub async fn process_stream_background<R: Runtime>(
             path = %debug_path.display(),
             conversation_id = %conversation_id_str,
             "Wrote stream debug log"
-        );
-        eprintln!(
-            "[STREAM_DEBUG] Wrote stream debug log: {}",
-            debug_path.display()
         );
     }
 

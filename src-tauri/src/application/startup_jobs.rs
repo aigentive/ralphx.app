@@ -16,7 +16,7 @@
 
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
-use tracing::info;
+use tracing::{debug, info};
 
 use crate::commands::execution_commands::{
     ActiveProjectState, ExecutionState, AGENT_ACTIVE_STATUSES, AUTO_TRANSITION_STATES,
@@ -134,7 +134,7 @@ impl<R: Runtime> StartupJobRunner<R> {
     /// For each task in an agent-active state, re-executes entry actions to
     /// respawn the appropriate agent.
     pub async fn run(&self) {
-        eprintln!("[STARTUP] StartupJobRunner::run() called");
+        debug!("StartupJobRunner::run() called");
 
         // Phase 105: Kill orphaned agent OS processes from previous session.
         // The SQLite-backed registry persists PIDs across restarts, so we can
@@ -164,22 +164,20 @@ impl<R: Runtime> StartupJobRunner<R> {
 
         // Check if execution is paused - skip resumption if so
         if self.execution_state.is_paused() {
-            eprintln!("[STARTUP] Execution paused, skipping task resumption");
             info!("Execution paused, skipping task resumption");
             return;
         }
-        eprintln!("[STARTUP] Execution NOT paused, continuing...");
+        debug!("Execution NOT paused, continuing...");
 
         // Phase 90: Read active project from DB (persisted from last session)
         // No waiting needed — DB has the value from the previous session.
-        eprintln!("[STARTUP] Reading active project from DB...");
+        debug!("Reading active project from DB...");
         let active_project_id = {
             let db_result = self.app_state_repo.get().await;
             match db_result {
                 Ok(settings) => settings.active_project_id,
                 Err(e) => {
-                    tracing::warn!("Failed to read app_state from DB: {}", e);
-                    eprintln!("[STARTUP] Failed to read app_state from DB: {}", e);
+                    tracing::warn!(error = %e, "Failed to read app_state from DB");
                     None
                 }
             }
@@ -187,11 +185,9 @@ impl<R: Runtime> StartupJobRunner<R> {
         if let Some(ref pid) = active_project_id {
             // Set in-memory state from DB value so other commands can use it immediately
             self.active_project_state.set(Some(pid.clone())).await;
-            eprintln!("[STARTUP] Active project from DB: {}", pid.as_str());
             info!(project_id = pid.as_str(), "Active project loaded from DB");
         }
         if active_project_id.is_none() {
-            eprintln!("[STARTUP] No active project in DB, skipping task resumption");
             info!("No active project in DB, skipping task resumption");
             // Still try to schedule Ready tasks if scheduler is set
             if let Some(ref scheduler) = self.task_scheduler {
@@ -231,15 +227,15 @@ impl<R: Runtime> StartupJobRunner<R> {
 
         let mut resumed = 0u32;
 
-        eprintln!(
-            "[STARTUP] Found {} project(s) (scoped to active: {:?})",
-            projects.len(),
-            active_project_id.as_ref().map(|p| p.as_str())
+        debug!(
+            count = projects.len(),
+            active_project = ?active_project_id.as_ref().map(|p| p.as_str()),
+            "Found projects for startup resumption"
         );
 
         // Iterate through projects and their tasks in agent-active states
         for project in &projects {
-            eprintln!("[STARTUP] Checking project: {}", project.id.as_str());
+            debug!(project_id = project.id.as_str(), "Checking project for resumable tasks");
             for status in AGENT_ACTIVE_STATUSES {
                 // Get tasks in this status for this project
                 let tasks = match self.task_repo.get_by_status(&project.id, *status).await {
@@ -255,11 +251,11 @@ impl<R: Runtime> StartupJobRunner<R> {
                     }
                 };
 
-                eprintln!("[STARTUP] Found {} tasks in {:?} status", tasks.len(), status);
+                debug!(count = tasks.len(), ?status, "Found tasks in status");
                 for task in tasks {
                     // Phase 106: Defense-in-depth — skip archived tasks even if query returns them
                     if task.archived_at.is_some() {
-                        eprintln!("[STARTUP] Skipping archived task: {} ({})", task.id.as_str(), task.title);
+                        debug!(task_id = task.id.as_str(), title = %task.title, "Skipping archived task");
                         continue;
                     }
 
@@ -269,7 +265,6 @@ impl<R: Runtime> StartupJobRunner<R> {
                         continue;
                     }
 
-                    eprintln!("[STARTUP] Resuming task: {} ({})", task.id.as_str(), task.title);
                     // Check if we can start another task
                     if !self.execution_state.can_start_task() {
                         info!(
@@ -316,15 +311,11 @@ impl<R: Runtime> StartupJobRunner<R> {
                     }
                 };
 
-                eprintln!(
-                    "[STARTUP] Found {} tasks in {:?} status (auto-transition)",
-                    tasks.len(),
-                    status
-                );
+                debug!(count = tasks.len(), ?status, "Found tasks in auto-transition status");
                 for task in tasks {
                     // Phase 106: Defense-in-depth — skip archived tasks even if query returns them
                     if task.archived_at.is_some() {
-                        eprintln!("[STARTUP] Skipping archived task: {} ({})", task.id.as_str(), task.title);
+                        debug!(task_id = task.id.as_str(), title = %task.title, "Skipping archived task");
                         continue;
                     }
 
@@ -338,11 +329,6 @@ impl<R: Runtime> StartupJobRunner<R> {
                         return;
                     }
 
-                    eprintln!(
-                        "[STARTUP] Re-triggering auto-transition for task: {} ({})",
-                        task.id.as_str(),
-                        task.title
-                    );
                     info!(
                         task_id = task.id.as_str(),
                         status = ?status,
@@ -418,7 +404,7 @@ impl<R: Runtime> StartupJobRunner<R> {
             for mut task in blocked_tasks {
                 // Phase 106: Defense-in-depth — skip archived tasks even if query returns them
                 if task.archived_at.is_some() {
-                    eprintln!("[STARTUP] Skipping archived task: {} ({})", task.id.as_str(), task.title);
+                    debug!(task_id = task.id.as_str(), title = %task.title, "Skipping archived task in unblock check");
                     continue;
                 }
 

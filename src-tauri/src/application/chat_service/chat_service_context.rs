@@ -228,9 +228,11 @@ pub fn build_command(
 ) -> Result<Command, String> {
     // Compute agent_name using the resolution system (context type + optional status)
     let agent_name = resolve_agent(&conversation.context_type, entity_status);
-    eprintln!(
-        "[CMD] Setting RALPHX_AGENT_TYPE={} for context {:?} (status: {:?})",
-        agent_name, conversation.context_type, entity_status
+    tracing::debug!(
+        agent_name,
+        context_type = ?conversation.context_type,
+        entity_status = ?entity_status,
+        "Setting RALPHX_AGENT_TYPE for context"
     );
 
     // Pass agent_type to build_base_cli_command so it can create dynamic MCP config
