@@ -370,6 +370,7 @@ export function TaskDetailPanel({
     if (statusForView === "reviewing") {
       return (
         <ReviewingTaskDetail
+          key={`reviewing-${isHistorical ? "hist" : "curr"}`}
           task={task}
           isHistorical={isHistorical}
           viewTimestamp={viewTimestamp}
@@ -378,6 +379,7 @@ export function TaskDetailPanel({
     }
     return (
       <ViewComponent
+        key={`${statusForView}-${isHistorical ? "hist" : "curr"}`}
         task={task}
         isHistorical={isHistorical}
         viewStatus={statusForView}
