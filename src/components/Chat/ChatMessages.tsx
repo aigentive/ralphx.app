@@ -6,9 +6,7 @@ import { useMemo, useRef, type RefObject } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { MessageItem, type ContentBlockItem } from "./MessageItem";
 import { StreamingToolIndicator } from "./StreamingToolIndicator";
-import { AskUserQuestionCard } from "./AskUserQuestionCard";
 import { type ToolCall } from "./ToolCallIndicator";
-import type { AskUserQuestionPayload, AskUserQuestionResponse } from "@/types/ask-user-question";
 import { Bot, MessageSquare, Loader2, Activity, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -140,12 +138,6 @@ export interface ChatMessagesProps {
   failedErrorMessage: string | undefined;
   onDismissError: (() => void) | undefined;
   messagesEndRef: RefObject<HTMLDivElement | null>;
-  activeQuestion?: AskUserQuestionPayload | null | undefined;
-  onSubmitAnswer?: ((response: AskUserQuestionResponse) => void) | undefined;
-  isSubmittingAnswer?: boolean | undefined;
-  answeredQuestion?: string | undefined;
-  onDismissQuestion?: (() => void) | undefined;
-  onDismissAnswered?: (() => void) | undefined;
 }
 
 export function ChatMessages({
@@ -157,12 +149,6 @@ export function ChatMessages({
   failedErrorMessage,
   onDismissError,
   messagesEndRef,
-  activeQuestion,
-  onSubmitAnswer,
-  isSubmittingAnswer = false,
-  answeredQuestion,
-  onDismissQuestion,
-  onDismissAnswered,
 }: ChatMessagesProps) {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
 
@@ -220,17 +206,6 @@ export function ChatMessages({
                 ) : (
                   <TypingIndicator />
                 )
-              )}
-              {/* Show inline question card when agent asks a question or answered summary */}
-              {(activeQuestion || answeredQuestion) && onSubmitAnswer && (
-                <AskUserQuestionCard
-                  question={activeQuestion ?? { requestId: "", taskId: "", header: "", question: "", options: [], multiSelect: false }}
-                  onSubmit={onSubmitAnswer}
-                  isSubmitting={isSubmittingAnswer}
-                  answeredWith={answeredQuestion}
-                  onDismiss={onDismissQuestion}
-                  onDismissAnswered={onDismissAnswered}
-                />
               )}
               <div ref={messagesEndRef} />
             </div>

@@ -485,4 +485,252 @@ describe("ChatInput", () => {
       expect(helperText.textContent).not.toContain("↑");
     });
   });
+
+  // ============================================================================
+  // Question Mode Tests
+  // ============================================================================
+
+  describe("question mode", () => {
+    const questionModeProps = {
+      optionCount: 3,
+      multiSelect: false,
+      onMatchedOptions: vi.fn(),
+    };
+
+    beforeEach(() => {
+      questionModeProps.onMatchedOptions.mockClear();
+    });
+
+    describe("placeholder", () => {
+      it("shows question-aware placeholder when questionMode is active", () => {
+        render(
+          <ChatInput {...defaultProps} questionMode={questionModeProps} />
+        );
+        expect(
+          screen.getByPlaceholderText("Type 1-3 or a custom response...")
+        ).toBeInTheDocument();
+      });
+
+      it("uses custom placeholder over question mode placeholder when explicitly set", () => {
+        render(
+          <ChatInput
+            {...defaultProps}
+            questionMode={questionModeProps}
+            placeholder="Custom placeholder"
+          />
+        );
+        // questionMode placeholder takes priority
+        expect(
+          screen.getByPlaceholderText("Type 1-3 or a custom response...")
+        ).toBeInTheDocument();
+      });
+
+      it("shows normal placeholder when questionMode is undefined", () => {
+        render(<ChatInput {...defaultProps} />);
+        expect(
+          screen.getByPlaceholderText("Send a message...")
+        ).toBeInTheDocument();
+      });
+    });
+
+    describe("helper text", () => {
+      it("shows question-aware helper text when questionMode is active", () => {
+        render(
+          <ChatInput {...defaultProps} questionMode={questionModeProps} />
+        );
+        expect(
+          screen.getByText(/Enter to send.*Type option number or custom text/i)
+        ).toBeInTheDocument();
+      });
+
+      it("does not show normal helper text when questionMode is active", () => {
+        render(
+          <ChatInput {...defaultProps} questionMode={questionModeProps} />
+        );
+        expect(
+          screen.queryByText(/Shift\+Enter for new line/i)
+        ).not.toBeInTheDocument();
+      });
+    });
+
+    describe("single-select number matching", () => {
+      it("calls onMatchedOptions with [0] when typing '1'", async () => {
+        const user = userEvent.setup();
+        render(
+          <ChatInput {...defaultProps} questionMode={questionModeProps} />
+        );
+
+        const textarea = screen.getByTestId("chat-input-textarea");
+        await user.type(textarea, "1");
+
+        expect(questionModeProps.onMatchedOptions).toHaveBeenCalledWith([0]);
+      });
+
+      it("calls onMatchedOptions with [2] when typing '3'", async () => {
+        const user = userEvent.setup();
+        render(
+          <ChatInput {...defaultProps} questionMode={questionModeProps} />
+        );
+
+        const textarea = screen.getByTestId("chat-input-textarea");
+        await user.type(textarea, "3");
+
+        expect(questionModeProps.onMatchedOptions).toHaveBeenLastCalledWith([2]);
+      });
+
+      it("calls onMatchedOptions([]) for out-of-range number", async () => {
+        const user = userEvent.setup();
+        render(
+          <ChatInput {...defaultProps} questionMode={questionModeProps} />
+        );
+
+        const textarea = screen.getByTestId("chat-input-textarea");
+        await user.type(textarea, "5");
+
+        expect(questionModeProps.onMatchedOptions).toHaveBeenLastCalledWith([]);
+      });
+
+      it("calls onMatchedOptions([]) for zero", async () => {
+        const user = userEvent.setup();
+        render(
+          <ChatInput {...defaultProps} questionMode={questionModeProps} />
+        );
+
+        const textarea = screen.getByTestId("chat-input-textarea");
+        await user.type(textarea, "0");
+
+        expect(questionModeProps.onMatchedOptions).toHaveBeenLastCalledWith([]);
+      });
+
+      it("calls onMatchedOptions([]) for non-numeric text", async () => {
+        const user = userEvent.setup();
+        render(
+          <ChatInput {...defaultProps} questionMode={questionModeProps} />
+        );
+
+        const textarea = screen.getByTestId("chat-input-textarea");
+        await user.type(textarea, "hello");
+
+        expect(questionModeProps.onMatchedOptions).toHaveBeenLastCalledWith([]);
+      });
+
+      it("calls onMatchedOptions([]) when input is cleared", async () => {
+        const user = userEvent.setup();
+        render(
+          <ChatInput {...defaultProps} questionMode={questionModeProps} />
+        );
+
+        const textarea = screen.getByTestId("chat-input-textarea");
+        await user.type(textarea, "1");
+        expect(questionModeProps.onMatchedOptions).toHaveBeenLastCalledWith([0]);
+
+        await user.clear(textarea);
+        expect(questionModeProps.onMatchedOptions).toHaveBeenLastCalledWith([]);
+      });
+
+      it("calls onMatchedOptions([]) for multi-digit numbers in single-select", async () => {
+        const user = userEvent.setup();
+        render(
+          <ChatInput {...defaultProps} questionMode={questionModeProps} />
+        );
+
+        const textarea = screen.getByTestId("chat-input-textarea");
+        await user.type(textarea, "12");
+
+        // "12" is not a valid single option for 3 options, treat as custom text
+        expect(questionModeProps.onMatchedOptions).toHaveBeenLastCalledWith([]);
+      });
+    });
+
+    describe("multi-select number matching", () => {
+      const multiProps = {
+        optionCount: 5,
+        multiSelect: true,
+        onMatchedOptions: vi.fn(),
+      };
+
+      beforeEach(() => {
+        multiProps.onMatchedOptions.mockClear();
+      });
+
+      it("matches comma-separated numbers '1,3'", async () => {
+        const user = userEvent.setup();
+        render(<ChatInput {...defaultProps} questionMode={multiProps} />);
+
+        const textarea = screen.getByTestId("chat-input-textarea");
+        await user.type(textarea, "1,3");
+
+        expect(multiProps.onMatchedOptions).toHaveBeenLastCalledWith([0, 2]);
+      });
+
+      it("matches comma-separated with spaces '1, 3, 5'", async () => {
+        const user = userEvent.setup();
+        render(<ChatInput {...defaultProps} questionMode={multiProps} />);
+
+        const textarea = screen.getByTestId("chat-input-textarea");
+        await user.type(textarea, "1, 3, 5");
+
+        expect(multiProps.onMatchedOptions).toHaveBeenLastCalledWith([0, 2, 4]);
+      });
+
+      it("filters out-of-range numbers in multi-select", async () => {
+        const user = userEvent.setup();
+        render(<ChatInput {...defaultProps} questionMode={multiProps} />);
+
+        const textarea = screen.getByTestId("chat-input-textarea");
+        await user.type(textarea, "1,7");
+
+        // Only 1 is valid (7 is out of range for 5 options)
+        expect(multiProps.onMatchedOptions).toHaveBeenLastCalledWith([0]);
+      });
+
+      it("calls onMatchedOptions([]) for all-invalid multi-select", async () => {
+        const user = userEvent.setup();
+        render(<ChatInput {...defaultProps} questionMode={multiProps} />);
+
+        const textarea = screen.getByTestId("chat-input-textarea");
+        await user.type(textarea, "6,7,8");
+
+        expect(multiProps.onMatchedOptions).toHaveBeenLastCalledWith([]);
+      });
+
+      it("shows multi-select placeholder with correct count", () => {
+        render(<ChatInput {...defaultProps} questionMode={multiProps} />);
+        expect(
+          screen.getByPlaceholderText("Type 1-5 or a custom response...")
+        ).toBeInTheDocument();
+      });
+    });
+
+    describe("does not interfere with send", () => {
+      it("still calls onSend when Enter is pressed in question mode", async () => {
+        const user = userEvent.setup();
+        const onSend = vi.fn().mockResolvedValue(undefined);
+        render(
+          <ChatInput onSend={onSend} questionMode={questionModeProps} />
+        );
+
+        const textarea = screen.getByTestId("chat-input-textarea");
+        await user.type(textarea, "2");
+        await user.keyboard("{Enter}");
+
+        expect(onSend).toHaveBeenCalledWith("2");
+      });
+
+      it("clears matched options after send", async () => {
+        const user = userEvent.setup();
+        const onSend = vi.fn().mockResolvedValue(undefined);
+        render(
+          <ChatInput onSend={onSend} questionMode={questionModeProps} />
+        );
+
+        const textarea = screen.getByTestId("chat-input-textarea");
+        await user.type(textarea, "2");
+        await user.keyboard("{Enter}");
+
+        // After send, the last call should clear matched options
+        expect(questionModeProps.onMatchedOptions).toHaveBeenLastCalledWith([]);
+      });
+    });
+  });
 });
