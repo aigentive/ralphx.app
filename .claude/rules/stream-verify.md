@@ -1,3 +1,11 @@
+---
+paths:
+  - "streams/verify/**"
+  - "specs/manifest.json"
+  - "specs/phases/**"
+  - "streams/features/backlog.md"
+---
+
 # Verify Stream
 
 **Required Context:** gap-verification.md | git-workflow.md
