@@ -378,7 +378,7 @@ See Phase 2 in Merge Workflow above.
 | Context Type | Default Agent | Status Override | Session |
 |-------------|---------------|-----------------|---------|
 | `TaskExecution` | `ralphx-worker` | — | Never resumed (fresh spawn) |
-| `Review` | `ralphx-reviewer` | `review_passed` → `ralphx-review-chat` | Never resumed (fresh) |
+| `Review` | `ralphx-reviewer` | `review_passed` → `ralphx-review-chat`, `approved` → `ralphx-review-history` | Never resumed (fresh) |
 | `Merge` | `ralphx-merger` | — | May resume |
 | `Ideation` | `orchestrator-ideation` | `accepted` → `orchestrator-ideation-readonly` | Resumes |
 | `Task` | `chat-task` | — | Resumes |
