@@ -13,36 +13,8 @@
 import React from "react";
 import { GitMerge, GitBranch, AlertTriangle, ArrowRight, X } from "lucide-react";
 import { WidgetCard, WidgetHeader, Badge, InlineIndicator, FilePath } from "./shared";
-import { colors } from "./shared.constants";
+import { colors, getString, getStringArray, getBool } from "./shared.constants";
 import type { ToolCallWidgetProps } from "./shared.constants";
-
-// ============================================================================
-// Extraction helpers
-// ============================================================================
-
-function getString(obj: unknown, key: string): string | undefined {
-  if (obj != null && typeof obj === "object" && key in (obj as Record<string, unknown>)) {
-    const val = (obj as Record<string, unknown>)[key];
-    return typeof val === "string" ? val : undefined;
-  }
-  return undefined;
-}
-
-function getStringArray(obj: unknown, key: string): string[] | undefined {
-  if (obj != null && typeof obj === "object" && key in (obj as Record<string, unknown>)) {
-    const val = (obj as Record<string, unknown>)[key];
-    if (Array.isArray(val) && val.every((v) => typeof v === "string")) return val;
-  }
-  return undefined;
-}
-
-function getBool(obj: unknown, key: string): boolean | undefined {
-  if (obj != null && typeof obj === "object" && key in (obj as Record<string, unknown>)) {
-    const val = (obj as Record<string, unknown>)[key];
-    return typeof val === "boolean" ? val : undefined;
-  }
-  return undefined;
-}
 
 /** Shorten a commit SHA to 7 chars */
 function shortSha(sha: string): string {

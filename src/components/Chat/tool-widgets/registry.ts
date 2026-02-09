@@ -11,7 +11,6 @@
 
 import type { ComponentType } from "react";
 import type { ToolCallWidgetProps } from "./shared";
-import { StepIndicator } from "./StepIndicator";
 import { MergeWidget } from "./MergeWidget";
 
 /** Registry type: tool name (lowercase) → React component */
@@ -22,24 +21,14 @@ export type ToolCallWidgetRegistry = Record<string, ComponentType<ToolCallWidget
  * Tool names should be lowercase to match normalized lookup in ToolCallIndicator.
  */
 export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
-  // Step lifecycle tools → StepIndicator (ultra-compact inline indicators)
-  "mcp__ralphx__start_step": StepIndicator,
-  "mcp__ralphx__complete_step": StepIndicator,
-  "mcp__ralphx__add_step": StepIndicator,
-  "mcp__ralphx__skip_step": StepIndicator,
-  "mcp__ralphx__fail_step": StepIndicator,
-  "mcp__ralphx__get_step_progress": StepIndicator,
   // Merge tools → MergeWidget (success/conflict/incomplete cards + merge target)
   "mcp__ralphx__complete_merge": MergeWidget,
   "mcp__ralphx__report_conflict": MergeWidget,
   "mcp__ralphx__report_incomplete": MergeWidget,
   "mcp__ralphx__get_merge_target": MergeWidget,
   // Subsequent tasks will add:
-  // "bash": BashWidget,
-  // "read": ReadWidget,
-  // "grep": GrepWidget,
-  // "glob": GlobWidget,
-  // etc.
+  // StepIndicator (start_step, complete_step, add_step, skip_step, fail_step, get_step_progress)
+  // BashWidget, ReadWidget, GrepWidget, GlobWidget, etc.
 };
 
 /**
