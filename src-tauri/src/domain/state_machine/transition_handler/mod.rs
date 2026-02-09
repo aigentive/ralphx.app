@@ -19,6 +19,10 @@ pub use side_effects::resolve_merge_branches;
 pub(crate) use side_effects::format_validation_error_metadata;
 pub(crate) use side_effects::run_validation_commands;
 
+// Re-export merge deferred metadata helpers for scheduler retry (concurrent merge guard)
+pub(crate) use side_effects::has_merge_deferred_metadata;
+pub(crate) use side_effects::clear_merge_deferred_metadata;
+
 /// Result of handling a transition
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransitionResult {
