@@ -347,15 +347,17 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
   return (
     <TaskNodeContextMenu
       task={minimalTask}
-      onViewDetails={handleViewDetails}
-      onStartExecution={handleStartExecution}
-      onBlockWithReason={handleBlockWithReason}
-      onUnblock={handleUnblock}
-      onViewAgentChat={handleViewDetails} // Falls back to view details
-      onApprove={handleApprove}
-      onReject={handleReject}
-      onRequestChanges={handleRequestChanges}
-      onMarkResolved={handleMarkResolved}
+      handlers={{
+        onViewDetails: handleViewDetails,
+        onStartExecution: handleStartExecution,
+        onBlockWithReason: handleBlockWithReason,
+        onUnblock: handleUnblock,
+        onViewAgentChat: handleViewDetails, // Falls back to view details
+        onApprove: handleApprove,
+        onReject: handleReject,
+        onRequestChanges: handleRequestChanges,
+        onMarkResolved: handleMarkResolved,
+      }}
     >
       {nodeContent}
     </TaskNodeContextMenu>
