@@ -81,7 +81,7 @@ export interface GraphControlsProps {
   nodeMode: NodeMode;
   /** Callback when node mode changes */
   onNodeModeChange: (mode: NodeMode) => void;
-  /** Whether compact mode was auto-activated (50+ tasks) */
+  /** Whether any group has auto-compact active (8+ tasks in group) */
   isAutoCompact: boolean;
   /** Available plan groups for filtering */
   planGroups: PlanGroupInfo[];
@@ -563,7 +563,7 @@ function GraphControlsComponent({
           nodeMode === "standard"
             ? "Switch to compact nodes"
             : isAutoCompact
-              ? "Auto-compacted (50+ tasks) - click to use standard nodes"
+              ? "Some groups auto-compacted (8+ tasks) - click to use standard nodes"
               : "Switch to standard nodes"
         }
       >
@@ -626,4 +626,4 @@ export const DEFAULT_NODE_MODE: NodeMode = "standard";
 /**
  * Threshold for auto-switching to compact mode
  */
-export const COMPACT_MODE_THRESHOLD = 50;
+export const COMPACT_MODE_THRESHOLD = 8;

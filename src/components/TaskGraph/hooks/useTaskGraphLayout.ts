@@ -38,6 +38,7 @@ import {
 } from "../groups/groupBuilder";
 import { getPlanGroupNodeId, getTierGroupNodeId } from "../groups/groupTypes";
 import { NODE_WIDTH, NODE_HEIGHT, COMPACT_NODE_WIDTH, COMPACT_NODE_HEIGHT } from "../nodes/nodeStyles";
+import type { NodeMode } from "../controls/GraphControls";
 
 // ============================================================================
 // Types
@@ -54,8 +55,8 @@ export interface LayoutConfig {
   marginx: number;
   /** Vertical margin */
   marginy: number;
-  /** Whether to use compact node dimensions */
-  isCompact?: boolean;
+  /** Per-node mode lookup for mixed standard/compact dimensions */
+  nodeModeLookup?: Map<string, NodeMode>;
 }
 
 export interface LayoutResult {
@@ -466,9 +467,17 @@ function computeLayoutWithCache(
   onDeletePlan?: (planArtifactId: string) => void,
   onRemoveAll?: (sessionId: string) => void
 ): LayoutResult {
-  // Use correct node dimensions based on compact mode
-  const nodeWidth = config.isCompact ? COMPACT_NODE_WIDTH : NODE_WIDTH;
-  const nodeHeight = config.isCompact ? COMPACT_NODE_HEIGHT : NODE_HEIGHT;
+  // Helper to get per-node dimensions from the mode lookup
+  const getNodeDimensions = (nodeId: string) => {
+    const mode = config.nodeModeLookup?.get(nodeId) ?? "standard";
+    return {
+      width: mode === "compact" ? COMPACT_NODE_WIDTH : NODE_WIDTH,
+      height: mode === "compact" ? COMPACT_NODE_HEIGHT : NODE_HEIGHT,
+    };
+  };
+  // Default dimensions for group bounding box calculations (use standard as safe fallback)
+  const defaultNodeWidth = NODE_WIDTH;
+  const defaultNodeHeight = NODE_HEIGHT;
 
   const planGroupingEnabled = grouping.byPlan;
   const includeUncategorized = grouping.showUncategorized || !planGroupingEnabled;
@@ -536,7 +545,7 @@ function computeLayoutWithCache(
     collapsedPlanIds,
     collapsedTierIds,
     includeUncategorized,
-    config.isCompact ?? false
+    config.nodeModeLookup
   );
 
   // Check if we can use cached positions
@@ -555,7 +564,8 @@ function computeLayoutWithCache(
       layoutTierGroups,
       collapsedPlanIds,
       collapsedTierIds,
-      includeUncategorized
+      includeUncategorized,
+      config.nodeModeLookup
     );
     cache.current = { hash, positions };
   }
@@ -734,8 +744,8 @@ function computeLayoutWithCache(
     collapsedTierIds,
     positions,
     graphNodes,
-    nodeWidth,
-    nodeHeight,
+    defaultNodeWidth,
+    defaultNodeHeight,
     onToggleCollapse,
     onToggleAllTiers,
     includeUncategorized,
@@ -766,7 +776,8 @@ function computeLayoutWithCache(
     for (const taskId of pg.taskIds) {
       const graphNode = graphNodes.find((n) => n.taskId === taskId);
       if (graphNode?.category !== "plan_merge") continue;
-      const centeredX = groupCenterX - nodeWidth / 2;
+      const { width: mergeNodeWidth } = getNodeDimensions(taskId);
+      const centeredX = groupCenterX - mergeNodeWidth / 2;
       const visibleNode = nodes.find((n) => n.id === taskId);
       if (visibleNode) {
         visibleNode.position = { ...visibleNode.position, x: centeredX };
@@ -785,8 +796,8 @@ function computeLayoutWithCache(
     collapsedPlanIds,
     planGroupBounds,
     positions,
-    nodeWidth,
-    nodeHeight,
+    defaultNodeWidth,
+    defaultNodeHeight,
     onToggleTierCollapse
   );
 
@@ -870,7 +881,7 @@ function computeLayoutWithCache(
   for (const [tierId, tierTasks] of tasksByTier) {
     const tierNode = tierNodeMap.get(tierId);
     if (!tierNode || tierNode.data.isCollapsed) continue;
-    const bbox = calculateBoundingBox(tierTasks, nodeWidth, nodeHeight);
+    const bbox = calculateBoundingBox(tierTasks, defaultNodeWidth, defaultNodeHeight);
     if (!bbox) continue;
     const desiredLeft = tierNode.position.x + (tierNode.data.width - bbox.width) / 2;
     const deltaX = desiredLeft - bbox.minX;
@@ -909,10 +920,11 @@ function computeLayoutWithCache(
         if (graphNode?.category !== "plan_merge") continue;
         const posNode = allPositionedNodes.find((n) => n.id === taskId);
         if (!posNode) continue;
+        const mergeDims = getNodeDimensions(taskId);
         mergeTaskNodes.push({
           position: posNode.position,
-          width: nodeWidth,
-          height: nodeHeight,
+          width: mergeDims.width,
+          height: mergeDims.height,
         });
       }
 
@@ -1134,7 +1146,7 @@ function computeGraphHash(
   collapsedPlanIds: Set<string> = new Set(),
   collapsedTierIds: Set<string> = new Set(),
   includeUncategorized: boolean = true,
-  isCompact: boolean = false
+  nodeModeLookup?: Map<string, NodeMode>
 ): string {
   // Sort for consistent ordering
   const sortedNodes = [...nodeIds].sort().join(",");
@@ -1154,7 +1166,11 @@ function computeGraphHash(
   // Include collapsed state so layout recalculates when groups collapse/expand
   const sortedCollapsed = [...collapsedPlanIds].sort().join(",");
   const sortedCollapsedTiers = [...collapsedTierIds].sort().join(",");
-  return `${direction}:${isCompact ? "compact" : "standard"}:${sortedNodes}|${sortedEdges}|${sortedGroups}|${sortedTierGroups}|${sortedCollapsed}|${sortedCollapsedTiers}|${includeUncategorized ? "uncategorized" : "no-uncategorized"}`;
+  // Include per-node modes so layout recalculates when mode changes
+  const modeHash = nodeModeLookup
+    ? [...nodeModeLookup.entries()].filter(([, m]) => m === "compact").map(([id]) => id).sort().join(",")
+    : "standard";
+  return `${direction}:${modeHash}:${sortedNodes}|${sortedEdges}|${sortedGroups}|${sortedTierGroups}|${sortedCollapsed}|${sortedCollapsedTiers}|${includeUncategorized ? "uncategorized" : "no-uncategorized"}`;
 }
 
 /**
@@ -1174,11 +1190,17 @@ function computePositions(
   tierGroups: LayoutTierGroup[] = [],
   collapsedPlanIds: Set<string> = new Set(),
   collapsedTierIds: Set<string> = new Set(),
-  includeUncategorized: boolean = true
+  includeUncategorized: boolean = true,
+  nodeModeLookup?: Map<string, NodeMode>
 ): Map<string, { x: number; y: number }> {
-  // Use correct node dimensions based on compact mode
-  const nodeWidth = config.isCompact ? COMPACT_NODE_WIDTH : NODE_WIDTH;
-  const nodeHeight = config.isCompact ? COMPACT_NODE_HEIGHT : NODE_HEIGHT;
+  // Per-node dimensions helper
+  const getNodeDims = (id: string) => {
+    const mode = nodeModeLookup?.get(id) ?? "standard";
+    return {
+      width: mode === "compact" ? COMPACT_NODE_WIDTH : NODE_WIDTH,
+      height: mode === "compact" ? COMPACT_NODE_HEIGHT : NODE_HEIGHT,
+    };
+  };
 
   // Use compound graph when we have plan groups or tier groups to prevent overlap
   const useCompound = planGroups.length > 0 || tierGroups.length > 0;
@@ -1281,7 +1303,8 @@ function computePositions(
       }
     }
 
-    g.setNode(id, { width: nodeWidth, height: nodeHeight });
+    const dims = getNodeDims(id);
+    g.setNode(id, { width: dims.width, height: dims.height });
 
     // Set parent relationship for compound graph
     if (useCompound) {
@@ -1334,9 +1357,10 @@ function computePositions(
     const dagreNode = g.node(id);
     if (dagreNode) {
       // Dagre gives center position, React Flow needs top-left
+      const dims = getNodeDims(id);
       positions.set(id, {
-        x: dagreNode.x - nodeWidth / 2,
-        y: dagreNode.y - nodeHeight / 2,
+        x: dagreNode.x - dims.width / 2,
+        y: dagreNode.y - dims.height / 2,
       });
     }
   }
