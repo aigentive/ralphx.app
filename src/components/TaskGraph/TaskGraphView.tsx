@@ -60,6 +60,7 @@ import { useTaskMutation } from "@/hooks/useTaskMutation";
 import { useDeleteIdeationSession } from "@/hooks/useIdeation";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { useNavCompactBreakpoint } from "@/hooks";
+import { usePersistedNodeMode } from "@/hooks/usePersistedNodeMode";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useChatStore } from "@/stores/chatStore";
 import { taskGraphKeys } from "./hooks/useTaskGraph";
@@ -629,9 +630,9 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
 
   const [layoutDirection, setLayoutDirection] = useState<LayoutDirection>(DEFAULT_LAYOUT_DIRECTION);
 
-  // Node mode state (standard or compact)
+  // Node mode state (standard or compact), persisted to localStorage
   // null means "auto" - will be determined by task count
-  const [nodeModeOverride, setNodeModeOverride] = useState<NodeMode | null>(null);
+  const [nodeModeOverride, setNodeModeOverride] = usePersistedNodeMode();
 
   // Apply filters to graph data before layout computation
   const filteredGraphData = useMemo(() => {
@@ -695,7 +696,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     } else {
       setNodeModeOverride(mode);
     }
-  }, [isAutoCompact]);
+  }, [isAutoCompact, setNodeModeOverride]);
 
   const tierGroups = useMemo(
     () => buildTierGroups(filteredGraphData.nodes, filteredGraphData.planGroups, {
