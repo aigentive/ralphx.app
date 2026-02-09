@@ -13,6 +13,8 @@ import type { ComponentType } from "react";
 import type { ToolCallWidgetProps } from "./shared";
 import { StepIndicator } from "./StepIndicator";
 import { ContextWidget } from "./ContextWidget";
+import { ProposalWidget } from "./ProposalWidget";
+import { IdeationWidget } from "./IdeationWidget";
 
 /** Registry type: tool name (lowercase) → React component */
 export type ToolCallWidgetRegistry = Record<string, ComponentType<ToolCallWidgetProps>>;
@@ -31,6 +33,19 @@ export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
   "mcp__ralphx__skip_step": StepIndicator,
   "mcp__ralphx__fail_step": StepIndicator,
   "mcp__ralphx__get_step_progress": StepIndicator,
+  // Proposal CRUD tools → ProposalWidget
+  "mcp__ralphx__create_task_proposal": ProposalWidget,
+  "mcp__ralphx__update_task_proposal": ProposalWidget,
+  "mcp__ralphx__delete_task_proposal": ProposalWidget,
+  // Ideation session tools → IdeationWidget
+  "mcp__ralphx__create_plan_artifact": IdeationWidget,
+  "mcp__ralphx__update_plan_artifact": IdeationWidget,
+  "mcp__ralphx__link_proposals_to_plan": IdeationWidget,
+  "mcp__ralphx__ask_user_question": IdeationWidget,
+  "mcp__ralphx__list_session_proposals": IdeationWidget,
+  "mcp__ralphx__get_proposal": IdeationWidget,
+  "mcp__ralphx__get_session_plan": IdeationWidget,
+  "mcp__ralphx__analyze_session_dependencies": IdeationWidget,
   // Subsequent tasks will add:
   // "bash": BashWidget,
   // "read": ReadWidget,
