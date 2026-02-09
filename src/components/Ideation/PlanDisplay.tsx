@@ -220,6 +220,7 @@ export function PlanDisplay({
   useEffect(() => {
     if (selectedVersion === plan.metadata.version) {
       setHistoricalContent(null);
+      setIsLoadingVersion(false);
       return;
     }
 
