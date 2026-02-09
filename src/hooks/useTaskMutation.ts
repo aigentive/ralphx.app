@@ -60,6 +60,7 @@ export function useTaskMutation(projectId: string) {
     },
   });
 
+  /** @deprecated Use cleanupTaskMutation instead */
   const deleteMutation = useMutation({
     mutationFn: (taskId: string) => api.tasks.delete(taskId),
     onSuccess: () => {
@@ -103,6 +104,7 @@ export function useTaskMutation(projectId: string) {
     },
   });
 
+  /** @deprecated Use cleanupTaskMutation instead */
   const permanentlyDeleteMutation = useMutation({
     mutationFn: (taskId: string) => api.tasks.permanentlyDelete(taskId),
     onSuccess: () => {
