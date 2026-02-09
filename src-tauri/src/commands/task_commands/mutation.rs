@@ -3,6 +3,7 @@
 use std::sync::Arc;
 use tauri::{Emitter, State};
 use crate::application::AppState;
+use crate::application::task_cleanup_service::{TaskCleanupService, StopMode};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{InternalStatus, ProjectId, Task, TaskId};
 use super::types::{
@@ -486,7 +487,7 @@ pub async fn permanently_delete_task(
 ) -> Result<(), String> {
     let task_id_obj = TaskId::from_string(task_id.clone());
 
-    // Get the task first to check if it's archived and get project_id for event
+    // Get the task first to check if it's archived
     let task = state
         .task_repo
         .get_by_id(&task_id_obj)
@@ -502,17 +503,19 @@ pub async fn permanently_delete_task(
         ));
     }
 
-    let project_id = task.project_id.as_str().to_string();
+    // Delegate to TaskCleanupService for full cleanup:
+    // force-stop agent (defensive) + git branch/worktree cleanup + DB delete + event
+    let cleanup_service = TaskCleanupService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.running_agent_registry),
+        Some(app),
+    );
 
-    // Permanently delete
-    state
-        .task_repo
-        .delete(&task_id_obj)
+    cleanup_service
+        .cleanup_single_task(&task, StopMode::Graceful, true)
         .await
         .map_err(|e| e.to_string())?;
-
-    // Emit event for real-time UI updates
-    emit_task_lifecycle_event(&app, "task:deleted", &task_id, &project_id);
 
     Ok(())
 }
