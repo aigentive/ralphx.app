@@ -206,6 +206,13 @@ export function isDiffToolCall(name: string): boolean {
 }
 
 /**
+ * Check if a tool name is a Task subagent tool call
+ */
+export function isTaskToolCall(name: string): boolean {
+  return name.toLowerCase() === "task";
+}
+
+/**
  * Extract diff data from an Edit tool call.
  * Edit arguments contain old_string and new_string.
  */
