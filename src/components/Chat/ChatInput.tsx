@@ -14,6 +14,15 @@ import { useState, useRef, useCallback, useEffect } from "react";
 // Types
 // ============================================================================
 
+export interface QuestionMode {
+  /** Number of available options (for placeholder "Type 1-N") */
+  optionCount: number;
+  /** Whether multiple options can be selected */
+  multiSelect: boolean;
+  /** Called with matched option indices (0-based) when input matches number patterns */
+  onMatchedOptions: (indices: number[]) => void;
+}
+
 export interface ChatInputProps {
   /** Callback when message is sent */
   onSend: (message: string) => Promise<void> | void;
@@ -41,6 +50,8 @@ export interface ChatInputProps {
   onStop?: () => void;
   /** Whether the input is in read-only mode (e.g., viewing historical state) */
   isReadOnly?: boolean;
+  /** Question-aware mode: changes placeholder, enables number matching, updates helper text */
+  questionMode?: QuestionMode;
 }
 
 // ============================================================================
@@ -114,6 +125,7 @@ export function ChatInput({
   onEditLastQueued,
   onStop,
   isReadOnly = false,
+  questionMode,
 }: ChatInputProps) {
   // Support both controlled and uncontrolled modes
   const [internalValue, setInternalValue] = useState("");
@@ -125,9 +137,11 @@ export function ChatInput({
   // Determine the actual placeholder text
   const effectivePlaceholder = isReadOnly
     ? "Viewing historical state (read-only)"
-    : isAgentRunning
-      ? `${placeholder} (will be queued)`
-      : placeholder;
+    : questionMode
+      ? `Type 1-${questionMode.optionCount} or a custom response...`
+      : isAgentRunning
+        ? `${placeholder} (will be queued)`
+        : placeholder;
 
   // Auto-focus on mount if requested
   useEffect(() => {
@@ -148,6 +162,46 @@ export function ChatInput({
     textarea.style.height = `${newHeight}px`;
   }, [value]);
 
+  // Parse input for number matching in question mode
+  const matchOptionsFromInput = useCallback(
+    (input: string) => {
+      if (!questionMode) return;
+      const trimmed = input.trim();
+      if (!trimmed) {
+        questionMode.onMatchedOptions([]);
+        return;
+      }
+
+      if (questionMode.multiSelect) {
+        // Multi-select: parse comma-separated numbers like "1,3" or "1, 3, 5"
+        const parts = trimmed.split(",").map((s) => s.trim());
+        const allNumeric = parts.every((p) => /^\d+$/.test(p));
+        if (allNumeric) {
+          const indices = parts
+            .map((p) => parseInt(p, 10))
+            .filter((n) => n >= 1 && n <= questionMode.optionCount)
+            .map((n) => n - 1); // Convert 1-based to 0-based
+          questionMode.onMatchedOptions(indices);
+        } else {
+          questionMode.onMatchedOptions([]);
+        }
+      } else {
+        // Single-select: match a single number like "1", "2", "3"
+        if (/^\d+$/.test(trimmed)) {
+          const num = parseInt(trimmed, 10);
+          if (num >= 1 && num <= questionMode.optionCount) {
+            questionMode.onMatchedOptions([num - 1]);
+          } else {
+            questionMode.onMatchedOptions([]);
+          }
+        } else {
+          questionMode.onMatchedOptions([]);
+        }
+      }
+    },
+    [questionMode]
+  );
+
   // Handle value changes
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -157,8 +211,9 @@ export function ChatInput({
       } else {
         setInternalValue(newValue);
       }
+      matchOptionsFromInput(newValue);
     },
-    [isControlled, onChangeProp]
+    [isControlled, onChangeProp, matchOptionsFromInput]
   );
 
   // Handle sending or queueing message
@@ -174,6 +229,8 @@ export function ChatInput({
       } else {
         setInternalValue("");
       }
+      // Clear any matched options when input is cleared
+      questionMode?.onMatchedOptions([]);
     };
 
     // If agent is running, queue the message instead of sending
@@ -197,6 +254,7 @@ export function ChatInput({
     onSend,
     isControlled,
     onChangeProp,
+    questionMode,
   ]);
 
   // Handle keyboard shortcuts
@@ -296,9 +354,11 @@ export function ChatInput({
           className="text-[10px] mt-1.5"
           style={{ color: "hsl(220 10% 45%)" }}
         >
-          {hasQueuedMessages
-            ? "Enter to send · Shift+Enter for new line · ↑ to edit queued"
-            : "Enter to send · Shift+Enter for new line"}
+          {questionMode
+            ? "Enter to send · Type option number or custom text"
+            : hasQueuedMessages
+              ? "Enter to send · Shift+Enter for new line · ↑ to edit queued"
+              : "Enter to send · Shift+Enter for new line"}
         </p>
       )}
     </div>
