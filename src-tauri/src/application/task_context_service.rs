@@ -713,6 +713,10 @@ mod tests {
         ) -> AppResult<Vec<crate::domain::repositories::ArtifactVersionSummary>> {
             Ok(vec![])
         }
+
+        async fn resolve_latest_artifact_id(&self, id: &ArtifactId) -> AppResult<ArtifactId> {
+            Ok(id.clone())
+        }
     }
 
     struct MockTaskStepRepository {
