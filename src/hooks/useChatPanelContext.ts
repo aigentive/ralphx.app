@@ -229,7 +229,10 @@ export function useChatPanelContext({
       return;
     }
 
-    if (isHistoryMode) {
+    // In history mode with an explicit conversation override, skip auto-selection.
+    // But if no override is provided (e.g., 'approved' transition has no conversation_id),
+    // allow auto-selection to pick the most recent review conversation.
+    if (isHistoryMode && overrideConversationId) {
       return;
     }
 
@@ -281,7 +284,7 @@ export function useChatPanelContext({
         setActiveConversation(mostRecent.id);
       }
     }
-  }, [activeConversationId, isMergeMode, isExecutionMode, isReviewMode, isHistoryMode, setActiveConversation]);
+  }, [activeConversationId, isMergeMode, isExecutionMode, isReviewMode, isHistoryMode, overrideConversationId, setActiveConversation]);
 
   return {
     chatContext,
