@@ -39,22 +39,22 @@ export const ALL_TOOLS: Tool[] = [
         category: {
           type: "string",
           enum: ["setup", "feature", "fix", "refactor", "docs", "test", "performance", "security", "devops", "research", "design", "chore"],
-          description: "Task category",
+          description: "Task category: setup (project init/infra), feature (new functionality), fix (bug fix), refactor (code restructure), docs (documentation), test (testing), performance (optimization), security (security hardening), devops (CI/CD/tooling), research (investigation/spike), design (UX/UI design), chore (maintenance/cleanup)",
         },
         priority: {
           type: "string",
           enum: ["critical", "high", "medium", "low"],
-          description: "Task priority level",
+          description: "Suggested priority level. Default: medium",
         },
         steps: {
           type: "array",
           items: { type: "string" },
-          description: "Step-by-step implementation plan",
+          description: "Step-by-step implementation plan. Each step should be a clear, actionable task (1-3 sentences). Typically 3-7 steps.",
         },
         acceptance_criteria: {
           type: "array",
           items: { type: "string" },
-          description: "Criteria to verify task completion",
+          description: "Testable criteria to verify task completion (e.g., 'API returns 200 with valid schema', 'All tests pass'). Typically 3-5 criteria.",
         },
       },
       required: ["session_id", "title", "category"],
@@ -82,22 +82,22 @@ export const ALL_TOOLS: Tool[] = [
         category: {
           type: "string",
           enum: ["setup", "feature", "fix", "refactor", "docs", "test", "performance", "security", "devops", "research", "design", "chore"],
-          description: "Updated category",
+          description: "Updated category: setup (project init/infra), feature (new functionality), fix (bug fix), refactor (code restructure), docs (documentation), test (testing), performance (optimization), security (security hardening), devops (CI/CD/tooling), research (investigation/spike), design (UX/UI design), chore (maintenance/cleanup)",
         },
-        priority: {
+        user_priority: {
           type: "string",
           enum: ["critical", "high", "medium", "low"],
-          description: "Updated priority",
+          description: "Updated priority level (overrides AI-suggested priority)",
         },
         steps: {
           type: "array",
           items: { type: "string" },
-          description: "Updated implementation steps",
+          description: "Updated implementation steps. Each step should be a clear, actionable task (1-3 sentences). Typically 3-7 steps.",
         },
         acceptance_criteria: {
           type: "array",
           items: { type: "string" },
-          description: "Updated acceptance criteria",
+          description: "Updated acceptance criteria. Testable criteria to verify task completion (e.g., 'API returns 200 with valid schema'). Typically 3-5 criteria.",
         },
       },
       required: ["proposal_id"],
@@ -388,12 +388,12 @@ export const ALL_TOOLS: Tool[] = [
         category: {
           type: "string",
           enum: ["setup", "feature", "fix", "refactor", "docs", "test", "performance", "security", "devops", "research", "design", "chore"],
-          description: "Task category",
+          description: "Task category: setup (project init/infra), feature (new functionality), fix (bug fix), refactor (code restructure), docs (documentation), test (testing), performance (optimization), security (security hardening), devops (CI/CD/tooling), research (investigation/spike), design (UX/UI design), chore (maintenance/cleanup)",
         },
         priority: {
           type: "string",
           enum: ["critical", "high", "medium", "low"],
-          description: "Suggested priority",
+          description: "Suggested priority level",
         },
       },
       required: ["project_id", "title", "description", "category"],
@@ -436,7 +436,7 @@ export const ALL_TOOLS: Tool[] = [
         category: {
           type: "string",
           enum: ["setup", "feature", "fix", "refactor", "docs", "test", "performance", "security", "devops", "research", "design", "chore"],
-          description: "Filter by category (optional)",
+          description: "Filter by category (optional): setup, feature, fix, refactor, docs, test, performance, security, devops, research, design, chore",
         },
       },
       required: ["project_id"],
