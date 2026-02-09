@@ -7,7 +7,7 @@
 
 import type { Task, TaskListResponse, CreateTask, UpdateTask, InternalStatus } from "@/types/task";
 import type { TaskStep, StepProgressSummary } from "@/types/task-step";
-import type { InjectTaskResponse, InjectTaskInput, StateTransition } from "@/api/tasks";
+import type { CleanupReport, InjectTaskResponse, InjectTaskInput, StateTransition } from "@/api/tasks";
 import { createMockTask, generateTestUuid } from "@/test/mock-data";
 import { getStore } from "./store";
 
@@ -325,6 +325,22 @@ export const mockTasksApi = {
     }
 
     return transitions;
+  },
+
+  cleanupTask: async (_taskId: string): Promise<void> => {
+    // Read-only mock: no-op
+  },
+
+  cleanupTasksInGroup: async (
+    _groupKind: string,
+    _groupId: string,
+    _projectId: string
+  ): Promise<CleanupReport> => {
+    return {
+      deletedCount: 0,
+      failedCount: 0,
+      stoppedAgents: 0,
+    };
   },
 } as const;
 
