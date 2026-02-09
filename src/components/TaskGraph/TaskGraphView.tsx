@@ -1031,6 +1031,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
           || nd?.isFocused !== pd?.isFocused
           || nd?.internalStatus !== pd?.internalStatus
           || nd?.label !== pd?.label
+          || nd?.isCriticalPath !== pd?.isCriticalPath
         ) {
           unchanged = false;
           break;
@@ -1044,7 +1045,10 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
 
   const edges = useMemo<Edge[]>(() => {
     const prev = prevEdgesRef.current;
-    if (layoutEdges.length === prev.length && layoutEdges.every((e, i) => e.id === prev[i]!.id)) {
+    if (layoutEdges.length === prev.length && layoutEdges.every((e, i) =>
+      e.id === prev[i]!.id
+      && (e.data as Record<string, unknown>)?.isCriticalPath === (prev[i]!.data as Record<string, unknown>)?.isCriticalPath
+    )) {
       return prev;
     }
     prevEdgesRef.current = layoutEdges;
