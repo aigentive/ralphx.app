@@ -25,7 +25,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { GroupContextMenuItems } from "@/components/tasks/GroupContextMenuItems";
-import { resolveGroupCleanupParams } from "@/lib/task-actions";
+import { resolveGroupCleanupParams, type GroupInfo } from "@/lib/task-actions";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { useTaskMutation } from "@/hooks/useTaskMutation";
 import {
@@ -248,6 +248,16 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
     cleanupTasksInGroupMutation.mutate({ groupKind, groupId, projectId });
   }, [column.mapsTo, projectId, cleanupTasksInGroupMutation]);
 
+  // Group info for task-level context menus (shows column group actions)
+  const columnGroupInfo: GroupInfo = useMemo(() => ({
+    groupLabel: column.name,
+    groupKind: "column" as const,
+    taskCount: tasks.length,
+    groupId: column.mapsTo,
+    projectId,
+    onRemoveAll: handleRemoveAll,
+  }), [column.name, column.mapsTo, tasks.length, projectId, handleRemoveAll]);
+
   // Determine if this column should show InlineTaskAdd
   // Always visible in draft/backlog columns (not during drag)
   const showInlineAdd =
@@ -342,6 +352,7 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
                           key={task.id}
                           task={task}
                           isHidden={task.id === hiddenTaskId}
+                          groupInfo={columnGroupInfo}
                           {...(onTaskSelect !== undefined && { onSelect: onTaskSelect })}
                         />
                       ))}
@@ -367,6 +378,7 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
                     key={task.id}
                     task={task}
                     isHidden={task.id === hiddenTaskId}
+                    groupInfo={columnGroupInfo}
                     {...(onTaskSelect !== undefined && { onSelect: onTaskSelect })}
                   />
                 ))}

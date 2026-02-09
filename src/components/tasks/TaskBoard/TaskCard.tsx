@@ -36,6 +36,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { TaskCardContextMenu } from "@/components/tasks/TaskCardContextMenu";
+import type { GroupInfo } from "@/lib/task-actions";
 import { useTaskMutation } from "@/hooks/useTaskMutation";
 import { useUiStore } from "@/stores/uiStore";
 import { useIdeationStore } from "@/stores/ideationStore";
@@ -61,6 +62,8 @@ interface TaskCardProps {
   hasCheckpoint?: boolean;
   /** Number of revision attempts (for re_executing state badge) */
   revisionCount?: number;
+  /** Group context for showing group actions in task context menu */
+  groupInfo?: GroupInfo;
 }
 
 function CheckpointIndicator() {
@@ -90,6 +93,7 @@ export function TaskCard({
   testStatus,
   hasCheckpoint,
   revisionCount,
+  groupInfo,
 }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: task.id });
 
@@ -221,6 +225,7 @@ export function TaskCard({
         onBlockWithReason={handleBlockWithReason}
         onUnblock={handleUnblock}
         onStartIdeation={handleStartIdeation}
+        {...(groupInfo !== undefined && { groupInfo })}
       >
         <div
           ref={setNodeRef}

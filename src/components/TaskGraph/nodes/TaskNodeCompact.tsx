@@ -74,7 +74,7 @@ function getActivityDotColor(status: string): string {
 }
 
 function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactType>) {
-  const { label, taskId, internalStatus, priority, isCriticalPath, isHighlighted, isFocused, handlers } = data;
+  const { label, taskId, internalStatus, priority, isCriticalPath, isHighlighted, isFocused, handlers, groupInfo } = data;
   const statusColor = getStatusBorderColor(internalStatus);
   const showActivityDots = isActiveStatus(internalStatus);
   const activityDotColor = getActivityDotColor(internalStatus);
@@ -244,6 +244,7 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
         onRequestChanges: handleRequestChanges,
         onMarkResolved: handleMarkResolved,
       }}
+      {...(groupInfo !== undefined && { groupInfo })}
     >
       {nodeContent}
     </TaskNodeContextMenu>
