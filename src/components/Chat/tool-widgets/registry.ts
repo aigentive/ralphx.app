@@ -13,6 +13,8 @@ import type { ComponentType } from "react";
 import type { ToolCallWidgetProps } from "./shared";
 import { StepIndicator } from "./StepIndicator";
 import { ContextWidget } from "./ContextWidget";
+import { StepsManifestWidget } from "./StepsManifestWidget";
+import { IssuesSummaryWidget } from "./IssuesSummaryWidget";
 
 /** Registry type: tool name (lowercase) → React component */
 export type ToolCallWidgetRegistry = Record<string, ComponentType<ToolCallWidgetProps>>;
@@ -31,12 +33,10 @@ export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
   "mcp__ralphx__skip_step": StepIndicator,
   "mcp__ralphx__fail_step": StepIndicator,
   "mcp__ralphx__get_step_progress": StepIndicator,
-  // Subsequent tasks will add:
-  // "bash": BashWidget,
-  // "read": ReadWidget,
-  // "grep": GrepWidget,
-  // "glob": GlobWidget,
-  // etc.
+  // Steps manifest → StepsManifestWidget (collapsible checklist)
+  "get_task_steps": StepsManifestWidget,
+  // Issues summary → IssuesSummaryWidget (severity-badged issue list)
+  "get_task_issues": IssuesSummaryWidget,
 };
 
 /**
