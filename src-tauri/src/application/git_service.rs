@@ -519,6 +519,31 @@ impl GitService {
         Ok(sha)
     }
 
+    /// Get the SHA of a specific branch tip (without checking it out).
+    pub fn get_branch_sha(repo: &Path, branch: &str) -> AppResult<String> {
+        let output = Command::new("git")
+            .args(["rev-parse", branch])
+            .current_dir(repo)
+            .output()
+            .map_err(|e| {
+                AppError::GitOperation(format!(
+                    "Failed to run git rev-parse {}: {}",
+                    branch, e
+                ))
+            })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AppError::GitOperation(format!(
+                "Failed to get SHA for branch {}: {}",
+                branch, stderr
+            )));
+        }
+
+        let sha = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        Ok(sha)
+    }
+
     // =========================================================================
     // Rebase Operations (Phase 1 - fast path)
     // =========================================================================

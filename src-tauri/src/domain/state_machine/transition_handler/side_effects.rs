@@ -343,7 +343,7 @@ struct MergeAnalysisEntry {
 }
 
 /// A single validation command execution record for streaming + storage.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ValidationLogEntry {
     phase: String,
     command: String,
@@ -388,12 +388,17 @@ fn truncate_output(s: &str, max_len: usize) -> String {
 ///
 /// When `app_handle` is `Some`, emits `merge:validation_step` events for real-time UI streaming.
 /// All executed commands are recorded in `ValidationResult::log` for metadata storage.
+///
+/// When `cached_log` is provided, validate-phase commands that previously passed (status
+/// "success" or "cached") are skipped and emitted as "cached" instead of re-running.
+/// Setup-phase commands always re-run. Previously-failed commands always re-run.
 pub(crate) fn run_validation_commands(
     project: &Project,
     task: &Task,
     merge_cwd: &Path,
     task_id_str: &str,
     app_handle: Option<&tauri::AppHandle>,
+    cached_log: Option<&[ValidationLogEntry]>,
 ) -> Option<ValidationResult> {
     // Load effective analysis: custom_analysis ?? detected_analysis
     let analysis_json = project
@@ -565,6 +570,47 @@ pub(crate) fn run_validation_commands(
         for cmd_str in &entry.validate {
             let resolved_cmd = resolve(cmd_str);
             ran_any = true;
+
+            // Check cache: skip previously-passed validate commands when SHA matches
+            if let Some(cached) = cached_log {
+                let cached_hit = cached.iter().find(|c| {
+                    c.phase == "validate"
+                        && c.command == resolved_cmd
+                        && c.path == resolved_path
+                        && (c.status == "success" || c.status == "cached")
+                });
+                if let Some(prev) = cached_hit {
+                    tracing::info!(
+                        command = %resolved_cmd,
+                        "Skipping validation command (cached, SHA unchanged)"
+                    );
+                    let log_entry = ValidationLogEntry {
+                        phase: "validate".to_string(),
+                        command: resolved_cmd,
+                        path: resolved_path.clone(),
+                        label: entry.label.clone(),
+                        status: "cached".to_string(),
+                        exit_code: prev.exit_code,
+                        stdout: String::new(),
+                        stderr: String::new(),
+                        duration_ms: 0,
+                    };
+                    if let Some(handle) = app_handle {
+                        let _ = handle.emit("merge:validation_step", serde_json::json!({
+                            "task_id": task_id_str,
+                            "phase": log_entry.phase,
+                            "command": log_entry.command,
+                            "path": log_entry.path,
+                            "label": log_entry.label,
+                            "status": log_entry.status,
+                            "exit_code": log_entry.exit_code,
+                            "duration_ms": log_entry.duration_ms,
+                        }));
+                    }
+                    log.push(log_entry);
+                    continue;
+                }
+            }
 
             // Emit "running" event before execution
             if let Some(handle) = app_handle {
@@ -762,6 +808,24 @@ fn format_validation_warn_metadata(
         "target_branch": target_branch,
     })
     .to_string()
+}
+
+/// Extract cached validation log from task metadata if the source branch SHA matches.
+///
+/// Returns `Some(entries)` when the previous validation ran against the same source SHA,
+/// meaning the branch code has not changed and previously-passed checks can be skipped.
+///
+/// Note: Caching is effective in worktree mode. In local mode, rebase rewrites the source
+/// branch SHA on each retry, so cache hits are rare.
+fn extract_cached_validation(task: &Task, current_sha: &str) -> Option<Vec<ValidationLogEntry>> {
+    let meta_str = task.metadata.as_ref()?;
+    let val: serde_json::Value = serde_json::from_str(meta_str).ok()?;
+    let stored_sha = val.get("validation_source_sha")?.as_str()?;
+    if stored_sha != current_sha {
+        return None;
+    }
+    let log_val = val.get("validation_log")?;
+    serde_json::from_value::<Vec<ValidationLogEntry>>(log_val.clone()).ok()
 }
 
 impl<'a> super::TransitionHandler<'a> {
@@ -1522,8 +1586,11 @@ impl<'a> super::TransitionHandler<'a> {
                         let skip_validation = take_skip_validation_flag(&mut task);
                         let validation_mode = &project.merge_validation_mode;
                         if !skip_validation && *validation_mode != MergeValidationMode::Off {
+                            let source_sha = GitService::get_branch_sha(repo_path, &source_branch).ok();
+                            let cached_log = source_sha.as_deref()
+                                .and_then(|sha| extract_cached_validation(&task, sha));
                             let app_handle_ref = self.machine.context.services.app_handle.as_ref();
-                            if let Some(validation) = run_validation_commands(&project, &task, repo_path, task_id_str, app_handle_ref) {
+                            if let Some(validation) = run_validation_commands(&project, &task, repo_path, task_id_str, app_handle_ref, cached_log.as_deref()) {
                                 if !validation.all_passed {
                                     if *validation_mode == MergeValidationMode::Warn {
                                         tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode (in-repo), proceeding with merge");
@@ -1541,6 +1608,7 @@ impl<'a> super::TransitionHandler<'a> {
                                 } else {
                                     task.metadata = Some(serde_json::json!({
                                         "validation_log": validation.log,
+                                        "validation_source_sha": source_sha,
                                         "source_branch": source_branch,
                                         "target_branch": target_branch,
                                     }).to_string());
@@ -1711,8 +1779,11 @@ impl<'a> super::TransitionHandler<'a> {
                         let skip_validation = take_skip_validation_flag(&mut task);
                         let validation_mode = &project.merge_validation_mode;
                         if !skip_validation && *validation_mode != MergeValidationMode::Off {
+                            let source_sha = GitService::get_branch_sha(repo_path, &source_branch).ok();
+                            let cached_log = source_sha.as_deref()
+                                .and_then(|sha| extract_cached_validation(&task, sha));
                             let app_handle_ref = self.machine.context.services.app_handle.as_ref();
-                            if let Some(validation) = run_validation_commands(&project, &task, &merge_wt_path, task_id_str, app_handle_ref) {
+                            if let Some(validation) = run_validation_commands(&project, &task, &merge_wt_path, task_id_str, app_handle_ref, cached_log.as_deref()) {
                                 if !validation.all_passed {
                                     if *validation_mode == MergeValidationMode::Warn {
                                         tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode (worktree), proceeding with merge");
@@ -1735,6 +1806,7 @@ impl<'a> super::TransitionHandler<'a> {
                                 } else {
                                     task.metadata = Some(serde_json::json!({
                                         "validation_log": validation.log,
+                                        "validation_source_sha": source_sha,
                                         "source_branch": source_branch,
                                         "target_branch": target_branch,
                                     }).to_string());
@@ -1903,8 +1975,11 @@ impl<'a> super::TransitionHandler<'a> {
                     let skip_validation = take_skip_validation_flag(&mut task);
                     let validation_mode = &project.merge_validation_mode;
                     if !skip_validation && *validation_mode != MergeValidationMode::Off {
+                        let source_sha = GitService::get_branch_sha(repo_path, &source_branch).ok();
+                        let cached_log = source_sha.as_deref()
+                            .and_then(|sha| extract_cached_validation(&task, sha));
                         let app_handle_ref = self.machine.context.services.app_handle.as_ref();
-                        if let Some(validation) = run_validation_commands(&project, &task, repo_path, task_id_str, app_handle_ref) {
+                        if let Some(validation) = run_validation_commands(&project, &task, repo_path, task_id_str, app_handle_ref, cached_log.as_deref()) {
                             if !validation.all_passed {
                                 if *validation_mode == MergeValidationMode::Warn {
                                     tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode (local), proceeding with merge");
@@ -1922,6 +1997,7 @@ impl<'a> super::TransitionHandler<'a> {
                             } else {
                                 task.metadata = Some(serde_json::json!({
                                     "validation_log": validation.log,
+                                    "validation_source_sha": source_sha,
                                     "source_branch": source_branch,
                                     "target_branch": target_branch,
                                 }).to_string());
@@ -2562,7 +2638,7 @@ mod tests {
     fn run_validation_returns_none_when_no_analysis() {
         let project = make_project(Some("main"));
         let task = make_task(None, None);
-        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None);
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None);
         assert!(result.is_none());
     }
 
@@ -2571,7 +2647,7 @@ mod tests {
         let mut project = make_project(Some("main"));
         project.detected_analysis = Some("[]".to_string());
         let task = make_task(None, None);
-        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None);
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None);
         assert!(result.is_none());
     }
 
@@ -2582,7 +2658,7 @@ mod tests {
             r#"[{"path": ".", "label": "Test", "validate": []}]"#.to_string(),
         );
         let task = make_task(None, None);
-        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None);
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None);
         assert!(result.is_none());
     }
 
@@ -2598,7 +2674,7 @@ mod tests {
             r#"[{"path": ".", "label": "Test", "validate": ["true"]}]"#.to_string(),
         );
         let task = make_task(None, None);
-        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None);
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None);
         assert!(result.is_some());
         assert!(result.unwrap().all_passed);
     }
@@ -2610,7 +2686,7 @@ mod tests {
             r#"[{"path": ".", "label": "Test", "validate": ["true"]}]"#.to_string(),
         );
         let task = make_task(None, None);
-        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None);
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None);
         assert!(result.is_some());
         let r = result.unwrap();
         assert!(r.all_passed);
@@ -2628,7 +2704,7 @@ mod tests {
             r#"[{"path": ".", "label": "Test", "validate": ["false"]}]"#.to_string(),
         );
         let task = make_task(None, None);
-        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None);
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None);
         assert!(result.is_some());
         let r = result.unwrap();
         assert!(!r.all_passed);
@@ -2647,7 +2723,7 @@ mod tests {
         );
         let mut task = make_task(None, None);
         task.worktree_path = Some("/tmp/wt".to_string());
-        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None);
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None);
         assert!(result.is_some());
         assert!(result.unwrap().all_passed);
     }
@@ -2657,7 +2733,7 @@ mod tests {
         let mut project = make_project(Some("main"));
         project.detected_analysis = Some("not valid json".to_string());
         let task = make_task(None, None);
-        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None);
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None);
         assert!(result.is_none());
     }
 
@@ -2746,5 +2822,153 @@ mod tests {
         // With Off mode, validation should not run, so the test verifies the enum
         // is correctly set and accessible (actual skip happens in attempt_programmatic_merge)
         assert_eq!(project.merge_validation_mode, MergeValidationMode::Off);
+    }
+
+    // ==================
+    // extract_cached_validation tests
+    // ==================
+
+    #[test]
+    fn extract_cached_returns_none_when_no_metadata() {
+        let task = make_task(None, None);
+        assert!(extract_cached_validation(&task, "abc123").is_none());
+    }
+
+    #[test]
+    fn extract_cached_returns_none_when_sha_mismatch() {
+        let mut task = make_task(None, None);
+        task.metadata = Some(serde_json::json!({
+            "validation_source_sha": "old_sha",
+            "validation_log": [{
+                "phase": "validate",
+                "command": "true",
+                "path": ".",
+                "label": "Test",
+                "status": "success",
+                "exit_code": 0,
+                "stdout": "",
+                "stderr": "",
+                "duration_ms": 100,
+            }],
+        }).to_string());
+        assert!(extract_cached_validation(&task, "different_sha").is_none());
+    }
+
+    #[test]
+    fn extract_cached_returns_log_when_sha_matches() {
+        let mut task = make_task(None, None);
+        task.metadata = Some(serde_json::json!({
+            "validation_source_sha": "abc123",
+            "validation_log": [{
+                "phase": "validate",
+                "command": "cargo check",
+                "path": ".",
+                "label": "Rust",
+                "status": "success",
+                "exit_code": 0,
+                "stdout": "",
+                "stderr": "",
+                "duration_ms": 1500,
+            }],
+        }).to_string());
+        let cached = extract_cached_validation(&task, "abc123");
+        assert!(cached.is_some());
+        let entries = cached.unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].command, "cargo check");
+        assert_eq!(entries[0].status, "success");
+    }
+
+    #[test]
+    fn extract_cached_returns_none_when_no_sha_in_metadata() {
+        let mut task = make_task(None, None);
+        task.metadata = Some(serde_json::json!({
+            "validation_log": [{
+                "phase": "validate",
+                "command": "true",
+                "path": ".",
+                "label": "Test",
+                "status": "success",
+                "exit_code": 0,
+                "stdout": "",
+                "stderr": "",
+                "duration_ms": 100,
+            }],
+        }).to_string());
+        // No validation_source_sha → no cache hit
+        assert!(extract_cached_validation(&task, "abc123").is_none());
+    }
+
+    // ==================
+    // run_validation_commands caching tests
+    // ==================
+
+    #[test]
+    fn run_validation_skips_passed_when_cached() {
+        let mut project = make_project(Some("main"));
+        // "true" always passes, "echo hello" always passes
+        project.detected_analysis = Some(
+            r#"[{"path": ".", "label": "Test", "validate": ["true", "echo hello"]}]"#.to_string(),
+        );
+        let task = make_task(None, None);
+
+        // Build a cached log where "true" passed but "echo hello" failed
+        let cached = vec![
+            ValidationLogEntry {
+                phase: "validate".to_string(),
+                command: "true".to_string(),
+                path: ".".to_string(),
+                label: "Test".to_string(),
+                status: "success".to_string(),
+                exit_code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+                duration_ms: 50,
+            },
+            ValidationLogEntry {
+                phase: "validate".to_string(),
+                command: "echo hello".to_string(),
+                path: ".".to_string(),
+                label: "Test".to_string(),
+                status: "failed".to_string(),
+                exit_code: Some(1),
+                stdout: String::new(),
+                stderr: "error".to_string(),
+                duration_ms: 100,
+            },
+        ];
+
+        let result = run_validation_commands(
+            &project, &task, Path::new("/tmp"), "", None, Some(&cached),
+        );
+        assert!(result.is_some());
+        let r = result.unwrap();
+        assert!(r.all_passed);
+        assert_eq!(r.log.len(), 2);
+        // First command should be cached (was "success" in cache)
+        assert_eq!(r.log[0].status, "cached");
+        assert_eq!(r.log[0].command, "true");
+        assert_eq!(r.log[0].duration_ms, 0);
+        // Second command should be re-run (was "failed" in cache)
+        assert_eq!(r.log[1].status, "success");
+        assert_eq!(r.log[1].command, "echo hello");
+    }
+
+    #[test]
+    fn run_validation_reruns_all_when_no_cache() {
+        let mut project = make_project(Some("main"));
+        project.detected_analysis = Some(
+            r#"[{"path": ".", "label": "Test", "validate": ["true"]}]"#.to_string(),
+        );
+        let task = make_task(None, None);
+
+        let result = run_validation_commands(
+            &project, &task, Path::new("/tmp"), "", None, None,
+        );
+        assert!(result.is_some());
+        let r = result.unwrap();
+        assert!(r.all_passed);
+        assert_eq!(r.log.len(), 1);
+        assert_eq!(r.log[0].status, "success"); // actually ran, not "cached"
     }
 }
