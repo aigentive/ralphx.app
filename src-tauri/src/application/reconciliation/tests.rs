@@ -232,3 +232,18 @@ fn pending_merge_policy_transitions_to_merge_incomplete_when_stale_not_deferred(
         RecoveryActionKind::Transition(InternalStatus::MergeIncomplete)
     );
 }
+
+#[test]
+fn pending_merge_deferred_waits_when_not_stale() {
+    let policy = RecoveryPolicy;
+    let evidence = RecoveryEvidence {
+        run_status: None,
+        registry_running: false,
+        can_start: true,
+        is_stale: false,
+        is_deferred: true,
+    };
+
+    let decision = policy.decide_reconciliation(RecoveryContext::PendingMerge, evidence);
+    assert_eq!(decision.action, RecoveryActionKind::None);
+}
