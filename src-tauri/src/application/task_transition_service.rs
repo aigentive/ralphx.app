@@ -71,6 +71,19 @@ impl<R: Runtime> EventEmitter for TauriEventEmitter<R> {
             );
         }
     }
+
+    async fn emit_status_change(&self, task_id: &str, old_status: &str, new_status: &str) {
+        if let Some(ref handle) = self.app_handle {
+            let _ = handle.emit(
+                "task:status_changed",
+                serde_json::json!({
+                    "task_id": task_id,
+                    "old_status": old_status,
+                    "new_status": new_status,
+                }),
+            );
+        }
+    }
 }
 
 /// LoggingNotifier - logs notifications for debugging
