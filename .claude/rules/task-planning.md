@@ -1,6 +1,6 @@
 # Task Planning Rules
 
-**Required Context:** @.claude/rules/code-quality-standards.md | @.claude/rules/git-workflow.md
+**Required Context:** code-quality-standards.md | git-workflow.md
 
 > Rules for designing tasks that can be executed atomically. Used by enhance-plan and plan-to-prd commands.
 
@@ -171,6 +171,6 @@ For each task N:
 
 ## Reference
 
-- Commit lock protocol: @.claude/rules/commit-lock.md
-- Git workflow: @.claude/rules/git-workflow.md
-- Code quality: @.claude/rules/code-quality-standards.md
+- Commit lock protocol: commit-lock.md
+- Git workflow: git-workflow.md
+- Code quality: code-quality-standards.md
