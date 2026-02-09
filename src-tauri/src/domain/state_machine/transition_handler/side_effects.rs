@@ -236,16 +236,23 @@ fn extract_task_id_from_merge_path(path: &str) -> Option<&str> {
     basename.strip_prefix("merge-")
 }
 
-/// Check if a task is currently in the `Merging` state (active agent-assisted merge).
+/// Check if a task is currently in any merge lifecycle state.
 ///
-/// Used to avoid deleting merge worktrees that belong to tasks actively being resolved.
-async fn is_task_actively_merging(
+/// Covers all four merge states: `PendingMerge`, `Merging`, `MergeIncomplete`, `MergeConflict`.
+/// Used to avoid deleting merge worktrees that belong to tasks still in the merge workflow.
+async fn is_task_in_merge_workflow(
     task_repo: &Arc<dyn TaskRepository>,
     task_id_str: &str,
 ) -> bool {
     let task_id = TaskId::from_string(task_id_str.to_string());
     match task_repo.get_by_id(&task_id).await {
-        Ok(Some(task)) => task.internal_status == InternalStatus::Merging,
+        Ok(Some(task)) => matches!(
+            task.internal_status,
+            InternalStatus::PendingMerge
+                | InternalStatus::Merging
+                | InternalStatus::MergeIncomplete
+                | InternalStatus::MergeConflict
+        ),
         _ => false,
     }
 }
@@ -1766,13 +1773,13 @@ impl<'a> super::TransitionHandler<'a> {
                     if wt_branch != target_branch {
                         continue;
                     }
-                    // Check if the owning task is actively merging — if so, leave it alone
-                    if is_task_actively_merging(task_repo, other_task_id).await {
+                    // Check if the owning task is in the merge workflow — if so, leave it alone
+                    if is_task_in_merge_workflow(task_repo, other_task_id).await {
                         tracing::info!(
                             task_id = task_id_str,
                             other_task_id = other_task_id,
                             worktree_path = %wt.path,
-                            "Skipping orphaned merge worktree — owning task is actively merging"
+                            "Skipping merge worktree cleanup — owning task is still in merge workflow"
                         );
                         continue;
                     }
@@ -2613,7 +2620,7 @@ mod tests {
         ArtifactId, PlanBranch, PlanBranchStatus, ProjectId, TaskId,
     };
     use crate::domain::entities::types::IdeationSessionId;
-    use crate::infrastructure::memory::MemoryPlanBranchRepository;
+    use crate::infrastructure::memory::{MemoryPlanBranchRepository, MemoryTaskRepository};
 
     fn make_project(base_branch: Option<&str>) -> Project {
         let mut p = Project::new("test-project".into(), "/tmp/test".into());
@@ -3439,5 +3446,57 @@ mod tests {
         // Plan task merges into feature branch, not main
         assert!(task_targets_branch(&task, &project, &repo, "ralphx/test/plan-abc123").await);
         assert!(!task_targets_branch(&task, &project, &repo, "main").await);
+    }
+
+    // ==================
+    // is_task_in_merge_workflow tests
+    // ==================
+
+    fn make_task_with_status(task_id: &str, status: InternalStatus) -> Task {
+        let mut t = Task::new(ProjectId::from_string("proj-1".to_string()), "Test task".into());
+        t.id = TaskId::from_string(task_id.to_string());
+        t.internal_status = status;
+        t
+    }
+
+    #[tokio::test]
+    async fn test_is_task_in_merge_workflow_pending_merge() {
+        let task = make_task_with_status("task-1", InternalStatus::PendingMerge);
+        let repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::with_tasks(vec![task]));
+        assert!(is_task_in_merge_workflow(&repo, "task-1").await);
+    }
+
+    #[tokio::test]
+    async fn test_is_task_in_merge_workflow_merging() {
+        let task = make_task_with_status("task-1", InternalStatus::Merging);
+        let repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::with_tasks(vec![task]));
+        assert!(is_task_in_merge_workflow(&repo, "task-1").await);
+    }
+
+    #[tokio::test]
+    async fn test_is_task_in_merge_workflow_merge_incomplete() {
+        let task = make_task_with_status("task-1", InternalStatus::MergeIncomplete);
+        let repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::with_tasks(vec![task]));
+        assert!(is_task_in_merge_workflow(&repo, "task-1").await);
+    }
+
+    #[tokio::test]
+    async fn test_is_task_in_merge_workflow_merge_conflict() {
+        let task = make_task_with_status("task-1", InternalStatus::MergeConflict);
+        let repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::with_tasks(vec![task]));
+        assert!(is_task_in_merge_workflow(&repo, "task-1").await);
+    }
+
+    #[tokio::test]
+    async fn test_is_task_in_merge_workflow_executing_returns_false() {
+        let task = make_task_with_status("task-1", InternalStatus::Executing);
+        let repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::with_tasks(vec![task]));
+        assert!(!is_task_in_merge_workflow(&repo, "task-1").await);
+    }
+
+    #[tokio::test]
+    async fn test_is_task_in_merge_workflow_nonexistent_task() {
+        let repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::new());
+        assert!(!is_task_in_merge_workflow(&repo, "nonexistent-id").await);
     }
 }
