@@ -1,5 +1,7 @@
 /**
  * TaskCardContextMenu.test.tsx - Tests for TaskCardContextMenu component
+ *
+ * Tests the Kanban-specific wrapper and its delegation to TaskContextMenuItems.
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -7,7 +9,6 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { TaskCardContextMenu } from "./TaskCardContextMenu";
 import type { Task } from "@/types/task";
 
-// Mock task factory
 function createMockTask(overrides: Partial<Task> = {}): Task {
   return {
     id: "task-1",
@@ -34,10 +35,11 @@ describe("TaskCardContextMenu", () => {
     onRestore: vi.fn(),
     onPermanentDelete: vi.fn(),
     onStatusChange: vi.fn(),
+    onBlockWithReason: vi.fn(),
+    onUnblock: vi.fn(),
   };
 
   beforeEach(() => {
-    // Reset mocks before each test
     Object.values(mockHandlers).forEach((mock) => mock.mockClear());
   });
 
@@ -60,7 +62,6 @@ describe("TaskCardContextMenu", () => {
       </TaskCardContextMenu>
     );
 
-    // Right-click to open menu
     fireEvent.contextMenu(screen.getByTestId("trigger"));
 
     expect(screen.getByText("View Details")).toBeInTheDocument();
@@ -228,73 +229,31 @@ describe("TaskCardContextMenu", () => {
     expect(mockHandlers.onEdit).toHaveBeenCalledTimes(1);
   });
 
-  it("calls onArchive when Archive is clicked", () => {
-    const task = createMockTask();
-    render(
-      <TaskCardContextMenu task={task} {...mockHandlers}>
-        <div data-testid="trigger">Trigger</div>
-      </TaskCardContextMenu>
-    );
-
-    fireEvent.contextMenu(screen.getByTestId("trigger"));
-    fireEvent.click(screen.getByText("Archive"));
-
-    expect(mockHandlers.onArchive).toHaveBeenCalledTimes(1);
-  });
-
-  it("calls onRestore when Restore is clicked", () => {
-    const task = createMockTask({ archivedAt: new Date().toISOString() });
-    render(
-      <TaskCardContextMenu task={task} {...mockHandlers}>
-        <div data-testid="trigger">Trigger</div>
-      </TaskCardContextMenu>
-    );
-
-    fireEvent.contextMenu(screen.getByTestId("trigger"));
-    fireEvent.click(screen.getByText("Restore"));
-
-    expect(mockHandlers.onRestore).toHaveBeenCalledTimes(1);
-  });
-
-  it("calls onPermanentDelete when Delete Permanently is clicked", () => {
-    const task = createMockTask({ archivedAt: new Date().toISOString() });
-    render(
-      <TaskCardContextMenu task={task} {...mockHandlers}>
-        <div data-testid="trigger">Trigger</div>
-      </TaskCardContextMenu>
-    );
-
-    fireEvent.contextMenu(screen.getByTestId("trigger"));
-    fireEvent.click(screen.getByText("Delete Permanently"));
-
-    expect(mockHandlers.onPermanentDelete).toHaveBeenCalledTimes(1);
-  });
-
-  it("calls onStatusChange with correct status when Cancel is clicked", () => {
+  it("shows Start Ideation for backlog tasks when handler provided", () => {
     const task = createMockTask({ internalStatus: "backlog" });
+    const onStartIdeation = vi.fn();
     render(
-      <TaskCardContextMenu task={task} {...mockHandlers}>
+      <TaskCardContextMenu task={task} {...mockHandlers} onStartIdeation={onStartIdeation}>
         <div data-testid="trigger">Trigger</div>
       </TaskCardContextMenu>
     );
 
     fireEvent.contextMenu(screen.getByTestId("trigger"));
-    fireEvent.click(screen.getByText("Cancel"));
 
-    expect(mockHandlers.onStatusChange).toHaveBeenCalledWith("cancelled");
+    expect(screen.getByText("Start Ideation")).toBeInTheDocument();
   });
 
-  it("calls onStatusChange with correct status when Block is clicked", () => {
+  it("hides Start Ideation for non-backlog tasks", () => {
     const task = createMockTask({ internalStatus: "ready" });
+    const onStartIdeation = vi.fn();
     render(
-      <TaskCardContextMenu task={task} {...mockHandlers}>
+      <TaskCardContextMenu task={task} {...mockHandlers} onStartIdeation={onStartIdeation}>
         <div data-testid="trigger">Trigger</div>
       </TaskCardContextMenu>
     );
 
     fireEvent.contextMenu(screen.getByTestId("trigger"));
-    fireEvent.click(screen.getByText("Block"));
 
-    expect(mockHandlers.onStatusChange).toHaveBeenCalledWith("blocked");
+    expect(screen.queryByText("Start Ideation")).not.toBeInTheDocument();
   });
 });
