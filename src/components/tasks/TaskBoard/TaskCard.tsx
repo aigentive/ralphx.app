@@ -13,6 +13,9 @@
 import { useDraggable } from "@dnd-kit/core";
 import { GripVertical, FileText, Lightbulb, Clock, Ban, GitBranch } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
 import type { Task } from "@/types/task";
 import { StatusBadge, type ReviewStatus } from "@/components/ui/StatusBadge";
 import { TaskQABadge } from "@/components/qa/TaskQABadge";
@@ -274,17 +277,19 @@ export function TaskCard({
           {task.title}
         </div>
 
-        {/* Description - 2 line clamp */}
+        {/* Description - 2 line clamp with markdown */}
         {task.description && (
           <div
-            className="mt-1 line-clamp-2"
+            className="mt-1 line-clamp-2 [&_*]:!mb-0 [&_*]:!mt-0"
             style={{
               fontSize: "12px",
               color: "hsl(220 10% 55%)",
               lineHeight: 1.45,
             }}
           >
-            {task.description}
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+              {task.description}
+            </ReactMarkdown>
           </div>
         )}
 
