@@ -8,7 +8,7 @@
  */
 
 import React, { useState, useCallback } from "react";
-import { ChevronRight, Check } from "lucide-react";
+import { ChevronRight, Check, Plus, SkipForward, X } from "lucide-react";
 
 // Re-export types from constants (values imported locally to avoid react-refresh warnings)
 export type {
@@ -285,6 +285,12 @@ export function StepLine({ variant, title, note, compact = false }: StepLineProp
       >
         {variant === "completed" ? (
           <Check size={12} style={{ color: config.color }} />
+        ) : variant === "added" ? (
+          <Plus size={12} style={{ color: config.color }} />
+        ) : variant === "skipped" ? (
+          <SkipForward size={10} style={{ color: config.color }} />
+        ) : variant === "failed" ? (
+          <X size={12} style={{ color: config.color }} />
         ) : (
           <svg
             viewBox="0 0 16 16"

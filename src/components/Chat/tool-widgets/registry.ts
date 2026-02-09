@@ -11,22 +11,28 @@
 
 import type { ComponentType } from "react";
 import type { ToolCallWidgetProps } from "./shared";
+import { StepIndicator } from "./StepIndicator";
 
 /** Registry type: tool name (lowercase) → React component */
 export type ToolCallWidgetRegistry = Record<string, ComponentType<ToolCallWidgetProps>>;
 
 /**
- * The widget registry. Subsequent tasks will populate this with specialized widgets.
+ * The widget registry. Maps tool names to specialized widget components.
  * Tool names should be lowercase to match normalized lookup in ToolCallIndicator.
  */
 export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
-  // Populated by subsequent tasks:
+  // Step lifecycle tools → StepIndicator (ultra-compact inline indicators)
+  "mcp__ralphx__start_step": StepIndicator,
+  "mcp__ralphx__complete_step": StepIndicator,
+  "mcp__ralphx__add_step": StepIndicator,
+  "mcp__ralphx__skip_step": StepIndicator,
+  "mcp__ralphx__fail_step": StepIndicator,
+  "mcp__ralphx__get_step_progress": StepIndicator,
+  // Subsequent tasks will add:
   // "bash": BashWidget,
   // "read": ReadWidget,
   // "grep": GrepWidget,
   // "glob": GlobWidget,
-  // "start_step": StepIndicatorWidget,
-  // "complete_step": StepIndicatorWidget,
   // etc.
 };
 
