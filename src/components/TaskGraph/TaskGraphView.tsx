@@ -1037,18 +1037,6 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     [graphData?.nodes, confirm, clearGraphSelection, queryClient, projectId]
   );
 
-  // Handler for removing all uncategorized tasks via cleanup API
-  const handleRemoveAllUncategorized = useCallback(async () => {
-    try {
-      await api.tasks.cleanupTasksInGroup("uncategorized", "", projectId);
-      clearGraphSelection();
-      queryClient.invalidateQueries({ queryKey: taskGraphKeys.graphPrefix(projectId) });
-      toast.success("Uncategorized tasks removed");
-    } catch {
-      toast.error("Failed to remove uncategorized tasks");
-    }
-  }, [projectId, clearGraphSelection, queryClient]);
-
   // Compute layout using dagre (includes plan grouping)
   const { nodes: layoutNodes, edges: layoutEdges, groupNodes } = useTaskGraphLayout(
     filteredGraphData.nodes,
