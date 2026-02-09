@@ -1676,7 +1676,7 @@ impl<'a> super::TransitionHandler<'a> {
                     .context
                     .services
                     .event_emitter
-                    .emit("task:status_changed", task_id_str)
+                    .emit_status_change(task_id_str, "pending_merge", "pending_merge")
                     .await;
 
                 tracing::info!(
