@@ -35,6 +35,8 @@ import { useIntegratedChatHandlers } from "@/hooks/useIntegratedChatHandlers";
 import { useIntegratedChatEvents } from "@/hooks/useIntegratedChatEvents";
 import { useAgentEvents } from "@/hooks/useAgentEvents";
 import { useAskUserQuestion } from "@/hooks/useAskUserQuestion";
+import { useQuestionInput } from "@/hooks/useQuestionInput";
+import { QuestionInputBanner } from "./QuestionInputBanner";
 import { RecoveryPromptDialog } from "@/components/recovery/RecoveryPromptDialog";
 import { useEventBus } from "@/providers/EventProvider";
 import { logger } from "@/lib/logger";
@@ -515,6 +517,20 @@ export function IntegratedChatPanel({
     isLoading: isSubmittingAnswer,
   } = useAskUserQuestion(currentContextId);
 
+  // Question UI state — chip selection, input sync, question-aware send
+  const {
+    selectedOptions,
+    questionInputValue,
+    setQuestionInputValue,
+    handleChipClick,
+    handleMatchedOptions,
+    handleQuestionSend,
+  } = useQuestionInput({
+    activeQuestion: activeQuestion ?? null,
+    submitAnswer,
+    handleSend,
+  });
+
   // Handle Escape key to close panel
   useEffect(() => {
     if (!onClose) return;
@@ -662,12 +678,6 @@ export function IntegratedChatPanel({
               streamingText={streamingText}
               messagesEndRef={messagesEndRef}
               scrollToTimestamp={isHistoryMode ? taskHistoryState?.timestamp : null}
-              activeQuestion={activeQuestion}
-              onSubmitAnswer={submitAnswer}
-              isSubmittingAnswer={isSubmittingAnswer}
-              answeredQuestion={answeredQuestion}
-              onDismissQuestion={dismissQuestion}
-              onDismissAnswered={clearAnswered}
             />
           )}
 
@@ -690,14 +700,26 @@ export function IntegratedChatPanel({
               </div>
             )}
 
+            {/* Question Input Banner - renders above ChatInput when question is active */}
+            {(activeQuestion || answeredQuestion) && (
+              <QuestionInputBanner
+                question={activeQuestion ?? null}
+                selectedIndices={selectedOptions}
+                onChipClick={handleChipClick}
+                onDismiss={dismissQuestion}
+                answeredValue={answeredQuestion}
+                onDismissAnswered={clearAnswered}
+              />
+            )}
+
             {/* Chat Input */}
             <div className="p-3">
               <ChatInput
-                onSend={handleSend}
+                onSend={activeQuestion ? handleQuestionSend : handleSend}
                 onQueue={handleQueue}
                 onStop={handleStopAgentWrapper}
                 isAgentRunning={isExecutionMode || isAgentRunning}
-                isSending={isSending}
+                isSending={isSending || isSubmittingAnswer}
                 hasQueuedMessages={queuedMessages.length > 0}
                 onEditLastQueued={handleEditLastQueuedWrapper}
                 isReadOnly={isHistoryMode}
@@ -710,7 +732,16 @@ export function IntegratedChatPanel({
                         ? "Ask about this task..."
                         : "Send a message..."
                 }
-                showHelperText={showHelperTextAlways || queuedMessages.length > 0}
+                showHelperText={showHelperTextAlways || queuedMessages.length > 0 || !!activeQuestion}
+                {...(activeQuestion ? {
+                  value: questionInputValue,
+                  onChange: setQuestionInputValue,
+                  questionMode: {
+                    optionCount: activeQuestion.options.length,
+                    multiSelect: activeQuestion.multiSelect,
+                    onMatchedOptions: handleMatchedOptions,
+                  },
+                } : {})}
                 autoFocus
               />
             </div>

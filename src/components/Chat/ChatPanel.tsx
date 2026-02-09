@@ -1,14 +1,4 @@
-/**
- * ChatPanel - Premium resizable side panel for context-aware chat
- *
- * Design spec: specs/design/pages/chat-panel.md
- * - Refined Studio aesthetic with layered depth
- * - Glass effect header with backdrop-blur
- * - Asymmetric message bubbles (user: warm orange, agent: dark gradient)
- * - Compact sizing for application UI
- * - Slide-in/out animations
- * - Collapsible to thin bar with unread indicator
- */
+// ChatPanel — resizable side panel for context-aware chat (design: specs/design/pages/chat-panel.md)
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useChat, chatKeys } from "@/hooks/useChat";
@@ -34,20 +24,14 @@ import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { ChatInput } from "./ChatInput";
 import { ChatMessages } from "./ChatMessages";
+import { QuestionInputBanner } from "./QuestionInputBanner";
 import { ResizeablePanel } from "./ResizeablePanel";
 import { useResizePanel } from "./useResizePanel";
 import { useChatPanelHandlers } from "@/hooks/useChatPanelHandlers";
 import { useAskUserQuestion } from "@/hooks/useAskUserQuestion";
-
-// ============================================================================
-// Constants
-// ============================================================================
+import { useQuestionInput } from "@/hooks/useQuestionInput";
 
 const COLLAPSED_WIDTH = 40;
-
-// ============================================================================
-// CSS Animations (defined as style tag content)
-// ============================================================================
 
 const animationStyles = `
 @keyframes slideInRight {
@@ -90,10 +74,6 @@ const animationStyles = `
 }
 `;
 
-// ============================================================================
-// Sub-components
-// ============================================================================
-
 interface ContextIndicatorProps {
   context: ChatContext;
   isExecutionMode?: boolean;
@@ -133,10 +113,6 @@ function ContextIndicator({ context, isExecutionMode = false }: ContextIndicator
   );
 }
 
-// ============================================================================
-// Collapsed Panel
-// ============================================================================
-
 interface CollapsedPanelProps {
   onExpand: () => void;
   hasUnread: boolean;
@@ -170,10 +146,6 @@ function CollapsedPanel({ onExpand, hasUnread }: CollapsedPanelProps) {
     </div>
   );
 }
-
-// ============================================================================
-// Main Component
-// ============================================================================
 
 interface ChatPanelProps {
   context: ChatContext;
@@ -326,6 +298,20 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     isLoading: isSubmittingAnswer,
   } = useAskUserQuestion(questionSessionId);
 
+  // Question UI state — extracted to hook (chip selection, input sync, question-aware send)
+  const {
+    selectedOptions,
+    questionInputValue,
+    setQuestionInputValue,
+    handleChipClick,
+    handleMatchedOptions,
+    handleQuestionSend,
+  } = useQuestionInput({
+    activeQuestion: activeQuestion ?? null,
+    submitAnswer,
+    handleSend,
+  });
+
   // Close with animation
   const handleClose = useCallback(() => {
     setIsExiting(true);
@@ -451,12 +437,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
           failedErrorMessage={showFailedBanner && failedRun?.errorMessage ? failedRun.errorMessage : undefined}
           onDismissError={failedRun ? () => setDismissedErrorId(failedRun.id) : undefined}
           messagesEndRef={messagesEndRef}
-          activeQuestion={activeQuestion}
-          onSubmitAnswer={submitAnswer}
-          isSubmittingAnswer={isSubmittingAnswer}
-          answeredQuestion={answeredQuestion}
-          onDismissQuestion={dismissQuestion}
-          onDismissAnswered={clearAnswered}
         />
 
         {/* Input Area */}
@@ -472,14 +452,26 @@ function ChatPanelContent({ context }: ChatPanelProps) {
             </div>
           )}
 
+          {/* Question Input Banner - renders above ChatInput when question is active */}
+          {(activeQuestion || answeredQuestion) && (
+            <QuestionInputBanner
+              question={activeQuestion ?? null}
+              selectedIndices={selectedOptions}
+              onChipClick={handleChipClick}
+              onDismiss={dismissQuestion}
+              answeredValue={answeredQuestion}
+              onDismissAnswered={clearAnswered}
+            />
+          )}
+
           {/* Chat Input */}
           <div className="p-3">
             <ChatInput
-              onSend={handleSend}
+              onSend={activeQuestion ? handleQuestionSend : handleSend}
               onQueue={handleQueue}
               onStop={handleStopAgent}
               isAgentRunning={isExecutionMode || isAgentRunning}
-              isSending={isSending}
+              isSending={isSending || isSubmittingAnswer}
               hasQueuedMessages={queuedMessages.length > 0}
               onEditLastQueued={handleEditLastQueued}
               placeholder={
@@ -487,7 +479,16 @@ function ChatPanelContent({ context }: ChatPanelProps) {
                   ? "Message worker... (will be sent when current response completes)"
                   : "Send a message..."
               }
-              showHelperText={queuedMessages.length > 0}
+              showHelperText={queuedMessages.length > 0 || !!activeQuestion}
+              {...(activeQuestion ? {
+                value: questionInputValue,
+                onChange: setQuestionInputValue,
+                questionMode: {
+                  optionCount: activeQuestion.options.length,
+                  multiSelect: activeQuestion.multiSelect,
+                  onMatchedOptions: handleMatchedOptions,
+                },
+              } : {})}
               autoFocus
             />
           </div>
