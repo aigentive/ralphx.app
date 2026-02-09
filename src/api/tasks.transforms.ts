@@ -1,8 +1,30 @@
 // Transform functions for converting snake_case tasks API responses to camelCase frontend types
 
 import { z } from "zod";
-import { InjectTaskResponseSchemaRaw, StateTransitionResponseSchemaRaw } from "./tasks.schemas";
+import { CleanupReportResponseSchemaRaw, InjectTaskResponseSchemaRaw, StateTransitionResponseSchemaRaw } from "./tasks.schemas";
 import { transformTask, type Task, type InternalStatus } from "@/types/task";
+
+/**
+ * Frontend CleanupReport type (camelCase)
+ */
+export interface CleanupReport {
+  deletedCount: number;
+  failedCount: number;
+  stoppedAgents: number;
+}
+
+/**
+ * Transform CleanupReportResponseSchemaRaw to CleanupReport
+ */
+export function transformCleanupReport(
+  raw: z.infer<typeof CleanupReportResponseSchemaRaw>
+): CleanupReport {
+  return {
+    deletedCount: raw.deleted_count,
+    failedCount: raw.failed_count,
+    stoppedAgents: raw.stopped_agents,
+  };
+}
 
 /**
  * Frontend InjectTaskResponse type (camelCase)

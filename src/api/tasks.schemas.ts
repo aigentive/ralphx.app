@@ -15,6 +15,16 @@ export const InjectTaskResponseSchemaRaw = z.object({
 });
 
 /**
+ * Cleanup report response schema from Rust (snake_case)
+ * Returned by cleanup_tasks_in_group command.
+ */
+export const CleanupReportResponseSchemaRaw = z.object({
+  deleted_count: z.number().int(),
+  failed_count: z.number().int(),
+  stopped_agents: z.number().int(),
+});
+
+/**
  * State transition response schema from Rust (snake_case)
  * Used by StateTimelineNav for displaying task state history.
  */
