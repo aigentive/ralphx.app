@@ -45,7 +45,7 @@ export const GROUP_PADDING = 12;
 export const HEADER_HEIGHT = 48;
 
 /** Minimum group dimensions (expanded state — collapsed uses COLLAPSED_GROUP_WIDTH in groupBuilder) */
-export const MIN_GROUP_WIDTH = 440;
+export const MIN_GROUP_WIDTH = 560;
 export const MIN_GROUP_HEIGHT = 100;
 
 // ============================================================================
