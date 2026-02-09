@@ -52,11 +52,25 @@ pub enum StreamMessage {
         #[serde(default)]
         cost_usd: f64,
     },
-    /// System event (e.g., init messages)
+    /// System event (e.g., init messages, hook events)
     #[serde(rename = "system")]
     System {
         message: Option<String>,
         session_id: Option<String>,
+        #[serde(default)]
+        subtype: Option<String>,
+        #[serde(default)]
+        hook_id: Option<String>,
+        #[serde(default)]
+        hook_name: Option<String>,
+        #[serde(default)]
+        hook_event: Option<String>,
+        #[serde(default)]
+        output: Option<String>,
+        #[serde(default)]
+        exit_code: Option<i32>,
+        #[serde(default)]
+        outcome: Option<String>,
     },
     /// User message (contains tool results when using MCP)
     #[serde(rename = "user")]
@@ -84,6 +98,8 @@ pub enum UserContent {
         #[serde(default)]
         is_error: bool,
     },
+    #[serde(rename = "text")]
+    Text { text: String },
     #[serde(other)]
     Other,
 }
@@ -219,6 +235,25 @@ pub enum StreamEvent {
         total_tokens: Option<u64>,
         total_tool_use_count: Option<u64>,
     },
+    /// Hook started (from system message with subtype "hook_started")
+    HookStarted {
+        hook_id: String,
+        hook_name: String,
+        hook_event: String,
+    },
+    /// Hook completed (from system message with subtype "hook_response")
+    HookCompleted {
+        hook_id: String,
+        hook_name: String,
+        hook_event: String,
+        output: Option<String>,
+        exit_code: Option<i32>,
+        outcome: Option<String>,
+    },
+    /// Hook block (from synthetic user message with text content)
+    HookBlock {
+        reason: String,
+    },
 }
 
 // ============================================================================
@@ -339,10 +374,11 @@ pub struct StreamProcessor {
     current_thinking_block: String,
 }
 
-/// Parsed line with optional parent_tool_use_id extracted from top-level JSON
+/// Parsed line with optional parent_tool_use_id and is_synthetic extracted from top-level JSON
 pub struct ParsedLine {
     pub message: StreamMessage,
     pub parent_tool_use_id: Option<String>,
+    pub is_synthetic: bool,
 }
 
 impl StreamProcessor {
@@ -353,12 +389,12 @@ impl StreamProcessor {
 
     /// Process a stream message without parent context (backward compat)
     pub fn process_message(&mut self, msg: StreamMessage) -> Vec<StreamEvent> {
-        self.process_message_with_parent(msg, None)
+        self.process_message_with_parent(msg, None, false)
     }
 
-    /// Process a parsed line (message + parent_tool_use_id)
+    /// Process a parsed line (message + parent_tool_use_id + is_synthetic)
     pub fn process_parsed_line(&mut self, parsed: ParsedLine) -> Vec<StreamEvent> {
-        self.process_message_with_parent(parsed.message, parsed.parent_tool_use_id)
+        self.process_message_with_parent(parsed.message, parsed.parent_tool_use_id, parsed.is_synthetic)
     }
 
     /// Parse a stream-json line, extracting parent_tool_use_id from the top-level JSON envelope
@@ -374,27 +410,32 @@ impl StreamProcessor {
             trimmed
         };
 
-        // First extract parent_tool_use_id from raw JSON before typed parsing
-        let parent_tool_use_id = serde_json::from_str::<serde_json::Value>(candidate)
-            .ok()
-            .and_then(|v| {
-                v.get("parent_tool_use_id")
-                    .and_then(|p| p.as_str())
-                    .map(|s| s.to_string())
-            });
+        // First extract parent_tool_use_id and isSynthetic from raw JSON before typed parsing
+        let raw_value = serde_json::from_str::<serde_json::Value>(candidate).ok();
+        let parent_tool_use_id = raw_value.as_ref().and_then(|v| {
+            v.get("parent_tool_use_id")
+                .and_then(|p| p.as_str())
+                .map(|s| s.to_string())
+        });
+        let is_synthetic = raw_value
+            .as_ref()
+            .and_then(|v| v.get("isSynthetic").and_then(|s| s.as_bool()))
+            .unwrap_or(false);
 
         let message: StreamMessage = serde_json::from_str(candidate).ok()?;
         Some(ParsedLine {
             message,
             parent_tool_use_id,
+            is_synthetic,
         })
     }
 
-    /// Process a stream message with optional parent_tool_use_id context
+    /// Process a stream message with optional parent_tool_use_id and is_synthetic context
     fn process_message_with_parent(
         &mut self,
         msg: StreamMessage,
         parent_tool_use_id: Option<String>,
+        is_synthetic: bool,
     ) -> Vec<StreamEvent> {
         let mut events = Vec::new();
 
@@ -576,15 +617,64 @@ impl StreamProcessor {
                     events.push(StreamEvent::SessionId(id.clone()));
                 }
             }
-            StreamMessage::System { session_id, .. } => {
+            StreamMessage::System {
+                session_id,
+                subtype,
+                hook_id,
+                hook_name,
+                hook_event,
+                output,
+                exit_code,
+                outcome,
+                ..
+            } => {
                 if let Some(ref id) = session_id {
                     self.session_id = session_id.clone();
                     events.push(StreamEvent::SessionId(id.clone()));
                 }
+
+                match subtype.as_deref() {
+                    Some("hook_started") => {
+                        if let (Some(hid), Some(hname), Some(hevent)) =
+                            (hook_id, hook_name, hook_event)
+                        {
+                            events.push(StreamEvent::HookStarted {
+                                hook_id: hid,
+                                hook_name: hname,
+                                hook_event: hevent,
+                            });
+                        }
+                    }
+                    Some("hook_response") => {
+                        if let (Some(hid), Some(hname), Some(hevent)) =
+                            (hook_id, hook_name, hook_event)
+                        {
+                            events.push(StreamEvent::HookCompleted {
+                                hook_id: hid,
+                                hook_name: hname,
+                                hook_event: hevent,
+                                output,
+                                exit_code,
+                                outcome,
+                            });
+                        }
+                    }
+                    _ => {}
+                }
             }
             StreamMessage::User { message } => {
-                // Handle tool results from MCP tool execution
+                // Handle tool results and synthetic hook blocks
                 for content in message.content {
+                    // Synthetic user text messages are hook block notifications
+                    if is_synthetic {
+                        if let UserContent::Text { text } = &content {
+                            events.push(StreamEvent::HookBlock {
+                                reason: text.clone(),
+                            });
+                            continue;
+                        }
+                    }
+
                     if let UserContent::ToolResult {
                         tool_use_id,
                         content,
@@ -1195,6 +1285,7 @@ mod tests {
                 },
             },
             parent_tool_use_id: Some("toolu_parent".to_string()),
+            is_synthetic: false,
         };
 
         let events = processor.process_parsed_line(parsed);
@@ -1239,6 +1330,7 @@ mod tests {
         let parsed = ParsedLine {
             message: StreamMessage::ContentBlockStop { index: Some(0) },
             parent_tool_use_id: Some("toolu_parent".to_string()),
+            is_synthetic: false,
         };
 
         let events = processor.process_parsed_line(parsed);
@@ -1438,6 +1530,7 @@ mod tests {
                 },
             },
             parent_tool_use_id: Some("toolu_parent_task".to_string()),
+            is_synthetic: false,
         };
 
         let events = processor.process_parsed_line(parsed);
@@ -1669,5 +1762,306 @@ mod tests {
             }
             other => panic!("Expected TaskCompleted, got {:?}", other),
         }
+    }
+
+    // ====================================================================
+    // Hook event tests
+    // ====================================================================
+
+    #[test]
+    fn test_hook_started_from_system_message() {
+        let mut processor = StreamProcessor::new();
+
+        let msg = StreamMessage::System {
+            message: Some("Running hook...".to_string()),
+            session_id: None,
+            subtype: Some("hook_started".to_string()),
+            hook_id: Some("hook-abc-123".to_string()),
+            hook_name: Some("rule-audit.sh".to_string()),
+            hook_event: Some("SessionStart".to_string()),
+            output: None,
+            exit_code: None,
+            outcome: None,
+        };
+
+        let events = processor.process_message(msg);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::HookStarted {
+                hook_id,
+                hook_name,
+                hook_event,
+            } => {
+                assert_eq!(hook_id, "hook-abc-123");
+                assert_eq!(hook_name, "rule-audit.sh");
+                assert_eq!(hook_event, "SessionStart");
+            }
+            other => panic!("Expected HookStarted, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_hook_completed_from_system_message() {
+        let mut processor = StreamProcessor::new();
+
+        let msg = StreamMessage::System {
+            message: Some("Hook completed".to_string()),
+            session_id: Some("sess-456".to_string()),
+            subtype: Some("hook_response".to_string()),
+            hook_id: Some("hook-def-456".to_string()),
+            hook_name: Some("lint-fix.sh".to_string()),
+            hook_event: Some("PostToolUse".to_string()),
+            output: Some("Fixed 3 lint issues".to_string()),
+            exit_code: Some(0),
+            outcome: Some("success".to_string()),
+        };
+
+        let events = processor.process_message(msg);
+        // Should emit SessionId + HookCompleted
+        assert_eq!(events.len(), 2);
+        assert!(matches!(&events[0], StreamEvent::SessionId(id) if id == "sess-456"));
+        match &events[1] {
+            StreamEvent::HookCompleted {
+                hook_id,
+                hook_name,
+                hook_event,
+                output,
+                exit_code,
+                outcome,
+            } => {
+                assert_eq!(hook_id, "hook-def-456");
+                assert_eq!(hook_name, "lint-fix.sh");
+                assert_eq!(hook_event, "PostToolUse");
+                assert_eq!(output, &Some("Fixed 3 lint issues".to_string()));
+                assert_eq!(exit_code, &Some(0));
+                assert_eq!(outcome, &Some("success".to_string()));
+            }
+            other => panic!("Expected HookCompleted, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_hook_completed_with_error() {
+        let mut processor = StreamProcessor::new();
+
+        let msg = StreamMessage::System {
+            message: None,
+            session_id: None,
+            subtype: Some("hook_response".to_string()),
+            hook_id: Some("hook-err-789".to_string()),
+            hook_name: Some("enforce-rule-manager.sh".to_string()),
+            hook_event: Some("Stop".to_string()),
+            output: Some("Rule manager has pending issues".to_string()),
+            exit_code: Some(1),
+            outcome: Some("error".to_string()),
+        };
+
+        let events = processor.process_message(msg);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::HookCompleted {
+                exit_code,
+                outcome,
+                ..
+            } => {
+                assert_eq!(exit_code, &Some(1));
+                assert_eq!(outcome, &Some("error".to_string()));
+            }
+            other => panic!("Expected HookCompleted, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_hook_block_from_synthetic_user_message() {
+        let mut processor = StreamProcessor::new();
+
+        let parsed = ParsedLine {
+            message: StreamMessage::User {
+                message: UserMessage {
+                    content: vec![UserContent::Text {
+                        text: "Stop hook blocked: enforce-rule-manager.sh\nRule manager audit found issues that need fixing.".to_string(),
+                    }],
+                },
+            },
+            parent_tool_use_id: None,
+            is_synthetic: true,
+        };
+
+        let events = processor.process_parsed_line(parsed);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::HookBlock { reason } => {
+                assert!(reason.contains("Stop hook blocked"));
+                assert!(reason.contains("enforce-rule-manager.sh"));
+            }
+            other => panic!("Expected HookBlock, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_non_synthetic_user_text_ignored() {
+        let mut processor = StreamProcessor::new();
+
+        // Non-synthetic user text should NOT emit HookBlock
+        let parsed = ParsedLine {
+            message: StreamMessage::User {
+                message: UserMessage {
+                    content: vec![UserContent::Text {
+                        text: "Some regular user text".to_string(),
+                    }],
+                },
+            },
+            parent_tool_use_id: None,
+            is_synthetic: false,
+        };
+
+        let events = processor.process_parsed_line(parsed);
+        assert!(events.is_empty(), "Non-synthetic text should not emit events");
+    }
+
+    #[test]
+    fn test_hook_started_missing_required_fields() {
+        let mut processor = StreamProcessor::new();
+
+        // Missing hook_name — should NOT emit HookStarted
+        let msg = StreamMessage::System {
+            message: None,
+            session_id: None,
+            subtype: Some("hook_started".to_string()),
+            hook_id: Some("hook-123".to_string()),
+            hook_name: None,
+            hook_event: Some("SessionStart".to_string()),
+            output: None,
+            exit_code: None,
+            outcome: None,
+        };
+
+        let events = processor.process_message(msg);
+        assert!(
+            events.is_empty(),
+            "HookStarted should not emit with missing hook_name"
+        );
+    }
+
+    #[test]
+    fn test_hook_completed_optional_fields_none() {
+        let mut processor = StreamProcessor::new();
+
+        let msg = StreamMessage::System {
+            message: None,
+            session_id: None,
+            subtype: Some("hook_response".to_string()),
+            hook_id: Some("hook-opt-1".to_string()),
+            hook_name: Some("my-hook.sh".to_string()),
+            hook_event: Some("PostToolUse".to_string()),
+            output: None,
+            exit_code: None,
+            outcome: None,
+        };
+
+        let events = processor.process_message(msg);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::HookCompleted {
+                output,
+                exit_code,
+                outcome,
+                ..
+            } => {
+                assert_eq!(output, &None);
+                assert_eq!(exit_code, &None);
+                assert_eq!(outcome, &None);
+            }
+            other => panic!("Expected HookCompleted, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_line_extracts_is_synthetic() {
+        // Synthetic user message
+        let line = r#"{"type":"user","isSynthetic":true,"message":{"content":[{"type":"text","text":"Hook blocked"}]}}"#;
+        let parsed = StreamProcessor::parse_line(line).expect("Expected Some(ParsedLine)");
+        assert!(parsed.is_synthetic);
+
+        // Non-synthetic message (no isSynthetic field)
+        let line2 = r#"{"type":"user","message":{"content":[{"type":"text","text":"Normal message"}]}}"#;
+        let parsed2 = StreamProcessor::parse_line(line2).expect("Expected Some(ParsedLine)");
+        assert!(!parsed2.is_synthetic);
+
+        // Explicit isSynthetic: false
+        let line3 = r#"{"type":"user","isSynthetic":false,"message":{"content":[{"type":"text","text":"Not synthetic"}]}}"#;
+        let parsed3 = StreamProcessor::parse_line(line3).expect("Expected Some(ParsedLine)");
+        assert!(!parsed3.is_synthetic);
+    }
+
+    #[test]
+    fn test_parse_system_hook_started_json() {
+        let line = r#"{"type":"system","subtype":"hook_started","hook_id":"h1","hook_name":"audit.sh","hook_event":"SessionStart","message":"Starting hook"}"#;
+        let parsed = StreamProcessor::parse_line(line).expect("Expected Some(ParsedLine)");
+        assert!(matches!(parsed.message, StreamMessage::System { .. }));
+
+        let StreamMessage::System {
+            subtype,
+            hook_id,
+            hook_name,
+            hook_event,
+            ..
+        } = parsed.message
+        else {
+            unreachable!()
+        };
+        assert_eq!(subtype, Some("hook_started".to_string()));
+        assert_eq!(hook_id, Some("h1".to_string()));
+        assert_eq!(hook_name, Some("audit.sh".to_string()));
+        assert_eq!(hook_event, Some("SessionStart".to_string()));
+    }
+
+    #[test]
+    fn test_parse_system_hook_response_json() {
+        let line = r#"{"type":"system","subtype":"hook_response","hook_id":"h2","hook_name":"lint.sh","hook_event":"PostToolUse","output":"All clean","exit_code":0,"outcome":"success"}"#;
+        let parsed = StreamProcessor::parse_line(line).expect("Expected Some(ParsedLine)");
+
+        let StreamMessage::System {
+            subtype,
+            hook_id,
+            hook_name,
+            hook_event,
+            output,
+            exit_code,
+            outcome,
+            ..
+        } = parsed.message
+        else {
+            unreachable!()
+        };
+        assert_eq!(subtype, Some("hook_response".to_string()));
+        assert_eq!(hook_id, Some("h2".to_string()));
+        assert_eq!(hook_name, Some("lint.sh".to_string()));
+        assert_eq!(hook_event, Some("PostToolUse".to_string()));
+        assert_eq!(output, Some("All clean".to_string()));
+        assert_eq!(exit_code, Some(0));
+        assert_eq!(outcome, Some("success".to_string()));
+    }
+
+    #[test]
+    fn test_system_without_subtype_still_works() {
+        let mut processor = StreamProcessor::new();
+
+        // Regular system message (no subtype) should still emit SessionId
+        let msg = StreamMessage::System {
+            message: Some("Init".to_string()),
+            session_id: Some("sess-regular".to_string()),
+            subtype: None,
+            hook_id: None,
+            hook_name: None,
+            hook_event: None,
+            output: None,
+            exit_code: None,
+            outcome: None,
+        };
+
+        let events = processor.process_message(msg);
+        assert_eq!(events.len(), 1);
+        assert!(matches!(&events[0], StreamEvent::SessionId(id) if id == "sess-regular"));
     }
 }

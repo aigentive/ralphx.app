@@ -34,6 +34,8 @@ pub mod events {
     pub const AGENT_TASK_STARTED: &str = "agent:task_started";
     /// Agent task (subagent) completed event
     pub const AGENT_TASK_COMPLETED: &str = "agent:task_completed";
+    /// Agent hook event (started/completed/block)
+    pub const AGENT_HOOK: &str = "agent:hook";
 }
 
 // ============================================================================
@@ -165,6 +167,32 @@ pub struct AgentQueueSentPayload {
     pub conversation_id: String,
     pub context_type: String,
     pub context_id: String,
+}
+
+/// Payload for agent:hook event (discriminated by `hook_type`)
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentHookPayload {
+    /// Discriminator: "started", "completed", or "block"
+    #[serde(rename = "type")]
+    pub hook_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hook_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hook_event: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hook_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub conversation_id: String,
+    pub context_type: String,
+    pub context_id: String,
+    pub timestamp: i64,
 }
 
 // ============================================================================
