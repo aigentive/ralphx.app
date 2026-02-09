@@ -281,19 +281,16 @@ print_chart() {
     # Draw chart
     local bar_width=45
 
-    local prev_date=""
     for ((i=0; i<${#dates[@]}; i++)); do
         local date="${dates[$i]}"
         local net="${nets[$i]}"
         local commit="${commits[$i]}"
         local short_date=$(echo "$date" | cut -c6-)  # MM-DD
 
-        # Check for milestone between previous and current day
-        if [ -n "$prev_date" ]; then
-            local ms_label
-            ms_label=$(milestone_label_for_date "$date" 2>/dev/null) && \
-                print_milestone_marker "$ms_label"
-        fi
+        # Check for milestone on current day
+        local ms_label
+        ms_label=$(milestone_label_for_date "$date" 2>/dev/null) && \
+            print_milestone_marker "$ms_label"
 
         # Color based on magnitude
         local color=$GREEN
@@ -302,7 +299,6 @@ print_chart() {
 
         printf "${BOLD}%s${NC} %6d │ " "$short_date" "$net"
         draw_bar $net $max_net $bar_width "$color"
-        prev_date="$date"
     done
 
     echo ""
@@ -316,22 +312,18 @@ print_chart() {
         [ $c -gt $max_commits ] && max_commits=$c
     done
 
-    prev_date=""
     for ((i=0; i<${#dates[@]}; i++)); do
         local date="${dates[$i]}"
         local commit="${commits[$i]}"
         local short_date=$(echo "$date" | cut -c6-)
 
-        # Check for milestone between previous and current day
-        if [ -n "$prev_date" ]; then
-            local ms_label
-            ms_label=$(milestone_label_for_date "$date" 2>/dev/null) && \
-                print_milestone_marker "$ms_label"
-        fi
+        # Check for milestone on current day
+        local ms_label
+        ms_label=$(milestone_label_for_date "$date" 2>/dev/null) && \
+            print_milestone_marker "$ms_label"
 
         printf "${BOLD}%s${NC} %6d │ " "$short_date" "$commit"
         draw_bar $commit $max_commits $bar_width "$CYAN"
-        prev_date="$date"
     done
 
     echo ""
@@ -373,9 +365,6 @@ analyze_trends() {
 
         # Check for milestone on this date — print highlighted banner
         if date_has_milestone "$date_str"; then
-            local ms_label
-            ms_label=$(milestone_label_for_date "$date_str")
-            parse_milestone "${MILESTONES[0]}"  # re-parse for description
             # Find the matching entry for full details
             for _ms_entry in "${MILESTONES[@]}"; do
                 parse_milestone "$_ms_entry"
