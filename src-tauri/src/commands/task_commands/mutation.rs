@@ -725,6 +725,7 @@ pub async fn unblock_task(
 ///
 /// Unlike `permanently_delete_task`, this does not require the task to be archived first.
 /// It handles full cleanup including stopping active agents and removing git resources.
+/// Active tasks are transitioned to Stopped to trigger proper on_exit side effects.
 ///
 /// # Arguments
 /// * `task_id` - The task ID to clean delete
@@ -735,13 +736,14 @@ pub async fn unblock_task(
 pub async fn cleanup_task(
     task_id: String,
     state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     use crate::application::TaskCleanupService;
 
     let task_id_obj = TaskId::from_string(task_id.clone());
 
-    // Get task first for project_id (needed for event emission)
+    // Get task once — passed by reference to service to avoid double fetch
     let task = state
         .task_repo
         .get_by_id(&task_id_obj)
@@ -751,14 +753,16 @@ pub async fn cleanup_task(
 
     let project_id_str = task.project_id.as_str().to_string();
 
+    let stopper = build_task_stopper(&state, &execution_state, &app);
     let service = TaskCleanupService::new(
         Arc::clone(&state.task_repo),
         Arc::clone(&state.project_repo),
         Arc::clone(&state.running_agent_registry),
-    );
+    )
+    .with_task_stopper(stopper);
 
     service
-        .cleanup_task(&task_id_obj)
+        .cleanup_task_ref(&task)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -774,6 +778,7 @@ pub async fn cleanup_task(
 /// project_id: required for all group kinds
 ///
 /// Skips plan_merge tasks (system-managed).
+/// Active tasks are transitioned to Stopped to trigger proper on_exit side effects.
 ///
 /// # Events
 /// * Emits 'task:list_changed' with { project_id } after bulk deletion
@@ -783,6 +788,7 @@ pub async fn cleanup_tasks_in_group(
     group_id: String,
     project_id: String,
     state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<super::types::CleanupReportResponse, String> {
     use crate::application::{TaskCleanupService, TaskGroup};
@@ -802,11 +808,13 @@ pub async fn cleanup_tasks_in_group(
         _ => return Err(format!("Invalid group_kind: {}. Expected 'status', 'session', or 'uncategorized'", group_kind)),
     };
 
+    let stopper = build_task_stopper(&state, &execution_state, &app);
     let service = TaskCleanupService::new(
         Arc::clone(&state.task_repo),
         Arc::clone(&state.project_repo),
         Arc::clone(&state.running_agent_registry),
-    );
+    )
+    .with_task_stopper(stopper);
 
     let report = service
         .cleanup_tasks_in_group(group)
@@ -826,4 +834,51 @@ pub async fn cleanup_tasks_in_group(
         failed_count: report.failed_count,
         stopped_agents: report.stopped_agents,
     })
+}
+
+// --- TaskStopper implementation backed by TaskTransitionService ---
+
+use async_trait::async_trait;
+use crate::application::TaskStopper;
+use crate::application::TaskTransitionService;
+use crate::error::AppResult;
+
+/// Wraps a TaskTransitionService to implement the TaskStopper trait.
+struct TransitionTaskStopper {
+    transition_service: TaskTransitionService,
+}
+
+#[async_trait]
+impl TaskStopper for TransitionTaskStopper {
+    async fn stop_task(&self, task_id: &TaskId) -> AppResult<()> {
+        self.transition_service
+            .transition_task(task_id, InternalStatus::Stopped)
+            .await
+            .map(|_| ())
+    }
+}
+
+/// Build a TaskStopper from the standard Tauri state dependencies.
+fn build_task_stopper(
+    state: &AppState,
+    execution_state: &Arc<ExecutionState>,
+    app: &tauri::AppHandle,
+) -> Arc<dyn TaskStopper> {
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.task_dependency_repo),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.chat_message_repo),
+        Arc::clone(&state.chat_conversation_repo),
+        Arc::clone(&state.agent_run_repo),
+        Arc::clone(&state.ideation_session_repo),
+        Arc::clone(&state.activity_event_repo),
+        Arc::clone(&state.message_queue),
+        Arc::clone(&state.running_agent_registry),
+        Arc::clone(execution_state),
+        Some(app.clone()),
+    )
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
+
+    Arc::new(TransitionTaskStopper { transition_service })
 }
