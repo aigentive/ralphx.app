@@ -14,7 +14,6 @@ import {
   TIER_HEADER_HEIGHT,
 } from "./TierGroup";
 import { UNGROUPED_PLAN_ID, type TierGroupInfo } from "./tierGroupUtils";
-
 /** Collapsed group dimensions */
 export const COLLAPSED_GROUP_WIDTH = 420;
 export const COLLAPSED_GROUP_HEIGHT = HEADER_HEIGHT + 8;
@@ -37,6 +36,7 @@ interface PlanGroupBuilderArgs {
   projectId?: string;
   onNavigateToTask?: (taskId: string) => void;
   onDeletePlan?: (planArtifactId: string) => void;
+  onRemoveAll?: (sessionId: string) => void;
 }
 
 interface TierGroupBuilderArgs {
@@ -67,6 +67,7 @@ export function buildPlanGroupNodes({
   projectId,
   onNavigateToTask,
   onDeletePlan,
+  onRemoveAll,
 }: PlanGroupBuilderArgs): PlanGroupNode[] {
   if (planGroups.length === 0 && !includeUncategorized) {
     return [];
@@ -157,7 +158,8 @@ export function buildPlanGroupNodes({
       hasTierGroups && onToggleAllTiers ? onToggleAllTiers : undefined,
       projectId,
       onNavigateToTask,
-      onDeletePlan
+      onDeletePlan,
+      onRemoveAll
     );
 
     groupNodes.push(groupNode);
@@ -259,7 +261,9 @@ export function buildPlanGroupNodes({
       allTiersCollapsed,
       hasTierGroups && onToggleAllTiers ? onToggleAllTiers : undefined,
       projectId,
-      onNavigateToTask
+      onNavigateToTask,
+      undefined, // onDeletePlan — not applicable for uncategorized
+      onRemoveAll
     );
 
     groupNodes.push(groupNode);

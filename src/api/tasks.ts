@@ -22,22 +22,24 @@ import {
   type TaskStep,
   type StepProgressSummary,
 } from "@/types/task-step";
-import { InjectTaskResponseSchemaRaw, StateTransitionResponseSchemaRaw } from "./tasks.schemas";
+import { CleanupReportResponseSchemaRaw, InjectTaskResponseSchemaRaw, StateTransitionResponseSchemaRaw } from "./tasks.schemas";
 import {
+  transformCleanupReport,
   transformInjectTaskResponse,
   transformStateTransition,
+  type CleanupReport,
   type InjectTaskResponse,
   type StateTransition,
 } from "./tasks.transforms";
 
 // Re-export types for convenience
-export type { InjectTaskResponse, StateTransition } from "./tasks.transforms";
+export type { CleanupReport, InjectTaskResponse, StateTransition } from "./tasks.transforms";
 
 // Re-export schemas for consumers that need validation
-export { InjectTaskResponseSchemaRaw, StateTransitionResponseSchemaRaw } from "./tasks.schemas";
+export { CleanupReportResponseSchemaRaw, InjectTaskResponseSchemaRaw, StateTransitionResponseSchemaRaw } from "./tasks.schemas";
 
 // Re-export transforms for consumers that need manual transformation
-export { transformInjectTaskResponse, transformStateTransition } from "./tasks.transforms";
+export { transformCleanupReport, transformInjectTaskResponse, transformStateTransition } from "./tasks.transforms";
 
 // ============================================================================
 // Input Types
@@ -159,7 +161,8 @@ export const tasksApi = {
     typedInvokeWithTransform("update_task", { taskId, input }, TaskSchema, transformTask),
 
   /**
-   * Delete a task
+   * Delete a task (bare delete, no cleanup)
+   * @deprecated Use `cleanupTask` instead — it handles force-stop, branch cleanup, and event emission.
    * @param taskId The task ID
    * @returns true if deleted
    */
@@ -184,6 +187,7 @@ export const tasksApi = {
 
   /**
    * Permanently delete a task (only works on archived tasks)
+   * @deprecated Use `cleanupTask` instead — it handles force-stop, branch cleanup, and event emission.
    * @param taskId The task ID
    * @returns void on success
    */
@@ -281,6 +285,32 @@ export const tasksApi = {
       { taskId },
       z.array(StateTransitionResponseSchemaRaw),
       (transitions) => transitions.map(transformStateTransition)
+    ),
+
+  /**
+   * Clean delete a single task (force-stop agent if active, cleanup git branch, delete from DB)
+   * @param taskId The task ID to clean delete
+   */
+  cleanupTask: (taskId: string) =>
+    typedInvoke("cleanup_task", { taskId }, z.void()),
+
+  /**
+   * Clean delete all tasks in a group
+   * @param groupKind "status" | "session" | "uncategorized"
+   * @param groupId The status name or session ID
+   * @param projectId The project ID
+   * @returns Cleanup report with counts
+   */
+  cleanupTasksInGroup: (
+    groupKind: string,
+    groupId: string,
+    projectId: string
+  ): Promise<CleanupReport> =>
+    typedInvokeWithTransform(
+      "cleanup_tasks_in_group",
+      { groupKind, groupId, projectId },
+      CleanupReportResponseSchemaRaw,
+      transformCleanupReport
     ),
 } as const;
 

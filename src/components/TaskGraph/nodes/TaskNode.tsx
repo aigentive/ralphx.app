@@ -20,6 +20,7 @@ import type { InternalStatus } from "@/types/status";
 import { TaskStatusBadge } from "@/components/tasks/TaskBoard/TaskStatusBadge";
 import { getStatusBorderColor } from "@/types/status-icons";
 import type { Task } from "@/types/task";
+import type { GroupInfo } from "@/lib/task-actions";
 
 // ============================================================================
 // Types
@@ -67,6 +68,8 @@ export type TaskNodeData = Record<string, unknown> & {
   isFocused?: boolean;
   /** Handler functions for context menu actions */
   handlers?: TaskNodeHandlers;
+  /** Group context for showing group actions in task context menu */
+  groupInfo?: GroupInfo;
 };
 
 export type TaskNodeType = Node<TaskNodeData, "task">;
@@ -119,7 +122,7 @@ function getStepDotStyle(
 
 
 function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
-  const { label, taskId, internalStatus, priority, isCriticalPath, description, category, isHighlighted, isFocused, handlers } = data;
+  const { label, taskId, internalStatus, priority, isCriticalPath, description, category, isHighlighted, isFocused, handlers, groupInfo } = data;
   const statusColor = getStatusBorderColor(internalStatus);
   const { data: stepProgress } = useStepProgress(taskId);
   const isTerminalComplete = internalStatus === "merged" || internalStatus === "approved";
@@ -347,15 +350,18 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
   return (
     <TaskNodeContextMenu
       task={minimalTask}
-      onViewDetails={handleViewDetails}
-      onStartExecution={handleStartExecution}
-      onBlockWithReason={handleBlockWithReason}
-      onUnblock={handleUnblock}
-      onViewAgentChat={handleViewDetails} // Falls back to view details
-      onApprove={handleApprove}
-      onReject={handleReject}
-      onRequestChanges={handleRequestChanges}
-      onMarkResolved={handleMarkResolved}
+      handlers={{
+        onViewDetails: handleViewDetails,
+        onStartExecution: handleStartExecution,
+        onBlockWithReason: handleBlockWithReason,
+        onUnblock: handleUnblock,
+        onViewAgentChat: handleViewDetails, // Falls back to view details
+        onApprove: handleApprove,
+        onReject: handleReject,
+        onRequestChanges: handleRequestChanges,
+        onMarkResolved: handleMarkResolved,
+      }}
+      {...(groupInfo !== undefined && { groupInfo })}
     >
       {nodeContent}
     </TaskNodeContextMenu>

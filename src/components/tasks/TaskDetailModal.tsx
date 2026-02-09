@@ -70,10 +70,10 @@ export function TaskDetailModal({
     moveMutation,
     archiveMutation,
     restoreMutation,
-    permanentlyDeleteMutation,
+    cleanupTaskMutation,
     isArchiving,
     isRestoring,
-    isPermanentlyDeleting,
+    isCleaningTask,
   } = useTaskMutation(task?.projectId ?? "");
 
   if (!task) return null;
@@ -125,7 +125,7 @@ export function TaskDetailModal({
 
   // Handle permanent delete
   const handlePermanentDelete = () => {
-    permanentlyDeleteMutation.mutate(task.id, {
+    cleanupTaskMutation.mutate(task.id, {
       onSuccess: () => {
         setShowDeleteDialog(false);
         onClose();
@@ -305,14 +305,14 @@ export function TaskDetailModal({
               {isArchived && (
                 <button
                   onClick={() => setShowDeleteDialog(true)}
-                  disabled={isPermanentlyDeleting}
+                  disabled={isCleaningTask}
                   data-testid="task-detail-delete-permanently-button"
                   className="p-2 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 disabled:opacity-50"
                   style={{
                     color: "var(--status-error)",
                   }}
                   onMouseEnter={(e) => {
-                    if (!isPermanentlyDeleting) {
+                    if (!isCleaningTask) {
                       e.currentTarget.style.backgroundColor = "var(--bg-hover)";
                     }
                   }}
@@ -322,7 +322,7 @@ export function TaskDetailModal({
                   aria-label="Delete permanently"
                   title="Delete permanently"
                 >
-                  {isPermanentlyDeleting ? (
+                  {isCleaningTask ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
                     <Trash className="w-4 h-4" />
@@ -467,10 +467,10 @@ export function TaskDetailModal({
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handlePermanentDelete}
-              disabled={isPermanentlyDeleting}
+              disabled={isCleaningTask}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {isPermanentlyDeleting ? (
+              {isCleaningTask ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Deleting...

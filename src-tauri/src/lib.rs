@@ -396,6 +396,8 @@ pub fn run() {
             commands::task_commands::mutation::permanently_delete_task,
             commands::task_commands::mutation::block_task,
             commands::task_commands::mutation::unblock_task,
+            commands::task_commands::mutation::cleanup_task,
+            commands::task_commands::mutation::cleanup_tasks_in_group,
             commands::task_commands::query::get_archived_count,
             commands::task_commands::query::search_tasks,
             commands::task_commands::query::get_valid_transitions,

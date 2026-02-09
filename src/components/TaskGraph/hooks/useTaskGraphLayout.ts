@@ -171,7 +171,8 @@ function createGroupNodes(
   includeUncategorized: boolean = true,
   projectId?: string,
   onNavigateToTask?: (taskId: string) => void,
-  onDeletePlan?: (planArtifactId: string) => void
+  onDeletePlan?: (planArtifactId: string) => void,
+  onRemoveAll?: (sessionId: string) => void
 ): PlanGroupNode[] {
   const args = {
     taskNodes,
@@ -189,6 +190,7 @@ function createGroupNodes(
     ...(projectId && { projectId }),
     ...(onNavigateToTask && { onNavigateToTask }),
     ...(onDeletePlan && { onDeletePlan }),
+    ...(onRemoveAll && { onRemoveAll }),
   };
   return buildPlanGroupNodes(args);
 }
@@ -461,7 +463,8 @@ function computeLayoutWithCache(
   cache: React.MutableRefObject<CachedLayout | null>,
   projectId?: string,
   onNavigateToTask?: (taskId: string) => void,
-  onDeletePlan?: (planArtifactId: string) => void
+  onDeletePlan?: (planArtifactId: string) => void,
+  onRemoveAll?: (sessionId: string) => void
 ): LayoutResult {
   // Use correct node dimensions based on compact mode
   const nodeWidth = config.isCompact ? COMPACT_NODE_WIDTH : NODE_WIDTH;
@@ -738,7 +741,8 @@ function computeLayoutWithCache(
     includeUncategorized,
     projectId,
     onNavigateToTask,
-    onDeletePlan
+    onDeletePlan,
+    onRemoveAll
   );
 
   const planGroupBounds = new Map<string, { position: { x: number; y: number }; width: number }>();
@@ -1033,7 +1037,8 @@ export function useTaskGraphLayout(
   onToggleAllTiers?: (planArtifactId: string, action: "expand" | "collapse") => void,
   projectId?: string,
   onNavigateToTask?: (taskId: string) => void,
-  onDeletePlan?: (planArtifactId: string) => void
+  onDeletePlan?: (planArtifactId: string) => void,
+  onRemoveAll?: (sessionId: string) => void
 ): LayoutResult {
   // Merge with default config
   const fullConfig = useMemo(
@@ -1064,7 +1069,8 @@ export function useTaskGraphLayout(
       layoutCache,
       projectId,
       onNavigateToTask,
-      onDeletePlan
+      onDeletePlan,
+      onRemoveAll
     );
   }, [
     graphNodes,
@@ -1081,6 +1087,7 @@ export function useTaskGraphLayout(
     projectId,
     onNavigateToTask,
     onDeletePlan,
+    onRemoveAll,
   ]);
 
   return layout;
