@@ -1,6 +1,9 @@
 /**
  * DescriptionBlock - Clean description text with empty state
  */
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
 
 interface DescriptionBlockProps {
   description: string | null | undefined;
@@ -17,12 +20,14 @@ export function DescriptionBlock({ description, testId }: DescriptionBlockProps)
   }
 
   return (
-    <p
+    <div
       data-testid={testId}
       className="text-[13px] text-white/65 leading-relaxed"
       style={{ wordBreak: "break-word" }}
     >
-      {description}
-    </p>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+        {description}
+      </ReactMarkdown>
+    </div>
   );
 }
