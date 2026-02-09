@@ -172,7 +172,7 @@ pub async fn delete_ideation_session(
         Some(app.clone()),
     );
     let report = cleanup_service
-        .cleanup_tasks(&tasks, StopMode::Graceful, true)
+        .cleanup_tasks(&tasks, StopMode::DirectStop, true)
         .await;
     if !report.errors.is_empty() {
         tracing::warn!(
