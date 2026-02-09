@@ -5,17 +5,27 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use tauri::AppHandle;
 
 use crate::application::git_service::GitService;
 use crate::commands::execution_commands::AGENT_ACTIVE_STATUSES;
 use crate::domain::entities::project::GitMode;
 use crate::domain::entities::{
-    IdeationSessionId, InternalStatus, ProjectId, Task,
+    IdeationSessionId, InternalStatus, ProjectId, Task, TaskId,
 };
 use crate::domain::repositories::{ProjectRepository, TaskRepository};
 use crate::domain::services::{RunningAgentKey, RunningAgentRegistry};
 use crate::error::AppResult;
+
+/// Abstraction for transitioning a task to Stopped status via the state machine.
+/// Implemented by TaskTransitionService in production; allows test doubles.
+#[async_trait]
+pub trait TaskStopper: Send + Sync {
+    /// Transition a task to Stopped, triggering on_exit side effects
+    /// (decrement running_count, emit events, etc.).
+    async fn transition_to_stopped(&self, task_id: &TaskId) -> AppResult<()>;
+}
 
 /// Controls how running agents are stopped during cleanup.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,6 +66,10 @@ pub struct TaskCleanupService {
     project_repo: Arc<dyn ProjectRepository>,
     running_agent_registry: Arc<dyn RunningAgentRegistry>,
     app_handle: Option<AppHandle>,
+    /// Optional task stopper for Graceful mode. When set, Graceful stop will
+    /// transition tasks to Stopped via the state machine (triggering on_exit
+    /// side effects). When None, Graceful falls back to DirectStop behavior.
+    task_stopper: Option<Arc<dyn TaskStopper>>,
 }
 
 impl TaskCleanupService {
@@ -70,7 +84,16 @@ impl TaskCleanupService {
             project_repo,
             running_agent_registry,
             app_handle,
+            task_stopper: None,
         }
+    }
+
+    /// Set the task stopper for Graceful mode (builder pattern).
+    /// Required when using `StopMode::Graceful` to properly transition tasks
+    /// through the state machine.
+    pub fn with_task_stopper(mut self, stopper: Arc<dyn TaskStopper>) -> Self {
+        self.task_stopper = Some(stopper);
+        self
     }
 
     /// Clean up a single task: stop agent → git cleanup → DB delete → optional event.
@@ -169,7 +192,12 @@ impl TaskCleanupService {
     // ── Private helpers ──────────────────────────────────────────────────
 
     /// Stop a running agent for a task.
-    async fn stop_task_agent(&self, task: &Task, _stop_mode: StopMode) {
+    ///
+    /// - `Graceful`: stop agent process, then transition to Stopped via state machine
+    ///   (triggers on_exit side effects like decrement running_count).
+    /// - `DirectStop`: stop agent process only, bypass state machine.
+    async fn stop_task_agent(&self, task: &Task, stop_mode: StopMode) {
+        // Step 1: Always stop the agent process
         let context_type = match task.internal_status {
             InternalStatus::Reviewing => "review",
             InternalStatus::Merging => "merge",
@@ -177,10 +205,26 @@ impl TaskCleanupService {
         };
         let key = RunningAgentKey::new(context_type, task.id.as_str());
         let _ = self.running_agent_registry.stop(&key).await;
+
+        // Step 2: For Graceful mode, also transition to Stopped via state machine
+        if stop_mode == StopMode::Graceful {
+            if let Some(ref stopper) = self.task_stopper {
+                if let Err(e) = stopper.transition_to_stopped(&task.id).await {
+                    tracing::warn!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Failed to transition task to Stopped during cleanup (non-fatal)"
+                    );
+                }
+            }
+        }
     }
 
     /// Clean up git resources (worktree + branch) for a task.
     /// Best-effort — errors are logged but not propagated.
+    ///
+    /// Safety: checks out base branch before deleting task branch to avoid
+    /// "cannot delete the branch you are currently on" errors in Local mode.
     async fn cleanup_git_resources(&self, task: &Task) {
         let project = match self.project_repo.get_by_id(&task.project_id).await {
             Ok(Some(p)) => p,
@@ -188,6 +232,7 @@ impl TaskCleanupService {
         };
 
         let repo_path = PathBuf::from(&project.working_directory);
+        let base_branch = project.base_branch.as_deref().unwrap_or("main");
         let task_branch = match &task.task_branch {
             Some(branch) => branch.clone(),
             None => return,
@@ -207,6 +252,15 @@ impl TaskCleanupService {
                     }
                 }
 
+                // Checkout base branch before deleting task branch
+                if let Err(e) = GitService::checkout_branch(&repo_path, base_branch) {
+                    tracing::warn!(
+                        base_branch = base_branch,
+                        error = %e,
+                        "Failed to checkout base branch during cleanup (non-fatal)"
+                    );
+                }
+
                 // Delete task branch
                 if let Err(e) = GitService::delete_branch(&repo_path, &task_branch, true) {
                     tracing::warn!(
@@ -217,7 +271,22 @@ impl TaskCleanupService {
                 }
             }
             GitMode::Local => {
-                // For local mode, just delete the branch
+                // Abort any in-progress rebase (safety for Local mode)
+                if GitService::is_rebase_in_progress(&repo_path) {
+                    let _ = GitService::abort_rebase(&repo_path);
+                }
+
+                // Checkout base branch before deleting task branch
+                // (avoids "cannot delete the branch you are currently on")
+                if let Err(e) = GitService::checkout_branch(&repo_path, base_branch) {
+                    tracing::warn!(
+                        base_branch = base_branch,
+                        error = %e,
+                        "Failed to checkout base branch during cleanup (non-fatal)"
+                    );
+                }
+
+                // Delete task branch
                 if let Err(e) = GitService::delete_branch(&repo_path, &task_branch, true) {
                     tracing::warn!(
                         branch = task_branch.as_str(),
