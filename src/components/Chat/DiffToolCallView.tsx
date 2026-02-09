@@ -41,6 +41,8 @@ interface DiffToolCallViewProps {
   toolCall: ToolCall;
   isStreaming?: boolean;
   className?: string;
+  /** Compact mode for rendering inside task cards — smaller padding, text, icons */
+  compact?: boolean;
 }
 
 // ============================================================================
@@ -68,6 +70,7 @@ export const DiffToolCallView = React.memo(function DiffToolCallView({
   toolCall,
   isStreaming,
   className = "",
+  compact = false,
 }: DiffToolCallViewProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -81,10 +84,12 @@ export const DiffToolCallView = React.memo(function DiffToolCallView({
   const needsCollapse = lines.length > MIN_LINES_FOR_COLLAPSE;
   const showFull = isExpanded || !needsCollapse;
 
+  const iconSize = compact ? 12 : 14;
+
   return (
     <div
       data-testid="diff-tool-call-view"
-      className={`rounded-lg overflow-hidden max-w-full ${className}`}
+      className={`${compact ? "rounded-md" : "rounded-lg"} overflow-hidden max-w-full ${compact ? "mb-1" : ""} ${className}`}
       style={{
         backgroundColor: "hsl(220 10% 14%)",
         border: "none",
@@ -93,27 +98,27 @@ export const DiffToolCallView = React.memo(function DiffToolCallView({
       {/* Header */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:opacity-80 transition-opacity"
+        className={`w-full flex items-center gap-2 ${compact ? "px-2 py-1.5" : "px-3 py-2"} text-left hover:opacity-80 transition-opacity`}
         aria-expanded={isExpanded}
         aria-label={`${toolCall.name} ${filePath}. ${additions} additions, ${deletions} deletions. Click to ${isExpanded ? "collapse" : "expand"}.`}
       >
         {/* Chevron */}
         {isExpanded ? (
-          <ChevronDown size={14} className="flex-shrink-0" style={{ color: "hsl(220 10% 45%)" }} />
+          <ChevronDown size={iconSize} className="flex-shrink-0" style={{ color: "hsl(220 10% 45%)" }} />
         ) : (
-          <ChevronRight size={14} className="flex-shrink-0" style={{ color: "hsl(220 10% 45%)" }} />
+          <ChevronRight size={iconSize} className="flex-shrink-0" style={{ color: "hsl(220 10% 45%)" }} />
         )}
 
         {/* Tool icon */}
         {isEdit ? (
-          <FileEdit size={14} className="flex-shrink-0" style={{ color: "hsl(14 100% 60%)" }} />
+          <FileEdit size={iconSize} className="flex-shrink-0" style={{ color: "hsl(14 100% 60%)" }} />
         ) : (
-          <FileText size={14} className="flex-shrink-0" style={{ color: "hsl(14 100% 60%)" }} />
+          <FileText size={iconSize} className="flex-shrink-0" style={{ color: "hsl(14 100% 60%)" }} />
         )}
 
         {/* Tool name badge */}
         <span
-          className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
+          className={`${compact ? "text-[9px]" : "text-[10px]"} px-1.5 py-0.5 rounded flex-shrink-0`}
           style={{
             backgroundColor: "hsl(220 10% 10%)",
             color: "hsl(220 10% 55%)",
@@ -125,14 +130,14 @@ export const DiffToolCallView = React.memo(function DiffToolCallView({
 
         {/* File path */}
         <span
-          className="text-xs truncate font-mono flex-1 min-w-0"
+          className={`${compact ? "text-[11px]" : "text-xs"} truncate font-mono flex-1 min-w-0`}
           style={{ color: "hsl(220 10% 75%)" }}
         >
           {shortenPath(filePath)}
         </span>
 
         {/* Stats badge */}
-        <span className="flex-shrink-0 flex items-center gap-1 text-[10px] font-mono">
+        <span className={`flex-shrink-0 flex items-center gap-1 ${compact ? "text-[9px]" : "text-[10px]"} font-mono`}>
           {additions > 0 && (
             <span style={{ color: "#34c759" }}>+{additions}</span>
           )}
@@ -144,7 +149,7 @@ export const DiffToolCallView = React.memo(function DiffToolCallView({
         {/* Streaming indicator */}
         {isStreaming && (
           <span
-            className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 animate-pulse"
+            className={`${compact ? "text-[9px]" : "text-[10px]"} px-1.5 py-0.5 rounded flex-shrink-0 animate-pulse`}
             style={{
               backgroundColor: "hsla(14 100% 60% / 0.15)",
               color: "hsl(14 100% 60%)",
