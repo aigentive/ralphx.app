@@ -18,4 +18,5 @@ export const AGENT_QUEUE_SENT = "agent:queue_sent";
 export const AGENT_MESSAGE = "agent:message";
 export const AGENT_TASK_STARTED = "agent:task_started";
 export const AGENT_TASK_COMPLETED = "agent:task_completed";
+export const AGENT_HOOK = "agent:hook";
 
