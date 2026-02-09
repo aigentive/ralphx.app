@@ -60,7 +60,7 @@ function ToolIcon({ name, hasError, size = 14 }: { name: string; hasError: boole
 
 export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCall, className = "", compact = false }: ToolCallIndicatorProps) {
   // Hooks must be called unconditionally (React rules-of-hooks)
-  const [isExpanded, setIsExpanded] = useState(toolCall.name.toLowerCase() === "bash");
+  const [isExpanded, setIsExpanded] = useState(false);
   const summary = useMemo(() => createSummary(toolCall), [toolCall]);
   const hasError = Boolean(toolCall.error);
 
