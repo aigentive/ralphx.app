@@ -31,17 +31,17 @@ export const PLAN_TOOLS = [
     },
     {
         name: "update_plan_artifact",
-        description: "Update an existing implementation plan's content. Use when the user provides feedback, clarifications, or decisions that need to be incorporated into the plan. Creates a new version of the artifact.",
+        description: "Update an existing implementation plan's content. Creates a NEW version with a new artifact ID (immutable version chain). Stale artifact IDs are auto-resolved: you can pass any previous version's ID and it will resolve to the latest before updating. Linked proposals are automatically re-linked to the new version (plan_version_at_creation is preserved). The response includes `previous_artifact_id` and `session_id` for reference. You do NOT need to call get_session_plan between updates to refresh the ID.",
         inputSchema: {
             type: "object",
             properties: {
                 artifact_id: {
                     type: "string",
-                    description: "The artifact ID of the plan to update",
+                    description: "The artifact ID of the plan to update. Can be any version ID — stale IDs are auto-resolved to the latest version.",
                 },
                 content: {
                     type: "string",
-                    description: "Updated plan content in markdown format. This will create a new version of the artifact.",
+                    description: "Updated plan content in markdown format. This will create a new version of the artifact with a new ID.",
                 },
             },
             required: ["artifact_id", "content"],
@@ -49,13 +49,13 @@ export const PLAN_TOOLS = [
     },
     {
         name: "get_plan_artifact",
-        description: "Retrieve a plan artifact's current content. Use when you need to reference the plan details during conversation or when creating proposals.",
+        description: "Retrieve a plan artifact's content by version ID. Returns the content of the specific version requested (not necessarily the latest). Use get_session_plan to find the current latest version for a session. Note: unlike update_plan_artifact and link_proposals_to_plan, this does NOT auto-resolve stale IDs.",
         inputSchema: {
             type: "object",
             properties: {
                 artifact_id: {
                     type: "string",
-                    description: "The artifact ID of the plan to retrieve",
+                    description: "The artifact ID of the specific version to retrieve. Returns that version's content, not the latest.",
                 },
             },
             required: ["artifact_id"],
@@ -63,7 +63,7 @@ export const PLAN_TOOLS = [
     },
     {
         name: "link_proposals_to_plan",
-        description: "Link multiple task proposals to an implementation plan. Use after creating proposals to establish the connection between the plan and its derived tasks. This enables traceability and allows the system to suggest updates when the plan changes.",
+        description: "Link multiple task proposals to an implementation plan. Use after creating proposals to establish the connection between the plan and its derived tasks. Stale artifact IDs are auto-resolved: you can pass any previous version's ID and it will resolve to the latest before linking. This enables traceability and allows the system to suggest updates when the plan changes.",
         inputSchema: {
             type: "object",
             properties: {
@@ -74,7 +74,7 @@ export const PLAN_TOOLS = [
                 },
                 artifact_id: {
                     type: "string",
-                    description: "The plan artifact ID to link proposals to",
+                    description: "The plan artifact ID to link proposals to. Can be any version ID — stale IDs are auto-resolved to the latest version.",
                 },
             },
             required: ["proposal_ids", "artifact_id"],
