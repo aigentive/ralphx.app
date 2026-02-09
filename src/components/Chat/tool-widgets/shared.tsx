@@ -3,60 +3,43 @@
  *
  * Design reference: mockups/tool-call-widgets.html
  * Palette: macOS Tahoe flat, blue-gray + orange accent (#ff6b35)
+ *
+ * Constants, types, and utilities are in shared.constants.ts
  */
 
-import React, { useState, useCallback, type ReactNode } from "react";
+import React, { useState, useCallback } from "react";
 import { ChevronRight, Check } from "lucide-react";
 
-// ============================================================================
-// CSS Constants (shared across all widgets)
-// ============================================================================
+// Re-export types from constants (values imported locally to avoid react-refresh warnings)
+export type {
+  ToolCall,
+  ToolCallWidgetProps,
+  BadgeVariant,
+  StepLineVariant,
+} from "./shared.constants";
 
-export const COLLAPSED_HEIGHT = 73;
-export const COLLAPSED_HEIGHT_COMPACT = 52;
-export const GRADIENT_HEIGHT = 36;
-export const TRANSITION_SPEED = "200ms";
-
-export const colors = {
-  bgBase: "hsl(220 10% 8%)",
-  bgSurface: "hsl(220 10% 12%)",
-  bgElevated: "hsl(220 10% 14%)",
-  bgHover: "hsl(220 10% 16%)",
-  bgTerminal: "hsl(220 10% 10%)",
-  textPrimary: "hsl(220 10% 90%)",
-  textSecondary: "hsl(220 10% 60%)",
-  textMuted: "hsl(220 10% 45%)",
-  accent: "hsl(14 100% 60%)",
-  accentDim: "hsla(14 100% 60% / 0.10)",
-  accentBorder: "hsla(14 100% 60% / 0.30)",
-  success: "#34c759",
-  successDim: "hsla(145 60% 45% / 0.10)",
-  error: "#ff453a",
-  errorDim: "hsla(0 70% 55% / 0.10)",
-  blue: "hsl(220 60% 50%)",
-  blueDim: "hsla(220 60% 50% / 0.12)",
-  border: "hsl(220 10% 18%)",
-  borderSubtle: "hsl(220 10% 15%)",
-} as const;
+import {
+  COLLAPSED_HEIGHT_COMPACT,
+  COLLAPSED_HEIGHT,
+  GRADIENT_HEIGHT,
+  TRANSITION_SPEED,
+  colors,
+  shortenPath,
+  badgeStyles,
+  stepVariantConfig,
+  type WidgetCardProps,
+  type WidgetHeaderProps,
+  type GradientFadeProps,
+  type CodePreviewProps,
+  type InlineIndicatorProps,
+  type StepLineProps,
+  type FilePathProps,
+  type BadgeProps,
+} from "./shared.constants";
 
 // ============================================================================
 // WidgetCard — Collapsible card with chevron, gradient-faded body
 // ============================================================================
-
-interface WidgetCardProps {
-  /** Header content (passed to WidgetHeader or custom) */
-  header: ReactNode;
-  /** Body content (shown when expanded/collapsed with gradient) */
-  children: ReactNode;
-  /** Start expanded */
-  defaultExpanded?: boolean;
-  /** Compact mode for nested/subagent rendering */
-  compact?: boolean;
-  /** Additional className */
-  className?: string;
-  /** If true, body is always fully visible (no collapse) — for <=3 result items */
-  alwaysExpanded?: boolean;
-}
 
 export const WidgetCard = React.memo(function WidgetCard({
   header,
@@ -161,15 +144,6 @@ export const WidgetCard = React.memo(function WidgetCard({
 // WidgetHeader — Icon + title + badge layout (used inside WidgetCard header)
 // ============================================================================
 
-interface WidgetHeaderProps {
-  icon?: ReactNode;
-  title: string;
-  badge?: ReactNode;
-  compact?: boolean;
-  /** Use monospace font for title (file paths, patterns) */
-  mono?: boolean;
-}
-
 export function WidgetHeader({ icon, title, badge, compact = false, mono = false }: WidgetHeaderProps) {
   return (
     <>
@@ -201,11 +175,6 @@ export function WidgetHeader({ icon, title, badge, compact = false, mono = false
 // GradientFade — Standalone gradient overlay for custom layouts
 // ============================================================================
 
-interface GradientFadeProps {
-  visible: boolean;
-  bgColor?: string;
-}
-
 export function GradientFade({ visible, bgColor = colors.bgSurface }: GradientFadeProps) {
   return (
     <div
@@ -227,14 +196,6 @@ export function GradientFade({ visible, bgColor = colors.bgSurface }: GradientFa
 // ============================================================================
 // CodePreview — Monospace text with line numbers
 // ============================================================================
-
-interface CodePreviewProps {
-  /** Lines of code to display */
-  lines: string[];
-  /** Starting line number (default 1) */
-  startLine?: number;
-  compact?: boolean;
-}
 
 export function CodePreview({ lines, startLine = 1, compact = false }: CodePreviewProps) {
   return (
@@ -274,11 +235,6 @@ export function CodePreview({ lines, startLine = 1, compact = false }: CodePrevi
 // InlineIndicator — Single-line minimal indicator (for empty states)
 // ============================================================================
 
-interface InlineIndicatorProps {
-  icon?: ReactNode;
-  text: string;
-}
-
 export function InlineIndicator({ icon, text }: InlineIndicatorProps) {
   return (
     <div
@@ -299,23 +255,6 @@ export function InlineIndicator({ icon, text }: InlineIndicatorProps) {
 // ============================================================================
 // StepLine — Ultra-compact step started/completed indicator
 // ============================================================================
-
-type StepLineVariant = "started" | "completed" | "added" | "skipped" | "failed";
-
-interface StepLineProps {
-  variant: StepLineVariant;
-  title: string;
-  note?: string;
-  compact?: boolean;
-}
-
-const stepVariantConfig: Record<StepLineVariant, { color: string; label: string; badgeVariant: BadgeVariant }> = {
-  started: { color: colors.accent, label: "started", badgeVariant: "muted" },
-  completed: { color: colors.success, label: "completed", badgeVariant: "success" },
-  added: { color: colors.blue, label: "added", badgeVariant: "blue" },
-  skipped: { color: colors.textMuted, label: "skipped", badgeVariant: "muted" },
-  failed: { color: colors.error, label: "failed", badgeVariant: "error" },
-};
 
 export function StepLine({ variant, title, note, compact = false }: StepLineProps) {
   const config = stepVariantConfig[variant];
@@ -407,12 +346,6 @@ export function StepLine({ variant, title, note, compact = false }: StepLineProp
 // FilePath — Smart path shortening
 // ============================================================================
 
-interface FilePathProps {
-  path: string;
-  /** Max characters before shortening */
-  maxLength?: number;
-}
-
 export function FilePath({ path, maxLength = 50 }: FilePathProps) {
   const shortened = shortenPath(path, maxLength);
   return (
@@ -431,44 +364,9 @@ export function FilePath({ path, maxLength = 50 }: FilePathProps) {
   );
 }
 
-/** Shorten a file path by collapsing middle directories */
-export function shortenPath(path: string, maxLength: number): string {
-  if (path.length <= maxLength) return path;
-
-  const parts = path.split("/");
-  if (parts.length <= 2) return path;
-
-  // Keep first directory and last 2 segments
-  const first = parts[0] || "";
-  const last2 = parts.slice(-2).join("/");
-  const shortened = `${first}/.../${last2}`;
-
-  if (shortened.length <= maxLength) return shortened;
-
-  // Last resort: just show .../ + filename
-  const filename = parts[parts.length - 1] || "";
-  return `.../${filename}`;
-}
-
 // ============================================================================
 // Badge — Small status badges
 // ============================================================================
-
-export type BadgeVariant = "muted" | "success" | "accent" | "error" | "blue";
-
-interface BadgeProps {
-  variant: BadgeVariant;
-  children: ReactNode;
-  compact?: boolean;
-}
-
-const badgeStyles: Record<BadgeVariant, { bg: string; color: string }> = {
-  muted: { bg: colors.border, color: colors.textMuted },
-  success: { bg: colors.successDim, color: colors.success },
-  accent: { bg: colors.accentDim, color: colors.accent },
-  error: { bg: colors.errorDim, color: colors.error },
-  blue: { bg: colors.blueDim, color: colors.blue },
-};
 
 export function Badge({ variant, children, compact = false }: BadgeProps) {
   const style = badgeStyles[variant];
@@ -488,23 +386,4 @@ export function Badge({ variant, children, compact = false }: BadgeProps) {
       {children}
     </span>
   );
-}
-
-// ============================================================================
-// ToolCallWidgetProps — Standard props interface for all widget components
-// ============================================================================
-
-export interface ToolCallWidgetProps {
-  /** The tool call data */
-  toolCall: {
-    id: string;
-    name: string;
-    arguments: unknown;
-    result?: unknown;
-    error?: string;
-  };
-  /** Compact mode */
-  compact?: boolean;
-  /** Additional className */
-  className?: string;
 }
