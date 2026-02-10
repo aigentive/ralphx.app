@@ -28,6 +28,7 @@ pub struct AgentConfig {
 
 #[derive(Debug, Clone)]
 pub struct ClaudeRuntimeConfig {
+    pub mcp_server_name: String,
     pub permission_mode: String,
     pub dangerously_skip_permissions: bool,
     pub permission_prompt_tool: String,
@@ -60,6 +61,7 @@ struct AgentConfigRaw {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 struct ClaudeRuntimeConfigRaw {
+    mcp_server_name: String,
     setting_sources: Option<Vec<String>>,
     permission_mode: String,
     dangerously_skip_permissions: bool,
@@ -70,10 +72,11 @@ struct ClaudeRuntimeConfigRaw {
 impl Default for ClaudeRuntimeConfigRaw {
     fn default() -> Self {
         Self {
+            mcp_server_name: "ralphx".to_string(),
             setting_sources: None,
             permission_mode: "default".to_string(),
             dangerously_skip_permissions: false,
-            permission_prompt_tool: "mcp__ralphx__permission_request".to_string(),
+            permission_prompt_tool: "permission_request".to_string(),
             append_system_prompt_file: true,
         }
     }
@@ -96,6 +99,14 @@ struct LoadedConfig {
 }
 
 static LOADED_CONFIG_CELL: OnceLock<LoadedConfig> = OnceLock::new();
+
+fn normalize_mcp_tool_name(raw: &str, server_name: &str) -> String {
+    if raw.starts_with("mcp__") {
+        raw.to_string()
+    } else {
+        format!("mcp__{server_name}__{raw}")
+    }
+}
 
 fn config_path() -> PathBuf {
     if let Ok(path) = std::env::var("RALPHX_CONFIG_PATH") {
@@ -167,11 +178,16 @@ fn parse_config(yaml: &str) -> Option<LoadedConfig> {
         });
     }
 
+    let mcp_server_name = parsed.claude.mcp_server_name.clone();
     let claude = ClaudeRuntimeConfig {
+        mcp_server_name,
         setting_sources: parsed.claude.setting_sources,
         permission_mode: parsed.claude.permission_mode,
         dangerously_skip_permissions: parsed.claude.dangerously_skip_permissions,
-        permission_prompt_tool: parsed.claude.permission_prompt_tool,
+        permission_prompt_tool: normalize_mcp_tool_name(
+            &parsed.claude.permission_prompt_tool,
+            &parsed.claude.mcp_server_name,
+        ),
         use_append_system_prompt_file: parsed.claude.append_system_prompt_file,
     };
 
@@ -200,6 +216,7 @@ fn load_config() -> LoadedConfig {
     parse_config(EMBEDDED_CONFIG).unwrap_or_else(|| LoadedConfig {
         agents: Vec::new(),
         claude: ClaudeRuntimeConfig {
+            mcp_server_name: "ralphx".to_string(),
             setting_sources: None,
             permission_mode: "default".to_string(),
             dangerously_skip_permissions: false,
@@ -235,9 +252,10 @@ pub fn get_allowed_tools(agent_name: &str) -> Option<String> {
 pub fn get_preapproved_tools(agent_name: &str) -> Option<String> {
     get_agent_config(agent_name).and_then(|c| {
         let mut tools: Vec<String> = Vec::new();
+        let mcp_server = &claude_runtime_config().mcp_server_name;
 
         for t in &c.allowed_mcp_tools {
-            tools.push(format!("mcp__ralphx__{}", t));
+            tools.push(format!("mcp__{}__{}", mcp_server, t));
         }
 
         tools.extend(c.preapproved_cli_tools.iter().cloned());
@@ -353,5 +371,78 @@ mod tests {
                 prompt_path.display()
             );
         }
+    }
+
+    #[test]
+    fn test_permission_prompt_tool_accepts_shorthand() {
+        let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+agents:
+  - name: ralphx-worker
+    tools:
+      extends: base_tools
+      include: [Write]
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: []
+    system_prompt_file: ralphx-plugin/agents/worker.md
+"#;
+        let parsed = parse_config(yaml).expect("config should parse");
+        assert_eq!(
+            parsed.claude.permission_prompt_tool,
+            "mcp__ralphx__permission_request"
+        );
+    }
+
+    #[test]
+    fn test_permission_prompt_tool_keeps_fully_qualified_name() {
+        let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: mcp__external__permission_prompt
+agents:
+  - name: ralphx-worker
+    tools:
+      extends: base_tools
+      include: [Write]
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: []
+    system_prompt_file: ralphx-plugin/agents/worker.md
+"#;
+        let parsed = parse_config(yaml).expect("config should parse");
+        assert_eq!(
+            parsed.claude.permission_prompt_tool,
+            "mcp__external__permission_prompt"
+        );
+    }
+
+    #[test]
+    fn test_mcp_server_name_changes_shorthand_prefix() {
+        let yaml = r#"
+claude:
+  mcp_server_name: acme
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+agents:
+  - name: ralphx-worker
+    tools:
+      extends: base_tools
+      include: [Write]
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: []
+    system_prompt_file: ralphx-plugin/agents/worker.md
+"#;
+        let parsed = parse_config(yaml).expect("config should parse");
+        assert_eq!(parsed.claude.mcp_server_name, "acme");
+        assert_eq!(
+            parsed.claude.permission_prompt_tool,
+            "mcp__acme__permission_request"
+        );
     }
 }

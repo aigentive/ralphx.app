@@ -182,17 +182,17 @@ pub fn run() {
                 }
             });
 
-            // Register RalphX MCP server with Claude Code CLI
+            // Register configured MCP server with Claude Code CLI
             // This ensures the MCP tools are available regardless of user's working directory
             if let (Some(cli_path), Some(plugin_dir)) = (
                 infrastructure::agents::claude::find_claude_cli(),
                 infrastructure::agents::claude::find_plugin_dir(),
             ) {
-                info!("Registering RalphX MCP server...");
+                info!("Registering configured MCP server...");
                 tauri::async_runtime::spawn(async move {
                     match infrastructure::agents::claude::register_mcp_server(&cli_path, &plugin_dir).await {
-                        Ok(()) => info!("RalphX MCP server registered successfully"),
-                        Err(e) => warn!("Failed to register RalphX MCP server: {}", e),
+                        Ok(()) => info!("Configured MCP server registered successfully"),
+                        Err(e) => warn!("Failed to register configured MCP server: {}", e),
                     }
                 });
             } else {
