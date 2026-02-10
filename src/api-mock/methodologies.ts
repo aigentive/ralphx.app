@@ -8,6 +8,7 @@ import type {
   MethodologyResponse,
   MethodologyActivationResponse,
 } from "@/api/methodologies";
+import { AGENT_REVIEWER } from "@/constants/agents";
 
 // ============================================================================
 // Mock Data
@@ -17,7 +18,7 @@ const mockMethodology: MethodologyResponse = {
   id: "methodology-scrum",
   name: "Scrum Methodology",
   description: "Agile Scrum workflow with sprints and ceremonies",
-  agent_profiles: ["developer", "reviewer", "scrum-master"],
+  agent_profiles: ["developer", AGENT_REVIEWER, "scrum-master"],
   skills: ["code-review", "sprint-planning", "retrospective"],
   workflow_id: "workflow-scrum",
   workflow_name: "Scrum Workflow",
@@ -43,7 +44,7 @@ const mockMethodology: MethodologyResponse = {
       name: "Sprint Review",
       order: 2,
       description: "Review completed work",
-      agent_profiles: ["reviewer"],
+      agent_profiles: [AGENT_REVIEWER],
       column_ids: ["col-review"],
     },
   ],
