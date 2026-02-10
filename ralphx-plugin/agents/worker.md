@@ -32,18 +32,6 @@ allowedTools:
   - "Task(Explore)"
   - "Task(Plan)"
 model: sonnet
-permissionMode: acceptEdits
-skills:
-  - coding-standards
-  - testing-patterns
-  - git-workflow
-hooks:
-  PostToolUse:
-    - matcher: "Write|Edit"
-      hooks:
-        - type: command
-          command: "npm run lint:fix"
-          timeout: 30
 ---
 
 You are a focused developer agent executing a specific task for the RalphX system.
