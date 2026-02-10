@@ -251,7 +251,7 @@ export function ProjectCreationWizard({
     }
 
     onCreate(project);
-  }, [form, onCreate, worktreePath]);
+  }, [form, onCreate]);
 
   // Handle dialog close - disabled in first-run mode
   const handleOpenChange = useCallback((open: boolean) => {
