@@ -15,30 +15,12 @@
 
 import React from "react";
 import { StepLine, Badge, InlineIndicator } from "./shared";
-import { colors } from "./shared.constants";
+import { colors, getString, getNumber } from "./shared.constants";
 import type { ToolCallWidgetProps, StepLineVariant } from "./shared.constants";
 
 // ============================================================================
 // Argument / result extraction helpers
 // ============================================================================
-
-/** Safely extract a string field from an unknown arguments object */
-function getString(obj: unknown, key: string): string | undefined {
-  if (obj != null && typeof obj === "object" && key in (obj as Record<string, unknown>)) {
-    const val = (obj as Record<string, unknown>)[key];
-    return typeof val === "string" ? val : undefined;
-  }
-  return undefined;
-}
-
-/** Safely extract a number field from an unknown object */
-function getNumber(obj: unknown, key: string): number | undefined {
-  if (obj != null && typeof obj === "object" && key in (obj as Record<string, unknown>)) {
-    const val = (obj as Record<string, unknown>)[key];
-    return typeof val === "number" ? val : undefined;
-  }
-  return undefined;
-}
 
 /** Extract step title from arguments or result (tries common field names) */
 function extractStepTitle(toolCall: ToolCallWidgetProps["toolCall"]): string {

@@ -35,6 +35,7 @@ import {
   type StepLineProps,
   type FilePathProps,
   type BadgeProps,
+  type WidgetRowProps,
 } from "./shared.constants";
 
 // ============================================================================
@@ -367,6 +368,26 @@ export function FilePath({ path, maxLength = 50 }: FilePathProps) {
     >
       {shortened}
     </span>
+  );
+}
+
+// ============================================================================
+// WidgetRow — Flex row container used by inline widget sub-renderers
+// ============================================================================
+
+export function WidgetRow({ compact = false, children }: WidgetRowProps) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 7,
+        padding: compact ? "3px 10px" : "5px 10px",
+        margin: "2px 0",
+      }}
+    >
+      {children}
+    </div>
   );
 }
 

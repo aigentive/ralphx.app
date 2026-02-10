@@ -21,37 +21,13 @@ import {
   Search,
   GitBranch,
 } from "lucide-react";
-import { InlineIndicator, Badge } from "./shared";
-import { colors } from "./shared.constants";
+import { InlineIndicator, Badge, WidgetRow } from "./shared";
+import { colors, getString, getNumber, getArray } from "./shared.constants";
 import type { ToolCallWidgetProps } from "./shared.constants";
 
 // ============================================================================
 // Helpers
 // ============================================================================
-
-function getString(obj: unknown, key: string): string | undefined {
-  if (obj != null && typeof obj === "object" && key in (obj as Record<string, unknown>)) {
-    const val = (obj as Record<string, unknown>)[key];
-    return typeof val === "string" ? val : undefined;
-  }
-  return undefined;
-}
-
-function getNumber(obj: unknown, key: string): number | undefined {
-  if (obj != null && typeof obj === "object" && key in (obj as Record<string, unknown>)) {
-    const val = (obj as Record<string, unknown>)[key];
-    return typeof val === "number" ? val : undefined;
-  }
-  return undefined;
-}
-
-function getArray(obj: unknown, key: string): unknown[] | undefined {
-  if (obj != null && typeof obj === "object" && key in (obj as Record<string, unknown>)) {
-    const val = (obj as Record<string, unknown>)[key];
-    return Array.isArray(val) ? val : undefined;
-  }
-  return undefined;
-}
 
 type IdeationTool =
   | "create_plan_artifact"
@@ -86,15 +62,7 @@ function PlanCreated({ toolCall, compact }: ToolCallWidgetProps) {
     ?? "Plan";
 
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 7,
-        padding: compact ? "3px 10px" : "5px 10px",
-        margin: "2px 0",
-      }}
-    >
+    <WidgetRow compact={compact}>
       <FileText size={12} style={{ color: colors.accent, flexShrink: 0 }} />
       <span
         style={{
@@ -109,7 +77,7 @@ function PlanCreated({ toolCall, compact }: ToolCallWidgetProps) {
         {title}
       </span>
       <Badge variant="success" compact>Plan created</Badge>
-    </div>
+    </WidgetRow>
   );
 }
 
@@ -132,15 +100,7 @@ function LinkProposals({ toolCall, compact }: ToolCallWidgetProps) {
     : "Proposals linked to plan";
 
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 7,
-        padding: compact ? "3px 10px" : "5px 10px",
-        margin: "2px 0",
-      }}
-    >
+    <WidgetRow compact={compact}>
       <Link size={11} style={{ color: colors.blue, flexShrink: 0 }} />
       <span
         style={{
@@ -152,7 +112,7 @@ function LinkProposals({ toolCall, compact }: ToolCallWidgetProps) {
         {text}
       </span>
       {count != null && <Badge variant="blue" compact>{count}</Badge>}
-    </div>
+    </WidgetRow>
   );
 }
 
@@ -168,15 +128,7 @@ function AskUserQuestion({ toolCall, compact }: ToolCallWidgetProps) {
     : preview;
 
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 7,
-        padding: compact ? "3px 10px" : "5px 10px",
-        margin: "2px 0",
-      }}
-    >
+    <WidgetRow compact={compact}>
       <MessageCircleQuestion size={12} style={{ color: colors.accent, flexShrink: 0 }} />
       <span
         style={{
@@ -192,7 +144,7 @@ function AskUserQuestion({ toolCall, compact }: ToolCallWidgetProps) {
         {truncated}
       </span>
       <Badge variant="accent" compact>Question</Badge>
-    </div>
+    </WidgetRow>
   );
 }
 
@@ -206,15 +158,7 @@ function ListProposals({ toolCall, compact }: ToolCallWidgetProps) {
   }
 
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 7,
-        padding: compact ? "3px 10px" : "5px 10px",
-        margin: "2px 0",
-      }}
-    >
+    <WidgetRow compact={compact}>
       <List size={12} style={{ color: colors.textMuted, flexShrink: 0 }} />
       <span
         style={{
@@ -226,7 +170,7 @@ function ListProposals({ toolCall, compact }: ToolCallWidgetProps) {
         {n} proposal{n !== 1 ? "s" : ""} in session
       </span>
       <Badge variant="muted" compact>{n}</Badge>
-    </div>
+    </WidgetRow>
   );
 }
 
@@ -239,15 +183,7 @@ function GetProposal({ toolCall, compact }: ToolCallWidgetProps) {
   }
 
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 7,
-        padding: compact ? "3px 10px" : "5px 10px",
-        margin: "2px 0",
-      }}
-    >
+    <WidgetRow compact={compact}>
       <Search size={11} style={{ color: colors.textMuted, flexShrink: 0 }} />
       <span
         style={{
@@ -263,7 +199,7 @@ function GetProposal({ toolCall, compact }: ToolCallWidgetProps) {
       </span>
       {category && <Badge variant="accent" compact>{category}</Badge>}
       <Badge variant="muted" compact>Loaded</Badge>
-    </div>
+    </WidgetRow>
   );
 }
 
@@ -277,15 +213,7 @@ function GetSessionPlan({ toolCall, compact }: ToolCallWidgetProps) {
   }
 
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 7,
-        padding: compact ? "3px 10px" : "5px 10px",
-        margin: "2px 0",
-      }}
-    >
+    <WidgetRow compact={compact}>
       <FileText size={11} style={{ color: colors.textMuted, flexShrink: 0 }} />
       <span
         style={{
@@ -301,7 +229,7 @@ function GetSessionPlan({ toolCall, compact }: ToolCallWidgetProps) {
       </span>
       {version != null && <Badge variant="muted" compact>v{version}</Badge>}
       <Badge variant="muted" compact>Loaded</Badge>
-    </div>
+    </WidgetRow>
   );
 }
 
@@ -319,15 +247,7 @@ function AnalyzeDependencies({ toolCall, compact }: ToolCallWidgetProps) {
   }
 
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 7,
-        padding: compact ? "3px 10px" : "5px 10px",
-        margin: "2px 0",
-      }}
-    >
+    <WidgetRow compact={compact}>
       <GitBranch size={11} style={{ color: hasCycles ? colors.error : colors.success, flexShrink: 0 }} />
       <span
         style={{
@@ -340,7 +260,7 @@ function AnalyzeDependencies({ toolCall, compact }: ToolCallWidgetProps) {
       </span>
       {hasCycles && <Badge variant="error" compact>Cycles</Badge>}
       {!hasCycles && <Badge variant="success" compact>OK</Badge>}
-    </div>
+    </WidgetRow>
   );
 }
 

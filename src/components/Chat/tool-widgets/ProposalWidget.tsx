@@ -11,8 +11,8 @@
 
 import React from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
-import { InlineIndicator, Badge } from "./shared";
-import { colors } from "./shared.constants";
+import { InlineIndicator, Badge, WidgetRow } from "./shared";
+import { colors, getString } from "./shared.constants";
 import type { ToolCallWidgetProps } from "./shared.constants";
 
 // ============================================================================
@@ -26,14 +26,6 @@ function getAction(toolName: string): ProposalAction {
   if (name.includes("delete")) return "deleted";
   if (name.includes("update")) return "updated";
   return "created";
-}
-
-function getString(obj: unknown, key: string): string | undefined {
-  if (obj != null && typeof obj === "object" && key in (obj as Record<string, unknown>)) {
-    const val = (obj as Record<string, unknown>)[key];
-    return typeof val === "string" ? val : undefined;
-  }
-  return undefined;
 }
 
 /** Extract proposal title from args or result */
@@ -125,15 +117,7 @@ export const ProposalWidget = React.memo(function ProposalWidget({
   }
 
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 7,
-        padding: compact ? "3px 10px" : "5px 10px",
-        margin: "2px 0",
-      }}
-    >
+    <WidgetRow compact={compact}>
       {/* Action icon */}
       <span
         style={{
@@ -185,6 +169,6 @@ export const ProposalWidget = React.memo(function ProposalWidget({
 
       {/* Action badge */}
       <Badge variant={config.badgeVariant} compact>{config.label}</Badge>
-    </div>
+    </WidgetRow>
   );
 });
