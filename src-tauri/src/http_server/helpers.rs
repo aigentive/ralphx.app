@@ -561,12 +561,15 @@ pub async fn maybe_trigger_dependency_analysis(
             }
         };
 
-        // Build command using the established pattern (creates dynamic MCP config with --agent-type)
+        // Build spawnable command using the established pattern
         let agent_name = crate::infrastructure::agents::claude::agent_names::AGENT_DEPENDENCY_SUGGESTER;
-        let mut cmd = match crate::infrastructure::agents::claude::build_base_cli_command(
+        let spawnable = match crate::infrastructure::agents::claude::build_spawnable_command(
             &cli_path,
             &plugin_dir,
+            &prompt,
             Some(agent_name),
+            None, // No resume session
+            &working_directory,
         ) {
             Ok(cmd) => cmd,
             Err(err) => {
@@ -578,19 +581,8 @@ pub async fn maybe_trigger_dependency_analysis(
             }
         };
 
-        // Add agent and prompt args
-        crate::infrastructure::agents::claude::add_prompt_args(
-            &mut cmd,
-            &prompt,
-            Some(agent_name),
-            None, // No resume session
-        );
-
-        // Configure working dir and stdio capture
-        crate::infrastructure::agents::claude::configure_spawn(&mut cmd, &working_directory);
-
         // Spawn the agent
-        match cmd.spawn() {
+        match spawnable.spawn().await {
             Ok(mut child) => {
                 // Wait for completion (fire-and-forget style, but log errors)
                 tokio::spawn(async move {

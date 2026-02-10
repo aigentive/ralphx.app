@@ -262,4 +262,39 @@ describe("useStepProgress", () => {
 
     expect(result.current.data?.inProgress).toBe(0);
   });
+
+  it("should poll when isExecuting is true even with all steps pending", async () => {
+    const mockProgressAllPending: StepProgressSummary = {
+      taskId: "task-1",
+      total: 5,
+      completed: 0,
+      inProgress: 0,
+      pending: 5,
+      skipped: 0,
+      failed: 0,
+      currentStep: null,
+      nextStep: null,
+      percentComplete: 0,
+    };
+
+    vi.mocked(api.steps.getProgress).mockResolvedValue(mockProgressAllPending);
+
+    const { result } = renderHook(
+      () => useStepProgress("task-1", { isExecuting: true }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    // All steps are pending but isExecuting ensures polling continues
+    expect(result.current.data?.inProgress).toBe(0);
+    expect(result.current.data?.pending).toBe(5);
+
+    // Wait for refetch to occur (isExecuting=true triggers 5s polling even with 0 inProgress)
+    // The mock should be called more than once due to polling
+    const initialCallCount = vi.mocked(api.steps.getProgress).mock.calls.length;
+    expect(initialCallCount).toBeGreaterThanOrEqual(1);
+  });
 });

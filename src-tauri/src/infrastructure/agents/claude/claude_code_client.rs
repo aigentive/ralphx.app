@@ -144,9 +144,14 @@ impl AgenticClient for ClaudeCodeClient {
             args.extend(["--plugin-dir".to_string(), plugin_dir.display().to_string()]);
 
             // Create dynamic MCP config for agent-specific tool filtering
+            // Use --strict-mcp-config to ignore user/global MCP servers that can hang
             if let Some(agent) = &config.agent {
                 if let Some(temp_path) = create_mcp_config(plugin_dir, agent) {
-                    args.extend(["--mcp-config".to_string(), temp_path.display().to_string()]);
+                    args.extend([
+                        "--mcp-config".to_string(),
+                        temp_path.display().to_string(),
+                        "--strict-mcp-config".to_string(),
+                    ]);
                 }
             }
         }
@@ -194,7 +199,8 @@ impl AgenticClient for ClaudeCodeClient {
             .current_dir(&config.working_directory)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .stdin(Stdio::null());
+            .stdin(Stdio::null())
+            .env("DISABLE_AUTOUPDATER", "true");
 
         // Add environment variables
         for (key, value) in &config.env {
@@ -202,6 +208,7 @@ impl AgenticClient for ClaudeCodeClient {
         }
 
         // Spawn the process and record start time for duration tracking
+        tracing::info!(cmd = ?cmd, "Spawning CLI agent (agentic)");
         let start_time = Instant::now();
         let child = cmd
             .spawn()
@@ -326,9 +333,14 @@ impl ClaudeCodeClient {
             args.extend(["--plugin-dir".to_string(), plugin_dir.display().to_string()]);
 
             // Create dynamic MCP config for agent-specific tool filtering
+            // Use --strict-mcp-config to ignore user/global MCP servers that can hang
             if let Some(agent) = &config.agent {
                 if let Some(temp_path) = create_mcp_config(plugin_dir, agent) {
-                    args.extend(["--mcp-config".to_string(), temp_path.display().to_string()]);
+                    args.extend([
+                        "--mcp-config".to_string(),
+                        temp_path.display().to_string(),
+                        "--strict-mcp-config".to_string(),
+                    ]);
                 }
             }
         }
@@ -426,7 +438,8 @@ impl ClaudeCodeClient {
             .current_dir(&config.working_directory)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .stdin(Stdio::null());
+            .stdin(Stdio::null())
+            .env("DISABLE_AUTOUPDATER", "true");
 
         // Add environment variables from config
         for (key, value) in &config.env {
@@ -434,6 +447,7 @@ impl ClaudeCodeClient {
         }
 
         // Spawn the process
+        tracing::info!(cmd = ?cmd, "Spawning CLI agent (streaming)");
         let child = cmd
             .spawn()
             .map_err(|e| AgentError::SpawnFailed(e.to_string()))?;

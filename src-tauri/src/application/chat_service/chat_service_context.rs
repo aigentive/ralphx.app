@@ -7,7 +7,6 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::process::Command;
 
 use crate::domain::entities::{
     ChatContextType, ChatConversation, ChatConversationId, ChatMessage, ChatMessageId,
@@ -17,8 +16,8 @@ use crate::domain::repositories::{
     IdeationSessionRepository, ProjectRepository, TaskRepository,
 };
 use crate::infrastructure::agents::claude::{
-    add_prompt_args, build_base_cli_command, configure_spawn, mcp_agent_type, ContentBlockItem,
-    ToolCall,
+    build_spawnable_command, mcp_agent_type, SpawnableCommand,
+    ContentBlockItem, ToolCall,
 };
 
 use crate::infrastructure::agents::claude::agent_names;
@@ -216,7 +215,7 @@ pub fn build_initial_prompt(
     }
 }
 
-/// Create a Claude CLI command
+/// Create a spawnable Claude CLI command.
 ///
 /// `entity_status` is optional and enables dynamic agent resolution based on state.
 /// For example, a review context with status "review_passed" will use the review-chat agent.
@@ -228,7 +227,7 @@ pub fn build_command(
     working_directory: &Path,
     entity_status: Option<&str>,
     project_id: Option<&str>,
-) -> Result<Command, String> {
+) -> Result<SpawnableCommand, String> {
     // Compute agent_name using the resolution system (context type + optional status)
     let agent_name = resolve_agent(&conversation.context_type, entity_status);
     tracing::debug!(
@@ -237,25 +236,6 @@ pub fn build_command(
         entity_status = ?entity_status,
         "Setting RALPHX_AGENT_TYPE for context"
     );
-
-    // Pass agent_type to build_base_cli_command so it can create dynamic MCP config
-    // with the agent type as CLI arg (env vars don't propagate to MCP servers)
-    let mut cmd = build_base_cli_command(cli_path, plugin_dir, Some(agent_name))?;
-    // Use short name for env var — MCP server's TOOL_ALLOWLIST uses unprefixed names
-    cmd.env("RALPHX_AGENT_TYPE", crate::infrastructure::agents::claude::mcp_agent_type(agent_name));
-
-    // Add task scope for task-related contexts
-    match conversation.context_type {
-        ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge => {
-            cmd.env("RALPHX_TASK_ID", &conversation.context_id);
-        }
-        _ => {}
-    }
-
-    // Add project scope for all contexts
-    if let Some(pid) = project_id {
-        cmd.env("RALPHX_PROJECT_ID", pid);
-    }
 
     // For reviewer agent (not review-chat), start fresh session each review cycle.
     // Resuming causes the model to see old "Review already submitted" messages.
@@ -266,27 +246,39 @@ pub fn build_command(
         && !is_fresh_review_cycle
         && conversation.context_type != ChatContextType::TaskExecution;
 
-    let (prompt, resume_session, agent) = if should_resume {
+    let (prompt, resume_session) = if should_resume {
         let session_id = conversation.claude_session_id.as_ref().unwrap();
-        // CRITICAL: Always pass agent even when resuming to enforce disallowedTools
-        // Without this, resumed sessions bypass tool restrictions (e.g., Write/Edit)
-        (user_message.to_string(), Some(session_id.as_str()), Some(agent_name))
+        (user_message.to_string(), Some(session_id.as_str().to_string()))
     } else {
         let initial_prompt = build_initial_prompt(
             conversation.context_type,
             &conversation.context_id,
             user_message,
         );
-        (initial_prompt, None, Some(agent_name))
+        (initial_prompt, None)
     };
 
-    add_prompt_args(&mut cmd, &prompt, agent, resume_session);
-    configure_spawn(&mut cmd, working_directory);
+    let mut spawnable = build_spawnable_command(
+        cli_path, plugin_dir, &prompt,
+        Some(agent_name), resume_session.as_deref(), working_directory,
+    )?;
 
-    Ok(cmd)
+    // Add env vars for agent/task/project scope
+    spawnable.env("RALPHX_AGENT_TYPE", mcp_agent_type(agent_name));
+    match conversation.context_type {
+        ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge => {
+            spawnable.env("RALPHX_TASK_ID", &conversation.context_id);
+        }
+        _ => {}
+    }
+    if let Some(pid) = project_id {
+        spawnable.env("RALPHX_PROJECT_ID", pid);
+    }
+
+    Ok(spawnable)
 }
 
-/// Build a Claude CLI command for resuming a session (queue messages).
+/// Build a spawnable CLI command for resuming a session (queue messages).
 ///
 /// Like `build_command()`, but always resumes with the given session_id
 /// and uses static agent resolution (no entity_status needed for queue messages).
@@ -299,33 +291,29 @@ pub fn build_resume_command(
     working_directory: &Path,
     session_id: &str,
     project_id: Option<&str>,
-) -> Result<Command, String> {
+) -> Result<SpawnableCommand, String> {
     let agent_name = resolve_agent(&context_type, None);
 
-    let mut cmd = build_base_cli_command(cli_path, plugin_dir, Some(agent_name))?;
-    cmd.env("RALPHX_AGENT_TYPE", mcp_agent_type(agent_name));
+    let mut spawnable = build_spawnable_command(
+        cli_path, plugin_dir, message,
+        Some(agent_name), Some(session_id), working_directory,
+    )?;
 
-    // Task scope
+    spawnable.env("RALPHX_AGENT_TYPE", mcp_agent_type(agent_name));
     match context_type {
         ChatContextType::Task
         | ChatContextType::TaskExecution
         | ChatContextType::Review
         | ChatContextType::Merge => {
-            cmd.env("RALPHX_TASK_ID", context_id);
+            spawnable.env("RALPHX_TASK_ID", context_id);
         }
         _ => {}
     }
-
-    // Project scope
     if let Some(pid) = project_id {
-        cmd.env("RALPHX_PROJECT_ID", pid);
+        spawnable.env("RALPHX_PROJECT_ID", pid);
     }
 
-    // CRITICAL: Always pass agent even when resuming — enforces disallowedTools
-    add_prompt_args(&mut cmd, message, Some(agent_name), Some(session_id));
-    configure_spawn(&mut cmd, working_directory);
-
-    Ok(cmd)
+    Ok(spawnable)
 }
 
 /// Create a user message based on context type

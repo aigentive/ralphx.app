@@ -136,9 +136,18 @@ impl<R: Runtime> StartupJobRunner<R> {
     pub async fn run(&self) {
         debug!("StartupJobRunner::run() called");
 
+        // Kill orphaned MCP server node processes from previous session.
+        // Pattern-based cleanup catches leaked processes that escaped PID tracking
+        // (e.g. app crashed before registering PID, or child survived parent kill).
+        let mcp_killed = crate::domain::services::running_agent_registry::kill_orphaned_mcp_servers();
+        if mcp_killed > 0 {
+            info!(count = mcp_killed, "Killed orphaned MCP server processes");
+        }
+
         // Phase 105: Kill orphaned agent OS processes from previous session.
         // The SQLite-backed registry persists PIDs across restarts, so we can
         // SIGTERM old processes before spawning new ones.
+        // Now uses process-tree kill (children first, then parent).
         let killed = self.running_agent_registry.stop_all().await;
         if !killed.is_empty() {
             info!(count = killed.len(), "Killed orphaned agent processes from previous session");

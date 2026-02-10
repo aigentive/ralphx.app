@@ -73,10 +73,19 @@ pub trait RunningAgentRegistry: Send + Sync {
     async fn stop_all(&self) -> Vec<RunningAgentKey>;
 }
 
-/// Send SIGTERM to a process by PID. Shared helper for all implementations.
+/// Send SIGTERM to a process and all its children (process tree kill).
+///
+/// On Unix: first kills children via `pkill -TERM -P <pid>`, then kills the parent.
+/// This prevents orphaned child processes (e.g. MCP server nodes) from lingering.
 pub fn kill_process(pid: u32) {
     #[cfg(unix)]
     {
+        // Kill children first (MCP server nodes, etc.)
+        let _ = std::process::Command::new("pkill")
+            .args(["-TERM", "-P", &pid.to_string()])
+            .output();
+
+        // Then kill the parent process
         let output = std::process::Command::new("kill")
             .args(["-TERM", &pid.to_string()])
             .output();
@@ -99,9 +108,55 @@ pub fn kill_process(pid: u32) {
 
     #[cfg(windows)]
     {
+        // /T flag kills the process tree on Windows
         let _ = std::process::Command::new("taskkill")
-            .args(["/PID", &pid.to_string(), "/F"])
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
             .output();
+    }
+}
+
+/// Kill orphaned MCP server processes from previous app sessions.
+///
+/// Pattern-matches on `node ... ralphx-mcp-server/build/index.js` to catch any
+/// leaked processes that escaped PID-based tracking (e.g. app crash before registration).
+/// Safe to call on startup — only kills ralphx MCP servers, not user processes.
+pub fn kill_orphaned_mcp_servers() -> u32 {
+    #[cfg(unix)]
+    {
+        // Find node processes running our MCP server
+        let output = std::process::Command::new("pgrep")
+            .args(["-f", "ralphx-mcp-server/build/index.js"])
+            .output();
+
+        match output {
+            Ok(result) if result.status.success() => {
+                let stdout = String::from_utf8_lossy(&result.stdout);
+                let pids: Vec<&str> = stdout.trim().lines().collect();
+                let count = pids.len() as u32;
+
+                for pid_str in &pids {
+                    if let Ok(pid) = pid_str.trim().parse::<u32>() {
+                        tracing::info!(pid, "Killing orphaned MCP server process");
+                        let _ = std::process::Command::new("kill")
+                            .args(["-TERM", pid_str.trim()])
+                            .output();
+                    }
+                }
+
+                if count > 0 {
+                    tracing::info!(count, "Killed orphaned ralphx MCP server processes");
+                }
+                count
+            }
+            _ => 0, // No matches or pgrep failed
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        // Windows: use wmic or tasklist to find matching processes
+        // For now, rely on process tree kill (/T flag in taskkill)
+        0
     }
 }
 

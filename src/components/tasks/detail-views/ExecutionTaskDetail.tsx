@@ -114,7 +114,7 @@ function RevisionFeedbackCard({
 
 export function ExecutionTaskDetail({ task, isHistorical }: ExecutionTaskDetailProps) {
   const { data: steps, isLoading: stepsLoading } = useTaskSteps(task.id);
-  const { data: progress } = useStepProgress(task.id);
+  const { data: progress } = useStepProgress(task.id, { isExecuting: !isHistorical });
   const { data: history, isLoading: historyLoading } = useTaskStateHistory(
     task.id,
     { enabled: task.internalStatus === "re_executing" }

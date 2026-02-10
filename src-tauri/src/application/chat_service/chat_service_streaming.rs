@@ -6,7 +6,12 @@
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::time::{timeout, Duration};
 use tracing::info;
+
+/// Maximum time to wait for a single line of stdout output before killing the agent.
+/// If no output is received for this duration, the agent is considered stuck.
+const LINE_READ_TIMEOUT: Duration = Duration::from_secs(300); // 5 minutes
 
 use crate::domain::entities::{
     ActivityEvent, ActivityEventType, ChatContextType, ChatConversationId, ChatMessageId, TaskId,
@@ -104,7 +109,36 @@ pub async fn process_stream_background<R: Runtime>(
     let mut last_flush = std::time::Instant::now();
     const FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
 
-    while let Ok(Some(line)) = lines.next_line().await {
+    loop {
+        let line = match timeout(LINE_READ_TIMEOUT, lines.next_line()).await {
+            Ok(Ok(Some(line))) => line,
+            Ok(Ok(None)) => break, // EOF — stream ended normally
+            Ok(Err(e)) => {
+                tracing::error!(
+                    conversation_id = %conversation_id_str,
+                    error = %e,
+                    "Stream read error"
+                );
+                break;
+            }
+            Err(_) => {
+                // Timeout — no output for LINE_READ_TIMEOUT seconds
+                tracing::warn!(
+                    conversation_id = %conversation_id_str,
+                    lines_seen,
+                    lines_parsed,
+                    "Stream timeout: no output for {} seconds, killing agent",
+                    LINE_READ_TIMEOUT.as_secs()
+                );
+                let _ = child.kill().await;
+                return Err(format!(
+                    "Agent timed out: no output for {} seconds (lines_seen={})",
+                    LINE_READ_TIMEOUT.as_secs(),
+                    lines_seen
+                ));
+            }
+        };
+
         lines_seen += 1;
         if debug_lines.len() < 50 {
             debug_lines.push(line.clone());
@@ -507,6 +541,17 @@ pub async fn process_stream_background<R: Runtime>(
 
     // Wait for stderr task
     let stderr_content = stderr_task.await.unwrap_or_default();
+
+    // Log stderr when agent produced no output (critical diagnostic for stuck agents)
+    if lines_seen == 0 {
+        let stderr_preview = &stderr_content[..stderr_content.len().min(2000)];
+        tracing::warn!(
+            conversation_id = %conversation_id_str,
+            stderr_len = stderr_content.len(),
+            "Stream ended with ZERO lines from stdout. stderr: {}",
+            stderr_preview
+        );
+    }
 
     // Wait for process
     let status = child.wait().await.map_err(|e| e.to_string())?;
