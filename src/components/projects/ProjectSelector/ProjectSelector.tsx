@@ -47,11 +47,10 @@ export interface ProjectSelectorProps {
 
 interface GitModeBadgeProps {
   mode: "local" | "worktree";
-  branch?: string | null;
   compact?: boolean;
 }
 
-function GitModeBadge({ mode, branch, compact = false }: GitModeBadgeProps) {
+function GitModeBadge({ mode, compact = false }: GitModeBadgeProps) {
   const isWorktree = mode === "worktree";
 
   if (compact) {
@@ -61,7 +60,7 @@ function GitModeBadge({ mode, branch, compact = false }: GitModeBadgeProps) {
         style={{ color: "var(--text-muted)" }}
       >
         {isWorktree && <GitBranch className="w-3 h-3" />}
-        <span className="font-mono">{isWorktree ? branch || "worktree" : "local"}</span>
+        <span className="font-mono">{isWorktree ? "worktree" : "local"}</span>
       </span>
     );
   }
@@ -114,16 +113,10 @@ function ProjectItem({ project, isActive, onSelect }: ProjectItemProps) {
         <span className="text-sm font-medium truncate">{project.name}</span>
       </div>
       <div className="flex items-center gap-1.5 flex-shrink-0">
-        {/* Dirty indicator (if needed, project doesn't have this yet) */}
-        {/* Branch name */}
-        {isWorktree && project.worktreeBranch && (
-          <span className="text-xs font-mono text-[var(--text-muted)]">
-            {project.worktreeBranch}
-          </span>
-        )}
-        {!isWorktree && (
-          <span className="text-xs text-[var(--text-muted)]">local</span>
-        )}
+        {/* Git mode badge */}
+        <span className="text-xs text-[var(--text-muted)]">
+          {isWorktree ? "worktree" : "local"}
+        </span>
       </div>
     </DropdownMenuItem>
   );
@@ -173,7 +166,6 @@ export function ProjectSelector({ onNewProject, className = "", align = "center"
               <span className="text-sm font-medium truncate">{activeProject.name}</span>
               <GitModeBadge
                 mode={activeProject.gitMode}
-                branch={activeProject.worktreeBranch}
                 compact
               />
             </span>

@@ -17,8 +17,6 @@ export const ProjectResponseSchema = z.object({
   name: z.string().min(1),
   working_directory: z.string().min(1),
   git_mode: GitModeSchema,
-  worktree_path: z.string().nullable(),
-  worktree_branch: z.string().nullable(),
   base_branch: z.string().nullable(),
   worktree_parent_directory: z.string().nullish(),
   use_feature_branches: z.boolean().default(true),
@@ -35,8 +33,6 @@ export interface Project {
   name: string;
   workingDirectory: string;
   gitMode: GitMode;
-  worktreePath: string | null;
-  worktreeBranch: string | null;
   baseBranch: string | null;
   worktreeParentDirectory: string | null;
   useFeatureBranches: boolean;
@@ -55,8 +51,6 @@ export function transformProject(
     name: response.name,
     workingDirectory: response.working_directory,
     gitMode: response.git_mode,
-    worktreePath: response.worktree_path,
-    worktreeBranch: response.worktree_branch,
     baseBranch: response.base_branch,
     worktreeParentDirectory: response.worktree_parent_directory ?? null,
     useFeatureBranches: response.use_feature_branches,
@@ -76,8 +70,6 @@ export const CreateProjectSchema = z.object({
   name: z.string().min(1, "Project name is required"),
   workingDirectory: z.string().min(1, "Working directory is required"),
   gitMode: GitModeSchema.default("local"),
-  worktreePath: z.string().optional(),
-  worktreeBranch: z.string().optional(),
   baseBranch: z.string().optional(),
   worktreeParentDirectory: z.string().optional(),
 });
@@ -92,8 +84,6 @@ export const UpdateProjectSchema = z.object({
   name: z.string().min(1).optional(),
   workingDirectory: z.string().min(1).optional(),
   gitMode: GitModeSchema.optional(),
-  worktreePath: z.string().nullable().optional(),
-  worktreeBranch: z.string().nullable().optional(),
   baseBranch: z.string().nullable().optional(),
   worktreeParentDirectory: z.string().nullable().optional(),
 });
