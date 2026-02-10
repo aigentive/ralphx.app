@@ -388,7 +388,9 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   }, [graphData]);
 
   // Keep ref in sync (used by initial-fit effect)
-  expandedPlanIdRef.current = expandedPlanId;
+  useEffect(() => {
+    expandedPlanIdRef.current = expandedPlanId;
+  }, [expandedPlanId]);
 
   // Plan group collapse: recompute defaults synchronously when graphData changes
   const [prevPlanCollapseData, setPrevPlanCollapseData] = useState<typeof graphData>(undefined);
@@ -429,6 +431,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     || grouping.byTier !== prevTierCollapseInputs.byTier
     || grouping.showUncategorized !== prevTierCollapseInputs.showUncategorized;
 
+  let expandedPlanHasTiers = false;
   if (tierInputsChanged) {
     setPrevTierCollapseInputs({
       graphData,
@@ -498,22 +501,25 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
         }
 
         setCollapsedTierIds((prev) => areSetsEqual(prev, toCollapseTiers) ? prev : toCollapseTiers);
-
-        // Only set pending auto-center AFTER initial fit has completed.
-        // On initial load, the initial-fit effect owns viewport positioning.
-        if (
-          initialFitDoneRef.current &&
-          expandedPlanId &&
-          tiersByPlanLocal.has(expandedPlanId) &&
-          expandedPlanId !== lastAutoCenteredPlanRef.current
-        ) {
-          pendingTierAutoCenterRef.current = expandedPlanId;
-        }
+        expandedPlanHasTiers = tiersByPlanLocal.has(expandedPlanId ?? "");
       }
     }
   }
 
   // ---- End synchronous collapsed-state derivation ----------------------------
+
+  // Auto-center on expanded plan group when tier collapse inputs change.
+  // Moved out of synchronous block to avoid accessing refs during render.
+  useEffect(() => {
+    if (
+      initialFitDoneRef.current &&
+      expandedPlanId &&
+      expandedPlanHasTiers &&
+      expandedPlanId !== lastAutoCenteredPlanRef.current
+    ) {
+      pendingTierAutoCenterRef.current = expandedPlanId;
+    }
+  }, [expandedPlanId, expandedPlanHasTiers, tierInputsChanged]);
 
   useEffect(() => {
     if (!isNavCompact) {
@@ -871,6 +877,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   const prevNodesRef = useRef<Node[]>([]);
   const prevEdgesRef = useRef<Edge[]>([]);
 
+  /* eslint-disable react-hooks/refs -- intentional: ref-based memoization to stabilize array identity for nodes/edges */
   const nodes = useMemo<Node[]>(() => {
     const groupNodesWithSelection = groupNodes.map((node) => {
       if (node.type === PLAN_GROUP_NODE_TYPE) {
@@ -946,6 +953,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     prevEdgesRef.current = layoutEdges;
     return layoutEdges;
   }, [layoutEdges]);
+  /* eslint-enable react-hooks/refs */
 
   // Handle node changes (for selection, dragging etc.) in controlled mode
   const onNodesChange: OnNodesChange = useCallback(() => {
@@ -1022,7 +1030,9 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   // Uses ref to avoid re-firing when focusSelectionInView ref changes.
   // Skips on first graphSelection change (initial load handles its own positioning).
   const focusInViewRef = useRef(focusSelectionInView);
-  focusInViewRef.current = focusSelectionInView;
+  useEffect(() => {
+    focusInViewRef.current = focusSelectionInView;
+  }, [focusSelectionInView]);
   const prevGraphSelectionRef = useRef<typeof graphSelection>(undefined);
 
   useEffect(() => {
@@ -1130,7 +1140,9 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
           </div>
         ) : (
           <ReactFlow
+            // eslint-disable-next-line react-hooks/refs -- nodes/edges are ref-stabilized via useMemo
             nodes={nodes}
+            // eslint-disable-next-line react-hooks/refs
             edges={edges}
             nodeTypes={activeNodeTypes}
             edgeTypes={edgeTypes}
