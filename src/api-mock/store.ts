@@ -10,6 +10,7 @@ import type { Task, InternalStatus } from "@/types/task";
 import type { Project } from "@/types/project";
 import type { TaskStep } from "@/types/task-step";
 import type { ChatConversation } from "@/types/chat-conversation";
+import { AGENT_WORKER } from "@/constants/agents";
 import {
   createMockTask,
   createMockProject,
@@ -89,7 +90,7 @@ function seedMockData(): void {
           status: "completed",
           sortOrder: 0,
           dependsOn: null,
-          createdBy: "worker",
+          createdBy: AGENT_WORKER,
           completionNote: "Environment ready",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -104,7 +105,7 @@ function seedMockData(): void {
           status: status === "pending_review" ? "completed" : "in_progress",
           sortOrder: 1,
           dependsOn: null,
-          createdBy: "worker",
+          createdBy: AGENT_WORKER,
           completionNote: null,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -119,7 +120,7 @@ function seedMockData(): void {
           status: "pending",
           sortOrder: 2,
           dependsOn: null,
-          createdBy: "worker",
+          createdBy: AGENT_WORKER,
           completionNote: null,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),

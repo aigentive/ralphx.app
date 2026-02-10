@@ -8,6 +8,7 @@
 import type { Task, TaskListResponse, CreateTask, UpdateTask, InternalStatus } from "@/types/task";
 import type { TaskStep, StepProgressSummary } from "@/types/task-step";
 import type { CleanupReport, InjectTaskResponse, InjectTaskInput, StateTransition } from "@/api/tasks";
+import { AGENT_WORKER } from "@/constants/agents";
 import { createMockTask, generateTestUuid } from "@/test/mock-data";
 import { getStore } from "./store";
 
@@ -22,7 +23,7 @@ function createMockStep(overrides: Partial<TaskStep> & { id: string; taskId: str
     status: "pending",
     sortOrder: 0,
     dependsOn: null,
-    createdBy: "worker",
+    createdBy: AGENT_WORKER,
     completionNote: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
