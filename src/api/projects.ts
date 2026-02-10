@@ -122,7 +122,7 @@ export const projectsApi = {
   update: (projectId: string, input: UpdateProject) =>
     typedInvokeWithTransform(
       "update_project",
-      { projectId, input },
+      { id: projectId, input },
       ProjectResponseSchema,
       transformProject
     ),
