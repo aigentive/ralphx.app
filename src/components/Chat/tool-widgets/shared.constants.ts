@@ -81,6 +81,33 @@ export const badgeStyles: Record<BadgeVariant, { bg: string; color: string }> = 
 // Utility Functions
 // ============================================================================
 
+/** Safely extract a string field from an unknown object */
+export function getString(obj: unknown, key: string): string | undefined {
+  if (obj != null && typeof obj === "object" && key in (obj as Record<string, unknown>)) {
+    const val = (obj as Record<string, unknown>)[key];
+    return typeof val === "string" ? val : undefined;
+  }
+  return undefined;
+}
+
+/** Safely extract a number field from an unknown object */
+export function getNumber(obj: unknown, key: string): number | undefined {
+  if (obj != null && typeof obj === "object" && key in (obj as Record<string, unknown>)) {
+    const val = (obj as Record<string, unknown>)[key];
+    return typeof val === "number" ? val : undefined;
+  }
+  return undefined;
+}
+
+/** Safely extract an array field from an unknown object */
+export function getArray(obj: unknown, key: string): unknown[] | undefined {
+  if (obj != null && typeof obj === "object" && key in (obj as Record<string, unknown>)) {
+    const val = (obj as Record<string, unknown>)[key];
+    return Array.isArray(val) ? val : undefined;
+  }
+  return undefined;
+}
+
 /** Shorten a file path by collapsing middle directories */
 export function shortenPath(path: string, maxLength: number): string {
   if (path.length <= maxLength) return path;
@@ -196,4 +223,9 @@ export interface BadgeProps {
   variant: BadgeVariant;
   children: ReactNode;
   compact?: boolean;
+}
+
+export interface WidgetRowProps {
+  compact?: boolean | undefined;
+  children: ReactNode;
 }
