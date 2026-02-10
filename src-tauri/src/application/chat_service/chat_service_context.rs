@@ -258,7 +258,7 @@ pub fn build_command(
     // Resuming causes the model to see old "Review already submitted" messages.
     // But review-chat needs session persistence for user conversation continuity.
     let is_fresh_review_cycle = conversation.context_type == ChatContextType::Review
-        && agent_name == "ralphx-reviewer";
+        && agent_name == "ralphx:ralphx-reviewer";
     let should_resume = conversation.claude_session_id.is_some()
         && !is_fresh_review_cycle
         && conversation.context_type != ChatContextType::TaskExecution;
