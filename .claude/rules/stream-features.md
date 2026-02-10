@@ -1,6 +1,6 @@
 # Features Stream
 
-**Required Context:** @.claude/rules/code-quality-standards.md | @.claude/rules/git-workflow.md | @.claude/rules/gap-verification.md | @.claude/rules/visual-verification.md | @.claude/rules/commit-lock.md
+**Required Context:** code-quality-standards.md | git-workflow.md | gap-verification.md | visual-verification.md | commit-lock.md
 
 > **Maintainer note:** This file optimizes for LLM context efficiency. Rules: (1) Tables > prose (2) One example max per concept (3) No redundant explanations (4) Use symbols: → = leads to, | = or, ❌/✅ = wrong/right (5) Before adding content, ask: "Can this be a single line?" If yes, make it one line.
 
@@ -19,7 +19,7 @@ The features stream handles **PRD tasks and P0 gap fixes**. It is the primary st
 | 3 | **No quality improvement work** — that's other streams' job |
 | 4 | **TDD mandatory** — tests FIRST |
 | 5 | **Document patterns inline** — new patterns go in src/CLAUDE.md or src-tauri/CLAUDE.md |
-| 6 | **Follow git workflow rules** — see @.claude/rules/git-workflow.md |
+| 6 | **Follow git workflow rules** — see git-workflow.md |
 
 ## Recovery Check (ALWAYS FIRST)
 
@@ -70,7 +70,7 @@ Follow the Recovery Check in `git-workflow.md` with these ownership rules:
 | Modified: src/components/, src/views/, src/pages/, src/modals/, *.tsx | MUST complete visual verification |
 | Modified: backend-only, tests-only, config-only | Skip to step 7 |
 
-**Execute per @.claude/rules/visual-verification.md, then checkpoint:**
+**Execute per visual-verification.md, then checkpoint:**
 
 | Checkpoint | Evidence Required | If Missing |
 |------------|-------------------|------------|
@@ -91,7 +91,7 @@ Do NOT run frontend linters for backend-only changes (and vice versa).
 
 ### Step 10: Commit (with Lock)
 
-See @.claude/rules/commit-lock.md for full protocol.
+See commit-lock.md for full protocol.
 
 | Requirement | Details |
 |-------------|---------|
@@ -130,8 +130,8 @@ When all PRD tasks have `"passes": true`:
 
 | Step | Action | If Gaps Found |
 |------|--------|---------------|
-| 1 | Run code gap verification (@.claude/rules/gap-verification.md) | Add P0s → Continue |
-| 2 | Run visual gap verification (@.claude/rules/visual-gap-verification.md) | Add P0s → Continue |
+| 1 | Run code gap verification (gap-verification.md) | Add P0s → Continue |
+| 2 | Run visual gap verification (visual-gap-verification.md) | Add P0s → Continue |
 | 3 | No gaps → Update manifest.json | Set current `"status": "complete"`, next `"status": "active"` |
 | 4 | Commit | `chore: complete phase N, activate phase N+1` |
 
@@ -180,9 +180,9 @@ Log entries go in `streams/features/activity.md`:
 
 | Topic | Location |
 |-------|----------|
-| Visual verification details | @.claude/rules/visual-verification.md |
-| Code gap verification | @.claude/rules/gap-verification.md |
-| Visual gap verification | @.claude/rules/visual-gap-verification.md |
-| Code quality standards | @.claude/rules/code-quality-standards.md |
-| Commit lock protocol | @.claude/rules/commit-lock.md |
+| Visual verification details | visual-verification.md |
+| Code gap verification | gap-verification.md |
+| Visual gap verification | visual-gap-verification.md |
+| Code quality standards | code-quality-standards.md |
+| Commit lock protocol | commit-lock.md |
 | Manifest and phases | `specs/manifest.json` |
