@@ -1,6 +1,6 @@
 # Refactor Stream
 
-**Required Context:** @.claude/rules/code-quality-standards.md | @.claude/rules/git-workflow.md
+**Required Context:** code-quality-standards.md | git-workflow.md
 
 ## Overview
 
@@ -13,9 +13,9 @@ The refactor stream handles **P1 large file splits and architectural refactors o
 1. **ONE P1 item per iteration, then STOP**
 2. **ONLY do P1 work from backlog.md** — cannot pick PRD tasks, P0s, P2s, or P3s
 3. **Cannot skip to easier work** — there is no easier work in this stream
-4. **Must verify LOC limits** — reference @.claude/rules/code-quality-standards.md before starting
+4. **Must verify LOC limits** — reference code-quality-standards.md before starting
 5. **Run linters after every change** — only for what you modified (cargo clippy for Rust, npm lint for TS)
-6. **Follow git workflow rules** — see @.claude/rules/git-workflow.md
+6. **Follow git workflow rules** — see git-workflow.md
 
 ## Recovery Check (ALWAYS FIRST)
 
@@ -70,7 +70,7 @@ Activity log status (failed/reverted) is irrelevant. The backlog defines what wo
 
 ## LOC Limits Reference
 
-From @.claude/rules/code-quality-standards.md:
+From code-quality-standards.md:
 
 ### Backend (src-tauri/)
 | Condition | Max Lines | Action |
@@ -160,5 +160,5 @@ Log entries go in `streams/refactor/activity.md`:
 
 ## Reference
 
-- LOC limits and extraction patterns: @.claude/rules/code-quality-standards.md
-- Hygiene refills this backlog: @.claude/rules/stream-hygiene.md
+- LOC limits and extraction patterns: code-quality-standards.md
+- Hygiene refills this backlog: stream-hygiene.md
