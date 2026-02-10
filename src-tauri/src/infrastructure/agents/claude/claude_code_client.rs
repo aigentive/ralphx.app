@@ -23,7 +23,10 @@ use crate::domain::agents::{
     ClientCapabilities, ClientType, ResponseChunk,
 };
 
-use super::{ensure_claude_spawn_allowed, get_preapproved_tools, get_allowed_tools, create_mcp_config};
+use super::{
+    apply_common_spawn_env, claude_runtime_config, create_mcp_config,
+    ensure_claude_spawn_allowed, get_allowed_tools, get_preapproved_tools, sanitize_claude_user_state,
+};
 
 // ============================================================================
 // Streaming Event Types
@@ -124,6 +127,7 @@ impl AgenticClient for ClaudeCodeClient {
         if let Err(err) = ensure_claude_spawn_allowed() {
             return Err(AgentError::SpawnNotAllowed(err));
         }
+        sanitize_claude_user_state();
 
         // Check if CLI is available first
         if !self.cli_path.exists() && which::which(&self.cli_path).is_err() {
@@ -138,6 +142,13 @@ impl AgenticClient for ClaudeCodeClient {
         // Add output format for streaming
         args.extend(["--output-format".to_string(), "stream-json".to_string()]);
         args.push("--verbose".to_string()); // Required for stream-json with -p
+        if let Some(sources) = &claude_runtime_config().setting_sources {
+            if !sources.is_empty() {
+                args.extend(["--setting-sources".to_string(), sources.join(",")]);
+            }
+        }
+        // Avoid startup parser crashes in slash-command/skills loading path.
+        args.push("--disable-slash-commands".to_string());
 
         // Add plugin directory for agent/skill discovery
         if let Some(plugin_dir) = &config.plugin_dir {
@@ -168,9 +179,16 @@ impl AgenticClient for ClaudeCodeClient {
             }
         }
 
-        // Add model if specified
+        // Add model: explicit config override first, then per-agent default from ralphx.yaml
         if let Some(model) = &config.model {
             args.extend(["--model".to_string(), model.clone()]);
+        } else if let Some(agent_name) = &config.agent {
+            if let Some(agent_model) =
+                crate::infrastructure::agents::claude::get_agent_config(agent_name)
+                    .and_then(|cfg| cfg.model.as_ref())
+            {
+                args.extend(["--model".to_string(), agent_model.clone()]);
+            }
         }
 
         // Add max tokens if specified
@@ -178,12 +196,19 @@ impl AgenticClient for ClaudeCodeClient {
             args.extend(["--max-tokens".to_string(), max_tokens.to_string()]);
         }
 
-        // Add permission prompt tool for UI-based approval of non-pre-approved tools
-        // The MCP tool name format: mcp__<server>__<tool>
+        // Permission handling from ralphx.yaml
+        let runtime = claude_runtime_config();
         args.extend([
             "--permission-prompt-tool".to_string(),
-            "mcp__ralphx__permission_request".to_string(),
+            runtime.permission_prompt_tool.clone(),
         ]);
+        args.extend([
+            "--permission-mode".to_string(),
+            runtime.permission_mode.clone(),
+        ]);
+        if runtime.dangerously_skip_permissions {
+            args.push("--dangerously-skip-permissions".to_string());
+        }
 
         // Pre-approve agent-specific tools (MCP + CLI permissions, no prompts)
         if let Some(agent) = &config.agent {
@@ -199,8 +224,11 @@ impl AgenticClient for ClaudeCodeClient {
             .current_dir(&config.working_directory)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .stdin(Stdio::null())
-            .env("DISABLE_AUTOUPDATER", "true");
+            .stdin(Stdio::null());
+        apply_common_spawn_env(&mut cmd);
+        if let Some(plugin_dir) = &config.plugin_dir {
+            cmd.env("CLAUDE_PLUGIN_ROOT", plugin_dir);
+        }
 
         // Add environment variables
         for (key, value) in &config.env {
@@ -319,6 +347,7 @@ impl ClaudeCodeClient {
     /// This is used by both spawn_agent and spawn_agent_streaming to ensure
     /// consistent argument construction.
     fn build_cli_args(&self, config: &AgentConfig, resume_session_id: Option<&str>) -> Vec<String> {
+        sanitize_claude_user_state();
         let mut args = Vec::new();
 
         // Prompt
@@ -327,6 +356,13 @@ impl ClaudeCodeClient {
         // Output format for streaming
         args.extend(["--output-format".to_string(), "stream-json".to_string()]);
         args.push("--verbose".to_string()); // Required for stream-json with -p
+        if let Some(sources) = &claude_runtime_config().setting_sources {
+            if !sources.is_empty() {
+                args.extend(["--setting-sources".to_string(), sources.join(",")]);
+            }
+        }
+        // Avoid startup parser crashes in slash-command/skills loading path.
+        args.push("--disable-slash-commands".to_string());
 
         // Plugin directory for agent/skill discovery
         if let Some(plugin_dir) = &config.plugin_dir {
@@ -367,9 +403,16 @@ impl ClaudeCodeClient {
             }
         }
 
-        // Model override
+        // Model override: explicit config first, then per-agent default from ralphx.yaml
         if let Some(model) = &config.model {
             args.extend(["--model".to_string(), model.clone()]);
+        } else if let Some(agent_name) = &config.agent {
+            if let Some(agent_model) =
+                crate::infrastructure::agents::claude::get_agent_config(agent_name)
+                    .and_then(|cfg| cfg.model.as_ref())
+            {
+                args.extend(["--model".to_string(), agent_model.clone()]);
+            }
         }
 
         // Max tokens
@@ -377,11 +420,19 @@ impl ClaudeCodeClient {
             args.extend(["--max-tokens".to_string(), max_tokens.to_string()]);
         }
 
-        // Permission prompt tool for UI-based approval
+        // Permission handling from ralphx.yaml
+        let runtime = claude_runtime_config();
         args.extend([
             "--permission-prompt-tool".to_string(),
-            "mcp__ralphx__permission_request".to_string(),
+            runtime.permission_prompt_tool.clone(),
         ]);
+        args.extend([
+            "--permission-mode".to_string(),
+            runtime.permission_mode.clone(),
+        ]);
+        if runtime.dangerously_skip_permissions {
+            args.push("--dangerously-skip-permissions".to_string());
+        }
 
         // Pre-approve agent-specific tools (MCP + CLI permissions, no prompts)
         if let Some(agent) = &config.agent {
@@ -438,8 +489,11 @@ impl ClaudeCodeClient {
             .current_dir(&config.working_directory)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .stdin(Stdio::null())
-            .env("DISABLE_AUTOUPDATER", "true");
+            .stdin(Stdio::null());
+        apply_common_spawn_env(&mut cmd);
+        if let Some(plugin_dir) = &config.plugin_dir {
+            cmd.env("CLAUDE_PLUGIN_ROOT", plugin_dir);
+        }
 
         // Add environment variables from config
         for (key, value) in &config.env {
@@ -646,6 +700,17 @@ mod tests {
 
         assert!(args.contains(&"--model".to_string()));
         assert!(args.contains(&"opus".to_string()));
+    }
+
+    #[test]
+    fn test_build_cli_args_uses_agent_model_when_not_overridden() {
+        let client = ClaudeCodeClient::new();
+        let config = AgentConfig::worker("Test")
+            .with_agent(crate::infrastructure::agents::claude::agent_names::AGENT_MERGER);
+
+        let args = client.build_cli_args(&config, None);
+        let model_idx = args.iter().position(|a| a == "--model").expect("--model flag must be present");
+        assert_eq!(args[model_idx + 1], "opus");
     }
 
     #[test]

@@ -33,6 +33,7 @@ use super::chat_service_types::{
     AgentErrorPayload, AgentMessageCreatedPayload, AgentQueueSentPayload,
     AgentRunCompletedPayload, AgentRunStartedPayload,
 };
+use super::has_meaningful_output;
 
 /// Spawn background task to process agent run, handle stream, transitions, and queue.
 ///
@@ -157,7 +158,7 @@ pub fn spawn_send_message_background<R: Runtime>(
                 }
 
                 // Update pre-created assistant message with final content
-                if !response_text.is_empty() || !tool_calls.is_empty() {
+                if has_meaningful_output(&response_text, tool_calls.len()) {
                     let tool_calls_json = serde_json::to_string(&tool_calls).ok();
                     let content_blocks_json = serde_json::to_string(&content_blocks).ok();
                     let _ = chat_message_repo.update_content(
@@ -206,10 +207,23 @@ pub fn spawn_send_message_background<R: Runtime>(
                     }
                 }
 
-                // Complete agent run
-                let _ = agent_run_repo
-                    .complete(&AgentRunId::from_string(&agent_run_id))
-                    .await;
+                // Treat zero-output runs as failed executions for autonomous task/review flows.
+                let has_output = has_meaningful_output(&response_text, tool_calls.len());
+                if !has_output
+                    && (context_type == ChatContextType::TaskExecution
+                        || context_type == ChatContextType::Review)
+                {
+                    let _ = agent_run_repo
+                        .fail(
+                            &AgentRunId::from_string(&agent_run_id),
+                            "Agent completed with no output",
+                        )
+                        .await;
+                } else {
+                    let _ = agent_run_repo
+                        .complete(&AgentRunId::from_string(&agent_run_id))
+                        .await;
+                }
 
                 // Handle task state transition (only for TaskExecution)
                 // Use TaskTransitionService for proper entry/exit actions
@@ -264,14 +278,30 @@ pub fn spawn_send_message_background<R: Runtime>(
                                 } else {
                                     transition_service
                                 };
-                                if let Err(e) = transition_service
-                                    .transition_task(&task_id, InternalStatus::PendingReview)
+                                if has_output {
+                                    if let Err(e) = transition_service
+                                        .transition_task(&task_id, InternalStatus::PendingReview)
+                                        .await
+                                    {
+                                        tracing::error!(
+                                            "Failed to transition task {} to PendingReview: {}",
+                                            task_id.as_str(),
+                                            e
+                                        );
+                                    }
+                                } else if let Err(e) = transition_service
+                                    .transition_task(&task_id, InternalStatus::Failed)
                                     .await
                                 {
                                     tracing::error!(
-                                        "Failed to transition task {} to PendingReview: {}",
+                                        "Failed to transition empty-output task {} to Failed: {}",
                                         task_id.as_str(),
                                         e
+                                    );
+                                } else {
+                                    tracing::warn!(
+                                        task_id = task_id.as_str(),
+                                        "Task execution produced no output; transitioned to Failed"
                                     );
                                 }
                             }
@@ -486,7 +516,7 @@ pub fn spawn_send_message_background<R: Runtime>(
                                 .await
                                 {
                                     Ok((response, tools, blocks, _)) => {
-                                        if !response.is_empty() || !tools.is_empty() {
+                                        if has_meaningful_output(&response, tools.len()) {
                                             let tool_calls_json = serde_json::to_string(&tools).ok();
                                             let content_blocks_json = serde_json::to_string(&blocks).ok();
                                             let _ = chat_message_repo.update_content(
@@ -637,6 +667,80 @@ pub fn spawn_send_message_background<R: Runtime>(
                             stderr: Some(e.clone()),
                         },
                     );
+                }
+
+                // For worker execution failures, transition task out of active execution
+                // so it does not remain stuck in Executing/ReExecuting.
+                if context_type == ChatContextType::TaskExecution {
+                    if let Some(ref exec_state) = execution_state {
+                        let task_id = TaskId::from_string(context_id.clone());
+                        match task_repo.get_by_id(&task_id).await {
+                            Ok(Some(task))
+                                if task.internal_status == InternalStatus::Executing
+                                    || task.internal_status == InternalStatus::ReExecuting =>
+                            {
+                                let transition_service = TaskTransitionService::new(
+                                    Arc::clone(&task_repo),
+                                    Arc::clone(&task_dependency_repo),
+                                    Arc::clone(&project_repo),
+                                    Arc::clone(&chat_message_repo),
+                                    Arc::clone(&conversation_repo),
+                                    Arc::clone(&agent_run_repo),
+                                    Arc::clone(&ideation_session_repo),
+                                    Arc::clone(&activity_event_repo),
+                                    Arc::clone(&message_queue),
+                                    Arc::clone(&running_agent_registry),
+                                    Arc::clone(exec_state),
+                                    app_handle.clone(),
+                                );
+                                let transition_service = if let Some(ref repo) = plan_branch_repo {
+                                    transition_service.with_plan_branch_repo(Arc::clone(repo))
+                                } else {
+                                    transition_service
+                                };
+
+                                if let Err(transition_err) = transition_service
+                                    .transition_task(&task_id, InternalStatus::Failed)
+                                    .await
+                                {
+                                    tracing::error!(
+                                        task_id = task_id.as_str(),
+                                        original_error = %e,
+                                        transition_error = %transition_err,
+                                        "Worker failed and fallback transition to Failed also failed"
+                                    );
+                                } else {
+                                    tracing::warn!(
+                                        task_id = task_id.as_str(),
+                                        error = %e,
+                                        "Worker failed; transitioned task to Failed"
+                                    );
+                                }
+                            }
+                            Ok(Some(_)) => {}
+                            Ok(None) => {
+                                tracing::warn!(
+                                    task_id = context_id,
+                                    error = %e,
+                                    "Worker failed but task was not found for fallback transition"
+                                );
+                            }
+                            Err(repo_err) => {
+                                tracing::error!(
+                                    task_id = context_id,
+                                    error = %e,
+                                    repo_error = %repo_err,
+                                    "Worker failed and task lookup failed for fallback transition"
+                                );
+                            }
+                        }
+                    } else {
+                        tracing::warn!(
+                            task_id = context_id,
+                            error = %e,
+                            "Worker failed but no execution_state available for fallback transition"
+                        );
+                    }
                 }
 
                 // Handle merge auto-completion even on agent error

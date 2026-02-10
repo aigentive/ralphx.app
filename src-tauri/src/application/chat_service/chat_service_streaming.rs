@@ -19,7 +19,10 @@ use crate::domain::entities::{
 use crate::domain::repositories::{ActivityEventRepository, ChatMessageRepository, TaskRepository};
 use crate::infrastructure::agents::claude::{ContentBlockItem, DiffContext, StreamEvent, StreamProcessor, ToolCall};
 
-use super::{events, AgentChunkPayload, AgentHookPayload, AgentTaskCompletedPayload, AgentTaskStartedPayload, AgentToolCallPayload};
+use super::{
+    events, has_meaningful_output, AgentChunkPayload, AgentHookPayload, AgentTaskCompletedPayload,
+    AgentTaskStartedPayload, AgentToolCallPayload,
+};
 
 // ============================================================================
 // Background stream processing
@@ -542,37 +545,55 @@ pub async fn process_stream_background<R: Runtime>(
     // Wait for stderr task
     let stderr_content = stderr_task.await.unwrap_or_default();
 
-    // Log stderr when agent produced no output (critical diagnostic for stuck agents)
+    // Wait for process
+    let status = child.wait().await.map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    let signal = {
+        use std::os::unix::process::ExitStatusExt;
+        status.signal()
+    };
+    #[cfg(not(unix))]
+    let signal: Option<i32> = None;
+
+    // Log stderr and exit metadata when agent produced no output (critical diagnostic)
     if lines_seen == 0 {
         let stderr_preview = &stderr_content[..stderr_content.len().min(2000)];
         tracing::warn!(
             conversation_id = %conversation_id_str,
+            exit_code = status.code(),
+            exit_signal = signal,
             stderr_len = stderr_content.len(),
             "Stream ended with ZERO lines from stdout. stderr: {}",
             stderr_preview
         );
     }
 
-    // Wait for process
-    let status = child.wait().await.map_err(|e| e.to_string())?;
     tracing::debug!(
         conversation_id = %conversation_id_str,
         success = status.success(),
+        exit_code = status.code(),
+        exit_signal = signal,
         response_len = result.response_text.len(),
         tool_calls = result.tool_calls.len(),
         "Stream finished"
     );
 
-    if result.response_text.is_empty() {
+    let has_output = has_meaningful_output(&result.response_text, result.tool_calls.len());
+
+    if !has_output {
         let payload = if debug_lines.is_empty() {
             format!(
-                "no stdout lines captured\n\nstderr:\n{}",
-                stderr_content.trim()
+                "no stdout lines captured\n\nexit_code: {:?}\nexit_signal: {:?}\n\nstderr:\n{}",
+                status.code(),
+                signal,
+                stderr_content.trim(),
             )
         } else {
             format!(
-                "stdout sample:\n{}\n\nstderr:\n{}",
+                "stdout sample:\n{}\n\nexit_code: {:?}\nexit_signal: {:?}\n\nstderr:\n{}",
                 debug_lines.join("\n"),
+                status.code(),
+                signal,
                 stderr_content.trim()
             )
         };
@@ -593,7 +614,7 @@ pub async fn process_stream_background<R: Runtime>(
         return Err(error_msg);
     }
 
-    if !status.success() && result.response_text.is_empty() {
+    if !status.success() && !has_output {
         let error_msg = if stderr_content.is_empty() {
             "Agent exited with non-zero status".to_string()
         } else {
