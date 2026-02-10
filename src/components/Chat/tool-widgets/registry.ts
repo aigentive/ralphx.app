@@ -20,6 +20,8 @@ import { ReviewWidget } from "./ReviewWidget";
 import { MergeWidget } from "./MergeWidget";
 import { ProposalWidget } from "./ProposalWidget";
 import { IdeationWidget } from "./IdeationWidget";
+import { GrepWidget } from "./GrepWidget";
+import { GlobWidget } from "./GlobWidget";
 
 /** Registry type: tool name (lowercase) → React component */
 export type ToolCallWidgetRegistry = Record<string, ComponentType<ToolCallWidgetProps>>;
@@ -29,6 +31,9 @@ export type ToolCallWidgetRegistry = Record<string, ComponentType<ToolCallWidget
  * Tool names should be lowercase to match normalized lookup in ToolCallIndicator.
  */
 export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
+  // Search tools → GrepWidget / GlobWidget
+  grep: GrepWidget,
+  glob: GlobWidget,
   // Context tool → ContextWidget (always-visible context card)
   "get_task_context": ContextWidget,
   // Step lifecycle tools → StepIndicator (ultra-compact inline indicators)

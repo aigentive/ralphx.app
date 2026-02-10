@@ -117,28 +117,6 @@ export function getBool(obj: unknown, key: string): boolean | undefined {
   return undefined;
 }
 
-// ============================================================================
-// Utility Functions
-// ============================================================================
-
-/** Safely extract a string field from an unknown object */
-export function getString(obj: unknown, key: string): string | undefined {
-  if (obj != null && typeof obj === "object" && key in (obj as Record<string, unknown>)) {
-    const val = (obj as Record<string, unknown>)[key];
-    return typeof val === "string" ? val : undefined;
-  }
-  return undefined;
-}
-
-/** Safely extract a number field from an unknown object */
-export function getNumber(obj: unknown, key: string): number | undefined {
-  if (obj != null && typeof obj === "object" && key in (obj as Record<string, unknown>)) {
-    const val = (obj as Record<string, unknown>)[key];
-    return typeof val === "number" ? val : undefined;
-  }
-  return undefined;
-}
-
 /** Safely extract an array field from an unknown object */
 export function getArray(obj: unknown, key: string): unknown[] | undefined {
   if (obj != null && typeof obj === "object" && key in (obj as Record<string, unknown>)) {
@@ -146,6 +124,42 @@ export function getArray(obj: unknown, key: string): unknown[] | undefined {
     return Array.isArray(val) ? val : undefined;
   }
   return undefined;
+}
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+/**
+ * Parse a tool result into an array of non-empty lines.
+ * Handles: plain string, MCP wrapper [{text: "..."}], object with text property, and string arrays.
+ */
+export function parseToolResultAsLines(result: unknown): string[] {
+  if (!result) return [];
+
+  let text = "";
+
+  if (typeof result === "string") {
+    text = result;
+  } else if (Array.isArray(result)) {
+    // MCP result wrapper: [{type: "text", text: "..."}]
+    const first = result[0];
+    if (first && typeof first === "object" && "text" in first) {
+      text = String((first as { text: string }).text);
+    } else {
+      // Array of strings
+      return result.filter((item): item is string => typeof item === "string");
+    }
+  } else if (typeof result === "object" && result !== null && "text" in result) {
+    text = String((result as { text: string }).text);
+  }
+
+  if (!text) return [];
+
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
 /** Shorten a file path by collapsing middle directories */
