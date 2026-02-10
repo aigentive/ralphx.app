@@ -23,6 +23,7 @@ import { IdeationWidget } from "./IdeationWidget";
 import { GrepWidget } from "./GrepWidget";
 import { GlobWidget } from "./GlobWidget";
 import { ReadWidget } from "./ReadWidget";
+import { BashWidget } from "./BashWidget";
 
 /** Registry type: tool name (lowercase) → React component */
 export type ToolCallWidgetRegistry = Record<string, ComponentType<ToolCallWidgetProps>>;
@@ -32,6 +33,8 @@ export type ToolCallWidgetRegistry = Record<string, ComponentType<ToolCallWidget
  * Tool names should be lowercase to match normalized lookup in ToolCallIndicator.
  */
 export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
+  // Bash tool → BashWidget (terminal output card)
+  "bash": BashWidget,
   // File read tool → ReadWidget (file preview card)
   "read": ReadWidget,
   // Search tools → GrepWidget / GlobWidget
