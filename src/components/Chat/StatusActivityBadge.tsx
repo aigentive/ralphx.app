@@ -15,13 +15,14 @@ import { Activity, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useUiStore } from "@/stores/uiStore";
+import { AGENT_WORKER, AGENT_REVIEWER } from "@/constants/agents";
 import type { ViewType } from "@/types/chat";
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export type AgentType = "worker" | "reviewer" | "agent" | "idle";
+export type AgentType = typeof AGENT_WORKER | typeof AGENT_REVIEWER | "agent" | "idle";
 
 export interface StatusActivityBadgeProps {
   /** Whether an agent is currently active (running/sending) */
@@ -42,9 +43,9 @@ export interface StatusActivityBadgeProps {
 
 function getStatusText(agentType: AgentType): string {
   switch (agentType) {
-    case "worker":
+    case AGENT_WORKER:
       return "Worker running...";
-    case "reviewer":
+    case AGENT_REVIEWER:
       return "Reviewing...";
     case "agent":
       return "Agent responding...";

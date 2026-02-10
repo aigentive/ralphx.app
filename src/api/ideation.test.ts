@@ -11,6 +11,7 @@ const createMockSessionRaw = (overrides = {}) => ({
   project_id: "project-1",
   title: null,
   status: "active",
+  plan_artifact_id: null,
   created_at: "2026-01-24T12:00:00Z",
   updated_at: "2026-01-24T12:00:00Z",
   archived_at: null,
@@ -35,6 +36,8 @@ const createMockProposalRaw = (overrides = {}) => ({
   user_modified: false,
   status: "pending",
   created_task_id: null,
+  plan_artifact_id: null,
+  plan_version_at_creation: null,
   sort_order: 0,
   created_at: "2026-01-24T12:00:00Z",
   updated_at: "2026-01-24T12:00:00Z",
@@ -50,6 +53,7 @@ const createMockMessageRaw = (overrides = {}) => ({
   role: "user",
   content: "Hello",
   metadata: null,
+  tool_calls: null,
   parent_message_id: null,
   created_at: "2026-01-24T12:00:00Z",
   ...overrides,
@@ -68,7 +72,7 @@ describe("ideationApi.sessions", () => {
       await ideationApi.sessions.create("project-1", "My Session");
 
       expect(mockInvoke).toHaveBeenCalledWith("create_ideation_session", {
-        input: { project_id: "project-1", title: "My Session" },
+        input: { project_id: "project-1", title: "My Session", seed_task_id: undefined },
       });
     });
 
@@ -79,7 +83,7 @@ describe("ideationApi.sessions", () => {
       await ideationApi.sessions.create("project-1");
 
       expect(mockInvoke).toHaveBeenCalledWith("create_ideation_session", {
-        input: { project_id: "project-1", title: undefined },
+        input: { project_id: "project-1", title: undefined, seed_task_id: undefined },
       });
     });
 
@@ -176,7 +180,7 @@ describe("ideationApi.sessions", () => {
       await ideationApi.sessions.list("project-1");
 
       expect(mockInvoke).toHaveBeenCalledWith("list_ideation_sessions", {
-        project_id: "project-1",
+        projectId: "project-1",
       });
     });
 
@@ -345,7 +349,7 @@ describe("ideationApi.proposals", () => {
       await ideationApi.proposals.list("session-1");
 
       expect(mockInvoke).toHaveBeenCalledWith("list_session_proposals", {
-        session_id: "session-1",
+        sessionId: "session-1",
       });
     });
 
@@ -415,8 +419,8 @@ describe("ideationApi.proposals", () => {
       await ideationApi.proposals.reorder("session-1", ["p1", "p2", "p3"]);
 
       expect(mockInvoke).toHaveBeenCalledWith("reorder_proposals", {
-        session_id: "session-1",
-        proposal_ids: ["p1", "p2", "p3"],
+        sessionId: "session-1",
+        proposalIds: ["p1", "p2", "p3"],
       });
     });
   });
@@ -450,7 +454,7 @@ describe("ideationApi.proposals", () => {
       const result = await ideationApi.proposals.assessAllPriorities("session-1");
 
       expect(mockInvoke).toHaveBeenCalledWith("assess_all_priorities", {
-        session_id: "session-1",
+        sessionId: "session-1",
       });
       expect(result).toHaveLength(2);
     });
@@ -469,8 +473,8 @@ describe("ideationApi.dependencies", () => {
       await ideationApi.dependencies.add("proposal-1", "proposal-2");
 
       expect(mockInvoke).toHaveBeenCalledWith("add_proposal_dependency", {
-        proposal_id: "proposal-1",
-        depends_on_id: "proposal-2",
+        proposalId: "proposal-1",
+        dependsOnId: "proposal-2",
       });
     });
   });
@@ -482,8 +486,8 @@ describe("ideationApi.dependencies", () => {
       await ideationApi.dependencies.remove("proposal-1", "proposal-2");
 
       expect(mockInvoke).toHaveBeenCalledWith("remove_proposal_dependency", {
-        proposal_id: "proposal-1",
-        depends_on_id: "proposal-2",
+        proposalId: "proposal-1",
+        dependsOnId: "proposal-2",
       });
     });
   });
@@ -495,7 +499,7 @@ describe("ideationApi.dependencies", () => {
       const result = await ideationApi.dependencies.getDependencies("proposal-1");
 
       expect(mockInvoke).toHaveBeenCalledWith("get_proposal_dependencies", {
-        proposal_id: "proposal-1",
+        proposalId: "proposal-1",
       });
       expect(result).toEqual(["p2", "p3"]);
     });
@@ -508,7 +512,7 @@ describe("ideationApi.dependencies", () => {
       const result = await ideationApi.dependencies.getDependents("proposal-1");
 
       expect(mockInvoke).toHaveBeenCalledWith("get_proposal_dependents", {
-        proposal_id: "proposal-1",
+        proposalId: "proposal-1",
       });
       expect(result).toEqual(["p4", "p5"]);
     });
@@ -528,7 +532,7 @@ describe("ideationApi.dependencies", () => {
       const result = await ideationApi.dependencies.analyze("session-1");
 
       expect(mockInvoke).toHaveBeenCalledWith("analyze_dependencies", {
-        session_id: "session-1",
+        sessionId: "session-1",
       });
       expect(result.hasCycles).toBe(false);
       expect(result.criticalPath).toEqual(["p1", "p2"]);
@@ -618,7 +622,7 @@ describe("ideationApi.taskDependencies", () => {
       const result = await ideationApi.taskDependencies.getBlockers("task-1");
 
       expect(mockInvoke).toHaveBeenCalledWith("get_task_blockers", {
-        task_id: "task-1",
+        taskId: "task-1",
       });
       expect(result).toEqual(["task-2", "task-3"]);
     });
@@ -631,7 +635,7 @@ describe("ideationApi.taskDependencies", () => {
       const result = await ideationApi.taskDependencies.getBlocked("task-1");
 
       expect(mockInvoke).toHaveBeenCalledWith("get_blocked_tasks", {
-        task_id: "task-1",
+        taskId: "task-1",
       });
       expect(result).toEqual(["task-4"]);
     });

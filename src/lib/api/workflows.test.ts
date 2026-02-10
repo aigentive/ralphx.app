@@ -27,11 +27,11 @@ const createMockWorkflowColumn = (overrides = {}) => ({
   id: "backlog",
   name: "Backlog",
   maps_to: "backlog",
-  color: null,
-  icon: null,
-  skip_review: null,
-  auto_advance: null,
-  agent_profile: null,
+  color: "",
+  icon: "",
+  skip_review: false,
+  auto_advance: false,
+  agent_profile: "",
   ...overrides,
 });
 
@@ -45,8 +45,8 @@ const createMockWorkflow = (overrides = {}) => ({
     createMockWorkflowColumn({ id: "done", name: "Done", maps_to: "approved" }),
   ],
   is_default: false,
-  worker_profile: null,
-  reviewer_profile: null,
+  worker_profile: "",
+  reviewer_profile: "",
   ...overrides,
 });
 
@@ -69,9 +69,9 @@ describe("WorkflowColumnResponseSchema", () => {
     expect(result.skip_review).toBe(true);
   });
 
-  it("should reject column with invalid maps_to", () => {
+  it("should allow any string for maps_to in backend response schema", () => {
     const column = createMockWorkflowColumn({ maps_to: "invalid_status" });
-    expect(() => WorkflowColumnResponseSchema.parse(column)).toThrow();
+    expect(() => WorkflowColumnResponseSchema.parse(column)).not.toThrow();
   });
 
   it("should reject column without required fields", () => {
@@ -97,9 +97,9 @@ describe("WorkflowResponseSchema", () => {
   });
 
   it("should parse workflow without description", () => {
-    const workflow = createMockWorkflow({ description: null });
+    const workflow = createMockWorkflow({ description: undefined });
     const result = WorkflowResponseSchema.parse(workflow);
-    expect(result.description).toBeNull();
+    expect(result.description).toBeUndefined();
   });
 
   it("should reject workflow without required fields", () => {
@@ -107,16 +107,16 @@ describe("WorkflowResponseSchema", () => {
     expect(() => WorkflowResponseSchema.parse({ id: "wf" })).toThrow();
   });
 
-  it("should reject workflow with empty columns", () => {
+  it("should allow workflow with empty columns in raw response schema", () => {
     const workflow = createMockWorkflow({ columns: [] });
-    expect(() => WorkflowResponseSchema.parse(workflow)).toThrow();
+    expect(() => WorkflowResponseSchema.parse(workflow)).not.toThrow();
   });
 
-  it("should validate all columns in workflow", () => {
+  it("should allow columns with unmapped maps_to values in raw response schema", () => {
     const workflow = createMockWorkflow({
       columns: [createMockWorkflowColumn({ maps_to: "invalid_status" })],
     });
-    expect(() => WorkflowResponseSchema.parse(workflow)).toThrow();
+    expect(() => WorkflowResponseSchema.parse(workflow)).not.toThrow();
   });
 });
 
@@ -443,7 +443,7 @@ describe("setDefaultWorkflow", () => {
 
     const result = await setDefaultWorkflow("wf-123");
 
-    expect(result.is_default).toBe(true);
+    expect(result.isDefault).toBe(true);
   });
 
   it("should throw on invalid response", async () => {

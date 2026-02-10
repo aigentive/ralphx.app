@@ -19,6 +19,14 @@ vi.mock("@/lib/tauri", () => ({
   },
 }));
 
+vi.mock("@/hooks/useConfirmation", () => ({
+  useConfirmation: () => ({
+    confirm: vi.fn().mockResolvedValue(true),
+    confirmationDialogProps: {},
+    ConfirmationDialog: () => null,
+  }),
+}));
+
 // Helper to wrap component with QueryClient
 function renderWithQueryClient(ui: React.ReactElement) {
   const queryClient = new QueryClient({
@@ -176,7 +184,9 @@ describe("StatusDropdown", () => {
     await user.click(screen.getByText("Ready for Work"));
 
     // Should call onTransition with correct status
-    expect(mockOnTransition).toHaveBeenCalledWith("ready");
+    await waitFor(() => {
+      expect(mockOnTransition).toHaveBeenCalledWith("ready");
+    });
   });
 
   it("disables dropdown when disabled prop is true", async () => {

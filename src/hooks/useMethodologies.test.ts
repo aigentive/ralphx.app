@@ -16,18 +16,22 @@ import {
   useDeactivateMethodology,
   methodologyKeys,
 } from "./useMethodologies";
-import * as methodologiesApi from "@/lib/api/methodologies";
+import { api } from "@/lib/tauri";
 import type {
   MethodologyResponse,
   MethodologyActivationResponse,
-} from "@/lib/api/methodologies";
+} from "@/api/methodologies";
 
-// Mock the methodologies API
-vi.mock("@/lib/api/methodologies", () => ({
-  getMethodologies: vi.fn(),
-  getActiveMethodology: vi.fn(),
-  activateMethodology: vi.fn(),
-  deactivateMethodology: vi.fn(),
+// Mock the tauri API wrapper used by methodology hooks
+vi.mock("@/lib/tauri", () => ({
+  api: {
+    methodologies: {
+      getAll: vi.fn(),
+      getActive: vi.fn(),
+      activate: vi.fn(),
+      deactivate: vi.fn(),
+    },
+  },
 }));
 
 // Create mock data
@@ -150,7 +154,7 @@ describe("useMethodologies", () => {
 
   it("should fetch all methodologies successfully", async () => {
     const mockMethodologies = [mockMethodology, mockMethodology2];
-    vi.mocked(methodologiesApi.getMethodologies).mockResolvedValueOnce(mockMethodologies);
+    vi.mocked(api.methodologies.getAll).mockResolvedValueOnce(mockMethodologies);
 
     const { result } = renderHook(() => useMethodologies(), {
       wrapper: createWrapper(),
@@ -161,11 +165,11 @@ describe("useMethodologies", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data).toEqual(mockMethodologies);
-    expect(methodologiesApi.getMethodologies).toHaveBeenCalledTimes(1);
+    expect(api.methodologies.getAll).toHaveBeenCalledTimes(1);
   });
 
   it("should return empty array when no methodologies exist", async () => {
-    vi.mocked(methodologiesApi.getMethodologies).mockResolvedValueOnce([]);
+    vi.mocked(api.methodologies.getAll).mockResolvedValueOnce([]);
 
     const { result } = renderHook(() => useMethodologies(), {
       wrapper: createWrapper(),
@@ -178,7 +182,7 @@ describe("useMethodologies", () => {
 
   it("should handle fetch error", async () => {
     const error = new Error("Failed to fetch methodologies");
-    vi.mocked(methodologiesApi.getMethodologies).mockRejectedValueOnce(error);
+    vi.mocked(api.methodologies.getAll).mockRejectedValueOnce(error);
 
     const { result } = renderHook(() => useMethodologies(), {
       wrapper: createWrapper(),
@@ -200,7 +204,7 @@ describe("useActiveMethodology", () => {
   });
 
   it("should fetch active methodology successfully", async () => {
-    vi.mocked(methodologiesApi.getActiveMethodology).mockResolvedValueOnce(mockMethodology2);
+    vi.mocked(api.methodologies.getActive).mockResolvedValueOnce(mockMethodology2);
 
     const { result } = renderHook(() => useActiveMethodology(), {
       wrapper: createWrapper(),
@@ -209,11 +213,11 @@ describe("useActiveMethodology", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data).toEqual(mockMethodology2);
-    expect(methodologiesApi.getActiveMethodology).toHaveBeenCalledTimes(1);
+    expect(api.methodologies.getActive).toHaveBeenCalledTimes(1);
   });
 
   it("should return null when no methodology is active", async () => {
-    vi.mocked(methodologiesApi.getActiveMethodology).mockResolvedValueOnce(null);
+    vi.mocked(api.methodologies.getActive).mockResolvedValueOnce(null);
 
     const { result } = renderHook(() => useActiveMethodology(), {
       wrapper: createWrapper(),
@@ -226,7 +230,7 @@ describe("useActiveMethodology", () => {
 
   it("should handle fetch error", async () => {
     const error = new Error("Failed to fetch active methodology");
-    vi.mocked(methodologiesApi.getActiveMethodology).mockRejectedValueOnce(error);
+    vi.mocked(api.methodologies.getActive).mockRejectedValueOnce(error);
 
     const { result } = renderHook(() => useActiveMethodology(), {
       wrapper: createWrapper(),
@@ -248,7 +252,7 @@ describe("useActivateMethodology", () => {
   });
 
   it("should activate a methodology successfully", async () => {
-    vi.mocked(methodologiesApi.activateMethodology).mockResolvedValueOnce(
+    vi.mocked(api.methodologies.activate).mockResolvedValueOnce(
       mockActivationResponse
     );
 
@@ -260,14 +264,14 @@ describe("useActivateMethodology", () => {
       await result.current.mutateAsync("bmad-method");
     });
 
-    expect(methodologiesApi.activateMethodology).toHaveBeenCalled();
-    expect(vi.mocked(methodologiesApi.activateMethodology).mock.calls[0][0]).toBe(
+    expect(api.methodologies.activate).toHaveBeenCalled();
+    expect(vi.mocked(api.methodologies.activate).mock.calls[0][0]).toBe(
       "bmad-method"
     );
   });
 
   it("should return activation response with workflow info", async () => {
-    vi.mocked(methodologiesApi.activateMethodology).mockResolvedValueOnce(
+    vi.mocked(api.methodologies.activate).mockResolvedValueOnce(
       mockActivationResponse
     );
 
@@ -287,7 +291,7 @@ describe("useActivateMethodology", () => {
 
   it("should handle activation error", async () => {
     const error = new Error("Failed to activate methodology");
-    vi.mocked(methodologiesApi.activateMethodology).mockRejectedValueOnce(error);
+    vi.mocked(api.methodologies.activate).mockRejectedValueOnce(error);
 
     const { result } = renderHook(() => useActivateMethodology(), {
       wrapper: createWrapper(),
@@ -312,7 +316,7 @@ describe("useDeactivateMethodology", () => {
 
   it("should deactivate a methodology successfully", async () => {
     const deactivatedMethodology = { ...mockMethodology2, is_active: false };
-    vi.mocked(methodologiesApi.deactivateMethodology).mockResolvedValueOnce(
+    vi.mocked(api.methodologies.deactivate).mockResolvedValueOnce(
       deactivatedMethodology
     );
 
@@ -324,15 +328,15 @@ describe("useDeactivateMethodology", () => {
       await result.current.mutateAsync("gsd-method");
     });
 
-    expect(methodologiesApi.deactivateMethodology).toHaveBeenCalled();
-    expect(vi.mocked(methodologiesApi.deactivateMethodology).mock.calls[0][0]).toBe(
+    expect(api.methodologies.deactivate).toHaveBeenCalled();
+    expect(vi.mocked(api.methodologies.deactivate).mock.calls[0][0]).toBe(
       "gsd-method"
     );
   });
 
   it("should handle deactivation error", async () => {
     const error = new Error("Failed to deactivate methodology");
-    vi.mocked(methodologiesApi.deactivateMethodology).mockRejectedValueOnce(error);
+    vi.mocked(api.methodologies.deactivate).mockRejectedValueOnce(error);
 
     const { result } = renderHook(() => useDeactivateMethodology(), {
       wrapper: createWrapper(),

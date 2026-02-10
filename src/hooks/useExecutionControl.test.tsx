@@ -63,7 +63,7 @@ describe("executionKeys", () => {
   });
 
   it("generates correct status key", () => {
-    expect(executionKeys.status()).toEqual(["execution", "status"]);
+    expect(executionKeys.status()).toEqual(["execution", "status", "all"]);
   });
 });
 

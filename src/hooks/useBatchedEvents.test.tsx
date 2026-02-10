@@ -1,33 +1,35 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import type { UnlistenFn } from "@tauri-apps/api/event";
 import { useBatchedAgentMessages } from "./useBatchedEvents";
 import type { AgentMessageEvent } from "@/types/events";
 
-// Mock Tauri event API
+// Mock EventProvider bus API
 const mockUnlisten = vi.fn();
-const mockListen = vi.fn();
+const mockSubscribe = vi.fn();
 
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: (...args: unknown[]) => mockListen(...args),
+vi.mock("@/providers/EventProvider", () => ({
+  useEventBus: () => ({
+    subscribe: (...args: unknown[]) => mockSubscribe(...args),
+    emit: vi.fn(),
+  }),
 }));
 
 // Valid UUID for testing
 const TASK_UUID = "123e4567-e89b-12d3-a456-426614174000";
 
 describe("useBatchedAgentMessages", () => {
-  let eventCallback: ((event: { payload: AgentMessageEvent }) => void) | null = null;
+  let eventCallback: ((payload: AgentMessageEvent) => void) | null = null;
 
   beforeEach(() => {
     vi.useFakeTimers();
     eventCallback = null;
-    mockListen.mockReset();
+    mockSubscribe.mockReset();
     mockUnlisten.mockReset();
 
-    mockListen.mockImplementation(
-      (eventName: string, callback: (event: { payload: AgentMessageEvent }) => void) => {
+    mockSubscribe.mockImplementation(
+      (eventName: string, callback: (payload: AgentMessageEvent) => void) => {
         eventCallback = callback;
-        return Promise.resolve(mockUnlisten as unknown as UnlistenFn);
+        return mockUnlisten;
       }
     );
   });
@@ -40,7 +42,7 @@ describe("useBatchedAgentMessages", () => {
   it("should set up event listener on mount", () => {
     renderHook(() => useBatchedAgentMessages(TASK_UUID));
 
-    expect(mockListen).toHaveBeenCalledWith("agent:message", expect.any(Function));
+    expect(mockSubscribe).toHaveBeenCalledWith("agent:message", expect.any(Function));
   });
 
   it("should buffer incoming messages", async () => {
@@ -54,7 +56,7 @@ describe("useBatchedAgentMessages", () => {
     };
 
     await act(async () => {
-      eventCallback?.({ payload: message });
+      eventCallback?.(message);
     });
 
     // Before flush, messages array should be empty (still in buffer)
@@ -79,8 +81,8 @@ describe("useBatchedAgentMessages", () => {
     };
 
     await act(async () => {
-      eventCallback?.({ payload: message1 });
-      eventCallback?.({ payload: message2 });
+      eventCallback?.(message1);
+      eventCallback?.(message2);
     });
 
     // Before flush
@@ -115,8 +117,8 @@ describe("useBatchedAgentMessages", () => {
     };
 
     await act(async () => {
-      eventCallback?.({ payload: matchingMessage });
-      eventCallback?.({ payload: nonMatchingMessage });
+      eventCallback?.(matchingMessage);
+      eventCallback?.(nonMatchingMessage);
     });
 
     await act(async () => {
@@ -135,12 +137,18 @@ describe("useBatchedAgentMessages", () => {
     // Send multiple messages with small time gaps
     await act(async () => {
       eventCallback?.({
-        payload: { taskId: TASK_UUID, type: "thinking", content: "First", timestamp: Date.now() },
+        taskId: TASK_UUID,
+        type: "thinking",
+        content: "First",
+        timestamp: Date.now(),
       });
       vi.advanceTimersByTime(30); // Less than flush interval
 
       eventCallback?.({
-        payload: { taskId: TASK_UUID, type: "text", content: "Second", timestamp: Date.now() },
+        taskId: TASK_UUID,
+        type: "text",
+        content: "Second",
+        timestamp: Date.now(),
       });
       vi.advanceTimersByTime(30); // Now at 60ms, one flush should have happened
     });
@@ -187,12 +195,10 @@ describe("useBatchedAgentMessages", () => {
     await act(async () => {
       for (let i = 0; i < 10; i++) {
         eventCallback?.({
-          payload: {
-            taskId: TASK_UUID,
-            type: "thinking",
-            content: `Message ${i}`,
-            timestamp: Date.now(),
-          },
+          taskId: TASK_UUID,
+          type: "thinking",
+          content: `Message ${i}`,
+          timestamp: Date.now(),
         });
       }
     });

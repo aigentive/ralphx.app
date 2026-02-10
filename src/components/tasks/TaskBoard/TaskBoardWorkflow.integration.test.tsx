@@ -50,6 +50,13 @@ vi.mock("@/lib/api/workflows", () => ({
   setDefaultWorkflow: vi.fn(),
   getActiveWorkflowColumns: vi.fn(),
 }));
+vi.mock("@/hooks/useWorkflows", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/hooks/useWorkflows")>();
+  return {
+    ...actual,
+    useWorkflows: vi.fn(),
+  };
+});
 
 // Mock useInfiniteTasksQuery
 vi.mock("@/hooks/useInfiniteTasksQuery", async (importOriginal) => {
@@ -65,8 +72,14 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(() => Promise.resolve(() => {})),
   emit: vi.fn(),
 }));
+vi.mock("@/providers/EventProvider", () => ({
+  useEventBus: () => ({
+    subscribe: vi.fn(() => vi.fn()),
+  }),
+}));
 
 import { useInfiniteTasksQuery } from "@/hooks/useInfiniteTasksQuery";
+import { useWorkflows } from "@/hooks/useWorkflows";
 
 // ============================================================================
 // Test Data
@@ -127,6 +140,10 @@ function createWrapper() {
 describe("TaskBoardWorkflow Integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(useWorkflows).mockReturnValue({
+      data: [defaultRalphXWorkflow],
+      isLoading: false,
+    } as unknown as ReturnType<typeof useWorkflows>);
     // Default mocks
     vi.mocked(api.tasks.getArchivedCount).mockResolvedValue(0);
     vi.mocked(api.tasks.search).mockResolvedValue([]);
@@ -147,7 +164,10 @@ describe("TaskBoardWorkflow Integration", () => {
 
   describe("default workflow columns", () => {
     it("renders TaskBoard with default RalphX workflow columns", async () => {
-      vi.mocked(workflowsApi.getWorkflows).mockResolvedValue([defaultRalphXWorkflow]);
+      vi.mocked(useWorkflows).mockReturnValue({
+        data: [defaultRalphXWorkflow],
+        isLoading: false,
+      } as unknown as ReturnType<typeof useWorkflows>);
       vi.mocked(workflowsApi.getActiveWorkflowColumns).mockResolvedValue(defaultColumns);
 
       render(<TaskBoardWithHeader projectId="p1" />, { wrapper: createWrapper() });
@@ -162,7 +182,10 @@ describe("TaskBoardWorkflow Integration", () => {
     });
 
     it("shows default workflow in selector", async () => {
-      vi.mocked(workflowsApi.getWorkflows).mockResolvedValue([defaultRalphXWorkflow]);
+      vi.mocked(useWorkflows).mockReturnValue({
+        data: [defaultRalphXWorkflow],
+        isLoading: false,
+      } as unknown as ReturnType<typeof useWorkflows>);
       vi.mocked(workflowsApi.getActiveWorkflowColumns).mockResolvedValue(defaultColumns);
 
       render(<TaskBoardWithHeader projectId="p1" />, { wrapper: createWrapper() });
@@ -180,10 +203,10 @@ describe("TaskBoardWorkflow Integration", () => {
 
   describe("custom workflow support", () => {
     it("lists both default and custom workflows in selector", async () => {
-      vi.mocked(workflowsApi.getWorkflows).mockResolvedValue([
-        defaultRalphXWorkflow,
-        customAgileWorkflow,
-      ]);
+      vi.mocked(useWorkflows).mockReturnValue({
+        data: [defaultRalphXWorkflow, customAgileWorkflow],
+        isLoading: false,
+      } as unknown as ReturnType<typeof useWorkflows>);
       vi.mocked(workflowsApi.getActiveWorkflowColumns).mockResolvedValue(defaultColumns);
 
       render(<TaskBoardWithHeader projectId="p1" />, { wrapper: createWrapper() });
@@ -212,7 +235,10 @@ describe("TaskBoardWorkflow Integration", () => {
       const customAsDefault = { ...customAgileWorkflow, isDefault: true };
       const ralphxNotDefault = { ...defaultRalphXWorkflow, isDefault: false };
 
-      vi.mocked(workflowsApi.getWorkflows).mockResolvedValue([ralphxNotDefault, customAsDefault]);
+      vi.mocked(useWorkflows).mockReturnValue({
+        data: [ralphxNotDefault, customAsDefault],
+        isLoading: false,
+      } as unknown as ReturnType<typeof useWorkflows>);
       vi.mocked(workflowsApi.getActiveWorkflowColumns).mockResolvedValue(customColumns);
 
       render(<TaskBoardWithHeader projectId="p1" />, { wrapper: createWrapper() });

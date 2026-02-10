@@ -3,7 +3,7 @@
  *
  * Tests for the collapsible tier section component with:
  * - Tier labels (Foundation, Core, Integration)
- * - Auto-collapse behavior (5+ proposals)
+ * - Collapse behavior with explicit `defaultCollapsed`
  * - Controlled and uncontrolled modes
  * - Expand/collapse toggle
  */
@@ -88,14 +88,14 @@ describe("ProposalTierGroup", () => {
       expect(screen.queryByText("Foundation")).not.toBeInTheDocument();
     });
 
-    it("renders proposal count with singular form", () => {
+    it("renders proposal count when one proposal is present", () => {
       render(<ProposalTierGroup {...defaultProps} proposalCount={1} />);
-      expect(screen.getByText("1 proposal")).toBeInTheDocument();
+      expect(screen.getByText("1")).toBeInTheDocument();
     });
 
-    it("renders proposal count with plural form", () => {
+    it("renders proposal count for multiple proposals", () => {
       render(<ProposalTierGroup {...defaultProps} proposalCount={5} />);
-      expect(screen.getByText("5 proposals")).toBeInTheDocument();
+      expect(screen.getByText("5")).toBeInTheDocument();
     });
 
     it("renders children content when expanded", () => {
@@ -109,21 +109,19 @@ describe("ProposalTierGroup", () => {
   // ============================================================================
 
   describe("expand/collapse behavior", () => {
-    it("starts expanded when proposalCount < 5", () => {
+    it("starts expanded by default", () => {
       render(<ProposalTierGroup {...defaultProps} proposalCount={4} />);
-      // Content should be visible
       expect(screen.getByTestId("tier-content")).toBeVisible();
     });
 
-    it("starts collapsed when proposalCount >= 5 (auto-collapse)", async () => {
+    it("stays expanded with larger proposal counts unless explicitly collapsed", async () => {
       render(<ProposalTierGroup {...defaultProps} proposalCount={5} />);
-      // Content should not be visible
-      expect(screen.queryByTestId("tier-content")).not.toBeInTheDocument();
+      expect(screen.getByTestId("tier-content")).toBeInTheDocument();
     });
 
-    it("starts collapsed when proposalCount is 7 (auto-collapse)", async () => {
+    it("stays expanded when proposalCount is 7 by default", async () => {
       render(<ProposalTierGroup {...defaultProps} proposalCount={7} />);
-      expect(screen.queryByTestId("tier-content")).not.toBeInTheDocument();
+      expect(screen.getByTestId("tier-content")).toBeInTheDocument();
     });
 
     it("respects defaultCollapsed=true override", () => {
@@ -140,7 +138,7 @@ describe("ProposalTierGroup", () => {
       const user = userEvent.setup();
       render(<ProposalTierGroup {...defaultProps} proposalCount={3} />);
 
-      // Initially expanded (< 5 proposals)
+      // Initially expanded by default
       expect(screen.getByTestId("tier-content")).toBeInTheDocument();
 
       // Click to collapse
@@ -153,11 +151,11 @@ describe("ProposalTierGroup", () => {
       expect(screen.getByTestId("tier-content")).toBeInTheDocument();
     });
 
-    it("expands auto-collapsed tier when clicked", async () => {
+    it("expands explicitly collapsed tier when clicked", async () => {
       const user = userEvent.setup();
-      render(<ProposalTierGroup {...defaultProps} proposalCount={6} />);
+      render(<ProposalTierGroup {...defaultProps} proposalCount={6} defaultCollapsed={true} />);
 
-      // Initially collapsed (>= 5 proposals)
+      // Initially collapsed
       expect(screen.queryByTestId("tier-content")).not.toBeInTheDocument();
 
       // Click to expand
@@ -176,7 +174,7 @@ describe("ProposalTierGroup", () => {
       render(
         <ProposalTierGroup {...defaultProps} isExpanded={true} proposalCount={10} />
       );
-      // Should be expanded despite auto-collapse threshold
+      // Should be expanded when controlled by parent
       expect(screen.getByTestId("tier-content")).toBeInTheDocument();
     });
 
@@ -266,7 +264,7 @@ describe("ProposalTierGroup", () => {
   describe("edge cases", () => {
     it("handles zero proposals", () => {
       render(<ProposalTierGroup {...defaultProps} proposalCount={0} />);
-      expect(screen.getByText("0 proposals")).toBeInTheDocument();
+      expect(screen.getByText("0")).toBeInTheDocument();
     });
 
     it("handles large tier numbers", () => {
@@ -277,9 +275,8 @@ describe("ProposalTierGroup", () => {
 
     it("handles large proposal counts", () => {
       render(<ProposalTierGroup {...defaultProps} proposalCount={1000} />);
-      expect(screen.getByText("1000 proposals")).toBeInTheDocument();
-      // Should be auto-collapsed
-      expect(screen.queryByTestId("tier-content")).not.toBeInTheDocument();
+      expect(screen.getByText("1000")).toBeInTheDocument();
+      expect(screen.getByTestId("tier-content")).toBeInTheDocument();
     });
   });
 });

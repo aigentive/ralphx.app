@@ -17,15 +17,24 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { ResearchProcessResponse, ResearchPresetResponse } from "@/lib/api/research";
+import type { ResearchProcessResponse, ResearchPresetResponse } from "@/api/research";
 import type { ResearchProcess, ResearchProgress as ResearchProgressType, ResearchDepth } from "@/types/research";
+import { api } from "@/lib/tauri";
 
-// Mock Tauri invoke
-vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(),
+// Mock tauri API wrapper used by hooks
+vi.mock("@/lib/tauri", () => ({
+  api: {
+    research: {
+      getProcesses: vi.fn(),
+      getProcess: vi.fn(),
+      getPresets: vi.fn(),
+      start: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
+      stop: vi.fn(),
+    },
+  },
 }));
-
-import { invoke } from "@tauri-apps/api/core";
 import {
   useResearchProcesses,
   useResearchProcess,
@@ -38,7 +47,7 @@ import {
 import { ResearchLauncher } from "@/components/research/ResearchLauncher";
 import { ResearchProgress } from "@/components/research/ResearchProgress";
 
-const mockedInvoke = vi.mocked(invoke);
+const mockedResearchApi = vi.mocked(api.research);
 
 // ============================================================================
 // Test Data Factory
@@ -190,7 +199,7 @@ describe("Research Hooks Integration", () => {
       started_at: "2026-01-24T10:01:00Z",
     });
 
-    mockedInvoke.mockResolvedValueOnce(startedProcess);
+    mockedResearchApi.start.mockResolvedValueOnce(startedProcess);
 
     const { result } = await import("@testing-library/react").then((m) =>
       m.renderHook(() => useStartResearch(), { wrapper: createWrapper() })
@@ -203,12 +212,13 @@ describe("Research Hooks Integration", () => {
       depth_preset: "quick-scan",
     });
 
-    expect(mockedInvoke).toHaveBeenCalledWith("start_research", {
-      input: expect.objectContaining({
+    expect(mockedResearchApi.start).toHaveBeenCalledWith(
+      expect.objectContaining({
         name: "Auth Research",
         depth_preset: "quick-scan",
       }),
-    });
+      expect.any(Object)
+    );
   });
 
   // Test: Pause running research
@@ -219,7 +229,7 @@ describe("Research Hooks Integration", () => {
       progress_percentage: 30,
     });
 
-    mockedInvoke.mockResolvedValueOnce(pausedProcess);
+    mockedResearchApi.pause.mockResolvedValueOnce(pausedProcess);
 
     const { result } = await import("@testing-library/react").then((m) =>
       m.renderHook(() => usePauseResearch(), { wrapper: createWrapper() })
@@ -227,9 +237,10 @@ describe("Research Hooks Integration", () => {
 
     const response = await result.current.mutateAsync("research-001");
 
-    expect(mockedInvoke).toHaveBeenCalledWith("pause_research", {
-      id: "research-001",
-    });
+    expect(mockedResearchApi.pause).toHaveBeenCalledWith(
+      "research-001",
+      expect.any(Object)
+    );
     expect(response.status).toBe("paused");
   });
 
@@ -241,7 +252,7 @@ describe("Research Hooks Integration", () => {
       progress_percentage: 30,
     });
 
-    mockedInvoke.mockResolvedValueOnce(resumedProcess);
+    mockedResearchApi.resume.mockResolvedValueOnce(resumedProcess);
 
     const { result } = await import("@testing-library/react").then((m) =>
       m.renderHook(() => useResumeResearch(), { wrapper: createWrapper() })
@@ -249,9 +260,10 @@ describe("Research Hooks Integration", () => {
 
     const response = await result.current.mutateAsync("research-001");
 
-    expect(mockedInvoke).toHaveBeenCalledWith("resume_research", {
-      id: "research-001",
-    });
+    expect(mockedResearchApi.resume).toHaveBeenCalledWith(
+      "research-001",
+      expect.any(Object)
+    );
     expect(response.status).toBe("running");
   });
 
@@ -264,7 +276,7 @@ describe("Research Hooks Integration", () => {
       completed_at: "2026-01-24T10:30:00Z",
     });
 
-    mockedInvoke.mockResolvedValueOnce(stoppedProcess);
+    mockedResearchApi.stop.mockResolvedValueOnce(stoppedProcess);
 
     const { result } = await import("@testing-library/react").then((m) =>
       m.renderHook(() => useStopResearch(), { wrapper: createWrapper() })
@@ -272,9 +284,10 @@ describe("Research Hooks Integration", () => {
 
     const response = await result.current.mutateAsync("research-001");
 
-    expect(mockedInvoke).toHaveBeenCalledWith("stop_research", {
-      id: "research-001",
-    });
+    expect(mockedResearchApi.stop).toHaveBeenCalledWith(
+      "research-001",
+      expect.any(Object)
+    );
     expect(response.status).toBe("completed");
   });
 
@@ -285,7 +298,7 @@ describe("Research Hooks Integration", () => {
       createMockApiResponse({ id: "r2", name: "Research 2", status: "completed" }),
     ];
 
-    mockedInvoke.mockResolvedValueOnce(processes);
+    mockedResearchApi.getProcesses.mockResolvedValueOnce(processes);
 
     const { result } = await import("@testing-library/react").then((m) =>
       m.renderHook(() => useResearchProcesses(), { wrapper: createWrapper() })
@@ -294,15 +307,13 @@ describe("Research Hooks Integration", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data).toHaveLength(2);
-    expect(mockedInvoke).toHaveBeenCalledWith("get_research_processes", {
-      status: null,
-    });
+    expect(mockedResearchApi.getProcesses).toHaveBeenCalledWith(undefined);
   });
 
   // Test: Fetch single research process
   it("fetches a single research process by ID", async () => {
     const process = createMockApiResponse({ current_iteration: 5 });
-    mockedInvoke.mockResolvedValueOnce(process);
+    mockedResearchApi.getProcess.mockResolvedValueOnce(process);
 
     const { result } = await import("@testing-library/react").then((m) =>
       m.renderHook(() => useResearchProcess("research-001"), {
@@ -318,7 +329,7 @@ describe("Research Hooks Integration", () => {
 
   // Test: Fetch research presets
   it("fetches available research presets", async () => {
-    mockedInvoke.mockResolvedValueOnce(createMockPresets());
+    mockedResearchApi.getPresets.mockResolvedValueOnce(createMockPresets());
 
     const { result } = await import("@testing-library/react").then((m) =>
       m.renderHook(() => useResearchPresets(), { wrapper: createWrapper() })
@@ -337,7 +348,7 @@ describe("Research Hooks Integration", () => {
       createMockApiResponse({ id: "r1", status: "running" }),
     ];
 
-    mockedInvoke.mockResolvedValueOnce(runningProcesses);
+    mockedResearchApi.getProcesses.mockResolvedValueOnce(runningProcesses);
 
     const { result } = await import("@testing-library/react").then((m) =>
       m.renderHook(() => useResearchProcesses("running"), {
@@ -347,9 +358,7 @@ describe("Research Hooks Integration", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(mockedInvoke).toHaveBeenCalledWith("get_research_processes", {
-      status: "running",
-    });
+    expect(mockedResearchApi.getProcesses).toHaveBeenCalledWith("running");
   });
 });
 
@@ -646,7 +655,7 @@ describe("Research Process Lifecycle Integration", () => {
       status: "running",
       started_at: "2026-01-24T10:00:00Z",
     });
-    mockedInvoke.mockResolvedValueOnce(startedProcess);
+    mockedResearchApi.start.mockResolvedValueOnce(startedProcess);
 
     const { result: startResult } = await import("@testing-library/react").then(
       (m) =>
@@ -668,7 +677,7 @@ describe("Research Process Lifecycle Integration", () => {
       current_iteration: 3,
       progress_percentage: 30,
     });
-    mockedInvoke.mockResolvedValueOnce(pausedProcess);
+    mockedResearchApi.pause.mockResolvedValueOnce(pausedProcess);
 
     const { result: pauseResult } = await import("@testing-library/react").then(
       (m) =>
@@ -685,7 +694,7 @@ describe("Research Process Lifecycle Integration", () => {
       current_iteration: 3,
       progress_percentage: 30,
     });
-    mockedInvoke.mockResolvedValueOnce(resumedProcess);
+    mockedResearchApi.resume.mockResolvedValueOnce(resumedProcess);
 
     const { result: resumeResult } = await import(
       "@testing-library/react"
@@ -703,7 +712,7 @@ describe("Research Process Lifecycle Integration", () => {
       progress_percentage: 100,
       completed_at: "2026-01-24T10:30:00Z",
     });
-    mockedInvoke.mockResolvedValueOnce(completedProcess);
+    mockedResearchApi.stop.mockResolvedValueOnce(completedProcess);
 
     const { result: stopResult } = await import("@testing-library/react").then(
       (m) => m.renderHook(() => useStopResearch(), { wrapper: createWrapper() })
@@ -717,7 +726,7 @@ describe("Research Process Lifecycle Integration", () => {
   it("handles research failure correctly", async () => {
     // Start research
     const startedProcess = createMockApiResponse({ status: "running" });
-    mockedInvoke.mockResolvedValueOnce(startedProcess);
+    mockedResearchApi.start.mockResolvedValueOnce(startedProcess);
 
     const { result: startResult } = await import("@testing-library/react").then(
       (m) =>
@@ -736,7 +745,7 @@ describe("Research Process Lifecycle Integration", () => {
       error_message: "Timeout exceeded",
       completed_at: "2026-01-24T10:15:00Z",
     });
-    mockedInvoke.mockResolvedValueOnce(failedProcess);
+    mockedResearchApi.stop.mockResolvedValueOnce(failedProcess);
 
     const { result: stopResult } = await import("@testing-library/react").then(
       (m) => m.renderHook(() => useStopResearch(), { wrapper: createWrapper() })
@@ -755,7 +764,7 @@ describe("Research Process Lifecycle Integration", () => {
       progress_percentage: 50,
     });
 
-    mockedInvoke.mockResolvedValueOnce(processWithCheckpoint);
+    mockedResearchApi.getProcess.mockResolvedValueOnce(processWithCheckpoint);
 
     const { result: fetchResult } = await import(
       "@testing-library/react"
@@ -777,7 +786,7 @@ describe("Research Process Lifecycle Integration", () => {
       current_iteration: 5,
       progress_percentage: 50,
     });
-    mockedInvoke.mockResolvedValueOnce(resumedWithProgress);
+    mockedResearchApi.resume.mockResolvedValueOnce(resumedWithProgress);
 
     const { result: resumeResult } = await import(
       "@testing-library/react"
@@ -797,7 +806,7 @@ describe("Research Process Lifecycle Integration", () => {
       checkpoint_interval: 5,
     });
 
-    mockedInvoke.mockResolvedValueOnce(customDepthProcess);
+    mockedResearchApi.start.mockResolvedValueOnce(customDepthProcess);
 
     const { result } = await import("@testing-library/react").then((m) =>
       m.renderHook(() => useStartResearch(), { wrapper: createWrapper() })
@@ -814,15 +823,16 @@ describe("Research Process Lifecycle Integration", () => {
       },
     });
 
-    expect(mockedInvoke).toHaveBeenCalledWith("start_research", {
-      input: expect.objectContaining({
+    expect(mockedResearchApi.start).toHaveBeenCalledWith(
+      expect.objectContaining({
         custom_depth: {
           max_iterations: 25,
           timeout_hours: 1.5,
           checkpoint_interval: 5,
         },
       }),
-    });
+      expect.any(Object)
+    );
   });
 
   it("output configuration includes target bucket", async () => {
@@ -830,7 +840,7 @@ describe("Research Process Lifecycle Integration", () => {
       target_bucket: "research-outputs",
     });
 
-    mockedInvoke.mockResolvedValueOnce(processWithOutput);
+    mockedResearchApi.start.mockResolvedValueOnce(processWithOutput);
 
     const { result } = await import("@testing-library/react").then((m) =>
       m.renderHook(() => useStartResearch(), { wrapper: createWrapper() })
@@ -843,10 +853,11 @@ describe("Research Process Lifecycle Integration", () => {
       target_bucket: "research-outputs",
     });
 
-    expect(mockedInvoke).toHaveBeenCalledWith("start_research", {
-      input: expect.objectContaining({
+    expect(mockedResearchApi.start).toHaveBeenCalledWith(
+      expect.objectContaining({
         target_bucket: "research-outputs",
       }),
-    });
+      expect.any(Object)
+    );
   });
 });

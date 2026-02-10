@@ -4,35 +4,40 @@ import userEvent from "@testing-library/user-event";
 import { PermissionDialog } from "./PermissionDialog";
 import type { PermissionRequest } from "@/types/permission";
 
-// Mock Tauri APIs
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn(),
+const mockSubscribe = vi.fn();
+
+vi.mock("@/providers/EventProvider", () => ({
+  useEventBus: () => ({
+    subscribe: mockSubscribe,
+    emit: vi.fn(),
+  }),
 }));
 
-vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(),
+vi.mock("@/lib/tauri", () => ({
+  api: {
+    permission: {
+      resolveRequest: vi.fn(),
+    },
+  },
 }));
 
-// Import mocked modules
-import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
+import { api } from "@/lib/tauri";
 
-const mockListen = vi.mocked(listen);
-const mockInvoke = vi.mocked(invoke);
+const mockResolveRequest = vi.mocked(api.permission.resolveRequest);
 
 describe("PermissionDialog", () => {
-  let eventCallback: ((event: { payload: PermissionRequest }) => void) | null = null;
+  let eventCallback: ((payload: PermissionRequest) => void) | null = null;
   let unlistenFn: (() => void) | null = null;
 
   beforeEach(() => {
     unlistenFn = vi.fn();
-    mockListen.mockImplementation((eventName: string, callback: (event: { payload: PermissionRequest }) => void) => {
-      if (eventName === "permission:request") {
+    mockSubscribe.mockImplementation((eventName: string, callback: (payload: PermissionRequest) => void) => {
+      if (eventName === "permission:request" || eventName === "permission-request") {
         eventCallback = callback;
       }
-      return Promise.resolve(unlistenFn);
+      return unlistenFn;
     });
-    mockInvoke.mockResolvedValue(undefined);
+    mockResolveRequest.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -48,7 +53,7 @@ describe("PermissionDialog", () => {
 
   it("listens to permission:request events on mount", () => {
     render(<PermissionDialog />);
-    expect(mockListen).toHaveBeenCalledWith("permission:request", expect.any(Function));
+    expect(mockSubscribe).toHaveBeenCalledWith("permission:request", expect.any(Function));
   });
 
   it("shows dialog when permission request received", async () => {
@@ -61,7 +66,7 @@ describe("PermissionDialog", () => {
     };
 
     // Trigger event
-    eventCallback?.(({ payload: request }));
+    eventCallback?.(request);
 
     await waitFor(() => {
       expect(screen.getByText("Permission Required")).toBeInTheDocument();
@@ -80,7 +85,7 @@ describe("PermissionDialog", () => {
       tool_input: { command: "echo hello" },
     };
 
-    eventCallback?.(({ payload: request }));
+    eventCallback?.(request);
 
     await waitFor(() => {
       expect(screen.getByText("echo hello")).toBeInTheDocument();
@@ -99,7 +104,7 @@ describe("PermissionDialog", () => {
       },
     };
 
-    eventCallback?.(({ payload: request }));
+    eventCallback?.(request);
 
     await waitFor(() => {
       expect(screen.getByText(/Write to: \/tmp\/test.txt/)).toBeInTheDocument();
@@ -120,7 +125,7 @@ describe("PermissionDialog", () => {
       },
     };
 
-    eventCallback?.(({ payload: request }));
+    eventCallback?.(request);
 
     await waitFor(() => {
       expect(screen.getByText(/\.\.\./)).toBeInTheDocument();
@@ -140,7 +145,7 @@ describe("PermissionDialog", () => {
       },
     };
 
-    eventCallback?.(({ payload: request }));
+    eventCallback?.(request);
 
     await waitFor(() => {
       expect(screen.getByText(/Edit: \/tmp\/test.txt/)).toBeInTheDocument();
@@ -160,7 +165,7 @@ describe("PermissionDialog", () => {
       },
     };
 
-    eventCallback?.(({ payload: request }));
+    eventCallback?.(request);
 
     await waitFor(() => {
       expect(screen.getByText("Read: /tmp/test.txt")).toBeInTheDocument();
@@ -177,7 +182,7 @@ describe("PermissionDialog", () => {
       context: "Listing directory contents",
     };
 
-    eventCallback?.(({ payload: request }));
+    eventCallback?.(request);
 
     await waitFor(() => {
       expect(screen.getByText("Listing directory contents")).toBeInTheDocument();
@@ -199,8 +204,8 @@ describe("PermissionDialog", () => {
       tool_input: { file_path: "/tmp/test.txt" },
     };
 
-    eventCallback?.(({ payload: request1 }));
-    eventCallback?.(({ payload: request2 }));
+    eventCallback?.(request1);
+    eventCallback?.(request2);
 
     await waitFor(() => {
       expect(screen.getByText("+1 more permission request(s) waiting")).toBeInTheDocument();
@@ -217,7 +222,7 @@ describe("PermissionDialog", () => {
       tool_input: { command: "ls" },
     };
 
-    eventCallback?.(({ payload: request }));
+    eventCallback?.(request);
 
     await waitFor(() => {
       expect(screen.getByText("Allow")).toBeInTheDocument();
@@ -225,12 +230,9 @@ describe("PermissionDialog", () => {
 
     await user.click(screen.getByText("Allow"));
 
-    expect(mockInvoke).toHaveBeenCalledWith("resolve_permission_request", {
-      args: {
-        request_id: "test-123",
-        decision: "allow",
-        message: undefined,
-      },
+    expect(mockResolveRequest).toHaveBeenCalledWith({
+      requestId: "test-123",
+      decision: "allow",
     });
   });
 
@@ -244,7 +246,7 @@ describe("PermissionDialog", () => {
       tool_input: { command: "ls" },
     };
 
-    eventCallback?.(({ payload: request }));
+    eventCallback?.(request);
 
     await waitFor(() => {
       expect(screen.getByText("Deny")).toBeInTheDocument();
@@ -252,12 +254,10 @@ describe("PermissionDialog", () => {
 
     await user.click(screen.getByText("Deny"));
 
-    expect(mockInvoke).toHaveBeenCalledWith("resolve_permission_request", {
-      args: {
-        request_id: "test-123",
-        decision: "deny",
-        message: "User denied permission",
-      },
+    expect(mockResolveRequest).toHaveBeenCalledWith({
+      requestId: "test-123",
+      decision: "deny",
+      message: "User denied permission",
     });
   });
 
@@ -271,7 +271,7 @@ describe("PermissionDialog", () => {
       tool_input: { command: "ls" },
     };
 
-    eventCallback?.(({ payload: request }));
+    eventCallback?.(request);
 
     await waitFor(() => {
       expect(screen.getByText("Allow")).toBeInTheDocument();
@@ -300,8 +300,8 @@ describe("PermissionDialog", () => {
       tool_input: { file_path: "/tmp/test.txt" },
     };
 
-    eventCallback?.(({ payload: request1 }));
-    eventCallback?.(({ payload: request2 }));
+    eventCallback?.(request1);
+    eventCallback?.(request2);
 
     await waitFor(() => {
       expect(screen.getByText("ls")).toBeInTheDocument();
@@ -324,7 +324,7 @@ describe("PermissionDialog", () => {
       tool_input: { command: "ls" },
     };
 
-    eventCallback?.(({ payload: request }));
+    eventCallback?.(request);
 
     await waitFor(() => {
       expect(screen.getByTestId("dialog-close")).toBeInTheDocument();
@@ -332,12 +332,10 @@ describe("PermissionDialog", () => {
 
     await user.click(screen.getByTestId("dialog-close"));
 
-    expect(mockInvoke).toHaveBeenCalledWith("resolve_permission_request", {
-      args: {
-        request_id: "test-123",
-        decision: "deny",
-        message: "User denied permission",
-      },
+    expect(mockResolveRequest).toHaveBeenCalledWith({
+      requestId: "test-123",
+      decision: "deny",
+      message: "User denied permission",
     });
   });
 
@@ -346,7 +344,7 @@ describe("PermissionDialog", () => {
 
     // Wait for the listener to be set up
     await waitFor(() => {
-      expect(mockListen).toHaveBeenCalled();
+      expect(mockSubscribe).toHaveBeenCalled();
     });
 
     unmount();

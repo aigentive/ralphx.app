@@ -17,7 +17,8 @@ use crate::domain::repositories::{
     IdeationSessionRepository, ProjectRepository, TaskRepository,
 };
 use crate::infrastructure::agents::claude::{
-    add_prompt_args, build_base_cli_command, configure_spawn, ContentBlockItem, ToolCall,
+    add_prompt_args, build_base_cli_command, configure_spawn, mcp_agent_type, ContentBlockItem,
+    ToolCall,
 };
 
 use crate::infrastructure::agents::claude::agent_names;
@@ -280,6 +281,48 @@ pub fn build_command(
     };
 
     add_prompt_args(&mut cmd, &prompt, agent, resume_session);
+    configure_spawn(&mut cmd, working_directory);
+
+    Ok(cmd)
+}
+
+/// Build a Claude CLI command for resuming a session (queue messages).
+///
+/// Like `build_command()`, but always resumes with the given session_id
+/// and uses static agent resolution (no entity_status needed for queue messages).
+pub fn build_resume_command(
+    cli_path: &Path,
+    plugin_dir: &Path,
+    context_type: ChatContextType,
+    context_id: &str,
+    message: &str,
+    working_directory: &Path,
+    session_id: &str,
+    project_id: Option<&str>,
+) -> Result<Command, String> {
+    let agent_name = resolve_agent(&context_type, None);
+
+    let mut cmd = build_base_cli_command(cli_path, plugin_dir, Some(agent_name))?;
+    cmd.env("RALPHX_AGENT_TYPE", mcp_agent_type(agent_name));
+
+    // Task scope
+    match context_type {
+        ChatContextType::Task
+        | ChatContextType::TaskExecution
+        | ChatContextType::Review
+        | ChatContextType::Merge => {
+            cmd.env("RALPHX_TASK_ID", context_id);
+        }
+        _ => {}
+    }
+
+    // Project scope
+    if let Some(pid) = project_id {
+        cmd.env("RALPHX_PROJECT_ID", pid);
+    }
+
+    // CRITICAL: Always pass agent even when resuming — enforces disallowedTools
+    add_prompt_args(&mut cmd, message, Some(agent_name), Some(session_id));
     configure_spawn(&mut cmd, working_directory);
 
     Ok(cmd)

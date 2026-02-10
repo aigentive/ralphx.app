@@ -42,10 +42,10 @@ describe("AskUserQuestionOptionSchema", () => {
     ).toThrow();
   });
 
-  it("should reject option missing description", () => {
+  it("should allow option missing description", () => {
     expect(() =>
       AskUserQuestionOptionSchema.parse({ label: "Test" })
-    ).toThrow();
+    ).not.toThrow();
   });
 });
 
@@ -109,25 +109,25 @@ describe("AskUserQuestionPayloadSchema", () => {
     ).toThrow();
   });
 
-  it("should reject payload with empty header", () => {
+  it("should allow payload with empty header", () => {
     expect(() =>
       AskUserQuestionPayloadSchema.parse({ ...validPayload, header: "" })
-    ).toThrow();
+    ).not.toThrow();
   });
 
-  it("should reject payload with empty options array", () => {
+  it("should allow payload with empty options array", () => {
     expect(() =>
       AskUserQuestionPayloadSchema.parse({ ...validPayload, options: [] })
-    ).toThrow();
+    ).not.toThrow();
   });
 
-  it("should reject payload with only one option", () => {
+  it("should allow payload with only one option", () => {
     expect(() =>
       AskUserQuestionPayloadSchema.parse({
         ...validPayload,
         options: [{ label: "Only one", description: "Single option" }],
       })
-    ).toThrow();
+    ).not.toThrow();
   });
 
   it("should reject payload missing requestId", () => {

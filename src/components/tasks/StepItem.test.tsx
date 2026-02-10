@@ -29,7 +29,7 @@ describe('StepItem', () => {
     it('should render step with title and description', () => {
       render(<StepItem step={baseStep} index={0} />);
 
-      expect(screen.getByText('1.')).toBeInTheDocument();
+      expect(screen.getByText('Step 1:')).toBeInTheDocument();
       expect(screen.getByText('Implement authentication')).toBeInTheDocument();
       expect(screen.getByText('Add OAuth provider')).toBeInTheDocument();
     });
@@ -55,7 +55,7 @@ describe('StepItem', () => {
 
     it('should render correct step number based on index', () => {
       render(<StepItem step={baseStep} index={5} />);
-      expect(screen.getByText('6.')).toBeInTheDocument();
+      expect(screen.getByText('Step 6:')).toBeInTheDocument();
     });
   });
 
@@ -98,32 +98,31 @@ describe('StepItem', () => {
       const inProgressStep = { ...baseStep, status: 'in_progress' as const };
       const { container } = render(<StepItem step={inProgressStep} index={0} />);
       const stepContainer = container.firstChild as HTMLElement;
-      expect(stepContainer.className).toContain('border-accent-primary');
-      expect(stepContainer.className).toContain('bg-accent-muted');
+      expect(stepContainer).toHaveStyle({ backgroundColor: 'hsla(14 100% 60% / 0.06)' });
     });
 
     it('should apply completed styles with opacity', () => {
       const completedStep = { ...baseStep, status: 'completed' as const };
       const { container } = render(<StepItem step={completedStep} index={0} />);
       const stepContainer = container.firstChild as HTMLElement;
-      expect(stepContainer.className).toContain('opacity-75');
+      expect(stepContainer.getAttribute('style')).toContain('background-color: transparent');
     });
 
     it('should apply skipped styles with opacity and line-through', () => {
       const skippedStep = { ...baseStep, status: 'skipped' as const };
       const { container } = render(<StepItem step={skippedStep} index={0} />);
       const stepContainer = container.firstChild as HTMLElement;
-      expect(stepContainer.className).toContain('opacity-50');
+      expect(stepContainer).toHaveStyle({ opacity: '0.5' });
       // Check for line-through on title
       const titleElement = screen.getByText('Implement authentication').parentElement;
-      expect(titleElement?.className).toContain('line-through');
+      expect(titleElement).toHaveStyle({ textDecoration: 'line-through' });
     });
 
     it('should apply failed styles with error border', () => {
       const failedStep = { ...baseStep, status: 'failed' as const };
       const { container } = render(<StepItem step={failedStep} index={0} />);
       const stepContainer = container.firstChild as HTMLElement;
-      expect(stepContainer.className).toContain('border-status-error');
+      expect(stepContainer).toHaveStyle({ backgroundColor: 'hsla(0 70% 55% / 0.06)' });
     });
   });
 

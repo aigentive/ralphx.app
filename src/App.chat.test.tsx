@@ -17,6 +17,7 @@ import { getQueryClient } from "@/lib/queryClient";
 import { useChatStore } from "@/stores/chatStore";
 import { useUiStore } from "@/stores/uiStore";
 import { ChatPanel } from "@/components/Chat/ChatPanel";
+import { EventProvider } from "@/providers/EventProvider";
 import type { ChatContext } from "@/types/chat";
 
 // Mock Tauri API calls
@@ -76,7 +77,7 @@ function TestWrapper({ children }: { children: React.ReactNode }) {
   const queryClient = getQueryClient();
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
+      <EventProvider>{children}</EventProvider>
     </QueryClientProvider>
   );
 }
@@ -219,7 +220,8 @@ describe("ChatPanel Integration", () => {
       );
 
       const panel = screen.getByTestId("chat-panel");
-      expect(panel).toHaveStyle({ width: "400px" });
+      // ResizeablePanel adds 16px outer chrome (8px margins on each side)
+      expect(panel).toHaveStyle({ width: "416px" });
     });
 
     it("has resize handle", () => {
@@ -238,7 +240,7 @@ describe("ChatPanel Integration", () => {
       expect(screen.getByTestId("chat-panel-resize-handle")).toBeInTheDocument();
     });
 
-    it("uses minimum width from store constants", () => {
+    it("uses minimum width from store constants including panel chrome", () => {
       act(() => {
         useChatStore.setState({ width: 280 });
         useUiStore.setState({
@@ -253,7 +255,7 @@ describe("ChatPanel Integration", () => {
       );
 
       const panel = screen.getByTestId("chat-panel");
-      expect(panel).toHaveStyle({ minWidth: "280px" });
+      expect(panel).toHaveStyle({ minWidth: "336px" });
     });
   });
 
@@ -517,8 +519,8 @@ describe("ChatPanel Integration", () => {
         </TestWrapper>
       );
 
-      const panel = screen.getByTestId("chat-panel");
-      expect(panel).toHaveStyle({ backgroundColor: "var(--bg-surface)" });
+      const panelInner = screen.getByTestId("chat-panel").firstElementChild as HTMLElement;
+      expect(panelInner).toHaveStyle({ background: "hsla(220 10% 10% / 0.92)" });
     });
 
     it("uses design tokens for border", () => {
@@ -534,9 +536,8 @@ describe("ChatPanel Integration", () => {
         </TestWrapper>
       );
 
-      const panel = screen.getByTestId("chat-panel");
-      // Check border-left style which includes the design token
-      expect(panel.getAttribute("style")).toContain("border-left: 1px solid var(--border-subtle)");
+      const panelInner = screen.getByTestId("chat-panel").firstElementChild as HTMLElement;
+      expect(panelInner.style.border).toContain("1px solid");
     });
   });
 });

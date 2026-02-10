@@ -273,7 +273,7 @@ describe("ExecutionControlBar", () => {
   });
 
   describe("styling", () => {
-    it("applies design system background color", () => {
+    it("applies floating glass background style", () => {
       render(
         <ExecutionControlBar
           runningCount={0}
@@ -285,10 +285,10 @@ describe("ExecutionControlBar", () => {
         />
       );
       const bar = screen.getByTestId("execution-control-bar");
-      expect(bar).toHaveStyle({ backgroundColor: "var(--bg-surface)" });
+      expect(bar).toHaveStyle({ background: "hsla(220 10% 10% / 0.92)" });
     });
 
-    it("applies border styling from design system", () => {
+    it("applies subtle border styling", () => {
       render(
         <ExecutionControlBar
           runningCount={0}
@@ -300,7 +300,9 @@ describe("ExecutionControlBar", () => {
         />
       );
       const bar = screen.getByTestId("execution-control-bar");
-      expect(bar.style.borderColor).toBe("var(--border-subtle)");
+      expect(bar.style.borderWidth).toBe("1px");
+      expect(bar.style.borderStyle).toBe("solid");
+      expect(bar.style.borderColor).toBe("rgba(255, 255, 255, 0.08)");
     });
 
     it("applies box shadow for elevation", () => {
@@ -315,7 +317,8 @@ describe("ExecutionControlBar", () => {
         />
       );
       const bar = screen.getByTestId("execution-control-bar");
-      expect(bar.style.boxShadow).toBe("0 -2px 8px rgba(0,0,0,0.15)");
+      expect(bar.style.boxShadow).toContain("0 4px 16px");
+      expect(bar.style.boxShadow).toContain("0 12px 32px");
     });
   });
 
@@ -332,7 +335,7 @@ describe("ExecutionControlBar", () => {
         />
       );
       const indicator = screen.getByTestId("status-indicator");
-      expect(indicator).toHaveStyle({ backgroundColor: "var(--status-success)" });
+      expect(indicator).toHaveStyle({ backgroundColor: "hsl(145 60% 45%)" });
     });
 
     it("shows warning color when paused", () => {
@@ -347,7 +350,7 @@ describe("ExecutionControlBar", () => {
         />
       );
       const indicator = screen.getByTestId("status-indicator");
-      expect(indicator).toHaveStyle({ backgroundColor: "var(--status-warning)" });
+      expect(indicator).toHaveStyle({ backgroundColor: "hsl(45 90% 55%)" });
     });
 
     it("shows muted color when idle with no queued", () => {
@@ -362,7 +365,7 @@ describe("ExecutionControlBar", () => {
         />
       );
       const indicator = screen.getByTestId("status-indicator");
-      expect(indicator).toHaveStyle({ backgroundColor: "var(--text-muted)" });
+      expect(indicator).toHaveStyle({ backgroundColor: "hsl(220 10% 45%)" });
     });
 
     it("has pulsing animation class when running", () => {
@@ -463,8 +466,9 @@ describe("ExecutionControlBar", () => {
         />
       );
       const stopBtn = screen.getByTestId("stop-button");
-      // Check for error color class (using Tailwind classes now)
-      expect(stopBtn).toHaveClass("text-[var(--status-error)]");
+      expect(stopBtn).toHaveStyle({ backgroundColor: "hsla(0 70% 55% / 0.15)" });
+      expect(stopBtn).toHaveStyle({ color: "hsl(0 70% 60%)" });
+      expect(stopBtn).toHaveStyle({ opacity: "1" });
     });
 
     it("has muted styling when disabled", () => {
@@ -479,9 +483,9 @@ describe("ExecutionControlBar", () => {
         />
       );
       const stopBtn = screen.getByTestId("stop-button");
-      // Check for muted color class when disabled
-      expect(stopBtn).toHaveClass("text-[var(--text-muted)]");
-      expect(stopBtn).toHaveClass("opacity-50");
+      expect(stopBtn).toHaveStyle({ backgroundColor: "hsl(220 10% 18%)" });
+      expect(stopBtn).toHaveStyle({ color: "hsl(220 10% 45%)" });
+      expect(stopBtn).toHaveStyle({ opacity: "0.5" });
     });
 
     it("has Square icon", () => {
@@ -515,8 +519,8 @@ describe("ExecutionControlBar", () => {
         />
       );
       const pauseBtn = screen.getByTestId("pause-toggle-button");
-      expect(pauseBtn).toHaveClass("text-[var(--accent-primary)]");
-      expect(pauseBtn).toHaveClass("bg-[var(--accent-muted)]");
+      expect(pauseBtn).toHaveStyle({ backgroundColor: "hsla(14 100% 60% / 0.15)" });
+      expect(pauseBtn).toHaveStyle({ color: "hsl(14 100% 60%)" });
     });
 
     it("has default styling when not paused", () => {
@@ -531,7 +535,7 @@ describe("ExecutionControlBar", () => {
         />
       );
       const pauseBtn = screen.getByTestId("pause-toggle-button");
-      expect(pauseBtn).toHaveClass("text-[var(--text-primary)]");
+      expect(pauseBtn).toHaveStyle({ color: "hsl(220 10% 90%)" });
     });
   });
 

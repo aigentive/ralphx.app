@@ -19,6 +19,7 @@ import {
   PanelRightOpen,
   Hammer,
 } from "lucide-react";
+import { AGENT_WORKER } from "@/constants/agents";
 import { StatusActivityBadge, type AgentType } from "./StatusActivityBadge";
 import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
@@ -378,7 +379,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
             isAgentActive={isSending || isAgentRunning || isExecutionMode}
             agentType={
               isExecutionMode
-                ? "worker"
+                ? AGENT_WORKER
                 : (isSending || isAgentRunning)
                   ? "agent"
                   : "idle" as AgentType

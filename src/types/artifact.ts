@@ -6,6 +6,11 @@
  */
 
 import { z } from "zod";
+import {
+  AGENT_DEEP_RESEARCHER,
+  AGENT_ORCHESTRATOR,
+  AGENT_WORKER,
+} from "@/constants/agents";
 
 // ============================================
 // Artifact Type
@@ -385,7 +390,7 @@ export const SYSTEM_BUCKETS: readonly ArtifactBucket[] = [
     id: "research-outputs",
     name: "Research Outputs",
     acceptedTypes: ["research_document", "findings", "recommendations"],
-    writers: ["deep-researcher", "orchestrator"],
+    writers: [AGENT_DEEP_RESEARCHER, AGENT_ORCHESTRATOR],
     readers: ["all"],
     isSystem: true,
   },
@@ -393,7 +398,7 @@ export const SYSTEM_BUCKETS: readonly ArtifactBucket[] = [
     id: "work-context",
     name: "Work Context",
     acceptedTypes: ["context", "task_spec", "previous_work"],
-    writers: ["orchestrator", "system"],
+    writers: [AGENT_ORCHESTRATOR, "system"],
     readers: ["all"],
     isSystem: true,
   },
@@ -401,7 +406,7 @@ export const SYSTEM_BUCKETS: readonly ArtifactBucket[] = [
     id: "code-changes",
     name: "Code Changes",
     acceptedTypes: ["code_change", "diff", "test_result"],
-    writers: ["worker"],
+    writers: [AGENT_WORKER],
     readers: ["all"],
     isSystem: true,
   },
@@ -409,7 +414,7 @@ export const SYSTEM_BUCKETS: readonly ArtifactBucket[] = [
     id: "prd-library",
     name: "PRD Library",
     acceptedTypes: ["prd", "specification", "design_doc"],
-    writers: ["orchestrator", "user"],
+    writers: [AGENT_ORCHESTRATOR, "user"],
     readers: ["all"],
     isSystem: true,
   },

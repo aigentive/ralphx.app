@@ -3,6 +3,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
 import { typedInvoke, api, HealthResponseSchema } from "./tauri";
 
+// Force real Tauri API path in this test file (no web-mode mock API fallback)
+vi.mock("./tauri-detection", () => ({
+  isWebMode: () => false,
+  isTauriMode: () => true,
+}));
+
 // Cast invoke to a mock function for testing
 const mockInvoke = invoke as ReturnType<typeof vi.fn>;
 
@@ -123,16 +129,18 @@ describe("api.health", () => {
 // Helper to create mock task
 const createMockTask = (overrides = {}) => ({
   id: "task-1",
-  projectId: "project-1",
+  project_id: "project-1",
   category: "feature",
   title: "Test Task",
   description: null,
   priority: 0,
-  internalStatus: "backlog",
-  createdAt: "2026-01-24T12:00:00Z",
-  updatedAt: "2026-01-24T12:00:00Z",
-  startedAt: null,
-  completedAt: null,
+  internal_status: "backlog",
+  created_at: "2026-01-24T12:00:00Z",
+  updated_at: "2026-01-24T12:00:00Z",
+  started_at: null,
+  completed_at: null,
+  archived_at: null,
+  blocked_reason: null,
   ...overrides,
 });
 
@@ -140,13 +148,13 @@ const createMockTask = (overrides = {}) => ({
 const createMockProject = (overrides = {}) => ({
   id: "project-1",
   name: "Test Project",
-  workingDirectory: "/path/to/project",
-  gitMode: "local",
-  worktreePath: null,
-  worktreeBranch: null,
-  baseBranch: null,
-  createdAt: "2026-01-24T12:00:00Z",
-  updatedAt: "2026-01-24T12:00:00Z",
+  working_directory: "/path/to/project",
+  git_mode: "local",
+  worktree_path: null,
+  worktree_branch: null,
+  base_branch: null,
+  created_at: "2026-01-24T12:00:00Z",
+  updated_at: "2026-01-24T12:00:00Z",
   ...overrides,
 });
 
@@ -160,7 +168,7 @@ describe("api.tasks", () => {
       mockInvoke.mockResolvedValue({
         tasks: [createMockTask()],
         total: 1,
-        hasMore: false,
+        has_more: false,
         offset: 0,
       });
 
@@ -176,7 +184,7 @@ describe("api.tasks", () => {
       mockInvoke.mockResolvedValue({
         tasks,
         total: 2,
-        hasMore: false,
+        has_more: false,
         offset: 0,
       });
 
@@ -196,12 +204,12 @@ describe("api.tasks", () => {
   });
 
   describe("get", () => {
-    it("should call get_task with taskId", async () => {
+    it("should call get_task with id", async () => {
       mockInvoke.mockResolvedValue(createMockTask());
 
       await api.tasks.get("task-1");
 
-      expect(mockInvoke).toHaveBeenCalledWith("get_task", { taskId: "task-1" });
+      expect(mockInvoke).toHaveBeenCalledWith("get_task", { id: "task-1" });
     });
 
     it("should return task", async () => {
@@ -249,12 +257,12 @@ describe("api.tasks", () => {
   });
 
   describe("delete", () => {
-    it("should call delete_task with taskId", async () => {
+    it("should call delete_task with id", async () => {
       mockInvoke.mockResolvedValue(true);
 
       await api.tasks.delete("task-1");
 
-      expect(mockInvoke).toHaveBeenCalledWith("delete_task", { taskId: "task-1" });
+      expect(mockInvoke).toHaveBeenCalledWith("delete_task", { id: "task-1" });
     });
 
     it("should return boolean", async () => {
@@ -268,7 +276,7 @@ describe("api.tasks", () => {
 
   describe("move", () => {
     it("should call move_task with taskId and toStatus", async () => {
-      mockInvoke.mockResolvedValue(createMockTask({ internalStatus: "ready" }));
+      mockInvoke.mockResolvedValue(createMockTask({ internal_status: "ready" }));
 
       await api.tasks.move("task-1", "ready");
 
@@ -346,14 +354,14 @@ describe("api.projects", () => {
   });
 
   describe("update", () => {
-    it("should call update_project with projectId and input", async () => {
+    it("should call update_project with id and input", async () => {
       mockInvoke.mockResolvedValue(createMockProject());
       const input = { name: "Updated" };
 
       await api.projects.update("project-1", input);
 
       expect(mockInvoke).toHaveBeenCalledWith("update_project", {
-        projectId: "project-1",
+        id: "project-1",
         input,
       });
     });
@@ -386,14 +394,15 @@ const createMockWorkflow = (overrides = {}) => ({
   name: "RalphX Default",
   description: "Standard kanban workflow",
   columns: [
-    { id: "draft", name: "Draft", mapsTo: "backlog" },
-    { id: "backlog", name: "Backlog", mapsTo: "backlog" },
-    { id: "todo", name: "To Do", mapsTo: "ready" },
-    { id: "planned", name: "Planned", mapsTo: "ready" },
-    { id: "in_progress", name: "In Progress", mapsTo: "executing" },
-    { id: "in_review", name: "In Review", mapsTo: "pending_review" },
-    { id: "done", name: "Done", mapsTo: "approved" },
+    { id: "draft", name: "Draft", maps_to: "backlog" },
+    { id: "backlog", name: "Backlog", maps_to: "backlog" },
+    { id: "todo", name: "To Do", maps_to: "ready" },
+    { id: "planned", name: "Planned", maps_to: "ready" },
+    { id: "in_progress", name: "In Progress", maps_to: "executing" },
+    { id: "in_review", name: "In Review", maps_to: "pending_review" },
+    { id: "done", name: "Done", maps_to: "approved" },
   ],
+  is_default: true,
   ...overrides,
 });
 
@@ -403,13 +412,13 @@ describe("api.workflows", () => {
   });
 
   describe("get", () => {
-    it("should call get_workflow with workflowId", async () => {
+    it("should call get_workflow with id", async () => {
       mockInvoke.mockResolvedValue(createMockWorkflow());
 
       await api.workflows.get("ralphx-default");
 
       expect(mockInvoke).toHaveBeenCalledWith("get_workflow", {
-        workflowId: "ralphx-default",
+        id: "ralphx-default",
       });
     });
 
@@ -428,24 +437,25 @@ describe("api.workflows", () => {
       await expect(api.workflows.get("invalid")).rejects.toThrow();
     });
 
-    it("should validate columns have valid mapsTo values", async () => {
+    it("should map unknown mapsTo values through as-is", async () => {
       const invalidWorkflow = {
         ...createMockWorkflow(),
-        columns: [{ id: "col", name: "Col", mapsTo: "invalid_status" }],
+        columns: [{ id: "col", name: "Col", maps_to: "invalid_status" }],
       };
       mockInvoke.mockResolvedValue(invalidWorkflow);
 
-      await expect(api.workflows.get("invalid")).rejects.toThrow();
+      const result = await api.workflows.get("invalid");
+      expect(result?.columns[0]?.mapsTo).toBe("invalid_status");
     });
   });
 
   describe("list", () => {
-    it("should call list_workflows", async () => {
+    it("should call get_workflows", async () => {
       mockInvoke.mockResolvedValue([createMockWorkflow()]);
 
       await api.workflows.list();
 
-      expect(mockInvoke).toHaveBeenCalledWith("list_workflows", {});
+      expect(mockInvoke).toHaveBeenCalledWith("get_workflows", {});
     });
 
     it("should return array of workflows", async () => {
@@ -855,7 +865,7 @@ describe("api.reviews", () => {
       await api.reviews.getById("review-1");
 
       expect(mockInvoke).toHaveBeenCalledWith("get_review_by_id", {
-        review_id: "review-1",
+        reviewId: "review-1",
       });
     });
 
@@ -884,7 +894,7 @@ describe("api.reviews", () => {
       await api.reviews.getByTaskId("task-1");
 
       expect(mockInvoke).toHaveBeenCalledWith("get_reviews_by_task_id", {
-        task_id: "task-1",
+        taskId: "task-1",
       });
     });
 
@@ -910,7 +920,7 @@ describe("api.reviews", () => {
       await api.reviews.getTaskStateHistory("task-1");
 
       expect(mockInvoke).toHaveBeenCalledWith("get_task_state_history", {
-        task_id: "task-1",
+        taskId: "task-1",
       });
     });
 
@@ -1090,7 +1100,7 @@ describe("api.fixTasks", () => {
       await api.fixTasks.getAttempts("task-1");
 
       expect(mockInvoke).toHaveBeenCalledWith("get_fix_task_attempts", {
-        task_id: "task-1",
+        taskId: "task-1",
       });
     });
 

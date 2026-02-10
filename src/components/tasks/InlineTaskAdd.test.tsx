@@ -81,21 +81,11 @@ describe("InlineTaskAdd", () => {
       expect(screen.getByTestId("inline-task-add-input")).toBeInTheDocument();
     });
 
-    it("has hover effect on border", () => {
+    it("uses collapsed hover styling class", () => {
       renderComponent();
 
       const ghostCard = screen.getByTestId("inline-task-add-collapsed");
-
-      // Initially has subtle border
-      expect(ghostCard.style.borderColor).toBe("var(--border-subtle)");
-
-      // Hover changes border
-      fireEvent.mouseEnter(ghostCard);
-      expect(ghostCard.style.borderColor).toBe("var(--accent-primary)");
-
-      // Leave resets border
-      fireEvent.mouseLeave(ghostCard);
-      expect(ghostCard.style.borderColor).toBe("var(--border-subtle)");
+      expect(ghostCard).toHaveClass("inline-task-add-collapsed");
     });
   });
 

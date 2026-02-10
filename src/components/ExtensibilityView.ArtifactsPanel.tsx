@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { AGENT_ORCHESTRATOR, AGENT_DEEP_RESEARCHER } from "@/constants/agents";
 import type { Artifact, ArtifactBucket } from "@/types/artifact";
 import { getFileIcon, type ViewMode, type SortBy } from "./ExtensibilityView.utils";
 
@@ -34,7 +35,7 @@ export function ArtifactsPanel() {
   const buckets: ArtifactBucket[] = [
     { id: "all", name: "All", acceptedTypes: [], writers: [], readers: ["all"], isSystem: false },
     { id: "system", name: "System", acceptedTypes: ["context", "activity_log"], writers: ["system"], readers: ["all"], isSystem: true },
-    { id: "prds", name: "PRDs", acceptedTypes: ["prd", "specification"], writers: ["orchestrator", "user"], readers: ["all"], isSystem: false },
+    { id: "prds", name: "PRDs", acceptedTypes: ["prd", "specification"], writers: [AGENT_ORCHESTRATOR, "user"], readers: ["all"], isSystem: false },
     { id: "docs", name: "Docs", acceptedTypes: ["research_document", "design_doc"], writers: ["user"], readers: ["all"], isSystem: false },
   ];
 
@@ -53,7 +54,7 @@ export function ArtifactsPanel() {
       name: "Research Notes",
       type: "research_document",
       content: { type: "inline", text: "Research content here..." },
-      metadata: { createdAt: "2026-01-01T00:00:00Z", createdBy: "deep-researcher", version: 1 },
+      metadata: { createdAt: "2026-01-01T00:00:00Z", createdBy: AGENT_DEEP_RESEARCHER, version: 1 },
       derivedFrom: [],
       bucketId: "docs",
     },

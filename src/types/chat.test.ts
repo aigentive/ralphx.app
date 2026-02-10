@@ -13,8 +13,8 @@ import {
 } from "./chat";
 
 describe("ViewTypeSchema", () => {
-  it("should have 6 view type values", () => {
-    expect(VIEW_TYPE_VALUES.length).toBe(6);
+  it("should have 7 view type values", () => {
+    expect(VIEW_TYPE_VALUES.length).toBe(7);
   });
 
   it("should parse all valid view types", () => {
@@ -25,7 +25,9 @@ describe("ViewTypeSchema", () => {
 
   it("should include expected view types", () => {
     expect(VIEW_TYPE_VALUES).toContain("kanban");
+    expect(VIEW_TYPE_VALUES).toContain("graph");
     expect(VIEW_TYPE_VALUES).toContain("ideation");
+    expect(VIEW_TYPE_VALUES).toContain("extensibility");
     expect(VIEW_TYPE_VALUES).toContain("activity");
     expect(VIEW_TYPE_VALUES).toContain("settings");
     expect(VIEW_TYPE_VALUES).toContain("task_detail");

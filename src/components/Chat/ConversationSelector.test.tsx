@@ -3,10 +3,22 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render as rtlRender, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ConversationSelector } from "./ConversationSelector";
 import type { ChatConversation } from "@/types/chat-conversation";
+
+const createTestQueryClient = () =>
+  new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0, staleTime: 0 },
+      mutations: { retry: false },
+    },
+  });
+
+const render = (ui: Parameters<typeof rtlRender>[0]) =>
+  rtlRender(<QueryClientProvider client={createTestQueryClient()}>{ui}</QueryClientProvider>);
 
 // ============================================================================
 // Test Data

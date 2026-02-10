@@ -26,12 +26,8 @@ use crate::domain::repositories::{
     IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentKey, RunningAgentRegistry};
-use crate::infrastructure::agents::claude::{
-    add_prompt_args, build_base_cli_command, configure_spawn,
-};
-
 use super::chat_service_context;
-use super::chat_service_helpers::{get_agent_name, get_assistant_role};
+use super::chat_service_helpers::get_assistant_role;
 use super::chat_service_streaming::process_stream_background;
 use super::chat_service_types::{
     AgentErrorPayload, AgentMessageCreatedPayload, AgentQueueSentPayload,
@@ -422,11 +418,15 @@ pub fn spawn_send_message_background<R: Runtime>(
                         }
 
                         // Build and spawn resume command
-                        let agent_name = get_agent_name(&context_type);
-                        let mut cmd = match build_base_cli_command(
+                        let mut cmd = match chat_service_context::build_resume_command(
                             cli_path.as_path(),
                             plugin_dir.as_path(),
-                            Some(agent_name),
+                            context_type,
+                            &context_id,
+                            &queued_msg.content,
+                            &working_directory,
+                            sess_id,
+                            resolved_project_id.as_deref(),
                         ) {
                             Ok(cmd) => cmd,
                             Err(err) => {
@@ -439,24 +439,6 @@ pub fn spawn_send_message_background<R: Runtime>(
                                 return;
                             }
                         };
-                        // Use short name for env var — MCP server's TOOL_ALLOWLIST uses unprefixed names
-                        cmd.env("RALPHX_AGENT_TYPE", crate::infrastructure::agents::claude::mcp_agent_type(agent_name));
-
-                        // Add task scope for task-related contexts
-                        match context_type {
-                            ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge => {
-                                cmd.env("RALPHX_TASK_ID", &context_id);
-                            }
-                            _ => {}
-                        }
-
-                        // Add project scope for all contexts
-                        if let Some(ref pid) = resolved_project_id {
-                            cmd.env("RALPHX_PROJECT_ID", pid);
-                        }
-
-                        add_prompt_args(&mut cmd, &queued_msg.content, None, Some(sess_id));
-                        configure_spawn(&mut cmd, &working_directory);
 
                         match cmd.spawn() {
                             Ok(child) => {

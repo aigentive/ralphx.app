@@ -10,10 +10,32 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { render as rtlRender, screen, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SettingsView } from "./SettingsView";
 import { DEFAULT_PROJECT_SETTINGS } from "@/types/settings";
+
+const mockSubscribe = vi.fn(() => vi.fn());
+
+vi.mock("@/providers/EventProvider", () => ({
+  useEventBus: () => ({
+    subscribe: mockSubscribe,
+  }),
+}));
+
+const createTestQueryClient = () =>
+  new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0, staleTime: 0 },
+      mutations: { retry: false },
+    },
+  });
+
+const render = (ui: Parameters<typeof rtlRender>[0]) =>
+  rtlRender(
+    <QueryClientProvider client={createTestQueryClient()}>{ui}</QueryClientProvider>
+  );
 
 describe("SettingsView", () => {
   beforeEach(() => {
@@ -308,18 +330,24 @@ describe("SettingsView", () => {
     it("renders glass effect header with backdrop blur", () => {
       render(<SettingsView />);
 
-      // Find the header by looking for the Settings text and checking its parent
-      const headerTitle = screen.getByText("Settings");
-      const header = headerTitle.closest("div.backdrop-blur-md");
-      expect(header).toBeInTheDocument();
+      // Header uses inline translucent background + blur styling
+      const heading = screen.getByRole("heading", { name: "Settings" });
+      let styledAncestor: HTMLElement | null = heading as HTMLElement;
+      while (styledAncestor && !styledAncestor.getAttribute("style")) {
+        styledAncestor = styledAncestor.parentElement;
+      }
+      expect(styledAncestor).toBeInTheDocument();
+      expect(styledAncestor?.getAttribute("style")?.replace(/\s+/g, "")).toContain(
+        "rgba(18,18,18,0.85)"
+      );
     });
 
     it("renders warm radial gradient background", () => {
       render(<SettingsView />);
 
       const settingsView = screen.getByTestId("settings-view");
-      // Check that backgroundImage style is set
-      expect(settingsView).toHaveStyle({ backgroundColor: "var(--bg-surface)" });
+      // Container uses layered radial gradients over --bg-base
+      expect(settingsView.getAttribute("style")).toContain("var(--bg-base)");
     });
 
     it("renders sub-settings with visual indentation", async () => {

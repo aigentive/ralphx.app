@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { TaskQABadge, deriveQADisplayStatus } from "./TaskQABadge";
+import { TaskQABadge } from "./TaskQABadge";
+import { deriveQADisplayStatus } from "./TaskQABadge.constants";
 
 describe("deriveQADisplayStatus", () => {
   describe("with test status", () => {

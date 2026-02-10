@@ -30,6 +30,10 @@ import { BMAD_METHODOLOGY, GSD_METHODOLOGY } from "@/types/methodology";
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
+vi.mock("@/lib/tauri-detection", () => ({
+  isWebMode: () => false,
+  isTauriMode: () => true,
+}));
 
 import { invoke } from "@tauri-apps/api/core";
 import {

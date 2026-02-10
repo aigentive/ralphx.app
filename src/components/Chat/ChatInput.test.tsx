@@ -113,13 +113,13 @@ describe("ChatInput", () => {
     it("has minHeight style for single line", () => {
       render(<ChatInput {...defaultProps} />);
       const textarea = screen.getByTestId("chat-input-textarea");
-      expect(textarea).toHaveStyle({ minHeight: "40px" });
+      expect(textarea).toHaveStyle({ minHeight: "38px" });
     });
 
     it("has maxHeight style to limit growth", () => {
       render(<ChatInput {...defaultProps} />);
       const textarea = screen.getByTestId("chat-input-textarea");
-      expect(textarea).toHaveStyle({ maxHeight: "120px" });
+      expect(textarea).toHaveStyle({ maxHeight: "100px" });
     });
 
     it("starts with single row", () => {
@@ -304,20 +304,22 @@ describe("ChatInput", () => {
     it("applies dark surface background to textarea", () => {
       render(<ChatInput {...defaultProps} />);
       const textarea = screen.getByTestId("chat-input-textarea");
-      expect(textarea).toHaveStyle({ backgroundColor: "var(--bg-elevated)" });
+      expect(textarea).toHaveStyle({ background: "hsl(220 10% 12%)" });
     });
 
-    it("applies accent color to send button", () => {
+    it("applies accent color to enabled send button", async () => {
+      const user = userEvent.setup();
       render(<ChatInput {...defaultProps} />);
+      await user.type(screen.getByTestId("chat-input-textarea"), "Hello");
       const sendButton = screen.getByTestId("chat-input-send");
-      expect(sendButton).toHaveStyle({ backgroundColor: "var(--accent-primary)" });
+      expect(sendButton).toHaveStyle({ background: "hsl(14 100% 60%)" });
     });
 
     it("applies reduced opacity when send button is disabled", async () => {
       render(<ChatInput {...defaultProps} />);
       const sendButton = screen.getByTestId("chat-input-send");
       // Send button should have disabled:opacity-50 class or similar
-      expect(sendButton).toHaveClass("disabled:opacity-50");
+      expect(sendButton).toHaveClass("disabled:opacity-40");
     });
   });
 
@@ -473,9 +475,7 @@ describe("ChatInput", () => {
 
     it("shows hint about Up arrow when queued messages exist", () => {
       render(<ChatInput {...defaultProps} hasQueuedMessages={true} />);
-      expect(
-        screen.getByText(/↑ to edit last queued message/i)
-      ).toBeInTheDocument();
+      expect(screen.getByText(/↑ to edit queued/i)).toBeInTheDocument();
     });
 
     it("shows default hint when no queued messages", () => {
