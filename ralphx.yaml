@@ -27,14 +27,18 @@
 #     Additional tools appended after inherited set.
 #   Effective order is: inherited tools (if any) + include tools, deduplicated.
 # - mcp_tools:
-#   MCP tool names without `mcp__ralphx__` prefix. These become preapproved
-#   `mcp__ralphx__<tool>` entries in `--allowedTools`.
+#   MCP tool names without `mcp__<mcp_server_name>__` prefix. These become
+#   preapproved `mcp__<mcp_server_name>__<tool>` entries in `--allowedTools`.
 # - preapproved_cli_tools:
 #   Additional preapproved CLI tools/variants in `--allowedTools`
 #   (e.g. `Task(Explore)`, `Task(Plan)`, `Write`, `Edit`).
 #
 # claude:
 #   Runtime CLI behavior for Claude spawns.
+# - mcp_server_name:
+#   MCP server id used to build MCP tool ids:
+#   `mcp__<mcp_server_name>__<tool_name>`.
+#   This also controls the dynamic `--mcp-config` server key.
 # - permission_mode:
 #   Passed to `--permission-mode`. Valid Claude values include:
 #   `default`, `acceptEdits`, `plan`, `delegate`, `dontAsk`, `bypassPermissions`.
@@ -46,6 +50,7 @@
 #   If true, adds `--dangerously-skip-permissions`. Keep false by default.
 # - permission_prompt_tool:
 #   MCP tool name used by `--permission-prompt-tool`.
+#   Accepts shorthand (e.g. `permission_request`) or full MCP tool id.
 # - append_system_prompt_file:
 #   If true, pass `--append-system-prompt-file <path>` using `system_prompt_file`.
 #   If false, inline prompt content via `--append-system-prompt`.
@@ -58,10 +63,11 @@ tool_sets:
   base_tools: [Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill]
 
 claude:
+  mcp_server_name: ralphx
   setting_sources: [user, project, local]
   permission_mode: default
   dangerously_skip_permissions: false
-  permission_prompt_tool: mcp__ralphx__permission_request
+  permission_prompt_tool: permission_request
   append_system_prompt_file: true
 
 agents:

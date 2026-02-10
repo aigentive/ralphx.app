@@ -297,7 +297,7 @@ pub fn sanitize_claude_user_state() {
 
 /// Create a dynamic MCP config temp file for an agent.
 ///
-/// Writes a JSON config that starts the RalphX MCP server with the agent's type
+/// Writes a JSON config that starts the configured MCP server with the agent's type
 /// passed via `--agent-type` CLI arg (for tool filtering). Returns the temp file path.
 /// Uses UUID in filename to avoid race conditions between parallel agent spawns.
 pub fn create_mcp_config(plugin_dir: &Path, agent_type: &str) -> Option<PathBuf> {
@@ -310,10 +310,11 @@ pub fn create_mcp_config(plugin_dir: &Path, agent_type: &str) -> Option<PathBuf>
 
     // Strip plugin prefix for MCP server's --agent-type param
     let short_name = mcp_agent_type(agent_type);
+    let mcp_server_name = &claude_runtime_config().mcp_server_name;
 
     let mcp_config = serde_json::json!({
         "mcpServers": {
-            "ralphx": {
+            mcp_server_name: {
                 "type": "stdio",
                 "command": node_command,
                 "args": [mcp_server_path_str, "--agent-type", short_name]
@@ -524,7 +525,7 @@ pub fn build_spawnable_command(
     Ok(SpawnableCommand { cmd, stdin_prompt })
 }
 
-/// Register the RalphX MCP server with Claude Code CLI
+/// Register the configured MCP server with Claude Code CLI.
 /// This ensures the MCP server is available to Claude regardless of which project directory
 /// the user is working in. The server is registered with user scope.
 pub async fn register_mcp_server(cli_path: &Path, plugin_dir: &Path) -> Result<(), String> {
@@ -554,16 +555,17 @@ pub async fn register_mcp_server(cli_path: &Path, plugin_dir: &Path) -> Result<(
 
     let config_json = serde_json::to_string(&mcp_config)
         .map_err(|e| format!("Failed to serialize MCP config: {}", e))?;
+    let mcp_server_name = claude_runtime_config().mcp_server_name.clone();
 
     // First, try to remove existing registration (ignore errors)
     let remove_result = std::process::Command::new(cli_path)
-        .args(["mcp", "remove", "ralphx", "-s", "user"])
+        .args(["mcp", "remove", &mcp_server_name, "-s", "user"])
         .output();
 
     match remove_result {
         Ok(output) => {
             if output.status.success() {
-                info!("Removed existing ralphx MCP registration");
+                info!(server = %mcp_server_name, "Removed existing MCP registration");
             }
             // Ignore errors - server might not exist yet
         }
@@ -574,7 +576,7 @@ pub async fn register_mcp_server(cli_path: &Path, plugin_dir: &Path) -> Result<(
 
     // Register the MCP server with user scope
     let add_result = std::process::Command::new(cli_path)
-        .args(["mcp", "add-json", "-s", "user", "ralphx", &config_json])
+        .args(["mcp", "add-json", "-s", "user", &mcp_server_name, &config_json])
         .output()
         .map_err(|e| format!("Failed to run claude mcp add-json: {}", e))?;
 
@@ -584,8 +586,9 @@ pub async fn register_mcp_server(cli_path: &Path, plugin_dir: &Path) -> Result<(
     }
 
     info!(
-        "Successfully registered RalphX MCP server at: {}",
-        mcp_server_path.display()
+        server = %mcp_server_name,
+        path = %mcp_server_path.display(),
+        "Successfully registered MCP server"
     );
 
     Ok(())
