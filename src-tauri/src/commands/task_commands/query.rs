@@ -891,9 +891,10 @@ fn format_status_change_description(task_title: &str, to_status: &str) -> String
         _ => "status changed",
     };
 
-    // Truncate title if too long
-    let title = if task_title.len() > 40 {
-        format!("{}...", &task_title[..37])
+    // Truncate title if too long (char-boundary safe)
+    let title = if task_title.chars().count() > 40 {
+        let truncated: String = task_title.chars().take(37).collect();
+        format!("{truncated}...")
     } else {
         task_title.to_string()
     };

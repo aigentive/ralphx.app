@@ -203,6 +203,18 @@ fn slugify(name: &str) -> String {
         .to_string()
 }
 
+/// Truncate a string to at most `max_bytes` bytes at a valid char boundary.
+fn truncate_str(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut end = max_bytes;
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
 /// Expand `~/` prefix to the user's home directory
 fn expand_home(path: &str) -> String {
     if let Some(stripped) = path.strip_prefix("~/") {
@@ -841,7 +853,7 @@ pub(crate) fn format_validation_error_metadata(
                 "command": f.command,
                 "path": f.path,
                 "exit_code": f.exit_code,
-                "stderr": if f.stderr.len() > 2000 { &f.stderr[..2000] } else { &f.stderr },
+                "stderr": truncate_str(&f.stderr, 2000),
             })
         })
         .collect();
@@ -2524,7 +2536,7 @@ impl<'a> super::TransitionHandler<'a> {
                         "command": f.command,
                         "path": f.path,
                         "exit_code": f.exit_code,
-                        "stderr": if f.stderr.len() > 2000 { &f.stderr[..2000] } else { &f.stderr },
+                        "stderr": truncate_str(&f.stderr, 2000),
                     })
                 })
                 .collect();
