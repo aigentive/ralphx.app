@@ -10,7 +10,7 @@
 pub const PLUGIN_PREFIX: &str = "ralphx:";
 
 // ── Short names (without "ralphx:" prefix) ───────────────────────────────
-// Used by AGENT_CONFIGS in agent_config.rs and MCP TOOL_ALLOWLIST in tools.ts.
+// Used by AGENT_CONFIGS in agent_config/ and MCP TOOL_ALLOWLIST in tools.ts.
 // These match the `name:` field in each agent's frontmatter (ralphx-plugin/agents/*.md).
 
 pub const SHORT_ORCHESTRATOR_IDEATION: &str = "orchestrator-ideation";

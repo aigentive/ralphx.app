@@ -1,2 +1,16 @@
 {
+  "mcpServers": {
+    "ralphx": {
+      "args": [
+        "/Users/lazabogdan/Code/ralphx/ralphx-plugin/ralphx-mcp-server/build/index.js",
+        "--agent-type",
+        "ralphx-worker"
+      ],
+      "command":"node",
+      "type":"stdio",
+      "env": {
+        "TAURI_API_URL": "http://127.0.0.1:3847"
+      }
+    }
+  }
 }

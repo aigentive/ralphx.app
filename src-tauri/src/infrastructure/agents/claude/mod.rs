@@ -6,7 +6,9 @@ pub mod agent_names;
 mod claude_code_client;
 mod stream_processor;
 
-pub use agent_config::{get_agent_config, get_allowed_tools, get_preapproved_tools, AgentConfig, AGENT_CONFIGS};
+pub use agent_config::{
+    agent_configs, claude_runtime_config, get_agent_config, get_allowed_tools, get_preapproved_tools, AgentConfig,
+};
 pub use claude_code_client::ClaudeCodeClient;
 pub use claude_code_client::{StreamEvent as ClientStreamEvent, StreamingSpawnResult};
 
@@ -21,6 +23,12 @@ use std::path::{Path, PathBuf};
 use tokio::process::Command;
 use tracing::{info, warn};
 
+/// Apply common Claude CLI environment flags for RalphX-managed spawns.
+pub fn apply_common_spawn_env(cmd: &mut Command) {
+    cmd.env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1");
+    cmd.env("DEBUG", "true");
+}
+
 /// Qualify a short agent name with the `ralphx:` plugin prefix.
 /// If the name already contains `:`, it's assumed to be fully qualified.
 pub fn qualify_agent_name(name: &str) -> String {
@@ -32,7 +40,7 @@ pub fn qualify_agent_name(name: &str) -> String {
 }
 
 /// Strip the `ralphx:` plugin prefix from an agent name.
-/// Used when passing agent type to the MCP server or looking up AGENT_CONFIGS
+/// Used when passing agent type to the MCP server or looking up agent configs
 /// (both use short/unprefixed names).
 pub fn mcp_agent_type(name: &str) -> &str {
     name.strip_prefix("ralphx:").unwrap_or(name)
@@ -80,11 +88,23 @@ pub fn build_base_cli_command(
     agent_type: Option<&str>,
 ) -> Result<Command, String> {
     ensure_claude_spawn_allowed()?;
+    sanitize_claude_user_state();
     let mut cmd = Command::new(cli_path);
 
-    // Disable auto-updater: the CLI force-reinstalls itself on every -p invocation,
-    // consuming the entire session without ever processing the prompt.
-    cmd.env("DISABLE_AUTOUPDATER", "true");
+    // Apply common environment hardening and debug flags for CLI spawns.
+    apply_common_spawn_env(&mut cmd);
+    cmd.env("CLAUDE_PLUGIN_ROOT", plugin_dir);
+
+    // Optional setting-sources override from ralphx.yaml.
+    if let Some(sources) = &claude_runtime_config().setting_sources {
+        if !sources.is_empty() {
+            cmd.args(["--setting-sources", &sources.join(",")]);
+        }
+    }
+
+    // Temporary hardening: disable slash-command skill loading to avoid
+    // startup JSON parse crashes in Claude's skill initialization path.
+    cmd.arg("--disable-slash-commands");
 
     // Plugin directory for agent/skill discovery
     cmd.args(["--plugin-dir", plugin_dir.to_str().unwrap_or("./ralphx-plugin")]);
@@ -95,18 +115,184 @@ pub fn build_base_cli_command(
     // Required for stream-json with -p (print mode)
     cmd.arg("--verbose");
 
+    // Capture Claude's internal debug log per spawn for post-mortem analysis.
+    // This is critical when the process exits 0 with no stdout/stderr.
+    let debug_path = std::env::temp_dir().join(format!(
+        "ralphx-claude-debug-{}-{}.log",
+        std::process::id(),
+        uuid::Uuid::new_v4().simple()
+    ));
+    if let Some(path_str) = debug_path.to_str() {
+        cmd.args(["--debug-file", path_str]);
+        tracing::debug!(path = %debug_path.display(), "Enabled Claude debug file");
+    }
+
+    // Configure permission handling from ralphx.yaml.
+    let runtime = claude_runtime_config();
+    cmd.args(["--permission-prompt-tool", &runtime.permission_prompt_tool]);
+    cmd.args(["--permission-mode", &runtime.permission_mode]);
+    if runtime.dangerously_skip_permissions {
+        cmd.arg("--dangerously-skip-permissions");
+    }
+
     // If agent_type is provided, create a dynamic MCP config that passes it
-    // to the MCP server via CLI args (since env vars don't propagate to MCP servers)
-    // Use --strict-mcp-config to ignore user/global MCP servers (e.g. context7)
-    // which can hang during init and block the agent from ever processing.
+    // to the MCP server via CLI args (since env vars don't propagate to MCP servers).
+    // Always enforce strict MCP isolation from user/global servers.
     if let Some(agent) = agent_type {
         if let Some(temp_path) = create_mcp_config(plugin_dir, agent) {
             cmd.args(["--mcp-config", temp_path.to_str().unwrap_or(""), "--strict-mcp-config"]);
-            tracing::debug!(path = %temp_path.display(), agent_type = agent, "Dynamic MCP config written (strict)");
+            tracing::debug!(
+                path = %temp_path.display(),
+                agent_type = agent,
+                "Dynamic MCP config written (strict)"
+            );
         }
     }
 
     Ok(cmd)
+}
+
+fn resolve_agent_system_prompt_path(plugin_dir: &Path, agent_name: &str) -> Option<PathBuf> {
+    let short = mcp_agent_type(agent_name);
+    let project_root = plugin_dir.parent().unwrap_or(plugin_dir);
+    let agents_dir = plugin_dir.join("agents");
+    let configured = get_agent_config(short)
+        .map(|cfg| {
+            let configured_path = PathBuf::from(&cfg.system_prompt_file);
+            if configured_path.is_absolute() {
+                configured_path
+            } else {
+                project_root.join(configured_path)
+            }
+        })
+        .filter(|p| p.exists());
+    let direct = agents_dir.join(format!("{short}.md"));
+    let fallback = short.strip_prefix("ralphx-").map(|s| agents_dir.join(format!("{s}.md")));
+
+    configured
+        .or_else(|| if direct.exists() { Some(direct) } else { None })
+        .or_else(|| fallback.filter(|p| p.exists()))
+}
+
+fn load_agent_system_prompt(plugin_dir: &Path, agent_name: &str) -> Option<String> {
+    let path = resolve_agent_system_prompt_path(plugin_dir, agent_name)?;
+    let raw = std::fs::read_to_string(path).ok()?;
+    if let Some(after_first) = raw.strip_prefix("---") {
+        if let Some(end_idx) = after_first.find("\n---") {
+            let body = &after_first[end_idx + "\n---".len()..];
+            return Some(body.trim().to_string());
+        }
+    }
+    Some(raw.trim().to_string())
+}
+
+/// Best-effort cleanup for `~/.claude.json` to avoid startup instability from
+/// corrupted or stale project metadata accumulated across many worktrees.
+///
+/// - If JSON is malformed, back it up and write an empty object.
+/// - If `projects` is present, remove entries whose filesystem path no longer exists.
+pub fn sanitize_claude_user_state() {
+    let home_dir = match std::env::var("HOME") {
+        Ok(home) if !home.is_empty() => PathBuf::from(home),
+        _ => return,
+    };
+    let path = home_dir.join(".claude.json");
+    if !path.exists() {
+        return;
+    }
+
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(e) => {
+            warn!(path = %path.display(), error = %e, "Failed to read ~/.claude.json");
+            return;
+        }
+    };
+
+    let mut json: serde_json::Value = match serde_json::from_str(&raw) {
+        Ok(v) => v,
+        Err(e) => {
+            warn!(path = %path.display(), error = %e, "Malformed ~/.claude.json; rotating and recreating");
+            let backup = home_dir.join(format!(
+                ".claude.json.corrupt-{}-{}",
+                std::process::id(),
+                uuid::Uuid::new_v4().simple()
+            ));
+            let _ = std::fs::rename(&path, &backup);
+            let _ = std::fs::write(&path, "{}");
+            return;
+        }
+    };
+
+    let Some(root) = json.as_object_mut() else {
+        return;
+    };
+    let (removed, remaining, mcp_overrides_cleared) = {
+        let Some(projects) = root.get_mut("projects").and_then(|v| v.as_object_mut()) else {
+            return;
+        };
+
+        let before = projects.len();
+        projects.retain(|project_path, _| Path::new(project_path).exists());
+        let removed = before.saturating_sub(projects.len());
+
+        // Remove per-project MCP overrides so agent runs don't inherit stale
+        // config from previously visited worktrees/repositories.
+        let mut cleared = 0usize;
+        for entry in projects.values_mut() {
+            let Some(project_obj) = entry.as_object_mut() else {
+                continue;
+            };
+            for key in [
+                "mcpServers",
+                "enabledMcpjsonServers",
+                "disabledMcpjsonServers",
+                "disabledMcpServers",
+                "mcpContextUris",
+            ] {
+                if project_obj.remove(key).is_some() {
+                    cleared += 1;
+                }
+            }
+        }
+
+        (removed, projects.len(), cleared)
+    };
+
+    if removed == 0 && mcp_overrides_cleared == 0 {
+        return;
+    }
+
+    let serialized = match serde_json::to_string_pretty(&json) {
+        Ok(s) => s,
+        Err(e) => {
+            warn!(path = %path.display(), error = %e, "Failed to serialize sanitized ~/.claude.json");
+            return;
+        }
+    };
+
+    let temp = home_dir.join(format!(
+        ".claude.json.tmp-{}-{}",
+        std::process::id(),
+        uuid::Uuid::new_v4().simple()
+    ));
+
+    if let Err(e) = std::fs::write(&temp, serialized) {
+        warn!(path = %temp.display(), error = %e, "Failed to write temp ~/.claude.json");
+        return;
+    }
+    if let Err(e) = std::fs::rename(&temp, &path) {
+        warn!(from = %temp.display(), to = %path.display(), error = %e, "Failed to replace ~/.claude.json");
+        let _ = std::fs::remove_file(&temp);
+        return;
+    }
+
+    info!(
+        removed = removed,
+        remaining = remaining,
+        mcp_overrides_cleared = mcp_overrides_cleared,
+        "Sanitized ~/.claude.json project metadata"
+    );
 }
 
 /// Create a dynamic MCP config temp file for an agent.
@@ -117,6 +303,10 @@ pub fn build_base_cli_command(
 pub fn create_mcp_config(plugin_dir: &Path, agent_type: &str) -> Option<PathBuf> {
     let mcp_server_path = plugin_dir.join("ralphx-mcp-server/build/index.js");
     let mcp_server_path_str = mcp_server_path.to_string_lossy().to_string();
+    let node_command = which::which("node")
+        .ok()
+        .and_then(|p| p.to_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| "node".to_string());
 
     // Strip plugin prefix for MCP server's --agent-type param
     let short_name = mcp_agent_type(agent_type);
@@ -125,7 +315,7 @@ pub fn create_mcp_config(plugin_dir: &Path, agent_type: &str) -> Option<PathBuf>
         "mcpServers": {
             "ralphx": {
                 "type": "stdio",
-                "command": "node",
+                "command": node_command,
                 "args": [mcp_server_path_str, "--agent-type", short_name]
             }
         }
@@ -153,9 +343,19 @@ pub struct SpawnableCommand {
 
 impl std::fmt::Debug for SpawnableCommand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let prompt_len = self.stdin_prompt.as_ref().map(|s| s.len());
+        let prompt_preview = self.stdin_prompt.as_ref().map(|s| {
+            let mut out = s.chars().take(200).collect::<String>();
+            if s.chars().count() > 200 {
+                out.push_str("...");
+            }
+            out.replace('\n', "\\n")
+        });
         f.debug_struct("SpawnableCommand")
             .field("cmd", &self.cmd)
             .field("uses_stdin", &self.stdin_prompt.is_some())
+            .field("stdin_prompt_len", &prompt_len)
+            .field("stdin_prompt_preview", &prompt_preview)
             .finish()
     }
 }
@@ -188,6 +388,10 @@ impl SpawnableCommand {
                     // Drop closes stdin, signaling EOF to the CLI
                 });
             }
+        } else {
+            // If stdin is piped but no prompt is provided via stdin, close it
+            // immediately so the CLI doesn't wait for additional input.
+            let _ = child.stdin.take();
         }
 
         Ok(child)
@@ -198,19 +402,63 @@ impl SpawnableCommand {
 ///
 /// Applies agent-specific tool restrictions via --tools flag (CLI tools)
 /// and --allowedTools flag (MCP + CLI tool pre-approvals).
-/// See `agent_config.rs` for the single source of truth on tool configurations.
-fn add_prompt_args(cmd: &mut Command, prompt: &str, agent: Option<&str>, resume_session: Option<&str>) -> Option<String> {
+/// See `agent_config/` for the single source of truth on tool configurations.
+fn add_prompt_args(
+    cmd: &mut Command,
+    plugin_dir: &Path,
+    prompt: &str,
+    agent: Option<&str>,
+    resume_session: Option<&str>,
+) -> Option<String> {
     // Add resume if continuing an existing session
     if let Some(session_id) = resume_session {
         cmd.args(["--resume", session_id]);
     }
 
-    // CRITICAL: Always add agent if provided, even when resuming
-    // This ensures disallowedTools and other agent restrictions are enforced
-    // Without this, resumed sessions bypass tool restrictions
-    let use_stdin = agent.is_some();
+    // Default path: avoid Claude's `--agent` execution mode (currently unstable in
+    // some worktree/headless scenarios) and inject the agent behavior via
+    // `--append-system-prompt` loaded from our codebase agent markdown.
+    // Set RALPHX_USE_NATIVE_AGENT_FLAG=1 to force native --agent mode.
+    //
+    let use_native_agent_flag = std::env::var("RALPHX_USE_NATIVE_AGENT_FLAG")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    // Default to stdin mode for agent runs due to CLI instability with
+    // `--agent` + `-p "<text>"` on some Claude Code versions.
+    // Set RALPHX_CLAUDE_PROMPT_MODE=arg to force direct -p arg mode.
+    let use_stdin = if agent.is_some() {
+        match std::env::var("RALPHX_CLAUDE_PROMPT_MODE") {
+            Ok(mode) if mode.eq_ignore_ascii_case("arg") => false,
+            _ => true,
+        }
+    } else {
+        false
+    };
     if let Some(agent_name) = agent {
-        cmd.args(["--agent", agent_name]);
+        if use_native_agent_flag {
+            cmd.args(["--agent", agent_name]);
+        } else if let Some(prompt_path) = resolve_agent_system_prompt_path(plugin_dir, agent_name) {
+            let runtime = claude_runtime_config();
+            if runtime.use_append_system_prompt_file {
+                if let Some(path_str) = prompt_path.to_str() {
+                    cmd.args(["--append-system-prompt-file", path_str]);
+                    tracing::debug!(agent = agent_name, path = path_str, "Injected agent prompt via --append-system-prompt-file");
+                } else if let Some(system_prompt) = load_agent_system_prompt(plugin_dir, agent_name) {
+                    cmd.args(["--append-system-prompt", &system_prompt]);
+                    tracing::debug!(agent = agent_name, "Injected agent prompt via --append-system-prompt");
+                }
+            } else if let Some(system_prompt) = load_agent_system_prompt(plugin_dir, agent_name) {
+                cmd.args(["--append-system-prompt", &system_prompt]);
+                tracing::debug!(agent = agent_name, "Injected agent prompt via --append-system-prompt");
+            } else {
+                tracing::warn!(agent = agent_name, "Failed to load prompt content; falling back to native --agent");
+                cmd.args(["--agent", agent_name]);
+            }
+        } else {
+            tracing::warn!(agent = agent_name, "Agent prompt not found in plugin; falling back to native --agent");
+            cmd.args(["--agent", agent_name]);
+        }
 
         // Apply CLI tool restrictions from agent_config
         // Frontmatter tools/disallowedTools only work for subagent spawning,
@@ -226,14 +474,22 @@ fn add_prompt_args(cmd: &mut Command, prompt: &str, agent: Option<&str>, resume_
             cmd.args(["--allowedTools", &preapproved]);
             tracing::debug!(agent = agent_name, preapproved = %preapproved, "Agent pre-approved tools");
         }
+
+        // Agent-level model from ralphx.yaml
+        if let Some(agent_model) = get_agent_config(agent_name).and_then(|cfg| cfg.model.as_ref()) {
+            cmd.args(["--model", agent_model]);
+            tracing::debug!(agent = agent_name, model = %agent_model, "Applied agent model");
+        }
     }
 
     if use_stdin {
         // Workaround: pipe prompt via stdin to avoid --agent + -p arg hang (CLI 2.1.38)
         cmd.args(["-p", "-"]);
+        tracing::debug!("Claude prompt mode: stdin");
         Some(prompt.to_string())
     } else {
         cmd.args(["-p", prompt]);
+        tracing::debug!("Claude prompt mode: arg");
         None
     }
 }
@@ -243,9 +499,11 @@ fn configure_spawn(cmd: &mut Command, working_dir: &Path, needs_stdin: bool) {
     cmd.current_dir(working_dir);
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
-    if needs_stdin {
-        cmd.stdin(std::process::Stdio::piped());
-    }
+    // Always provide a pipe for stdin.
+    // In GUI/non-TTY environments, inheriting stdin can present as closed and
+    // Claude may exit early before emitting stream-json output.
+    let _ = needs_stdin;
+    cmd.stdin(std::process::Stdio::piped());
 }
 
 /// Build a ready-to-spawn CLI command with all args configured.
@@ -261,7 +519,7 @@ pub fn build_spawnable_command(
     working_directory: &Path,
 ) -> Result<SpawnableCommand, String> {
     let mut cmd = build_base_cli_command(cli_path, plugin_dir, agent)?;
-    let stdin_prompt = add_prompt_args(&mut cmd, prompt, agent, resume_session);
+    let stdin_prompt = add_prompt_args(&mut cmd, plugin_dir, prompt, agent, resume_session);
     configure_spawn(&mut cmd, working_directory, stdin_prompt.is_some());
     Ok(SpawnableCommand { cmd, stdin_prompt })
 }

@@ -50,6 +50,12 @@ pub use chat_service_types::{
 
 // Types and errors are now in chat_service_types.rs
 
+/// Shared definition for "meaningful" agent output used by streaming and
+/// background completion logic.
+pub(crate) fn has_meaningful_output(response_text: &str, tool_call_count: usize) -> bool {
+    !response_text.trim().is_empty() || tool_call_count > 0
+}
+
 // ============================================================================
 // ChatService trait
 // ============================================================================

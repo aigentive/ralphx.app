@@ -14,6 +14,9 @@
 #   Full project-root-relative path to an agent markdown file (e.g.
 #   `ralphx-plugin/agents/worker.md`) used to build
 #   `--append-system-prompt` content.
+# - model:
+#   Optional Claude model alias passed as `--model` for this agent
+#   (e.g. `haiku`, `sonnet`, `opus`).
 # - tools:
 #   CLI tool strategy for this agent:
 #   - mcp_only: true
@@ -30,6 +33,23 @@
 #   Additional preapproved CLI tools/variants in `--allowedTools`
 #   (e.g. `Task(Explore)`, `Task(Plan)`, `Write`, `Edit`).
 #
+# claude:
+#   Runtime CLI behavior for Claude spawns.
+# - permission_mode:
+#   Passed to `--permission-mode`. Valid Claude values include:
+#   `default`, `acceptEdits`, `plan`, `delegate`, `dontAsk`, `bypassPermissions`.
+# - setting_sources:
+#   Optional setting sources passed to `--setting-sources` as a comma list.
+#   Valid values: `user`, `project`, `local` (see docs/claude-code/cli-reference.md).
+#   Omit to use Claude CLI defaults.
+# - dangerously_skip_permissions:
+#   If true, adds `--dangerously-skip-permissions`. Keep false by default.
+# - permission_prompt_tool:
+#   MCP tool name used by `--permission-prompt-tool`.
+# - append_system_prompt_file:
+#   If true, pass `--append-system-prompt-file <path>` using `system_prompt_file`.
+#   If false, inline prompt content via `--append-system-prompt`.
+#
 # Notes:
 # - Unknown attributes are ignored by the current parser.
 # - Missing/invalid config falls back to embedded defaults bundled at compile time.
@@ -37,9 +57,17 @@
 tool_sets:
   base_tools: [Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill]
 
+claude:
+  setting_sources: [user, project, local]
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: mcp__ralphx__permission_request
+  append_system_prompt_file: true
+
 agents:
   - name: orchestrator-ideation
     system_prompt_file: ralphx-plugin/agents/orchestrator-ideation.md
+    model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools:
       [
@@ -60,6 +88,7 @@ agents:
 
   - name: orchestrator-ideation-readonly
     system_prompt_file: ralphx-plugin/agents/orchestrator-ideation.md
+    model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools:
       [
@@ -72,6 +101,7 @@ agents:
 
   - name: session-namer
     system_prompt_file: ralphx-plugin/agents/session-namer.md
+    model: haiku
     tools:
       mcp_only: true
     mcp_tools: [update_session_title]
@@ -79,24 +109,28 @@ agents:
 
   - name: dependency-suggester
     system_prompt_file: ralphx-plugin/agents/dependency-suggester.md
+    model: haiku
     tools: { mcp_only: true }
     mcp_tools: [apply_proposal_dependencies]
     preapproved_cli_tools: []
 
   - name: chat-task
     system_prompt_file: ralphx-plugin/agents/chat-task.md
+    model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: [update_task, add_task_note, get_task_details]
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
   - name: chat-project
     system_prompt_file: ralphx-plugin/agents/chat-project.md
+    model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: [suggest_task, list_tasks]
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
   - name: ralphx-review-chat
     system_prompt_file: ralphx-plugin/agents/review-chat.md
+    model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools:
       [
@@ -114,6 +148,7 @@ agents:
 
   - name: ralphx-review-history
     system_prompt_file: ralphx-plugin/agents/review-history.md
+    model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools:
       [
@@ -132,6 +167,7 @@ agents:
 
   - name: ralphx-worker
     system_prompt_file: ralphx-plugin/agents/worker.md
+    model: sonnet
     tools: { extends: base_tools, include: [Write, Edit, Task] }
     mcp_tools:
       [
@@ -171,6 +207,7 @@ agents:
 
   - name: ralphx-reviewer
     system_prompt_file: ralphx-plugin/agents/reviewer.md
+    model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools:
       [
@@ -191,30 +228,35 @@ agents:
 
   - name: ralphx-qa-prep
     system_prompt_file: ralphx-plugin/agents/qa-prep.md
+    model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: []
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
   - name: ralphx-qa-executor
     system_prompt_file: ralphx-plugin/agents/qa-executor.md
+    model: sonnet
     tools: { extends: base_tools, include: [Write, Edit, Task] }
     mcp_tools: []
     preapproved_cli_tools: [Write, Edit, Bash, Task(Explore), Task(Plan)]
 
   - name: ralphx-orchestrator
     system_prompt_file: ralphx-plugin/agents/orchestrator.md
+    model: opus
     tools: { extends: base_tools, include: [Write, Edit, Task] }
     mcp_tools: []
     preapproved_cli_tools: [Write, Edit, Bash, Task]
 
   - name: ralphx-supervisor
     system_prompt_file: ralphx-plugin/agents/supervisor.md
+    model: haiku
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: []
     preapproved_cli_tools: [Bash, Task(Explore), Task(Plan)]
 
   - name: ralphx-deep-researcher
     system_prompt_file: ralphx-plugin/agents/deep-researcher.md
+    model: opus
     tools: { extends: base_tools, include: [Write, Task] }
     mcp_tools: []
     preapproved_cli_tools:
@@ -222,12 +264,14 @@ agents:
 
   - name: project-analyzer
     system_prompt_file: ralphx-plugin/agents/project-analyzer.md
+    model: haiku
     tools: { extends: base_tools }
     mcp_tools: [save_project_analysis, get_project_analysis]
     preapproved_cli_tools: [Read, Glob, Bash, Grep]
 
   - name: ralphx-merger
     system_prompt_file: ralphx-plugin/agents/merger.md
+    model: opus
     tools: { extends: base_tools, include: [Edit, Task] }
     mcp_tools:
       [
