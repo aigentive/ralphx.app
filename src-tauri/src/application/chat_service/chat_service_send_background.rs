@@ -439,7 +439,8 @@ pub fn spawn_send_message_background<R: Runtime>(
                                 return;
                             }
                         };
-                        cmd.env("RALPHX_AGENT_TYPE", agent_name);
+                        // Use short name for env var — MCP server's TOOL_ALLOWLIST uses unprefixed names
+                        cmd.env("RALPHX_AGENT_TYPE", crate::infrastructure::agents::claude::mcp_agent_type(agent_name));
 
                         // Add task scope for task-related contexts
                         match context_type {

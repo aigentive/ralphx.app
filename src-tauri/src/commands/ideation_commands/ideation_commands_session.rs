@@ -371,7 +371,7 @@ pub async fn spawn_session_namer(
         prompt,
         working_directory,
         plugin_dir: Some(plugin_dir),
-        agent: Some("session-namer".to_string()),
+        agent: Some("ralphx:session-namer".to_string()),
         model: None, // Agent file specifies haiku
         max_tokens: None,
         timeout_secs: Some(60), // 60 second timeout for title generation
@@ -499,7 +499,7 @@ pub async fn spawn_dependency_suggester(
         prompt,
         working_directory,
         plugin_dir: Some(plugin_dir),
-        agent: Some("dependency-suggester".to_string()),
+        agent: Some("ralphx:dependency-suggester".to_string()),
         model: None, // Agent file specifies haiku
         max_tokens: None,
         timeout_secs: Some(60), // 60 second timeout for dependency analysis

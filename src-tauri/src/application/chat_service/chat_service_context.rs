@@ -238,7 +238,8 @@ pub fn build_command(
     // Pass agent_type to build_base_cli_command so it can create dynamic MCP config
     // with the agent type as CLI arg (env vars don't propagate to MCP servers)
     let mut cmd = build_base_cli_command(cli_path, plugin_dir, Some(agent_name))?;
-    cmd.env("RALPHX_AGENT_TYPE", agent_name);
+    // Use short name for env var — MCP server's TOOL_ALLOWLIST uses unprefixed names
+    cmd.env("RALPHX_AGENT_TYPE", crate::infrastructure::agents::claude::mcp_agent_type(agent_name));
 
     // Add task scope for task-related contexts
     match conversation.context_type {
