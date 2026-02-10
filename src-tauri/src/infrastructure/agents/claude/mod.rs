@@ -2,6 +2,7 @@
 // Uses the claude CLI for agent interactions
 
 mod agent_config;
+pub mod agent_names;
 mod claude_code_client;
 mod stream_processor;
 

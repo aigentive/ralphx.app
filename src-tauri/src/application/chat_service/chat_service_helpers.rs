@@ -3,6 +3,7 @@
 // Extracted from chat_service.rs to improve modularity and reduce file size.
 
 use crate::domain::entities::{ChatContextType, MessageRole};
+use crate::infrastructure::agents::claude::agent_names::*;
 
 /// Agent Resolution System
 ///
@@ -23,34 +24,29 @@ use crate::domain::entities::{ChatContextType, MessageRole};
 /// Priority: Status-specific rules are checked first, then defaults.
 pub fn resolve_agent(context_type: &ChatContextType, entity_status: Option<&str>) -> &'static str {
     // Status-specific rules (checked first)
-    // All agent names must use fully-qualified plugin prefix (ralphx:)
     if let Some(status) = entity_status {
         match (context_type, status) {
             // Review: after AI review passes, use chat agent for user discussion
-            (ChatContextType::Review, "review_passed") => return "ralphx:ralphx-review-chat",
+            (ChatContextType::Review, "review_passed") => return AGENT_REVIEW_CHAT,
 
             // Review: approved tasks use read-only history agent for retrospective discussion
-            (ChatContextType::Review, "approved") => return "ralphx:ralphx-review-history",
+            (ChatContextType::Review, "approved") => return AGENT_REVIEW_HISTORY,
 
             // Ideation: accepted plans use read-only agent (no mutation tools)
-            (ChatContextType::Ideation, "accepted") => return "ralphx:orchestrator-ideation-readonly",
+            (ChatContextType::Ideation, "accepted") => return AGENT_ORCHESTRATOR_IDEATION_READONLY,
 
-            // Add more status-specific rules here as needed:
-            // (ChatContextType::Task, "blocked") => return "ralphx:task-unblock-helper",
-            // (ChatContextType::TaskExecution, "failed") => return "ralphx:failure-analyzer",
             _ => {}
         }
     }
 
     // Default rules (context-only, backward compatible)
-    // All agent names must use fully-qualified plugin prefix (ralphx:)
     match context_type {
-        ChatContextType::Ideation => "ralphx:orchestrator-ideation",
-        ChatContextType::Task => "ralphx:chat-task",
-        ChatContextType::Project => "ralphx:chat-project",
-        ChatContextType::TaskExecution => "ralphx:ralphx-worker",
-        ChatContextType::Review => "ralphx:ralphx-reviewer",
-        ChatContextType::Merge => "ralphx:ralphx-merger",
+        ChatContextType::Ideation => AGENT_ORCHESTRATOR_IDEATION,
+        ChatContextType::Task => AGENT_CHAT_TASK,
+        ChatContextType::Project => AGENT_CHAT_PROJECT,
+        ChatContextType::TaskExecution => AGENT_WORKER,
+        ChatContextType::Review => AGENT_REVIEWER,
+        ChatContextType::Merge => AGENT_MERGER,
     }
 }
 
@@ -77,30 +73,30 @@ mod tests {
     #[test]
     fn test_resolve_agent_review_approved_returns_review_history() {
         let agent = resolve_agent(&ChatContextType::Review, Some("approved"));
-        assert_eq!(agent, "ralphx:ralphx-review-history");
+        assert_eq!(agent, AGENT_REVIEW_HISTORY);
     }
 
     #[test]
     fn test_resolve_agent_review_passed_returns_review_chat() {
         let agent = resolve_agent(&ChatContextType::Review, Some("review_passed"));
-        assert_eq!(agent, "ralphx:ralphx-review-chat");
+        assert_eq!(agent, AGENT_REVIEW_CHAT);
     }
 
     #[test]
     fn test_resolve_agent_review_default_returns_reviewer() {
         let agent = resolve_agent(&ChatContextType::Review, None);
-        assert_eq!(agent, "ralphx:ralphx-reviewer");
+        assert_eq!(agent, AGENT_REVIEWER);
     }
 
     #[test]
     fn test_resolve_agent_review_other_status_returns_reviewer() {
         let agent = resolve_agent(&ChatContextType::Review, Some("reviewing"));
-        assert_eq!(agent, "ralphx:ralphx-reviewer");
+        assert_eq!(agent, AGENT_REVIEWER);
     }
 
     #[test]
     fn test_resolve_agent_ideation_accepted_returns_readonly() {
         let agent = resolve_agent(&ChatContextType::Ideation, Some("accepted"));
-        assert_eq!(agent, "ralphx:orchestrator-ideation-readonly");
+        assert_eq!(agent, AGENT_ORCHESTRATOR_IDEATION_READONLY);
     }
 }

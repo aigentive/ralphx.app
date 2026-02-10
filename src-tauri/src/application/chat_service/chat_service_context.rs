@@ -20,6 +20,8 @@ use crate::infrastructure::agents::claude::{
     add_prompt_args, build_base_cli_command, configure_spawn, ContentBlockItem, ToolCall,
 };
 
+use crate::infrastructure::agents::claude::agent_names;
+
 use super::chat_service_helpers::resolve_agent;
 
 /// Resolve the project ID from a context
@@ -243,7 +245,7 @@ pub fn build_command(
 
     // Add task scope for task-related contexts
     match conversation.context_type {
-        ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review => {
+        ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge => {
             cmd.env("RALPHX_TASK_ID", &conversation.context_id);
         }
         _ => {}
@@ -258,7 +260,7 @@ pub fn build_command(
     // Resuming causes the model to see old "Review already submitted" messages.
     // But review-chat needs session persistence for user conversation continuity.
     let is_fresh_review_cycle = conversation.context_type == ChatContextType::Review
-        && agent_name == "ralphx:ralphx-reviewer";
+        && agent_name == agent_names::AGENT_REVIEWER;
     let should_resume = conversation.claude_session_id.is_some()
         && !is_fresh_review_cycle
         && conversation.context_type != ChatContextType::TaskExecution;

@@ -400,6 +400,7 @@ pub fn spawn_project_analyzer(
     app_handle: Option<tauri::AppHandle>,
 ) {
     use crate::domain::agents::{AgentConfig, AgentRole};
+    use crate::infrastructure::agents::claude::{agent_names, mcp_agent_type};
 
     let prompt = format!(
         "<instructions>\n\
@@ -426,17 +427,17 @@ pub fn spawn_project_analyzer(
     let mut env = std::collections::HashMap::new();
     env.insert(
         "RALPHX_AGENT_TYPE".to_string(),
-        "project-analyzer".to_string(),
+        mcp_agent_type(agent_names::AGENT_PROJECT_ANALYZER).to_string(),
     );
     let pid = project_id.to_string();
     env.insert("RALPHX_PROJECT_ID".to_string(), pid.clone());
 
     let config = AgentConfig {
-        role: AgentRole::Custom("project-analyzer".to_string()),
+        role: AgentRole::Custom(mcp_agent_type(agent_names::AGENT_PROJECT_ANALYZER).to_string()),
         prompt,
         working_directory,
         plugin_dir: Some(plugin_dir),
-        agent: Some("ralphx:project-analyzer".to_string()),
+        agent: Some(agent_names::AGENT_PROJECT_ANALYZER.to_string()),
         model: None, // Agent file specifies haiku
         max_tokens: None,
         timeout_secs: Some(120),

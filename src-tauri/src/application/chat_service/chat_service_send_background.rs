@@ -444,7 +444,7 @@ pub fn spawn_send_message_background<R: Runtime>(
 
                         // Add task scope for task-related contexts
                         match context_type {
-                            ChatContextType::Task | ChatContextType::TaskExecution => {
+                            ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge => {
                                 cmd.env("RALPHX_TASK_ID", &context_id);
                             }
                             _ => {}
