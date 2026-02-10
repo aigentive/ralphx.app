@@ -82,6 +82,10 @@ pub fn build_base_cli_command(
     ensure_claude_spawn_allowed()?;
     let mut cmd = Command::new(cli_path);
 
+    // Disable auto-updater: the CLI force-reinstalls itself on every -p invocation,
+    // consuming the entire session without ever processing the prompt.
+    cmd.env("DISABLE_AUTOUPDATER", "true");
+
     // Plugin directory for agent/skill discovery
     cmd.args(["--plugin-dir", plugin_dir.to_str().unwrap_or("./ralphx-plugin")]);
 
@@ -93,10 +97,12 @@ pub fn build_base_cli_command(
 
     // If agent_type is provided, create a dynamic MCP config that passes it
     // to the MCP server via CLI args (since env vars don't propagate to MCP servers)
+    // Use --strict-mcp-config to ignore user/global MCP servers (e.g. context7)
+    // which can hang during init and block the agent from ever processing.
     if let Some(agent) = agent_type {
         if let Some(temp_path) = create_mcp_config(plugin_dir, agent) {
-            cmd.args(["--mcp-config", temp_path.to_str().unwrap_or("")]);
-            tracing::debug!(path = %temp_path.display(), agent_type = agent, "Dynamic MCP config written");
+            cmd.args(["--mcp-config", temp_path.to_str().unwrap_or(""), "--strict-mcp-config"]);
+            tracing::debug!(path = %temp_path.display(), agent_type = agent, "Dynamic MCP config written (strict)");
         }
     }
 
@@ -135,12 +141,57 @@ pub fn create_mcp_config(plugin_dir: &Path, agent_type: &str) -> Option<PathBuf>
     Some(temp_path)
 }
 
-/// Add prompt-related args to a CLI command
+/// A ready-to-spawn CLI command that handles stdin piping automatically.
+///
+/// **CLI bug workaround (2.1.38):** `--agent` + `-p "text"` causes the CLI to
+/// hang silently. Piping via stdin with `-p -` works correctly. `SpawnableCommand`
+/// encapsulates this so callers just call `spawn()`.
+pub struct SpawnableCommand {
+    cmd: Command,
+    stdin_prompt: Option<String>,
+}
+
+impl std::fmt::Debug for SpawnableCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SpawnableCommand")
+            .field("cmd", &self.cmd)
+            .field("uses_stdin", &self.stdin_prompt.is_some())
+            .finish()
+    }
+}
+
+impl SpawnableCommand {
+    /// Set an environment variable on the underlying command.
+    pub fn env(&mut self, key: &str, val: &str) -> &mut Self {
+        self.cmd.env(key, val);
+        self
+    }
+
+    /// Spawn the command and pipe the prompt to stdin if needed.
+    pub async fn spawn(mut self) -> std::io::Result<tokio::process::Child> {
+        let mut child = self.cmd.spawn()?;
+
+        // Write prompt to stdin if agent mode (workaround for --agent + -p bug)
+        if let Some(ref prompt) = self.stdin_prompt {
+            use tokio::io::AsyncWriteExt;
+            if let Some(mut stdin) = child.stdin.take() {
+                if let Err(e) = stdin.write_all(prompt.as_bytes()).await {
+                    tracing::warn!("Failed to write prompt to stdin: {}", e);
+                }
+                // Drop closes stdin, signaling EOF to the CLI
+            }
+        }
+
+        Ok(child)
+    }
+}
+
+/// Add prompt-related args to a CLI command.
 ///
 /// Applies agent-specific tool restrictions via --tools flag (CLI tools)
 /// and --allowedTools flag (MCP + CLI tool pre-approvals).
 /// See `agent_config.rs` for the single source of truth on tool configurations.
-pub fn add_prompt_args(cmd: &mut Command, prompt: &str, agent: Option<&str>, resume_session: Option<&str>) {
+fn add_prompt_args(cmd: &mut Command, prompt: &str, agent: Option<&str>, resume_session: Option<&str>) -> Option<String> {
     // Add resume if continuing an existing session
     if let Some(session_id) = resume_session {
         cmd.args(["--resume", session_id]);
@@ -149,6 +200,7 @@ pub fn add_prompt_args(cmd: &mut Command, prompt: &str, agent: Option<&str>, res
     // CRITICAL: Always add agent if provided, even when resuming
     // This ensures disallowedTools and other agent restrictions are enforced
     // Without this, resumed sessions bypass tool restrictions
+    let use_stdin = agent.is_some();
     if let Some(agent_name) = agent {
         cmd.args(["--agent", agent_name]);
 
@@ -168,15 +220,42 @@ pub fn add_prompt_args(cmd: &mut Command, prompt: &str, agent: Option<&str>, res
         }
     }
 
-    // Add the prompt
-    cmd.args(["-p", prompt]);
+    if use_stdin {
+        // Workaround: pipe prompt via stdin to avoid --agent + -p arg hang (CLI 2.1.38)
+        cmd.args(["-p", "-"]);
+        Some(prompt.to_string())
+    } else {
+        cmd.args(["-p", prompt]);
+        None
+    }
 }
 
 /// Configure command for spawning (working dir, stdout/stderr capture)
-pub fn configure_spawn(cmd: &mut Command, working_dir: &Path) {
+fn configure_spawn(cmd: &mut Command, working_dir: &Path, needs_stdin: bool) {
     cmd.current_dir(working_dir);
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
+    if needs_stdin {
+        cmd.stdin(std::process::Stdio::piped());
+    }
+}
+
+/// Build a ready-to-spawn CLI command with all args configured.
+///
+/// Combines `build_base_cli_command`, `add_prompt_args`, and `configure_spawn`
+/// into a single `SpawnableCommand` that handles stdin piping automatically.
+pub fn build_spawnable_command(
+    cli_path: &Path,
+    plugin_dir: &Path,
+    prompt: &str,
+    agent: Option<&str>,
+    resume_session: Option<&str>,
+    working_directory: &Path,
+) -> Result<SpawnableCommand, String> {
+    let mut cmd = build_base_cli_command(cli_path, plugin_dir, agent)?;
+    let stdin_prompt = add_prompt_args(&mut cmd, prompt, agent, resume_session);
+    configure_spawn(&mut cmd, working_directory, stdin_prompt.is_some());
+    Ok(SpawnableCommand { cmd, stdin_prompt })
 }
 
 /// Register the RalphX MCP server with Claude Code CLI

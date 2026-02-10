@@ -180,7 +180,29 @@ pub fn spawn_send_message_background<R: Runtime>(
                                 content: response_text.clone(),
                             },
                         );
-
+                    }
+                } else {
+                    // Stream completed with no content — update pre-created message so UI
+                    // doesn't show "..." forever
+                    let note = "[Agent completed with no output]";
+                    let _ = chat_message_repo.update_content(
+                        &crate::domain::entities::ChatMessageId::from_string(pre_assistant_msg_id.clone()),
+                        note,
+                        None,
+                        None,
+                    ).await;
+                    if let Some(ref handle) = app_handle {
+                        let _ = handle.emit(
+                            "agent:message_created",
+                            AgentMessageCreatedPayload {
+                                message_id: pre_assistant_msg_id.clone(),
+                                conversation_id: conversation_id.as_str().to_string(),
+                                context_type: context_type.to_string(),
+                                context_id: context_id.clone(),
+                                role: get_assistant_role(&context_type).to_string(),
+                                content: note.to_string(),
+                            },
+                        );
                     }
                 }
 
@@ -418,7 +440,7 @@ pub fn spawn_send_message_background<R: Runtime>(
                         }
 
                         // Build and spawn resume command
-                        let mut cmd = match chat_service_context::build_resume_command(
+                        let spawnable = match chat_service_context::build_resume_command(
                             cli_path.as_path(),
                             plugin_dir.as_path(),
                             context_type,
@@ -440,7 +462,8 @@ pub fn spawn_send_message_background<R: Runtime>(
                             }
                         };
 
-                        match cmd.spawn() {
+                        tracing::info!(cmd = ?spawnable, "Spawning CLI agent (queue resume)");
+                        match spawnable.spawn().await {
                             Ok(child) => {
                                 // Create empty assistant message before queue stream
                                 let queue_assistant_msg = chat_service_context::create_assistant_message(
@@ -569,6 +592,28 @@ pub fn spawn_send_message_background<R: Runtime>(
                     .fail(&AgentRunId::from_string(&agent_run_id), &e)
                     .await;
 
+                // Update pre-created message with error so UI doesn't show "..." forever
+                let error_note = format!("[Agent error: {}]", e);
+                let _ = chat_message_repo.update_content(
+                    &crate::domain::entities::ChatMessageId::from_string(pre_assistant_msg_id.clone()),
+                    &error_note,
+                    None,
+                    None,
+                ).await;
+                if let Some(ref handle) = app_handle {
+                    let _ = handle.emit(
+                        "agent:message_created",
+                        AgentMessageCreatedPayload {
+                            message_id: pre_assistant_msg_id.clone(),
+                            conversation_id: conversation_id.as_str().to_string(),
+                            context_type: context_type.to_string(),
+                            context_id: context_id.clone(),
+                            role: get_assistant_role(&context_type).to_string(),
+                            content: error_note,
+                        },
+                    );
+                }
+
                 // If Claude reports an invalid session, clear it to avoid repeat failures
                 if e.contains("No conversation found with session ID") {
                     let _ = conversation_repo
@@ -592,7 +637,6 @@ pub fn spawn_send_message_background<R: Runtime>(
                             stderr: Some(e.clone()),
                         },
                     );
-
                 }
 
                 // Handle merge auto-completion even on agent error

@@ -135,7 +135,7 @@ pub async fn process_message_queue<R: Runtime + 'static>(
             }
 
             // Build and spawn resume command
-            let mut cmd = match chat_service_context::build_resume_command(
+            let spawnable = match chat_service_context::build_resume_command(
                 cli_path,
                 plugin_dir,
                 context_type,
@@ -157,7 +157,8 @@ pub async fn process_message_queue<R: Runtime + 'static>(
                 }
             };
 
-            match cmd.spawn() {
+            tracing::info!(cmd = ?spawnable, "Spawning CLI agent (queue)");
+            match spawnable.spawn().await {
                 Ok(child) => {
                     tracing::debug!(
                         %context_type,

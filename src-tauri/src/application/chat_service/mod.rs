@@ -26,7 +26,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 use which::which;
-use tokio::process::Command;
 use crate::domain::entities::{
     AgentRun, ChatConversation, ChatConversationId, ChatContextType, IdeationSessionId, TaskId,
 };
@@ -288,7 +287,7 @@ impl<R: Runtime> ClaudeChatService<R> {
     }
 
 
-    /// Create a Claude CLI command
+    /// Create a spawnable Claude CLI command.
     fn build_command(
         &self,
         conversation: &ChatConversation,
@@ -296,7 +295,7 @@ impl<R: Runtime> ClaudeChatService<R> {
         working_directory: &Path,
         entity_status: Option<&str>,
         project_id: Option<&str>,
-    ) -> Result<Command, ChatServiceError> {
+    ) -> Result<crate::infrastructure::agents::claude::SpawnableCommand, ChatServiceError> {
         chat_service_context::build_command(
             &self.cli_path,
             &self.plugin_dir,
@@ -493,15 +492,15 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             cli_path = %self.cli_path.display(),
             "chat_service.send_message building command"
         );
-        let mut cmd = self.build_command(
+        let spawnable = self.build_command(
             &conversation,
             message,
             &working_directory,
             entity_status.as_deref(),
             project_id.as_deref(),
         )?;
-        tracing::debug!("chat_service.send_message command built, spawning CLI");
-        let child = match cmd.spawn() {
+        tracing::info!(cmd = ?spawnable, "Spawning CLI agent");
+        let child = match spawnable.spawn().await {
             Ok(child) => child,
             Err(e) => {
                 tracing::error!(error = %e, "chat_service.send_message spawn failed");

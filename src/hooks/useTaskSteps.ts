@@ -66,14 +66,19 @@ export function useTaskSteps(taskId: string) {
  * );
  * ```
  */
-export function useStepProgress(taskId: string) {
+export function useStepProgress(
+  taskId: string,
+  options?: { isExecuting?: boolean },
+) {
   return useQuery<StepProgressSummary, Error>({
     queryKey: stepKeys.progress(taskId),
     queryFn: () => api.steps.getProgress(taskId),
     staleTime: 5_000, // 5 seconds
     enabled: Boolean(taskId),
     refetchInterval: (query) => {
-      // Poll every 5 seconds if there are steps in progress
+      // Always poll during active execution (even when all steps are pending)
+      if (options?.isExecuting) return 5_000;
+      // Otherwise only poll when there are steps in progress
       const progress = query.state.data;
       return progress && progress.inProgress > 0 ? 5_000 : false;
     },
