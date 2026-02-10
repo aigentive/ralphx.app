@@ -20,9 +20,23 @@ use crate::domain::repositories::{ActivityEventRepository, ChatMessageRepository
 use crate::infrastructure::agents::claude::{ContentBlockItem, DiffContext, StreamEvent, StreamProcessor, ToolCall};
 
 use super::{
-    events, has_meaningful_output, AgentChunkPayload, AgentHookPayload, AgentTaskCompletedPayload,
-    AgentTaskStartedPayload, AgentToolCallPayload,
+    event_context, events, has_meaningful_output, AgentChunkPayload, AgentHookPayload,
+    AgentTaskCompletedPayload, AgentTaskStartedPayload, AgentToolCallPayload,
 };
+
+#[derive(Debug, Clone)]
+pub struct StreamOutcome {
+    pub response_text: String,
+    pub tool_calls: Vec<ToolCall>,
+    pub content_blocks: Vec<ContentBlockItem>,
+    pub session_id: Option<String>,
+}
+
+impl StreamOutcome {
+    pub fn has_meaningful_output(&self) -> bool {
+        has_meaningful_output(&self.response_text, self.tool_calls.len())
+    }
+}
 
 // ============================================================================
 // Background stream processing
@@ -50,7 +64,7 @@ pub async fn process_stream_background<R: Runtime>(
     task_repo: Option<Arc<dyn TaskRepository>>,
     chat_message_repo: Option<Arc<dyn ChatMessageRepository>>,
     assistant_message_id: Option<String>,
-) -> Result<(String, Vec<ToolCall>, Vec<ContentBlockItem>, Option<String>), String> {
+) -> Result<StreamOutcome, String> {
     tracing::debug!(
         conversation_id = conversation_id.as_str(),
         %context_type,
@@ -67,9 +81,10 @@ pub async fn process_stream_background<R: Runtime>(
         .take()
         .ok_or_else(|| "Failed to capture stderr".to_string())?;
 
-    let conversation_id_str = conversation_id.as_str().to_string();
-    let context_type_str = context_type.to_string();
-    let context_id_str = context_id.to_string();
+    let event_ctx = event_context(conversation_id, &context_type, context_id);
+    let conversation_id_str = event_ctx.conversation_id.clone();
+    let context_type_str = event_ctx.context_type.clone();
+    let context_id_str = event_ctx.context_id.clone();
     let debug_path = std::env::temp_dir()
         .join(format!("ralphx-stream-debug-{}.log", conversation_id_str));
     tracing::debug!(
@@ -568,17 +583,23 @@ pub async fn process_stream_background<R: Runtime>(
         );
     }
 
+    let outcome = StreamOutcome {
+        response_text: result.response_text,
+        tool_calls: result.tool_calls,
+        content_blocks: result.content_blocks,
+        session_id: result.session_id,
+    };
     tracing::debug!(
         conversation_id = %conversation_id_str,
         success = status.success(),
         exit_code = status.code(),
         exit_signal = signal,
-        response_len = result.response_text.len(),
-        tool_calls = result.tool_calls.len(),
+        response_len = outcome.response_text.len(),
+        tool_calls = outcome.tool_calls.len(),
         "Stream finished"
     );
 
-    let has_output = has_meaningful_output(&result.response_text, result.tool_calls.len());
+    let has_output = outcome.has_meaningful_output();
 
     if !has_output {
         let payload = if debug_lines.is_empty() {
@@ -623,10 +644,5 @@ pub async fn process_stream_background<R: Runtime>(
         return Err(error_msg);
     }
 
-    Ok((
-        result.response_text,
-        result.tool_calls,
-        result.content_blocks,
-        result.session_id,
-    ))
+    Ok(outcome)
 }
