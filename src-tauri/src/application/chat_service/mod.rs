@@ -56,6 +56,26 @@ pub(crate) fn has_meaningful_output(response_text: &str, tool_call_count: usize)
     !response_text.trim().is_empty() || tool_call_count > 0
 }
 
+/// Shared event payload context used by background and streaming modules.
+#[derive(Debug, Clone)]
+pub(crate) struct EventContextPayload {
+    pub conversation_id: String,
+    pub context_type: String,
+    pub context_id: String,
+}
+
+pub(crate) fn event_context(
+    conversation_id: &ChatConversationId,
+    context_type: &ChatContextType,
+    context_id: &str,
+) -> EventContextPayload {
+    EventContextPayload {
+        conversation_id: conversation_id.as_str().to_string(),
+        context_type: context_type.to_string(),
+        context_id: context_id.to_string(),
+    }
+}
+
 // ============================================================================
 // ChatService trait
 // ============================================================================

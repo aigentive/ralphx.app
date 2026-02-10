@@ -13,6 +13,7 @@ use crate::domain::services::MessageQueue;
 use super::chat_service_context;
 use super::chat_service_streaming::process_stream_background;
 use super::chat_service_types::{AgentQueueSentPayload, AgentRunStartedPayload};
+use super::has_meaningful_output;
 
 /// Process all queued messages for a context with retry loop
 ///
@@ -187,8 +188,11 @@ pub async fn process_message_queue<R: Runtime + 'static>(
                     )
                     .await
                     {
-                        Ok((response, tools, blocks, _)) => {
-                            if !response.is_empty() || !tools.is_empty() {
+                        Ok(outcome) => {
+                            let response = outcome.response_text;
+                            let tools = outcome.tool_calls;
+                            let blocks = outcome.content_blocks;
+                            if has_meaningful_output(&response, tools.len()) {
                                 let tool_calls_json = serde_json::to_string(&tools).ok();
                                 let content_blocks_json = serde_json::to_string(&blocks).ok();
                                 let _ = chat_message_repo.update_content(

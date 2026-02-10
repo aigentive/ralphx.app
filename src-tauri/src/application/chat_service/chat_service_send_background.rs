@@ -33,7 +33,41 @@ use super::chat_service_types::{
     AgentErrorPayload, AgentMessageCreatedPayload, AgentQueueSentPayload,
     AgentRunCompletedPayload, AgentRunStartedPayload,
 };
-use super::has_meaningful_output;
+use super::{event_context, has_meaningful_output, EventContextPayload};
+
+async fn finalize_assistant_message<R: Runtime>(
+    chat_message_repo: &Arc<dyn ChatMessageRepository>,
+    app_handle: Option<&AppHandle<R>>,
+    event_ctx: &EventContextPayload,
+    message_id: &str,
+    role: &str,
+    content: &str,
+    tool_calls_json: Option<&str>,
+    content_blocks_json: Option<&str>,
+) {
+    let _ = chat_message_repo
+        .update_content(
+            &crate::domain::entities::ChatMessageId::from_string(message_id.to_string()),
+            content,
+            tool_calls_json,
+            content_blocks_json,
+        )
+        .await;
+
+    if let Some(handle) = app_handle {
+        let _ = handle.emit(
+            "agent:message_created",
+            AgentMessageCreatedPayload {
+                message_id: message_id.to_string(),
+                conversation_id: event_ctx.conversation_id.clone(),
+                context_type: event_ctx.context_type.clone(),
+                context_id: event_ctx.context_id.clone(),
+                role: role.to_string(),
+                content: content.to_string(),
+            },
+        );
+    }
+}
 
 /// Spawn background task to process agent run, handle stream, transitions, and queue.
 ///
@@ -95,6 +129,7 @@ pub fn spawn_send_message_background<R: Runtime>(
             conversation_id = conversation_id.as_str(),
             "send_background start"
         );
+        let event_ctx = event_context(&conversation_id, &context_type, &context_id);
 
         // Resolve project ID for RALPHX_PROJECT_ID env var (used in queue processing)
         let resolved_project_id = chat_service_context::resolve_project_id(
@@ -136,7 +171,11 @@ pub fn spawn_send_message_background<R: Runtime>(
         running_agent_registry.unregister(&registry_key).await;
 
         match result {
-            Ok((response_text, tool_calls, content_blocks, claude_session_id)) => {
+            Ok(outcome) => {
+                let response_text = outcome.response_text;
+                let tool_calls = outcome.tool_calls;
+                let content_blocks = outcome.content_blocks;
+                let claude_session_id = outcome.session_id;
                 // Debug: Log what we got from stream processing
                 tracing::info!(
                     "[CHAT_SERVICE] Stream complete: context={}/{}, response_len={}, tool_calls={}, session_id={:?}",
@@ -158,53 +197,36 @@ pub fn spawn_send_message_background<R: Runtime>(
                 }
 
                 // Update pre-created assistant message with final content
+                let assistant_role = get_assistant_role(&context_type).to_string();
                 if has_meaningful_output(&response_text, tool_calls.len()) {
                     let tool_calls_json = serde_json::to_string(&tool_calls).ok();
                     let content_blocks_json = serde_json::to_string(&content_blocks).ok();
-                    let _ = chat_message_repo.update_content(
-                        &crate::domain::entities::ChatMessageId::from_string(pre_assistant_msg_id.clone()),
+                    finalize_assistant_message(
+                        &chat_message_repo,
+                        app_handle.as_ref(),
+                        &event_ctx,
+                        &pre_assistant_msg_id,
+                        &assistant_role,
                         &response_text,
                         tool_calls_json.as_deref(),
                         content_blocks_json.as_deref(),
-                    ).await;
-
-                    // Emit message_created with full content (triggers frontend cache refresh)
-                    if let Some(ref handle) = app_handle {
-                        let _ = handle.emit(
-                            "agent:message_created",
-                            AgentMessageCreatedPayload {
-                                message_id: pre_assistant_msg_id.clone(),
-                                conversation_id: conversation_id.as_str().to_string(),
-                                context_type: context_type.to_string(),
-                                context_id: context_id.clone(),
-                                role: get_assistant_role(&context_type).to_string(),
-                                content: response_text.clone(),
-                            },
-                        );
-                    }
+                    )
+                    .await;
                 } else {
                     // Stream completed with no content — update pre-created message so UI
                     // doesn't show "..." forever
                     let note = "[Agent completed with no output]";
-                    let _ = chat_message_repo.update_content(
-                        &crate::domain::entities::ChatMessageId::from_string(pre_assistant_msg_id.clone()),
+                    finalize_assistant_message(
+                        &chat_message_repo,
+                        app_handle.as_ref(),
+                        &event_ctx,
+                        &pre_assistant_msg_id,
+                        &assistant_role,
                         note,
                         None,
                         None,
-                    ).await;
-                    if let Some(ref handle) = app_handle {
-                        let _ = handle.emit(
-                            "agent:message_created",
-                            AgentMessageCreatedPayload {
-                                message_id: pre_assistant_msg_id.clone(),
-                                conversation_id: conversation_id.as_str().to_string(),
-                                context_type: context_type.to_string(),
-                                context_id: context_id.clone(),
-                                role: get_assistant_role(&context_type).to_string(),
-                                content: note.to_string(),
-                            },
-                        );
-                    }
+                    )
+                    .await;
                 }
 
                 // Treat zero-output runs as failed executions for autonomous task/review flows.
@@ -515,31 +537,24 @@ pub fn spawn_send_message_background<R: Runtime>(
                                 )
                                 .await
                                 {
-                                    Ok((response, tools, blocks, _)) => {
+                                    Ok(outcome) => {
+                                        let response = outcome.response_text;
+                                        let tools = outcome.tool_calls;
+                                        let blocks = outcome.content_blocks;
                                         if has_meaningful_output(&response, tools.len()) {
                                             let tool_calls_json = serde_json::to_string(&tools).ok();
                                             let content_blocks_json = serde_json::to_string(&blocks).ok();
-                                            let _ = chat_message_repo.update_content(
-                                                &crate::domain::entities::ChatMessageId::from_string(queue_assistant_msg_id.clone()),
+                                            finalize_assistant_message(
+                                                &chat_message_repo,
+                                                app_handle.as_ref(),
+                                                &event_ctx,
+                                                &queue_assistant_msg_id,
+                                                &get_assistant_role(&context_type).to_string(),
                                                 &response,
                                                 tool_calls_json.as_deref(),
                                                 content_blocks_json.as_deref(),
-                                            ).await;
-
-                                            // Emit assistant message created
-                                            if let Some(ref handle) = app_handle {
-                                                let _ = handle.emit(
-                                                    "agent:message_created",
-                                                    AgentMessageCreatedPayload {
-                                                        message_id: queue_assistant_msg_id,
-                                                        conversation_id: conversation_id.as_str().to_string(),
-                                                        context_type: context_type.to_string(),
-                                                        context_id: context_id.clone(),
-                                                        role: get_assistant_role(&context_type).to_string(),
-                                                        content: response.clone(),
-                                                    },
-                                                );
-                                            }
+                                            )
+                                            .await;
                                         }
 
                                         // NOTE: Don't emit run_completed here for each queued message.
@@ -624,25 +639,17 @@ pub fn spawn_send_message_background<R: Runtime>(
 
                 // Update pre-created message with error so UI doesn't show "..." forever
                 let error_note = format!("[Agent error: {}]", e);
-                let _ = chat_message_repo.update_content(
-                    &crate::domain::entities::ChatMessageId::from_string(pre_assistant_msg_id.clone()),
+                finalize_assistant_message(
+                    &chat_message_repo,
+                    app_handle.as_ref(),
+                    &event_ctx,
+                    &pre_assistant_msg_id,
+                    &get_assistant_role(&context_type).to_string(),
                     &error_note,
                     None,
                     None,
-                ).await;
-                if let Some(ref handle) = app_handle {
-                    let _ = handle.emit(
-                        "agent:message_created",
-                        AgentMessageCreatedPayload {
-                            message_id: pre_assistant_msg_id.clone(),
-                            conversation_id: conversation_id.as_str().to_string(),
-                            context_type: context_type.to_string(),
-                            context_id: context_id.clone(),
-                            role: get_assistant_role(&context_type).to_string(),
-                            content: error_note,
-                        },
-                    );
-                }
+                )
+                .await;
 
                 // If Claude reports an invalid session, clear it to avoid repeat failures
                 if e.contains("No conversation found with session ID") {
