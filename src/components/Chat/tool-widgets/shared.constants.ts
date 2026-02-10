@@ -78,6 +78,46 @@ export const badgeStyles: Record<BadgeVariant, { bg: string; color: string }> = 
 };
 
 // ============================================================================
+// Safe extraction helpers (used by all widgets to pull typed fields from unknown args/results)
+// ============================================================================
+
+/** Safely extract a string field from an unknown object */
+export function getString(obj: unknown, key: string): string | undefined {
+  if (obj != null && typeof obj === "object" && key in (obj as Record<string, unknown>)) {
+    const val = (obj as Record<string, unknown>)[key];
+    return typeof val === "string" ? val : undefined;
+  }
+  return undefined;
+}
+
+/** Safely extract a number field from an unknown object */
+export function getNumber(obj: unknown, key: string): number | undefined {
+  if (obj != null && typeof obj === "object" && key in (obj as Record<string, unknown>)) {
+    const val = (obj as Record<string, unknown>)[key];
+    return typeof val === "number" ? val : undefined;
+  }
+  return undefined;
+}
+
+/** Safely extract a string array field from an unknown object */
+export function getStringArray(obj: unknown, key: string): string[] | undefined {
+  if (obj != null && typeof obj === "object" && key in (obj as Record<string, unknown>)) {
+    const val = (obj as Record<string, unknown>)[key];
+    if (Array.isArray(val) && val.every((v) => typeof v === "string")) return val;
+  }
+  return undefined;
+}
+
+/** Safely extract a boolean field from an unknown object */
+export function getBool(obj: unknown, key: string): boolean | undefined {
+  if (obj != null && typeof obj === "object" && key in (obj as Record<string, unknown>)) {
+    const val = (obj as Record<string, unknown>)[key];
+    return typeof val === "boolean" ? val : undefined;
+  }
+  return undefined;
+}
+
+// ============================================================================
 // Utility Functions
 // ============================================================================
 
