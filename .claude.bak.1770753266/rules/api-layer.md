@@ -2,7 +2,10 @@
 paths:
   - "src/api/**"
   - "src/api-mock/**"
+  - "src/types/**"
   - "src/lib/tauri*.ts"
+  - "src-tauri/src/http_server/**"
+  - "src-tauri/src/commands/**"
   - "src/mocks/**"
   - "vite.config.ts"
 ---

@@ -1,0 +1,175 @@
+import { describe, it, expect } from "vitest";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { GrepWidget } from "./GrepWidget";
+import type { ToolCall } from "./shared.constants";
+
+function makeGrepCall(overrides: Partial<ToolCall> = {}): ToolCall {
+  return {
+    id: "grep-1",
+    name: "Grep",
+    arguments: { pattern: "TODO", path: "src/" },
+    result: "src/app.ts\nsrc/utils.ts",
+    ...overrides,
+  };
+}
+
+describe("GrepWidget", () => {
+  describe("rendering", () => {
+    it("shows pattern in title", () => {
+      render(<GrepWidget toolCall={makeGrepCall()} />);
+      expect(screen.getByText(/"TODO" in src\//)).toBeInTheDocument();
+    });
+
+    it("shows pattern only when no path", () => {
+      render(
+        <GrepWidget
+          toolCall={makeGrepCall({ arguments: { pattern: "fixme" } })}
+        />
+      );
+      expect(screen.getByText(/"fixme"/)).toBeInTheDocument();
+    });
+
+    it("shows file count badge", () => {
+      render(<GrepWidget toolCall={makeGrepCall()} />);
+      expect(screen.getByText("2 files")).toBeInTheDocument();
+    });
+
+    it("shows singular file count", () => {
+      render(
+        <GrepWidget
+          toolCall={makeGrepCall({ result: "src/app.ts" })}
+        />
+      );
+      expect(screen.getByText("1 file")).toBeInTheDocument();
+    });
+
+    it("shows file paths in body", () => {
+      render(<GrepWidget toolCall={makeGrepCall()} />);
+      expect(screen.getByText("src/app.ts")).toBeInTheDocument();
+      expect(screen.getByText("src/utils.ts")).toBeInTheDocument();
+    });
+  });
+
+  describe("inline vs collapsible", () => {
+    it("renders inline (no chevron) for <=3 results", () => {
+      const call = makeGrepCall({ result: "a.ts\nb.ts\nc.ts" });
+      const { container } = render(<GrepWidget toolCall={call} />);
+      // alwaysExpanded hides the ChevronRight — verify all 3 files visible
+      expect(screen.getByText("a.ts")).toBeInTheDocument();
+      expect(screen.getByText("b.ts")).toBeInTheDocument();
+      expect(screen.getByText("c.ts")).toBeInTheDocument();
+      // No chevron svg when alwaysExpanded
+      const chevrons = container.querySelectorAll('[style*="rotate"]');
+      expect(chevrons.length).toBe(0);
+    });
+
+    it("renders collapsible (with chevron) for >3 results", () => {
+      const call = makeGrepCall({
+        result: "a.ts\nb.ts\nc.ts\nd.ts",
+      });
+      const { container } = render(<GrepWidget toolCall={call} />);
+      expect(screen.getByText("4 files")).toBeInTheDocument();
+      // Should have a chevron for collapse
+      const chevrons = container.querySelectorAll('[style*="rotate"]');
+      expect(chevrons.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe("pending state", () => {
+    it("shows 'Searching...' when result is undefined", () => {
+      render(
+        <GrepWidget
+          toolCall={makeGrepCall({ result: undefined })}
+        />
+      );
+      expect(screen.getByText("Searching...")).toBeInTheDocument();
+      expect(screen.getByText("no results")).toBeInTheDocument();
+    });
+  });
+
+  describe("empty results", () => {
+    it("shows 'No matches found' when result is empty string", () => {
+      render(
+        <GrepWidget toolCall={makeGrepCall({ result: "" })} />
+      );
+      expect(screen.getByText("No matches found")).toBeInTheDocument();
+      expect(screen.getByText("no results")).toBeInTheDocument();
+    });
+  });
+
+  describe("result parsing", () => {
+    it("parses plain string result", () => {
+      render(
+        <GrepWidget
+          toolCall={makeGrepCall({ result: "file1.ts\nfile2.ts" })}
+        />
+      );
+      expect(screen.getByText("file1.ts")).toBeInTheDocument();
+      expect(screen.getByText("file2.ts")).toBeInTheDocument();
+    });
+
+    it("parses MCP wrapper result", () => {
+      render(
+        <GrepWidget
+          toolCall={makeGrepCall({
+            result: [{ type: "text", text: "mcp-file.ts\nmcp-other.ts" }],
+          })}
+        />
+      );
+      expect(screen.getByText("mcp-file.ts")).toBeInTheDocument();
+      expect(screen.getByText("mcp-other.ts")).toBeInTheDocument();
+    });
+
+    it("parses string array result", () => {
+      render(
+        <GrepWidget
+          toolCall={makeGrepCall({
+            result: ["arr-a.ts", "arr-b.ts"],
+          })}
+        />
+      );
+      expect(screen.getByText("arr-a.ts")).toBeInTheDocument();
+      expect(screen.getByText("arr-b.ts")).toBeInTheDocument();
+    });
+
+    it("trims whitespace and filters empty lines", () => {
+      render(
+        <GrepWidget
+          toolCall={makeGrepCall({
+            result: "  spaced.ts  \n\n  trimmed.ts  \n",
+          })}
+        />
+      );
+      expect(screen.getByText("spaced.ts")).toBeInTheDocument();
+      expect(screen.getByText("trimmed.ts")).toBeInTheDocument();
+    });
+  });
+
+  describe("compact mode", () => {
+    it("passes compact prop without crashing", () => {
+      render(<GrepWidget toolCall={makeGrepCall()} compact />);
+      expect(screen.getByText(/"TODO"/)).toBeInTheDocument();
+    });
+  });
+
+  describe("collapse interaction", () => {
+    it("toggles body visibility on click for >3 results", async () => {
+      const user = userEvent.setup();
+      const call = makeGrepCall({
+        result: "a.ts\nb.ts\nc.ts\nd.ts\ne.ts",
+      });
+      render(<GrepWidget toolCall={call} />);
+
+      // The widget card header is clickable — find the role=button
+      const toggle = screen.getByRole("button");
+      // Initially collapsed — body is present but max-height limited
+      expect(screen.getByText("a.ts")).toBeInTheDocument();
+
+      // Click to expand
+      await user.click(toggle);
+      // All files still visible
+      expect(screen.getByText("e.ts")).toBeInTheDocument();
+    });
+  });
+});

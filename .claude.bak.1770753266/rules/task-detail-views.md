@@ -1,8 +1,10 @@
 ---
 paths:
-  - "src/components/tasks/TaskDetailPanel.tsx"
   - "src/components/tasks/detail-views/**"
-  - "src/components/tasks/TaskDetailOverlay.tsx"
+  - "src/components/tasks/TaskDetailPanel*"
+  - "src/components/tasks/TaskDetailOverlay*"
+  - "src/components/tasks/TaskDetailView*"
+  - "src/components/tasks/TaskDetailModal*"
 ---
 
 # Task Detail Views Registry
