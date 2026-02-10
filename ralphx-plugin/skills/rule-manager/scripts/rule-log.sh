@@ -8,16 +8,15 @@ source "$SCRIPT_DIR/lib/common.sh"
 ACTION="${1:?Usage: rule-log.sh <action> <details>}"
 DETAILS="${2:?Usage: rule-log.sh <action> <details>}"
 
+MEMORY_DIR="$(get_memory_dir)"
+mkdir -p "$MEMORY_DIR"
 LOG_FILE="$(get_log_path)"
 
-# Create log if it doesn't exist
+# Create daily log if it doesn't exist
 if [[ ! -f "$LOG_FILE" ]]; then
-  cat > "$LOG_FILE" <<'EOF'
-# Rule Optimization Log
-
-Automated log of rule-manager and knowledge-capture changes.
-
-EOF
+  TODAY=$(date -u +"%Y-%m-%d")
+  echo "# $TODAY — Optimization Log" > "$LOG_FILE"
+  echo "" >> "$LOG_FILE"
 fi
 
 # Append entry

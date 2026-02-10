@@ -8,6 +8,15 @@ source "$SCRIPT_DIR/lib/common.sh"
 RULES_DIR="$(get_rules_dir)"
 PROJECT_ROOT="$(get_project_root)"
 
+# Collect CLAUDE.md files and .claude/ contents (excluding rules dir itself) as search targets
+SEARCH_TARGETS=()
+while IFS= read -r f; do
+  SEARCH_TARGETS+=("$f")
+done < <(find "$PROJECT_ROOT" -name 'CLAUDE.md' -not -path '*/node_modules/*' -not -path '*/.git/*' 2>/dev/null)
+while IFS= read -r f; do
+  SEARCH_TARGETS+=("$f")
+done < <(find "$PROJECT_ROOT/.claude" -type f -not -path "$RULES_DIR/*" 2>/dev/null)
+
 echo "ORPHAN/STALE ANALYSIS"
 echo "====================="
 echo ""
@@ -17,13 +26,11 @@ for file in "$RULES_DIR"/*.md; do
   [[ "$(basename "$file")" == .* ]] && continue
   name="$(basename "$file")"
 
-  # Check if any non-rule file references this rule (disable pipefail for grep chain)
-  ref_count=$(set +o pipefail; grep -rl "$name" "$PROJECT_ROOT" 2>/dev/null \
-    | grep -v '.claude/rules/' \
-    | grep -v '.git/' \
-    | grep -v 'node_modules/' \
-    | grep -v '.optimization-log' \
-    | wc -l | tr -d ' ')
+  # Check if any CLAUDE.md or .claude/ file (outside rules/) references this rule
+  ref_count=0
+  if [[ ${#SEARCH_TARGETS[@]} -gt 0 ]]; then
+    ref_count=$(grep -rl "$name" "${SEARCH_TARGETS[@]}" 2>/dev/null | wc -l | tr -d ' ')
+  fi
 
   if [[ "$ref_count" -eq 0 ]]; then
     lines=$(count_lines "$file")
