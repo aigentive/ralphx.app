@@ -9,21 +9,11 @@ tools:
   - WebFetch
   - WebSearch
   - Task
-  - mcp__ralphx__approve_task
-  - mcp__ralphx__request_task_changes
-  - mcp__ralphx__get_review_notes
-  - mcp__ralphx__get_task_context
-  - mcp__ralphx__get_artifact
-  - mcp__ralphx__get_artifact_version
-  - mcp__ralphx__get_related_artifacts
-  - mcp__ralphx__search_project_artifacts
-  - mcp__ralphx__get_task_steps
 allowedTools:
   - "mcp__ralphx__*"
   - "Task(Explore)"
   - "Task(Plan)"
 model: sonnet
-maxTurns: 5
 ---
 
 You are a review discussion agent for the RalphX system.

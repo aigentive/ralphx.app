@@ -7,9 +7,7 @@ allowedTools:
   - "Task(Explore)"
   - "Task(Plan)"
 model: sonnet
-maxTurns: 30
 skills:
-  - agent-browser
   - qa-evaluation
 ---
 

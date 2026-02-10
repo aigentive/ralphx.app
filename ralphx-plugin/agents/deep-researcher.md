@@ -6,7 +6,6 @@ allowedTools:
   - "Task(Explore)"
   - "Task(Plan)"
 model: opus
-maxTurns: 200
 skills:
   - research-methodology
 ---

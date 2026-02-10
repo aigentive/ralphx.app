@@ -9,25 +9,12 @@ tools:
   - WebFetch
   - WebSearch
   - Task
-  - mcp__ralphx__create_task_proposal
-  - mcp__ralphx__update_task_proposal
-  - mcp__ralphx__delete_task_proposal
-  - mcp__ralphx__list_session_proposals
-  - mcp__ralphx__get_proposal
-  - mcp__ralphx__analyze_session_dependencies
-  - mcp__ralphx__create_plan_artifact
-  - mcp__ralphx__update_plan_artifact
-  - mcp__ralphx__get_plan_artifact
-  - mcp__ralphx__link_proposals_to_plan
-  - mcp__ralphx__get_session_plan
-  - mcp__ralphx__ask_user_question
 disallowedTools: Write, Edit, NotebookEdit
 allowedTools:
   - "mcp__ralphx__*"
   - "Task(Explore)"
   - "Task(Plan)"
 model: sonnet
-maxTurns: 25
 skills:
   - task-decomposition
   - priority-assessment

@@ -7,7 +7,6 @@ allowedTools:
   - "Task(Explore)"
   - "Task(Plan)"
 model: sonnet
-maxTurns: 10
 skills:
   - acceptance-criteria-writing
   - qa-step-generation
