@@ -1,0 +1,241 @@
+# RalphX runtime configuration
+#
+# tool_sets:
+#   Named reusable CLI tool groups used by agents via `tools.extends`.
+#
+# agents:
+#   Defines all Claude agent runtime settings used by the Rust backend.
+#
+# Agent attributes:
+# - name:
+#   Short agent identifier (no "ralphx:" prefix). Must match values used in
+#   Rust agent name constants and MCP allowlists.
+# - system_prompt_file:
+#   Full project-root-relative path to an agent markdown file (e.g.
+#   `ralphx-plugin/agents/worker.md`) used to build
+#   `--append-system-prompt` content.
+# - tools:
+#   CLI tool strategy for this agent:
+#   - mcp_only: true
+#     Gives no built-in Claude CLI tools (`--tools ""`). Agent relies only on MCP.
+#   - extends: <tool_set_name>
+#     Inherit tools from `tool_sets.<name>`.
+#   - include: [ToolA, ToolB]
+#     Additional tools appended after inherited set.
+#   Effective order is: inherited tools (if any) + include tools, deduplicated.
+# - mcp_tools:
+#   MCP tool names without `mcp__ralphx__` prefix. These become preapproved
+#   `mcp__ralphx__<tool>` entries in `--allowedTools`.
+# - preapproved_cli_tools:
+#   Additional preapproved CLI tools/variants in `--allowedTools`
+#   (e.g. `Task(Explore)`, `Task(Plan)`, `Write`, `Edit`).
+#
+# Notes:
+# - Unknown attributes are ignored by the current parser.
+# - Missing/invalid config falls back to embedded defaults bundled at compile time.
+
+tool_sets:
+  base_tools: [Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill]
+
+agents:
+  - name: orchestrator-ideation
+    system_prompt_file: ralphx-plugin/agents/orchestrator-ideation.md
+    tools: { extends: base_tools, include: [Task] }
+    mcp_tools:
+      [
+        create_task_proposal,
+        update_task_proposal,
+        delete_task_proposal,
+        list_session_proposals,
+        get_proposal,
+        analyze_session_dependencies,
+        create_plan_artifact,
+        update_plan_artifact,
+        get_plan_artifact,
+        link_proposals_to_plan,
+        get_session_plan,
+        ask_user_question,
+      ]
+    preapproved_cli_tools: [Task(Explore), Task(Plan)]
+
+  - name: orchestrator-ideation-readonly
+    system_prompt_file: ralphx-plugin/agents/orchestrator-ideation.md
+    tools: { extends: base_tools, include: [Task] }
+    mcp_tools:
+      [
+        list_session_proposals,
+        get_proposal,
+        get_plan_artifact,
+        get_session_plan,
+      ]
+    preapproved_cli_tools: [Task(Explore), Task(Plan)]
+
+  - name: session-namer
+    system_prompt_file: ralphx-plugin/agents/session-namer.md
+    tools:
+      mcp_only: true
+    mcp_tools: [update_session_title]
+    preapproved_cli_tools: []
+
+  - name: dependency-suggester
+    system_prompt_file: ralphx-plugin/agents/dependency-suggester.md
+    tools: { mcp_only: true }
+    mcp_tools: [apply_proposal_dependencies]
+    preapproved_cli_tools: []
+
+  - name: chat-task
+    system_prompt_file: ralphx-plugin/agents/chat-task.md
+    tools: { extends: base_tools, include: [Task] }
+    mcp_tools: [update_task, add_task_note, get_task_details]
+    preapproved_cli_tools: [Task(Explore), Task(Plan)]
+
+  - name: chat-project
+    system_prompt_file: ralphx-plugin/agents/chat-project.md
+    tools: { extends: base_tools, include: [Task] }
+    mcp_tools: [suggest_task, list_tasks]
+    preapproved_cli_tools: [Task(Explore), Task(Plan)]
+
+  - name: ralphx-review-chat
+    system_prompt_file: ralphx-plugin/agents/review-chat.md
+    tools: { extends: base_tools, include: [Task] }
+    mcp_tools:
+      [
+        approve_task,
+        request_task_changes,
+        get_review_notes,
+        get_task_context,
+        get_artifact,
+        get_artifact_version,
+        get_related_artifacts,
+        search_project_artifacts,
+        get_task_steps,
+      ]
+    preapproved_cli_tools: [Task(Explore), Task(Plan)]
+
+  - name: ralphx-review-history
+    system_prompt_file: ralphx-plugin/agents/review-history.md
+    tools: { extends: base_tools, include: [Task] }
+    mcp_tools:
+      [
+        get_review_notes,
+        get_task_context,
+        get_task_issues,
+        get_task_steps,
+        get_step_progress,
+        get_issue_progress,
+        get_artifact,
+        get_artifact_version,
+        get_related_artifacts,
+        search_project_artifacts,
+      ]
+    preapproved_cli_tools: [Task(Explore), Task(Plan)]
+
+  - name: ralphx-worker
+    system_prompt_file: ralphx-plugin/agents/worker.md
+    tools: { extends: base_tools, include: [Write, Edit, Task] }
+    mcp_tools:
+      [
+        start_step,
+        complete_step,
+        skip_step,
+        fail_step,
+        add_step,
+        get_step_progress,
+        get_task_context,
+        get_artifact,
+        get_artifact_version,
+        get_related_artifacts,
+        search_project_artifacts,
+        get_review_notes,
+        get_task_steps,
+        get_task_issues,
+        mark_issue_in_progress,
+        mark_issue_addressed,
+        get_project_analysis,
+      ]
+    preapproved_cli_tools:
+      [
+        Read,
+        Grep,
+        Glob,
+        WebFetch,
+        WebSearch,
+        Skill,
+        Write,
+        Edit,
+        Bash,
+        Task,
+        Task(Explore),
+        Task(Plan),
+      ]
+
+  - name: ralphx-reviewer
+    system_prompt_file: ralphx-plugin/agents/reviewer.md
+    tools: { extends: base_tools, include: [Task] }
+    mcp_tools:
+      [
+        complete_review,
+        get_task_context,
+        get_artifact,
+        get_artifact_version,
+        get_related_artifacts,
+        search_project_artifacts,
+        get_review_notes,
+        get_task_steps,
+        get_task_issues,
+        get_step_progress,
+        get_issue_progress,
+        get_project_analysis,
+      ]
+    preapproved_cli_tools: [Bash, Task(Explore), Task(Plan)]
+
+  - name: ralphx-qa-prep
+    system_prompt_file: ralphx-plugin/agents/qa-prep.md
+    tools: { extends: base_tools, include: [Task] }
+    mcp_tools: []
+    preapproved_cli_tools: [Task(Explore), Task(Plan)]
+
+  - name: ralphx-qa-executor
+    system_prompt_file: ralphx-plugin/agents/qa-executor.md
+    tools: { extends: base_tools, include: [Write, Edit, Task] }
+    mcp_tools: []
+    preapproved_cli_tools: [Write, Edit, Bash, Task(Explore), Task(Plan)]
+
+  - name: ralphx-orchestrator
+    system_prompt_file: ralphx-plugin/agents/orchestrator.md
+    tools: { extends: base_tools, include: [Write, Edit, Task] }
+    mcp_tools: []
+    preapproved_cli_tools: [Write, Edit, Bash, Task]
+
+  - name: ralphx-supervisor
+    system_prompt_file: ralphx-plugin/agents/supervisor.md
+    tools: { extends: base_tools, include: [Task] }
+    mcp_tools: []
+    preapproved_cli_tools: [Bash, Task(Explore), Task(Plan)]
+
+  - name: ralphx-deep-researcher
+    system_prompt_file: ralphx-plugin/agents/deep-researcher.md
+    tools: { extends: base_tools, include: [Write, Task] }
+    mcp_tools: []
+    preapproved_cli_tools:
+      [Write, WebFetch, WebSearch, Task(Explore), Task(Plan)]
+
+  - name: project-analyzer
+    system_prompt_file: ralphx-plugin/agents/project-analyzer.md
+    tools: { extends: base_tools }
+    mcp_tools: [save_project_analysis, get_project_analysis]
+    preapproved_cli_tools: [Read, Glob, Bash, Grep]
+
+  - name: ralphx-merger
+    system_prompt_file: ralphx-plugin/agents/merger.md
+    tools: { extends: base_tools, include: [Edit, Task] }
+    mcp_tools:
+      [
+        complete_merge,
+        report_conflict,
+        report_incomplete,
+        get_merge_target,
+        get_task_context,
+        get_project_analysis,
+      ]
+    preapproved_cli_tools: [Read, Edit, Bash, Task(Explore), Task(Plan)]
