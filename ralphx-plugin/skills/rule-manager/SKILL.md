@@ -38,8 +38,8 @@ Parse the JSON output. Report to user:
 - Files with @ references
 - Health indicators (oversized, unscoped, refs)
 
-Also read the optimization log to see what's been done:
-`.claude/rules/.optimization-log.md`
+Also read the optimization log to see what's been done (per-day files):
+`.claude/memory/` (read the latest file, or all files for full history)
 
 ## Step 3: Identify ONE Optimization
 

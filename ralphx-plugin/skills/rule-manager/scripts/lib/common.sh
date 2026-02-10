@@ -64,9 +64,14 @@ get_at_refs() {
   grep -oE '@\.claude/rules/[a-zA-Z0-9_-]+\.md' "$file" 2>/dev/null | sed 's|@\.claude/rules/||' || true
 }
 
-# Get optimization log path
+# Resolve .claude/memory/ directory
+get_memory_dir() {
+  echo "$(get_project_root)/.claude/memory"
+}
+
+# Get optimization log path (per-day file)
 get_log_path() {
-  echo "$(get_rules_dir)/.optimization-log.md"
+  echo "$(get_memory_dir)/$(date -u +"%Y-%m-%d").md"
 }
 
 # JSON escape a string
