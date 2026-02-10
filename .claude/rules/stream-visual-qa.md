@@ -1,3 +1,12 @@
+---
+paths:
+  - "streams/visual-qa/**"
+  - "tests/visual/**"
+  - "tests/pages/**"
+  - "tests/fixtures/**"
+  - "tests/helpers/**"
+---
+
 # Visual QA Stream
 
 **Required Context:** code-quality-standards.md | git-workflow.md
