@@ -1,3 +1,9 @@
+---
+paths:
+  - "streams/hygiene/**"
+  - "streams/archive/**"
+---
+
 # Hygiene Stream
 
 **Required Context:** code-quality-standards.md | git-workflow.md
