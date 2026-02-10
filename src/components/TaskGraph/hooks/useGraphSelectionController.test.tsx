@@ -79,11 +79,13 @@ function TestHarness({ containerId = "graph" }: { containerId?: string }) {
   });
 
   return (
+    /* eslint-disable react-hooks/refs -- passing ref/handler to JSX is standard React */
     <div
       id={containerId}
       ref={controller.containerRef}
       onKeyDown={controller.onKeyDown}
     />
+    /* eslint-enable react-hooks/refs */
   );
 }
 
