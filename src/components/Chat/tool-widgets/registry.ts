@@ -16,6 +16,7 @@ import { ContextWidget } from "./ContextWidget";
 import { StepsManifestWidget } from "./StepsManifestWidget";
 import { IssuesSummaryWidget } from "./IssuesSummaryWidget";
 import { ArtifactWidget } from "./ArtifactWidget";
+import { ReviewWidget } from "./ReviewWidget";
 
 /** Registry type: tool name (lowercase) → React component */
 export type ToolCallWidgetRegistry = Record<string, ComponentType<ToolCallWidgetProps>>;
@@ -42,6 +43,9 @@ export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
   "get_artifact": ArtifactWidget,
   "get_artifact_version": ArtifactWidget,
   "get_plan_artifact": ArtifactWidget,
+  // Review tools → ReviewWidget (outcome-colored cards + note list)
+  "complete_review": ReviewWidget,
+  "get_review_notes": ReviewWidget,
 };
 
 /**
