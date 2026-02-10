@@ -1,3 +1,11 @@
+---
+paths:
+  - "src/components/**"
+  - "src/views/**"
+  - "screenshots/features/**"
+  - "src/api-mock/**"
+---
+
 # Visual Verification Workflow
 
 **Required Context:** code-quality-standards.md

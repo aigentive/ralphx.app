@@ -1,3 +1,8 @@
+---
+paths:
+  - "streams/polish/**"
+---
+
 # Polish Stream
 
 **Required Context:** code-quality-standards.md | git-workflow.md

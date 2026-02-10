@@ -1,3 +1,9 @@
+---
+paths:
+  - "specs/phases/**"
+  - "specs/plan.md"
+---
+
 # Task Planning Rules
 
 **Required Context:** code-quality-standards.md | git-workflow.md

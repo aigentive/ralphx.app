@@ -73,7 +73,7 @@ pub type AppResult<T> = Result<T, AppError>;
 
 ### State Machine (CRITICAL)
 
-**Full reference:** @../.claude/rules/task-execution-git-workflows.md — 24 states, transitions, side effects, merge workflow, git modes, agents.
+**Full reference:** See task-state-machine.md (24 states, transitions, side effects), task-git-branching.md (git modes, merge workflow), task-execution-agents.md (agent configs).
 
 **NEVER update status directly. ALWAYS use TransitionHandler:**
 ```rust
@@ -118,7 +118,7 @@ Example: "ServiceExtraction Pattern: business logic in *_service.rs, commands ju
 
 **Agent MCP Tool Allowlist:** Three-layer system — see `@../.claude/rules/agent-mcp-tools.md`. Rust source of truth: `infrastructure/agents/claude/agent_config.rs` (`AGENT_CONFIGS`).
 
-**Git Modes & Merge Workflow:** Two modes (Local/Worktree), two-level branch hierarchy (plan→task), programmatic+agent merge — see `@../.claude/rules/task-execution-git-workflows.md`.
+**Git Modes & Merge Workflow:** Two modes (Local/Worktree), two-level branch hierarchy (plan→task), programmatic+agent merge — see task-git-branching.md.
 
 ## Code Quality
 

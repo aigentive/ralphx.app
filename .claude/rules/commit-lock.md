@@ -1,3 +1,9 @@
+---
+paths:
+  - "streams/**"
+  - ".commit-lock"
+---
+
 # Commit Lock Protocol
 
 ## Overview

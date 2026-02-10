@@ -4,7 +4,7 @@
 Native Mac GUI for autonomous AI dev: Kanban, multi-agent orchestration, ideation chat.
 Full spec: `specs/plan.md` | Code quality: `.claude/rules/code-quality-standards.md`
 Task detail views (Kanban UI): `.claude/rules/task-detail-views.md`
-Git modes, state machine, agents, merges: `.claude/rules/task-execution-git-workflows.md`
+State machine: `.claude/rules/task-state-machine.md` | Git/merge: `.claude/rules/task-git-branching.md` | Agents: `.claude/rules/task-execution-agents.md`
 
 ## Structure
 ```

@@ -1,3 +1,8 @@
+---
+paths:
+  - "streams/**"
+---
+
 # Git Workflow Rules
 
 **Required Context:** code-quality-standards.md | commit-lock.md

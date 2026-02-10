@@ -1,3 +1,10 @@
+---
+paths:
+  - "streams/verify/**"
+  - "screenshots/features/**"
+  - "src/api-mock/**"
+---
+
 # Visual Gap Verification
 
 **Required Context:** gap-verification.md | visual-verification.md

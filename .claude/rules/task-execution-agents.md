@@ -1,0 +1,141 @@
+---
+paths:
+  - "src-tauri/src/infrastructure/agents/**"
+  - "src-tauri/src/application/chat_service/**"
+  - "ralphx-plugin/agents/**"
+---
+
+# Task Execution Agents
+
+> **Maintainer note:** This file optimizes for LLM context efficiency. Rules: (1) Tables > prose (2) One example max per concept (3) No redundant explanations (4) Use symbols: → = leads to, | = or, ❌/✅ = wrong/right (5) Before adding content, ask: "Can this be a single line?" If yes, make it one line.
+
+**Required Context:** task-state-machine.md | agent-mcp-tools.md
+
+---
+
+## Worker (`ralphx-worker`)
+
+| Aspect | Detail |
+|--------|--------|
+| **Model** | sonnet |
+| **Trigger** | `executing` or `re_executing` entry |
+| **CWD** | Worktree path or project dir |
+| **Permission** | `acceptEdits` (Write/Edit/Bash pre-approved) |
+| **Env var** | `RALPHX_TASK_STATE` = `executing` or `re_executing` |
+
+**Execution flow:**
+1. If `re_executing` → fetch `get_review_notes()` + `get_task_issues(status: "open")` first
+2. `get_task_context(task_id)` → task details, proposal, plan, dependencies
+3. If blocked → STOP
+4. Read plan artifact if exists
+5. `start_step()` → work → `complete_step()` (per step)
+6. For re-execution: `mark_issue_in_progress()` / `mark_issue_addressed()` per issue
+
+**Key MCP tools:** `start_step`, `complete_step`, `skip_step`, `fail_step`, `add_step`, `get_task_context`, `get_review_notes`, `get_task_issues`, `mark_issue_in_progress`, `mark_issue_addressed`
+
+## Reviewer (`ralphx-reviewer`)
+
+| Aspect | Detail |
+|--------|--------|
+| **Model** | sonnet |
+| **Trigger** | `reviewing` entry |
+| **Session** | Always fresh (never resumed) |
+
+**MUST call `complete_review` before exiting.** Task stuck in `reviewing` otherwise.
+
+**`complete_review` params:**
+- `outcome`: `"approved"` | `"needs_changes"` | `"escalate"`
+- `notes`, `fix_description` (if needs_changes)
+- `issues[]` (REQUIRED for needs_changes): `{ title, severity, step_id, description, file_path, line_number }`
+- `escalation_reason` (if escalate)
+
+**Review outcomes → transitions:**
+
+| Outcome | Transition |
+|---------|------------|
+| `approved` | `reviewing` → `review_passed` |
+| `needs_changes` | `reviewing` → `revision_needed` → (auto) `re_executing` |
+| `escalate` | `reviewing` → `escalated` |
+
+## Merger (`ralphx-merger`)
+
+| Aspect | Detail |
+|--------|--------|
+| **Model** | opus (most capable, for complex conflicts) |
+| **Trigger** | `merging` entry (after programmatic merge fails) |
+| **Pre-approved** | Read, Edit, Bash |
+
+**Merger workflow:**
+1. `get_merge_target(task_id)` → returns `{ source_branch, target_branch }`
+2. `get_task_context(task_id)` → conflict files, task details
+3. Read each conflicted file, resolve markers, edit files
+4. Verify: grep for remaining `<<<<<<< HEAD`, run `cargo check`/`npm run typecheck`
+5. `git add .` + `git rebase --continue` (or fresh commit)
+
+**Merger MCP tools:**
+
+| Tool | Purpose | Required? |
+|------|---------|-----------|
+| `get_merge_target` | Get source/target branches | YES (always call first) |
+| `complete_merge` | Explicit success signal (with commit SHA) | Optional (auto-detected) |
+| `report_conflict` | Cannot resolve → `MergeConflict` | YES if stuck |
+| `report_incomplete` | Non-conflict failure → `MergeIncomplete` | YES if git error |
+| `get_task_context` | Task details + conflict files | As needed |
+
+---
+
+## ChatService Context → Agent Resolution
+
+| Context Type | Default Agent | Status Override | Session |
+|-------------|---------------|-----------------|---------|
+| `TaskExecution` | `ralphx-worker` | — | Never resumed (fresh spawn) |
+| `Review` | `ralphx-reviewer` | `review_passed` → `ralphx-review-chat`, `approved` → `ralphx-review-history` | Never resumed (fresh) |
+| `Merge` | `ralphx-merger` | — | May resume |
+| `Ideation` | `orchestrator-ideation` | `accepted` → `orchestrator-ideation-readonly` | Resumes |
+| `Task` | `chat-task` | — | Resumes |
+| `Project` | `chat-project` | — | Resumes |
+
+## Support Agents
+
+| Agent | Model | Role |
+|-------|-------|------|
+| `orchestrator-ideation` | sonnet | Facilitates ideation sessions, creates task proposals + plans |
+| `session-namer` | haiku | Generates 2-word session titles |
+| `dependency-suggester` | haiku | Auto-applies dependency suggestions between proposals |
+| `chat-task` | sonnet | Task-specific Q&A |
+| `chat-project` | sonnet | Project-level questions |
+| `ralphx-review-chat` | sonnet | Discuss review findings (when status = `review_passed`) |
+| `ralphx-qa-prep` | sonnet | Generate acceptance criteria + test steps (background, on `ready`) |
+| `ralphx-qa-executor` | sonnet | Browser-based QA via agent-browser |
+| `ralphx-orchestrator` | opus | Complex multi-step coordination |
+| `ralphx-supervisor` | haiku | Monitor agents for loops/stalls |
+| `ralphx-deep-researcher` | opus | Thorough research |
+
+---
+
+## Key Files Index
+
+| Component | Path |
+|-----------|------|
+| GitMode enum | `src-tauri/src/domain/entities/project.rs` |
+| InternalStatus (24 variants) | `src-tauri/src/domain/entities/status.rs` |
+| Valid transitions table | `src-tauri/src/domain/entities/status.rs:valid_transitions()` |
+| TaskEvent enum | `src-tauri/src/domain/state_machine/events.rs` |
+| State machine dispatcher | `src-tauri/src/domain/state_machine/machine/transitions.rs` |
+| TransitionHandler + auto-transitions | `src-tauri/src/domain/state_machine/transition_handler/mod.rs` |
+| on_enter side effects | `src-tauri/src/domain/state_machine/transition_handler/side_effects.rs` |
+| GitService (all git ops) | `src-tauri/src/application/git_service.rs` |
+| TaskTransitionService | `src-tauri/src/application/task_transition_service.rs` |
+| Task scheduler | `src-tauri/src/application/task_scheduler_service.rs` |
+| PlanBranch entity | `src-tauri/src/domain/entities/plan_branch.rs` |
+| PlanBranch repo trait | `src-tauri/src/domain/repositories/plan_branch_repository.rs` |
+| Agent configs (three-layer allowlist) | `src-tauri/src/infrastructure/agents/claude/agent_config.rs` |
+| Agent spawner (CWD resolution) | `src-tauri/src/infrastructure/agents/spawner.rs` |
+| ChatService contexts | `src-tauri/src/application/chat_service/chat_service_context.rs` |
+| HTTP merge handlers | `src-tauri/src/http_server/handlers/git.rs` |
+| Agent definitions | `ralphx-plugin/agents/*.md` |
+| Plan branch commands | `src-tauri/src/commands/plan_branch_commands.rs` |
+| Ideation apply | `src-tauri/src/commands/ideation_commands/ideation_commands_apply.rs` |
+| Git settings UI | `src/components/settings/GitSettingsSection.tsx` |
+| Frontend plan-branch API | `src/api/plan-branch.ts` |
+| Frontend GitMode type | `src/types/project.ts` |
