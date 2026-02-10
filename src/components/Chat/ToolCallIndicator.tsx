@@ -10,35 +10,15 @@
 
 import React, { useState, useMemo } from "react";
 import { Wrench, ChevronDown, ChevronRight, FileText, Terminal, FileEdit, Search, FolderSearch } from "lucide-react";
-import { createSummary, formatValue, isArtifactContextTool, renderArtifactPreview } from "./ToolCallIndicator.helpers";
+import { createSummary, formatValue } from "./ToolCallIndicator.helpers";
 import { isDiffToolCall, isTaskToolCall } from "./DiffToolCallView.utils";
 import { DiffToolCallView } from "./DiffToolCallView";
 import { TaskToolCallCard } from "./TaskToolCallCard";
+import { getToolCallWidget } from "./tool-widgets/registry";
 
-// ============================================================================
-// Types
-// ============================================================================
-
-/**
- * Tool call structure from Claude CLI stream-json output
- */
-export interface ToolCall {
-  /** Unique identifier for this tool call */
-  id: string;
-  /** Name of the tool that was called */
-  name: string;
-  /** Arguments passed to the tool (can be any JSON value) */
-  arguments: unknown;
-  /** Result returned from the tool (can be any JSON value) */
-  result?: unknown;
-  /** Error message if tool call failed */
-  error?: string;
-  /** Diff context for Edit/Write tool calls (old file content for computing diffs) */
-  diffContext?: {
-    oldContent?: string;
-    filePath: string;
-  };
-}
+// Re-export ToolCall from canonical location for backwards compatibility
+export type { ToolCall } from "./tool-widgets/shared.constants";
+import type { ToolCall } from "./tool-widgets/shared.constants";
 
 interface ToolCallIndicatorProps {
   /** The tool call to display */
@@ -80,7 +60,7 @@ function ToolIcon({ name, hasError, size = 14 }: { name: string; hasError: boole
 
 export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCall, className = "", compact = false }: ToolCallIndicatorProps) {
   // Hooks must be called unconditionally (React rules-of-hooks)
-  const [isExpanded, setIsExpanded] = useState(toolCall.name.toLowerCase() === "bash");
+  const [isExpanded, setIsExpanded] = useState(false);
   const summary = useMemo(() => createSummary(toolCall), [toolCall]);
   const hasError = Boolean(toolCall.error);
 
@@ -97,6 +77,12 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
   // Delegate Task tool calls to TaskToolCallCard for subagent rendering (never compact — tasks don't nest)
   if (isTaskToolCall(toolCall.name)) {
     return <TaskToolCallCard toolCall={toolCall} className={className} />;
+  }
+
+  // Check widget registry for specialized renderers
+  const SpecializedWidget = getToolCallWidget(toolCall.name);
+  if (SpecializedWidget) {
+    return React.createElement(SpecializedWidget, { toolCall, compact, className });
   }
 
   const iconSize = compact ? 12 : 14;
@@ -196,13 +182,6 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
             borderTop: "1px solid hsla(220 10% 100% / 0.04)",
           }}
         >
-          {/* Artifact preview for context tools */}
-          {isArtifactContextTool(toolCall.name) && toolCall.result && !hasError ? (
-            <div data-testid="artifact-preview" className="mb-3">
-              {renderArtifactPreview(toolCall)}
-            </div>
-          ) : null}
-
           {/* Arguments - shown directly */}
           <div>
             <div

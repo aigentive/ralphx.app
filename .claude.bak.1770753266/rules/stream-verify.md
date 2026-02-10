@@ -1,9 +1,9 @@
 ---
 paths:
   - "streams/verify/**"
-  - "streams/features/backlog.md"
   - "specs/manifest.json"
   - "specs/phases/**"
+  - "streams/features/backlog.md"
 ---
 
 # Verify Stream

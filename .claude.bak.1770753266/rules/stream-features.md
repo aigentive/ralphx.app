@@ -1,9 +1,9 @@
 ---
 paths:
   - "streams/features/**"
-  - "screenshots/features/**"
-  - "specs/phases/**"
   - "specs/manifest.json"
+  - "specs/phases/**"
+  - "screenshots/features/**"
 ---
 
 # Features Stream
