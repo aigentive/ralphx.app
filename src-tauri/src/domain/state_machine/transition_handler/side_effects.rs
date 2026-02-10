@@ -248,10 +248,11 @@ fn extract_task_id_from_merge_path(path: &str) -> Option<&str> {
     basename.strip_prefix("merge-")
 }
 
-/// Check if a task is currently in any merge lifecycle state.
+/// Check if a task is currently in an active merge state.
 ///
-/// Covers all four merge states: `PendingMerge`, `Merging`, `MergeIncomplete`, `MergeConflict`.
-/// Used to avoid deleting merge worktrees that belong to tasks still in the merge workflow.
+/// Only covers `PendingMerge` and `Merging` where a merge worktree is actively in use.
+/// Excludes `MergeIncomplete` and `MergeConflict` (human-waiting states) to allow
+/// other tasks to clean up orphaned worktrees when merging to the same branch.
 async fn is_task_in_merge_workflow(
     task_repo: &Arc<dyn TaskRepository>,
     task_id_str: &str,
@@ -260,10 +261,7 @@ async fn is_task_in_merge_workflow(
     match task_repo.get_by_id(&task_id).await {
         Ok(Some(task)) => matches!(
             task.internal_status,
-            InternalStatus::PendingMerge
-                | InternalStatus::Merging
-                | InternalStatus::MergeIncomplete
-                | InternalStatus::MergeConflict
+            InternalStatus::PendingMerge | InternalStatus::Merging
         ),
         _ => false,
     }
@@ -3489,14 +3487,14 @@ mod tests {
     async fn test_is_task_in_merge_workflow_merge_incomplete() {
         let task = make_task_with_status("task-1", InternalStatus::MergeIncomplete);
         let repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::with_tasks(vec![task]));
-        assert!(is_task_in_merge_workflow(&repo, "task-1").await);
+        assert!(!is_task_in_merge_workflow(&repo, "task-1").await);
     }
 
     #[tokio::test]
     async fn test_is_task_in_merge_workflow_merge_conflict() {
         let task = make_task_with_status("task-1", InternalStatus::MergeConflict);
         let repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::with_tasks(vec![task]));
-        assert!(is_task_in_merge_workflow(&repo, "task-1").await);
+        assert!(!is_task_in_merge_workflow(&repo, "task-1").await);
     }
 
     #[tokio::test]
