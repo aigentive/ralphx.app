@@ -10,7 +10,7 @@
 
 import React, { useState, useMemo } from "react";
 import { Wrench, ChevronDown, ChevronRight, FileText, Terminal, FileEdit, Search, FolderSearch } from "lucide-react";
-import { createSummary, formatValue, isArtifactContextTool, renderArtifactPreview } from "./ToolCallIndicator.helpers";
+import { createSummary, formatValue } from "./ToolCallIndicator.helpers";
 import { isDiffToolCall, isTaskToolCall } from "./DiffToolCallView.utils";
 import { DiffToolCallView } from "./DiffToolCallView";
 import { TaskToolCallCard } from "./TaskToolCallCard";
@@ -182,13 +182,6 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
             borderTop: "1px solid hsla(220 10% 100% / 0.04)",
           }}
         >
-          {/* Artifact preview for context tools */}
-          {isArtifactContextTool(toolCall.name) && toolCall.result && !hasError ? (
-            <div data-testid="artifact-preview" className="mb-3">
-              {renderArtifactPreview(toolCall)}
-            </div>
-          ) : null}
-
           {/* Arguments - shown directly */}
           <div>
             <div
