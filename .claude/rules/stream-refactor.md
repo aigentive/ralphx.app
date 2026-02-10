@@ -1,3 +1,8 @@
+---
+paths:
+  - "streams/refactor/**"
+---
+
 # Refactor Stream
 
 **Required Context:** code-quality-standards.md | git-workflow.md
