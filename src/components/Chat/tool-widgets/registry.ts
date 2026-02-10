@@ -17,6 +17,7 @@ import { StepsManifestWidget } from "./StepsManifestWidget";
 import { IssuesSummaryWidget } from "./IssuesSummaryWidget";
 import { ArtifactWidget } from "./ArtifactWidget";
 import { ReviewWidget } from "./ReviewWidget";
+import { MergeWidget } from "./MergeWidget";
 
 /** Registry type: tool name (lowercase) → React component */
 export type ToolCallWidgetRegistry = Record<string, ComponentType<ToolCallWidgetProps>>;
@@ -46,6 +47,11 @@ export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
   // Review tools → ReviewWidget (outcome-colored cards + note list)
   "complete_review": ReviewWidget,
   "get_review_notes": ReviewWidget,
+  // Merge tools → MergeWidget (success/conflict/incomplete cards + merge target)
+  "mcp__ralphx__complete_merge": MergeWidget,
+  "mcp__ralphx__report_conflict": MergeWidget,
+  "mcp__ralphx__report_incomplete": MergeWidget,
+  "mcp__ralphx__get_merge_target": MergeWidget,
 };
 
 /**

@@ -6,6 +6,7 @@ paths:
   - "src/lib/tauri*.ts"
   - "src-tauri/src/http_server/**"
   - "src-tauri/src/commands/**"
+  - "src/mocks/**"
   - "vite.config.ts"
 ---
 
