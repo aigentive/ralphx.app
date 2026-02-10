@@ -57,6 +57,8 @@ export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
   "get_artifact": ArtifactWidget,
   "get_artifact_version": ArtifactWidget,
   "get_plan_artifact": ArtifactWidget,
+  "get_related_artifacts": ArtifactWidget,
+  "search_project_artifacts": ArtifactWidget,
   // Review tools → ReviewWidget (outcome-colored cards + note list)
   "complete_review": ReviewWidget,
   "get_review_notes": ReviewWidget,

@@ -1,13 +1,14 @@
 /**
- * ArtifactWidget — Artifact preview card for get_artifact, get_artifact_version, get_plan_artifact.
+ * ArtifactWidget — Artifact preview card for get_artifact, get_artifact_version, get_plan_artifact,
+ * get_related_artifacts, and search_project_artifacts.
  *
- * Header: artifact type badge (SPEC/CODE/etc) + title.
- * Body: first ~3 lines of content with gradient fade, rendered as lightweight markdown preview.
+ * Single artifact: type badge + title + markdown preview (collapsible).
+ * Artifact lists: count badge + list of artifact titles with type labels.
  * Collapsible via WidgetCard.
  */
 
 import React from "react";
-import { WidgetCard, Badge } from "./shared";
+import { WidgetCard, Badge, InlineIndicator } from "./shared";
 import type { ToolCall } from "../ToolCallIndicator";
 
 // ============================================================================
@@ -19,6 +20,12 @@ interface ParsedArtifact {
   artifactType: string;
   content: string;
   version?: number;
+}
+
+interface ArtifactListItem {
+  title: string;
+  artifactType: string;
+  contentPreview?: string;
 }
 
 interface ArtifactWidgetProps {
@@ -160,6 +167,40 @@ function MarkdownPreview({ content, compact }: { content: string; compact?: bool
 }
 
 // ============================================================================
+// Parsing — Artifact lists (get_related_artifacts, search_project_artifacts)
+// ============================================================================
+
+const LIST_TOOLS = ["get_related_artifacts", "search_project_artifacts"];
+
+function isArtifactListTool(name: string): boolean {
+  return LIST_TOOLS.includes(name);
+}
+
+function parseArtifactList(toolCall: ToolCall): ArtifactListItem[] | null {
+  const { result } = toolCall;
+  if (!result) return null;
+
+  // Result is an array of artifact summaries
+  const arr = Array.isArray(result) ? result : null;
+  if (!arr) return null;
+
+  return arr.map((item: Record<string, unknown>) => {
+    const base: ArtifactListItem = {
+      title: (typeof item.title === "string" ? item.title : null) ?? "Untitled",
+      artifactType:
+        (typeof item.artifact_type === "string" ? item.artifact_type : null) ??
+        (typeof item.artifactType === "string" ? item.artifactType : null) ??
+        "unknown",
+    };
+    const preview =
+      (typeof item.content_preview === "string" ? item.content_preview : null) ??
+      (typeof item.contentPreview === "string" ? item.contentPreview : null);
+    if (preview) base.contentPreview = preview;
+    return base;
+  });
+}
+
+// ============================================================================
 // Type Badge
 // ============================================================================
 
@@ -185,8 +226,13 @@ export const ArtifactWidget = React.memo(function ArtifactWidget({
   toolCall,
   compact = false,
 }: ArtifactWidgetProps) {
-  const parsed = parseArtifact(toolCall);
+  // Artifact list tools (get_related_artifacts, search_project_artifacts)
+  if (isArtifactListTool(toolCall.name)) {
+    return <ArtifactListView toolCall={toolCall} compact={compact} />;
+  }
 
+  // Single artifact tools (get_artifact, get_artifact_version, get_plan_artifact)
+  const parsed = parseArtifact(toolCall);
   if (!parsed) return null;
 
   const header = (
@@ -232,3 +278,111 @@ export const ArtifactWidget = React.memo(function ArtifactWidget({
     </WidgetCard>
   );
 });
+
+// ============================================================================
+// ArtifactListView — For get_related_artifacts / search_project_artifacts
+// ============================================================================
+
+function ArtifactListView({ toolCall, compact }: { toolCall: ToolCall; compact: boolean }) {
+  const artifacts = parseArtifactList(toolCall);
+  const isSearch = toolCall.name === "search_project_artifacts";
+  const query = isSearch ? (toolCall.arguments as { query?: string })?.query : undefined;
+
+  if (!artifacts || artifacts.length === 0) {
+    const label = isSearch ? "No artifacts found" : "No related artifacts";
+    return <InlineIndicator text={label} />;
+  }
+
+  const headerTitle = isSearch
+    ? (query ? `"${query.length > 30 ? query.slice(0, 30) + "..." : query}"` : "Artifact search")
+    : "Related artifacts";
+
+  const header = (
+    <>
+      <span
+        className={`${compact ? "text-[11px]" : "text-[11.5px]"} font-medium flex-1 min-w-0 truncate`}
+        style={{ color: "hsl(220 10% 60%)" }}
+      >
+        {headerTitle}
+      </span>
+      <Badge variant="muted">
+        {artifacts.length} result{artifacts.length !== 1 ? "s" : ""}
+      </Badge>
+    </>
+  );
+
+  return (
+    <WidgetCard header={header} compact={compact} defaultExpanded={false}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {artifacts.slice(0, 5).map((artifact, idx) => (
+          <div
+            key={idx}
+            style={{
+              padding: compact ? "4px 6px" : "5px 8px",
+              borderRadius: 6,
+              background: "hsl(220 10% 10%)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span
+                style={{
+                  fontSize: 9,
+                  padding: "1px 4px",
+                  borderRadius: 3,
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                  background: "hsl(220 10% 18%)",
+                  color: "hsl(220 10% 45%)",
+                  flexShrink: 0,
+                }}
+              >
+                {artifactTypeLabel(artifact.artifactType)}
+              </span>
+              <span
+                style={{
+                  fontSize: compact ? 10.5 : 11,
+                  fontWeight: 500,
+                  color: "hsl(220 10% 75%)",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  flex: 1,
+                }}
+              >
+                {artifact.title}
+              </span>
+            </div>
+            {artifact.contentPreview && (
+              <div
+                style={{
+                  fontSize: compact ? 9.5 : 10,
+                  color: "hsl(220 10% 50%)",
+                  marginTop: 2,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {artifact.contentPreview.length > 80
+                  ? artifact.contentPreview.slice(0, 80) + "..."
+                  : artifact.contentPreview}
+              </div>
+            )}
+          </div>
+        ))}
+        {artifacts.length > 5 && (
+          <div
+            style={{
+              fontSize: compact ? 9.5 : 10,
+              color: "hsl(220 10% 45%)",
+              padding: "2px 6px",
+            }}
+          >
+            +{artifacts.length - 5} more
+          </div>
+        )}
+      </div>
+    </WidgetCard>
+  );
+}

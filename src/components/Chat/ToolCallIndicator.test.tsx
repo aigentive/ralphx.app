@@ -3,21 +3,29 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ToolCallIndicator, type ToolCall } from "./ToolCallIndicator";
 
+/**
+ * ToolCallIndicator tests.
+ *
+ * Tools with dedicated widgets (bash, read, grep, glob, step tools, context,
+ * artifacts, reviews, proposals, merges, ideation) are routed to their widgets
+ * by the registry in tool-widgets/registry.ts. These tests cover the GENERIC
+ * fallback renderer — used for tools without a widget (update_task, add_task_note,
+ * custom_tool, etc.) and for edit/write error fallback cases.
+ */
 describe("ToolCallIndicator", () => {
-  describe("Rendering", () => {
+  describe("Rendering (generic fallback)", () => {
     it("renders collapsed by default", () => {
       const toolCall: ToolCall = {
         id: "call-1",
-        name: "bash",
-        arguments: { command: "ls -la" },
-        result: "file1.txt\nfile2.txt",
+        name: "update_task",
+        arguments: { task_id: "task-1" },
+        result: { ok: true },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
 
-      // Should show tool name badge and summary (command text)
-      expect(screen.getByText("bash")).toBeInTheDocument();
-      expect(screen.getByText(/ls -la/i)).toBeInTheDocument();
+      expect(screen.getByText("update_task")).toBeInTheDocument();
+      expect(screen.getByText("Updated task")).toBeInTheDocument();
 
       // Should NOT show details initially
       expect(screen.queryByTestId("tool-call-details")).not.toBeInTheDocument();
@@ -26,8 +34,8 @@ describe("ToolCallIndicator", () => {
     it("shows tool icon and chevron", () => {
       const toolCall: ToolCall = {
         id: "call-1",
-        name: "read",
-        arguments: { file_path: "/path/to/file.txt" },
+        name: "custom_tool",
+        arguments: { data: "test" },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
@@ -39,8 +47,8 @@ describe("ToolCallIndicator", () => {
     it("applies custom className", () => {
       const toolCall: ToolCall = {
         id: "call-1",
-        name: "bash",
-        arguments: { command: "echo hello" },
+        name: "custom_tool",
+        arguments: { data: "test" },
       };
 
       const { container } = render(
@@ -52,14 +60,14 @@ describe("ToolCallIndicator", () => {
     });
   });
 
-  describe("Interaction", () => {
+  describe("Interaction (generic fallback)", () => {
     it("expands when clicked", async () => {
       const user = userEvent.setup();
       const toolCall: ToolCall = {
         id: "call-1",
-        name: "bash",
-        arguments: { command: "pwd" },
-        result: "/home/user",
+        name: "update_task",
+        arguments: { task_id: "task-1" },
+        result: { ok: true },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
@@ -81,8 +89,8 @@ describe("ToolCallIndicator", () => {
       const user = userEvent.setup();
       const toolCall: ToolCall = {
         id: "call-1",
-        name: "read",
-        arguments: { file_path: "/test.txt" },
+        name: "add_task_note",
+        arguments: { task_id: "task-abc", note: "test" },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
@@ -102,8 +110,8 @@ describe("ToolCallIndicator", () => {
       const user = userEvent.setup();
       const toolCall: ToolCall = {
         id: "call-1",
-        name: "bash",
-        arguments: { command: "ls" },
+        name: "custom_tool",
+        arguments: { data: "test" },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
@@ -120,41 +128,6 @@ describe("ToolCallIndicator", () => {
   });
 
   describe("Summary generation", () => {
-    it("shows bash command in summary", () => {
-      const toolCall: ToolCall = {
-        id: "call-1",
-        name: "bash",
-        arguments: { command: "npm install" },
-      };
-
-      render(<ToolCallIndicator toolCall={toolCall} />);
-      expect(screen.getByText("bash")).toBeInTheDocument();
-      expect(screen.getByText(/npm install/i)).toBeInTheDocument();
-    });
-
-    it("shows bash description when provided", () => {
-      const toolCall: ToolCall = {
-        id: "call-1",
-        name: "bash",
-        arguments: { command: "npm install", description: "Install dependencies" },
-      };
-
-      render(<ToolCallIndicator toolCall={toolCall} />);
-      expect(screen.getByText(/Install dependencies/i)).toBeInTheDocument();
-    });
-
-    it("shows file path for read tool", () => {
-      const toolCall: ToolCall = {
-        id: "call-1",
-        name: "read",
-        arguments: { file_path: "/Users/test/file.ts" },
-      };
-
-      render(<ToolCallIndicator toolCall={toolCall} />);
-      expect(screen.getByText("read")).toBeInTheDocument();
-      expect(screen.getByText(/\/Users\/test\/file.ts/i)).toBeInTheDocument();
-    });
-
     it("shows file path for write tool", () => {
       const toolCall: ToolCall = {
         id: "call-1",
@@ -177,42 +150,6 @@ describe("ToolCallIndicator", () => {
       render(<ToolCallIndicator toolCall={toolCall} />);
       expect(screen.getByText("edit")).toBeInTheDocument();
       expect(screen.getByText(/\/src\/main.rs/i)).toBeInTheDocument();
-    });
-
-    it("shows title for create_task_proposal", () => {
-      const toolCall: ToolCall = {
-        id: "call-1",
-        name: "create_task_proposal",
-        arguments: { title: "Add dark mode" },
-      };
-
-      render(<ToolCallIndicator toolCall={toolCall} />);
-      expect(screen.getByText("create_task_proposal")).toBeInTheDocument();
-      expect(screen.getByText(/Add dark mode/i)).toBeInTheDocument();
-    });
-
-    it("shows title for update_task_proposal", () => {
-      const toolCall: ToolCall = {
-        id: "call-1",
-        name: "update_task_proposal",
-        arguments: { title: "Updated proposal title" },
-      };
-
-      render(<ToolCallIndicator toolCall={toolCall} />);
-      expect(screen.getByText("update_task_proposal")).toBeInTheDocument();
-      expect(screen.getByText(/Updated proposal title/i)).toBeInTheDocument();
-    });
-
-    it("shows delete_task_proposal summary", () => {
-      const toolCall: ToolCall = {
-        id: "call-1",
-        name: "delete_task_proposal",
-        arguments: { proposal_id: "prop-456" },
-      };
-
-      render(<ToolCallIndicator toolCall={toolCall} />);
-      expect(screen.getByText("delete_task_proposal")).toBeInTheDocument();
-      expect(screen.getByText(/Deleted proposal/i)).toBeInTheDocument();
     });
 
     it("shows update_task summary", () => {
@@ -251,41 +188,27 @@ describe("ToolCallIndicator", () => {
       // Shows formatted tool name as summary (underscores replaced with spaces)
       expect(screen.getByText("custom tool")).toBeInTheDocument();
     });
-
-    it("truncates long command summaries", () => {
-      const longCommand = "a".repeat(100);
-      const toolCall: ToolCall = {
-        id: "call-1",
-        name: "bash",
-        arguments: { command: longCommand },
-      };
-
-      render(<ToolCallIndicator toolCall={toolCall} />);
-      // Should show truncated version with ellipsis
-      const indicator = screen.getByTestId("tool-call-indicator");
-      expect(indicator.textContent).toContain("...");
-    });
   });
 
   describe("Expanded details", () => {
     it("displays tool name badge in collapsed view", () => {
       const toolCall: ToolCall = {
         id: "call-1",
-        name: "bash",
-        arguments: { command: "echo test" },
+        name: "custom_tool",
+        arguments: { action: "test" },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
 
       // Tool name badge should be visible in collapsed view
-      expect(screen.getByText("bash")).toBeInTheDocument();
+      expect(screen.getByText("custom_tool")).toBeInTheDocument();
     });
 
     it("displays formatted arguments when expanded", async () => {
       const user = userEvent.setup();
       const toolCall: ToolCall = {
         id: "call-1",
-        name: "create_task_proposal",
+        name: "custom_tool",
         arguments: {
           title: "Test Task",
           description: "A test description",
@@ -309,8 +232,8 @@ describe("ToolCallIndicator", () => {
       const user = userEvent.setup();
       const toolCall: ToolCall = {
         id: "call-1",
-        name: "bash",
-        arguments: { command: "echo hello" },
+        name: "custom_tool",
+        arguments: { action: "get" },
         result: "hello\n",
       };
 
@@ -327,8 +250,8 @@ describe("ToolCallIndicator", () => {
       const user = userEvent.setup();
       const toolCall: ToolCall = {
         id: "call-1",
-        name: "bash",
-        arguments: { command: "ls" },
+        name: "custom_tool",
+        arguments: { action: "get" },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
@@ -343,8 +266,8 @@ describe("ToolCallIndicator", () => {
     it("displays error indicator when tool call failed", () => {
       const toolCall: ToolCall = {
         id: "call-1",
-        name: "bash",
-        arguments: { command: "invalid-command" },
+        name: "custom_tool",
+        arguments: { action: "fail" },
         error: "Command not found",
       };
 
@@ -357,8 +280,8 @@ describe("ToolCallIndicator", () => {
       const user = userEvent.setup();
       const toolCall: ToolCall = {
         id: "call-1",
-        name: "read",
-        arguments: { file_path: "/nonexistent.txt" },
+        name: "custom_tool",
+        arguments: { path: "/nonexistent.txt" },
         error: "File not found: /nonexistent.txt",
       };
 
@@ -375,8 +298,8 @@ describe("ToolCallIndicator", () => {
       const user = userEvent.setup();
       const toolCall: ToolCall = {
         id: "call-1",
-        name: "bash",
-        arguments: { command: "ls" },
+        name: "custom_tool",
+        arguments: { action: "list" },
         result: "should not show",
         error: "Some error occurred",
       };
@@ -393,15 +316,16 @@ describe("ToolCallIndicator", () => {
     it("applies error styling when tool call failed", () => {
       const toolCall: ToolCall = {
         id: "call-1",
-        name: "bash",
-        arguments: { command: "fail" },
+        name: "custom_tool",
+        arguments: { action: "fail" },
         error: "Command failed",
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
 
       const indicator = screen.getByTestId("tool-call-indicator");
-      expect(indicator).toHaveStyle({ opacity: "0.9" });
+      // Error state uses a red-tinted background
+      expect(indicator).toHaveStyle({ backgroundColor: "hsla(0 70% 55% / 0.15)" });
     });
   });
 
@@ -409,15 +333,15 @@ describe("ToolCallIndicator", () => {
     it("has accessible label for toggle button", () => {
       const toolCall: ToolCall = {
         id: "call-1",
-        name: "bash",
-        arguments: { command: "ls" },
+        name: "custom_tool",
+        arguments: { data: "test" },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
 
       const toggle = screen.getByTestId("tool-call-toggle");
       expect(toggle).toHaveAttribute("aria-label");
-      expect(toggle.getAttribute("aria-label")).toContain("bash");
+      expect(toggle.getAttribute("aria-label")).toContain("custom_tool");
       expect(toggle.getAttribute("aria-label")).toContain("expand");
     });
 
@@ -425,8 +349,8 @@ describe("ToolCallIndicator", () => {
       const user = userEvent.setup();
       const toolCall: ToolCall = {
         id: "call-1",
-        name: "read",
-        arguments: { file_path: "/test.txt" },
+        name: "custom_tool",
+        arguments: { data: "test" },
       };
 
       render(<ToolCallIndicator toolCall={toolCall} />);
