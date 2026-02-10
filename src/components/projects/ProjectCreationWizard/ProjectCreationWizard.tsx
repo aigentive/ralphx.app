@@ -88,11 +88,11 @@ export function ProjectCreationWizard({
   error = null,
   isFirstRun = false,
 }: ProjectCreationWizardProps) {
-  // Form state - Worktree mode is default (recommended for concurrent tasks)
+  // Form state
   const [form, setForm] = useState<FormState>({
     name: "",
     workingDirectory: "",
-    gitMode: "worktree",
+    gitMode: "local",
     baseBranch: "main",
     worktreeParentDirectory: "",
   });
@@ -171,7 +171,7 @@ export function ProjectCreationWizard({
       setForm({
         name: "",
         workingDirectory: "",
-        gitMode: "worktree",
+        gitMode: "local",
         baseBranch: "main",
         worktreeParentDirectory: "",
       });
