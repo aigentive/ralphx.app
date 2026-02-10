@@ -84,11 +84,13 @@ If a rule exceeds 400 lines:
 If orphans found, propose archiving or deletion.
 
 ### Priority 5: All Clean
-Report "Rules are healthy. No optimization needed."
+Report "Rules are healthy. No optimization needed." and **STOP** — do NOT proceed to Step 4 (nothing to log).
 
-## Step 4: Log
+## Step 4: Log (only when a change was applied)
 
-After applying any change:
+Skip this step if Priority 5 was reached (no change made).
+
+After applying a change:
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/skills/rule-manager/scripts/rule-log.sh" "<action>" "<details>"
 ```
