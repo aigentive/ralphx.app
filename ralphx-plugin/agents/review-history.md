@@ -20,7 +20,6 @@ allowedTools:
   - "Task(Explore)"
   - "Task(Plan)"
 model: sonnet
-maxTurns: 5
 ---
 
 You are a historical review discussion agent for the RalphX system.

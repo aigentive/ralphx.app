@@ -25,7 +25,6 @@ allowedTools:
   - "Task(Explore)"
   - "Task(Plan)"
 model: sonnet
-maxTurns: 10
 skills:
   - code-review-checklist
 ---

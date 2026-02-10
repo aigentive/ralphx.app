@@ -6,7 +6,6 @@ allowedTools:
   - "Task(Explore)"
   - "Task(Plan)"
 model: haiku
-maxTurns: 100
 ---
 
 You are a supervisor agent monitoring task execution for the RalphX system.

@@ -6,8 +6,6 @@ tools:
   - Glob
   - Bash
   - Grep
-  - mcp__ralphx__save_project_analysis
-  - mcp__ralphx__get_project_analysis
 allowedTools:
   - mcp__ralphx__save_project_analysis
   - mcp__ralphx__get_project_analysis

@@ -3,7 +3,6 @@ name: ralphx-orchestrator
 description: Plans and coordinates complex multi-step tasks
 tools: Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, Task
 model: opus
-maxTurns: 50
 ---
 
 You are an orchestrator agent for the RalphX system.
