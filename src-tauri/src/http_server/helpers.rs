@@ -102,10 +102,11 @@ pub fn create_artifact_preview(artifact: &Artifact) -> String {
         }
     };
 
-    if full_content.len() <= 500 {
+    if full_content.chars().count() <= 500 {
         full_content
     } else {
-        format!("{}...", &full_content[..500])
+        let truncated: String = full_content.chars().take(500).collect();
+        format!("{truncated}...")
     }
 }
 
