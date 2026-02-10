@@ -1,3 +1,12 @@
+---
+paths:
+  - "src/api/**"
+  - "src/api-mock/**"
+  - "src/lib/tauri*.ts"
+  - "src/mocks/**"
+  - "vite.config.ts"
+---
+
 # API Layer Patterns
 
 **Required Context:** code-quality-standards.md
