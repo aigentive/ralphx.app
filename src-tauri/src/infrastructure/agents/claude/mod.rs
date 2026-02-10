@@ -168,17 +168,25 @@ impl SpawnableCommand {
     }
 
     /// Spawn the command and pipe the prompt to stdin if needed.
+    ///
+    /// Stdin is written in a background task to avoid a pipe deadlock:
+    /// the CLI writes to stdout during init (hooks, init event), and if we
+    /// block here waiting for stdin write_all to complete, neither side
+    /// makes progress once the pipe buffers fill up.
     pub async fn spawn(mut self) -> std::io::Result<tokio::process::Child> {
         let mut child = self.cmd.spawn()?;
 
-        // Write prompt to stdin if agent mode (workaround for --agent + -p bug)
-        if let Some(ref prompt) = self.stdin_prompt {
-            use tokio::io::AsyncWriteExt;
-            if let Some(mut stdin) = child.stdin.take() {
-                if let Err(e) = stdin.write_all(prompt.as_bytes()).await {
-                    tracing::warn!("Failed to write prompt to stdin: {}", e);
-                }
-                // Drop closes stdin, signaling EOF to the CLI
+        // Write prompt to stdin in background (avoids deadlock with stdout pipe)
+        if let Some(prompt) = self.stdin_prompt.take() {
+            if let Some(stdin) = child.stdin.take() {
+                tokio::spawn(async move {
+                    use tokio::io::AsyncWriteExt;
+                    let mut stdin = stdin;
+                    if let Err(e) = stdin.write_all(prompt.as_bytes()).await {
+                        tracing::warn!("Failed to write prompt to stdin: {}", e);
+                    }
+                    // Drop closes stdin, signaling EOF to the CLI
+                });
             }
         }
 
