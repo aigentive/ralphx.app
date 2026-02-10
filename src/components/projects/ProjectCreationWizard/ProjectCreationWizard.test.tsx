@@ -354,9 +354,7 @@ describe("ProjectCreationWizard", () => {
         name: "My Project",
         workingDirectory: "/Users/dev/my-app",
         gitMode: "worktree",
-        worktreeBranch: "ralphx/my-project",
         baseBranch: "main",
-        worktreePath: "~/ralphx-worktrees/my-app",
       };
 
       expect(mockOnCreate).toHaveBeenCalledWith(expectedProject);

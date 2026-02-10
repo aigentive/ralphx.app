@@ -17,9 +17,9 @@ const createMockProject = (overrides: Partial<Project> = {}): Project => ({
   name: "Test Project",
   workingDirectory: "/path/to/project",
   gitMode: "local",
-  worktreePath: null,
-  worktreeBranch: null,
   baseBranch: null,
+  worktreeParentDirectory: null,
+  useFeatureBranches: true,
   createdAt: "2026-01-24T12:00:00Z",
   updatedAt: "2026-01-24T12:00:00Z",
   ...overrides,
@@ -69,12 +69,12 @@ describe("ProjectSelector", () => {
       expect(screen.getByText("local")).toBeInTheDocument();
     });
 
-    it("shows worktree branch for active worktree project", () => {
+    it("shows worktree badge for active worktree project", () => {
       const project = createMockProject({
         id: "project-1",
         name: "Worktree Project",
         gitMode: "worktree",
-        worktreeBranch: "feature/test",
+        baseBranch: "main",
       });
       useProjectStore.setState({
         projects: { "project-1": project },
@@ -82,7 +82,7 @@ describe("ProjectSelector", () => {
       });
 
       render(<ProjectSelector onNewProject={() => {}} />);
-      expect(screen.getByText("feature/test")).toBeInTheDocument();
+      expect(screen.getByText("worktree")).toBeInTheDocument();
     });
 
     it("has correct aria attributes (shadcn DropdownMenu uses menu)", () => {
@@ -270,13 +270,13 @@ describe("ProjectSelector", () => {
       });
     });
 
-    it("shows worktree branch for worktree projects in dropdown", async () => {
+    it("shows worktree badge for worktree projects in dropdown", async () => {
       const user = userEvent.setup();
       const project = createMockProject({
         id: "project-1",
         name: "Worktree Project",
         gitMode: "worktree",
-        worktreeBranch: "feature/branch",
+        baseBranch: "main",
       });
       useProjectStore.setState({
         projects: { "project-1": project },
@@ -287,7 +287,7 @@ describe("ProjectSelector", () => {
       await user.click(screen.getByTestId("project-selector-trigger"));
 
       await waitFor(() => {
-        expect(screen.getByText("feature/branch")).toBeInTheDocument();
+        expect(screen.getByText("worktree")).toBeInTheDocument();
       });
     });
   });

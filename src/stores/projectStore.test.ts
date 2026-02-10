@@ -12,9 +12,9 @@ const createTestProject = (overrides: Partial<Project> = {}): Project => ({
   name: "Test Project",
   workingDirectory: "/path/to/project",
   gitMode: "local",
-  worktreePath: null,
-  worktreeBranch: null,
   baseBranch: null,
+  worktreeParentDirectory: null,
+  useFeatureBranches: true,
   createdAt: "2026-01-24T12:00:00Z",
   updatedAt: "2026-01-24T12:00:00Z",
   ...overrides,
@@ -96,14 +96,14 @@ describe("projectStore", () => {
       useProjectStore.getState().updateProject("proj-1", {
         name: "Updated",
         gitMode: "worktree",
-        worktreePath: "/path/to/worktree",
+        baseBranch: "main",
       });
 
       const state = useProjectStore.getState();
       const updated = state.projects["proj-1"];
       expect(updated?.name).toBe("Updated");
       expect(updated?.gitMode).toBe("worktree");
-      expect(updated?.worktreePath).toBe("/path/to/worktree");
+      expect(updated?.baseBranch).toBe("main");
     });
 
     it("does nothing if project not found", () => {

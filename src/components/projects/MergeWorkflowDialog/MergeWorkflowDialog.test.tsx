@@ -17,9 +17,9 @@ const mockProject: Project = {
   name: "Test Project",
   workingDirectory: "/Users/dev/test-project",
   gitMode: "worktree",
-  worktreePath: "~/ralphx-worktrees/test-project",
-  worktreeBranch: "ralphx/feature-auth",
   baseBranch: "main",
+  worktreeParentDirectory: "~/ralphx-worktrees",
+  useFeatureBranches: true,
   createdAt: "2026-01-25T00:00:00Z",
   updatedAt: "2026-01-25T00:00:00Z",
 };
@@ -513,9 +513,8 @@ describe("MergeWorkflowDialog", () => {
       const localProject: Project = {
         ...mockProject,
         gitMode: "local",
-        worktreePath: null,
-        worktreeBranch: null,
         baseBranch: null,
+        worktreeParentDirectory: null,
       };
       const onConfirm = vi.fn();
       render(
