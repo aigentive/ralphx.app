@@ -122,11 +122,11 @@ describe("chatStore", () => {
       expect(state.width).toBe(400);
     });
 
-    it("clamps to minimum width 280", () => {
+    it("clamps to minimum width 320", () => {
       useChatStore.getState().setWidth(200);
 
       const state = useChatStore.getState();
-      expect(state.width).toBe(280);
+      expect(state.width).toBe(320);
     });
 
     it("clamps to maximum width 800", () => {
@@ -137,10 +137,10 @@ describe("chatStore", () => {
     });
 
     it("accepts width at minimum boundary", () => {
-      useChatStore.getState().setWidth(280);
+      useChatStore.getState().setWidth(320);
 
       const state = useChatStore.getState();
-      expect(state.width).toBe(280);
+      expect(state.width).toBe(320);
     });
 
     it("accepts width at maximum boundary", () => {

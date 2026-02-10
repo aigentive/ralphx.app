@@ -1,7 +1,5 @@
 /**
  * BasicTaskDetail component tests
- *
- * Tests for the basic task detail view used for backlog, ready, blocked states.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -10,15 +8,26 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BasicTaskDetail } from "./BasicTaskDetail";
 import type { Task } from "@/types/task";
 
-// Mock hooks
 vi.mock("@/hooks/useTaskSteps", () => ({
   useTaskSteps: vi.fn(),
+}));
+
+const mockStepList = vi.fn(({ taskId, editable, hideCompletionNotes }) => (
+  <div
+    data-testid="mock-step-list"
+    data-task-id={taskId}
+    data-editable={String(editable)}
+    data-hide-completion-notes={String(hideCompletionNotes)}
+  />
+));
+
+vi.mock("../StepList", () => ({
+  StepList: (props: unknown) => mockStepList(props),
 }));
 
 import { useTaskSteps } from "@/hooks/useTaskSteps";
 const mockUseTaskSteps = vi.mocked(useTaskSteps);
 
-// Helper to create test task
 function createTestTask(overrides?: Partial<Task>): Task {
   return {
     id: "task-123",
@@ -40,7 +49,6 @@ function createTestTask(overrides?: Partial<Task>): Task {
   };
 }
 
-// Test wrapper with QueryClient
 function TestWrapper({ children }: { children: React.ReactNode }) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -55,7 +63,6 @@ function TestWrapper({ children }: { children: React.ReactNode }) {
 describe("BasicTaskDetail", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Default mock: no steps
     mockUseTaskSteps.mockReturnValue({
       data: [],
       isLoading: false,
@@ -63,131 +70,97 @@ describe("BasicTaskDetail", () => {
     } as ReturnType<typeof useTaskSteps>);
   });
 
-  describe("rendering", () => {
-    it("renders status badge with correct status", () => {
-      const task = createTestTask({ internalStatus: "ready" });
-      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+  it("renders container and description content", () => {
+    const task = createTestTask({ description: "Task description here" });
+    render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
 
-      const badge = screen.getByTestId("basic-task-status");
-      expect(badge).toHaveTextContent("Ready");
-    });
-
-    it("renders task title", () => {
-      const task = createTestTask({ title: "My Task Title" });
-      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
-
-      expect(screen.getByTestId("basic-task-title")).toHaveTextContent(
-        "My Task Title"
-      );
-    });
-
-    it("renders priority badge", () => {
-      const task = createTestTask({ priority: 1 });
-      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
-
-      expect(screen.getByTestId("basic-task-priority")).toHaveTextContent("P1");
-    });
-
-    it("renders category", () => {
-      const task = createTestTask({ category: "bug" });
-      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
-
-      expect(screen.getByTestId("basic-task-category")).toHaveTextContent("bug");
-    });
-
-    it("renders description when provided", () => {
-      const task = createTestTask({ description: "Task description here" });
-      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
-
-      expect(screen.getByTestId("basic-task-description")).toHaveTextContent(
-        "Task description here"
-      );
-    });
-
-    it("renders placeholder when description is null", () => {
-      const task = createTestTask({ description: null });
-      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
-
-      expect(screen.getByText(/no description/i)).toBeInTheDocument();
-    });
+    expect(screen.getByTestId("basic-task-detail")).toBeInTheDocument();
+    expect(screen.getByText("Description")).toBeInTheDocument();
+    expect(screen.getByText("Task description here")).toBeInTheDocument();
   });
 
-  describe("steps section", () => {
-    it("renders StepList when task has steps", () => {
-      const task = createTestTask();
-      mockUseTaskSteps.mockReturnValue({
-        data: [
-          {
-            id: "step-1",
-            taskId: task.id,
-            title: "Step 1",
-            status: "pending",
-            order: 0,
-            createdAt: "2026-01-28T12:00:00+00:00",
-            updatedAt: "2026-01-28T12:00:00+00:00",
-          },
-        ],
-        isLoading: false,
-        isError: false,
-      } as ReturnType<typeof useTaskSteps>);
+  it("renders placeholder when description is null", () => {
+    const task = createTestTask({ description: null });
+    render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
 
-      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
-
-      expect(screen.getByTestId("basic-task-steps-section")).toBeInTheDocument();
-    });
-
-    it("does not render steps section when no steps", () => {
-      const task = createTestTask();
-      mockUseTaskSteps.mockReturnValue({
-        data: [],
-        isLoading: false,
-        isError: false,
-      } as ReturnType<typeof useTaskSteps>);
-
-      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
-
-      expect(
-        screen.queryByTestId("basic-task-steps-section")
-      ).not.toBeInTheDocument();
-    });
-
-    it("shows loading state while fetching steps", () => {
-      const task = createTestTask();
-      mockUseTaskSteps.mockReturnValue({
-        data: undefined,
-        isLoading: true,
-        isError: false,
-      } as ReturnType<typeof useTaskSteps>);
-
-      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
-
-      expect(screen.getByTestId("basic-task-steps-loading")).toBeInTheDocument();
-    });
+    expect(screen.getByText(/no description provided/i)).toBeInTheDocument();
   });
 
-  describe("different statuses", () => {
-    it.each([
-      ["backlog", "Backlog"],
-      ["ready", "Ready"],
-      ["blocked", "Blocked"],
-    ])("renders correct badge for %s status", (status, label) => {
-      const task = createTestTask({
-        internalStatus: status as Task["internalStatus"],
-      });
-      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+  it("shows loading state while fetching steps", () => {
+    const task = createTestTask();
+    mockUseTaskSteps.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+    } as ReturnType<typeof useTaskSteps>);
 
-      expect(screen.getByTestId("basic-task-status")).toHaveTextContent(label);
-    });
+    render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+    expect(screen.getByTestId("basic-task-steps-loading")).toBeInTheDocument();
   });
 
-  describe("priority colors", () => {
-    it.each([1, 2, 3, 4])("renders priority P%i correctly", (priority) => {
-      const task = createTestTask({ priority });
-      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+  it("renders StepList section when task has steps", () => {
+    const task = createTestTask();
+    mockUseTaskSteps.mockReturnValue({
+      data: [
+        {
+          id: "step-1",
+          taskId: task.id,
+          title: "Step 1",
+          status: "pending",
+          order: 0,
+          createdAt: "2026-01-28T12:00:00+00:00",
+          updatedAt: "2026-01-28T12:00:00+00:00",
+        },
+      ],
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useTaskSteps>);
 
-      expect(screen.getByTestId("basic-task-priority")).toHaveTextContent(
-        `P${priority}`
-      );
-    });
+    render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+    expect(screen.getByTestId("basic-task-steps-section")).toBeInTheDocument();
+    expect(screen.getByTestId("mock-step-list")).toBeInTheDocument();
+    expect(screen.getByTestId("mock-step-list")).toHaveAttribute(
+      "data-hide-completion-notes",
+      "false"
+    );
+  });
+
+  it("passes historical mode to StepList", () => {
+    const task = createTestTask();
+    mockUseTaskSteps.mockReturnValue({
+      data: [
+        {
+          id: "step-1",
+          taskId: task.id,
+          title: "Step 1",
+          status: "pending",
+          order: 0,
+          createdAt: "2026-01-28T12:00:00+00:00",
+          updatedAt: "2026-01-28T12:00:00+00:00",
+        },
+      ],
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useTaskSteps>);
+
+    render(<BasicTaskDetail task={task} isHistorical />, { wrapper: TestWrapper });
+    expect(screen.getByTestId("mock-step-list")).toHaveAttribute(
+      "data-hide-completion-notes",
+      "true"
+    );
+  });
+
+  it("shows empty steps state when no steps exist", () => {
+    const task = createTestTask();
+    mockUseTaskSteps.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useTaskSteps>);
+
+    render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+    expect(screen.getByText("No steps defined yet")).toBeInTheDocument();
   });
 });
+

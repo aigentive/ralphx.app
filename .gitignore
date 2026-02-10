@@ -43,6 +43,7 @@ src-tauri/gen/schemas
 # Playwright
 playwright-report/
 test-results/
+vitest-results.json
 
 # Screenshots (track mock-check.md evidence, ignore PNGs)
 screenshots/**/*.png

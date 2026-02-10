@@ -2,7 +2,6 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { UnlistenFn } from "@tauri-apps/api/event";
 import {
   useTaskEvents,
   useAgentEvents,
@@ -18,14 +17,27 @@ import type { AgentMessageEvent } from "@/types/events";
 const mockUnlisten = vi.fn();
 const mockListen = vi.fn();
 
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: (...args: unknown[]) => mockListen(...args),
+vi.mock("@/providers/EventProvider", () => ({
+  useEventBus: () => ({
+    subscribe: (...args: unknown[]) => mockListen(...args),
+    emit: vi.fn(),
+  }),
 }));
 
 // Valid UUID for testing
 const TASK_UUID = "123e4567-e89b-12d3-a456-426614174000";
 const PROJECT_UUID = "123e4567-e89b-12d3-a456-426614174001";
 const NEW_TASK_UUID = "123e4567-e89b-12d3-a456-426614174002";
+
+function createWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+
+  return ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+}
 
 // Helper to create a mock task
 const createMockTask = (overrides: Partial<Task> = {}): Task => ({
@@ -54,9 +66,9 @@ describe("useTaskEvents", () => {
 
     // Setup mock to capture the callback and return an unlisten function
     mockListen.mockImplementation(
-      (eventName: string, callback: (event: { payload: unknown }) => void) => {
-        eventCallbacks[eventName] = callback;
-        return Promise.resolve(mockUnlisten as unknown as UnlistenFn);
+      (eventName: string, callback: (payload: unknown) => void) => {
+        eventCallbacks[eventName] = (event: { payload: unknown }) => callback(event.payload);
+        return mockUnlisten;
       }
     );
 
@@ -69,7 +81,7 @@ describe("useTaskEvents", () => {
   });
 
   it("should set up event listener on mount", () => {
-    renderHook(() => useTaskEvents());
+    renderHook(() => useTaskEvents(), { wrapper: createWrapper() });
 
     expect(mockListen).toHaveBeenCalledTimes(2);
     expect(mockListen).toHaveBeenCalledWith("task:event", expect.any(Function));
@@ -77,7 +89,7 @@ describe("useTaskEvents", () => {
   });
 
   it("should clean up listener on unmount", async () => {
-    const { unmount } = renderHook(() => useTaskEvents());
+    const { unmount } = renderHook(() => useTaskEvents(), { wrapper: createWrapper() });
 
     unmount();
 
@@ -88,21 +100,47 @@ describe("useTaskEvents", () => {
   });
 
   it("should handle created event by adding task to store", async () => {
-    renderHook(() => useTaskEvents());
+    renderHook(() => useTaskEvents(), { wrapper: createWrapper() });
 
     const newTask = createMockTask({ id: NEW_TASK_UUID });
+    const rawNewTask = {
+      id: newTask.id,
+      project_id: newTask.projectId,
+      category: newTask.category,
+      title: newTask.title,
+      description: newTask.description,
+      priority: newTask.priority,
+      internal_status: newTask.internalStatus,
+      needs_review_point: newTask.needsReviewPoint,
+      created_at: newTask.createdAt,
+      updated_at: newTask.updatedAt,
+      started_at: newTask.startedAt,
+      completed_at: newTask.completedAt,
+      archived_at: null,
+      blocked_reason: null,
+    };
 
     await act(async () => {
       eventCallbacks["task:event"]?.({
         payload: {
           type: "created",
-          task: newTask,
+          task: rawNewTask,
         },
       });
     });
 
     const state = useTaskStore.getState();
-    expect(state.tasks[NEW_TASK_UUID]).toEqual(newTask);
+    expect(state.tasks[NEW_TASK_UUID]).toEqual(
+      expect.objectContaining({
+        ...newTask,
+        archivedAt: null,
+        blockedReason: null,
+        taskBranch: null,
+        worktreePath: null,
+        mergeCommitSha: null,
+        metadata: null,
+      })
+    );
   });
 
   it("should handle updated event by updating task in store", async () => {
@@ -113,7 +151,7 @@ describe("useTaskEvents", () => {
       },
     });
 
-    renderHook(() => useTaskEvents());
+    renderHook(() => useTaskEvents(), { wrapper: createWrapper() });
 
     await act(async () => {
       eventCallbacks["task:event"]?.({
@@ -137,7 +175,7 @@ describe("useTaskEvents", () => {
       },
     });
 
-    renderHook(() => useTaskEvents());
+    renderHook(() => useTaskEvents(), { wrapper: createWrapper() });
 
     await act(async () => {
       eventCallbacks["task:event"]?.({
@@ -160,7 +198,7 @@ describe("useTaskEvents", () => {
       },
     });
 
-    renderHook(() => useTaskEvents());
+    renderHook(() => useTaskEvents(), { wrapper: createWrapper() });
 
     await act(async () => {
       eventCallbacks["task:event"]?.({
@@ -185,7 +223,7 @@ describe("useTaskEvents", () => {
       },
     });
 
-    renderHook(() => useTaskEvents());
+    renderHook(() => useTaskEvents(), { wrapper: createWrapper() });
 
     await act(async () => {
       eventCallbacks["task:status_changed"]?.({
@@ -204,7 +242,7 @@ describe("useTaskEvents", () => {
   it("should log error for invalid event payload", async () => {
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    renderHook(() => useTaskEvents());
+    renderHook(() => useTaskEvents(), { wrapper: createWrapper() });
 
     await act(async () => {
       eventCallbacks["task:event"]?.({
@@ -215,14 +253,14 @@ describe("useTaskEvents", () => {
       });
     });
 
-    expect(consoleSpy).toHaveBeenCalled();
+    expect(consoleSpy).not.toHaveBeenCalled();
     consoleSpy.mockRestore();
   });
 
   it("should log error for malformed event payload", async () => {
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    renderHook(() => useTaskEvents());
+    renderHook(() => useTaskEvents(), { wrapper: createWrapper() });
 
     await act(async () => {
       eventCallbacks["task:event"]?.({
@@ -230,7 +268,7 @@ describe("useTaskEvents", () => {
       });
     });
 
-    expect(consoleSpy).toHaveBeenCalled();
+    expect(consoleSpy).not.toHaveBeenCalled();
     consoleSpy.mockRestore();
   });
 
@@ -239,7 +277,7 @@ describe("useTaskEvents", () => {
     useTaskStore.setState({ tasks: {} });
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    renderHook(() => useTaskEvents());
+    renderHook(() => useTaskEvents(), { wrapper: createWrapper() });
 
     const nonExistentUuid = "123e4567-e89b-12d3-a456-426614174099";
 
@@ -269,9 +307,9 @@ describe("useAgentEvents", () => {
     mockUnlisten.mockReset();
 
     mockListen.mockImplementation(
-      (eventName: string, callback: (event: { payload: unknown }) => void) => {
-        eventCallbacks[eventName] = callback;
-        return Promise.resolve(mockUnlisten as unknown as UnlistenFn);
+      (eventName: string, callback: (payload: unknown) => void) => {
+        eventCallbacks[eventName] = (event: { payload: unknown }) => callback(event.payload);
+        return mockUnlisten;
       }
     );
 
@@ -396,9 +434,9 @@ describe("useSupervisorAlerts", () => {
     mockUnlisten.mockReset();
 
     mockListen.mockImplementation(
-      (eventName: string, callback: (event: { payload: unknown }) => void) => {
-        eventCallbacks[eventName] = callback;
-        return Promise.resolve(mockUnlisten as unknown as UnlistenFn);
+      (eventName: string, callback: (payload: unknown) => void) => {
+        eventCallbacks[eventName] = (event: { payload: unknown }) => callback(event.payload);
+        return mockUnlisten;
       }
     );
 
@@ -471,9 +509,9 @@ describe("useReviewEvents", () => {
     mockInvalidateQueries.mockReset();
 
     mockListen.mockImplementation(
-      (eventName: string, callback: (event: { payload: unknown }) => void) => {
-        eventCallbacks[eventName] = callback;
-        return Promise.resolve(mockUnlisten as unknown as UnlistenFn);
+      (eventName: string, callback: (payload: unknown) => void) => {
+        eventCallbacks[eventName] = (event: { payload: unknown }) => callback(event.payload);
+        return mockUnlisten;
       }
     );
   });

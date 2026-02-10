@@ -333,13 +333,14 @@ describe("computeDependencyTiers", () => {
   });
 
   it("should compute tiers for linear dependency chain", () => {
-    // Graph: A → B → C (linear chain)
-    // Expected: A=0, B=1, C=2
+    // Graph edges use "from depends on to" semantics
+    // mockGraph edges: proposal-1 depends on proposal-2, proposal-2 depends on proposal-3
+    // Expected tiers: proposal-3=0, proposal-2=1, proposal-1=2
     const result = computeDependencyTiers(mockGraph);
 
-    expect(result.tierMap.get("proposal-1")).toBe(0); // Setup database
+    expect(result.tierMap.get("proposal-1")).toBe(2); // Setup database
     expect(result.tierMap.get("proposal-2")).toBe(1); // Create API
-    expect(result.tierMap.get("proposal-3")).toBe(2); // Build UI
+    expect(result.tierMap.get("proposal-3")).toBe(0); // Build UI
     expect(result.maxTier).toBe(2);
   });
 
@@ -353,8 +354,8 @@ describe("computeDependencyTiers", () => {
         { proposalId: "C", title: "Task C", inDegree: 2, outDegree: 0 },
       ],
       edges: [
-        { from: "A", to: "C" }, // C depends on A
-        { from: "B", to: "C" }, // C depends on B
+        { from: "A", to: "C" }, // A depends on C
+        { from: "B", to: "C" }, // B depends on C
       ],
       criticalPath: ["A", "C"],
       hasCycles: false,
@@ -363,19 +364,19 @@ describe("computeDependencyTiers", () => {
 
     const result = computeDependencyTiers(graph);
 
-    expect(result.tierMap.get("A")).toBe(0);
-    expect(result.tierMap.get("B")).toBe(0);
-    expect(result.tierMap.get("C")).toBe(1); // max(0, 0) + 1 = 1
+    expect(result.tierMap.get("C")).toBe(0);
+    expect(result.tierMap.get("A")).toBe(1);
+    expect(result.tierMap.get("B")).toBe(1);
     expect(result.maxTier).toBe(1);
-    expect(result.tierGroups.get(0)).toContain("A");
-    expect(result.tierGroups.get(0)).toContain("B");
-    expect(result.tierGroups.get(0)?.length).toBe(2);
+    expect(result.tierGroups.get(0)).toEqual(["C"]);
+    expect(result.tierGroups.get(1)).toContain("A");
+    expect(result.tierGroups.get(1)).toContain("B");
+    expect(result.tierGroups.get(1)?.length).toBe(2);
   });
 
   it("should handle diamond dependency pattern", () => {
-    // Graph: A → B, A → C, B → D, C → D (diamond)
-    // Edge semantics: from → to means "to depends on from"
-    // Expected: A=0, B=1, C=1, D=2
+    // Graph edges use "from depends on to" semantics
+    // Expected: D=0, B=1, C=1, A=2
     const graph: DependencyGraphResponse = {
       nodes: [
         { proposalId: "A", title: "Task A", inDegree: 0, outDegree: 2 },
@@ -384,10 +385,10 @@ describe("computeDependencyTiers", () => {
         { proposalId: "D", title: "Task D", inDegree: 2, outDegree: 0 },
       ],
       edges: [
-        { from: "A", to: "B" }, // B depends on A
-        { from: "A", to: "C" }, // C depends on A
-        { from: "B", to: "D" }, // D depends on B
-        { from: "C", to: "D" }, // D depends on C
+        { from: "A", to: "B" }, // A depends on B
+        { from: "A", to: "C" }, // A depends on C
+        { from: "B", to: "D" }, // B depends on D
+        { from: "C", to: "D" }, // C depends on D
       ],
       criticalPath: ["A", "B", "D"],
       hasCycles: false,
@@ -396,10 +397,10 @@ describe("computeDependencyTiers", () => {
 
     const result = computeDependencyTiers(graph);
 
-    expect(result.tierMap.get("A")).toBe(0);
+    expect(result.tierMap.get("A")).toBe(2);
     expect(result.tierMap.get("B")).toBe(1);
     expect(result.tierMap.get("C")).toBe(1);
-    expect(result.tierMap.get("D")).toBe(2); // max(1, 1) + 1 = 2
+    expect(result.tierMap.get("D")).toBe(0);
     expect(result.maxTier).toBe(2);
   });
 
@@ -444,12 +445,12 @@ describe("computeDependencyTiers", () => {
   it("should create tier groups correctly", () => {
     const result = computeDependencyTiers(mockGraph);
 
-    // Tier 0: proposal-1
-    expect(result.tierGroups.get(0)).toEqual(["proposal-1"]);
+    // Tier 0: proposal-3
+    expect(result.tierGroups.get(0)).toEqual(["proposal-3"]);
     // Tier 1: proposal-2
     expect(result.tierGroups.get(1)).toEqual(["proposal-2"]);
-    // Tier 2: proposal-3
-    expect(result.tierGroups.get(2)).toEqual(["proposal-3"]);
+    // Tier 2: proposal-1
+    expect(result.tierGroups.get(2)).toEqual(["proposal-1"]);
     // Should have exactly 3 tier groups
     expect(result.tierGroups.size).toBe(3);
   });
@@ -461,9 +462,9 @@ describe("useDependencyTiers", () => {
       wrapper: createWrapper(),
     });
 
-    expect(result.current.tierMap.get("proposal-1")).toBe(0);
+    expect(result.current.tierMap.get("proposal-1")).toBe(2);
     expect(result.current.tierMap.get("proposal-2")).toBe(1);
-    expect(result.current.tierMap.get("proposal-3")).toBe(2);
+    expect(result.current.tierMap.get("proposal-3")).toBe(0);
     expect(result.current.maxTier).toBe(2);
   });
 

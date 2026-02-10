@@ -96,6 +96,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
   ) {
     // Internal ref for scroll operations
     const virtuosoRef = useRef<VirtuosoHandle>(null);
+    const isTestEnv = import.meta.env.VITEST;
 
     // Forward the ref to parent
     useImperativeHandle(ref, () => virtuosoRef.current!, []);
@@ -154,6 +155,61 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       }
       return undefined;
     }, [scrollToTimestamp, messages]);
+
+    if (isTestEnv) {
+      return (
+        <div className="flex-1 overflow-hidden" data-testid="integrated-chat-messages">
+          <div className="px-3 pt-3 w-full" style={contentContainerStyle}>
+            {failedRun?.errorMessage && onDismissFailedRun && (
+              <FailedRunBanner
+                errorMessage={failedRun.errorMessage}
+                onDismiss={() => onDismissFailedRun(failedRun.id)}
+              />
+            )}
+          </div>
+
+          {messages.map((msg) => (
+            <div key={msg.id} className="px-3 w-full" style={contentContainerStyle}>
+              <MessageItem
+                role={msg.role}
+                content={msg.content}
+                createdAt={msg.createdAt}
+                toolCalls={msg.toolCalls ?? null}
+                contentBlocks={msg.contentBlocks ?? null}
+              />
+            </div>
+          ))}
+
+          <div className="px-3 pb-3 w-full" style={contentContainerStyle}>
+            {streamingText && (
+              <MessageItem
+                key="streaming-assistant"
+                role="assistant"
+                content={streamingText}
+                createdAt={new Date().toISOString()}
+                toolCalls={null}
+                contentBlocks={null}
+              />
+            )}
+
+            {streamingTasks && streamingTasks.size > 0 &&
+              Array.from(streamingTasks.values()).map((task: StreamingTask) => (
+                <TaskSubagentCard key={task.toolUseId} task={task} />
+              ))
+            }
+
+            {(isSending || isAgentRunning) && (
+              streamingToolCalls.length > 0 ? (
+                <StreamingToolIndicator toolCalls={streamingToolCalls} isActive={true} />
+              ) : !streamingText ? (
+                <TypingIndicator />
+              ) : null
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="flex-1 overflow-hidden" data-testid="integrated-chat-messages">

@@ -54,6 +54,8 @@ describe("IdeationSessionSchema", () => {
     projectId: "project-456",
     title: "Feature Planning",
     status: "active" as const,
+    planArtifactId: null,
+    seedTaskId: null,
     createdAt: "2026-01-24T12:00:00Z",
     updatedAt: "2026-01-24T12:00:00Z",
     archivedAt: null,
@@ -175,6 +177,8 @@ describe("TaskProposalSchema", () => {
     userModified: false,
     status: "pending" as const,
     createdTaskId: null,
+    planArtifactId: null,
+    planVersionAtCreation: null,
     sortOrder: 0,
     createdAt: "2026-01-24T12:00:00Z",
     updatedAt: "2026-01-24T12:00:00Z",
@@ -272,6 +276,8 @@ describe("ChatMessageSchema", () => {
     content: "I need to implement authentication",
     metadata: null,
     parentMessageId: null,
+    conversationId: null,
+    toolCalls: null,
     createdAt: "2026-01-24T12:00:00Z",
   };
 

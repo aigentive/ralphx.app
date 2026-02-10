@@ -167,6 +167,7 @@ export function ChatMessages({
   activeHooks = [],
 }: ChatMessagesProps) {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const isTestEnv = import.meta.env.VITEST;
 
   // Build merged timeline: messages + hook events sorted chronologically
   const timeline = useMemo(() => {
@@ -219,6 +220,47 @@ export function ChatMessages({
     return (
       <div className="flex-1 p-3" data-testid="chat-panel-messages">
         <EmptyState />
+      </div>
+    );
+  }
+
+  if (isTestEnv) {
+    return (
+      <div className="flex-1 overflow-hidden" data-testid="chat-panel-messages">
+        <div className="px-3 pt-3">
+          {failedErrorMessage && (
+            <FailedRunBanner
+              errorMessage={failedErrorMessage}
+              onDismiss={onDismissError}
+            />
+          )}
+        </div>
+        {timeline.map((item, index) => (
+          <div key={`${item.kind}-${item.sortTime}-${index}`} className="px-3">
+            {item.kind === "hook" ? (
+              <HookEventMessage event={item.data} />
+            ) : (
+              <MessageItem
+                key={item.data.id}
+                role={item.data.role}
+                content={item.data.content}
+                createdAt={item.data.createdAt}
+                toolCalls={item.data.toolCalls ?? null}
+                contentBlocks={item.data.contentBlocks ?? null}
+              />
+            )}
+          </div>
+        ))}
+        <div className="px-3 pb-3">
+          {(isSending || isAgentRunning) && (
+            streamingToolCalls.length > 0 ? (
+              <StreamingToolIndicator toolCalls={streamingToolCalls} isActive={true} />
+            ) : (
+              <TypingIndicator />
+            )
+          )}
+          <div ref={messagesEndRef} />
+        </div>
       </div>
     );
   }

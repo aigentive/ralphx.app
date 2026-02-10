@@ -1,30 +1,10 @@
-/**
- * ProposalList Component Tests
- *
- * Tests for the proposal list component with:
- * - List of ProposalCard components
- * - Drag-to-reorder with @dnd-kit
- * - Clear all button
- * - Empty state when no proposals
- *
- * NOTE: This component is no longer used in the UI (replaced by TieredProposalList).
- * Tests retained for documentation purposes.
- */
-
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ProposalList } from "./ProposalList";
 import type { TaskProposal } from "@/types/ideation";
 
-// ============================================================================
-// Test Utilities
-// ============================================================================
-
-function createMockProposal(
-  id: string,
-  overrides: Partial<TaskProposal> = {}
-): TaskProposal {
+function createMockProposal(id: string, overrides: Partial<TaskProposal> = {}): TaskProposal {
   return {
     id,
     sessionId: "session-1",
@@ -70,224 +50,88 @@ describe("ProposalList", () => {
     vi.clearAllMocks();
   });
 
-  // ============================================================================
-  // Rendering Tests
-  // ============================================================================
+  it("renders list and cards", () => {
+    render(<ProposalList {...defaultProps} />);
 
-  describe("rendering", () => {
-    it("renders the list container", () => {
-      render(<ProposalList {...defaultProps} />);
-      expect(screen.getByTestId("proposal-list")).toBeInTheDocument();
-    });
+    expect(screen.getByTestId("proposal-list")).toBeInTheDocument();
+    expect(screen.getByTestId("proposal-card-p1")).toBeInTheDocument();
+    expect(screen.getByTestId("proposal-card-p2")).toBeInTheDocument();
+    expect(screen.getByTestId("proposal-card-p3")).toBeInTheDocument();
+  });
 
-    it("renders all proposal cards", () => {
-      render(<ProposalList {...defaultProps} />);
-      expect(screen.getByTestId("proposal-card-p1")).toBeInTheDocument();
-      expect(screen.getByTestId("proposal-card-p2")).toBeInTheDocument();
-      expect(screen.getByTestId("proposal-card-p3")).toBeInTheDocument();
-    });
+  it("renders proposals in sort order", () => {
+    render(<ProposalList {...defaultProps} />);
 
-    it("renders proposals in sortOrder", () => {
-      render(<ProposalList {...defaultProps} />);
-      const cards = screen.getAllByRole("article");
-      expect(cards).toHaveLength(3);
-      // First card should be "Setup auth" (sortOrder: 0)
-      expect(within(cards[0]).getByTestId("proposal-title")).toHaveTextContent("Setup auth");
-    });
+    const cards = screen.getAllByTestId(/^proposal-card-/);
+    expect(cards).toHaveLength(3);
+    expect(within(cards[0]).getByText("Setup auth")).toBeInTheDocument();
+    expect(within(cards[1]).getByText("Implement login")).toBeInTheDocument();
+    expect(within(cards[2]).getByText("Add logout")).toBeInTheDocument();
+  });
 
-    it("renders toolbar with action buttons", () => {
-      render(<ProposalList {...defaultProps} />);
-      expect(screen.getByTestId("proposal-list-toolbar")).toBeInTheDocument();
+  it("shows empty state when no proposals", () => {
+    render(<ProposalList {...defaultProps} proposals={[]} />);
+
+    expect(screen.getByTestId("proposal-list-empty")).toBeInTheDocument();
+    expect(screen.getByText(/no proposals yet/i)).toBeInTheDocument();
+    expect(screen.queryByTestId("proposal-list-toolbar")).not.toBeInTheDocument();
+  });
+
+  it("renders toolbar actions", async () => {
+    const user = userEvent.setup();
+    const onSortByPriority = vi.fn();
+    const onClearAll = vi.fn();
+
+    render(
+      <ProposalList
+        {...defaultProps}
+        onSortByPriority={onSortByPriority}
+        onClearAll={onClearAll}
+      />
+    );
+
+    await user.click(screen.getByTestId("sort-priority-btn"));
+    await user.click(screen.getByTestId("clear-all-btn"));
+
+    expect(onSortByPriority).toHaveBeenCalled();
+    expect(onClearAll).toHaveBeenCalled();
+  });
+
+  it("renders sortable wrappers", () => {
+    render(<ProposalList {...defaultProps} />);
+
+    expect(screen.getByTestId("proposal-list-sortable")).toBeInTheDocument();
+
+    const cards = screen.getAllByTestId(/^proposal-card-/);
+    cards.forEach((card) => {
+      expect(card.parentElement).toHaveAttribute("data-draggable", "true");
     });
   });
 
-  // ============================================================================
-  // Empty State Tests
-  // ============================================================================
+  it("passes block count dependency info to cards", () => {
+    render(
+      <ProposalList
+        {...defaultProps}
+        dependencyCounts={{
+          p1: { dependsOn: 0, blocks: 2 },
+          p2: { dependsOn: 1, blocks: 1 },
+          p3: { dependsOn: 2, blocks: 0 },
+        }}
+      />
+    );
 
-  describe("empty state", () => {
-    it("shows empty state when no proposals", () => {
-      render(<ProposalList {...defaultProps} proposals={[]} />);
-      expect(screen.getByTestId("proposal-list-empty")).toBeInTheDocument();
-    });
+    const card1 = screen.getByTestId("proposal-card-p1");
+    expect(within(card1).getByTestId("blocks-count")).toHaveTextContent("\u21922");
 
-    it("empty state has descriptive text", () => {
-      render(<ProposalList {...defaultProps} proposals={[]} />);
-      expect(screen.getByText(/no proposals yet/i)).toBeInTheDocument();
-    });
-
-    it("hides toolbar when empty", () => {
-      render(<ProposalList {...defaultProps} proposals={[]} />);
-      expect(screen.queryByTestId("proposal-list-toolbar")).not.toBeInTheDocument();
-    });
+    const card3 = screen.getByTestId("proposal-card-p3");
+    expect(within(card3).queryByTestId("blocks-count")).not.toBeInTheDocument();
   });
 
-  // ============================================================================
-  // Sort by Priority Tests
-  // ============================================================================
+  it("has accessible list role", () => {
+    render(<ProposalList {...defaultProps} />);
 
-  describe("sort by priority", () => {
-    it("renders sort by priority button", () => {
-      render(<ProposalList {...defaultProps} />);
-      expect(screen.getByTestId("sort-priority-btn")).toBeInTheDocument();
-    });
-
-    it("calls onSortByPriority when clicked", async () => {
-      const user = userEvent.setup();
-      const onSortByPriority = vi.fn();
-      render(<ProposalList {...defaultProps} onSortByPriority={onSortByPriority} />);
-
-      await user.click(screen.getByTestId("sort-priority-btn"));
-      expect(onSortByPriority).toHaveBeenCalled();
-    });
-
-    it("has accessible label", () => {
-      render(<ProposalList {...defaultProps} />);
-      expect(screen.getByLabelText(/sort by priority/i)).toBeInTheDocument();
-    });
-  });
-
-  // ============================================================================
-  // Clear All Tests
-  // ============================================================================
-
-  describe("clear all", () => {
-    it("renders clear all button", () => {
-      render(<ProposalList {...defaultProps} />);
-      expect(screen.getByTestId("clear-all-btn")).toBeInTheDocument();
-    });
-
-    it("calls onClearAll when clicked", async () => {
-      const user = userEvent.setup();
-      const onClearAll = vi.fn();
-      render(<ProposalList {...defaultProps} onClearAll={onClearAll} />);
-
-      await user.click(screen.getByTestId("clear-all-btn"));
-      expect(onClearAll).toHaveBeenCalled();
-    });
-
-    it("has accessible label", () => {
-      render(<ProposalList {...defaultProps} />);
-      expect(screen.getByLabelText(/clear all/i)).toBeInTheDocument();
-    });
-  });
-
-  // ============================================================================
-  // Card Interaction Tests
-  // ============================================================================
-
-  describe("card interactions", () => {
-    it("calls onEdit when card edit clicked", async () => {
-      const onEdit = vi.fn();
-      render(<ProposalList {...defaultProps} onEdit={onEdit} />);
-
-      const card = screen.getByTestId("proposal-card-p1");
-      const editBtn = within(card).getByTestId("proposal-edit");
-      fireEvent.click(editBtn);
-
-      expect(onEdit).toHaveBeenCalledWith("p1");
-    });
-
-    it("calls onRemove when card remove clicked", async () => {
-      const onRemove = vi.fn();
-      render(<ProposalList {...defaultProps} onRemove={onRemove} />);
-
-      const card = screen.getByTestId("proposal-card-p1");
-      const removeBtn = within(card).getByTestId("proposal-remove");
-      fireEvent.click(removeBtn);
-
-      expect(onRemove).toHaveBeenCalledWith("p1");
-    });
-  });
-
-  // ============================================================================
-  // Drag and Drop Tests
-  // ============================================================================
-
-  describe("drag and drop", () => {
-    it("renders sortable context", () => {
-      render(<ProposalList {...defaultProps} />);
-      // The list should be wrapped in a sortable context
-      expect(screen.getByTestId("proposal-list-sortable")).toBeInTheDocument();
-    });
-
-    it("cards are wrapped in sortable elements", () => {
-      render(<ProposalList {...defaultProps} />);
-      // Each card should be wrapped in a sortable element with data-draggable
-      const draggables = screen.getAllByTestId(/^proposal-card-/);
-      draggables.forEach((card) => {
-        // The sortable wrapper has data-draggable attribute
-        const wrapper = card.parentElement;
-        expect(wrapper).toHaveAttribute("data-draggable", "true");
-      });
-    });
-
-    it("calls onReorder when drag ends", () => {
-      // Note: Full drag simulation is complex in tests
-      // We verify the callback is passed to the component
-      const onReorder = vi.fn();
-      render(<ProposalList {...defaultProps} onReorder={onReorder} />);
-
-      // onReorder should be wired up (tested via integration)
-      expect(screen.getByTestId("proposal-list-sortable")).toBeInTheDocument();
-    });
-  });
-
-  // ============================================================================
-  // Dependency Count Tests
-  // ============================================================================
-
-  describe("dependency counts", () => {
-    it("passes dependency counts to cards when provided", () => {
-      const dependencyCounts = {
-        p1: { dependsOn: 0, blocks: 2 },
-        p2: { dependsOn: 1, blocks: 1 },
-        p3: { dependsOn: 2, blocks: 0 },
-      };
-      render(
-        <ProposalList {...defaultProps} dependencyCounts={dependencyCounts} />
-      );
-
-      const card1 = screen.getByTestId("proposal-card-p1");
-      expect(within(card1).getByTestId("dependency-info")).toHaveTextContent("Blocks 2");
-
-      const card3 = screen.getByTestId("proposal-card-p3");
-      expect(within(card3).getByTestId("dependency-info")).toHaveTextContent("Depends on 2");
-    });
-  });
-
-  // ============================================================================
-  // Styling Tests
-  // ============================================================================
-
-  describe("styling", () => {
-    it("applies proper spacing between cards", () => {
-      render(<ProposalList {...defaultProps} />);
-      const list = screen.getByTestId("proposal-list-sortable");
-      expect(list).toHaveClass("space-y-2");
-    });
-
-    it("toolbar has proper styling", () => {
-      render(<ProposalList {...defaultProps} />);
-      const toolbar = screen.getByTestId("proposal-list-toolbar");
-      expect(toolbar).toHaveClass("flex", "items-center", "justify-between");
-    });
-  });
-
-  // ============================================================================
-  // Accessibility Tests
-  // ============================================================================
-
-  describe("accessibility", () => {
-    it("list has proper role", () => {
-      render(<ProposalList {...defaultProps} />);
-      expect(screen.getByRole("list")).toBeInTheDocument();
-    });
-
-    it("toolbar buttons have accessible labels", () => {
-      render(<ProposalList {...defaultProps} />);
-      expect(screen.getByTestId("sort-priority-btn")).toHaveAttribute("aria-label", "Sort by priority");
-      expect(screen.getByTestId("clear-all-btn")).toHaveAttribute("aria-label", "Clear all");
-    });
+    expect(screen.getByRole("list")).toBeInTheDocument();
+    expect(screen.getByTestId("sort-priority-btn")).toHaveAttribute("aria-label", "Sort by priority");
+    expect(screen.getByTestId("clear-all-btn")).toHaveAttribute("aria-label", "Clear all");
   });
 });

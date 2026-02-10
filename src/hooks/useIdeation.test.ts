@@ -169,12 +169,12 @@ describe("useIdeationSession", () => {
       wrapper: createWrapper(),
     });
 
-    expect(result.current.isLoading).toBe(true);
-
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    await waitFor(() => {
+      expect(ideationApi.sessions.getWithData).toHaveBeenCalledWith("session-1");
+    });
+    await waitFor(() => expect(result.current.data).toEqual(mockData));
 
     expect(result.current.data).toEqual(mockData);
-    expect(ideationApi.sessions.getWithData).toHaveBeenCalledWith("session-1");
   });
 
   it("should return null for non-existent session", async () => {
@@ -229,8 +229,6 @@ describe("useIdeationSessions", () => {
     const { result } = renderHook(() => useIdeationSessions("project-1"), {
       wrapper: createWrapper(),
     });
-
-    expect(result.current.isLoading).toBe(true);
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
@@ -293,7 +291,7 @@ describe("useCreateIdeationSession", () => {
       await result.current.mutateAsync({ projectId: "project-1", title: "Test Session" });
     });
 
-    expect(ideationApi.sessions.create).toHaveBeenCalledWith("project-1", "Test Session");
+    expect(ideationApi.sessions.create).toHaveBeenCalledWith("project-1", "Test Session", undefined);
   });
 
   it("should create a session without title", async () => {
@@ -308,7 +306,7 @@ describe("useCreateIdeationSession", () => {
       await result.current.mutateAsync({ projectId: "project-1" });
     });
 
-    expect(ideationApi.sessions.create).toHaveBeenCalledWith("project-1", undefined);
+    expect(ideationApi.sessions.create).toHaveBeenCalledWith("project-1", undefined, undefined);
   });
 
   it("should handle creation error", async () => {

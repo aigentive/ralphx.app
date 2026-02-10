@@ -6,6 +6,7 @@ import { PLAN_TOOLS } from "./plan-tools.js";
 import { WORKER_CONTEXT_TOOLS } from "./worker-context-tools.js";
 import { STEP_TOOLS } from "./step-tools.js";
 import { ISSUE_TOOLS } from "./issue-tools.js";
+import { ORCHESTRATOR_IDEATION, CHAT_TASK, CHAT_PROJECT, REVIEWER, REVIEW_CHAT, REVIEW_HISTORY, WORKER, SESSION_NAMER, DEPENDENCY_SUGGESTER, MERGER, PROJECT_ANALYZER, SUPERVISOR, QA_PREP, QA_TESTER, } from "./agentNames.js";
 /**
  * All available MCP tools
  * Tools are filtered based on RALPHX_AGENT_TYPE environment variable
@@ -698,7 +699,7 @@ export const ALL_TOOLS = [
  * Hard enforcement: each agent only sees tools appropriate for its role
  */
 export const TOOL_ALLOWLIST = {
-    "orchestrator-ideation": [
+    [ORCHESTRATOR_IDEATION]: [
         "create_task_proposal",
         "update_task_proposal",
         "delete_task_proposal",
@@ -713,9 +714,9 @@ export const TOOL_ALLOWLIST = {
         "get_session_plan",
         "ask_user_question",
     ],
-    "chat-task": ["update_task", "add_task_note", "get_task_details"],
-    "chat-project": ["suggest_task", "list_tasks"],
-    "ralphx-reviewer": [
+    [CHAT_TASK]: ["update_task", "add_task_note", "get_task_details"],
+    [CHAT_PROJECT]: ["suggest_task", "list_tasks"],
+    [REVIEWER]: [
         // specific review tools
         "complete_review",
         // issue tools (re-review workflow)
@@ -734,7 +735,7 @@ export const TOOL_ALLOWLIST = {
         "get_task_steps",
     ],
     // Post-review chat agent - helps user discuss review findings and take action
-    "ralphx-review-chat": [
+    [REVIEW_CHAT]: [
         // specific review tools
         "approve_task",
         "request_task_changes",
@@ -749,7 +750,7 @@ export const TOOL_ALLOWLIST = {
         "get_task_steps",
     ],
     // Historical review discussion agent - read-only, no mutation tools (approved tasks)
-    "ralphx-review-history": [
+    [REVIEW_HISTORY]: [
         "get_review_notes",
         "get_task_context",
         "get_task_issues",
@@ -761,7 +762,7 @@ export const TOOL_ALLOWLIST = {
         "get_related_artifacts",
         "search_project_artifacts",
     ],
-    "ralphx-worker": [
+    [WORKER]: [
         // step management tools
         "start_step",
         "complete_step",
@@ -785,11 +786,11 @@ export const TOOL_ALLOWLIST = {
         "get_task_steps",
     ],
     // Session naming agent - generates titles for IDA sessions
-    "session-namer": ["update_session_title"],
+    [SESSION_NAMER]: ["update_session_title"],
     // Dependency suggester agent - analyzes proposals and auto-applies dependencies
-    "dependency-suggester": ["apply_proposal_dependencies"],
+    [DEPENDENCY_SUGGESTER]: ["apply_proposal_dependencies"],
     // Merger agent - resolves merge conflicts when programmatic merge fails
-    "ralphx-merger": [
+    [MERGER]: [
         // merge tools
         "complete_merge",
         "report_conflict",
@@ -801,14 +802,14 @@ export const TOOL_ALLOWLIST = {
         "get_task_context",
     ],
     // Project analyzer agent - detects build/validation commands
-    "project-analyzer": [
+    [PROJECT_ANALYZER]: [
         "save_project_analysis",
         "get_project_analysis",
     ],
     // These agents have NO MCP tools - they use filesystem tools only
-    supervisor: [],
-    "qa-prep": [],
-    "qa-tester": [],
+    [SUPERVISOR]: [],
+    [QA_PREP]: [],
+    [QA_TESTER]: [],
     // Debug mode: shows ALL tools (use RALPHX_AGENT_TYPE=debug)
     debug: ALL_TOOLS.map((t) => t.name),
 };

@@ -72,7 +72,7 @@ describe("useInfiniteTasksQuery", () => {
       () =>
         useInfiniteTasksQuery({
           projectId: "project-123",
-          status: "backlog",
+          statuses: ["backlog"],
         }),
       { wrapper }
     );
@@ -81,7 +81,7 @@ describe("useInfiniteTasksQuery", () => {
 
     expect(api.tasks.list).toHaveBeenCalledWith({
       projectId: "project-123",
-      status: "backlog",
+      statuses: ["backlog"],
       offset: 0,
       limit: 20,
       includeArchived: false,
@@ -167,7 +167,6 @@ describe("useInfiniteTasksQuery", () => {
     await waitFor(() =>
       expect(api.tasks.list).toHaveBeenCalledWith({
         projectId: "project-123",
-        status: undefined,
         offset: 0,
         limit: 20,
         includeArchived: true,

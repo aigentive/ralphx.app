@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useSupervisorStore } from "./useSupervisorAlerts.store";
 import {
@@ -7,6 +7,11 @@ import {
   useSupervisorAlerts,
 } from "./useSupervisorAlerts";
 import type { SupervisorAlert as _SupervisorAlert } from "@/types/supervisor";
+
+// Listener now depends on EventProvider's EventBus; unit tests mock it out.
+vi.mock("./useSupervisorAlerts.listener", () => ({
+  useSupervisorEventListener: () => {},
+}));
 
 // Reset store before each test
 beforeEach(() => {

@@ -50,7 +50,7 @@ describe("ProposalEditModal", () => {
 
     it("renders modal content container", () => {
       render(<ProposalEditModal {...defaultProps} />);
-      expect(screen.getByTestId("modal-content")).toBeInTheDocument();
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
 
     it("renders header with title", () => {
@@ -171,13 +171,13 @@ describe("ProposalEditModal", () => {
 
     it("renders add step button", () => {
       render(<ProposalEditModal {...defaultProps} />);
-      expect(screen.getByLabelText("Add step")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Add step" })).toBeInTheDocument();
     });
 
     it("adds new step when add button clicked", async () => {
       const user = userEvent.setup();
       render(<ProposalEditModal {...defaultProps} />);
-      const addButton = screen.getByLabelText("Add step");
+      const addButton = screen.getByRole("button", { name: "Add step" });
       await user.click(addButton);
       const inputs = screen.getAllByTestId("step-input");
       expect(inputs).toHaveLength(4);
@@ -200,7 +200,7 @@ describe("ProposalEditModal", () => {
     it("shows empty state when no steps", () => {
       const proposalNoSteps = { ...mockProposal, steps: [] };
       render(<ProposalEditModal {...defaultProps} proposal={proposalNoSteps} />);
-      expect(screen.getByText("No steps defined yet")).toBeInTheDocument();
+      expect(screen.queryAllByTestId("step-input")).toHaveLength(0);
     });
   });
 
@@ -227,13 +227,13 @@ describe("ProposalEditModal", () => {
 
     it("renders add criterion button", () => {
       render(<ProposalEditModal {...defaultProps} />);
-      expect(screen.getByLabelText("Add criterion")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Add criterion" })).toBeInTheDocument();
     });
 
     it("adds new criterion when add button clicked", async () => {
       const user = userEvent.setup();
       render(<ProposalEditModal {...defaultProps} />);
-      const addButton = screen.getByLabelText("Add criterion");
+      const addButton = screen.getByRole("button", { name: "Add criterion" });
       await user.click(addButton);
       const inputs = screen.getAllByTestId("criterion-input");
       expect(inputs).toHaveLength(3);
@@ -250,19 +250,19 @@ describe("ProposalEditModal", () => {
     it("shows empty state when no acceptance criteria", () => {
       const proposalNoCriteria = { ...mockProposal, acceptanceCriteria: [] };
       render(<ProposalEditModal {...defaultProps} proposal={proposalNoCriteria} />);
-      expect(screen.getByText("No acceptance criteria defined yet")).toBeInTheDocument();
+      expect(screen.queryAllByTestId("criterion-input")).toHaveLength(0);
     });
   });
 
   describe("Priority Override Selector", () => {
     it("renders priority selector with label", () => {
       render(<ProposalEditModal {...defaultProps} />);
-      expect(screen.getByLabelText("Priority Override")).toBeInTheDocument();
+      expect(screen.getByLabelText("Priority")).toBeInTheDocument();
     });
 
     it("shows all priority options including auto", () => {
       render(<ProposalEditModal {...defaultProps} />);
-      const select = screen.getByLabelText("Priority Override") as HTMLSelectElement;
+      const select = screen.getByLabelText("Priority") as HTMLSelectElement;
       expect(select.querySelector('option[value=""]')).toBeInTheDocument();
       expect(select.querySelector('option[value="critical"]')).toBeInTheDocument();
       expect(select.querySelector('option[value="high"]')).toBeInTheDocument();
@@ -272,21 +272,21 @@ describe("ProposalEditModal", () => {
 
     it("shows auto (suggested) option when no user override", () => {
       render(<ProposalEditModal {...defaultProps} />);
-      const select = screen.getByLabelText("Priority Override") as HTMLSelectElement;
+      const select = screen.getByLabelText("Priority") as HTMLSelectElement;
       expect(select.value).toBe("");
     });
 
     it("shows user priority when set", () => {
       const proposalWithUserPriority = { ...mockProposal, userPriority: "critical" as const };
       render(<ProposalEditModal {...defaultProps} proposal={proposalWithUserPriority} />);
-      const select = screen.getByLabelText("Priority Override") as HTMLSelectElement;
+      const select = screen.getByLabelText("Priority") as HTMLSelectElement;
       expect(select.value).toBe("critical");
     });
 
     it("allows changing priority override", async () => {
       const user = userEvent.setup();
       render(<ProposalEditModal {...defaultProps} />);
-      const select = screen.getByLabelText("Priority Override");
+      const select = screen.getByLabelText("Priority");
       await user.selectOptions(select, "critical");
       expect(select).toHaveValue("critical");
     });
@@ -332,7 +332,7 @@ describe("ProposalEditModal", () => {
   describe("Save and Cancel Buttons", () => {
     it("renders save button", () => {
       render(<ProposalEditModal {...defaultProps} />);
-      expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Save Changes" })).toBeInTheDocument();
     });
 
     it("renders cancel button", () => {
@@ -349,7 +349,7 @@ describe("ProposalEditModal", () => {
       await user.clear(titleInput);
       await user.type(titleInput, "Updated title");
 
-      const saveButton = screen.getByRole("button", { name: "Save" });
+      const saveButton = screen.getByRole("button", { name: "Save Changes" });
       await user.click(saveButton);
 
       expect(onSave).toHaveBeenCalledTimes(1);
@@ -379,13 +379,13 @@ describe("ProposalEditModal", () => {
       const titleInput = screen.getByLabelText("Title");
       await user.clear(titleInput);
 
-      const saveButton = screen.getByRole("button", { name: "Save" });
+      const saveButton = screen.getByRole("button", { name: "Save Changes" });
       expect(saveButton).toBeDisabled();
     });
 
     it("save button is enabled when title is not empty", () => {
       render(<ProposalEditModal {...defaultProps} />);
-      const saveButton = screen.getByRole("button", { name: "Save" });
+      const saveButton = screen.getByRole("button", { name: "Save Changes" });
       expect(saveButton).not.toBeDisabled();
     });
 
@@ -413,7 +413,7 @@ describe("ProposalEditModal", () => {
       const user = userEvent.setup();
       render(<ProposalEditModal {...defaultProps} onCancel={onCancel} />);
 
-      const content = screen.getByTestId("modal-content");
+      const content = screen.getByTestId("proposal-edit-modal");
       await user.click(content);
 
       expect(onCancel).not.toHaveBeenCalled();
@@ -438,7 +438,7 @@ describe("ProposalEditModal", () => {
       expect(screen.getByLabelText("Title")).toBeInTheDocument();
       expect(screen.getByLabelText("Description")).toBeInTheDocument();
       expect(screen.getByLabelText("Category")).toBeInTheDocument();
-      expect(screen.getByLabelText("Priority Override")).toBeInTheDocument();
+      expect(screen.getByLabelText("Priority")).toBeInTheDocument();
       // Complexity is now a visual 5-dot selector, verified by text label
       expect(screen.getByText("Complexity")).toBeInTheDocument();
     });
@@ -464,8 +464,7 @@ describe("ProposalEditModal", () => {
     it("modal uses shadcn Dialog with correct max-width", () => {
       render(<ProposalEditModal {...defaultProps} />);
       const modal = screen.getByTestId("proposal-edit-modal");
-      // Phase 34 redesign expanded modal from max-w-lg to max-w-2xl
-      expect(modal).toHaveClass("max-w-2xl");
+      expect(modal).toHaveClass("max-w-3xl");
     });
 
     it("renders modal overlay with blur effect", () => {
@@ -481,7 +480,7 @@ describe("ProposalEditModal", () => {
       const user = userEvent.setup();
       render(<ProposalEditModal {...defaultProps} onSave={onSave} />);
 
-      const saveButton = screen.getByRole("button", { name: "Save" });
+      const saveButton = screen.getByRole("button", { name: "Save Changes" });
       await user.click(saveButton);
 
       expect(onSave).toHaveBeenCalledWith(
@@ -492,7 +491,6 @@ describe("ProposalEditModal", () => {
           category: "feature",
           steps: ["Create login form", "Implement JWT validation", "Add logout button"],
           acceptanceCriteria: ["Users can log in", "Users can register"],
-          userPriority: undefined,
           complexity: "moderate",
         })
       );
@@ -503,10 +501,10 @@ describe("ProposalEditModal", () => {
       const user = userEvent.setup();
       render(<ProposalEditModal {...defaultProps} onSave={onSave} />);
 
-      const addButton = screen.getByLabelText("Add step");
+      const addButton = screen.getByRole("button", { name: "Add step" });
       await user.click(addButton);
 
-      const saveButton = screen.getByRole("button", { name: "Save" });
+      const saveButton = screen.getByRole("button", { name: "Save Changes" });
       await user.click(saveButton);
 
       expect(onSave).toHaveBeenCalledWith(
@@ -522,10 +520,10 @@ describe("ProposalEditModal", () => {
       const user = userEvent.setup();
       render(<ProposalEditModal {...defaultProps} onSave={onSave} />);
 
-      const addButton = screen.getByLabelText("Add criterion");
+      const addButton = screen.getByRole("button", { name: "Add criterion" });
       await user.click(addButton);
 
-      const saveButton = screen.getByRole("button", { name: "Save" });
+      const saveButton = screen.getByRole("button", { name: "Save Changes" });
       await user.click(saveButton);
 
       expect(onSave).toHaveBeenCalledWith(
@@ -542,17 +540,15 @@ describe("ProposalEditModal", () => {
       const proposalWithPriority = { ...mockProposal, userPriority: "critical" as const };
       render(<ProposalEditModal {...defaultProps} proposal={proposalWithPriority} onSave={onSave} />);
 
-      const prioritySelect = screen.getByLabelText("Priority Override");
+      const prioritySelect = screen.getByLabelText("Priority");
       await user.selectOptions(prioritySelect, "");
 
-      const saveButton = screen.getByRole("button", { name: "Save" });
+      const saveButton = screen.getByRole("button", { name: "Save Changes" });
       await user.click(saveButton);
 
       expect(onSave).toHaveBeenCalledWith(
         "proposal-1",
-        expect.objectContaining({
-          userPriority: undefined,
-        })
+        expect.not.objectContaining({ userPriority: expect.anything() })
       );
     });
   });

@@ -53,6 +53,12 @@ vi.mock("@tauri-apps/api/event", () => ({
   emit: vi.fn(),
 }));
 
+vi.mock("@/providers/EventProvider", () => ({
+  useEventBus: () => ({
+    subscribe: vi.fn(() => vi.fn()),
+  }),
+}));
+
 import { getActiveWorkflowColumns } from "@/lib/api/workflows";
 import { useInfiniteTasksQuery } from "@/hooks/useInfiniteTasksQuery";
 
@@ -148,7 +154,9 @@ describe("TaskBoard", () => {
 
       // Mock the infinite query to return tasks based on status
       vi.mocked(useInfiniteTasksQuery).mockImplementation((params) => {
-        const tasksForStatus = tasks.filter(t => t.internalStatus === params.status);
+        const tasksForStatus = tasks.filter(
+          (t) => params.statuses?.includes(t.internalStatus) ?? false
+        );
         return {
           data: { pages: [{ tasks: tasksForStatus, total: tasksForStatus.length, hasMore: false, offset: 0 }], pageParams: [undefined] } as InfiniteData<TaskListResponse>,
           fetchNextPage: vi.fn(),

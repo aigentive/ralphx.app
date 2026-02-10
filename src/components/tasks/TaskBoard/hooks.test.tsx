@@ -11,6 +11,7 @@ import { useTaskBoard } from "./hooks";
 import type { DragEndEvent } from "@dnd-kit/core";
 import type { InfiniteData } from "@tanstack/react-query";
 import type { TaskListResponse } from "@/types/task";
+import { infiniteTaskKeys } from "@/hooks/useInfiniteTasksQuery";
 
 // Mock Tauri API
 vi.mock("@/lib/tauri", () => ({
@@ -175,8 +176,11 @@ describe("useTaskBoard", () => {
       });
 
       // Pre-populate the cache with the task in the draft column
-      // Key format: ["tasks", "infinite", projectId, status, includeArchived]
-      const cacheKey = ["tasks", "infinite", "project-1", "backlog", false];
+      const cacheKey = infiniteTaskKeys.list({
+        projectId: "project-1",
+        statuses: ["backlog"],
+        includeArchived: false,
+      });
       queryClient.setQueryData(cacheKey, {
         pages: [{ tasks: [task], total: 1, hasMore: false, offset: 0 }],
         pageParams: [undefined],
@@ -219,8 +223,11 @@ describe("useTaskBoard", () => {
       });
 
       // Pre-populate the cache with the task in the draft column
-      // Key format: ["tasks", "infinite", projectId, status, includeArchived]
-      const cacheKey = ["tasks", "infinite", "project-1", "backlog", false];
+      const cacheKey = infiniteTaskKeys.list({
+        projectId: "project-1",
+        statuses: ["backlog"],
+        includeArchived: false,
+      });
       queryClient.setQueryData(cacheKey, {
         pages: [{ tasks: [task], total: 1, hasMore: false, offset: 0 }],
         pageParams: [undefined],

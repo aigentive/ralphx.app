@@ -13,6 +13,7 @@ vi.mock("@/hooks/useEvents", () => ({
   useProposalEvents: vi.fn(),
   useStepEvents: vi.fn(),
   useExecutionErrorEvents: vi.fn(),
+  useRecoveryPromptEvents: vi.fn(),
 }));
 
 vi.mock("@/hooks/useIdeationEvents", () => ({

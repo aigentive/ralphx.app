@@ -10,10 +10,7 @@ use tauri::{AppHandle, Emitter, Runtime};
 use crate::domain::entities::{ChatContextType, ChatConversationId};
 use crate::domain::repositories::{ActivityEventRepository, ChatMessageRepository, TaskRepository};
 use crate::domain::services::MessageQueue;
-use crate::infrastructure::agents::claude::{add_prompt_args, build_base_cli_command, configure_spawn};
-
 use super::chat_service_context;
-use super::chat_service_helpers::get_agent_name;
 use super::chat_service_streaming::process_stream_background;
 use super::chat_service_types::{AgentQueueSentPayload, AgentRunStartedPayload};
 
@@ -138,8 +135,16 @@ pub async fn process_message_queue<R: Runtime + 'static>(
             }
 
             // Build and spawn resume command
-            let agent_name = get_agent_name(&context_type);
-            let mut cmd = match build_base_cli_command(cli_path, plugin_dir, Some(agent_name)) {
+            let mut cmd = match chat_service_context::build_resume_command(
+                cli_path,
+                plugin_dir,
+                context_type,
+                context_id,
+                &queued_msg.content,
+                working_directory,
+                session_id,
+                project_id,
+            ) {
                 Ok(cmd) => cmd,
                 Err(err) => {
                     tracing::warn!(
@@ -151,24 +156,6 @@ pub async fn process_message_queue<R: Runtime + 'static>(
                     return total_processed;
                 }
             };
-            // Use short name for env var — MCP server's TOOL_ALLOWLIST uses unprefixed names
-            cmd.env("RALPHX_AGENT_TYPE", crate::infrastructure::agents::claude::mcp_agent_type(agent_name));
-
-            // Add task scope for task-related contexts
-            match context_type {
-                ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge => {
-                    cmd.env("RALPHX_TASK_ID", context_id);
-                }
-                _ => {}
-            }
-
-            // Add project scope for all contexts
-            if let Some(pid) = project_id {
-                cmd.env("RALPHX_PROJECT_ID", pid);
-            }
-
-            add_prompt_args(&mut cmd, &queued_msg.content, None, Some(session_id));
-            configure_spawn(&mut cmd, working_directory);
 
             match cmd.spawn() {
                 Ok(child) => {

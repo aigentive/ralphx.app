@@ -8,6 +8,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ChatPanel } from "./ChatPanel";
+import { EventProvider } from "@/providers/EventProvider";
 import type { ChatContext } from "@/types/chat";
 
 // Mock scrollIntoView before tests run
@@ -52,7 +53,14 @@ let mockUiStoreState = {
     settings: true,
     task_detail: true,
   },
+  activeQuestions: {} as Record<string, unknown>,
+  answeredQuestions: {} as Record<string, string | undefined>,
   toggleChatVisible: mockToggleChatVisible,
+  setActiveQuestion: vi.fn(),
+  clearActiveQuestion: vi.fn(),
+  dismissQuestion: vi.fn(),
+  setAnsweredQuestion: vi.fn(),
+  clearAnsweredQuestion: vi.fn(),
 };
 
 let mockChatState = {
@@ -142,7 +150,9 @@ const createWrapper = () => {
     defaultOptions: { queries: { retry: false } },
   });
   return ({ children }: { children: React.ReactNode }) => (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+      <EventProvider>{children}</EventProvider>
+    </QueryClientProvider>
   );
 };
 
@@ -174,7 +184,14 @@ describe("ChatPanel", () => {
         settings: true,
         task_detail: true,
       },
+      activeQuestions: {},
+      answeredQuestions: {},
       toggleChatVisible: mockToggleChatVisible,
+      setActiveQuestion: vi.fn(),
+      clearActiveQuestion: vi.fn(),
+      dismissQuestion: vi.fn(),
+      setAnsweredQuestion: vi.fn(),
+      clearAnsweredQuestion: vi.fn(),
     };
 
     mockChatState = {
@@ -441,17 +458,18 @@ describe("ChatPanel", () => {
       render(<ChatPanel context={defaultContext} />, { wrapper: createWrapper() });
 
       const panel = screen.getByTestId("chat-panel");
-      expect(panel).toHaveStyle({ width: "400px" });
+      // ResizeablePanel adds 16px outer chrome (8px margins on each side)
+      expect(panel).toHaveStyle({ width: "416px" });
     });
 
-    it("has minimum width of 280px", () => {
+    it("has minimum width of 336px including panel chrome", () => {
       mockChatStoreState.width = 200; // Below minimum
 
       render(<ChatPanel context={defaultContext} />, { wrapper: createWrapper() });
 
       const panel = screen.getByTestId("chat-panel");
-      // Component should enforce minimum via style
-      expect(panel).toHaveStyle({ minWidth: "280px" });
+      // MIN_WIDTH (320) + 16px outer chrome
+      expect(panel).toHaveStyle({ minWidth: "336px" });
     });
 
     it("has resize handle", () => {
@@ -465,16 +483,15 @@ describe("ChatPanel", () => {
     it("applies design system background color", () => {
       render(<ChatPanel context={defaultContext} />, { wrapper: createWrapper() });
 
-      const panel = screen.getByTestId("chat-panel");
-      expect(panel).toHaveStyle({ backgroundColor: "var(--bg-surface)" });
+      const panelInner = screen.getByTestId("chat-panel").firstElementChild as HTMLElement;
+      expect(panelInner).toHaveStyle({ background: "hsla(220 10% 10% / 0.92)" });
     });
 
     it("has border-left style for subtle border", () => {
       render(<ChatPanel context={defaultContext} />, { wrapper: createWrapper() });
 
-      const panel = screen.getByTestId("chat-panel");
-      // Check that borderLeft contains the expected CSS variable
-      expect(panel.style.borderLeft).toBe("1px solid var(--border-subtle)");
+      const panelInner = screen.getByTestId("chat-panel").firstElementChild as HTMLElement;
+      expect(panelInner.style.border).toContain("1px solid");
     });
   });
 
@@ -504,7 +521,7 @@ describe("ChatPanel", () => {
         },
       ];
 
-      mockChatState.messages.data = updatedMessages;
+      mockChatState.messages.data = { messages: updatedMessages };
 
       rerender(<ChatPanel context={defaultContext} />);
 

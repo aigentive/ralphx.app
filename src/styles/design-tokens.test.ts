@@ -35,7 +35,7 @@ describe("design-tokens", () => {
       expect(cssContent).toContain("--accent-primary:");
       expect(cssContent).toContain("--accent-secondary:");
       // Verify warm orange, not purple
-      expect(cssContent).toMatch(/--accent-primary:\s*#ff6b35/);
+      expect(cssContent).toMatch(/--accent-primary:\s*hsl\(14 100% 60%\)/);
     });
 
     it("should define status colors", () => {
@@ -116,13 +116,13 @@ describe("design-tokens", () => {
     });
 
     it("should use dark grays, NOT pure black", () => {
-      // bg-base should be dark gray, not #000
-      expect(cssContent).toMatch(/--bg-base:\s*#0f0f0f/);
+      // bg-base should be dark gray, not pure black
+      expect(cssContent).toMatch(/--bg-base:\s*hsl\(220 10% 8%\)/);
     });
 
     it("should use off-white, NOT pure white", () => {
-      // text-primary should be off-white, not #fff
-      expect(cssContent).toMatch(/--text-primary:\s*#f0f0f0/);
+      // text-primary should be off-white, not pure white
+      expect(cssContent).toMatch(/--text-primary:\s*hsl\(220 10% 90%\)/);
     });
   });
 });

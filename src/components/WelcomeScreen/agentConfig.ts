@@ -28,6 +28,21 @@ import {
   GitBranch,
   type LucideIcon,
 } from "lucide-react";
+import {
+  AGENT_ORCHESTRATOR,
+  AGENT_WORKER,
+  AGENT_REVIEWER,
+  AGENT_QA_EXECUTOR,
+  AGENT_SUPERVISOR,
+  AGENT_DEEP_RESEARCHER,
+  AGENT_ORCHESTRATOR_IDEATION,
+  AGENT_QA_PREP,
+  AGENT_CHAT_TASK,
+  AGENT_CHAT_PROJECT,
+  AGENT_REVIEW_CHAT,
+  AGENT_SESSION_NAMER,
+  AGENT_DEPENDENCY_SUGGESTER,
+} from "@/constants/agents";
 
 export interface OrbitingAgent {
   id: string;
@@ -71,7 +86,7 @@ export const MAX_ORBITAL_RADIUS = 600;
 export const ORBITING_AGENTS: OrbitingAgent[] = [
   // Inner tier (4 agents) - Core workflow
   {
-    id: "orchestrator",
+    id: AGENT_ORCHESTRATOR,
     name: "Orchestrator",
     role: "Plans & coordinates",
     icon: Brain,
@@ -82,7 +97,7 @@ export const ORBITING_AGENTS: OrbitingAgent[] = [
     direction: 1,
   },
   {
-    id: "worker",
+    id: AGENT_WORKER,
     name: "Worker",
     role: "Writes code",
     icon: Code2,
@@ -93,7 +108,7 @@ export const ORBITING_AGENTS: OrbitingAgent[] = [
     direction: 1,
   },
   {
-    id: "reviewer",
+    id: AGENT_REVIEWER,
     name: "Reviewer",
     role: "Reviews changes",
     icon: Eye,
@@ -104,7 +119,7 @@ export const ORBITING_AGENTS: OrbitingAgent[] = [
     direction: 1,
   },
   {
-    id: "qa-executor",
+    id: AGENT_QA_EXECUTOR,
     name: "QA",
     role: "Tests the code",
     icon: ShieldCheck,
@@ -117,7 +132,7 @@ export const ORBITING_AGENTS: OrbitingAgent[] = [
 
   // Middle tier (4 agents) - Support
   {
-    id: "supervisor",
+    id: AGENT_SUPERVISOR,
     name: "Supervisor",
     role: "Monitors execution",
     icon: Activity,
@@ -128,7 +143,7 @@ export const ORBITING_AGENTS: OrbitingAgent[] = [
     direction: -1,
   },
   {
-    id: "deep-researcher",
+    id: AGENT_DEEP_RESEARCHER,
     name: "Researcher",
     role: "Deep analysis",
     icon: Search,
@@ -139,7 +154,7 @@ export const ORBITING_AGENTS: OrbitingAgent[] = [
     direction: -1,
   },
   {
-    id: "orchestrator-ideation",
+    id: AGENT_ORCHESTRATOR_IDEATION,
     name: "Ideation",
     role: "Brainstorms ideas",
     icon: Lightbulb,
@@ -150,7 +165,7 @@ export const ORBITING_AGENTS: OrbitingAgent[] = [
     direction: -1,
   },
   {
-    id: "qa-prep",
+    id: AGENT_QA_PREP,
     name: "QA Prep",
     role: "Plans tests",
     icon: ClipboardList,
@@ -163,7 +178,7 @@ export const ORBITING_AGENTS: OrbitingAgent[] = [
 
   // Outer tier (5 agents) - Utilities
   {
-    id: "chat-task",
+    id: AGENT_CHAT_TASK,
     name: "Task Chat",
     role: "Task assistant",
     icon: MessageSquare,
@@ -174,7 +189,7 @@ export const ORBITING_AGENTS: OrbitingAgent[] = [
     direction: 1,
   },
   {
-    id: "chat-project",
+    id: AGENT_CHAT_PROJECT,
     name: "Project Chat",
     role: "Project assistant",
     icon: FolderKanban,
@@ -185,7 +200,7 @@ export const ORBITING_AGENTS: OrbitingAgent[] = [
     direction: 1,
   },
   {
-    id: "review-chat",
+    id: AGENT_REVIEW_CHAT,
     name: "Review Chat",
     role: "Discusses reviews",
     icon: MessagesSquare,
@@ -196,7 +211,7 @@ export const ORBITING_AGENTS: OrbitingAgent[] = [
     direction: 1,
   },
   {
-    id: "session-namer",
+    id: AGENT_SESSION_NAMER,
     name: "Namer",
     role: "Names sessions",
     icon: Tag,
@@ -207,7 +222,7 @@ export const ORBITING_AGENTS: OrbitingAgent[] = [
     direction: 1,
   },
   {
-    id: "dependency-suggester",
+    id: AGENT_DEPENDENCY_SUGGESTER,
     name: "Dependencies",
     role: "Links tasks",
     icon: GitBranch,

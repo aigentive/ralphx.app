@@ -25,10 +25,10 @@ export function useAskUserQuestion(currentSessionId: string | undefined) {
   const [isLoading, setIsLoading] = useState(false);
 
   const activeQuestion = useUiStore((s) =>
-    currentSessionId ? s.activeQuestions[currentSessionId] ?? null : null
+    currentSessionId ? (s.activeQuestions[currentSessionId] ?? null) : null
   );
   const answeredQuestion = useUiStore((s) =>
-    currentSessionId ? s.answeredQuestions[currentSessionId] ?? undefined : undefined
+    currentSessionId ? (s.answeredQuestions[currentSessionId] ?? undefined) : undefined
   );
 
   const setActiveQuestion = useUiStore((s) => s.setActiveQuestion);

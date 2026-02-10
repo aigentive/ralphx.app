@@ -39,12 +39,11 @@ describe("TaskBoardSkeleton", () => {
     expect(pulsingElements.length).toBeGreaterThan(0);
   });
 
-  it("should use design system background colors via CSS variables", () => {
+  it("should use current skeleton color palette", () => {
     render(<TaskBoardSkeleton />);
     const skeleton = screen.getByTestId("task-board-skeleton");
-    // Check that it uses CSS variables for backgrounds
-    expect(skeleton.style.backgroundColor).toBe("var(--bg-base)");
+    expect(skeleton.style.background).toBe("rgb(18, 20, 22)");
     const column = screen.getByTestId("skeleton-column-0");
-    expect(column.style.backgroundColor).toBe("var(--bg-surface)");
+    expect(column.style.width).toBe("280px");
   });
 });

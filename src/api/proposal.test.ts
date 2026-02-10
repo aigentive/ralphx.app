@@ -34,6 +34,8 @@ const createMockProposalRaw = (overrides = {}) => ({
   user_modified: false,
   status: "pending",
   created_task_id: null,
+  plan_artifact_id: null,
+  plan_version_at_creation: null,
   sort_order: 0,
   created_at: "2026-01-24T12:00:00Z",
   updated_at: "2026-01-24T12:00:00Z",
@@ -228,8 +230,8 @@ describe("reorderProposals", () => {
     await reorderProposals("session-1", ["p1", "p2", "p3"]);
 
     expect(mockInvoke).toHaveBeenCalledWith("reorder_proposals", {
-      session_id: "session-1",
-      proposal_ids: ["p1", "p2", "p3"],
+      sessionId: "session-1",
+      proposalIds: ["p1", "p2", "p3"],
     });
   });
 
@@ -239,8 +241,8 @@ describe("reorderProposals", () => {
     await reorderProposals("session-1", []);
 
     expect(mockInvoke).toHaveBeenCalledWith("reorder_proposals", {
-      session_id: "session-1",
-      proposal_ids: [],
+      sessionId: "session-1",
+      proposalIds: [],
     });
   });
 });
@@ -297,7 +299,7 @@ describe("assessAllPriorities", () => {
     const result = await assessAllPriorities("session-1");
 
     expect(mockInvoke).toHaveBeenCalledWith("assess_all_priorities", {
-      session_id: "session-1",
+      sessionId: "session-1",
     });
     expect(result).toHaveLength(2);
     expect(result[0]?.proposalId).toBe("p1");
@@ -324,8 +326,8 @@ describe("addProposalDependency", () => {
     await addProposalDependency("proposal-1", "proposal-2");
 
     expect(mockInvoke).toHaveBeenCalledWith("add_proposal_dependency", {
-      proposal_id: "proposal-1",
-      depends_on_id: "proposal-2",
+      proposalId: "proposal-1",
+      dependsOnId: "proposal-2",
     });
   });
 
@@ -349,8 +351,8 @@ describe("removeProposalDependency", () => {
     await removeProposalDependency("proposal-1", "proposal-2");
 
     expect(mockInvoke).toHaveBeenCalledWith("remove_proposal_dependency", {
-      proposal_id: "proposal-1",
-      depends_on_id: "proposal-2",
+      proposalId: "proposal-1",
+      dependsOnId: "proposal-2",
     });
   });
 });
@@ -363,7 +365,7 @@ describe("analyzeDependencies", () => {
   it("should call analyze_dependencies with sessionId", async () => {
     const graph = {
       nodes: [{ proposal_id: "p1", title: "P1", in_degree: 0, out_degree: 1 }],
-      edges: [{ from: "p1", to: "p2" }],
+      edges: [{ from: "p1", to: "p2", reason: null }],
       critical_path: ["p1", "p2"],
       has_cycles: false,
       cycles: null,
@@ -373,7 +375,7 @@ describe("analyzeDependencies", () => {
     const result = await analyzeDependencies("session-1");
 
     expect(mockInvoke).toHaveBeenCalledWith("analyze_dependencies", {
-      session_id: "session-1",
+      sessionId: "session-1",
     });
     expect(result.hasCycles).toBe(false);
     expect(result.criticalPath).toEqual(["p1", "p2"]);
@@ -534,7 +536,7 @@ describe("proposalApi namespace", () => {
     expect(proposalApi.applyProposalsToKanban).toBe(applyProposalsToKanban);
   });
 
-  it("should have 11 functions", () => {
-    expect(Object.keys(proposalApi)).toHaveLength(11);
+  it("should have 10 functions", () => {
+    expect(Object.keys(proposalApi)).toHaveLength(10);
   });
 });

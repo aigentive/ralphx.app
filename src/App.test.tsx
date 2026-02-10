@@ -7,12 +7,31 @@ import { useChatStore } from "@/stores/chatStore";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
 
+Object.defineProperty(window, "matchMedia", {
+  writable: true,
+  value: vi.fn().mockImplementation((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })),
+});
+
 // Mock the useEvents hooks to prevent Tauri API calls
 vi.mock("@/hooks/useEvents", () => ({
   useTaskEvents: vi.fn(),
+  useProposalEvents: vi.fn(),
+  useStepEvents: vi.fn(),
   useSupervisorAlerts: vi.fn(),
   useReviewEvents: vi.fn(),
   useFileChangeEvents: vi.fn(),
+  useAgentEvents: vi.fn(),
+  useExecutionErrorEvents: vi.fn(),
+  useRecoveryPromptEvents: vi.fn(),
 }));
 
 // Mock TaskBoard to avoid Tauri API calls during tests
@@ -21,9 +40,13 @@ vi.mock("@/components/tasks/TaskBoard", () => ({
 }));
 
 // Mock IdeationView to avoid complex ideation state issues
-vi.mock("@/components/Ideation", () => ({
-  IdeationView: () => <div data-testid="ideation-view-mock">Ideation View</div>,
-}));
+vi.mock("@/components/Ideation", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/Ideation")>();
+  return {
+    ...actual,
+    IdeationView: () => <div data-testid="ideation-view-mock">Ideation View</div>,
+  };
+});
 
 // Mock ExtensibilityView
 vi.mock("@/components/ExtensibilityView", () => ({
@@ -66,11 +89,19 @@ vi.mock("@/hooks/useIdeation", () => ({
     data: null,
     isLoading: false,
   }),
+  useIdeationSessions: vi.fn().mockReturnValue({
+    data: [],
+    isLoading: false,
+  }),
   useCreateIdeationSession: vi.fn().mockReturnValue({
     mutateAsync: vi.fn(),
     isPending: false,
   }),
   useArchiveIdeationSession: vi.fn().mockReturnValue({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  useDeleteIdeationSession: vi.fn().mockReturnValue({
     mutateAsync: vi.fn(),
     isPending: false,
   }),
@@ -159,7 +190,7 @@ describe("App", () => {
 
   it("should display RalphX title", () => {
     render(<App />);
-    expect(screen.getByText(/RalphX/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Ralph/i })).toBeInTheDocument();
   });
 
   it("should display project selector", () => {
@@ -310,45 +341,53 @@ describe("App", () => {
   });
 
   describe("Keyboard Shortcuts", () => {
-    it("should switch to Kanban with Cmd+1", () => {
+    it("should switch to Ideation with Cmd+1", () => {
       render(<App />);
-      // First switch away from Kanban
+      // First switch away from ideation
       useUiStore.setState({ currentView: "activity" });
       render(<App />);
 
       fireEvent.keyDown(window, { key: "1", metaKey: true });
 
-      expect(useUiStore.getState().currentView).toBe("kanban");
+      expect(useUiStore.getState().currentView).toBe("ideation");
     });
 
-    it("should switch to Ideation with Cmd+2", () => {
+    it("should switch to Graph with Cmd+2", () => {
       render(<App />);
 
       fireEvent.keyDown(window, { key: "2", metaKey: true });
 
-      expect(useUiStore.getState().currentView).toBe("ideation");
+      expect(useUiStore.getState().currentView).toBe("graph");
     });
 
-    it("should switch to Extensibility with Cmd+3", () => {
+    it("should switch to Kanban with Cmd+3", () => {
       render(<App />);
 
       fireEvent.keyDown(window, { key: "3", metaKey: true });
 
-      expect(useUiStore.getState().currentView).toBe("extensibility");
+      expect(useUiStore.getState().currentView).toBe("kanban");
     });
 
-    it("should switch to Activity with Cmd+4", () => {
+    it("should switch to Extensibility with Cmd+4", () => {
       render(<App />);
 
       fireEvent.keyDown(window, { key: "4", metaKey: true });
 
-      expect(useUiStore.getState().currentView).toBe("activity");
+      expect(useUiStore.getState().currentView).toBe("extensibility");
     });
 
-    it("should switch to Settings with Cmd+5", () => {
+    it("should switch to Activity with Cmd+5", () => {
       render(<App />);
 
       fireEvent.keyDown(window, { key: "5", metaKey: true });
+
+      expect(useUiStore.getState().currentView).toBe("activity");
+    });
+
+    it("should switch to Settings with Cmd+6", () => {
+      render(<App />);
+
+      fireEvent.keyDown(window, { key: "6", metaKey: true });
 
       expect(useUiStore.getState().currentView).toBe("settings");
     });
@@ -358,7 +397,7 @@ describe("App", () => {
 
       fireEvent.keyDown(window, { key: "4", ctrlKey: true });
 
-      expect(useUiStore.getState().currentView).toBe("activity");
+      expect(useUiStore.getState().currentView).toBe("extensibility");
     });
 
     it("should not switch views when pressing number without modifier", () => {

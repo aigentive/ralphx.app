@@ -10,6 +10,7 @@ import { useEventBus } from "@/providers/EventProvider";
 import { PlanArtifactEventSchema } from "@/types/events";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { ideationKeys } from "./useIdeation";
+import { AGENT_ORCHESTRATOR } from "@/constants/agents";
 import type { Artifact } from "@/types/artifact";
 import type { IdeationSession } from "@/types/ideation";
 import type { Unsubscribe } from "@/lib/event-bus";
@@ -91,7 +92,7 @@ export function usePlanArtifactEvents() {
               content: { type: "inline", text: artifact.content },
               metadata: {
                 createdAt: new Date().toISOString(),
-                createdBy: "orchestrator",
+                createdBy: AGENT_ORCHESTRATOR,
                 version: artifact.version,
               },
               derivedFrom: [],
@@ -162,7 +163,7 @@ export function usePlanArtifactEvents() {
               content: { type: "inline", text: artifact.content },
               metadata: {
                 createdAt: new Date().toISOString(),
-                createdBy: "orchestrator",
+                createdBy: AGENT_ORCHESTRATOR,
                 version: artifact.version,
               },
               derivedFrom: [],

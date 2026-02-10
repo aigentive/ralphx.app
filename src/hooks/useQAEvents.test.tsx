@@ -8,23 +8,25 @@ import { useQAEvents } from "./useQAEvents";
 import { useQAStore } from "@/stores/qaStore";
 import type { QAPrepEvent, QATestEvent } from "@/types/events";
 
-// Mock Tauri event listener
-const mockListeners = new Map<string, (event: { payload: unknown }) => void>();
+// Mock EventBus listeners used by useQAEvents
+const mockListeners = new Map<string, (payload: unknown) => void>();
 
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn((eventName: string, callback: (event: { payload: unknown }) => void) => {
-    mockListeners.set(eventName, callback);
-    return Promise.resolve(() => {
-      mockListeners.delete(eventName);
-    });
-  }),
+vi.mock("@/providers/EventProvider", () => ({
+  useEventBus: vi.fn(() => ({
+    subscribe: vi.fn((eventName: string, callback: (payload: unknown) => void) => {
+      mockListeners.set(eventName, callback);
+      return () => {
+        mockListeners.delete(eventName);
+      };
+    }),
+  })),
 }));
 
 // Helper to emit events
 function emitEvent(eventName: string, payload: unknown) {
   const listener = mockListeners.get(eventName);
   if (listener) {
-    listener({ payload });
+    listener(payload);
   }
 }
 

@@ -11,6 +11,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 import { DndContext } from "@dnd-kit/core";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import userEvent from "@testing-library/user-event";
 import { createMockTask } from "@/test/mock-data";
 import { TaskCard } from "@/components/tasks/TaskBoard/TaskCard";
 import { TaskDetailQAPanel } from "@/components/qa/TaskDetailQAPanel";
@@ -33,7 +35,17 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 // Wrapper component for dnd-kit context
 function DndWrapper({ children }: { children: React.ReactNode }) {
-  return <DndContext>{children}</DndContext>;
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+    },
+  });
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <DndContext>{children}</DndContext>
+    </QueryClientProvider>
+  );
 }
 
 describe("End-to-end QA UI Flow", () => {
@@ -289,12 +301,14 @@ describe("End-to-end QA UI Flow", () => {
     });
 
     it("should display test result summary when results exist", async () => {
+      const user = userEvent.setup();
       render(<TaskDetailQAPanel taskQA={mockTaskQA} results={mockResults} />);
 
       // Click on test results tab
       const testResultsTab = screen.getByRole("tab", { name: /results/i });
+      await user.click(testResultsTab);
       await act(async () => {
-        testResultsTab.click();
+        // Wait for Radix state update
       });
 
       // Verify the summary is shown (passed_steps/total_steps format)
@@ -324,6 +338,7 @@ describe("End-to-end QA UI Flow", () => {
     });
 
     it("should show empty state for no test results", async () => {
+      const user = userEvent.setup();
       const qaWithCriteria: TaskQAResponse = {
         id: "qa-no-tests",
         task_id: "task-no-tests",
@@ -343,9 +358,7 @@ describe("End-to-end QA UI Flow", () => {
 
       // Switch to test results tab
       const testResultsTab = screen.getByRole("tab", { name: /results/i });
-      await act(async () => {
-        testResultsTab.click();
-      });
+      await user.click(testResultsTab);
 
       expect(screen.getByText(/No test results available yet/i)).toBeInTheDocument();
     });

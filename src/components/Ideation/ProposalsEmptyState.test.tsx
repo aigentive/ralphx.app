@@ -29,7 +29,7 @@ describe("ProposalsEmptyState", () => {
     expect(
       screen.getByText(/Drag a markdown file here/i)
     ).toBeInTheDocument();
-    expect(screen.getByText(/to import a plan/i)).toBeInTheDocument();
+    expect(screen.getByText(/click to browse/i)).toBeInTheDocument();
   });
 
   it("renders the FileDown icon in drop hint", () => {

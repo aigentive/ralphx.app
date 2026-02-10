@@ -7,6 +7,7 @@ import {
   TaskListSchema,
   TASK_CATEGORIES,
 } from "./task";
+import { INTERNAL_STATUS_VALUES } from "./status";
 
 describe("TaskSchema", () => {
   // This matches the backend TaskResponse (snake_case, no source_proposal_id/plan_artifact_id)
@@ -24,6 +25,7 @@ describe("TaskSchema", () => {
     started_at: null,
     completed_at: null,
     archived_at: null,
+    blocked_reason: null,
   };
 
   it("should parse a valid task", () => {
@@ -48,25 +50,9 @@ describe("TaskSchema", () => {
   });
 
   it("should parse all valid internal statuses", () => {
-    const statuses = [
-      "backlog",
-      "ready",
-      "blocked",
-      "executing",
-      "qa_refining",
-      "qa_testing",
-      "qa_passed",
-      "qa_failed",
-      "pending_review",
-      "revision_needed",
-      "approved",
-      "failed",
-      "cancelled",
-    ];
-
-    for (const status of statuses) {
+    for (const status of INTERNAL_STATUS_VALUES) {
       expect(() =>
-        TaskSchema.parse({ ...validTask, internalStatus: status })
+        TaskSchema.parse({ ...validTask, internal_status: status })
       ).not.toThrow();
     }
   });
@@ -81,7 +67,7 @@ describe("TaskSchema", () => {
 
   it("should reject task with invalid status", () => {
     expect(() =>
-      TaskSchema.parse({ ...validTask, internalStatus: "invalid" })
+      TaskSchema.parse({ ...validTask, internal_status: "invalid" })
     ).toThrow();
   });
 
@@ -278,29 +264,35 @@ describe("TaskListSchema", () => {
     const tasks = [
       {
         id: "task-1",
-        projectId: "project-1",
+        project_id: "project-1",
         category: "feature",
         title: "Task 1",
         description: null,
         priority: 0,
-        internalStatus: "backlog" as const,
-        createdAt: "2026-01-24T12:00:00Z",
-        updatedAt: "2026-01-24T12:00:00Z",
-        startedAt: null,
-        completedAt: null,
+        internal_status: "backlog" as const,
+        needs_review_point: false,
+        created_at: "2026-01-24T12:00:00+00:00",
+        updated_at: "2026-01-24T12:00:00+00:00",
+        started_at: null,
+        completed_at: null,
+        archived_at: null,
+        blocked_reason: null,
       },
       {
         id: "task-2",
-        projectId: "project-1",
+        project_id: "project-1",
         category: "bug",
         title: "Task 2",
         description: "A bug fix",
         priority: 5,
-        internalStatus: "executing" as const,
-        createdAt: "2026-01-24T12:00:00Z",
-        updatedAt: "2026-01-24T12:00:00Z",
-        startedAt: "2026-01-24T13:00:00Z",
-        completedAt: null,
+        internal_status: "executing" as const,
+        needs_review_point: false,
+        created_at: "2026-01-24T12:00:00+00:00",
+        updated_at: "2026-01-24T12:00:00+00:00",
+        started_at: "2026-01-24T13:00:00+00:00",
+        completed_at: null,
+        archived_at: null,
+        blocked_reason: null,
       },
     ];
     expect(() => TaskListSchema.parse(tasks)).not.toThrow();

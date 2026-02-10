@@ -26,13 +26,19 @@ describe("ProjectSchema", () => {
   const validProject = {
     id: "550e8400-e29b-41d4-a716-446655440000",
     name: "Test Project",
-    workingDirectory: "/path/to/project",
-    gitMode: "local" as const,
-    worktreePath: null,
-    worktreeBranch: null,
-    baseBranch: null,
-    createdAt: "2026-01-24T12:00:00Z",
-    updatedAt: "2026-01-24T12:00:00Z",
+    working_directory: "/path/to/project",
+    git_mode: "local" as const,
+    worktree_path: null,
+    worktree_branch: null,
+    base_branch: null,
+    worktree_parent_directory: null,
+    use_feature_branches: true,
+    merge_validation_mode: "block" as const,
+    detected_analysis: null,
+    custom_analysis: null,
+    analyzed_at: null,
+    created_at: "2026-01-24T12:00:00Z",
+    updated_at: "2026-01-24T12:00:00Z",
   };
 
   it("should parse a valid project", () => {
@@ -42,10 +48,10 @@ describe("ProjectSchema", () => {
   it("should parse a project with worktree fields", () => {
     const worktreeProject = {
       ...validProject,
-      gitMode: "worktree" as const,
-      worktreePath: "/path/to/worktree",
-      worktreeBranch: "feature-branch",
-      baseBranch: "main",
+      git_mode: "worktree" as const,
+      worktree_path: "/path/to/worktree",
+      worktree_branch: "feature-branch",
+      base_branch: "main",
     };
     expect(() => ProjectSchema.parse(worktreeProject)).not.toThrow();
   });
@@ -64,19 +70,19 @@ describe("ProjectSchema", () => {
 
   it("should reject project with empty workingDirectory", () => {
     expect(() =>
-      ProjectSchema.parse({ ...validProject, workingDirectory: "" })
+      ProjectSchema.parse({ ...validProject, working_directory: "" })
     ).toThrow();
   });
 
   it("should reject project with invalid gitMode", () => {
     expect(() =>
-      ProjectSchema.parse({ ...validProject, gitMode: "invalid" })
+      ProjectSchema.parse({ ...validProject, git_mode: "invalid" })
     ).toThrow();
   });
 
   it("should reject project with invalid datetime format", () => {
     expect(() =>
-      ProjectSchema.parse({ ...validProject, createdAt: "not-a-date" })
+      ProjectSchema.parse({ ...validProject, created_at: "not-a-date" })
     ).toThrow();
   });
 

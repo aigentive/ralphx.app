@@ -39,6 +39,11 @@ vi.mock("./useIdeation", () => ({
   },
 }));
 
+// Mock agent event subscription hook (requires EventProvider in real app)
+vi.mock("./useAgentEvents", () => ({
+  useAgentEvents: vi.fn(),
+}));
+
 // Mock the chat API
 vi.mock("@/api/chat", () => ({
   chatApi: {
@@ -146,6 +151,7 @@ const mockStoreState = {
   activeConversationId: null as string | null,
   setActiveConversation: vi.fn(),
   setAgentRunning: vi.fn(),
+  setSending: vi.fn(),
   queuedMessages: [],
   processQueue: vi.fn(),
 };

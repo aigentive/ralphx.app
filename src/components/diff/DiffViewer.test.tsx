@@ -280,7 +280,7 @@ describe("DiffViewer", () => {
       });
     });
 
-    it("renders DiffView component with correct data", async () => {
+    it("renders inline diff content with fetched data", async () => {
       const diffData = createDiffData({ filePath: "src/app.ts" });
       const onFetchDiff = vi.fn().mockResolvedValue(diffData);
       const changes = [createFileChange({ path: "src/app.ts" })];
@@ -288,7 +288,9 @@ describe("DiffViewer", () => {
       render(<DiffViewer {...defaultProps} changes={changes} onFetchDiff={onFetchDiff} />);
 
       await waitFor(() => {
-        expect(screen.getByTestId("mock-diff-view")).toBeInTheDocument();
+        expect(screen.getByTestId("diff-content")).toBeInTheDocument();
+        expect(screen.getByText("const old = 'value';")).toBeInTheDocument();
+        expect(screen.getByText("const new = 'value';")).toBeInTheDocument();
       });
     });
 

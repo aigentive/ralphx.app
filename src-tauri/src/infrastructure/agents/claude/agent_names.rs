@@ -9,6 +9,28 @@
 /// Plugin prefix for all RalphX agents
 pub const PLUGIN_PREFIX: &str = "ralphx:";
 
+// ── Short names (without "ralphx:" prefix) ───────────────────────────────
+// Used by AGENT_CONFIGS in agent_config.rs and MCP TOOL_ALLOWLIST in tools.ts.
+// These match the `name:` field in each agent's frontmatter (ralphx-plugin/agents/*.md).
+
+pub const SHORT_ORCHESTRATOR_IDEATION: &str = "orchestrator-ideation";
+pub const SHORT_ORCHESTRATOR_IDEATION_READONLY: &str = "orchestrator-ideation-readonly";
+pub const SHORT_SESSION_NAMER: &str = "session-namer";
+pub const SHORT_DEPENDENCY_SUGGESTER: &str = "dependency-suggester";
+pub const SHORT_CHAT_TASK: &str = "chat-task";
+pub const SHORT_CHAT_PROJECT: &str = "chat-project";
+pub const SHORT_REVIEW_CHAT: &str = "ralphx-review-chat";
+pub const SHORT_REVIEW_HISTORY: &str = "ralphx-review-history";
+pub const SHORT_WORKER: &str = "ralphx-worker";
+pub const SHORT_REVIEWER: &str = "ralphx-reviewer";
+pub const SHORT_QA_PREP: &str = "ralphx-qa-prep";
+pub const SHORT_QA_EXECUTOR: &str = "ralphx-qa-executor";
+pub const SHORT_ORCHESTRATOR: &str = "ralphx-orchestrator";
+pub const SHORT_SUPERVISOR: &str = "ralphx-supervisor";
+pub const SHORT_DEEP_RESEARCHER: &str = "ralphx-deep-researcher";
+pub const SHORT_PROJECT_ANALYZER: &str = "project-analyzer";
+pub const SHORT_MERGER: &str = "ralphx-merger";
+
 // ── ChatService agents (resolve_agent → build_command → --agent flag) ─────
 
 /// Ideation orchestrator (default for ChatContextType::Ideation)

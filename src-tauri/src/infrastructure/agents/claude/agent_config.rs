@@ -17,6 +17,17 @@
 // 2. Create agent definition in ralphx-plugin/agents/<name>.md
 // 3. Add MCP tools to TOOL_ALLOWLIST in ralphx-mcp-server/src/tools.ts
 
+use super::agent_names::{
+    SHORT_ORCHESTRATOR_IDEATION, SHORT_ORCHESTRATOR_IDEATION_READONLY,
+    SHORT_SESSION_NAMER, SHORT_DEPENDENCY_SUGGESTER,
+    SHORT_CHAT_TASK, SHORT_CHAT_PROJECT,
+    SHORT_REVIEW_CHAT, SHORT_REVIEW_HISTORY,
+    SHORT_WORKER, SHORT_REVIEWER,
+    SHORT_QA_PREP, SHORT_QA_EXECUTOR,
+    SHORT_ORCHESTRATOR, SHORT_SUPERVISOR, SHORT_DEEP_RESEARCHER,
+    SHORT_PROJECT_ANALYZER, SHORT_MERGER,
+};
+
 /// Base CLI tools shared by all non-MCP-only agents.
 /// Agents that need more (Write, Edit, Task, etc.) declare them in `extra_cli_tools`.
 pub const BASE_CLI_TOOLS: &[&str] = &["Read", "Grep", "Glob", "Bash", "WebFetch", "WebSearch", "Skill"];
@@ -56,7 +67,7 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     // IDEATION AGENTS
     // =========================================================================
     AgentConfig {
-        name: "orchestrator-ideation",
+        name: SHORT_ORCHESTRATOR_IDEATION,
         mcp_only: false,
         extra_cli_tools: &["Task"],
         allowed_mcp_tools: &[
@@ -77,7 +88,7 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     },
     // Read-only variant for accepted plans - no mutation tools
     AgentConfig {
-        name: "orchestrator-ideation-readonly",
+        name: SHORT_ORCHESTRATOR_IDEATION_READONLY,
         mcp_only: false,
         extra_cli_tools: &["Task"],
         allowed_mcp_tools: &[
@@ -89,14 +100,14 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
         preapproved_cli_tools: &["Task(Explore)", "Task(Plan)"],
     },
     AgentConfig {
-        name: "session-namer",
+        name: SHORT_SESSION_NAMER,
         mcp_only: true,
         extra_cli_tools: &[],
         allowed_mcp_tools: &["update_session_title"],
         preapproved_cli_tools: &[],
     },
     AgentConfig {
-        name: "dependency-suggester",
+        name: SHORT_DEPENDENCY_SUGGESTER,
         mcp_only: true,
         extra_cli_tools: &[],
         allowed_mcp_tools: &["apply_proposal_dependencies"],
@@ -106,21 +117,21 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     // CHAT AGENTS
     // =========================================================================
     AgentConfig {
-        name: "chat-task",
+        name: SHORT_CHAT_TASK,
         mcp_only: false,
         extra_cli_tools: &["Task"],
         allowed_mcp_tools: &["update_task", "add_task_note", "get_task_details"],
         preapproved_cli_tools: &["Task(Explore)", "Task(Plan)"],
     },
     AgentConfig {
-        name: "chat-project",
+        name: SHORT_CHAT_PROJECT,
         mcp_only: false,
         extra_cli_tools: &["Task"],
         allowed_mcp_tools: &["suggest_task", "list_tasks"],
         preapproved_cli_tools: &["Task(Explore)", "Task(Plan)"],
     },
     AgentConfig {
-        name: "ralphx-review-chat",
+        name: SHORT_REVIEW_CHAT,
         mcp_only: false,
         extra_cli_tools: &["Task"],
         allowed_mcp_tools: &[
@@ -138,7 +149,7 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     },
     // Read-only agent for discussing historical review findings (approved tasks)
     AgentConfig {
-        name: "ralphx-review-history",
+        name: SHORT_REVIEW_HISTORY,
         mcp_only: false,
         extra_cli_tools: &["Task"],
         allowed_mcp_tools: &[
@@ -159,7 +170,7 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     // EXECUTION AGENTS
     // =========================================================================
     AgentConfig {
-        name: "ralphx-worker",
+        name: SHORT_WORKER,
         mcp_only: false,
         extra_cli_tools: &["Write", "Edit", "Task"],
         allowed_mcp_tools: &[
@@ -184,7 +195,7 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
         preapproved_cli_tools: &["Write", "Edit", "Bash"],
     },
     AgentConfig {
-        name: "ralphx-reviewer",
+        name: SHORT_REVIEWER,
         mcp_only: false,
         extra_cli_tools: &["Task"],
         allowed_mcp_tools: &[
@@ -207,14 +218,14 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     // QA AGENTS
     // =========================================================================
     AgentConfig {
-        name: "ralphx-qa-prep",
+        name: SHORT_QA_PREP,
         mcp_only: false,
         extra_cli_tools: &["Task"],
         allowed_mcp_tools: &[],
         preapproved_cli_tools: &["Task(Explore)", "Task(Plan)"],
     },
     AgentConfig {
-        name: "ralphx-qa-executor",
+        name: SHORT_QA_EXECUTOR,
         mcp_only: false,
         extra_cli_tools: &["Write", "Edit", "Task"],
         allowed_mcp_tools: &[],
@@ -224,21 +235,21 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     // COORDINATION AGENTS
     // =========================================================================
     AgentConfig {
-        name: "ralphx-orchestrator",
+        name: SHORT_ORCHESTRATOR,
         mcp_only: false,
         extra_cli_tools: &["Write", "Edit", "Task"],
         allowed_mcp_tools: &[],
         preapproved_cli_tools: &["Write", "Edit", "Bash", "Task"],
     },
     AgentConfig {
-        name: "ralphx-supervisor",
+        name: SHORT_SUPERVISOR,
         mcp_only: false,
         extra_cli_tools: &["Task"],
         allowed_mcp_tools: &[],
         preapproved_cli_tools: &["Bash", "Task(Explore)", "Task(Plan)"],
     },
     AgentConfig {
-        name: "ralphx-deep-researcher",
+        name: SHORT_DEEP_RESEARCHER,
         mcp_only: false,
         extra_cli_tools: &["Write", "Task"],
         allowed_mcp_tools: &[],
@@ -248,7 +259,7 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     // ANALYSIS AGENTS
     // =========================================================================
     AgentConfig {
-        name: "project-analyzer",
+        name: SHORT_PROJECT_ANALYZER,
         mcp_only: false,
         extra_cli_tools: &[],
         allowed_mcp_tools: &[
@@ -261,7 +272,7 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
     // MERGE AGENTS
     // =========================================================================
     AgentConfig {
-        name: "ralphx-merger",
+        name: SHORT_MERGER,
         mcp_only: false,
         extra_cli_tools: &["Edit", "Task"],
         allowed_mcp_tools: &[

@@ -176,13 +176,13 @@ describe("TieredProposalList", () => {
 
       // All in tier 0 (no dependencies)
       render(<TieredProposalList {...defaultProps} proposals={proposals} />);
-      expect(screen.getByText("3 proposals")).toBeInTheDocument();
+      expect(screen.getByText("3")).toBeInTheDocument();
     });
 
     it("shows singular 'proposal' for single proposal in tier", () => {
       const proposals = [createProposal({ id: "p1" })];
       render(<TieredProposalList {...defaultProps} proposals={proposals} />);
-      expect(screen.getByText("1 proposal")).toBeInTheDocument();
+      expect(screen.getByText("1")).toBeInTheDocument();
     });
   });
 
@@ -217,15 +217,15 @@ describe("TieredProposalList", () => {
         createProposal({ id: "p3", title: "Core 1", sortOrder: 0 }),
       ];
 
-      // Edge semantics: edge.to depends on edge.from
-      // { from: "p2", to: "p3" } means p3 depends on p2
+      // Edge semantics: edge.from depends on edge.to
+      // { from: "p3", to: "p2" } means p3 depends on p2
       const graph = createDependencyGraph(
         [
           { proposalId: "p1", title: "Foundation 2", inDegree: 0, outDegree: 0 },
           { proposalId: "p2", title: "Foundation 1", inDegree: 0, outDegree: 1 },
           { proposalId: "p3", title: "Core 1", inDegree: 1, outDegree: 0 },
         ],
-        [{ from: "p2", to: "p3" }] // p3 depends on p2
+        [{ from: "p3", to: "p2" }] // p3 depends on p2
       );
 
       render(
@@ -311,9 +311,9 @@ describe("TieredProposalList", () => {
         />
       );
 
-      // Card should have critical path styling (bottom border)
+      // Card should have critical path styling via inline borderBottom
       const card = screen.getByTestId("proposal-card-p1");
-      expect(card.className).toContain("border-b-");
+      expect(card).toHaveStyle({ borderBottom: "2px solid hsla(14 100% 60% / 0.4)" });
     });
   });
 
@@ -334,9 +334,9 @@ describe("TieredProposalList", () => {
         />
       );
 
-      // Card should have highlight styling
+      // Card should have highlight styling via inline border color
       const card = screen.getByTestId("proposal-card-p1");
-      expect(card.className).toContain("border-yellow");
+      expect(card.getAttribute("style")).toContain("246, 187, 9");
     });
   });
 
@@ -530,7 +530,7 @@ describe("TieredProposalList", () => {
 
       const connector = screen.getByTestId("tier-connector");
       const svgLine = connector.querySelector("line");
-      expect(svgLine).toHaveAttribute("stroke-dasharray", "3 2");
+      expect(svgLine).toHaveAttribute("stroke-dasharray", "3 4");
     });
   });
 

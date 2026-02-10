@@ -12,8 +12,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TaskBoardWithHeader } from "./TaskBoardWithHeader";
 import { api } from "@/lib/tauri";
-import * as workflowsApi from "@/lib/api/workflows";
-import type { WorkflowResponse, WorkflowColumnResponse } from "@/lib/api/workflows";
+import { getActiveWorkflowColumns, type WorkflowColumnResponse } from "@/lib/api/workflows";
 import type { TaskListResponse } from "@/types/task";
 import type { InfiniteData } from "@tanstack/react-query";
 
@@ -38,10 +37,15 @@ vi.mock("@/lib/tauri", () => ({
 }));
 
 vi.mock("@/lib/api/workflows", () => ({
-  getWorkflows: vi.fn(),
-  getWorkflow: vi.fn(),
   getActiveWorkflowColumns: vi.fn(),
 }));
+vi.mock("@/hooks/useWorkflows", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/hooks/useWorkflows")>();
+  return {
+    ...actual,
+    useWorkflows: vi.fn(),
+  };
+});
 
 // Mock useInfiniteTasksQuery
 vi.mock("@/hooks/useInfiniteTasksQuery", async (importOriginal) => {
@@ -57,10 +61,16 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(() => Promise.resolve(() => {})),
   emit: vi.fn(),
 }));
+vi.mock("@/providers/EventProvider", () => ({
+  useEventBus: () => ({
+    subscribe: vi.fn(() => vi.fn()),
+  }),
+}));
 
 import { useInfiniteTasksQuery } from "@/hooks/useInfiniteTasksQuery";
+import { useWorkflows } from "@/hooks/useWorkflows";
 
-const mockWorkflows: WorkflowResponse[] = [
+const mockWorkflows = [
   {
     id: "default-workflow",
     name: "Default Workflow",
@@ -111,9 +121,14 @@ function createWrapper() {
 describe("TaskBoardWithHeader", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Mock workflows API
-    vi.mocked(workflowsApi.getWorkflows).mockResolvedValue(mockWorkflows);
-    vi.mocked(workflowsApi.getActiveWorkflowColumns).mockResolvedValue(defaultColumns);
+    vi.mocked(useWorkflows).mockImplementation(
+      () =>
+        ({
+          data: mockWorkflows,
+          isLoading: false,
+        }) as ReturnType<typeof useWorkflows>
+    );
+    vi.mocked(getActiveWorkflowColumns).mockResolvedValue(defaultColumns);
     // Mock tasks API
     vi.mocked(api.tasks.getArchivedCount).mockResolvedValue(0);
     vi.mocked(api.tasks.search).mockResolvedValue([]);
@@ -226,7 +241,13 @@ describe("TaskBoardWithHeader", () => {
 
   describe("loading states", () => {
     it("shows loading state while workflows loading", async () => {
-      vi.mocked(workflowsApi.getWorkflows).mockImplementation(() => new Promise(() => {}));
+      vi.mocked(useWorkflows).mockImplementation(
+        () =>
+          ({
+            data: undefined,
+            isLoading: true,
+          }) as ReturnType<typeof useWorkflows>
+      );
 
       render(<TaskBoardWithHeader projectId="p1" />, { wrapper: createWrapper() });
 

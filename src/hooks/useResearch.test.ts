@@ -19,21 +19,25 @@ import {
   useStopResearch,
   researchKeys,
 } from "./useResearch";
-import * as researchApi from "@/lib/api/research";
+import { api } from "@/lib/tauri";
 import type {
   ResearchProcessResponse,
   ResearchPresetResponse,
-} from "@/lib/api/research";
+} from "@/api/research";
 
-// Mock the research API
-vi.mock("@/lib/api/research", () => ({
-  getResearchProcesses: vi.fn(),
-  getResearchProcess: vi.fn(),
-  getResearchPresets: vi.fn(),
-  startResearch: vi.fn(),
-  pauseResearch: vi.fn(),
-  resumeResearch: vi.fn(),
-  stopResearch: vi.fn(),
+// Mock the tauri API wrapper used by research hooks
+vi.mock("@/lib/tauri", () => ({
+  api: {
+    research: {
+      getProcesses: vi.fn(),
+      getProcess: vi.fn(),
+      getPresets: vi.fn(),
+      start: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
+      stop: vi.fn(),
+    },
+  },
 }));
 
 // Create mock data
@@ -167,7 +171,7 @@ describe("useResearchProcesses", () => {
 
   it("should fetch all research processes successfully", async () => {
     const mockProcesses = [mockProcess, mockProcess2];
-    vi.mocked(researchApi.getResearchProcesses).mockResolvedValueOnce(mockProcesses);
+    vi.mocked(api.research.getProcesses).mockResolvedValueOnce(mockProcesses);
 
     const { result } = renderHook(() => useResearchProcesses(), {
       wrapper: createWrapper(),
@@ -178,11 +182,11 @@ describe("useResearchProcesses", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data).toEqual(mockProcesses);
-    expect(researchApi.getResearchProcesses).toHaveBeenCalledWith(undefined);
+    expect(api.research.getProcesses).toHaveBeenCalledWith(undefined);
   });
 
   it("should fetch processes filtered by status", async () => {
-    vi.mocked(researchApi.getResearchProcesses).mockResolvedValueOnce([mockProcess]);
+    vi.mocked(api.research.getProcesses).mockResolvedValueOnce([mockProcess]);
 
     const { result } = renderHook(() => useResearchProcesses("running"), {
       wrapper: createWrapper(),
@@ -191,12 +195,12 @@ describe("useResearchProcesses", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data).toEqual([mockProcess]);
-    expect(researchApi.getResearchProcesses).toHaveBeenCalledWith("running");
+    expect(api.research.getProcesses).toHaveBeenCalledWith("running");
   });
 
   it("should handle fetch error", async () => {
     const error = new Error("Failed to fetch processes");
-    vi.mocked(researchApi.getResearchProcesses).mockRejectedValueOnce(error);
+    vi.mocked(api.research.getProcesses).mockRejectedValueOnce(error);
 
     const { result } = renderHook(() => useResearchProcesses(), {
       wrapper: createWrapper(),
@@ -218,7 +222,7 @@ describe("useResearchProcess", () => {
   });
 
   it("should fetch a single research process successfully", async () => {
-    vi.mocked(researchApi.getResearchProcess).mockResolvedValueOnce(mockProcess);
+    vi.mocked(api.research.getProcess).mockResolvedValueOnce(mockProcess);
 
     const { result } = renderHook(() => useResearchProcess("process-1"), {
       wrapper: createWrapper(),
@@ -227,11 +231,11 @@ describe("useResearchProcess", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data).toEqual(mockProcess);
-    expect(researchApi.getResearchProcess).toHaveBeenCalledWith("process-1");
+    expect(api.research.getProcess).toHaveBeenCalledWith("process-1");
   });
 
   it("should return null for non-existent process", async () => {
-    vi.mocked(researchApi.getResearchProcess).mockResolvedValueOnce(null);
+    vi.mocked(api.research.getProcess).mockResolvedValueOnce(null);
 
     const { result } = renderHook(() => useResearchProcess("non-existent"), {
       wrapper: createWrapper(),
@@ -248,7 +252,7 @@ describe("useResearchProcess", () => {
     });
 
     expect(result.current.isFetching).toBe(false);
-    expect(researchApi.getResearchProcess).not.toHaveBeenCalled();
+    expect(api.research.getProcess).not.toHaveBeenCalled();
   });
 });
 
@@ -263,7 +267,7 @@ describe("useResearchPresets", () => {
 
   it("should fetch all research presets successfully", async () => {
     const mockPresets = [mockPreset, mockPreset2];
-    vi.mocked(researchApi.getResearchPresets).mockResolvedValueOnce(mockPresets);
+    vi.mocked(api.research.getPresets).mockResolvedValueOnce(mockPresets);
 
     const { result } = renderHook(() => useResearchPresets(), {
       wrapper: createWrapper(),
@@ -272,12 +276,12 @@ describe("useResearchPresets", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data).toEqual(mockPresets);
-    expect(researchApi.getResearchPresets).toHaveBeenCalledTimes(1);
+    expect(api.research.getPresets).toHaveBeenCalledTimes(1);
   });
 
   it("should handle fetch error", async () => {
     const error = new Error("Failed to fetch presets");
-    vi.mocked(researchApi.getResearchPresets).mockRejectedValueOnce(error);
+    vi.mocked(api.research.getPresets).mockRejectedValueOnce(error);
 
     const { result } = renderHook(() => useResearchPresets(), {
       wrapper: createWrapper(),
@@ -299,7 +303,7 @@ describe("useStartResearch", () => {
   });
 
   it("should start a research process successfully", async () => {
-    vi.mocked(researchApi.startResearch).mockResolvedValueOnce(mockProcess);
+    vi.mocked(api.research.start).mockResolvedValueOnce(mockProcess);
 
     const { result } = renderHook(() => useStartResearch(), {
       wrapper: createWrapper(),
@@ -314,8 +318,8 @@ describe("useStartResearch", () => {
       });
     });
 
-    expect(researchApi.startResearch).toHaveBeenCalled();
-    expect(vi.mocked(researchApi.startResearch).mock.calls[0][0]).toEqual({
+    expect(api.research.start).toHaveBeenCalled();
+    expect(vi.mocked(api.research.start).mock.calls[0][0]).toEqual({
       name: "Test Research",
       question: "How to implement feature X?",
       agent_profile_id: "deep-researcher",
@@ -325,7 +329,7 @@ describe("useStartResearch", () => {
 
   it("should handle start error", async () => {
     const error = new Error("Failed to start research");
-    vi.mocked(researchApi.startResearch).mockRejectedValueOnce(error);
+    vi.mocked(api.research.start).mockRejectedValueOnce(error);
 
     const { result } = renderHook(() => useStartResearch(), {
       wrapper: createWrapper(),
@@ -354,7 +358,7 @@ describe("usePauseResearch", () => {
 
   it("should pause a research process successfully", async () => {
     const pausedProcess = { ...mockProcess, status: "paused" as const };
-    vi.mocked(researchApi.pauseResearch).mockResolvedValueOnce(pausedProcess);
+    vi.mocked(api.research.pause).mockResolvedValueOnce(pausedProcess);
 
     const { result } = renderHook(() => usePauseResearch(), {
       wrapper: createWrapper(),
@@ -364,13 +368,13 @@ describe("usePauseResearch", () => {
       await result.current.mutateAsync("process-1");
     });
 
-    expect(researchApi.pauseResearch).toHaveBeenCalled();
-    expect(vi.mocked(researchApi.pauseResearch).mock.calls[0][0]).toBe("process-1");
+    expect(api.research.pause).toHaveBeenCalled();
+    expect(vi.mocked(api.research.pause).mock.calls[0][0]).toBe("process-1");
   });
 
   it("should handle pause error", async () => {
     const error = new Error("Failed to pause research");
-    vi.mocked(researchApi.pauseResearch).mockRejectedValueOnce(error);
+    vi.mocked(api.research.pause).mockRejectedValueOnce(error);
 
     const { result } = renderHook(() => usePauseResearch(), {
       wrapper: createWrapper(),
@@ -394,7 +398,7 @@ describe("useResumeResearch", () => {
   });
 
   it("should resume a research process successfully", async () => {
-    vi.mocked(researchApi.resumeResearch).mockResolvedValueOnce(mockProcess);
+    vi.mocked(api.research.resume).mockResolvedValueOnce(mockProcess);
 
     const { result } = renderHook(() => useResumeResearch(), {
       wrapper: createWrapper(),
@@ -404,13 +408,13 @@ describe("useResumeResearch", () => {
       await result.current.mutateAsync("process-1");
     });
 
-    expect(researchApi.resumeResearch).toHaveBeenCalled();
-    expect(vi.mocked(researchApi.resumeResearch).mock.calls[0][0]).toBe("process-1");
+    expect(api.research.resume).toHaveBeenCalled();
+    expect(vi.mocked(api.research.resume).mock.calls[0][0]).toBe("process-1");
   });
 
   it("should handle resume error", async () => {
     const error = new Error("Failed to resume research");
-    vi.mocked(researchApi.resumeResearch).mockRejectedValueOnce(error);
+    vi.mocked(api.research.resume).mockRejectedValueOnce(error);
 
     const { result } = renderHook(() => useResumeResearch(), {
       wrapper: createWrapper(),
@@ -435,7 +439,7 @@ describe("useStopResearch", () => {
 
   it("should stop a research process successfully", async () => {
     const stoppedProcess = { ...mockProcess, status: "failed" as const };
-    vi.mocked(researchApi.stopResearch).mockResolvedValueOnce(stoppedProcess);
+    vi.mocked(api.research.stop).mockResolvedValueOnce(stoppedProcess);
 
     const { result } = renderHook(() => useStopResearch(), {
       wrapper: createWrapper(),
@@ -445,13 +449,13 @@ describe("useStopResearch", () => {
       await result.current.mutateAsync("process-1");
     });
 
-    expect(researchApi.stopResearch).toHaveBeenCalled();
-    expect(vi.mocked(researchApi.stopResearch).mock.calls[0][0]).toBe("process-1");
+    expect(api.research.stop).toHaveBeenCalled();
+    expect(vi.mocked(api.research.stop).mock.calls[0][0]).toBe("process-1");
   });
 
   it("should handle stop error", async () => {
     const error = new Error("Failed to stop research");
-    vi.mocked(researchApi.stopResearch).mockRejectedValueOnce(error);
+    vi.mocked(api.research.stop).mockRejectedValueOnce(error);
 
     const { result } = renderHook(() => useStopResearch(), {
       wrapper: createWrapper(),

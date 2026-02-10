@@ -19,6 +19,7 @@ import { useChatPanelContext } from "@/hooks/useChatPanelContext";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
 import { ALL_REVIEW_STATUSES, EXECUTION_STATUSES, MERGE_STATUSES } from "@/types/status";
+import { AGENT_WORKER, AGENT_REVIEWER } from "@/constants/agents";
 import { StatusActivityBadge, type AgentType } from "./StatusActivityBadge";
 import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
@@ -564,9 +565,9 @@ export function IntegratedChatPanel({
   const agentType: AgentType = isHistoryMode
     ? "idle"
     : isExecutionMode
-      ? "worker"
+      ? AGENT_WORKER
       : isReviewMode
-        ? "reviewer"
+        ? AGENT_REVIEWER
         : (isSending || isAgentRunning)
           ? "agent"
           : "idle";

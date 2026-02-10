@@ -1,0 +1,17 @@
+// Agent role identifiers used for UI routing and display
+// Single source of truth for all agent name strings used in the frontend.
+
+export const AGENT_WORKER = "worker" as const;
+export const AGENT_REVIEWER = "reviewer" as const;
+export const AGENT_ORCHESTRATOR = "orchestrator" as const;
+export const AGENT_MERGER = "merger" as const;
+export const AGENT_SUPERVISOR = "supervisor" as const;
+export const AGENT_DEEP_RESEARCHER = "deep-researcher" as const;
+export const AGENT_ORCHESTRATOR_IDEATION = "orchestrator-ideation" as const;
+export const AGENT_QA_PREP = "qa-prep" as const;
+export const AGENT_QA_EXECUTOR = "qa-executor" as const;
+export const AGENT_CHAT_TASK = "chat-task" as const;
+export const AGENT_CHAT_PROJECT = "chat-project" as const;
+export const AGENT_REVIEW_CHAT = "review-chat" as const;
+export const AGENT_SESSION_NAMER = "session-namer" as const;
+export const AGENT_DEPENDENCY_SUGGESTER = "dependency-suggester" as const;

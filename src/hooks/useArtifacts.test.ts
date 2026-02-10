@@ -23,26 +23,30 @@ import {
   useArtifactRelations,
   artifactKeys,
 } from "./useArtifacts";
-import * as artifactsApi from "@/lib/api/artifacts";
+import { api } from "@/lib/tauri";
 import type {
   ArtifactResponse,
   BucketResponse,
   ArtifactRelationResponse,
 } from "@/lib/api/artifacts";
 
-// Mock the artifacts API
-vi.mock("@/lib/api/artifacts", () => ({
-  getArtifacts: vi.fn(),
-  getArtifact: vi.fn(),
-  getArtifactsByBucket: vi.fn(),
-  getArtifactsByTask: vi.fn(),
-  getBuckets: vi.fn(),
-  createArtifact: vi.fn(),
-  updateArtifact: vi.fn(),
-  deleteArtifact: vi.fn(),
-  createBucket: vi.fn(),
-  addArtifactRelation: vi.fn(),
-  getArtifactRelations: vi.fn(),
+// Mock the tauri API wrapper used by useArtifacts hooks
+vi.mock("@/lib/tauri", () => ({
+  api: {
+    artifacts: {
+      getArtifacts: vi.fn(),
+      getArtifact: vi.fn(),
+      getArtifactsByBucket: vi.fn(),
+      getArtifactsByTask: vi.fn(),
+      getBuckets: vi.fn(),
+      createArtifact: vi.fn(),
+      updateArtifact: vi.fn(),
+      deleteArtifact: vi.fn(),
+      createBucket: vi.fn(),
+      addArtifactRelation: vi.fn(),
+      getArtifactRelations: vi.fn(),
+    },
+  },
 }));
 
 // Create mock data
@@ -178,7 +182,7 @@ describe("useArtifacts", () => {
 
   it("should fetch all artifacts successfully", async () => {
     const mockArtifacts = [mockArtifact, mockArtifact2];
-    vi.mocked(artifactsApi.getArtifacts).mockResolvedValueOnce(mockArtifacts);
+    vi.mocked(api.artifacts.getArtifacts).mockResolvedValueOnce(mockArtifacts);
 
     const { result } = renderHook(() => useArtifacts(), {
       wrapper: createWrapper(),
@@ -189,11 +193,11 @@ describe("useArtifacts", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data).toEqual(mockArtifacts);
-    expect(artifactsApi.getArtifacts).toHaveBeenCalledWith(undefined);
+    expect(api.artifacts.getArtifacts).toHaveBeenCalledWith(undefined);
   });
 
   it("should fetch artifacts filtered by type", async () => {
-    vi.mocked(artifactsApi.getArtifacts).mockResolvedValueOnce([mockArtifact]);
+    vi.mocked(api.artifacts.getArtifacts).mockResolvedValueOnce([mockArtifact]);
 
     const { result } = renderHook(() => useArtifacts("prd"), {
       wrapper: createWrapper(),
@@ -202,12 +206,12 @@ describe("useArtifacts", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data).toEqual([mockArtifact]);
-    expect(artifactsApi.getArtifacts).toHaveBeenCalledWith("prd");
+    expect(api.artifacts.getArtifacts).toHaveBeenCalledWith("prd");
   });
 
   it("should handle fetch error", async () => {
     const error = new Error("Failed to fetch artifacts");
-    vi.mocked(artifactsApi.getArtifacts).mockRejectedValueOnce(error);
+    vi.mocked(api.artifacts.getArtifacts).mockRejectedValueOnce(error);
 
     const { result } = renderHook(() => useArtifacts(), {
       wrapper: createWrapper(),
@@ -229,7 +233,7 @@ describe("useArtifact", () => {
   });
 
   it("should fetch a single artifact successfully", async () => {
-    vi.mocked(artifactsApi.getArtifact).mockResolvedValueOnce(mockArtifact);
+    vi.mocked(api.artifacts.getArtifact).mockResolvedValueOnce(mockArtifact);
 
     const { result } = renderHook(() => useArtifact("artifact-1"), {
       wrapper: createWrapper(),
@@ -238,11 +242,11 @@ describe("useArtifact", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data).toEqual(mockArtifact);
-    expect(artifactsApi.getArtifact).toHaveBeenCalledWith("artifact-1");
+    expect(api.artifacts.getArtifact).toHaveBeenCalledWith("artifact-1");
   });
 
   it("should return null for non-existent artifact", async () => {
-    vi.mocked(artifactsApi.getArtifact).mockResolvedValueOnce(null);
+    vi.mocked(api.artifacts.getArtifact).mockResolvedValueOnce(null);
 
     const { result } = renderHook(() => useArtifact("non-existent"), {
       wrapper: createWrapper(),
@@ -259,7 +263,7 @@ describe("useArtifact", () => {
     });
 
     expect(result.current.isFetching).toBe(false);
-    expect(artifactsApi.getArtifact).not.toHaveBeenCalled();
+    expect(api.artifacts.getArtifact).not.toHaveBeenCalled();
   });
 });
 
@@ -273,7 +277,7 @@ describe("useArtifactsByBucket", () => {
   });
 
   it("should fetch artifacts by bucket successfully", async () => {
-    vi.mocked(artifactsApi.getArtifactsByBucket).mockResolvedValueOnce([mockArtifact]);
+    vi.mocked(api.artifacts.getArtifactsByBucket).mockResolvedValueOnce([mockArtifact]);
 
     const { result } = renderHook(() => useArtifactsByBucket("bucket-1"), {
       wrapper: createWrapper(),
@@ -282,7 +286,7 @@ describe("useArtifactsByBucket", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data).toEqual([mockArtifact]);
-    expect(artifactsApi.getArtifactsByBucket).toHaveBeenCalledWith("bucket-1");
+    expect(api.artifacts.getArtifactsByBucket).toHaveBeenCalledWith("bucket-1");
   });
 
   it("should not fetch when bucketId is empty", async () => {
@@ -291,7 +295,7 @@ describe("useArtifactsByBucket", () => {
     });
 
     expect(result.current.isFetching).toBe(false);
-    expect(artifactsApi.getArtifactsByBucket).not.toHaveBeenCalled();
+    expect(api.artifacts.getArtifactsByBucket).not.toHaveBeenCalled();
   });
 });
 
@@ -305,7 +309,7 @@ describe("useArtifactsByTask", () => {
   });
 
   it("should fetch artifacts by task successfully", async () => {
-    vi.mocked(artifactsApi.getArtifactsByTask).mockResolvedValueOnce([mockArtifact2]);
+    vi.mocked(api.artifacts.getArtifactsByTask).mockResolvedValueOnce([mockArtifact2]);
 
     const { result } = renderHook(() => useArtifactsByTask("task-1"), {
       wrapper: createWrapper(),
@@ -314,7 +318,7 @@ describe("useArtifactsByTask", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data).toEqual([mockArtifact2]);
-    expect(artifactsApi.getArtifactsByTask).toHaveBeenCalledWith("task-1");
+    expect(api.artifacts.getArtifactsByTask).toHaveBeenCalledWith("task-1");
   });
 
   it("should not fetch when taskId is empty", async () => {
@@ -323,7 +327,7 @@ describe("useArtifactsByTask", () => {
     });
 
     expect(result.current.isFetching).toBe(false);
-    expect(artifactsApi.getArtifactsByTask).not.toHaveBeenCalled();
+    expect(api.artifacts.getArtifactsByTask).not.toHaveBeenCalled();
   });
 });
 
@@ -338,7 +342,7 @@ describe("useBuckets", () => {
 
   it("should fetch all buckets successfully", async () => {
     const mockBuckets = [mockBucket, mockBucket2];
-    vi.mocked(artifactsApi.getBuckets).mockResolvedValueOnce(mockBuckets);
+    vi.mocked(api.artifacts.getBuckets).mockResolvedValueOnce(mockBuckets);
 
     const { result } = renderHook(() => useBuckets(), {
       wrapper: createWrapper(),
@@ -347,12 +351,12 @@ describe("useBuckets", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data).toEqual(mockBuckets);
-    expect(artifactsApi.getBuckets).toHaveBeenCalledTimes(1);
+    expect(api.artifacts.getBuckets).toHaveBeenCalledTimes(1);
   });
 
   it("should handle fetch error", async () => {
     const error = new Error("Failed to fetch buckets");
-    vi.mocked(artifactsApi.getBuckets).mockRejectedValueOnce(error);
+    vi.mocked(api.artifacts.getBuckets).mockRejectedValueOnce(error);
 
     const { result } = renderHook(() => useBuckets(), {
       wrapper: createWrapper(),
@@ -374,7 +378,7 @@ describe("useArtifactRelations", () => {
   });
 
   it("should fetch artifact relations successfully", async () => {
-    vi.mocked(artifactsApi.getArtifactRelations).mockResolvedValueOnce([mockRelation]);
+    vi.mocked(api.artifacts.getArtifactRelations).mockResolvedValueOnce([mockRelation]);
 
     const { result } = renderHook(() => useArtifactRelations("artifact-1"), {
       wrapper: createWrapper(),
@@ -383,7 +387,7 @@ describe("useArtifactRelations", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data).toEqual([mockRelation]);
-    expect(artifactsApi.getArtifactRelations).toHaveBeenCalledWith("artifact-1");
+    expect(api.artifacts.getArtifactRelations).toHaveBeenCalledWith("artifact-1");
   });
 
   it("should not fetch when artifactId is empty", async () => {
@@ -392,7 +396,7 @@ describe("useArtifactRelations", () => {
     });
 
     expect(result.current.isFetching).toBe(false);
-    expect(artifactsApi.getArtifactRelations).not.toHaveBeenCalled();
+    expect(api.artifacts.getArtifactRelations).not.toHaveBeenCalled();
   });
 });
 
@@ -406,7 +410,7 @@ describe("useCreateArtifact", () => {
   });
 
   it("should create an artifact successfully", async () => {
-    vi.mocked(artifactsApi.createArtifact).mockResolvedValueOnce(mockArtifact);
+    vi.mocked(api.artifacts.createArtifact).mockResolvedValueOnce(mockArtifact);
 
     const { result } = renderHook(() => useCreateArtifact(), {
       wrapper: createWrapper(),
@@ -422,8 +426,8 @@ describe("useCreateArtifact", () => {
       });
     });
 
-    expect(artifactsApi.createArtifact).toHaveBeenCalled();
-    expect(vi.mocked(artifactsApi.createArtifact).mock.calls[0][0]).toEqual({
+    expect(api.artifacts.createArtifact).toHaveBeenCalled();
+    expect(vi.mocked(api.artifacts.createArtifact).mock.calls[0][0]).toEqual({
       name: "Test Artifact",
       artifact_type: "prd",
       content_type: "inline",
@@ -434,7 +438,7 @@ describe("useCreateArtifact", () => {
 
   it("should handle creation error", async () => {
     const error = new Error("Failed to create artifact");
-    vi.mocked(artifactsApi.createArtifact).mockRejectedValueOnce(error);
+    vi.mocked(api.artifacts.createArtifact).mockRejectedValueOnce(error);
 
     const { result } = renderHook(() => useCreateArtifact(), {
       wrapper: createWrapper(),
@@ -465,7 +469,7 @@ describe("useUpdateArtifact", () => {
 
   it("should update an artifact successfully", async () => {
     const updatedArtifact = { ...mockArtifact, name: "Updated Artifact" };
-    vi.mocked(artifactsApi.updateArtifact).mockResolvedValueOnce(updatedArtifact);
+    vi.mocked(api.artifacts.updateArtifact).mockResolvedValueOnce(updatedArtifact);
 
     const { result } = renderHook(() => useUpdateArtifact(), {
       wrapper: createWrapper(),
@@ -478,14 +482,14 @@ describe("useUpdateArtifact", () => {
       });
     });
 
-    expect(artifactsApi.updateArtifact).toHaveBeenCalledWith("artifact-1", {
+    expect(api.artifacts.updateArtifact).toHaveBeenCalledWith("artifact-1", {
       name: "Updated Artifact",
     });
   });
 
   it("should handle update error", async () => {
     const error = new Error("Failed to update artifact");
-    vi.mocked(artifactsApi.updateArtifact).mockRejectedValueOnce(error);
+    vi.mocked(api.artifacts.updateArtifact).mockRejectedValueOnce(error);
 
     const { result } = renderHook(() => useUpdateArtifact(), {
       wrapper: createWrapper(),
@@ -512,7 +516,7 @@ describe("useDeleteArtifact", () => {
   });
 
   it("should delete an artifact successfully", async () => {
-    vi.mocked(artifactsApi.deleteArtifact).mockResolvedValueOnce(undefined);
+    vi.mocked(api.artifacts.deleteArtifact).mockResolvedValueOnce(undefined);
 
     const { result } = renderHook(() => useDeleteArtifact(), {
       wrapper: createWrapper(),
@@ -522,13 +526,13 @@ describe("useDeleteArtifact", () => {
       await result.current.mutateAsync("artifact-1");
     });
 
-    expect(artifactsApi.deleteArtifact).toHaveBeenCalled();
-    expect(vi.mocked(artifactsApi.deleteArtifact).mock.calls[0][0]).toBe("artifact-1");
+    expect(api.artifacts.deleteArtifact).toHaveBeenCalled();
+    expect(vi.mocked(api.artifacts.deleteArtifact).mock.calls[0][0]).toBe("artifact-1");
   });
 
   it("should handle delete error", async () => {
     const error = new Error("Failed to delete artifact");
-    vi.mocked(artifactsApi.deleteArtifact).mockRejectedValueOnce(error);
+    vi.mocked(api.artifacts.deleteArtifact).mockRejectedValueOnce(error);
 
     const { result } = renderHook(() => useDeleteArtifact(), {
       wrapper: createWrapper(),
@@ -552,7 +556,7 @@ describe("useCreateBucket", () => {
   });
 
   it("should create a bucket successfully", async () => {
-    vi.mocked(artifactsApi.createBucket).mockResolvedValueOnce(mockBucket);
+    vi.mocked(api.artifacts.createBucket).mockResolvedValueOnce(mockBucket);
 
     const { result } = renderHook(() => useCreateBucket(), {
       wrapper: createWrapper(),
@@ -565,8 +569,8 @@ describe("useCreateBucket", () => {
       });
     });
 
-    expect(artifactsApi.createBucket).toHaveBeenCalled();
-    expect(vi.mocked(artifactsApi.createBucket).mock.calls[0][0]).toEqual({
+    expect(api.artifacts.createBucket).toHaveBeenCalled();
+    expect(vi.mocked(api.artifacts.createBucket).mock.calls[0][0]).toEqual({
       name: "Research Outputs",
       accepted_types: ["research_document"],
     });
@@ -574,7 +578,7 @@ describe("useCreateBucket", () => {
 
   it("should handle creation error", async () => {
     const error = new Error("Failed to create bucket");
-    vi.mocked(artifactsApi.createBucket).mockRejectedValueOnce(error);
+    vi.mocked(api.artifacts.createBucket).mockRejectedValueOnce(error);
 
     const { result } = renderHook(() => useCreateBucket(), {
       wrapper: createWrapper(),
@@ -598,7 +602,7 @@ describe("useAddArtifactRelation", () => {
   });
 
   it("should add a relation successfully", async () => {
-    vi.mocked(artifactsApi.addArtifactRelation).mockResolvedValueOnce(mockRelation);
+    vi.mocked(api.artifacts.addArtifactRelation).mockResolvedValueOnce(mockRelation);
 
     const { result } = renderHook(() => useAddArtifactRelation(), {
       wrapper: createWrapper(),
@@ -612,8 +616,8 @@ describe("useAddArtifactRelation", () => {
       });
     });
 
-    expect(artifactsApi.addArtifactRelation).toHaveBeenCalled();
-    expect(vi.mocked(artifactsApi.addArtifactRelation).mock.calls[0][0]).toEqual({
+    expect(api.artifacts.addArtifactRelation).toHaveBeenCalled();
+    expect(vi.mocked(api.artifacts.addArtifactRelation).mock.calls[0][0]).toEqual({
       from_artifact_id: "artifact-1",
       to_artifact_id: "artifact-2",
       relation_type: "derived_from",
@@ -622,7 +626,7 @@ describe("useAddArtifactRelation", () => {
 
   it("should handle relation creation error", async () => {
     const error = new Error("Failed to add relation");
-    vi.mocked(artifactsApi.addArtifactRelation).mockRejectedValueOnce(error);
+    vi.mocked(api.artifacts.addArtifactRelation).mockRejectedValueOnce(error);
 
     const { result } = renderHook(() => useAddArtifactRelation(), {
       wrapper: createWrapper(),

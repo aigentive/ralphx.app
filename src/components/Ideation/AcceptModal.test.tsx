@@ -199,35 +199,6 @@ describe("AcceptModal", () => {
     });
   });
 
-  describe("Target Column Selector", () => {
-    it("renders column selector with label", () => {
-      render(<AcceptModal {...defaultProps} />);
-      expect(screen.getByLabelText("Target Column")).toBeInTheDocument();
-    });
-
-    it("shows all column options", () => {
-      render(<AcceptModal {...defaultProps} />);
-      const select = screen.getByLabelText("Target Column") as HTMLSelectElement;
-      expect(select.querySelector('option[value="draft"]')).toBeInTheDocument();
-      expect(select.querySelector('option[value="backlog"]')).toBeInTheDocument();
-      expect(select.querySelector('option[value="todo"]')).toBeInTheDocument();
-    });
-
-    it("defaults to backlog column", () => {
-      render(<AcceptModal {...defaultProps} />);
-      const select = screen.getByLabelText("Target Column") as HTMLSelectElement;
-      expect(select.value).toBe("backlog");
-    });
-
-    it("allows changing column selection", async () => {
-      const user = userEvent.setup();
-      render(<AcceptModal {...defaultProps} />);
-      const select = screen.getByLabelText("Target Column");
-      await user.selectOptions(select, "todo");
-      expect(select).toHaveValue("todo");
-    });
-  });
-
   describe("Preserve Dependencies Checkbox", () => {
     it("renders checkbox with label", () => {
       render(<AcceptModal {...defaultProps} />);
@@ -329,19 +300,15 @@ describe("AcceptModal", () => {
       expect(onAccept).toHaveBeenCalledWith({
         sessionId: "session-1",
         proposalIds: ["proposal-1", "proposal-2", "proposal-3"],
-        targetColumn: "backlog",
+        targetColumn: "auto",
         preserveDependencies: true,
       });
     });
 
-    it("calls onAccept with updated options", async () => {
+    it("calls onAccept with updated dependency options", async () => {
       const onAccept = vi.fn();
       const user = userEvent.setup();
       render(<AcceptModal {...defaultProps} onAccept={onAccept} />);
-
-      // Change column
-      const select = screen.getByLabelText("Target Column");
-      await user.selectOptions(select, "draft");
 
       // Uncheck preserve dependencies
       const checkbox = screen.getByLabelText(/Preserve dependencies/i);
@@ -353,7 +320,7 @@ describe("AcceptModal", () => {
       expect(onAccept).toHaveBeenCalledWith({
         sessionId: "session-1",
         proposalIds: ["proposal-1", "proposal-2", "proposal-3"],
-        targetColumn: "draft",
+        targetColumn: "auto",
         preserveDependencies: false,
       });
     });
@@ -397,12 +364,6 @@ describe("AcceptModal", () => {
       render(<AcceptModal {...defaultProps} isAccepting={true} />);
       const cancelButton = screen.getByRole("button", { name: "Cancel" });
       expect(cancelButton).toBeDisabled();
-    });
-
-    it("disables column selector when accepting", () => {
-      render(<AcceptModal {...defaultProps} isAccepting={true} />);
-      const select = screen.getByLabelText("Target Column");
-      expect(select).toBeDisabled();
     });
 
     it("disables checkbox when accepting", () => {
@@ -456,7 +417,6 @@ describe("AcceptModal", () => {
 
     it("has proper labels for form controls", () => {
       render(<AcceptModal {...defaultProps} />);
-      expect(screen.getByLabelText("Target Column")).toBeInTheDocument();
       expect(screen.getByLabelText(/Preserve dependencies/i)).toBeInTheDocument();
     });
 

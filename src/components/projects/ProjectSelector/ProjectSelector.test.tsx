@@ -10,6 +10,13 @@ import userEvent from "@testing-library/user-event";
 import { ProjectSelector } from "./ProjectSelector";
 import { useProjectStore } from "@/stores/projectStore";
 import type { Project } from "@/types/project";
+import { useProjects } from "@/hooks/useProjects";
+
+vi.mock("@/hooks/useProjects", () => ({
+  useProjects: vi.fn(),
+}));
+
+const mockedUseProjects = vi.mocked(useProjects);
 
 // Create a mock project
 const createMockProject = (overrides: Partial<Project> = {}): Project => ({
@@ -30,6 +37,12 @@ describe("ProjectSelector", () => {
     vi.clearAllMocks();
     // Reset stores to initial state
     useProjectStore.setState({ projects: {}, activeProjectId: null });
+    mockedUseProjects.mockImplementation(
+      () =>
+        ({
+          data: Object.values(useProjectStore.getState().projects),
+        }) as ReturnType<typeof useProjects>
+    );
   });
 
   describe("trigger button", () => {
