@@ -225,7 +225,7 @@ impl AgentSpawner for AgenticClientSpawner {
             prompt: format!("Execute task {}", task_id),
             working_directory: working_dir,
             plugin_dir: Some(plugin_dir),
-            agent: Some(crate::infrastructure::agents::claude::qualify_agent_name(agent_type)),
+            agent: Some(crate::infrastructure::agents::claude::agent_names::spawner_agent_name(agent_type).to_string()),
             model: None,
             max_tokens: None,
             timeout_secs: None,

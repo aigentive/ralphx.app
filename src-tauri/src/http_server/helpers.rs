@@ -562,7 +562,7 @@ pub async fn maybe_trigger_dependency_analysis(
         };
 
         // Build command using the established pattern (creates dynamic MCP config with --agent-type)
-        let agent_name = "ralphx:dependency-suggester";
+        let agent_name = crate::infrastructure::agents::claude::agent_names::AGENT_DEPENDENCY_SUGGESTER;
         let mut cmd = match crate::infrastructure::agents::claude::build_base_cli_command(
             &cli_path,
             &plugin_dir,

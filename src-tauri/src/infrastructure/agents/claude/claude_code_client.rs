@@ -589,7 +589,7 @@ mod tests {
     fn test_build_cli_args_applies_tools_restriction() {
         let client = ClaudeCodeClient::new();
         // Use fully-qualified name as would be used in production
-        let config = AgentConfig::worker("Test").with_agent("ralphx:session-namer");
+        let config = AgentConfig::worker("Test").with_agent(crate::infrastructure::agents::claude::agent_names::AGENT_SESSION_NAMER);
 
         let args = client.build_cli_args(&config, None);
 
@@ -614,7 +614,7 @@ mod tests {
     fn test_build_cli_args_restricted_agent_tools() {
         let client = ClaudeCodeClient::new();
         // Use fully-qualified name as would be used in production
-        let config = AgentConfig::worker("Test").with_agent("ralphx:orchestrator-ideation");
+        let config = AgentConfig::worker("Test").with_agent(crate::infrastructure::agents::claude::agent_names::AGENT_ORCHESTRATOR_IDEATION);
 
         let args = client.build_cli_args(&config, None);
 

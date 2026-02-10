@@ -339,6 +339,7 @@ pub async fn spawn_session_namer(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     use crate::domain::agents::{AgentConfig, AgentRole};
+    use crate::infrastructure::agents::claude::{agent_names, mcp_agent_type};
 
     // Build the prompt with session context (XML-delineated to prevent injection)
     let prompt = format!(
@@ -364,14 +365,14 @@ pub async fn spawn_session_namer(
 
     // Set RALPHX_AGENT_TYPE so MCP server grants access to update_session_title tool
     let mut env = std::collections::HashMap::new();
-    env.insert("RALPHX_AGENT_TYPE".to_string(), "session-namer".to_string());
+    env.insert("RALPHX_AGENT_TYPE".to_string(), mcp_agent_type(agent_names::AGENT_SESSION_NAMER).to_string());
 
     let config = AgentConfig {
-        role: AgentRole::Custom("session-namer".to_string()),
+        role: AgentRole::Custom(mcp_agent_type(agent_names::AGENT_SESSION_NAMER).to_string()),
         prompt,
         working_directory,
         plugin_dir: Some(plugin_dir),
-        agent: Some("ralphx:session-namer".to_string()),
+        agent: Some(agent_names::AGENT_SESSION_NAMER.to_string()),
         model: None, // Agent file specifies haiku
         max_tokens: None,
         timeout_secs: Some(60), // 60 second timeout for title generation
@@ -413,6 +414,7 @@ pub async fn spawn_dependency_suggester(
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     use crate::domain::agents::{AgentConfig, AgentRole};
+    use crate::infrastructure::agents::claude::{agent_names, mcp_agent_type};
 
     let session_id_typed = IdeationSessionId::from_string(session_id.clone());
 
@@ -492,14 +494,14 @@ pub async fn spawn_dependency_suggester(
 
     // Set RALPHX_AGENT_TYPE so MCP server grants access to apply_proposal_dependencies tool
     let mut env = std::collections::HashMap::new();
-    env.insert("RALPHX_AGENT_TYPE".to_string(), "dependency-suggester".to_string());
+    env.insert("RALPHX_AGENT_TYPE".to_string(), mcp_agent_type(agent_names::AGENT_DEPENDENCY_SUGGESTER).to_string());
 
     let config = AgentConfig {
-        role: AgentRole::Custom("dependency-suggester".to_string()),
+        role: AgentRole::Custom(mcp_agent_type(agent_names::AGENT_DEPENDENCY_SUGGESTER).to_string()),
         prompt,
         working_directory,
         plugin_dir: Some(plugin_dir),
-        agent: Some("ralphx:dependency-suggester".to_string()),
+        agent: Some(agent_names::AGENT_DEPENDENCY_SUGGESTER.to_string()),
         model: None, // Agent file specifies haiku
         max_tokens: None,
         timeout_secs: Some(60), // 60 second timeout for dependency analysis
