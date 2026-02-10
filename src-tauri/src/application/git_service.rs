@@ -433,8 +433,17 @@ impl GitService {
         debug!("Committing all changes in {:?} with message: {}", path, message);
 
         // Stage all changes
+        // Guard against accidentally staging local environment artifacts if ignore
+        // rules drift on a branch (e.g., tracked symlink placeholders).
         let add_output = Command::new("git")
-            .args(["add", "-A"])
+            .args([
+                "add",
+                "-A",
+                "--",
+                ".",
+                ":(exclude)node_modules",
+                ":(exclude)src-tauri/target",
+            ])
             .current_dir(path)
             .output()
             .map_err(|e| AppError::GitOperation(format!("Failed to run git add: {}", e)))?;
@@ -1666,6 +1675,53 @@ mod tests {
         assert_eq!(files, 0);
         assert_eq!(insertions, 0);
         assert_eq!(deletions, 0);
+    }
+
+    #[test]
+    fn test_commit_all_excludes_environment_artifacts() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        std::fs::write(repo.join("tracked.txt"), "initial").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        std::fs::write(repo.join("tracked.txt"), "updated").unwrap();
+        std::fs::write(repo.join("node_modules"), "placeholder").unwrap();
+        std::fs::create_dir_all(repo.join("src-tauri")).unwrap();
+        std::fs::write(repo.join("src-tauri/target"), "placeholder").unwrap();
+
+        let commit_sha = GitService::commit_all(repo, "test commit")
+            .unwrap()
+            .expect("commit should be created");
+        assert!(!commit_sha.is_empty());
+
+        let tracked_files = Command::new("git")
+            .args(["ls-tree", "-r", "--name-only", "HEAD"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        let tracked_files = String::from_utf8_lossy(&tracked_files.stdout);
+
+        assert!(tracked_files.contains("tracked.txt"));
+        assert!(!tracked_files.contains("node_modules"));
+        assert!(!tracked_files.contains("src-tauri/target"));
     }
 
     // =========================================================================
