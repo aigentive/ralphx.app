@@ -30,6 +30,8 @@ function buildContextKey(contextType: ContextType, contextId: string): string {
       return `task_execution:${contextId}`;
     case "review":
       return `review:${contextId}`;
+    case "merge":
+      return `merge:${contextId}`;
     case "project":
       return `project:${contextId}`;
     default:
