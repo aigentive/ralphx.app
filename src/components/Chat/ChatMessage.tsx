@@ -13,6 +13,7 @@ import { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ChatMessage as ChatMessageType, MessageRole } from "@/types/ideation";
+import { AGENT_ORCHESTRATOR } from "@/constants/agents";
 import { ToolCallIndicator, type ToolCall } from "./ToolCallIndicator";
 
 // ============================================================================
@@ -50,7 +51,7 @@ function getRoleLabel(role: MessageRole): string {
   switch (role) {
     case "user":
       return "You";
-    case "orchestrator":
+    case AGENT_ORCHESTRATOR:
       return "Orchestrator";
     case "system":
       return "System";
