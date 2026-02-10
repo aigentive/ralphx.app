@@ -436,7 +436,7 @@ pub fn spawn_project_analyzer(
         prompt,
         working_directory,
         plugin_dir: Some(plugin_dir),
-        agent: Some("project-analyzer".to_string()),
+        agent: Some("ralphx:project-analyzer".to_string()),
         model: None, // Agent file specifies haiku
         max_tokens: None,
         timeout_secs: Some(120),

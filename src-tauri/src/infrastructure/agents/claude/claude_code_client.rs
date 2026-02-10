@@ -23,7 +23,7 @@ use crate::domain::agents::{
     ClientCapabilities, ClientType, ResponseChunk,
 };
 
-use super::{ensure_claude_spawn_allowed, get_preapproved_tools, get_allowed_tools};
+use super::{ensure_claude_spawn_allowed, get_preapproved_tools, get_allowed_tools, create_mcp_config};
 
 // ============================================================================
 // Streaming Event Types
@@ -142,6 +142,13 @@ impl AgenticClient for ClaudeCodeClient {
         // Add plugin directory for agent/skill discovery
         if let Some(plugin_dir) = &config.plugin_dir {
             args.extend(["--plugin-dir".to_string(), plugin_dir.display().to_string()]);
+
+            // Create dynamic MCP config for agent-specific tool filtering
+            if let Some(agent) = &config.agent {
+                if let Some(temp_path) = create_mcp_config(plugin_dir, agent) {
+                    args.extend(["--mcp-config".to_string(), temp_path.display().to_string()]);
+                }
+            }
         }
 
         // Add agent name if specified
@@ -317,6 +324,13 @@ impl ClaudeCodeClient {
         // Plugin directory for agent/skill discovery
         if let Some(plugin_dir) = &config.plugin_dir {
             args.extend(["--plugin-dir".to_string(), plugin_dir.display().to_string()]);
+
+            // Create dynamic MCP config for agent-specific tool filtering
+            if let Some(agent) = &config.agent {
+                if let Some(temp_path) = create_mcp_config(plugin_dir, agent) {
+                    args.extend(["--mcp-config".to_string(), temp_path.display().to_string()]);
+                }
+            }
         }
 
         // Resume session - always include agent to enforce tool restrictions
@@ -574,11 +588,13 @@ mod tests {
     #[test]
     fn test_build_cli_args_applies_tools_restriction() {
         let client = ClaudeCodeClient::new();
-        let config = AgentConfig::worker("Test").with_agent("session-namer");
+        // Use fully-qualified name as would be used in production
+        let config = AgentConfig::worker("Test").with_agent("ralphx:session-namer");
 
         let args = client.build_cli_args(&config, None);
 
         // session-namer has allowed_tools = Some("") meaning no CLI tools
+        // get_allowed_tools strips the ralphx: prefix for AGENT_CONFIGS lookup
         let tools_idx = args.iter().position(|a| a == "--tools").expect("--tools flag must be present");
         assert_eq!(args[tools_idx + 1], "", "session-namer should have empty tools (MCP only)");
     }
@@ -597,7 +613,8 @@ mod tests {
     #[test]
     fn test_build_cli_args_restricted_agent_tools() {
         let client = ClaudeCodeClient::new();
-        let config = AgentConfig::worker("Test").with_agent("orchestrator-ideation");
+        // Use fully-qualified name as would be used in production
+        let config = AgentConfig::worker("Test").with_agent("ralphx:orchestrator-ideation");
 
         let args = client.build_cli_args(&config, None);
 

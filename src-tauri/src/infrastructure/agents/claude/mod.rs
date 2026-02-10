@@ -20,6 +20,23 @@ use std::path::{Path, PathBuf};
 use tokio::process::Command;
 use tracing::{info, warn};
 
+/// Qualify a short agent name with the `ralphx:` plugin prefix.
+/// If the name already contains `:`, it's assumed to be fully qualified.
+pub fn qualify_agent_name(name: &str) -> String {
+    if name.contains(':') {
+        name.to_string()
+    } else {
+        format!("ralphx:{}", name)
+    }
+}
+
+/// Strip the `ralphx:` plugin prefix from an agent name.
+/// Used when passing agent type to the MCP server or looking up AGENT_CONFIGS
+/// (both use short/unprefixed names).
+pub fn mcp_agent_type(name: &str) -> &str {
+    name.strip_prefix("ralphx:").unwrap_or(name)
+}
+
 /// Build base CLI arguments for Claude Code
 /// These are the common args needed for all Claude CLI invocations with streaming output
 ///
@@ -76,32 +93,45 @@ pub fn build_base_cli_command(
     // If agent_type is provided, create a dynamic MCP config that passes it
     // to the MCP server via CLI args (since env vars don't propagate to MCP servers)
     if let Some(agent) = agent_type {
-        let mcp_server_path = plugin_dir.join("ralphx-mcp-server/build/index.js");
-        let mcp_server_path_str = mcp_server_path.to_string_lossy().to_string();
-
-        // Create MCP config with agent type as CLI arg
-        let mcp_config = serde_json::json!({
-            "mcpServers": {
-                "ralphx": {
-                    "type": "stdio",
-                    "command": "node",
-                    "args": [mcp_server_path_str, "--agent-type", agent]
-                }
-            }
-        });
-
-        // Write to temp file and add --mcp-config arg
-        if let Ok(config_json) = serde_json::to_string(&mcp_config) {
-            // Use a temp file in system temp dir
-            let temp_path = std::env::temp_dir().join(format!("ralphx-mcp-{}.json", std::process::id()));
-            if std::fs::write(&temp_path, &config_json).is_ok() {
-                cmd.args(["--mcp-config", temp_path.to_str().unwrap_or("")]);
-                tracing::debug!(path = %temp_path.display(), agent_type = agent, "Dynamic MCP config written");
-            }
+        if let Some(temp_path) = create_mcp_config(plugin_dir, agent) {
+            cmd.args(["--mcp-config", temp_path.to_str().unwrap_or("")]);
+            tracing::debug!(path = %temp_path.display(), agent_type = agent, "Dynamic MCP config written");
         }
     }
 
     Ok(cmd)
+}
+
+/// Create a dynamic MCP config temp file for an agent.
+///
+/// Writes a JSON config that starts the RalphX MCP server with the agent's type
+/// passed via `--agent-type` CLI arg (for tool filtering). Returns the temp file path.
+/// Uses UUID in filename to avoid race conditions between parallel agent spawns.
+pub fn create_mcp_config(plugin_dir: &Path, agent_type: &str) -> Option<PathBuf> {
+    let mcp_server_path = plugin_dir.join("ralphx-mcp-server/build/index.js");
+    let mcp_server_path_str = mcp_server_path.to_string_lossy().to_string();
+
+    // Strip plugin prefix for MCP server's --agent-type param
+    let short_name = mcp_agent_type(agent_type);
+
+    let mcp_config = serde_json::json!({
+        "mcpServers": {
+            "ralphx": {
+                "type": "stdio",
+                "command": "node",
+                "args": [mcp_server_path_str, "--agent-type", short_name]
+            }
+        }
+    });
+
+    let config_json = serde_json::to_string(&mcp_config).ok()?;
+    let temp_path = std::env::temp_dir().join(format!(
+        "ralphx-mcp-{}-{}.json",
+        std::process::id(),
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::write(&temp_path, &config_json).ok()?;
+    Some(temp_path)
 }
 
 /// Add prompt-related args to a CLI command

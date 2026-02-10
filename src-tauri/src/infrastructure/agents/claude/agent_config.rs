@@ -283,7 +283,9 @@ pub const AGENT_CONFIGS: &[AgentConfig] = &[
 /// - Some(None) = no restrictions (all tools allowed)
 /// - None = agent not found in config (defaults to no restrictions)
 pub fn get_agent_config(agent_name: &str) -> Option<&'static AgentConfig> {
-    AGENT_CONFIGS.iter().find(|c| c.name == agent_name)
+    // Strip ralphx: plugin prefix if present — AGENT_CONFIGS uses short names
+    let lookup_name = agent_name.strip_prefix("ralphx:").unwrap_or(agent_name);
+    AGENT_CONFIGS.iter().find(|c| c.name == lookup_name)
 }
 
 /// Get the --tools argument value for an agent
