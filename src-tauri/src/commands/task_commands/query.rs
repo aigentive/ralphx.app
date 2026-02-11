@@ -55,46 +55,26 @@ pub async fn list_tasks(
         None
     };
 
-    // Get paginated tasks
-    let mut tasks = state
+    // Get paginated tasks with session filter passed to repository
+    let tasks = state
         .task_repo
-        .list_paginated(&project_id, internal_statuses.clone(), offset, limit, include_archived)
+        .list_paginated(
+            &project_id,
+            internal_statuses,
+            offset,
+            limit,
+            include_archived,
+            ideation_session_id.as_deref(),
+        )
         .await
         .map_err(|e| e.to_string())?;
 
-    // Filter by session_id if provided
-    if let Some(ref sid) = ideation_session_id {
-        tasks.retain(|t| {
-            t.ideation_session_id
-                .as_ref()
-                .is_some_and(|id| id.as_str() == sid)
-        });
-    }
-
-    // Get total count (need to filter this too if session_id is provided)
-    let total = if ideation_session_id.is_some() {
-        // When filtering by session, we need to count all matching tasks
-        let all_tasks = state
-            .task_repo
-            .list_paginated(&project_id, internal_statuses, 0, u32::MAX, include_archived)
-            .await
-            .map_err(|e| e.to_string())?;
-
-        all_tasks
-            .into_iter()
-            .filter(|t| {
-                t.ideation_session_id
-                    .as_ref()
-                    .is_some_and(|id| id.as_str() == ideation_session_id.as_ref().unwrap())
-            })
-            .count() as u32
-    } else {
-        state
-            .task_repo
-            .count_tasks(&project_id, include_archived)
-            .await
-            .map_err(|e| e.to_string())?
-    };
+    // Get total count with session filter passed to repository
+    let total = state
+        .task_repo
+        .count_tasks(&project_id, include_archived, ideation_session_id.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
 
     // Calculate has_more
     let has_more = (offset + tasks.len() as u32) < total;
@@ -141,32 +121,11 @@ pub async fn get_archived_count(
 ) -> Result<u32, String> {
     let project_id_obj = ProjectId::from_string(project_id);
 
-    if let Some(ref sid) = ideation_session_id {
-        // When filtering by session, we need to get all archived tasks and filter
-        let all_tasks = state
-            .task_repo
-            .get_by_project_filtered(&project_id_obj, true)
-            .await
-            .map_err(|e| e.to_string())?;
-
-        let count = all_tasks
-            .into_iter()
-            .filter(|t| {
-                t.archived_at.is_some()
-                    && t.ideation_session_id
-                        .as_ref()
-                        .is_some_and(|id| id.as_str() == sid)
-            })
-            .count() as u32;
-
-        Ok(count)
-    } else {
-        state
-            .task_repo
-            .get_archived_count(&project_id_obj)
-            .await
-            .map_err(|e| e.to_string())
-    }
+    state
+        .task_repo
+        .get_archived_count(&project_id_obj, ideation_session_id.as_deref())
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Search tasks by title and description (case-insensitive)
@@ -365,7 +324,7 @@ pub async fn get_tasks_awaiting_review(
     // Use a high limit to get all tasks (no pagination needed for this view)
     let tasks = state
         .task_repo
-        .list_paginated(&project_id, Some(review_statuses), 0, 1000, false)
+        .list_paginated(&project_id, Some(review_statuses), 0, 1000, false, None)
         .await
         .map_err(|e| e.to_string())?;
 
