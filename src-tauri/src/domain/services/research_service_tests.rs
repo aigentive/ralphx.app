@@ -31,10 +31,7 @@ impl ProcessRepository for MockProcessRepository {
         Ok(process)
     }
 
-    async fn get_by_id(
-        &self,
-        id: &ResearchProcessId,
-    ) -> AppResult<Option<ResearchProcess>> {
+    async fn get_by_id(&self, id: &ResearchProcessId) -> AppResult<Option<ResearchProcess>> {
         let processes = self.processes.lock().await;
         Ok(processes.get(id.as_str()).cloned())
     }
@@ -58,7 +55,11 @@ impl ProcessRepository for MockProcessRepository {
 
     async fn get_active(&self) -> AppResult<Vec<ResearchProcess>> {
         let processes = self.processes.lock().await;
-        Ok(processes.values().filter(|p| p.is_active()).cloned().collect())
+        Ok(processes
+            .values()
+            .filter(|p| p.is_active())
+            .cloned()
+            .collect())
     }
 
     async fn update_progress(&self, process: &ResearchProcess) -> AppResult<()> {
@@ -103,7 +104,10 @@ impl ProcessRepository for MockProcessRepository {
 
 // ==================== Test Helpers ====================
 
-fn create_service() -> (ResearchService<MockProcessRepository>, Arc<MockProcessRepository>) {
+fn create_service() -> (
+    ResearchService<MockProcessRepository>,
+    Arc<MockProcessRepository>,
+) {
     let process_repo = Arc::new(MockProcessRepository::new());
     let service = ResearchService::new(process_repo.clone());
     (service, process_repo)
@@ -228,7 +232,10 @@ async fn pause_research_fails_for_non_running() {
     let result = service.pause_research(&id).await;
 
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("must be 'running'"));
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("must be 'running'"));
 }
 
 #[tokio::test]
@@ -355,7 +362,10 @@ async fn advance_iteration_fails_for_non_running() {
     let result = service.advance_iteration(&id).await;
 
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("must be 'running'"));
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("must be 'running'"));
 }
 
 // ==================== complete Tests ====================
@@ -645,9 +655,8 @@ async fn process_exists_false() {
 
 #[test]
 fn preset_to_config_quick_scan() {
-    let config = ResearchService::<MockProcessRepository>::preset_to_config(
-        ResearchDepthPreset::QuickScan,
-    );
+    let config =
+        ResearchService::<MockProcessRepository>::preset_to_config(ResearchDepthPreset::QuickScan);
     assert_eq!(config.max_iterations, 10);
     assert_eq!(config.timeout_hours, 0.5);
     assert_eq!(config.checkpoint_interval, 5);
@@ -655,27 +664,24 @@ fn preset_to_config_quick_scan() {
 
 #[test]
 fn preset_to_config_standard() {
-    let config = ResearchService::<MockProcessRepository>::preset_to_config(
-        ResearchDepthPreset::Standard,
-    );
+    let config =
+        ResearchService::<MockProcessRepository>::preset_to_config(ResearchDepthPreset::Standard);
     assert_eq!(config.max_iterations, 50);
     assert_eq!(config.timeout_hours, 2.0);
 }
 
 #[test]
 fn preset_to_config_deep_dive() {
-    let config = ResearchService::<MockProcessRepository>::preset_to_config(
-        ResearchDepthPreset::DeepDive,
-    );
+    let config =
+        ResearchService::<MockProcessRepository>::preset_to_config(ResearchDepthPreset::DeepDive);
     assert_eq!(config.max_iterations, 200);
     assert_eq!(config.timeout_hours, 8.0);
 }
 
 #[test]
 fn preset_to_config_exhaustive() {
-    let config = ResearchService::<MockProcessRepository>::preset_to_config(
-        ResearchDepthPreset::Exhaustive,
-    );
+    let config =
+        ResearchService::<MockProcessRepository>::preset_to_config(ResearchDepthPreset::Exhaustive);
     assert_eq!(config.max_iterations, 500);
     assert_eq!(config.timeout_hours, 24.0);
 }
@@ -689,21 +695,23 @@ fn get_all_presets_returns_4() {
 #[test]
 fn should_checkpoint_uses_process_method() {
     let brief = create_test_brief();
-    let mut process = ResearchProcess::new("Test", brief, "agent")
-        .with_preset(ResearchDepthPreset::QuickScan); // interval = 5
+    let mut process =
+        ResearchProcess::new("Test", brief, "agent").with_preset(ResearchDepthPreset::QuickScan); // interval = 5
 
     process.progress.current_iteration = 4;
     assert!(!ResearchService::<MockProcessRepository>::should_checkpoint(&process));
 
     process.progress.current_iteration = 5;
-    assert!(ResearchService::<MockProcessRepository>::should_checkpoint(&process));
+    assert!(ResearchService::<MockProcessRepository>::should_checkpoint(
+        &process
+    ));
 }
 
 #[test]
 fn is_max_iterations_reached_uses_process_method() {
     let brief = create_test_brief();
-    let mut process = ResearchProcess::new("Test", brief, "agent")
-        .with_preset(ResearchDepthPreset::QuickScan); // max = 10
+    let mut process =
+        ResearchProcess::new("Test", brief, "agent").with_preset(ResearchDepthPreset::QuickScan); // max = 10
 
     process.progress.current_iteration = 9;
     assert!(!ResearchService::<MockProcessRepository>::is_max_iterations_reached(&process));
@@ -715,8 +723,8 @@ fn is_max_iterations_reached_uses_process_method() {
 #[test]
 fn progress_percentage_uses_process_method() {
     let brief = create_test_brief();
-    let mut process = ResearchProcess::new("Test", brief, "agent")
-        .with_preset(ResearchDepthPreset::QuickScan); // max = 10
+    let mut process =
+        ResearchProcess::new("Test", brief, "agent").with_preset(ResearchDepthPreset::QuickScan); // max = 10
 
     assert_eq!(
         ResearchService::<MockProcessRepository>::progress_percentage(&process),

@@ -69,7 +69,9 @@ fn test_v10_v11_allows_multiple_rows() {
 
     // Verify we now have 2 rows
     let count: i32 = conn
-        .query_row("SELECT COUNT(*) FROM execution_settings", [], |row| row.get(0))
+        .query_row("SELECT COUNT(*) FROM execution_settings", [], |row| {
+            row.get(0)
+        })
         .unwrap();
     assert_eq!(count, 2);
 }
@@ -111,11 +113,9 @@ fn test_v10_migration_is_idempotent() {
     assert!(helpers::table_exists(&conn, "execution_settings"));
 
     let count: i32 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM execution_settings",
-            [],
-            |row| row.get(0),
-        )
+        .query_row("SELECT COUNT(*) FROM execution_settings", [], |row| {
+            row.get(0)
+        })
         .unwrap();
     assert_eq!(count, 1);
 }

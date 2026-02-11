@@ -189,10 +189,12 @@ mod tests {
 
         assert_eq!(bus.events_published(), 0);
 
-        bus.publish(SupervisorEvent::task_start("task-1", "Test 1")).ok();
+        bus.publish(SupervisorEvent::task_start("task-1", "Test 1"))
+            .ok();
         assert_eq!(bus.events_published(), 1);
 
-        bus.publish(SupervisorEvent::task_start("task-2", "Test 2")).ok();
+        bus.publish(SupervisorEvent::task_start("task-2", "Test 2"))
+            .ok();
         assert_eq!(bus.events_published(), 2);
     }
 
@@ -206,8 +208,10 @@ mod tests {
 
         let received = sub.recv().await.unwrap();
         match (&received, &event) {
-            (SupervisorEvent::TaskStart { task_id: r_id, .. },
-             SupervisorEvent::TaskStart { task_id: e_id, .. }) => {
+            (
+                SupervisorEvent::TaskStart { task_id: r_id, .. },
+                SupervisorEvent::TaskStart { task_id: e_id, .. },
+            ) => {
                 assert_eq!(r_id, e_id);
             }
             _ => panic!("Event type mismatch"),
@@ -228,7 +232,8 @@ mod tests {
         let bus = EventBus::new();
         let mut sub = bus.subscribe();
 
-        bus.publish(SupervisorEvent::task_start("task-1", "Test")).ok();
+        bus.publish(SupervisorEvent::task_start("task-1", "Test"))
+            .ok();
 
         let result = sub.try_recv();
         assert!(result.is_ok());
@@ -256,9 +261,15 @@ mod tests {
         let bus = EventBus::new();
         let mut sub = bus.subscribe();
 
-        bus.publish(SupervisorEvent::task_start("task-1", "Test 1")).ok();
-        bus.publish(SupervisorEvent::progress_tick("task-1", ProgressInfo::new())).ok();
-        bus.publish(SupervisorEvent::token_threshold("task-1", 50000, 100000)).ok();
+        bus.publish(SupervisorEvent::task_start("task-1", "Test 1"))
+            .ok();
+        bus.publish(SupervisorEvent::progress_tick(
+            "task-1",
+            ProgressInfo::new(),
+        ))
+        .ok();
+        bus.publish(SupervisorEvent::token_threshold("task-1", 50000, 100000))
+            .ok();
 
         let e1 = sub.recv().await.unwrap();
         let e2 = sub.recv().await.unwrap();
@@ -276,7 +287,8 @@ mod tests {
 
         let tool_call = ToolCallInfo::new("Read", "file.rs");
 
-        bus.publish(SupervisorEvent::tool_call("task-1", tool_call)).ok();
+        bus.publish(SupervisorEvent::tool_call("task-1", tool_call))
+            .ok();
 
         let result = sub.try_recv();
         assert!(result.is_ok());
@@ -302,11 +314,15 @@ mod tests {
         let bus = EventBus::new();
         let mut sub = bus.subscribe();
 
-        bus.publish(SupervisorEvent::time_threshold("task-1", 600, 600)).ok();
+        bus.publish(SupervisorEvent::time_threshold("task-1", 600, 600))
+            .ok();
 
         let result = sub.try_recv();
         assert!(result.is_ok());
-        assert!(matches!(result.unwrap(), SupervisorEvent::TimeThreshold { .. }));
+        assert!(matches!(
+            result.unwrap(),
+            SupervisorEvent::TimeThreshold { .. }
+        ));
     }
 
     #[test]
@@ -315,7 +331,8 @@ mod tests {
         let _early_sub = bus.subscribe();
 
         // Publish before late subscriber joins
-        bus.publish(SupervisorEvent::task_start("task-1", "Test")).ok();
+        bus.publish(SupervisorEvent::task_start("task-1", "Test"))
+            .ok();
 
         // Late subscriber shouldn't see the event
         let mut late_sub = bus.subscribe();
@@ -331,12 +348,16 @@ mod tests {
 
         // Publish more events than capacity
         for i in 0..5 {
-            bus.publish(SupervisorEvent::task_start(format!("task-{}", i), "Test")).ok();
+            bus.publish(SupervisorEvent::task_start(format!("task-{}", i), "Test"))
+                .ok();
         }
 
         // First recv should indicate lagged
         let result = sub.try_recv();
-        assert!(matches!(result, Err(broadcast::error::TryRecvError::Lagged(_))));
+        assert!(matches!(
+            result,
+            Err(broadcast::error::TryRecvError::Lagged(_))
+        ));
     }
 
     #[tokio::test]
@@ -355,7 +376,9 @@ mod tests {
         let publisher = tokio::spawn(async move {
             barrier_clone.wait().await;
             for i in 0..10 {
-                bus_clone.publish(SupervisorEvent::task_start(format!("task-{}", i), "Test")).ok();
+                bus_clone
+                    .publish(SupervisorEvent::task_start(format!("task-{}", i), "Test"))
+                    .ok();
             }
         });
 
@@ -364,10 +387,8 @@ mod tests {
             barrier.wait().await;
             let mut count = 0;
             loop {
-                match tokio::time::timeout(
-                    std::time::Duration::from_millis(100),
-                    sub.recv()
-                ).await {
+                match tokio::time::timeout(std::time::Duration::from_millis(100), sub.recv()).await
+                {
                     Ok(Ok(_)) => count += 1,
                     _ => break,
                 }

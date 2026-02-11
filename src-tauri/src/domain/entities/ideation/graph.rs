@@ -161,7 +161,10 @@ impl DependencyGraph {
 
     /// Get all edges where the given proposal is the source (depends on others)
     pub fn get_dependencies(&self, proposal_id: &TaskProposalId) -> Vec<&DependencyGraphEdge> {
-        self.edges.iter().filter(|e| e.from == *proposal_id).collect()
+        self.edges
+            .iter()
+            .filter(|e| e.from == *proposal_id)
+            .collect()
     }
 
     /// Get all edges where the given proposal is the target (is depended on)
@@ -195,4 +198,3 @@ impl Default for DependencyGraph {
         Self::new()
     }
 }
-

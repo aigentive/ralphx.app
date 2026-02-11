@@ -12,9 +12,7 @@ use tauri::AppHandle;
 use crate::application::git_service::GitService;
 use crate::commands::execution_commands::AGENT_ACTIVE_STATUSES;
 use crate::domain::entities::project::GitMode;
-use crate::domain::entities::{
-    IdeationSessionId, InternalStatus, ProjectId, Task, TaskId,
-};
+use crate::domain::entities::{IdeationSessionId, InternalStatus, ProjectId, Task, TaskId};
 use crate::domain::repositories::{ProjectRepository, TaskRepository};
 use crate::domain::services::{RunningAgentKey, RunningAgentRegistry};
 use crate::error::AppResult;
@@ -54,15 +52,10 @@ pub enum TaskGroup {
     },
     /// All tasks with a given status in a project.
     #[serde(rename = "status")]
-    Status {
-        status: String,
-        project_id: String,
-    },
+    Status { status: String, project_id: String },
     /// All tasks in a project with no ideation_session_id (standalone tasks).
     #[serde(rename = "uncategorized")]
-    Uncategorized {
-        project_id: String,
-    },
+    Uncategorized { project_id: String },
 }
 
 /// Report of cleanup results for batch operations.
@@ -165,7 +158,8 @@ impl TaskCleanupService {
     /// Uses Graceful stop mode, no event emission. Returns whether an agent was stopped.
     pub async fn cleanup_task_ref(&self, task: &Task) -> AppResult<bool> {
         let was_active = AGENT_ACTIVE_STATUSES.contains(&task.internal_status);
-        self.cleanup_single_task(task, StopMode::Graceful, false).await?;
+        self.cleanup_single_task(task, StopMode::Graceful, false)
+            .await?;
         Ok(was_active)
     }
 
@@ -226,7 +220,9 @@ impl TaskCleanupService {
             .into_iter()
             .filter(|t| t.category != "plan_merge")
             .collect();
-        Ok(self.cleanup_tasks(&filtered, StopMode::Graceful, true).await)
+        Ok(self
+            .cleanup_tasks(&filtered, StopMode::Graceful, true)
+            .await)
     }
 
     // ── Private helpers ──────────────────────────────────────────────────
@@ -347,12 +343,12 @@ impl TaskCleanupService {
             }
             TaskGroup::Status { status, project_id } => {
                 let project_id = ProjectId::from_string(project_id.clone());
-                let internal_status: InternalStatus = status
-                    .parse()
-                    .map_err(|_| crate::error::AppError::Validation(
-                        format!("Invalid status: {}", status)
-                    ))?;
-                self.task_repo.get_by_status(&project_id, internal_status).await
+                let internal_status: InternalStatus = status.parse().map_err(|_| {
+                    crate::error::AppError::Validation(format!("Invalid status: {}", status))
+                })?;
+                self.task_repo
+                    .get_by_status(&project_id, internal_status)
+                    .await
             }
             TaskGroup::Uncategorized { project_id } => {
                 let project_id = ProjectId::from_string(project_id.clone());
@@ -420,12 +416,7 @@ mod tests {
             .unwrap();
 
         // Verify task is deleted
-        assert!(state
-            .task_repo
-            .get_by_id(&task_id)
-            .await
-            .unwrap()
-            .is_none());
+        assert!(state.task_repo.get_by_id(&task_id).await.unwrap().is_none());
     }
 
     #[tokio::test]
@@ -445,7 +436,12 @@ mod tests {
         let agent_stopped = service.cleanup_task_ref(&created).await.unwrap();
         assert!(!agent_stopped); // backlog task has no active agent
 
-        assert!(state.task_repo.get_by_id(&created.id).await.unwrap().is_none());
+        assert!(state
+            .task_repo
+            .get_by_id(&created.id)
+            .await
+            .unwrap()
+            .is_none());
     }
 
     #[tokio::test]
@@ -593,8 +589,18 @@ mod tests {
         let report = service.cleanup_tasks_in_group(group).await.unwrap();
 
         assert_eq!(report.tasks_deleted, 2);
-        assert!(state.task_repo.get_by_id(&created1.id).await.unwrap().is_none());
-        assert!(state.task_repo.get_by_id(&created2.id).await.unwrap().is_none());
+        assert!(state
+            .task_repo
+            .get_by_id(&created1.id)
+            .await
+            .unwrap()
+            .is_none());
+        assert!(state
+            .task_repo
+            .get_by_id(&created2.id)
+            .await
+            .unwrap()
+            .is_none());
     }
 
     #[tokio::test]
@@ -692,7 +698,12 @@ mod tests {
 
         assert_eq!(report.tasks_deleted, 0);
         // plan_merge task should still exist
-        assert!(state.task_repo.get_by_id(&created.id).await.unwrap().is_some());
+        assert!(state
+            .task_repo
+            .get_by_id(&created.id)
+            .await
+            .unwrap()
+            .is_some());
     }
 
     #[tokio::test]

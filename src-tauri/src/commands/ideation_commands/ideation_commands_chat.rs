@@ -4,8 +4,8 @@ use tauri::State;
 
 use crate::application::AppState;
 use crate::domain::entities::{
-    ChatMessage, ChatMessageId, IdeationSessionId, IdeationSessionStatus,
-    MessageRole, ProjectId, TaskId,
+    ChatMessage, ChatMessageId, IdeationSessionId, IdeationSessionStatus, MessageRole, ProjectId,
+    TaskId,
 };
 
 use super::ideation_commands_types::{ChatMessageResponse, SendChatMessageInput};
@@ -37,10 +37,15 @@ pub async fn send_chat_message(
         }
 
         // Create message based on role
-        let role: MessageRole = input.role.parse().map_err(|_| format!("Invalid role: {}", input.role))?;
+        let role: MessageRole = input
+            .role
+            .parse()
+            .map_err(|_| format!("Invalid role: {}", input.role))?;
         match role {
             MessageRole::User => ChatMessage::user_in_session(session_id, &input.content),
-            MessageRole::Orchestrator => ChatMessage::orchestrator_in_session(session_id, &input.content),
+            MessageRole::Orchestrator => {
+                ChatMessage::orchestrator_in_session(session_id, &input.content)
+            }
             MessageRole::System => ChatMessage::system_in_session(session_id, &input.content),
             MessageRole::Worker => {
                 // Worker messages are typically not created through this endpoint
@@ -102,7 +107,12 @@ pub async fn get_session_messages(
         .chat_message_repo
         .get_by_session(&session_id)
         .await
-        .map(|messages| messages.into_iter().map(ChatMessageResponse::from).collect())
+        .map(|messages| {
+            messages
+                .into_iter()
+                .map(ChatMessageResponse::from)
+                .collect()
+        })
         .map_err(|e| e.to_string())
 }
 
@@ -119,7 +129,12 @@ pub async fn get_recent_session_messages(
         .chat_message_repo
         .get_recent_by_session(&session_id, limit)
         .await
-        .map(|messages| messages.into_iter().map(ChatMessageResponse::from).collect())
+        .map(|messages| {
+            messages
+                .into_iter()
+                .map(ChatMessageResponse::from)
+                .collect()
+        })
         .map_err(|e| e.to_string())
 }
 
@@ -135,7 +150,12 @@ pub async fn get_project_messages(
         .chat_message_repo
         .get_by_project(&project_id)
         .await
-        .map(|messages| messages.into_iter().map(ChatMessageResponse::from).collect())
+        .map(|messages| {
+            messages
+                .into_iter()
+                .map(ChatMessageResponse::from)
+                .collect()
+        })
         .map_err(|e| e.to_string())
 }
 
@@ -151,7 +171,12 @@ pub async fn get_task_messages(
         .chat_message_repo
         .get_by_task(&task_id)
         .await
-        .map(|messages| messages.into_iter().map(ChatMessageResponse::from).collect())
+        .map(|messages| {
+            messages
+                .into_iter()
+                .map(ChatMessageResponse::from)
+                .collect()
+        })
         .map_err(|e| e.to_string())
 }
 

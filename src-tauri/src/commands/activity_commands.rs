@@ -77,30 +77,24 @@ impl ActivityEventFilterInput {
         let mut filter = ActivityEventFilter::new();
 
         if let Some(ref types) = self.event_types {
-            let parsed: Vec<ActivityEventType> = types
-                .iter()
-                .filter_map(|t| t.parse().ok())
-                .collect();
+            let parsed: Vec<ActivityEventType> =
+                types.iter().filter_map(|t| t.parse().ok()).collect();
             if !parsed.is_empty() {
                 filter = filter.with_event_types(parsed);
             }
         }
 
         if let Some(ref roles) = self.roles {
-            let parsed: Vec<ActivityEventRole> = roles
-                .iter()
-                .filter_map(|r| r.parse().ok())
-                .collect();
+            let parsed: Vec<ActivityEventRole> =
+                roles.iter().filter_map(|r| r.parse().ok()).collect();
             if !parsed.is_empty() {
                 filter = filter.with_roles(parsed);
             }
         }
 
         if let Some(ref statuses) = self.statuses {
-            let parsed: Vec<InternalStatus> = statuses
-                .iter()
-                .filter_map(|s| s.parse().ok())
-                .collect();
+            let parsed: Vec<InternalStatus> =
+                statuses.iter().filter_map(|s| s.parse().ok()).collect();
             if !parsed.is_empty() {
                 filter = filter.with_statuses(parsed);
             }
@@ -146,17 +140,16 @@ pub async fn list_task_activity_events(
 
     let page = state
         .activity_event_repo
-        .list_by_task_id(
-            &task_id,
-            cursor.as_deref(),
-            limit,
-            domain_filter.as_ref(),
-        )
+        .list_by_task_id(&task_id, cursor.as_deref(), limit, domain_filter.as_ref())
         .await
         .map_err(|e| e.to_string())?;
 
     Ok(ActivityEventPageResponse {
-        events: page.events.into_iter().map(ActivityEventResponse::from).collect(),
+        events: page
+            .events
+            .into_iter()
+            .map(ActivityEventResponse::from)
+            .collect(),
         cursor: page.cursor,
         has_more: page.has_more,
     })
@@ -196,7 +189,11 @@ pub async fn list_session_activity_events(
         .map_err(|e| e.to_string())?;
 
     Ok(ActivityEventPageResponse {
-        events: page.events.into_iter().map(ActivityEventResponse::from).collect(),
+        events: page
+            .events
+            .into_iter()
+            .map(ActivityEventResponse::from)
+            .collect(),
         cursor: page.cursor,
         has_more: page.has_more,
     })
@@ -232,7 +229,11 @@ pub async fn list_all_activity_events(
         .map_err(|e| e.to_string())?;
 
     Ok(ActivityEventPageResponse {
-        events: page.events.into_iter().map(ActivityEventResponse::from).collect(),
+        events: page
+            .events
+            .into_iter()
+            .map(ActivityEventResponse::from)
+            .collect(),
         cursor: page.cursor,
         has_more: page.has_more,
     })

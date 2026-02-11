@@ -99,10 +99,7 @@ impl GitService {
     /// * `branch` - Name of the new branch to create
     /// * `base` - Name of the base branch to branch from
     pub fn create_branch(repo: &Path, branch: &str, base: &str) -> AppResult<()> {
-        debug!(
-            "Creating branch '{}' from '{}' in {:?}",
-            branch, base, repo
-        );
+        debug!("Creating branch '{}' from '{}' in {:?}", branch, base, repo);
 
         let output = Command::new("git")
             .args(["branch", branch, base])
@@ -197,9 +194,7 @@ impl GitService {
             .args(["branch", branch_name, source_branch])
             .current_dir(repo_path)
             .output()
-            .map_err(|e| {
-                AppError::GitOperation(format!("Failed to run git branch: {}", e))
-            })?;
+            .map_err(|e| AppError::GitOperation(format!("Failed to run git branch: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -229,9 +224,7 @@ impl GitService {
             .args(["branch", "-d", branch_name])
             .current_dir(repo_path)
             .output()
-            .map_err(|e| {
-                AppError::GitOperation(format!("Failed to run git branch -d: {}", e))
-            })?;
+            .map_err(|e| AppError::GitOperation(format!("Failed to run git branch -d: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -254,9 +247,7 @@ impl GitService {
             .args(["rev-parse", "--abbrev-ref", "HEAD"])
             .current_dir(repo)
             .output()
-            .map_err(|e| {
-                AppError::GitOperation(format!("Failed to run git rev-parse: {}", e))
-            })?;
+            .map_err(|e| AppError::GitOperation(format!("Failed to run git rev-parse: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -354,10 +345,7 @@ impl GitService {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             // Log warning but don't fail - worktree might not exist or be already removed
-            warn!(
-                "Failed to delete worktree at {:?}: {}",
-                worktree, stderr
-            );
+            warn!("Failed to delete worktree at {:?}: {}", worktree, stderr);
         }
 
         Ok(())
@@ -430,7 +418,10 @@ impl GitService {
     /// * `path` - Path to the git repository or worktree
     /// * `message` - Commit message
     pub fn commit_all(path: &Path, message: &str) -> AppResult<Option<String>> {
-        debug!("Committing all changes in {:?} with message: {}", path, message);
+        debug!(
+            "Committing all changes in {:?} with message: {}",
+            path, message
+        );
 
         // Stage all changes
         // Guard against accidentally staging local environment artifacts if ignore
@@ -546,10 +537,7 @@ impl GitService {
             .current_dir(repo)
             .output()
             .map_err(|e| {
-                AppError::GitOperation(format!(
-                    "Failed to run git rev-parse {}: {}",
-                    branch, e
-                ))
+                AppError::GitOperation(format!("Failed to run git rev-parse {}: {}", branch, e))
             })?;
 
         if !output.status.success() {
@@ -629,10 +617,7 @@ impl GitService {
             });
         }
 
-        Err(AppError::GitOperation(format!(
-            "Rebase failed: {}",
-            stderr
-        )))
+        Err(AppError::GitOperation(format!("Rebase failed: {}", stderr)))
     }
 
     /// Abort an in-progress rebase
@@ -704,10 +689,7 @@ impl GitService {
             });
         }
 
-        Err(AppError::GitOperation(format!(
-            "Merge failed: {}",
-            stderr
-        )))
+        Err(AppError::GitOperation(format!("Merge failed: {}", stderr)))
     }
 
     /// Abort an in-progress merge
@@ -895,11 +877,17 @@ impl GitService {
             );
 
             // Checkout base and merge task branch directly
-            debug!("Checking out base branch '{}' for direct merge (empty repo path)", base);
+            debug!(
+                "Checking out base branch '{}' for direct merge (empty repo path)",
+                base
+            );
             Self::checkout_branch(repo, base)?;
 
             let merge_result = Self::merge_branch(repo, task_branch, base)?;
-            debug!("Direct merge result for '{}': {:?}", task_branch, merge_result);
+            debug!(
+                "Direct merge result for '{}': {:?}",
+                task_branch, merge_result
+            );
             match merge_result {
                 MergeResult::Success { commit_sha } | MergeResult::FastForward { commit_sha } => {
                     return Ok(MergeAttemptResult::Success { commit_sha });
@@ -918,7 +906,10 @@ impl GitService {
         Self::checkout_branch(repo, task_branch)?;
 
         let rebase_result = Self::rebase_onto(repo, base)?;
-        debug!("Rebase result for '{}' onto '{}': {:?}", task_branch, base, rebase_result);
+        debug!(
+            "Rebase result for '{}' onto '{}': {:?}",
+            task_branch, base, rebase_result
+        );
         match rebase_result {
             RebaseResult::Success => {
                 // Step 4: Checkout base and merge task branch (should be fast-forward)
@@ -926,9 +917,13 @@ impl GitService {
                 Self::checkout_branch(repo, base)?;
 
                 let merge_result = Self::merge_branch(repo, task_branch, base)?;
-                debug!("Post-rebase merge result for '{}': {:?}", task_branch, merge_result);
+                debug!(
+                    "Post-rebase merge result for '{}': {:?}",
+                    task_branch, merge_result
+                );
                 match merge_result {
-                    MergeResult::Success { commit_sha } | MergeResult::FastForward { commit_sha } => {
+                    MergeResult::Success { commit_sha }
+                    | MergeResult::FastForward { commit_sha } => {
                         Ok(MergeAttemptResult::Success { commit_sha })
                     }
                     MergeResult::Conflict { files } => {
@@ -966,11 +961,7 @@ impl GitService {
     /// * `repo` - Path to the main git repository
     /// * `task_branch` - Name of the task branch to merge
     /// * `base` - Name of the base branch to merge into
-    pub fn try_merge(
-        repo: &Path,
-        task_branch: &str,
-        base: &str,
-    ) -> AppResult<MergeAttemptResult> {
+    pub fn try_merge(repo: &Path, task_branch: &str, base: &str) -> AppResult<MergeAttemptResult> {
         debug!(
             "Attempting direct merge of '{}' into '{}' in {:?}",
             task_branch, base, repo
@@ -995,22 +986,28 @@ impl GitService {
 
         if output.status.success() {
             let commit_sha = Self::get_head_sha(repo)?;
-            debug!("Direct merge succeeded for '{}', SHA: {}", task_branch, commit_sha);
+            debug!(
+                "Direct merge succeeded for '{}', SHA: {}",
+                task_branch, commit_sha
+            );
             return Ok(MergeAttemptResult::Success { commit_sha });
         }
 
         // Check for conflict in both stdout and stderr
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stdout.contains("CONFLICT") || stderr.contains("CONFLICT")
-            || stdout.contains("conflict") || stderr.contains("conflict")
+        if stdout.contains("CONFLICT")
+            || stderr.contains("CONFLICT")
+            || stdout.contains("conflict")
+            || stderr.contains("conflict")
         {
             let conflict_files = Self::get_conflict_files(repo)?;
             Self::abort_merge(repo)?;
-            debug!("Direct merge conflict for '{}', files: {:?}", task_branch, conflict_files);
-            return Ok(MergeAttemptResult::NeedsAgent {
-                conflict_files,
-            });
+            debug!(
+                "Direct merge conflict for '{}', files: {:?}",
+                task_branch, conflict_files
+            );
+            return Ok(MergeAttemptResult::NeedsAgent { conflict_files });
         }
 
         Err(AppError::GitOperation(format!(
@@ -1052,7 +1049,10 @@ impl GitService {
         }
 
         // Step 2: Checkout target branch (no-op if already checked out)
-        debug!("Checking out target branch '{}' for in-repo merge", target_branch);
+        debug!(
+            "Checking out target branch '{}' for in-repo merge",
+            target_branch
+        );
         Self::checkout_branch(repo, target_branch)?;
 
         // Step 3: Merge source branch into target
@@ -1137,10 +1137,7 @@ impl GitService {
 
         if output.status.success() {
             let commit_sha = Self::get_head_sha(merge_worktree_path)?;
-            debug!(
-                "Merge succeeded in worktree, SHA: {}",
-                commit_sha
-            );
+            debug!("Merge succeeded in worktree, SHA: {}", commit_sha);
             return Ok(MergeAttemptResult::Success { commit_sha });
         }
 
@@ -1153,10 +1150,7 @@ impl GitService {
             || stderr.contains("conflict")
         {
             let conflict_files = Self::get_conflict_files(merge_worktree_path)?;
-            debug!(
-                "Merge conflict in worktree, files: {:?}",
-                conflict_files
-            );
+            debug!("Merge conflict in worktree, files: {:?}", conflict_files);
             // Do NOT abort — leave worktree in conflict state for agent resolution
             return Ok(MergeAttemptResult::NeedsAgent { conflict_files });
         }
@@ -1254,7 +1248,10 @@ impl GitService {
 
         let count_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
         let count = count_str.parse::<u32>().map_err(|e| {
-            AppError::GitOperation(format!("Failed to parse commit count '{}': {}", count_str, e))
+            AppError::GitOperation(format!(
+                "Failed to parse commit count '{}': {}",
+                count_str, e
+            ))
         })?;
 
         Ok(count)
@@ -1285,9 +1282,7 @@ impl GitService {
             .args(["merge-base", "--is-ancestor", commit_sha, branch])
             .current_dir(repo)
             .output()
-            .map_err(|e| {
-                AppError::GitOperation(format!("Failed to run git merge-base: {}", e))
-            })?;
+            .map_err(|e| AppError::GitOperation(format!("Failed to run git merge-base: {}", e)))?;
 
         // Exit code 0 = commit is ancestor (on branch), 1 = not ancestor (not on branch)
         // Other exit codes indicate errors
@@ -1384,9 +1379,7 @@ impl GitService {
             .args(["rev-parse", "--verify", &format!("{}^2", merge_commit_sha)])
             .current_dir(repo)
             .output()
-            .map_err(|e| {
-                AppError::GitOperation(format!("Failed to run git rev-parse: {}", e))
-            })?;
+            .map_err(|e| AppError::GitOperation(format!("Failed to run git rev-parse: {}", e)))?;
 
         let range = if check_output.status.success() {
             // True merge - get commits from first parent to second parent
@@ -1414,11 +1407,7 @@ impl GitService {
         };
 
         let mut output = Command::new("git")
-            .args([
-                "log",
-                &range,
-                "--pretty=format:%H|%h|%s|%an|%aI",
-            ])
+            .args(["log", &range, "--pretty=format:%H|%h|%s|%an|%aI"])
             .current_dir(repo)
             .output()
             .map_err(|e| AppError::GitOperation(format!("Failed to run git log: {}", e)))?;
@@ -1435,11 +1424,7 @@ impl GitService {
             // Fallback: include the merge commit itself (e.g., manual resolution commit on base)
             let single_range = format!("{}^..{}", merge_commit_sha, merge_commit_sha);
             output = Command::new("git")
-                .args([
-                    "log",
-                    &single_range,
-                    "--pretty=format:%H|%h|%s|%an|%aI",
-                ])
+                .args(["log", &single_range, "--pretty=format:%H|%h|%s|%an|%aI"])
                 .current_dir(repo)
                 .output()
                 .map_err(|e| AppError::GitOperation(format!("Failed to run git log: {}", e)))?;
@@ -1611,9 +1596,7 @@ impl GitService {
                 head = Some(rest.to_string());
             } else if let Some(rest) = line.strip_prefix("branch ") {
                 // Strip refs/heads/ prefix to get the short branch name
-                let short = rest
-                    .strip_prefix("refs/heads/")
-                    .unwrap_or(rest);
+                let short = rest.strip_prefix("refs/heads/").unwrap_or(rest);
                 branch = Some(short.to_string());
             }
             // Ignore `bare`, `detached`, `prunable` lines
@@ -1703,7 +1686,11 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let repo = temp_dir.path();
 
-        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
         Command::new("git")
             .args(["config", "user.email", "test@example.com"])
             .current_dir(repo)
@@ -1716,7 +1703,11 @@ mod tests {
             .unwrap();
 
         std::fs::write(repo.join("tracked.txt"), "initial").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
         Command::new("git")
             .args(["commit", "-m", "initial"])
             .current_dir(repo)
@@ -2103,7 +2094,11 @@ mod tests {
 
         // Create 3 commits
         for i in 1..=3 {
-            std::fs::write(repo.join(format!("test{}.txt", i)), format!("content {}", i)).unwrap();
+            std::fs::write(
+                repo.join(format!("test{}.txt", i)),
+                format!("content {}", i),
+            )
+            .unwrap();
             Command::new("git")
                 .args(["add", "."])
                 .current_dir(repo)
@@ -2198,7 +2193,10 @@ mod tests {
 
         // Try rebase and merge - should skip rebase and merge directly
         let result = GitService::try_rebase_and_merge(repo, "task-branch", "main");
-        assert!(result.is_ok(), "try_rebase_and_merge should succeed for first task");
+        assert!(
+            result.is_ok(),
+            "try_rebase_and_merge should succeed for first task"
+        );
 
         match result.unwrap() {
             MergeAttemptResult::Success { commit_sha } => {
@@ -2317,9 +2315,15 @@ mod tests {
                 assert!(on_main, "Merge commit should be on main branch");
 
                 // Verify all files exist
-                assert!(repo.join("initial.txt").exists(), "Initial file should exist");
+                assert!(
+                    repo.join("initial.txt").exists(),
+                    "Initial file should exist"
+                );
                 assert!(repo.join("second.txt").exists(), "Second file should exist");
-                assert!(repo.join("feature.txt").exists(), "Feature file should exist");
+                assert!(
+                    repo.join("feature.txt").exists(),
+                    "Feature file should exist"
+                );
             }
             MergeAttemptResult::NeedsAgent { .. } => {
                 panic!("Clean merge should not need agent");
@@ -2427,7 +2431,8 @@ mod tests {
             .unwrap();
 
         // After merge, task branch commit SHOULD be on main
-        let is_on_main_after = GitService::is_commit_on_branch(repo, &task_branch_head, "main").unwrap();
+        let is_on_main_after =
+            GitService::is_commit_on_branch(repo, &task_branch_head, "main").unwrap();
         assert!(
             is_on_main_after,
             "Task branch HEAD {} should be on main after merge",
@@ -2565,7 +2570,8 @@ mod tests {
         );
 
         // The correct check: task branch HEAD from main_repo
-        let is_merged = GitService::is_commit_on_branch(&main_repo, &task_branch_head, "main").unwrap();
+        let is_merged =
+            GitService::is_commit_on_branch(&main_repo, &task_branch_head, "main").unwrap();
         assert!(
             !is_merged,
             "Task branch HEAD should NOT be on main until merged"
@@ -2579,7 +2585,8 @@ mod tests {
             .unwrap();
 
         // Now task branch HEAD should be on main
-        let is_merged_after = GitService::is_commit_on_branch(&main_repo, &task_branch_head, "main").unwrap();
+        let is_merged_after =
+            GitService::is_commit_on_branch(&main_repo, &task_branch_head, "main").unwrap();
         assert!(
             is_merged_after,
             "Task branch HEAD should be on main after merge"
@@ -2596,16 +2603,40 @@ mod tests {
         let repo = temp_dir.path();
 
         // Initialize repo with initial commit
-        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.email", "test@test.com"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.name", "Test"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
         std::fs::write(repo.join("file.txt"), "content").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         // Create feature branch
         let result = GitService::create_feature_branch(repo, "ralphx/my-app/plan-abc123", "main");
-        assert!(result.is_ok(), "create_feature_branch should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "create_feature_branch should succeed: {:?}",
+            result.err()
+        );
 
         // Verify branch exists
         let output = Command::new("git")
@@ -2614,11 +2645,17 @@ mod tests {
             .output()
             .unwrap();
         let branches = String::from_utf8_lossy(&output.stdout);
-        assert!(branches.contains("ralphx/my-app/plan-abc123"), "Feature branch should exist");
+        assert!(
+            branches.contains("ralphx/my-app/plan-abc123"),
+            "Feature branch should exist"
+        );
 
         // Verify we didn't checkout the branch (still on main)
         let current = GitService::get_current_branch(repo).unwrap();
-        assert_eq!(current, "main", "Should still be on main after creating feature branch");
+        assert_eq!(
+            current, "main",
+            "Should still be on main after creating feature branch"
+        );
     }
 
     #[test]
@@ -2627,17 +2664,45 @@ mod tests {
         let repo = temp_dir.path();
 
         // Initialize repo with initial commit on main
-        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.email", "test@test.com"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.name", "Test"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
         std::fs::write(repo.join("file.txt"), "initial").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         // Add another commit on main
         std::fs::write(repo.join("file2.txt"), "second").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "second"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "second"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         let main_sha = GitService::get_head_sha(repo).unwrap();
 
@@ -2652,7 +2717,10 @@ mod tests {
             .output()
             .unwrap();
         let feature_sha = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        assert_eq!(feature_sha, main_sha, "Feature branch should point to main HEAD");
+        assert_eq!(
+            feature_sha, main_sha,
+            "Feature branch should point to main HEAD"
+        );
     }
 
     #[test]
@@ -2661,19 +2729,42 @@ mod tests {
         let repo = temp_dir.path();
 
         // Initialize repo
-        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.email", "test@test.com"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.name", "Test"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
         std::fs::write(repo.join("file.txt"), "content").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         // Create branch first time
         GitService::create_feature_branch(repo, "feature/dup", "main").unwrap();
 
         // Try to create again — should fail
         let result = GitService::create_feature_branch(repo, "feature/dup", "main");
-        assert!(result.is_err(), "Creating duplicate feature branch should fail");
+        assert!(
+            result.is_err(),
+            "Creating duplicate feature branch should fail"
+        );
     }
 
     #[test]
@@ -2682,16 +2773,39 @@ mod tests {
         let repo = temp_dir.path();
 
         // Initialize repo
-        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.email", "test@test.com"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.name", "Test"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
         std::fs::write(repo.join("file.txt"), "content").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         // Create from non-existent source branch
         let result = GitService::create_feature_branch(repo, "feature/bad", "nonexistent-branch");
-        assert!(result.is_err(), "Creating from non-existent source should fail");
+        assert!(
+            result.is_err(),
+            "Creating from non-existent source should fail"
+        );
     }
 
     #[test]
@@ -2700,19 +2814,43 @@ mod tests {
         let repo = temp_dir.path();
 
         // Initialize repo
-        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.email", "test@test.com"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.name", "Test"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
         std::fs::write(repo.join("file.txt"), "content").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         // Create feature branch, then merge it back so -d works
         GitService::create_feature_branch(repo, "feature/to-delete", "main").unwrap();
 
         // Delete it (safe delete — branch is fully merged since it's at same commit as main)
         let result = GitService::delete_feature_branch(repo, "feature/to-delete");
-        assert!(result.is_ok(), "delete_feature_branch should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "delete_feature_branch should succeed: {:?}",
+            result.err()
+        );
 
         // Verify branch no longer exists
         let output = Command::new("git")
@@ -2721,7 +2859,10 @@ mod tests {
             .output()
             .unwrap();
         let branches = String::from_utf8_lossy(&output.stdout);
-        assert!(!branches.contains("feature/to-delete"), "Feature branch should be deleted");
+        assert!(
+            !branches.contains("feature/to-delete"),
+            "Feature branch should be deleted"
+        );
     }
 
     #[test]
@@ -2730,12 +2871,32 @@ mod tests {
         let repo = temp_dir.path();
 
         // Initialize repo
-        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.email", "test@test.com"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.name", "Test"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
         std::fs::write(repo.join("file.txt"), "content").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         // Delete non-existent branch — should fail
         let result = GitService::delete_feature_branch(repo, "feature/nonexistent");
@@ -2752,33 +2913,79 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let repo = temp_dir.path();
 
-        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.email", "test@test.com"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.name", "Test"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         // Initial commit on main
         std::fs::write(repo.join("initial.txt"), "initial").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
-        let _ = Command::new("git").args(["branch", "-M", "main"]).current_dir(repo).output();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        let _ = Command::new("git")
+            .args(["branch", "-M", "main"])
+            .current_dir(repo)
+            .output();
 
         // Create task branch from main
-        Command::new("git").args(["checkout", "-b", "task-branch"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["checkout", "-b", "task-branch"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
         std::fs::write(repo.join("feature.txt"), "feature").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "add feature"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "add feature"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         // Back to main (no new commits on main → fast-forward possible)
-        Command::new("git").args(["checkout", "main"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         let result = GitService::try_merge(repo, "task-branch", "main");
-        assert!(result.is_ok(), "try_merge should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "try_merge should succeed: {:?}",
+            result.err()
+        );
 
         match result.unwrap() {
             MergeAttemptResult::Success { commit_sha } => {
                 let on_main = GitService::is_commit_on_branch(repo, &commit_sha, "main").unwrap();
                 assert!(on_main, "Merge commit should be on main");
-                assert!(repo.join("feature.txt").exists(), "Feature file should exist");
+                assert!(
+                    repo.join("feature.txt").exists(),
+                    "Feature file should exist"
+                );
             }
             MergeAttemptResult::NeedsAgent { .. } => {
                 panic!("Clean fast-forward merge should not need agent");
@@ -2792,36 +2999,90 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let repo = temp_dir.path();
 
-        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.email", "test@test.com"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.name", "Test"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         // Initial commit on main
         std::fs::write(repo.join("initial.txt"), "initial").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
-        let _ = Command::new("git").args(["branch", "-M", "main"]).current_dir(repo).output();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        let _ = Command::new("git")
+            .args(["branch", "-M", "main"])
+            .current_dir(repo)
+            .output();
 
         // Create task branch
-        Command::new("git").args(["checkout", "-b", "task-branch"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["checkout", "-b", "task-branch"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
         std::fs::write(repo.join("feature.txt"), "feature").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "add feature"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "add feature"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         // Go back to main and add a non-conflicting commit
-        Command::new("git").args(["checkout", "main"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
         std::fs::write(repo.join("other.txt"), "other work").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "other work on main"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "other work on main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         let result = GitService::try_merge(repo, "task-branch", "main");
-        assert!(result.is_ok(), "try_merge should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "try_merge should succeed: {:?}",
+            result.err()
+        );
 
         match result.unwrap() {
             MergeAttemptResult::Success { commit_sha } => {
                 let on_main = GitService::is_commit_on_branch(repo, &commit_sha, "main").unwrap();
                 assert!(on_main, "Merge commit should be on main");
-                assert!(repo.join("feature.txt").exists(), "Feature file should exist");
+                assert!(
+                    repo.join("feature.txt").exists(),
+                    "Feature file should exist"
+                );
                 assert!(repo.join("other.txt").exists(), "Other file should exist");
             }
             MergeAttemptResult::NeedsAgent { .. } => {
@@ -2836,37 +3097,91 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let repo = temp_dir.path();
 
-        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.email", "test@test.com"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.name", "Test"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         // Initial commit
         std::fs::write(repo.join("shared.txt"), "original content").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
-        let _ = Command::new("git").args(["branch", "-M", "main"]).current_dir(repo).output();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        let _ = Command::new("git")
+            .args(["branch", "-M", "main"])
+            .current_dir(repo)
+            .output();
 
         // Task branch modifies shared file
-        Command::new("git").args(["checkout", "-b", "task-branch"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["checkout", "-b", "task-branch"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
         std::fs::write(repo.join("shared.txt"), "task branch changes").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "task changes"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "task changes"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         // Main also modifies shared file (conflict)
-        Command::new("git").args(["checkout", "main"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
         std::fs::write(repo.join("shared.txt"), "main branch changes").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "main changes"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "main changes"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         let result = GitService::try_merge(repo, "task-branch", "main");
-        assert!(result.is_ok(), "try_merge should return Ok even on conflict: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "try_merge should return Ok even on conflict: {:?}",
+            result.err()
+        );
 
         match result.unwrap() {
             MergeAttemptResult::NeedsAgent { conflict_files } => {
                 assert!(!conflict_files.is_empty(), "Should report conflict files");
                 // Verify merge was aborted (repo is clean)
                 let has_changes = GitService::has_uncommitted_changes(repo).unwrap();
-                assert!(!has_changes, "Merge should be aborted, no uncommitted changes");
+                assert!(
+                    !has_changes,
+                    "Merge should be aborted, no uncommitted changes"
+                );
             }
             MergeAttemptResult::Success { .. } => {
                 panic!("Conflicting merge should need agent, not succeed");
@@ -2884,20 +3199,48 @@ mod tests {
         let repo = temp_dir.path();
 
         // Initialize repo with a commit
-        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.email", "test@example.com"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.name", "Test User"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
         std::fs::write(repo.join("test.txt"), "initial").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
-        let _ = Command::new("git").args(["branch", "-M", "main"]).current_dir(repo).output();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        let _ = Command::new("git")
+            .args(["branch", "-M", "main"])
+            .current_dir(repo)
+            .output();
 
         // Create a feature branch
-        Command::new("git").args(["branch", "feature-branch"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["branch", "feature-branch"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         // Create worktree checking out the existing branch
         let worktree_path = temp_dir.path().join("worktrees").join("merge-wt");
-        let result = GitService::checkout_existing_branch_worktree(repo, &worktree_path, "feature-branch");
+        let result =
+            GitService::checkout_existing_branch_worktree(repo, &worktree_path, "feature-branch");
         assert!(result.is_ok(), "Should succeed: {:?}", result.err());
 
         // Verify worktree was created and is on the correct branch
@@ -2911,20 +3254,51 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let repo = temp_dir.path();
 
-        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.email", "test@example.com"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.name", "Test User"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
         std::fs::write(repo.join("test.txt"), "initial").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
-        let _ = Command::new("git").args(["branch", "-M", "main"]).current_dir(repo).output();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        let _ = Command::new("git")
+            .args(["branch", "-M", "main"])
+            .current_dir(repo)
+            .output();
 
-        Command::new("git").args(["branch", "feature"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["branch", "feature"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         // Path with deeply nested non-existent parent dirs
         let worktree_path = temp_dir.path().join("deep").join("nested").join("merge-wt");
         let result = GitService::checkout_existing_branch_worktree(repo, &worktree_path, "feature");
-        assert!(result.is_ok(), "Should create parent dirs: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Should create parent dirs: {:?}",
+            result.err()
+        );
         assert!(worktree_path.exists());
     }
 
@@ -2933,15 +3307,39 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let repo = temp_dir.path();
 
-        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.email", "test@example.com"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.name", "Test User"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
         std::fs::write(repo.join("test.txt"), "initial").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         let worktree_path = temp_dir.path().join("merge-wt");
-        let result = GitService::checkout_existing_branch_worktree(repo, &worktree_path, "nonexistent-branch");
+        let result = GitService::checkout_existing_branch_worktree(
+            repo,
+            &worktree_path,
+            "nonexistent-branch",
+        );
         assert!(result.is_err(), "Should fail for nonexistent branch");
     }
 
@@ -2956,28 +3354,72 @@ mod tests {
 
         // Setup: feature-branch as target, task-branch as source (fast-forward case)
         // Main repo stays on main; merge worktree checks out feature-branch
-        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.email", "test@example.com"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.name", "Test User"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
         std::fs::write(repo.join("test.txt"), "initial").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
-        let _ = Command::new("git").args(["branch", "-M", "main"]).current_dir(repo).output();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        let _ = Command::new("git")
+            .args(["branch", "-M", "main"])
+            .current_dir(repo)
+            .output();
 
         // Create feature branch (target) at current commit
-        Command::new("git").args(["branch", "feature-branch"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["branch", "feature-branch"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         // Create task branch with a new file (fast-forward from feature-branch)
-        Command::new("git").args(["checkout", "-b", "task-branch"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["checkout", "-b", "task-branch"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
         std::fs::write(repo.join("new-file.txt"), "task work").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "task work"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "task work"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         // Go back to main (user's working branch)
-        Command::new("git").args(["checkout", "main"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         let merge_wt = temp_dir.path().join("merge-wt");
-        let result = GitService::try_merge_in_worktree(repo, "task-branch", "feature-branch", &merge_wt);
+        let result =
+            GitService::try_merge_in_worktree(repo, "task-branch", "feature-branch", &merge_wt);
         assert!(result.is_ok(), "Merge should succeed: {:?}", result.err());
 
         match result.unwrap() {
@@ -2990,7 +3432,10 @@ mod tests {
         }
 
         // Merge worktree should still exist (caller responsible for cleanup)
-        assert!(merge_wt.exists(), "Merge worktree should still exist after success");
+        assert!(
+            merge_wt.exists(),
+            "Merge worktree should still exist after success"
+        );
 
         // Clean up worktree
         let _ = GitService::delete_worktree(repo, &merge_wt);
@@ -3002,39 +3447,102 @@ mod tests {
         let repo = temp_dir.path();
 
         // Setup: feature-branch and task-branch modify same file differently
-        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.email", "test@example.com"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.name", "Test User"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
         std::fs::write(repo.join("shared.txt"), "initial content").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
-        let _ = Command::new("git").args(["branch", "-M", "main"]).current_dir(repo).output();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        let _ = Command::new("git")
+            .args(["branch", "-M", "main"])
+            .current_dir(repo)
+            .output();
 
         // Create feature branch (target) and add divergent changes
-        Command::new("git").args(["checkout", "-b", "feature-branch"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["checkout", "-b", "feature-branch"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
         std::fs::write(repo.join("shared.txt"), "feature branch changes").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "feature changes"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "feature changes"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         // Create task branch from main with conflicting changes
-        Command::new("git").args(["checkout", "main"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["checkout", "-b", "task-branch"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["checkout", "-b", "task-branch"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
         std::fs::write(repo.join("shared.txt"), "task branch changes").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "task changes"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "task changes"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         // Go back to main
-        Command::new("git").args(["checkout", "main"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         let merge_wt = temp_dir.path().join("merge-wt");
-        let result = GitService::try_merge_in_worktree(repo, "task-branch", "feature-branch", &merge_wt);
-        assert!(result.is_ok(), "Should return Ok even on conflict: {:?}", result.err());
+        let result =
+            GitService::try_merge_in_worktree(repo, "task-branch", "feature-branch", &merge_wt);
+        assert!(
+            result.is_ok(),
+            "Should return Ok even on conflict: {:?}",
+            result.err()
+        );
 
         match result.unwrap() {
             MergeAttemptResult::NeedsAgent { conflict_files } => {
                 assert!(!conflict_files.is_empty(), "Should report conflict files");
                 // Merge worktree should still exist (for agent to resolve in)
-                assert!(merge_wt.exists(), "Merge worktree should be kept for conflict resolution");
+                assert!(
+                    merge_wt.exists(),
+                    "Merge worktree should be kept for conflict resolution"
+                );
                 // MERGE_HEAD should exist (merge NOT aborted)
                 assert!(
                     GitService::is_merge_in_progress(&merge_wt),
@@ -3056,25 +3564,68 @@ mod tests {
         let repo = temp_dir.path();
 
         // Setup repo with feature-branch as merge target
-        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.email", "test@example.com"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.name", "Test User"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
         std::fs::write(repo.join("test.txt"), "initial").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
-        let _ = Command::new("git").args(["branch", "-M", "main"]).current_dir(repo).output();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        let _ = Command::new("git")
+            .args(["branch", "-M", "main"])
+            .current_dir(repo)
+            .output();
 
         // Create feature branch (target)
-        Command::new("git").args(["branch", "feature-branch"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["branch", "feature-branch"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         // Create task branch
-        Command::new("git").args(["checkout", "-b", "task-branch"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["checkout", "-b", "task-branch"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
         std::fs::write(repo.join("new.txt"), "task").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "task"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "task"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         // Go back to main — this is the branch the user is working on
-        Command::new("git").args(["checkout", "main"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
 
         // Record main repo state before merge
         let branch_before = GitService::get_current_branch(repo).unwrap();
@@ -3084,7 +3635,10 @@ mod tests {
 
         // Main repo should still be on the same branch
         let branch_after = GitService::get_current_branch(repo).unwrap();
-        assert_eq!(branch_before, branch_after, "Main repo branch should not change");
+        assert_eq!(
+            branch_before, branch_after,
+            "Main repo branch should not change"
+        );
 
         // Clean up
         let _ = GitService::delete_worktree(repo, &merge_wt);
@@ -3110,11 +3664,17 @@ branch refs/heads/feature-branch
         assert_eq!(result.len(), 2);
 
         assert_eq!(result[0].path, "/home/user/project");
-        assert_eq!(result[0].head.as_deref(), Some("abc1234567890abcdef1234567890abcdef123456"));
+        assert_eq!(
+            result[0].head.as_deref(),
+            Some("abc1234567890abcdef1234567890abcdef123456")
+        );
         assert_eq!(result[0].branch.as_deref(), Some("main"));
 
         assert_eq!(result[1].path, "/home/user/worktrees/feature");
-        assert_eq!(result[1].head.as_deref(), Some("def4567890abcdef1234567890abcdef12345678"));
+        assert_eq!(
+            result[1].head.as_deref(),
+            Some("def4567890abcdef1234567890abcdef12345678")
+        );
         assert_eq!(result[1].branch.as_deref(), Some("feature-branch"));
     }
 
@@ -3149,7 +3709,10 @@ detached
         assert_eq!(result.len(), 2);
 
         assert_eq!(result[1].path, "/home/user/worktrees/detached");
-        assert_eq!(result[1].head.as_deref(), Some("9876543210abcdef1234567890abcdef12345678"));
+        assert_eq!(
+            result[1].head.as_deref(),
+            Some("9876543210abcdef1234567890abcdef12345678")
+        );
         assert!(result[1].branch.is_none());
     }
 
@@ -3186,7 +3749,10 @@ branch refs/heads/ralphx/my-app/task-abc123
         assert_eq!(result.len(), 1);
 
         // Nested branch names should be preserved after stripping refs/heads/
-        assert_eq!(result[0].branch.as_deref(), Some("ralphx/my-app/task-abc123"));
+        assert_eq!(
+            result[0].branch.as_deref(),
+            Some("ralphx/my-app/task-abc123")
+        );
     }
 
     #[test]
@@ -3218,7 +3784,8 @@ prunable gitdir file points to non-existent location
     fn test_is_branch_lock_error_already_used_by_worktree() {
         let error = AppError::GitOperation(
             "Failed to create worktree at '/tmp/merge-wt' for branch 'main': \
-            fatal: 'main' is already used by worktree at '/home/user/project'".to_string()
+            fatal: 'main' is already used by worktree at '/home/user/project'"
+                .to_string(),
         );
         assert!(GitService::is_branch_lock_error(&error));
     }
@@ -3226,7 +3793,7 @@ prunable gitdir file points to non-existent location
     #[test]
     fn test_is_branch_lock_error_already_checked_out() {
         let error = AppError::GitOperation(
-            "fatal: branch 'feature/foo' already checked out at '/tmp/worktree'".to_string()
+            "fatal: branch 'feature/foo' already checked out at '/tmp/worktree'".to_string(),
         );
         assert!(GitService::is_branch_lock_error(&error));
     }
@@ -3234,40 +3801,36 @@ prunable gitdir file points to non-existent location
     #[test]
     fn test_is_branch_lock_error_is_already_checked_out_at() {
         let error = AppError::GitOperation(
-            "fatal: 'main' is already checked out at '/home/user/ralphx'".to_string()
+            "fatal: 'main' is already checked out at '/home/user/ralphx'".to_string(),
         );
         assert!(GitService::is_branch_lock_error(&error));
     }
 
     #[test]
     fn test_is_branch_lock_error_fatal_branch_checked_out() {
-        let error = AppError::GitOperation(
-            "fatal: branch is checked out in another worktree".to_string()
-        );
+        let error =
+            AppError::GitOperation("fatal: branch is checked out in another worktree".to_string());
         assert!(GitService::is_branch_lock_error(&error));
     }
 
     #[test]
     fn test_is_branch_lock_error_case_insensitive() {
         let error = AppError::GitOperation(
-            "FATAL: 'main' IS ALREADY USED BY WORKTREE at '/path'".to_string()
+            "FATAL: 'main' IS ALREADY USED BY WORKTREE at '/path'".to_string(),
         );
         assert!(GitService::is_branch_lock_error(&error));
     }
 
     #[test]
     fn test_is_branch_lock_error_merge_conflict_not_deferrable() {
-        let error = AppError::GitOperation(
-            "CONFLICT (content): Merge conflict in src/main.rs".to_string()
-        );
+        let error =
+            AppError::GitOperation("CONFLICT (content): Merge conflict in src/main.rs".to_string());
         assert!(!GitService::is_branch_lock_error(&error));
     }
 
     #[test]
     fn test_is_branch_lock_error_generic_git_error_not_deferrable() {
-        let error = AppError::GitOperation(
-            "fatal: not a git repository".to_string()
-        );
+        let error = AppError::GitOperation("fatal: not a git repository".to_string());
         assert!(!GitService::is_branch_lock_error(&error));
     }
 
@@ -3282,7 +3845,8 @@ prunable gitdir file points to non-existent location
         // This error contains "fatal", "branch", and "checked out" but is NOT a branch lock error.
         // The old pattern would have incorrectly classified this as deferrable.
         let error = AppError::GitOperation(
-            "fatal: could not read branch configuration, checked out files may be corrupt".to_string()
+            "fatal: could not read branch configuration, checked out files may be corrupt"
+                .to_string(),
         );
         assert!(!GitService::is_branch_lock_error(&error));
     }

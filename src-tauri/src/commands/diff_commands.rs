@@ -119,7 +119,8 @@ pub async fn get_commit_file_changes(
     let diff_service = DiffService::new();
     if task.internal_status == crate::domain::entities::InternalStatus::Merged {
         if let Some(ref merge_sha) = task.merge_commit_sha {
-            if merge_sha == &commit_sha && diff_service.is_merge_commit(&working_path_str, merge_sha)
+            if merge_sha == &commit_sha
+                && diff_service.is_merge_commit(&working_path_str, merge_sha)
             {
                 let from_ref =
                     diff_service.get_merged_base_ref(&working_path_str, base_branch, merge_sha);
@@ -152,7 +153,8 @@ pub async fn get_commit_file_diff(
     let diff_service = DiffService::new();
     if task.internal_status == crate::domain::entities::InternalStatus::Merged {
         if let Some(ref merge_sha) = task.merge_commit_sha {
-            if merge_sha == &commit_sha && diff_service.is_merge_commit(&working_path_str, merge_sha)
+            if merge_sha == &commit_sha
+                && diff_service.is_merge_commit(&working_path_str, merge_sha)
             {
                 let from_ref =
                     diff_service.get_merged_base_ref(&working_path_str, base_branch, merge_sha);

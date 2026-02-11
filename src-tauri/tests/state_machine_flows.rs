@@ -9,10 +9,10 @@
 #![allow(unused_imports)]
 
 use ralphx_lib::domain::entities::TaskId;
+use ralphx_lib::domain::state_machine::types::QaFailure;
 use ralphx_lib::domain::state_machine::{
     FailedData, QaFailedData, State, StateData, TaskContext, TaskEvent, TaskStateMachine,
 };
-use ralphx_lib::domain::state_machine::types::QaFailure;
 use ralphx_lib::infrastructure::sqlite::{
     open_memory_connection, run_migrations, TaskStateMachineRepository,
 };
@@ -72,9 +72,9 @@ fn test_happy_path_without_qa() {
 
     // Track all transitions
     let events = vec![
-        TaskEvent::Schedule,                   // Backlog -> Ready
-        // Ready -> Executing is normally triggered by scheduler picking up the task
-        // For this test, we manually set up Executing state
+        TaskEvent::Schedule, // Backlog -> Ready
+                             // Ready -> Executing is normally triggered by scheduler picking up the task
+                             // For this test, we manually set up Executing state
     ];
 
     // Schedule: Backlog -> Ready
@@ -87,7 +87,9 @@ fn test_happy_path_without_qa() {
     assert_eq!(repo.load_state(&task_id).unwrap(), State::Executing);
 
     // ExecutionComplete: Executing -> PendingReview (direct, no ExecutionDone)
-    let state = repo.process_event(&task_id, &TaskEvent::ExecutionComplete).unwrap();
+    let state = repo
+        .process_event(&task_id, &TaskEvent::ExecutionComplete)
+        .unwrap();
     assert_eq!(state, State::PendingReview);
 
     // PendingReview auto-transitions to Reviewing (normally done by state machine)
@@ -107,7 +109,9 @@ fn test_happy_path_without_qa() {
     assert_eq!(state, State::ReviewPassed);
 
     // Human approves: ReviewPassed -> Approved
-    let state = repo.process_event(&task_id, &TaskEvent::HumanApprove).unwrap();
+    let state = repo
+        .process_event(&task_id, &TaskEvent::HumanApprove)
+        .unwrap();
     assert_eq!(state, State::Approved);
 
     // Verify final state is terminal
@@ -254,7 +258,8 @@ fn test_revision_needed_to_executing_loop() {
     let (repo, task_id) = setup_test();
 
     // Start in RevisionNeeded
-    repo.persist_state(&task_id, &State::RevisionNeeded).unwrap();
+    repo.persist_state(&task_id, &State::RevisionNeeded)
+        .unwrap();
 
     // Simulate starting re-execution (normally done by agent scheduler)
     repo.persist_state(&task_id, &State::Executing).unwrap();
@@ -543,6 +548,7 @@ fn test_full_review_cycle() {
     assert_eq!(repo.load_state(&task_id).unwrap(), State::ReviewPassed);
 
     // Human approves: ReviewPassed -> Approved
-    repo.process_event(&task_id, &TaskEvent::HumanApprove).unwrap();
+    repo.process_event(&task_id, &TaskEvent::HumanApprove)
+        .unwrap();
     assert_eq!(repo.load_state(&task_id).unwrap(), State::Approved);
 }

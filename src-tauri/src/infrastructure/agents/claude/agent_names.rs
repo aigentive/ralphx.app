@@ -101,7 +101,10 @@ pub fn spawner_agent_name(agent_type: &str) -> &'static str {
         "merger" | "ralphx-merger" => AGENT_MERGER,
         // Fallback: qualify using prefix
         other => {
-            tracing::warn!(agent_type = other, "Unknown spawner agent type, falling back to qualify_agent_name");
+            tracing::warn!(
+                agent_type = other,
+                "Unknown spawner agent type, falling back to qualify_agent_name"
+            );
             Box::leak(super::qualify_agent_name(other).into_boxed_str())
         }
     }

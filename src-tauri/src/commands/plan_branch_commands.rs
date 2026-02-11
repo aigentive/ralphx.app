@@ -140,11 +140,7 @@ pub async fn enable_feature_branch(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Project not found: {}", project_id.as_str()))?;
 
-    let base_branch = project
-        .base_branch
-        .as_deref()
-        .unwrap_or("main")
-        .to_string();
+    let base_branch = project.base_branch.as_deref().unwrap_or("main").to_string();
     let repo_path = PathBuf::from(&project.working_directory);
 
     // Generate branch name: ralphx/{project-slug}/plan-{short-artifact-id}
@@ -323,8 +319,7 @@ pub async fn disable_feature_branch(
             .ideation_session_id
             .as_ref()
             .map_or(false, |sid| sid.as_str() == plan_branch.session_id.as_str())
-            || t.plan_artifact_id.as_ref()
-                == Some(&plan_branch.plan_artifact_id);
+            || t.plan_artifact_id.as_ref() == Some(&plan_branch.plan_artifact_id);
         matches && t.internal_status == InternalStatus::Merged
     });
 

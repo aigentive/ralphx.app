@@ -130,7 +130,10 @@ fn artifact_type_from_str_error() {
 #[test]
 fn artifact_type_display() {
     assert_eq!(ArtifactType::Prd.to_string(), "prd");
-    assert_eq!(ArtifactType::ResearchDocument.to_string(), "research_document");
+    assert_eq!(
+        ArtifactType::ResearchDocument.to_string(),
+        "research_document"
+    );
 }
 
 // ===== ArtifactContent Tests =====
@@ -237,8 +240,12 @@ fn artifact_new_inline_creates_correctly() {
 
 #[test]
 fn artifact_new_file_creates_correctly() {
-    let artifact =
-        Artifact::new_file("Design Doc", ArtifactType::DesignDoc, "/docs/design.md", "system");
+    let artifact = Artifact::new_file(
+        "Design Doc",
+        ArtifactType::DesignDoc,
+        "/docs/design.md",
+        "system",
+    );
     assert_eq!(artifact.name, "Design Doc");
     assert_eq!(artifact.artifact_type, ArtifactType::DesignDoc);
     assert!(artifact.content.is_file());
@@ -356,7 +363,10 @@ fn artifact_bucket_system_buckets_returns_4() {
 #[test]
 fn artifact_bucket_research_outputs_has_correct_types() {
     let buckets = ArtifactBucket::system_buckets();
-    let research = buckets.iter().find(|b| b.id.as_str() == "research-outputs").unwrap();
+    let research = buckets
+        .iter()
+        .find(|b| b.id.as_str() == "research-outputs")
+        .unwrap();
     assert!(research.accepts_type(ArtifactType::ResearchDocument));
     assert!(research.accepts_type(ArtifactType::Findings));
     assert!(research.accepts_type(ArtifactType::Recommendations));
@@ -413,7 +423,10 @@ fn artifact_relation_type_from_str_error() {
 
 #[test]
 fn artifact_relation_type_display() {
-    assert_eq!(ArtifactRelationType::DerivedFrom.to_string(), "derived_from");
+    assert_eq!(
+        ArtifactRelationType::DerivedFrom.to_string(),
+        "derived_from"
+    );
     assert_eq!(ArtifactRelationType::RelatedTo.to_string(), "related_to");
 }
 

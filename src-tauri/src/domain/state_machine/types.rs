@@ -455,8 +455,7 @@ mod tests {
 
     #[test]
     fn test_qa_failure_serializes_to_json() {
-        let failure = QaFailure::new("test_json", "JSON error")
-            .with_screenshot("screen.png");
+        let failure = QaFailure::new("test_json", "JSON error").with_screenshot("screen.png");
         let json = serde_json::to_string(&failure).unwrap();
         assert!(json.contains("test_json"));
         assert!(json.contains("JSON error"));

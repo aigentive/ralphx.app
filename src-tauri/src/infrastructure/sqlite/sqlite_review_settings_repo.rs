@@ -1,5 +1,5 @@
-use crate::domain::review::ReviewSettings;
 use crate::domain::repositories::ReviewSettingsRepository;
+use crate::domain::review::ReviewSettings;
 use async_trait::async_trait;
 use rusqlite::Connection;
 use std::sync::Arc;

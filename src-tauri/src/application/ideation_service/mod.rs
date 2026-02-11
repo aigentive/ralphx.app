@@ -7,13 +7,12 @@
 // - Adding chat messages
 // - Retrieving session data with proposals and messages
 
-mod types;
 #[cfg(test)]
 mod tests;
+mod types;
 
 pub use types::{
-    CreateProposalOptions, PlanArtifactConfig, SessionStats, SessionWithData,
-    UpdateProposalOptions,
+    CreateProposalOptions, PlanArtifactConfig, SessionStats, SessionWithData, UpdateProposalOptions,
 };
 
 use crate::domain::entities::{
@@ -77,7 +76,8 @@ where
             Some(t) => IdeationSession::new_with_title(project_id, t),
             None => {
                 // Generate a default title based on timestamp
-                let default_title = format!("Ideation Session {}", Utc::now().format("%Y-%m-%d %H:%M"));
+                let default_title =
+                    format!("Ideation Session {}", Utc::now().format("%Y-%m-%d %H:%M"));
                 IdeationSession::new_with_title(project_id, default_title)
             }
         };
@@ -86,7 +86,10 @@ where
     }
 
     /// Get a session by ID
-    pub async fn get_session(&self, session_id: &IdeationSessionId) -> AppResult<Option<IdeationSession>> {
+    pub async fn get_session(
+        &self,
+        session_id: &IdeationSessionId,
+    ) -> AppResult<Option<IdeationSession>> {
         self.session_repo.get_by_id(session_id).await
     }
 
@@ -158,7 +161,12 @@ where
         // Verify session exists and is active
         let session = self.session_repo.get_by_id(&session_id).await?;
         match session {
-            None => return Err(AppError::NotFound(format!("Session {} not found", session_id))),
+            None => {
+                return Err(AppError::NotFound(format!(
+                    "Session {} not found",
+                    session_id
+                )))
+            }
             Some(s) if s.status != IdeationSessionStatus::Active => {
                 return Err(AppError::Validation(format!(
                     "Cannot add proposal to {} session",
@@ -194,7 +202,10 @@ where
         let proposal = self.proposal_repo.get_by_id(proposal_id).await?;
 
         match proposal {
-            None => Err(AppError::NotFound(format!("Proposal {} not found", proposal_id))),
+            None => Err(AppError::NotFound(format!(
+                "Proposal {} not found",
+                proposal_id
+            ))),
             Some(mut proposal) => {
                 let mut modified = false;
 
@@ -249,14 +260,14 @@ where
     }
 
     /// Toggle proposal selection state
-    pub async fn toggle_proposal_selection(
-        &self,
-        proposal_id: &TaskProposalId,
-    ) -> AppResult<bool> {
+    pub async fn toggle_proposal_selection(&self, proposal_id: &TaskProposalId) -> AppResult<bool> {
         let proposal = self.proposal_repo.get_by_id(proposal_id).await?;
 
         match proposal {
-            None => Err(AppError::NotFound(format!("Proposal {} not found", proposal_id))),
+            None => Err(AppError::NotFound(format!(
+                "Proposal {} not found",
+                proposal_id
+            ))),
             Some(proposal) => {
                 let new_selected = !proposal.selected;
                 self.proposal_repo
@@ -279,7 +290,10 @@ where
     }
 
     /// Get proposals for a session
-    pub async fn get_proposals(&self, session_id: &IdeationSessionId) -> AppResult<Vec<TaskProposal>> {
+    pub async fn get_proposals(
+        &self,
+        session_id: &IdeationSessionId,
+    ) -> AppResult<Vec<TaskProposal>> {
         self.proposal_repo.get_by_session(session_id).await
     }
 
@@ -389,7 +403,10 @@ where
         session_id: &IdeationSessionId,
     ) -> AppResult<SessionStats> {
         let total_proposals = self.proposal_repo.count_by_session(session_id).await?;
-        let selected_proposals = self.proposal_repo.count_selected_by_session(session_id).await?;
+        let selected_proposals = self
+            .proposal_repo
+            .count_selected_by_session(session_id)
+            .await?;
         let message_count = self.message_repo.count_by_session(session_id).await?;
 
         Ok(SessionStats {

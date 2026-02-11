@@ -7,7 +7,9 @@ use tokio::sync::Mutex;
 use async_trait::async_trait;
 use rusqlite::Connection;
 
-use crate::domain::entities::{ChatMessage, ChatMessageId, ChatConversationId, IdeationSessionId, ProjectId, TaskId};
+use crate::domain::entities::{
+    ChatConversationId, ChatMessage, ChatMessageId, IdeationSessionId, ProjectId, TaskId,
+};
 use crate::domain::repositories::ChatMessageRepository;
 use crate::error::{AppError, AppResult};
 
@@ -134,7 +136,10 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
         Ok(messages)
     }
 
-    async fn get_by_conversation(&self, conversation_id: &ChatConversationId) -> AppResult<Vec<ChatMessage>> {
+    async fn get_by_conversation(
+        &self,
+        conversation_id: &ChatConversationId,
+    ) -> AppResult<Vec<ChatMessage>> {
         let conn = self.conn.lock().await;
 
         let mut stmt = conn

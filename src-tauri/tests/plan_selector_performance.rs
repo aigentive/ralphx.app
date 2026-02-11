@@ -12,8 +12,8 @@ use ralphx_lib::application::plan_ranking::{
 };
 use ralphx_lib::application::AppState;
 use ralphx_lib::domain::entities::{
-    IdeationSession, IdeationSessionId, IdeationSessionStatus, InternalStatus,
-    ProjectId, SelectionSource, Task, TaskId,
+    IdeationSession, IdeationSessionId, IdeationSessionStatus, InternalStatus, ProjectId,
+    SelectionSource, Task, TaskId,
 };
 use std::time::Instant;
 
@@ -254,9 +254,7 @@ async fn test_ranking_algorithm_performance_150_plans() {
     let start = Instant::now();
     let mut scores = Vec::new();
     for data in &test_data {
-        let score = compute_final_score(
-            data.0, data.1, data.2, data.3, data.4, data.5, base,
-        );
+        let score = compute_final_score(data.0, data.1, data.2, data.3, data.4, data.5, base);
         scores.push(score);
     }
     let duration = start.elapsed();
@@ -392,7 +390,13 @@ async fn test_ranking_correctness_at_scale() {
     )
     .await;
     for _ in 0..10 {
-        create_test_task(&state, &project_id, &session_high, InternalStatus::Executing).await;
+        create_test_task(
+            &state,
+            &project_id,
+            &session_high,
+            InternalStatus::Executing,
+        )
+        .await;
     }
     record_selection(
         &state,
@@ -447,10 +451,23 @@ async fn test_ranking_correctness_at_scale() {
             .expect("Failed to get tasks");
 
         let task_total = tasks.len() as u32;
-        let task_incomplete = tasks.iter().filter(|t| t.internal_status != InternalStatus::Approved).count() as u32;
-        let task_active = tasks.iter().filter(|t| {
-            matches!(t.internal_status, InternalStatus::Executing | InternalStatus::QaRefining | InternalStatus::QaTesting | InternalStatus::PendingReview | InternalStatus::Reviewing)
-        }).count() as u32;
+        let task_incomplete = tasks
+            .iter()
+            .filter(|t| t.internal_status != InternalStatus::Approved)
+            .count() as u32;
+        let task_active = tasks
+            .iter()
+            .filter(|t| {
+                matches!(
+                    t.internal_status,
+                    InternalStatus::Executing
+                        | InternalStatus::QaRefining
+                        | InternalStatus::QaTesting
+                        | InternalStatus::PendingReview
+                        | InternalStatus::Reviewing
+                )
+            })
+            .count() as u32;
 
         // Get selection stats
         let stats = state

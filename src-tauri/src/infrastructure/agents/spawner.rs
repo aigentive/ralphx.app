@@ -11,7 +11,7 @@ use tracing::info;
 use tauri::{AppHandle, Wry};
 
 use crate::commands::ExecutionState;
-use crate::domain::agents::{AgentConfig, AgentHandle, AgenticClient, AgentRole};
+use crate::domain::agents::{AgentConfig, AgentHandle, AgentRole, AgenticClient};
 use crate::domain::entities::{GitMode, TaskId};
 use crate::domain::repositories::{ProjectRepository, TaskRepository};
 use crate::domain::state_machine::AgentSpawner;
@@ -46,10 +46,7 @@ impl AgenticClientSpawner {
     pub fn new(client: Arc<dyn AgenticClient>) -> Self {
         // Working directory should be project root (parent of src-tauri), not src-tauri itself
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        let working_directory = cwd
-            .parent()
-            .map(|p| p.to_path_buf())
-            .unwrap_or(cwd);
+        let working_directory = cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd);
 
         Self {
             client,
@@ -225,7 +222,10 @@ impl AgentSpawner for AgenticClientSpawner {
             prompt: format!("Execute task {}", task_id),
             working_directory: working_dir,
             plugin_dir: Some(plugin_dir),
-            agent: Some(crate::infrastructure::agents::claude::agent_names::spawner_agent_name(agent_type).to_string()),
+            agent: Some(
+                crate::infrastructure::agents::claude::agent_names::spawner_agent_name(agent_type)
+                    .to_string(),
+            ),
             model: None,
             max_tokens: None,
             timeout_secs: None,

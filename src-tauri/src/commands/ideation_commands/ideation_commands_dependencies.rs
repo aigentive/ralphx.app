@@ -5,8 +5,8 @@ use tauri::{Emitter, State};
 
 use crate::application::AppState;
 use crate::domain::entities::{
-    DependencyGraph, DependencyGraphEdge, DependencyGraphNode,
-    IdeationSessionId, TaskProposal, TaskProposalId,
+    DependencyGraph, DependencyGraphEdge, DependencyGraphNode, IdeationSessionId, TaskProposal,
+    TaskProposalId,
 };
 
 use super::ideation_commands_types::DependencyGraphResponse;
@@ -245,7 +245,15 @@ fn dfs_detect_cycle(
                 continue;
             }
             if !visited.contains(dep) {
-                if dfs_detect_cycle(dep, from_map, proposal_ids, visited, rec_stack, path, cycles) {
+                if dfs_detect_cycle(
+                    dep,
+                    from_map,
+                    proposal_ids,
+                    visited,
+                    rec_stack,
+                    path,
+                    cycles,
+                ) {
                     // Found a cycle
                 }
             } else if rec_stack.contains(dep) {
@@ -281,7 +289,9 @@ fn find_critical_path(
     for deps in from_map.values() {
         for dep in deps {
             if in_degree.contains_key(dep) {
-                *in_degree.get_mut(dep).expect("Dependency should exist in in_degree map") += 1;
+                *in_degree
+                    .get_mut(dep)
+                    .expect("Dependency should exist in in_degree map") += 1;
             }
         }
     }
@@ -333,7 +343,10 @@ fn find_critical_path(
     }
 
     // Find the end of the longest path
-    let (end_node, _) = dist.iter().max_by_key(|(_, &d)| d).unwrap_or((&sorted[0], &0));
+    let (end_node, _) = dist
+        .iter()
+        .max_by_key(|(_, &d)| d)
+        .unwrap_or((&sorted[0], &0));
 
     // Reconstruct path
     let mut path = vec![end_node.clone()];

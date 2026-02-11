@@ -40,11 +40,7 @@ impl SqliteTaskDependencyRepository {
 
 #[async_trait]
 impl TaskDependencyRepository for SqliteTaskDependencyRepository {
-    async fn add_dependency(
-        &self,
-        task_id: &TaskId,
-        depends_on_task_id: &TaskId,
-    ) -> AppResult<()> {
+    async fn add_dependency(&self, task_id: &TaskId, depends_on_task_id: &TaskId) -> AppResult<()> {
         let conn = self.conn.lock().await;
 
         let id = Uuid::new_v4().to_string();
@@ -953,7 +949,10 @@ mod tests {
         // This is valid, no cycle
         // Would adding a new dependency E -> D create a cycle? No
         let task_e = TaskId::new();
-        let has_cycle = repo.has_circular_dependency(&task_e, &task_d).await.unwrap();
+        let has_cycle = repo
+            .has_circular_dependency(&task_e, &task_d)
+            .await
+            .unwrap();
         assert!(!has_cycle);
 
         // D has 2 blockers

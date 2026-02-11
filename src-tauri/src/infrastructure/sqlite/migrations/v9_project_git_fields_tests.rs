@@ -10,7 +10,11 @@ fn test_v9_adds_worktree_parent_directory_column_to_projects() {
     let conn = open_memory_connection().unwrap();
     run_migrations(&conn).unwrap();
 
-    assert!(helpers::column_exists(&conn, "projects", "worktree_parent_directory"));
+    assert!(helpers::column_exists(
+        &conn,
+        "projects",
+        "worktree_parent_directory"
+    ));
 }
 
 #[test]
@@ -115,7 +119,11 @@ fn test_v9_migration_is_idempotent() {
     run_migrations(&conn).unwrap();
 
     // Column should still exist
-    assert!(helpers::column_exists(&conn, "projects", "worktree_parent_directory"));
+    assert!(helpers::column_exists(
+        &conn,
+        "projects",
+        "worktree_parent_directory"
+    ));
 }
 
 #[test]

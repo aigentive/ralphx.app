@@ -313,7 +313,8 @@ mod tests {
         assert_eq!(repo.get_pending().await.unwrap().len(), 2);
 
         // Simulate startup: create PermissionState with the repo, call expire
-        let state = PermissionState::with_repo(repo.clone() as Arc<dyn crate::domain::repositories::permission_repository::PermissionRepository>);
+        let state = PermissionState::with_repo(repo.clone()
+            as Arc<dyn crate::domain::repositories::permission_repository::PermissionRepository>);
         state.expire_stale_on_startup().await;
 
         // All pending should be expired

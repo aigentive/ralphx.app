@@ -36,7 +36,11 @@ impl ArtifactRepository for MockArtifactRepository {
         Ok(artifacts.get(id.as_str()).cloned())
     }
 
-    async fn get_by_id_at_version(&self, id: &ArtifactId, version: u32) -> AppResult<Option<Artifact>> {
+    async fn get_by_id_at_version(
+        &self,
+        id: &ArtifactId,
+        version: u32,
+    ) -> AppResult<Option<Artifact>> {
         let artifacts = self.artifacts.lock().await;
         if let Some(artifact) = artifacts.get(id.as_str()) {
             if artifact.metadata.version == version {
@@ -144,10 +148,7 @@ impl ArtifactRepository for MockArtifactRepository {
         Ok(relation)
     }
 
-    async fn get_relations(
-        &self,
-        artifact_id: &ArtifactId,
-    ) -> AppResult<Vec<ArtifactRelation>> {
+    async fn get_relations(&self, artifact_id: &ArtifactId) -> AppResult<Vec<ArtifactRelation>> {
         let relations = self.relations.lock().await;
         Ok(relations
             .iter()
@@ -172,11 +173,7 @@ impl ArtifactRepository for MockArtifactRepository {
             .collect())
     }
 
-    async fn delete_relation(
-        &self,
-        from_id: &ArtifactId,
-        to_id: &ArtifactId,
-    ) -> AppResult<()> {
+    async fn delete_relation(&self, from_id: &ArtifactId, to_id: &ArtifactId) -> AppResult<()> {
         let mut relations = self.relations.lock().await;
         relations.retain(|r| r.from_artifact_id != *from_id || r.to_artifact_id != *to_id);
         Ok(())
@@ -550,7 +547,10 @@ async fn copy_to_bucket_source_not_found() {
         .await;
 
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("Artifact not found"));
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("Artifact not found"));
 }
 
 #[tokio::test]

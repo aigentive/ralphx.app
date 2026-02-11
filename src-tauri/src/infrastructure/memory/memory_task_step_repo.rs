@@ -100,10 +100,7 @@ impl TaskStepRepository for MemoryTaskStepRepository {
         Ok(())
     }
 
-    async fn count_by_status(
-        &self,
-        task_id: &TaskId,
-    ) -> AppResult<HashMap<TaskStepStatus, u32>> {
+    async fn count_by_status(&self, task_id: &TaskId) -> AppResult<HashMap<TaskStepStatus, u32>> {
         let steps = self.steps.read().await;
         let mut counts: HashMap<TaskStepStatus, u32> = HashMap::new();
 
@@ -153,7 +150,12 @@ mod tests {
     async fn create_stores_step() {
         let repo = MemoryTaskStepRepository::new();
         let task_id = TaskId::new();
-        let step = TaskStep::new(task_id.clone(), "Test step".to_string(), 0, "user".to_string());
+        let step = TaskStep::new(
+            task_id.clone(),
+            "Test step".to_string(),
+            0,
+            "user".to_string(),
+        );
 
         let created = repo.create(step.clone()).await.unwrap();
         assert_eq!(created.id, step.id);
@@ -174,7 +176,12 @@ mod tests {
         let step1 = TaskStep::new(task_id.clone(), "Step 2".to_string(), 2, "user".to_string());
         let step2 = TaskStep::new(task_id.clone(), "Step 0".to_string(), 0, "user".to_string());
         let step3 = TaskStep::new(task_id.clone(), "Step 1".to_string(), 1, "user".to_string());
-        let step4 = TaskStep::new(other_task_id, "Other step".to_string(), 0, "user".to_string());
+        let step4 = TaskStep::new(
+            other_task_id,
+            "Other step".to_string(),
+            0,
+            "user".to_string(),
+        );
 
         repo.create(step1).await.unwrap();
         repo.create(step2).await.unwrap();
@@ -193,21 +200,42 @@ mod tests {
         let repo = MemoryTaskStepRepository::new();
         let task_id = TaskId::new();
 
-        let step1 = TaskStep::new(task_id.clone(), "Pending".to_string(), 0, "user".to_string());
-        let mut step2 = TaskStep::new(task_id.clone(), "In Progress".to_string(), 1, "user".to_string());
+        let step1 = TaskStep::new(
+            task_id.clone(),
+            "Pending".to_string(),
+            0,
+            "user".to_string(),
+        );
+        let mut step2 = TaskStep::new(
+            task_id.clone(),
+            "In Progress".to_string(),
+            1,
+            "user".to_string(),
+        );
         step2.status = TaskStepStatus::InProgress;
-        let mut step3 = TaskStep::new(task_id.clone(), "Completed".to_string(), 2, "user".to_string());
+        let mut step3 = TaskStep::new(
+            task_id.clone(),
+            "Completed".to_string(),
+            2,
+            "user".to_string(),
+        );
         step3.status = TaskStepStatus::Completed;
 
         repo.create(step1).await.unwrap();
         repo.create(step2).await.unwrap();
         repo.create(step3).await.unwrap();
 
-        let pending = repo.get_by_task_and_status(&task_id, TaskStepStatus::Pending).await.unwrap();
+        let pending = repo
+            .get_by_task_and_status(&task_id, TaskStepStatus::Pending)
+            .await
+            .unwrap();
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].title, "Pending");
 
-        let in_progress = repo.get_by_task_and_status(&task_id, TaskStepStatus::InProgress).await.unwrap();
+        let in_progress = repo
+            .get_by_task_and_status(&task_id, TaskStepStatus::InProgress)
+            .await
+            .unwrap();
         assert_eq!(in_progress.len(), 1);
         assert_eq!(in_progress[0].title, "In Progress");
     }
@@ -250,7 +278,12 @@ mod tests {
 
         let step1 = TaskStep::new(task_id.clone(), "Step 1".to_string(), 0, "user".to_string());
         let step2 = TaskStep::new(task_id.clone(), "Step 2".to_string(), 1, "user".to_string());
-        let step3 = TaskStep::new(other_task_id.clone(), "Other".to_string(), 0, "user".to_string());
+        let step3 = TaskStep::new(
+            other_task_id.clone(),
+            "Other".to_string(),
+            0,
+            "user".to_string(),
+        );
 
         repo.create(step1).await.unwrap();
         repo.create(step2).await.unwrap();
@@ -326,7 +359,9 @@ mod tests {
         repo.create(step3).await.unwrap();
 
         // Reorder: step3, step1, step2
-        repo.reorder(&task_id, vec![id3.clone(), id1.clone(), id2.clone()]).await.unwrap();
+        repo.reorder(&task_id, vec![id3.clone(), id1.clone(), id2.clone()])
+            .await
+            .unwrap();
 
         let steps = repo.get_by_task(&task_id).await.unwrap();
         assert_eq!(steps[0].id, id3);

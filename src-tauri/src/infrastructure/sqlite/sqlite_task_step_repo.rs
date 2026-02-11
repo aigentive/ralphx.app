@@ -163,16 +163,16 @@ impl TaskStepRepository for SqliteTaskStepRepository {
     async fn delete_by_task(&self, task_id: &TaskId) -> AppResult<()> {
         let conn = self.conn.lock().await;
 
-        conn.execute("DELETE FROM task_steps WHERE task_id = ?1", [task_id.as_str()])
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        conn.execute(
+            "DELETE FROM task_steps WHERE task_id = ?1",
+            [task_id.as_str()],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
 
         Ok(())
     }
 
-    async fn count_by_status(
-        &self,
-        task_id: &TaskId,
-    ) -> AppResult<HashMap<TaskStepStatus, u32>> {
+    async fn count_by_status(&self, task_id: &TaskId) -> AppResult<HashMap<TaskStepStatus, u32>> {
         let conn = self.conn.lock().await;
 
         let mut stmt = conn
@@ -335,7 +335,12 @@ mod tests {
         create_test_task(&conn, &task_id);
         let repo = SqliteTaskStepRepository::new(conn);
 
-        let step = TaskStep::new(task_id.clone(), "Test step".to_string(), 0, "user".to_string());
+        let step = TaskStep::new(
+            task_id.clone(),
+            "Test step".to_string(),
+            0,
+            "user".to_string(),
+        );
         let step_id = step.id.clone();
 
         // Create step
@@ -398,11 +403,17 @@ mod tests {
         repo.create(step2).await.unwrap();
         repo.create(step3).await.unwrap();
 
-        let completed_steps = repo.get_by_task_and_status(&task_id, TaskStepStatus::Completed).await.unwrap();
+        let completed_steps = repo
+            .get_by_task_and_status(&task_id, TaskStepStatus::Completed)
+            .await
+            .unwrap();
         assert_eq!(completed_steps.len(), 1);
         assert_eq!(completed_steps[0].title, "Step 1");
 
-        let pending_steps = repo.get_by_task_and_status(&task_id, TaskStepStatus::Pending).await.unwrap();
+        let pending_steps = repo
+            .get_by_task_and_status(&task_id, TaskStepStatus::Pending)
+            .await
+            .unwrap();
         assert_eq!(pending_steps.len(), 1);
         assert_eq!(pending_steps[0].title, "Step 3");
     }
@@ -414,7 +425,12 @@ mod tests {
         create_test_task(&conn, &task_id);
         let repo = SqliteTaskStepRepository::new(conn);
 
-        let mut step = TaskStep::new(task_id.clone(), "Original title".to_string(), 0, "user".to_string());
+        let mut step = TaskStep::new(
+            task_id.clone(),
+            "Original title".to_string(),
+            0,
+            "user".to_string(),
+        );
         let step_id = step.id.clone();
 
         repo.create(step.clone()).await.unwrap();
@@ -437,7 +453,12 @@ mod tests {
         create_test_task(&conn, &task_id);
         let repo = SqliteTaskStepRepository::new(conn);
 
-        let step = TaskStep::new(task_id.clone(), "Test step".to_string(), 0, "user".to_string());
+        let step = TaskStep::new(
+            task_id.clone(),
+            "Test step".to_string(),
+            0,
+            "user".to_string(),
+        );
         let step_id = step.id.clone();
 
         repo.create(step).await.unwrap();
@@ -520,7 +541,12 @@ mod tests {
         create_test_task(&conn, &task_id);
         let repo = SqliteTaskStepRepository::new(conn);
 
-        let step = TaskStep::new(task_id.clone(), "Existing step".to_string(), 0, "user".to_string());
+        let step = TaskStep::new(
+            task_id.clone(),
+            "Existing step".to_string(),
+            0,
+            "user".to_string(),
+        );
         let step_id = step.id.clone();
 
         // Create a step first
@@ -529,7 +555,12 @@ mod tests {
         // Try to bulk create with a duplicate ID (should fail and rollback)
         let steps = vec![
             step.clone(), // Duplicate ID
-            TaskStep::new(task_id.clone(), "New step".to_string(), 1, "user".to_string()),
+            TaskStep::new(
+                task_id.clone(),
+                "New step".to_string(),
+                1,
+                "user".to_string(),
+            ),
         ];
 
         let result = repo.bulk_create(steps).await;

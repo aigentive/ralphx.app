@@ -216,11 +216,7 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
         Ok(())
     }
 
-    async fn set_created_task_id(
-        &self,
-        id: &TaskProposalId,
-        task_id: &TaskId,
-    ) -> AppResult<()> {
+    async fn set_created_task_id(&self, id: &TaskProposalId, task_id: &TaskId) -> AppResult<()> {
         let conn = self.conn.lock().await;
         let now = Utc::now();
 
@@ -325,7 +321,10 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
         Ok(count as u32)
     }
 
-    async fn get_by_plan_artifact_id(&self, artifact_id: &ArtifactId) -> AppResult<Vec<TaskProposal>> {
+    async fn get_by_plan_artifact_id(
+        &self,
+        artifact_id: &ArtifactId,
+    ) -> AppResult<Vec<TaskProposal>> {
         let conn = self.conn.lock().await;
 
         let mut stmt = conn
@@ -365,4 +364,3 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
         Ok(())
     }
 }
-

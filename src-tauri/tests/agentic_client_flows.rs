@@ -3,12 +3,10 @@
 
 use std::sync::Arc;
 
-use ralphx_lib::domain::agents::{
-    AgentConfig, AgentRole, AgenticClient, ClientType,
-};
+use ralphx_lib::domain::agents::{AgentConfig, AgentRole, AgenticClient, ClientType};
 use ralphx_lib::domain::state_machine::AgentSpawner;
-use ralphx_lib::infrastructure::{MockAgenticClient, MockCallType, ClaudeCodeClient};
 use ralphx_lib::infrastructure::agents::AgenticClientSpawner;
+use ralphx_lib::infrastructure::{ClaudeCodeClient, MockAgenticClient, MockCallType};
 use ralphx_lib::testing::test_prompts;
 
 // ============================================================================
@@ -39,11 +37,18 @@ async fn test_mock_client_configured_responses() {
     let handle = ralphx_lib::domain::agents::AgentHandle::mock(AgentRole::Worker);
 
     // Configure responses
-    client.when_prompt_contains("implement", "Feature implemented successfully").await;
-    client.when_prompt_contains("review", "Code looks good, approved").await;
+    client
+        .when_prompt_contains("implement", "Feature implemented successfully")
+        .await;
+    client
+        .when_prompt_contains("review", "Code looks good, approved")
+        .await;
 
     // Test matching prompts
-    let response1 = client.send_prompt(&handle, "implement login").await.unwrap();
+    let response1 = client
+        .send_prompt(&handle, "implement login")
+        .await
+        .unwrap();
     assert_eq!(response1.content, "Feature implemented successfully");
 
     let response2 = client.send_prompt(&handle, "review my code").await.unwrap();
@@ -68,13 +73,16 @@ async fn test_mock_client_records_all_calls() {
     assert_eq!(calls.len(), 3);
 
     // Verify roles
-    let roles: Vec<_> = calls.iter().map(|c| {
-        if let MockCallType::Spawn { role, .. } = &c.call_type {
-            role.clone()
-        } else {
-            panic!("Expected Spawn call")
-        }
-    }).collect();
+    let roles: Vec<_> = calls
+        .iter()
+        .map(|c| {
+            if let MockCallType::Spawn { role, .. } = &c.call_type {
+                role.clone()
+            } else {
+                panic!("Expected Spawn call")
+            }
+        })
+        .collect();
 
     assert!(roles.contains(&AgentRole::Worker));
     assert!(roles.contains(&AgentRole::Reviewer));
@@ -87,9 +95,14 @@ async fn test_mock_client_with_test_prompts() {
     let handle = ralphx_lib::domain::agents::AgentHandle::mock(AgentRole::Worker);
 
     // Use test prompts constants
-    client.when_prompt_contains("TEST_ECHO_OK", test_prompts::expected::ECHO_OK).await;
+    client
+        .when_prompt_contains("TEST_ECHO_OK", test_prompts::expected::ECHO_OK)
+        .await;
 
-    let response = client.send_prompt(&handle, test_prompts::ECHO_MARKER).await.unwrap();
+    let response = client
+        .send_prompt(&handle, test_prompts::ECHO_MARKER)
+        .await
+        .unwrap();
     test_prompts::assert_marker(&response.content, test_prompts::expected::ECHO_OK);
 }
 
@@ -106,7 +119,8 @@ async fn test_mock_client_stop_agent() {
 
     // Verify stop was recorded
     let calls = client.get_calls().await;
-    let stop_calls: Vec<_> = calls.iter()
+    let stop_calls: Vec<_> = calls
+        .iter()
         .filter(|c| matches!(c.call_type, MockCallType::Stop { .. }))
         .collect();
     assert_eq!(stop_calls.len(), 1);
@@ -141,8 +155,7 @@ async fn test_claude_client_capabilities() {
 
 #[tokio::test]
 async fn test_claude_client_with_nonexistent_cli() {
-    let client = ClaudeCodeClient::new()
-        .with_cli_path("/nonexistent/path/to/claude_12345");
+    let client = ClaudeCodeClient::new().with_cli_path("/nonexistent/path/to/claude_12345");
 
     // Should report not available
     let available = client.is_available().await.unwrap();
@@ -169,7 +182,10 @@ async fn test_claude_spawn_blocked_in_tests() {
 
     let result = client.spawn_agent(config).await;
     assert!(result.is_err());
-    assert!(matches!(result, Err(ralphx_lib::domain::agents::AgentError::SpawnNotAllowed(_))));
+    assert!(matches!(
+        result,
+        Err(ralphx_lib::domain::agents::AgentError::SpawnNotAllowed(_))
+    ));
 
     // Clean up
     std::env::remove_var("RALPHX_TEST_MODE");
@@ -212,13 +228,16 @@ async fn test_spawner_maps_roles_correctly() {
     let calls = mock.get_spawn_calls().await;
     assert_eq!(calls.len(), 7);
 
-    let roles: Vec<_> = calls.iter().map(|c| {
-        if let MockCallType::Spawn { role, .. } = &c.call_type {
-            role.clone()
-        } else {
-            panic!("Expected Spawn call")
-        }
-    }).collect();
+    let roles: Vec<_> = calls
+        .iter()
+        .map(|c| {
+            if let MockCallType::Spawn { role, .. } = &c.call_type {
+                role.clone()
+            } else {
+                panic!("Expected Spawn call")
+            }
+        })
+        .collect();
 
     assert_eq!(roles[0], AgentRole::Worker);
     assert_eq!(roles[1], AgentRole::Reviewer);

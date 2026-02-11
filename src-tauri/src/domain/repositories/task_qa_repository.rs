@@ -65,9 +65,9 @@ pub trait TaskQARepository: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
     use std::collections::HashMap;
     use std::sync::{Arc, RwLock};
-    use chrono::Utc;
 
     // Mock implementation for testing trait object usage
     struct MockTaskQARepository {
@@ -221,14 +221,19 @@ mod tests {
 
         repo.create(&task_qa).await.unwrap();
 
-        let criteria = AcceptanceCriteria::from_criteria(vec![
-            AcceptanceCriterion::visual("AC1", "Test"),
-        ]);
-        let steps = QATestSteps::from_steps(vec![
-            QATestStep::new("QA1", "AC1", "Step", vec![], "Expected"),
-        ]);
+        let criteria =
+            AcceptanceCriteria::from_criteria(vec![AcceptanceCriterion::visual("AC1", "Test")]);
+        let steps = QATestSteps::from_steps(vec![QATestStep::new(
+            "QA1",
+            "AC1",
+            "Step",
+            vec![],
+            "Expected",
+        )]);
 
-        repo.update_prep(&qa_id, "agent-1", &criteria, &steps).await.unwrap();
+        repo.update_prep(&qa_id, "agent-1", &criteria, &steps)
+            .await
+            .unwrap();
 
         let retrieved = repo.get_by_id(&qa_id).await.unwrap().unwrap();
         assert!(retrieved.acceptance_criteria.is_some());
@@ -247,9 +252,13 @@ mod tests {
 
         repo.create(&task_qa).await.unwrap();
 
-        let refined_steps = QATestSteps::from_steps(vec![
-            QATestStep::new("QA1", "AC1", "Refined", vec![], "Expected"),
-        ]);
+        let refined_steps = QATestSteps::from_steps(vec![QATestStep::new(
+            "QA1",
+            "AC1",
+            "Refined",
+            vec![],
+            "Expected",
+        )]);
 
         repo.update_refinement(&qa_id, "agent-2", "Added button", &refined_steps)
             .await
@@ -305,18 +314,26 @@ mod tests {
         repo.create(&task_qa2).await.unwrap();
 
         // Complete prep for first task
-        let criteria = AcceptanceCriteria::from_criteria(vec![
-            AcceptanceCriterion::visual("AC1", "Test"),
-        ]);
-        let steps = QATestSteps::from_steps(vec![
-            QATestStep::new("QA1", "AC1", "Step", vec![], "Expected"),
-        ]);
-        repo.update_prep(&qa_id1, "agent-1", &criteria, &steps).await.unwrap();
+        let criteria =
+            AcceptanceCriteria::from_criteria(vec![AcceptanceCriterion::visual("AC1", "Test")]);
+        let steps = QATestSteps::from_steps(vec![QATestStep::new(
+            "QA1",
+            "AC1",
+            "Step",
+            vec![],
+            "Expected",
+        )]);
+        repo.update_prep(&qa_id1, "agent-1", &criteria, &steps)
+            .await
+            .unwrap();
 
         // Get pending prep tasks
         let pending = repo.get_pending_prep().await.unwrap();
         assert_eq!(pending.len(), 1);
-        assert_eq!(pending[0].task_id, TaskId::from_string("task-2".to_string()));
+        assert_eq!(
+            pending[0].task_id,
+            TaskId::from_string("task-2".to_string())
+        );
     }
 
     #[tokio::test]

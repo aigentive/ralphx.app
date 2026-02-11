@@ -5,7 +5,9 @@
 
 use async_trait::async_trait;
 
-use crate::domain::entities::research::{ResearchProcess, ResearchProcessId, ResearchProcessStatus};
+use crate::domain::entities::research::{
+    ResearchProcess, ResearchProcessId, ResearchProcessStatus,
+};
 use crate::error::AppResult;
 
 /// Repository trait for ResearchProcess persistence.
@@ -22,7 +24,8 @@ pub trait ProcessRepository: Send + Sync {
     async fn get_all(&self) -> AppResult<Vec<ResearchProcess>>;
 
     /// Get research processes by status
-    async fn get_by_status(&self, status: ResearchProcessStatus) -> AppResult<Vec<ResearchProcess>>;
+    async fn get_by_status(&self, status: ResearchProcessStatus)
+        -> AppResult<Vec<ResearchProcess>>;
 
     /// Get active research processes (pending or running)
     async fn get_active(&self) -> AppResult<Vec<ResearchProcess>>;
@@ -154,9 +157,8 @@ mod tests {
 
     fn create_running_process() -> ResearchProcess {
         let brief = ResearchBrief::new("Which database to choose?");
-        let mut process =
-            ResearchProcess::new("Database Research", brief, "deep-researcher")
-                .with_preset(ResearchDepthPreset::QuickScan);
+        let mut process = ResearchProcess::new("Database Research", brief, "deep-researcher")
+            .with_preset(ResearchDepthPreset::QuickScan);
         process.start();
         process.advance();
         process.advance();
@@ -165,8 +167,7 @@ mod tests {
 
     fn create_completed_process() -> ResearchProcess {
         let brief = ResearchBrief::new("Completed question");
-        let mut process =
-            ResearchProcess::new("Completed Research", brief, "deep-researcher");
+        let mut process = ResearchProcess::new("Completed Research", brief, "deep-researcher");
         process.start();
         process.complete();
         process
@@ -397,8 +398,8 @@ mod tests {
         let output = ResearchOutput::new("custom-bucket")
             .with_artifact_type(ArtifactType::Findings)
             .with_artifact_type(ArtifactType::Recommendations);
-        let process = ResearchProcess::new("Output Research", brief, "researcher")
-            .with_output(output);
+        let process =
+            ResearchProcess::new("Output Research", brief, "researcher").with_output(output);
         let repo = MockProcessRepository::with_process(process.clone());
 
         let result = repo.get_by_id(&process.id).await.unwrap().unwrap();

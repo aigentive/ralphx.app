@@ -9,6 +9,11 @@ use super::helpers;
 use crate::error::AppResult;
 
 pub fn migrate(conn: &Connection) -> AppResult<()> {
-    helpers::add_column_if_not_exists(conn, "proposal_dependencies", "reason", "TEXT DEFAULT NULL")?;
+    helpers::add_column_if_not_exists(
+        conn,
+        "proposal_dependencies",
+        "reason",
+        "TEXT DEFAULT NULL",
+    )?;
     Ok(())
 }

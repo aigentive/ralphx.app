@@ -85,7 +85,6 @@ pub enum PermissionMode {
     BypassPermissions,
 }
 
-
 /// Autonomy level for agent behavior
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -96,7 +95,6 @@ pub enum AutonomyLevel {
     SemiAutonomous,
     FullyAutonomous,
 }
-
 
 /// Claude Code component references
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -299,12 +297,11 @@ impl AgentProfile {
             name: "Worker".to_string(),
             description: "Executes implementation tasks autonomously".to_string(),
             role: ProfileRole::Worker,
-            claude_code: ClaudeCodeConfig::new("worker")
-                .with_skills(vec![
-                    "coding-standards".to_string(),
-                    "testing-patterns".to_string(),
-                    "git-workflow".to_string(),
-                ]),
+            claude_code: ClaudeCodeConfig::new("worker").with_skills(vec![
+                "coding-standards".to_string(),
+                "testing-patterns".to_string(),
+                "git-workflow".to_string(),
+            ]),
             execution: ExecutionConfig::default()
                 .with_model(Model::Sonnet)
                 .with_max_iterations(30)
@@ -324,9 +321,7 @@ impl AgentProfile {
             description: "Reviews code changes for quality and correctness".to_string(),
             role: ProfileRole::Reviewer,
             claude_code: ClaudeCodeConfig::new("reviewer")
-                .with_skills(vec![
-                    "code-review-checklist".to_string(),
-                ]),
+                .with_skills(vec!["code-review-checklist".to_string()]),
             execution: ExecutionConfig::default()
                 .with_model(Model::Sonnet)
                 .with_max_iterations(10),
@@ -377,15 +372,12 @@ impl AgentProfile {
             description: "Conducts thorough research and analysis".to_string(),
             role: ProfileRole::Researcher,
             claude_code: ClaudeCodeConfig::new("deep-researcher")
-                .with_skills(vec![
-                    "research-methodology".to_string(),
-                ]),
+                .with_skills(vec!["research-methodology".to_string()]),
             execution: ExecutionConfig::default()
                 .with_model(Model::Opus)
                 .with_max_iterations(200),
             io: IoConfig::default(),
-            behavior: BehaviorConfig::default()
-                .with_autonomy(AutonomyLevel::FullyAutonomous),
+            behavior: BehaviorConfig::default().with_autonomy(AutonomyLevel::FullyAutonomous),
         }
     }
 
@@ -417,11 +409,26 @@ mod tests {
 
     #[test]
     fn test_profile_role_from_str() {
-        assert_eq!("worker".parse::<ProfileRole>().unwrap(), ProfileRole::Worker);
-        assert_eq!("reviewer".parse::<ProfileRole>().unwrap(), ProfileRole::Reviewer);
-        assert_eq!("supervisor".parse::<ProfileRole>().unwrap(), ProfileRole::Supervisor);
-        assert_eq!("orchestrator".parse::<ProfileRole>().unwrap(), ProfileRole::Orchestrator);
-        assert_eq!("researcher".parse::<ProfileRole>().unwrap(), ProfileRole::Researcher);
+        assert_eq!(
+            "worker".parse::<ProfileRole>().unwrap(),
+            ProfileRole::Worker
+        );
+        assert_eq!(
+            "reviewer".parse::<ProfileRole>().unwrap(),
+            ProfileRole::Reviewer
+        );
+        assert_eq!(
+            "supervisor".parse::<ProfileRole>().unwrap(),
+            ProfileRole::Supervisor
+        );
+        assert_eq!(
+            "orchestrator".parse::<ProfileRole>().unwrap(),
+            ProfileRole::Orchestrator
+        );
+        assert_eq!(
+            "researcher".parse::<ProfileRole>().unwrap(),
+            ProfileRole::Researcher
+        );
     }
 
     #[test]
