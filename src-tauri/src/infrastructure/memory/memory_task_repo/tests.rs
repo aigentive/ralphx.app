@@ -218,6 +218,207 @@ async fn test_get_status_history_empty_for_new_task() {
     assert!(history.is_empty());
 }
 
+#[tokio::test]
+async fn test_get_status_entered_at_returns_earliest_timestamp() {
+    let repo = MemoryTaskRepository::new();
+    let project_id = ProjectId::new();
+    let task = Task::new(project_id, "Status timestamp test".to_string());
+    repo.create(task.clone()).await.unwrap();
+
+    // Transition through multiple statuses
+    repo.persist_status_change(
+        &task.id,
+        InternalStatus::Backlog,
+        InternalStatus::Ready,
+        "user",
+    )
+    .await
+    .unwrap();
+
+    // Small delay to ensure different timestamps
+    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+    repo.persist_status_change(
+        &task.id,
+        InternalStatus::Ready,
+        InternalStatus::Executing,
+        "agent",
+    )
+    .await
+    .unwrap();
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+    repo.persist_status_change(
+        &task.id,
+        InternalStatus::Executing,
+        InternalStatus::PendingMerge,
+        "agent",
+    )
+    .await
+    .unwrap();
+
+    // Get timestamp for when task first entered PendingMerge
+    let timestamp = repo
+        .get_status_entered_at(&task.id, InternalStatus::PendingMerge)
+        .await
+        .unwrap();
+
+    assert!(timestamp.is_some());
+
+    // Verify it's the only transition to PendingMerge
+    let history = repo.get_status_history(&task.id).await.unwrap();
+    let pending_merge_transitions: Vec<_> = history
+        .iter()
+        .filter(|t| t.to == InternalStatus::PendingMerge)
+        .collect();
+    assert_eq!(pending_merge_transitions.len(), 1);
+    assert_eq!(timestamp.unwrap(), pending_merge_transitions[0].timestamp);
+}
+
+#[tokio::test]
+async fn test_get_status_entered_at_returns_none_if_never_entered() {
+    let repo = MemoryTaskRepository::new();
+    let project_id = ProjectId::new();
+    let task = Task::new(project_id, "Never merged".to_string());
+    repo.create(task.clone()).await.unwrap();
+
+    repo.persist_status_change(
+        &task.id,
+        InternalStatus::Backlog,
+        InternalStatus::Ready,
+        "user",
+    )
+    .await
+    .unwrap();
+
+    // Task never entered Merging status
+    let timestamp = repo
+        .get_status_entered_at(&task.id, InternalStatus::Merging)
+        .await
+        .unwrap();
+
+    assert!(timestamp.is_none());
+}
+
+#[tokio::test]
+async fn test_get_status_entered_at_returns_earliest_when_entered_multiple_times() {
+    let repo = MemoryTaskRepository::new();
+    let project_id = ProjectId::new();
+    let task = Task::new(project_id, "Re-enter status".to_string());
+    repo.create(task.clone()).await.unwrap();
+
+    // Enter PendingMerge first time
+    repo.persist_status_change(
+        &task.id,
+        InternalStatus::Executing,
+        InternalStatus::PendingMerge,
+        "agent",
+    )
+    .await
+    .unwrap();
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+    // Transition away
+    repo.persist_status_change(
+        &task.id,
+        InternalStatus::PendingMerge,
+        InternalStatus::MergeIncomplete,
+        "system",
+    )
+    .await
+    .unwrap();
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+    // Re-enter PendingMerge (e.g., after fixing merge issue)
+    repo.persist_status_change(
+        &task.id,
+        InternalStatus::Executing,
+        InternalStatus::PendingMerge,
+        "agent",
+    )
+    .await
+    .unwrap();
+
+    // Should return the FIRST time it entered PendingMerge
+    let timestamp = repo
+        .get_status_entered_at(&task.id, InternalStatus::PendingMerge)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let history = repo.get_status_history(&task.id).await.unwrap();
+    let first_pending_merge = history
+        .iter()
+        .find(|t| t.to == InternalStatus::PendingMerge)
+        .unwrap();
+
+    assert_eq!(timestamp, first_pending_merge.timestamp);
+}
+
+#[tokio::test]
+async fn test_get_status_entered_at_returns_none_for_nonexistent_task() {
+    let repo = MemoryTaskRepository::new();
+    let task_id = TaskId::new();
+
+    let timestamp = repo
+        .get_status_entered_at(&task_id, InternalStatus::Ready)
+        .await
+        .unwrap();
+
+    assert!(timestamp.is_none());
+}
+
+#[tokio::test]
+async fn test_get_status_entered_at_works_for_various_statuses() {
+    let repo = MemoryTaskRepository::new();
+    let project_id = ProjectId::new();
+    let task = Task::new(project_id, "Multi-status".to_string());
+    repo.create(task.clone()).await.unwrap();
+
+    // Transition through several statuses
+    let statuses = vec![
+        (InternalStatus::Backlog, InternalStatus::Ready),
+        (InternalStatus::Ready, InternalStatus::Executing),
+        (InternalStatus::Executing, InternalStatus::PendingReview),
+        (InternalStatus::PendingReview, InternalStatus::Approved),
+    ];
+
+    for (from, to) in statuses {
+        repo.persist_status_change(&task.id, from, to, "test")
+            .await
+            .unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
+    }
+
+    // Verify each status has a timestamp
+    for status in [
+        InternalStatus::Ready,
+        InternalStatus::Executing,
+        InternalStatus::PendingReview,
+        InternalStatus::Approved,
+    ] {
+        let timestamp = repo
+            .get_status_entered_at(&task.id, status)
+            .await
+            .unwrap();
+        assert!(
+            timestamp.is_some(),
+            "Expected timestamp for status {:?}",
+            status
+        );
+    }
+
+    // Backlog was the starting status, never transitioned TO it
+    let backlog_timestamp = repo
+        .get_status_entered_at(&task.id, InternalStatus::Backlog)
+        .await
+        .unwrap();
+    assert!(backlog_timestamp.is_none());
+}
+
 // ===== Query Operations Tests =====
 
 #[tokio::test]

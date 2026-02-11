@@ -243,6 +243,36 @@ impl TaskRepository for SqliteTaskRepository {
         Ok(transitions)
     }
 
+    async fn get_status_entered_at(
+        &self,
+        task_id: &TaskId,
+        status: InternalStatus,
+    ) -> AppResult<Option<chrono::DateTime<Utc>>> {
+        let conn = self.conn.lock().await;
+
+        let result = conn.query_row(
+            "SELECT created_at
+             FROM task_state_history
+             WHERE task_id = ?1 AND to_status = ?2
+             ORDER BY created_at ASC
+             LIMIT 1",
+            rusqlite::params![task_id.as_str(), status.as_str()],
+            |row| {
+                let created_at_str: String = row.get(0)?;
+                Ok(created_at_str)
+            },
+        );
+
+        match result {
+            Ok(timestamp_str) => {
+                let timestamp = Task::parse_datetime(timestamp_str);
+                Ok(Some(timestamp))
+            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(AppError::Database(e.to_string())),
+        }
+    }
+
     async fn get_next_executable(&self, project_id: &ProjectId) -> AppResult<Option<Task>> {
         let conn = self.conn.lock().await;
 

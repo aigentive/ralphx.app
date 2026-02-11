@@ -548,6 +548,7 @@ mod tests {
         async fn get_by_status(&self, _project_id: &ProjectId, _status: InternalStatus) -> AppResult<Vec<Task>> { Ok(vec![]) }
         async fn persist_status_change(&self, _id: &TaskId, _from: InternalStatus, _to: InternalStatus, _trigger: &str) -> AppResult<()> { Ok(()) }
         async fn get_status_history(&self, _id: &TaskId) -> AppResult<Vec<crate::domain::repositories::StatusTransition>> { Ok(vec![]) }
+        async fn get_status_entered_at(&self, _task_id: &TaskId, _status: InternalStatus) -> AppResult<Option<chrono::DateTime<chrono::Utc>>> { Ok(None) }
         async fn get_next_executable(&self, _project_id: &ProjectId) -> AppResult<Option<Task>> { Ok(None) }
         async fn get_blockers(&self, _id: &TaskId) -> AppResult<Vec<Task>> { Ok(vec![]) }
         async fn get_dependents(&self, _id: &TaskId) -> AppResult<Vec<Task>> { Ok(vec![]) }
