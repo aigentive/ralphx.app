@@ -5,6 +5,7 @@ import { useChat, chatKeys } from "@/hooks/useChat";
 import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, getContextKey } from "@/stores/chatStore";
 import { useUiStore } from "@/stores/uiStore";
 import type { ChatContext } from "@/types/chat";
+import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 
 import { useTaskStore } from "@/stores/taskStore";
 import { useQuery } from "@tanstack/react-query";
@@ -18,6 +19,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Hammer,
+  ChevronDown,
 } from "lucide-react";
 import { AGENT_WORKER } from "@/constants/agents";
 import { StatusActivityBadge, type AgentType } from "./StatusActivityBadge";
@@ -232,7 +234,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   const [hasUnread, setHasUnread] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastMessageCountRef = useRef(0);
 
   // Resize panel hook
@@ -263,12 +264,13 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     }
   }, [isCollapsed]);
 
-  // Auto-scroll to bottom when messages change
-  useEffect(() => {
-    if (messagesEndRef.current && messagesData.length) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messagesData.length]);
+  // Extract loading states early for use in hooks
+  const isLoading = activeConversation.isLoading;
+  const isSending = sendMessage.isPending;
+
+  // Create placeholder ref for initial render
+  // Will be replaced by autoScrollEndRef from useChatAutoScroll
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Use extracted handlers hook - unified queue with context-aware keys
   const {
@@ -288,6 +290,34 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     queuedMessages,
     messagesEndRef,
   });
+
+  // Compute streaming hash for auto-scroll trigger
+  const streamingHash = useMemo(
+    () => `${isSending ? 1 : 0}-${isAgentRunning ? 1 : 0}-${streamingToolCalls.length}`,
+    [isSending, isAgentRunning, streamingToolCalls.length]
+  );
+
+  // Auto-scroll behavior via unified hook
+  const {
+    containerRef: _containerRef, // Not used for Virtuoso-based ChatMessages
+    messagesEndRef: autoScrollEndRef,
+    shouldAutoScroll,
+    isAtBottom,
+    scrollToBottom,
+  } = useChatAutoScroll({
+    messageCount: messagesData.length,
+    isStreaming: isSending || isAgentRunning,
+    streamingHash,
+    disabled: false,
+  });
+
+  // Trigger scroll when shouldAutoScroll changes
+  useEffect(() => {
+    if (shouldAutoScroll) {
+      autoScrollEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldAutoScroll]); // autoScrollEndRef is a ref, stable across renders
 
   // Hook events — listen for agent:hook Tauri events scoped to active conversation
   useAgentHookEvents(activeConversationId);
@@ -349,9 +379,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
       />
     );
   }
-
-  const isLoading = activeConversation.isLoading;
-  const isSending = sendMessage.isPending;
 
   return (
     <>
@@ -444,10 +471,25 @@ function ChatPanelContent({ context }: ChatPanelProps) {
           streamingToolCalls={streamingToolCalls}
           failedErrorMessage={showFailedBanner && failedRun?.errorMessage ? failedRun.errorMessage : undefined}
           onDismissError={failedRun ? () => setDismissedErrorId(failedRun.id) : undefined}
-          messagesEndRef={messagesEndRef}
+          messagesEndRef={autoScrollEndRef}
           hookEvents={hookEvents}
           activeHooks={activeHooksList}
         />
+
+        {/* Scroll to Bottom Button */}
+        {!isAtBottom && messagesData.length > 5 && (
+          <div className="border-t border-[var(--border-subtle)] px-4 py-2">
+            <Button
+              data-testid="chat-panel-scroll-to-bottom"
+              variant="ghost"
+              className="w-full text-sm text-[var(--accent-primary)] hover:bg-[var(--bg-hover)]"
+              onClick={scrollToBottom}
+            >
+              <ChevronDown className="w-4 h-4 mr-1.5" />
+              Scroll to latest
+            </Button>
+          </div>
+        )}
 
         {/* Input Area */}
         <div className="border-t" style={{ borderColor: "var(--border-subtle)" }}>
