@@ -80,11 +80,8 @@ mod tests {
 
     #[test]
     fn test_status_transition_new() {
-        let transition = StatusTransition::new(
-            InternalStatus::Backlog,
-            InternalStatus::Ready,
-            "user",
-        );
+        let transition =
+            StatusTransition::new(InternalStatus::Backlog, InternalStatus::Ready, "user");
 
         assert_eq!(transition.from, InternalStatus::Backlog);
         assert_eq!(transition.to, InternalStatus::Ready);
@@ -94,11 +91,8 @@ mod tests {
     #[test]
     fn test_status_transition_trigger_from_string() {
         let trigger = String::from("agent_worker");
-        let transition = StatusTransition::new(
-            InternalStatus::Ready,
-            InternalStatus::Executing,
-            trigger,
-        );
+        let transition =
+            StatusTransition::new(InternalStatus::Ready, InternalStatus::Executing, trigger);
 
         assert_eq!(transition.trigger, "agent_worker");
     }
@@ -146,11 +140,8 @@ mod tests {
 
     #[test]
     fn test_status_transition_serializes_to_json() {
-        let transition = StatusTransition::new(
-            InternalStatus::Backlog,
-            InternalStatus::Ready,
-            "user",
-        );
+        let transition =
+            StatusTransition::new(InternalStatus::Backlog, InternalStatus::Ready, "user");
 
         let json = serde_json::to_string(&transition).unwrap();
         assert!(json.contains("\"from\":\"backlog\""));
@@ -175,11 +166,8 @@ mod tests {
 
     #[test]
     fn test_status_transition_roundtrip() {
-        let original = StatusTransition::new(
-            InternalStatus::QaFailed,
-            InternalStatus::Executing,
-            "retry",
-        );
+        let original =
+            StatusTransition::new(InternalStatus::QaFailed, InternalStatus::Executing, "retry");
 
         let json = serde_json::to_string(&original).unwrap();
         let deserialized: StatusTransition = serde_json::from_str(&json).unwrap();

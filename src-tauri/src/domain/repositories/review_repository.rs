@@ -90,9 +90,7 @@ pub trait ReviewRepository: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::entities::{
-        ReviewActionType, ReviewOutcome, ReviewerType,
-    };
+    use crate::domain::entities::{ReviewActionType, ReviewOutcome, ReviewerType};
     use std::collections::HashMap;
     use std::sync::{Arc, RwLock};
 
@@ -432,10 +430,16 @@ mod tests {
         review2.approve(None);
         repo.create(&review2).await.unwrap();
 
-        let pending = repo.get_by_status(&project_id, ReviewStatus::Pending).await.unwrap();
+        let pending = repo
+            .get_by_status(&project_id, ReviewStatus::Pending)
+            .await
+            .unwrap();
         assert_eq!(pending.len(), 1);
 
-        let approved = repo.get_by_status(&project_id, ReviewStatus::Approved).await.unwrap();
+        let approved = repo
+            .get_by_status(&project_id, ReviewStatus::Approved)
+            .await
+            .unwrap();
         assert_eq!(approved.len(), 1);
     }
 
@@ -448,8 +452,12 @@ mod tests {
         let task2 = TaskId::from_string("task-2".to_string());
         let task3 = TaskId::from_string("task-3".to_string());
 
-        repo.create(&Review::new(project_id.clone(), task1, ReviewerType::Ai)).await.unwrap();
-        repo.create(&Review::new(project_id.clone(), task2, ReviewerType::Ai)).await.unwrap();
+        repo.create(&Review::new(project_id.clone(), task1, ReviewerType::Ai))
+            .await
+            .unwrap();
+        repo.create(&Review::new(project_id.clone(), task2, ReviewerType::Ai))
+            .await
+            .unwrap();
 
         let mut approved = Review::new(project_id.clone(), task3, ReviewerType::Ai);
         approved.approve(None);

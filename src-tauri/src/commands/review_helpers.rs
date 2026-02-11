@@ -149,9 +149,8 @@ This is the feedback text."#
 
     #[test]
     fn test_parse_issues_from_notes_only_json() {
-        let input = Some(
-            r#"{"issues":[{"severity":"minor","description":"Naming issue"}]}"#.to_string(),
-        );
+        let input =
+            Some(r#"{"issues":[{"severity":"minor","description":"Naming issue"}]}"#.to_string());
         let (issues, notes) = parse_issues_from_notes(&input);
 
         assert!(issues.is_some());

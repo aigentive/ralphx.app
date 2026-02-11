@@ -5,7 +5,9 @@
 
 use async_trait::async_trait;
 
-use crate::domain::entities::{IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId};
+use crate::domain::entities::{
+    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId,
+};
 use crate::error::AppResult;
 
 /// Repository trait for IdeationSession persistence.
@@ -32,13 +34,20 @@ pub trait IdeationSessionRepository: Send + Sync {
     async fn update_title(&self, id: &IdeationSessionId, title: Option<String>) -> AppResult<()>;
 
     /// Update session plan artifact ID
-    async fn update_plan_artifact_id(&self, id: &IdeationSessionId, plan_artifact_id: Option<String>) -> AppResult<()>;
+    async fn update_plan_artifact_id(
+        &self,
+        id: &IdeationSessionId,
+        plan_artifact_id: Option<String>,
+    ) -> AppResult<()>;
 
     /// Delete session (cascades to proposals and messages)
     async fn delete(&self, id: &IdeationSessionId) -> AppResult<()>;
 
     /// Get active sessions for a project
-    async fn get_active_by_project(&self, project_id: &ProjectId) -> AppResult<Vec<IdeationSession>>;
+    async fn get_active_by_project(
+        &self,
+        project_id: &ProjectId,
+    ) -> AppResult<Vec<IdeationSession>>;
 
     /// Count sessions by status for a project
     async fn count_by_status(
@@ -49,7 +58,10 @@ pub trait IdeationSessionRepository: Send + Sync {
 
     /// Get sessions that have a specific plan artifact ID
     /// Used when updating a plan artifact to find sessions to re-link
-    async fn get_by_plan_artifact_id(&self, plan_artifact_id: &str) -> AppResult<Vec<IdeationSession>>;
+    async fn get_by_plan_artifact_id(
+        &self,
+        plan_artifact_id: &str,
+    ) -> AppResult<Vec<IdeationSession>>;
 }
 
 #[cfg(test)]
@@ -141,7 +153,9 @@ mod tests {
             Ok(self
                 .sessions
                 .iter()
-                .filter(|s| &s.project_id == project_id && s.status == IdeationSessionStatus::Active)
+                .filter(|s| {
+                    &s.project_id == project_id && s.status == IdeationSessionStatus::Active
+                })
                 .cloned()
                 .collect())
         }
@@ -165,7 +179,9 @@ mod tests {
             Ok(self
                 .sessions
                 .iter()
-                .filter(|s| s.plan_artifact_id.as_ref().map(|id| id.as_str()) == Some(plan_artifact_id))
+                .filter(|s| {
+                    s.plan_artifact_id.as_ref().map(|id| id.as_str()) == Some(plan_artifact_id)
+                })
                 .cloned()
                 .collect())
         }
@@ -244,7 +260,8 @@ mod tests {
         let session1 = create_test_session(&project_id);
         let session2 = create_test_session(&project_id);
 
-        let repo = MockIdeationSessionRepository::with_sessions(vec![session1.clone(), session2.clone()]);
+        let repo =
+            MockIdeationSessionRepository::with_sessions(vec![session1.clone(), session2.clone()]);
 
         let result = repo.get_by_project(&project_id).await;
         assert!(result.is_ok());
@@ -259,7 +276,8 @@ mod tests {
         let session1 = create_test_session(&project_id1);
         let session2 = create_test_session(&project_id2);
 
-        let repo = MockIdeationSessionRepository::with_sessions(vec![session1.clone(), session2.clone()]);
+        let repo =
+            MockIdeationSessionRepository::with_sessions(vec![session1.clone(), session2.clone()]);
 
         let result = repo.get_by_project(&project_id1).await;
         assert!(result.is_ok());

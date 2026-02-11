@@ -157,9 +157,7 @@ impl IdeationSessionBuilder {
 impl IdeationSession {
     /// Creates a new active session for a project
     pub fn new(project_id: ProjectId) -> Self {
-        IdeationSessionBuilder::new()
-            .project_id(project_id)
-            .build()
+        IdeationSessionBuilder::new().project_id(project_id).build()
     }
 
     /// Creates a new active session with a title

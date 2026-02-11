@@ -2,7 +2,7 @@ use super::*;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{GitMode, Project, ProjectId, Task, TaskId};
 use crate::domain::repositories::{
-    ProjectRepository, StatusTransition, StateHistoryMetadata, TaskRepository,
+    ProjectRepository, StateHistoryMetadata, StatusTransition, TaskRepository,
 };
 use crate::error::AppResult;
 use crate::infrastructure::MockAgenticClient;
@@ -16,34 +16,117 @@ struct MockTaskRepoForSpawner {
 
 #[async_trait]
 impl TaskRepository for MockTaskRepoForSpawner {
-    async fn create(&self, task: Task) -> AppResult<Task> { Ok(task) }
+    async fn create(&self, task: Task) -> AppResult<Task> {
+        Ok(task)
+    }
     async fn get_by_id(&self, _id: &TaskId) -> AppResult<Option<Task>> {
         Ok(self.task.clone())
     }
-    async fn get_by_project(&self, _: &ProjectId) -> AppResult<Vec<Task>> { Ok(vec![]) }
-    async fn update(&self, _: &Task) -> AppResult<()> { Ok(()) }
-    async fn delete(&self, _: &TaskId) -> AppResult<()> { Ok(()) }
-    async fn get_by_status(&self, _: &ProjectId, _: crate::domain::entities::InternalStatus) -> AppResult<Vec<Task>> { Ok(vec![]) }
-    async fn persist_status_change(&self, _: &TaskId, _: crate::domain::entities::InternalStatus, _: crate::domain::entities::InternalStatus, _: &str) -> AppResult<()> { Ok(()) }
-    async fn get_status_history(&self, _: &TaskId) -> AppResult<Vec<StatusTransition>> { Ok(vec![]) }
-    async fn get_status_entered_at(&self, _: &TaskId, _: crate::domain::entities::InternalStatus) -> AppResult<Option<chrono::DateTime<chrono::Utc>>> { Ok(None) }
-    async fn get_next_executable(&self, _: &ProjectId) -> AppResult<Option<Task>> { Ok(None) }
-    async fn get_blockers(&self, _: &TaskId) -> AppResult<Vec<Task>> { Ok(vec![]) }
-    async fn get_dependents(&self, _: &TaskId) -> AppResult<Vec<Task>> { Ok(vec![]) }
-    async fn add_blocker(&self, _: &TaskId, _: &TaskId) -> AppResult<()> { Ok(()) }
-    async fn resolve_blocker(&self, _: &TaskId, _: &TaskId) -> AppResult<()> { Ok(()) }
-    async fn get_by_ideation_session(&self, _: &crate::domain::entities::IdeationSessionId) -> AppResult<Vec<Task>> { Ok(vec![]) }
-    async fn get_by_project_filtered(&self, _: &ProjectId, _: bool) -> AppResult<Vec<Task>> { Ok(vec![]) }
-    async fn archive(&self, _: &TaskId) -> AppResult<Task> { unimplemented!() }
-    async fn restore(&self, _: &TaskId) -> AppResult<Task> { unimplemented!() }
-    async fn get_archived_count(&self, _: &ProjectId, _: Option<&str>) -> AppResult<u32> { Ok(0) }
-    async fn list_paginated(&self, _: &ProjectId, _: Option<Vec<crate::domain::entities::InternalStatus>>, _: u32, _: u32, _: bool, _: Option<&str>) -> AppResult<Vec<Task>> { Ok(vec![]) }
-    async fn count_tasks(&self, _: &ProjectId, _: bool, _: Option<&str>) -> AppResult<u32> { Ok(0) }
-    async fn search(&self, _: &ProjectId, _: &str, _: bool) -> AppResult<Vec<Task>> { Ok(vec![]) }
-    async fn get_oldest_ready_task(&self) -> AppResult<Option<Task>> { Ok(None) }
-    async fn get_oldest_ready_tasks(&self, _: u32) -> AppResult<Vec<Task>> { Ok(vec![]) }
-    async fn update_latest_state_history_metadata(&self, _: &TaskId, _: &StateHistoryMetadata) -> AppResult<()> { Ok(()) }
-    async fn has_task_in_states(&self, _: &ProjectId, _: &[crate::domain::entities::InternalStatus]) -> AppResult<bool> { Ok(false) }
+    async fn get_by_project(&self, _: &ProjectId) -> AppResult<Vec<Task>> {
+        Ok(vec![])
+    }
+    async fn update(&self, _: &Task) -> AppResult<()> {
+        Ok(())
+    }
+    async fn delete(&self, _: &TaskId) -> AppResult<()> {
+        Ok(())
+    }
+    async fn get_by_status(
+        &self,
+        _: &ProjectId,
+        _: crate::domain::entities::InternalStatus,
+    ) -> AppResult<Vec<Task>> {
+        Ok(vec![])
+    }
+    async fn persist_status_change(
+        &self,
+        _: &TaskId,
+        _: crate::domain::entities::InternalStatus,
+        _: crate::domain::entities::InternalStatus,
+        _: &str,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+    async fn get_status_history(&self, _: &TaskId) -> AppResult<Vec<StatusTransition>> {
+        Ok(vec![])
+    }
+    async fn get_status_entered_at(
+        &self,
+        _: &TaskId,
+        _: crate::domain::entities::InternalStatus,
+    ) -> AppResult<Option<chrono::DateTime<chrono::Utc>>> {
+        Ok(None)
+    }
+    async fn get_next_executable(&self, _: &ProjectId) -> AppResult<Option<Task>> {
+        Ok(None)
+    }
+    async fn get_blockers(&self, _: &TaskId) -> AppResult<Vec<Task>> {
+        Ok(vec![])
+    }
+    async fn get_dependents(&self, _: &TaskId) -> AppResult<Vec<Task>> {
+        Ok(vec![])
+    }
+    async fn add_blocker(&self, _: &TaskId, _: &TaskId) -> AppResult<()> {
+        Ok(())
+    }
+    async fn resolve_blocker(&self, _: &TaskId, _: &TaskId) -> AppResult<()> {
+        Ok(())
+    }
+    async fn get_by_ideation_session(
+        &self,
+        _: &crate::domain::entities::IdeationSessionId,
+    ) -> AppResult<Vec<Task>> {
+        Ok(vec![])
+    }
+    async fn get_by_project_filtered(&self, _: &ProjectId, _: bool) -> AppResult<Vec<Task>> {
+        Ok(vec![])
+    }
+    async fn archive(&self, _: &TaskId) -> AppResult<Task> {
+        unimplemented!()
+    }
+    async fn restore(&self, _: &TaskId) -> AppResult<Task> {
+        unimplemented!()
+    }
+    async fn get_archived_count(&self, _: &ProjectId, _: Option<&str>) -> AppResult<u32> {
+        Ok(0)
+    }
+    async fn list_paginated(
+        &self,
+        _: &ProjectId,
+        _: Option<Vec<crate::domain::entities::InternalStatus>>,
+        _: u32,
+        _: u32,
+        _: bool,
+        _: Option<&str>,
+    ) -> AppResult<Vec<Task>> {
+        Ok(vec![])
+    }
+    async fn count_tasks(&self, _: &ProjectId, _: bool, _: Option<&str>) -> AppResult<u32> {
+        Ok(0)
+    }
+    async fn search(&self, _: &ProjectId, _: &str, _: bool) -> AppResult<Vec<Task>> {
+        Ok(vec![])
+    }
+    async fn get_oldest_ready_task(&self) -> AppResult<Option<Task>> {
+        Ok(None)
+    }
+    async fn get_oldest_ready_tasks(&self, _: u32) -> AppResult<Vec<Task>> {
+        Ok(vec![])
+    }
+    async fn update_latest_state_history_metadata(
+        &self,
+        _: &TaskId,
+        _: &StateHistoryMetadata,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+    async fn has_task_in_states(
+        &self,
+        _: &ProjectId,
+        _: &[crate::domain::entities::InternalStatus],
+    ) -> AppResult<bool> {
+        Ok(false)
+    }
 }
 
 /// Minimal mock ProjectRepository that returns a configurable project
@@ -53,27 +136,58 @@ struct MockProjectRepoForSpawner {
 
 #[async_trait]
 impl ProjectRepository for MockProjectRepoForSpawner {
-    async fn create(&self, project: Project) -> AppResult<Project> { Ok(project) }
+    async fn create(&self, project: Project) -> AppResult<Project> {
+        Ok(project)
+    }
     async fn get_by_id(&self, _: &ProjectId) -> AppResult<Option<Project>> {
         Ok(self.project.clone())
     }
-    async fn get_all(&self) -> AppResult<Vec<Project>> { Ok(vec![]) }
-    async fn update(&self, _: &Project) -> AppResult<()> { Ok(()) }
-    async fn delete(&self, _: &ProjectId) -> AppResult<()> { Ok(()) }
-    async fn get_by_working_directory(&self, _: &str) -> AppResult<Option<Project>> { Ok(None) }
+    async fn get_all(&self) -> AppResult<Vec<Project>> {
+        Ok(vec![])
+    }
+    async fn update(&self, _: &Project) -> AppResult<()> {
+        Ok(())
+    }
+    async fn delete(&self, _: &ProjectId) -> AppResult<()> {
+        Ok(())
+    }
+    async fn get_by_working_directory(&self, _: &str) -> AppResult<Option<Project>> {
+        Ok(None)
+    }
 }
 
 #[test]
 fn test_role_from_string() {
     // Standard roles
-    assert_eq!(AgenticClientSpawner::role_from_string("worker"), AgentRole::Worker);
-    assert_eq!(AgenticClientSpawner::role_from_string("qa-prep"), AgentRole::QaPrep);
-    assert_eq!(AgenticClientSpawner::role_from_string("qa-refiner"), AgentRole::QaRefiner);
-    assert_eq!(AgenticClientSpawner::role_from_string("qa-tester"), AgentRole::QaTester);
-    assert_eq!(AgenticClientSpawner::role_from_string("reviewer"), AgentRole::Reviewer);
-    assert_eq!(AgenticClientSpawner::role_from_string("supervisor"), AgentRole::Supervisor);
+    assert_eq!(
+        AgenticClientSpawner::role_from_string("worker"),
+        AgentRole::Worker
+    );
+    assert_eq!(
+        AgenticClientSpawner::role_from_string("qa-prep"),
+        AgentRole::QaPrep
+    );
+    assert_eq!(
+        AgenticClientSpawner::role_from_string("qa-refiner"),
+        AgentRole::QaRefiner
+    );
+    assert_eq!(
+        AgenticClientSpawner::role_from_string("qa-tester"),
+        AgentRole::QaTester
+    );
+    assert_eq!(
+        AgenticClientSpawner::role_from_string("reviewer"),
+        AgentRole::Reviewer
+    );
+    assert_eq!(
+        AgenticClientSpawner::role_from_string("supervisor"),
+        AgentRole::Supervisor
+    );
     // Custom role
-    assert_eq!(AgenticClientSpawner::role_from_string("my-custom-agent"), AgentRole::Custom("my-custom-agent".to_string()));
+    assert_eq!(
+        AgenticClientSpawner::role_from_string("my-custom-agent"),
+        AgentRole::Custom("my-custom-agent".to_string())
+    );
 }
 
 #[tokio::test]
@@ -118,8 +232,7 @@ async fn test_spawn_background_calls_client() {
 #[tokio::test]
 async fn test_with_working_dir() {
     let mock = Arc::new(MockAgenticClient::new());
-    let spawner =
-        AgenticClientSpawner::new(mock.clone()).with_working_dir("/custom/work/dir");
+    let spawner = AgenticClientSpawner::new(mock.clone()).with_working_dir("/custom/work/dir");
 
     assert_eq!(spawner.working_directory, PathBuf::from("/custom/work/dir"));
 }
@@ -263,8 +376,7 @@ async fn test_multiple_spawns_emit_multiple_events() {
 async fn test_with_execution_state() {
     let mock = Arc::new(MockAgenticClient::new());
     let exec_state = Arc::new(ExecutionState::new());
-    let spawner =
-        AgenticClientSpawner::new(mock.clone()).with_execution_state(exec_state.clone());
+    let spawner = AgenticClientSpawner::new(mock.clone()).with_execution_state(exec_state.clone());
 
     assert!(spawner.execution_state.is_some());
 }
@@ -277,8 +389,7 @@ async fn test_spawn_blocked_when_paused() {
     // Pause execution
     exec_state.pause();
 
-    let spawner =
-        AgenticClientSpawner::new(mock.clone()).with_execution_state(exec_state.clone());
+    let spawner = AgenticClientSpawner::new(mock.clone()).with_execution_state(exec_state.clone());
 
     // Try to spawn while paused
     spawner.spawn("worker", "task-123").await;
@@ -300,8 +411,7 @@ async fn test_spawn_blocked_at_max_concurrent() {
     exec_state.increment_running();
     exec_state.increment_running();
 
-    let spawner =
-        AgenticClientSpawner::new(mock.clone()).with_execution_state(exec_state.clone());
+    let spawner = AgenticClientSpawner::new(mock.clone()).with_execution_state(exec_state.clone());
 
     // Try to spawn at max concurrent
     spawner.spawn("worker", "task-123").await;
@@ -319,8 +429,7 @@ async fn test_spawn_increments_running_count() {
     let mock = Arc::new(MockAgenticClient::new());
     let exec_state = Arc::new(ExecutionState::with_max_concurrent(5));
 
-    let spawner =
-        AgenticClientSpawner::new(mock.clone()).with_execution_state(exec_state.clone());
+    let spawner = AgenticClientSpawner::new(mock.clone()).with_execution_state(exec_state.clone());
 
     // Verify initial state
     assert_eq!(exec_state.running_count(), 0);
@@ -388,8 +497,7 @@ async fn test_spawn_with_execution_state_no_app_handle_does_not_panic() {
     let exec_state = Arc::new(ExecutionState::with_max_concurrent(5));
 
     // No app_handle attached, but execution_state is present
-    let spawner =
-        AgenticClientSpawner::new(mock.clone()).with_execution_state(exec_state.clone());
+    let spawner = AgenticClientSpawner::new(mock.clone()).with_execution_state(exec_state.clone());
 
     // Should spawn without panicking (emit_status_changed is skipped when app_handle is None)
     spawner.spawn("worker", "task-123").await;
@@ -415,9 +523,7 @@ async fn test_resolve_working_directory_worktree_mode() {
     project.id = project_id;
     project.git_mode = GitMode::Worktree;
 
-    let task_repo: Arc<dyn TaskRepository> = Arc::new(MockTaskRepoForSpawner {
-        task: Some(task),
-    });
+    let task_repo: Arc<dyn TaskRepository> = Arc::new(MockTaskRepoForSpawner { task: Some(task) });
     let project_repo: Arc<dyn ProjectRepository> = Arc::new(MockProjectRepoForSpawner {
         project: Some(project),
     });
@@ -443,9 +549,7 @@ async fn test_resolve_working_directory_worktree_mode_no_worktree_path() {
     project.id = project_id;
     project.git_mode = GitMode::Worktree;
 
-    let task_repo: Arc<dyn TaskRepository> = Arc::new(MockTaskRepoForSpawner {
-        task: Some(task),
-    });
+    let task_repo: Arc<dyn TaskRepository> = Arc::new(MockTaskRepoForSpawner { task: Some(task) });
     let project_repo: Arc<dyn ProjectRepository> = Arc::new(MockProjectRepoForSpawner {
         project: Some(project),
     });
@@ -472,9 +576,7 @@ async fn test_resolve_working_directory_local_mode() {
     project.id = project_id;
     project.git_mode = GitMode::Local;
 
-    let task_repo: Arc<dyn TaskRepository> = Arc::new(MockTaskRepoForSpawner {
-        task: Some(task),
-    });
+    let task_repo: Arc<dyn TaskRepository> = Arc::new(MockTaskRepoForSpawner { task: Some(task) });
     let project_repo: Arc<dyn ProjectRepository> = Arc::new(MockProjectRepoForSpawner {
         project: Some(project),
     });
@@ -504,12 +606,9 @@ async fn test_resolve_working_directory_fallback_task_not_found() {
     let mock = Arc::new(MockAgenticClient::new());
 
     // Repos attached but task not found
-    let task_repo: Arc<dyn TaskRepository> = Arc::new(MockTaskRepoForSpawner {
-        task: None,
-    });
-    let project_repo: Arc<dyn ProjectRepository> = Arc::new(MockProjectRepoForSpawner {
-        project: None,
-    });
+    let task_repo: Arc<dyn TaskRepository> = Arc::new(MockTaskRepoForSpawner { task: None });
+    let project_repo: Arc<dyn ProjectRepository> =
+        Arc::new(MockProjectRepoForSpawner { project: None });
 
     let spawner = AgenticClientSpawner::new(mock)
         .with_working_dir("/fallback")

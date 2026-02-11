@@ -152,28 +152,57 @@ impl TaskStep {
         let started_at_str: Option<String> = row.get(11)?;
         let completed_at_str: Option<String> = row.get(12)?;
 
-        let status = TaskStepStatus::from_db_string(&status_str)
-            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(4, rusqlite::types::Type::Text, Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e))))?;
+        let status = TaskStepStatus::from_db_string(&status_str).map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(
+                4,
+                rusqlite::types::Type::Text,
+                Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e)),
+            )
+        })?;
 
         let depends_on = depends_on_str.map(TaskStepId::from_string);
 
         let created_at = DateTime::parse_from_rfc3339(&created_at_str)
-            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(9, rusqlite::types::Type::Text, Box::new(e)))?
+            .map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    9,
+                    rusqlite::types::Type::Text,
+                    Box::new(e),
+                )
+            })?
             .with_timezone(&Utc);
 
         let updated_at = DateTime::parse_from_rfc3339(&updated_at_str)
-            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(10, rusqlite::types::Type::Text, Box::new(e)))?
+            .map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    10,
+                    rusqlite::types::Type::Text,
+                    Box::new(e),
+                )
+            })?
             .with_timezone(&Utc);
 
         let started_at = started_at_str
             .map(|s| DateTime::parse_from_rfc3339(&s).map(|dt| dt.with_timezone(&Utc)))
             .transpose()
-            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(11, rusqlite::types::Type::Text, Box::new(e)))?;
+            .map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    11,
+                    rusqlite::types::Type::Text,
+                    Box::new(e),
+                )
+            })?;
 
         let completed_at = completed_at_str
             .map(|s| DateTime::parse_from_rfc3339(&s).map(|dt| dt.with_timezone(&Utc)))
             .transpose()
-            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(12, rusqlite::types::Type::Text, Box::new(e)))?;
+            .map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    12,
+                    rusqlite::types::Type::Text,
+                    Box::new(e),
+                )
+            })?;
 
         Ok(Self {
             id: TaskStepId::from_string(id),
@@ -222,11 +251,26 @@ impl StepProgressSummary {
     /// Calculate progress summary from a list of steps
     pub fn from_steps(task_id: &TaskId, steps: &[TaskStep]) -> Self {
         let total = steps.len() as u32;
-        let completed = steps.iter().filter(|s| s.status == TaskStepStatus::Completed).count() as u32;
-        let in_progress = steps.iter().filter(|s| s.status == TaskStepStatus::InProgress).count() as u32;
-        let pending = steps.iter().filter(|s| s.status == TaskStepStatus::Pending).count() as u32;
-        let skipped = steps.iter().filter(|s| s.status == TaskStepStatus::Skipped).count() as u32;
-        let failed = steps.iter().filter(|s| s.status == TaskStepStatus::Failed).count() as u32;
+        let completed = steps
+            .iter()
+            .filter(|s| s.status == TaskStepStatus::Completed)
+            .count() as u32;
+        let in_progress = steps
+            .iter()
+            .filter(|s| s.status == TaskStepStatus::InProgress)
+            .count() as u32;
+        let pending = steps
+            .iter()
+            .filter(|s| s.status == TaskStepStatus::Pending)
+            .count() as u32;
+        let skipped = steps
+            .iter()
+            .filter(|s| s.status == TaskStepStatus::Skipped)
+            .count() as u32;
+        let failed = steps
+            .iter()
+            .filter(|s| s.status == TaskStepStatus::Failed)
+            .count() as u32;
 
         let current_step = steps
             .iter()
@@ -288,12 +332,7 @@ mod tests {
     #[test]
     fn task_step_can_start_only_when_pending() {
         let task_id = TaskId::new();
-        let mut step = TaskStep::new(
-            task_id,
-            "Test".to_string(),
-            0,
-            "user".to_string(),
-        );
+        let mut step = TaskStep::new(task_id, "Test".to_string(), 0, "user".to_string());
 
         assert!(step.can_start());
 
@@ -307,12 +346,7 @@ mod tests {
     #[test]
     fn task_step_is_terminal_for_final_states() {
         let task_id = TaskId::new();
-        let mut step = TaskStep::new(
-            task_id,
-            "Test".to_string(),
-            0,
-            "user".to_string(),
-        );
+        let mut step = TaskStep::new(task_id, "Test".to_string(), 0, "user".to_string());
 
         assert!(!step.is_terminal());
 

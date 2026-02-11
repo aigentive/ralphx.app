@@ -95,7 +95,12 @@ pub async fn list_agent_profiles(
         .agent_profile_repo
         .get_all()
         .await
-        .map(|profiles| profiles.into_iter().map(AgentProfileResponse::from).collect())
+        .map(|profiles| {
+            profiles
+                .into_iter()
+                .map(AgentProfileResponse::from)
+                .collect()
+        })
         .map_err(|e| e.to_string())
 }
 
@@ -133,7 +138,12 @@ pub async fn get_agent_profiles_by_role(
         .agent_profile_repo
         .get_by_role(profile_role)
         .await
-        .map(|profiles| profiles.into_iter().map(AgentProfileResponse::from).collect())
+        .map(|profiles| {
+            profiles
+                .into_iter()
+                .map(AgentProfileResponse::from)
+                .collect()
+        })
         .map_err(|e| e.to_string())
 }
 
@@ -146,7 +156,12 @@ pub async fn get_builtin_agent_profiles(
         .agent_profile_repo
         .get_builtin()
         .await
-        .map(|profiles| profiles.into_iter().map(AgentProfileResponse::from).collect())
+        .map(|profiles| {
+            profiles
+                .into_iter()
+                .map(AgentProfileResponse::from)
+                .collect()
+        })
         .map_err(|e| e.to_string())
 }
 
@@ -159,7 +174,12 @@ pub async fn get_custom_agent_profiles(
         .agent_profile_repo
         .get_custom()
         .await
-        .map(|profiles| profiles.into_iter().map(AgentProfileResponse::from).collect())
+        .map(|profiles| {
+            profiles
+                .into_iter()
+                .map(AgentProfileResponse::from)
+                .collect()
+        })
         .map_err(|e| e.to_string())
 }
 
@@ -193,7 +213,11 @@ mod tests {
     async fn test_seed_and_list_builtin_profiles() {
         let state = setup_test_state();
 
-        state.agent_profile_repo.seed_builtin_profiles().await.unwrap();
+        state
+            .agent_profile_repo
+            .seed_builtin_profiles()
+            .await
+            .unwrap();
 
         let profiles = state.agent_profile_repo.get_all().await.unwrap();
         assert_eq!(profiles.len(), 5);
@@ -203,7 +227,11 @@ mod tests {
     async fn test_get_agent_profile_by_id() {
         let state = setup_test_state();
 
-        state.agent_profile_repo.seed_builtin_profiles().await.unwrap();
+        state
+            .agent_profile_repo
+            .seed_builtin_profiles()
+            .await
+            .unwrap();
 
         let profile_id = AgentProfileId::from_string("worker");
         let profile = state
@@ -219,7 +247,11 @@ mod tests {
     async fn test_get_agent_profiles_by_role() {
         let state = setup_test_state();
 
-        state.agent_profile_repo.seed_builtin_profiles().await.unwrap();
+        state
+            .agent_profile_repo
+            .seed_builtin_profiles()
+            .await
+            .unwrap();
 
         let workers = state
             .agent_profile_repo
@@ -234,7 +266,11 @@ mod tests {
     async fn test_get_builtin_profiles() {
         let state = setup_test_state();
 
-        state.agent_profile_repo.seed_builtin_profiles().await.unwrap();
+        state
+            .agent_profile_repo
+            .seed_builtin_profiles()
+            .await
+            .unwrap();
 
         let builtin = state.agent_profile_repo.get_builtin().await.unwrap();
         assert_eq!(builtin.len(), 5);
@@ -259,7 +295,11 @@ mod tests {
     async fn test_all_builtin_profiles_have_unique_ids() {
         let state = setup_test_state();
 
-        state.agent_profile_repo.seed_builtin_profiles().await.unwrap();
+        state
+            .agent_profile_repo
+            .seed_builtin_profiles()
+            .await
+            .unwrap();
 
         let profiles = state.agent_profile_repo.get_all().await.unwrap();
         let ids: Vec<_> = profiles.iter().map(|p| &p.id).collect();

@@ -25,7 +25,11 @@ pub async fn create_plan_artifact(
         .get_by_id(&session_id)
         .await
         .map_err(|e| {
-            error!("Failed to get session {} for plan artifact creation: {}", session_id.as_str(), e);
+            error!(
+                "Failed to get session {} for plan artifact creation: {}",
+                session_id.as_str(),
+                e
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
@@ -51,7 +55,11 @@ pub async fn create_plan_artifact(
             .create_with_previous_version(artifact, existing_artifact_id)
             .await
             .map_err(|e| {
-                error!("Failed to create plan artifact with version chain for session {}: {}", session_id.as_str(), e);
+                error!(
+                    "Failed to create plan artifact with version chain for session {}: {}",
+                    session_id.as_str(),
+                    e
+                );
                 StatusCode::INTERNAL_SERVER_ERROR
             })?
     } else {
@@ -61,7 +69,11 @@ pub async fn create_plan_artifact(
             .create(artifact)
             .await
             .map_err(|e| {
-                error!("Failed to create plan artifact for session {}: {}", session_id.as_str(), e);
+                error!(
+                    "Failed to create plan artifact for session {}: {}",
+                    session_id.as_str(),
+                    e
+                );
                 StatusCode::INTERNAL_SERVER_ERROR
             })?
     };
@@ -73,7 +85,12 @@ pub async fn create_plan_artifact(
         .update_plan_artifact_id(&session_id, Some(created.id.to_string()))
         .await
         .map_err(|e| {
-            error!("Failed to link artifact {} to session {}: {}", created.id.as_str(), session_id.as_str(), e);
+            error!(
+                "Failed to link artifact {} to session {}: {}",
+                created.id.as_str(),
+                session_id.as_str(),
+                e
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
@@ -114,7 +131,11 @@ pub async fn update_plan_artifact(
         .resolve_latest_artifact_id(&input_artifact_id)
         .await
         .map_err(|e| {
-            error!("Failed to resolve latest artifact ID for {}: {}", input_artifact_id.as_str(), e);
+            error!(
+                "Failed to resolve latest artifact ID for {}: {}",
+                input_artifact_id.as_str(),
+                e
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
@@ -125,7 +146,11 @@ pub async fn update_plan_artifact(
         .get_by_id(&old_artifact_id)
         .await
         .map_err(|e| {
-            error!("Failed to get artifact {} for update: {}", old_artifact_id.as_str(), e);
+            error!(
+                "Failed to get artifact {} for update: {}",
+                old_artifact_id.as_str(),
+                e
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
@@ -149,7 +174,11 @@ pub async fn update_plan_artifact(
         .create_with_previous_version(new_artifact, old_artifact_id.clone())
         .await
         .map_err(|e| {
-            error!("Failed to create new version of artifact {}: {}", old_artifact_id.as_str(), e);
+            error!(
+                "Failed to create new version of artifact {}: {}",
+                old_artifact_id.as_str(),
+                e
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
@@ -160,7 +189,11 @@ pub async fn update_plan_artifact(
         .get_by_plan_artifact_id(old_artifact_id.as_str())
         .await
         .map_err(|e| {
-            error!("Failed to find sessions for artifact {}: {}", old_artifact_id.as_str(), e);
+            error!(
+                "Failed to find sessions for artifact {}: {}",
+                old_artifact_id.as_str(),
+                e
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
@@ -171,7 +204,11 @@ pub async fn update_plan_artifact(
             .update_plan_artifact_id(&session.id, Some(created.id.to_string()))
             .await
             .map_err(|e| {
-                error!("Failed to update session {} plan artifact link: {}", session.id.as_str(), e);
+                error!(
+                    "Failed to update session {} plan artifact link: {}",
+                    session.id.as_str(),
+                    e
+                );
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
     }
@@ -183,7 +220,11 @@ pub async fn update_plan_artifact(
         .get_by_plan_artifact_id(&old_artifact_id)
         .await
         .map_err(|e| {
-            error!("Failed to get proposals linked to artifact {}: {}", old_artifact_id.as_str(), e);
+            error!(
+                "Failed to get proposals linked to artifact {}: {}",
+                old_artifact_id.as_str(),
+                e
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
@@ -200,7 +241,12 @@ pub async fn update_plan_artifact(
             .update(&updated_proposal)
             .await
             .map_err(|e| {
-                error!("Failed to re-link proposal {} to new artifact {}: {}", proposal.id.as_str(), created.id.as_str(), e);
+                error!(
+                    "Failed to re-link proposal {} to new artifact {}: {}",
+                    proposal.id.as_str(),
+                    created.id.as_str(),
+                    e
+                );
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
     }
@@ -281,7 +327,11 @@ pub async fn link_proposals_to_plan(
         .resolve_latest_artifact_id(&input_artifact_id)
         .await
         .map_err(|e| {
-            error!("Failed to resolve latest artifact ID for {}: {}", input_artifact_id.as_str(), e);
+            error!(
+                "Failed to resolve latest artifact ID for {}: {}",
+                input_artifact_id.as_str(),
+                e
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
@@ -292,7 +342,11 @@ pub async fn link_proposals_to_plan(
         .get_by_id(&artifact_id)
         .await
         .map_err(|e| {
-            error!("Failed to get artifact {} for linking proposals: {}", artifact_id.as_str(), e);
+            error!(
+                "Failed to get artifact {} for linking proposals: {}",
+                artifact_id.as_str(),
+                e
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
@@ -307,7 +361,11 @@ pub async fn link_proposals_to_plan(
             .get_by_id(&proposal_id)
             .await
             .map_err(|e| {
-                error!("Failed to get proposal {} for linking: {}", proposal_id.as_str(), e);
+                error!(
+                    "Failed to get proposal {} for linking: {}",
+                    proposal_id.as_str(),
+                    e
+                );
                 StatusCode::INTERNAL_SERVER_ERROR
             })?
             .ok_or(StatusCode::NOT_FOUND)?;
@@ -321,7 +379,11 @@ pub async fn link_proposals_to_plan(
             .update(&proposal)
             .await
             .map_err(|e| {
-                error!("Failed to update proposal {} with plan link: {}", proposal_id.as_str(), e);
+                error!(
+                    "Failed to update proposal {} with plan link: {}",
+                    proposal_id.as_str(),
+                    e
+                );
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
     }
@@ -344,7 +406,11 @@ pub async fn get_session_plan(
         .get_by_id(&session_id)
         .await
         .map_err(|e| {
-            error!("Failed to get session {} for plan retrieval: {}", session_id.as_str(), e);
+            error!(
+                "Failed to get session {} for plan retrieval: {}",
+                session_id.as_str(),
+                e
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
@@ -356,7 +422,12 @@ pub async fn get_session_plan(
             .get_by_id(&artifact_id)
             .await
             .map_err(|e| {
-                error!("Failed to get plan artifact {} for session {}: {}", artifact_id.as_str(), session_id.as_str(), e);
+                error!(
+                    "Failed to get plan artifact {} for session {}: {}",
+                    artifact_id.as_str(),
+                    session_id.as_str(),
+                    e
+                );
                 StatusCode::INTERNAL_SERVER_ERROR
             })?
             .ok_or(StatusCode::NOT_FOUND)?;
@@ -382,7 +453,11 @@ pub async fn get_plan_artifact_history(
         .get_by_id(&artifact_id)
         .await
         .map_err(|e| {
-            error!("Failed to get artifact {} for history: {}", artifact_id.as_str(), e);
+            error!(
+                "Failed to get artifact {} for history: {}",
+                artifact_id.as_str(),
+                e
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
@@ -394,9 +469,18 @@ pub async fn get_plan_artifact_history(
         .get_version_history(&artifact_id)
         .await
         .map_err(|e| {
-            error!("Failed to get history for artifact {}: {}", artifact_id.as_str(), e);
+            error!(
+                "Failed to get history for artifact {}: {}",
+                artifact_id.as_str(),
+                e
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    Ok(Json(history.into_iter().map(ArtifactVersionSummaryResponse::from).collect()))
+    Ok(Json(
+        history
+            .into_iter()
+            .map(ArtifactVersionSummaryResponse::from)
+            .collect(),
+    ))
 }

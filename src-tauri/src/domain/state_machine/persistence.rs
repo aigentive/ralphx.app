@@ -159,8 +159,8 @@ mod tests {
         let qa_data = QaFailedData::single(QaFailure::new("test_foo", "assertion failed"));
         let state = State::QaFailed(qa_data.clone());
 
-        let state_data = StateData::from_state(&state)
-            .expect("Failed to extract state data for qa_failed");
+        let state_data =
+            StateData::from_state(&state).expect("Failed to extract state data for qa_failed");
         assert_eq!(state_data.state_type, "qa_failed");
         assert!(state_data.data.contains("test_foo"));
         assert!(state_data.data.contains("assertion failed"));
@@ -171,8 +171,8 @@ mod tests {
         let failed_data = FailedData::new("Build error");
         let state = State::Failed(failed_data);
 
-        let state_data = StateData::from_state(&state)
-            .expect("Failed to extract state data for failed");
+        let state_data =
+            StateData::from_state(&state).expect("Failed to extract state data for failed");
         assert_eq!(state_data.state_type, "failed");
         assert!(state_data.data.contains("Build error"));
     }
@@ -180,11 +180,11 @@ mod tests {
     #[test]
     fn test_state_data_into_state_qa_failed() {
         let qa_data = QaFailedData::single(QaFailure::new("test_bar", "expected 1, got 2"));
-        let json = serde_json::to_string(&qa_data)
-            .expect("Failed to serialize QaFailedData");
+        let json = serde_json::to_string(&qa_data).expect("Failed to serialize QaFailedData");
         let state_data = StateData::new("qa_failed", json);
 
-        let state = state_data.into_state()
+        let state = state_data
+            .into_state()
             .expect("Failed to deserialize qa_failed state");
         if let State::QaFailed(data) = state {
             assert!(data.has_failures());
@@ -197,11 +197,11 @@ mod tests {
     #[test]
     fn test_state_data_into_state_failed() {
         let failed_data = FailedData::new("Timeout").with_details("Command took 60s");
-        let json = serde_json::to_string(&failed_data)
-            .expect("Failed to serialize FailedData");
+        let json = serde_json::to_string(&failed_data).expect("Failed to serialize FailedData");
         let state_data = StateData::new("failed", json);
 
-        let state = state_data.into_state()
+        let state = state_data
+            .into_state()
             .expect("Failed to deserialize failed state");
         if let State::Failed(data) = state {
             assert_eq!(data.error, "Timeout");
@@ -230,7 +230,8 @@ mod tests {
 
         let state_data = StateData::from_state(&original_state)
             .expect("Failed to extract state data in roundtrip");
-        let restored_state = state_data.into_state()
+        let restored_state = state_data
+            .into_state()
             .expect("Failed to restore state from data in roundtrip");
 
         if let State::QaFailed(restored_data) = restored_state {
@@ -248,7 +249,8 @@ mod tests {
 
         let state_data = StateData::from_state(&original_state)
             .expect("Failed to extract failed state data in roundtrip");
-        let restored_state = state_data.into_state()
+        let restored_state = state_data
+            .into_state()
             .expect("Failed to restore failed state from data in roundtrip");
 
         if let State::Failed(restored_data) = restored_state {
@@ -261,7 +263,8 @@ mod tests {
 
     #[test]
     fn test_state_data_apply_to_state_replaces_qa_failed_data() {
-        let persisted_data = QaFailedData::single(QaFailure::new("persisted_test", "persisted error"));
+        let persisted_data =
+            QaFailedData::single(QaFailure::new("persisted_test", "persisted error"));
         let json = serde_json::to_string(&persisted_data).unwrap();
         let state_data = StateData::new("qa_failed", json);
 
@@ -407,7 +410,8 @@ mod tests {
 
     #[test]
     fn test_deserialize_failed_data() {
-        let json = r#"{"error":"deser error","details":"trace","is_timeout":true,"notified":false}"#;
+        let json =
+            r#"{"error":"deser error","details":"trace","is_timeout":true,"notified":false}"#;
         let data = deserialize_failed_data(json).unwrap();
         assert_eq!(data.error, "deser error");
         assert!(data.is_timeout);

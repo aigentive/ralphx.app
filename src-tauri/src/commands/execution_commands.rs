@@ -3,18 +3,23 @@
 // Phase 82: Project-scoped execution with optional project_id parameters
 
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use tokio::sync::RwLock;
 
+use crate::application::reconciliation::UserRecoveryAction;
 use crate::application::{
     AppState, ReconciliationRunner, TaskSchedulerService, TaskTransitionService,
 };
-use crate::application::reconciliation::UserRecoveryAction;
-use crate::domain::entities::{InternalStatus, ProjectId};
+use crate::domain::entities::{
+    task_step::StepProgressSummary, AgentRunId, AgentRunStatus, ChatContextType, InternalStatus,
+    ProjectId, TaskId,
+};
 use crate::domain::execution::ExecutionSettings;
 use crate::domain::state_machine::services::TaskScheduler;
+use crate::domain::state_machine::transition_handler::get_trigger_origin;
 
 /// Statuses where an agent is actively running.
 /// Tasks in these states need to be cancelled when stop is called,
@@ -355,14 +360,45 @@ pub async fn get_execution_status(
         }
     }
 
-    // Use running agent registry as source of truth for active processes.
-    // This avoids inflated counts from stuck task statuses.
-    let registry_count = app_state.running_agent_registry.list_all().await.len() as u32;
+    // Runtime GC pass to prune stale rows on every status poll.
+    prune_stale_execution_registry_entries(&app_state).await;
 
-    // Sync in-memory count with registry so downstream logic stays consistent.
-    execution_state.set_running_count(registry_count);
+    let registry_entries = app_state.running_agent_registry.list_all().await;
 
-    let running_count = registry_count;
+    // Keep execution state synchronized to global execution contexts.
+    let global_running_count = registry_entries
+        .iter()
+        .filter(|(key, _)| is_execution_context_type(&key.context_type))
+        .count() as u32;
+    execution_state.set_running_count(global_running_count);
+
+    let mut running_count = 0u32;
+    for (key, _) in registry_entries {
+        let context_type = match ChatContextType::from_str(&key.context_type) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+
+        if !matches!(
+            context_type,
+            ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge
+        ) {
+            continue;
+        }
+
+        if let Some(pid) = &effective_project_id {
+            let task_id = TaskId::from_string(key.context_id);
+            let task = match app_state.task_repo.get_by_id(&task_id).await {
+                Ok(Some(task)) => task,
+                _ => continue,
+            };
+            if task.project_id != *pid {
+                continue;
+            }
+        }
+
+        running_count += 1;
+    }
 
     let max_concurrent = execution_state.max_concurrent();
     let global_max = execution_state.global_max_concurrent();
@@ -373,7 +409,9 @@ pub async fn get_execution_status(
         max_concurrent,
         global_max_concurrent: global_max,
         queued_count,
-        can_start_task: !execution_state.is_paused() && running_count < max_concurrent && running_count < global_max,
+        can_start_task: !execution_state.is_paused()
+            && running_count < max_concurrent
+            && global_running_count < global_max,
     })
 }
 
@@ -653,21 +691,23 @@ pub async fn resume_execution(
     }
 
     // Trigger scheduler to pick up waiting Ready tasks
-    let scheduler = Arc::new(TaskSchedulerService::new(
-        Arc::clone(&execution_state),
-        Arc::clone(&app_state.project_repo),
-        Arc::clone(&app_state.task_repo),
-        Arc::clone(&app_state.task_dependency_repo),
-        Arc::clone(&app_state.chat_message_repo),
-        Arc::clone(&app_state.chat_conversation_repo),
-        Arc::clone(&app_state.agent_run_repo),
-        Arc::clone(&app_state.ideation_session_repo),
-        Arc::clone(&app_state.activity_event_repo),
-        Arc::clone(&app_state.message_queue),
-        Arc::clone(&app_state.running_agent_registry),
-        app_state.app_handle.clone(),
-    )
-    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)));
+    let scheduler = Arc::new(
+        TaskSchedulerService::new(
+            Arc::clone(&execution_state),
+            Arc::clone(&app_state.project_repo),
+            Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.task_dependency_repo),
+            Arc::clone(&app_state.chat_message_repo),
+            Arc::clone(&app_state.chat_conversation_repo),
+            Arc::clone(&app_state.agent_run_repo),
+            Arc::clone(&app_state.ideation_session_repo),
+            Arc::clone(&app_state.activity_event_repo),
+            Arc::clone(&app_state.message_queue),
+            Arc::clone(&app_state.running_agent_registry),
+            app_state.app_handle.clone(),
+        )
+        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)),
+    );
     scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
     scheduler.try_schedule_ready_tasks().await;
 
@@ -819,21 +859,23 @@ pub async fn recover_task_execution(
 ) -> Result<bool, String> {
     let task_id = crate::domain::entities::TaskId::from_string(task_id);
 
-    let transition_service = Arc::new(TaskTransitionService::new(
-        Arc::clone(&app_state.task_repo),
-        Arc::clone(&app_state.task_dependency_repo),
-        Arc::clone(&app_state.project_repo),
-        Arc::clone(&app_state.chat_message_repo),
-        Arc::clone(&app_state.chat_conversation_repo),
-        Arc::clone(&app_state.agent_run_repo),
-        Arc::clone(&app_state.ideation_session_repo),
-        Arc::clone(&app_state.activity_event_repo),
-        Arc::clone(&app_state.message_queue),
-        Arc::clone(&app_state.running_agent_registry),
-        Arc::clone(&execution_state),
-        app_state.app_handle.clone(),
-    )
-    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)));
+    let transition_service = Arc::new(
+        TaskTransitionService::new(
+            Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.task_dependency_repo),
+            Arc::clone(&app_state.project_repo),
+            Arc::clone(&app_state.chat_message_repo),
+            Arc::clone(&app_state.chat_conversation_repo),
+            Arc::clone(&app_state.agent_run_repo),
+            Arc::clone(&app_state.ideation_session_repo),
+            Arc::clone(&app_state.activity_event_repo),
+            Arc::clone(&app_state.message_queue),
+            Arc::clone(&app_state.running_agent_registry),
+            Arc::clone(&execution_state),
+            app_state.app_handle.clone(),
+        )
+        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)),
+    );
 
     let reconciler = ReconciliationRunner::new(
         Arc::clone(&app_state.task_repo),
@@ -871,21 +913,23 @@ pub async fn resolve_recovery_prompt(
         _ => return Err("Invalid recovery action".to_string()),
     };
 
-    let transition_service = Arc::new(TaskTransitionService::new(
-        Arc::clone(&app_state.task_repo),
-        Arc::clone(&app_state.task_dependency_repo),
-        Arc::clone(&app_state.project_repo),
-        Arc::clone(&app_state.chat_message_repo),
-        Arc::clone(&app_state.chat_conversation_repo),
-        Arc::clone(&app_state.agent_run_repo),
-        Arc::clone(&app_state.ideation_session_repo),
-        Arc::clone(&app_state.activity_event_repo),
-        Arc::clone(&app_state.message_queue),
-        Arc::clone(&app_state.running_agent_registry),
-        Arc::clone(&execution_state),
-        app_state.app_handle.clone(),
-    )
-    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)));
+    let transition_service = Arc::new(
+        TaskTransitionService::new(
+            Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.task_dependency_repo),
+            Arc::clone(&app_state.project_repo),
+            Arc::clone(&app_state.chat_message_repo),
+            Arc::clone(&app_state.chat_conversation_repo),
+            Arc::clone(&app_state.agent_run_repo),
+            Arc::clone(&app_state.ideation_session_repo),
+            Arc::clone(&app_state.activity_event_repo),
+            Arc::clone(&app_state.message_queue),
+            Arc::clone(&app_state.running_agent_registry),
+            Arc::clone(&execution_state),
+            app_state.app_handle.clone(),
+        )
+        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)),
+    );
 
     let reconciler = ReconciliationRunner::new(
         Arc::clone(&app_state.task_repo),
@@ -932,27 +976,30 @@ pub async fn set_max_concurrent(
 
     // If capacity increased, trigger scheduler to pick up waiting Ready tasks
     if max > old_max {
-        let scheduler = Arc::new(TaskSchedulerService::new(
-            Arc::clone(&execution_state),
-            Arc::clone(&app_state.project_repo),
-            Arc::clone(&app_state.task_repo),
-            Arc::clone(&app_state.task_dependency_repo),
-            Arc::clone(&app_state.chat_message_repo),
-            Arc::clone(&app_state.chat_conversation_repo),
-            Arc::clone(&app_state.agent_run_repo),
-            Arc::clone(&app_state.ideation_session_repo),
-            Arc::clone(&app_state.activity_event_repo),
-            Arc::clone(&app_state.message_queue),
-            Arc::clone(&app_state.running_agent_registry),
-            app_state.app_handle.clone(),
-        )
-        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)));
+        let scheduler = Arc::new(
+            TaskSchedulerService::new(
+                Arc::clone(&execution_state),
+                Arc::clone(&app_state.project_repo),
+                Arc::clone(&app_state.task_repo),
+                Arc::clone(&app_state.task_dependency_repo),
+                Arc::clone(&app_state.chat_message_repo),
+                Arc::clone(&app_state.chat_conversation_repo),
+                Arc::clone(&app_state.agent_run_repo),
+                Arc::clone(&app_state.ideation_session_repo),
+                Arc::clone(&app_state.activity_event_repo),
+                Arc::clone(&app_state.message_queue),
+                Arc::clone(&app_state.running_agent_registry),
+                app_state.app_handle.clone(),
+            )
+            .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)),
+        );
         scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
         scheduler.try_schedule_ready_tasks().await;
     }
 
     // Get current status
-    let status = get_execution_status(None, active_project_state, execution_state, app_state).await?;
+    let status =
+        get_execution_status(None, active_project_state, execution_state, app_state).await?;
 
     Ok(ExecutionCommandResponse {
         success: true,
@@ -1018,21 +1065,23 @@ pub async fn update_execution_settings(
 
         // If capacity increased, trigger scheduler to pick up waiting Ready tasks
         if new_max > old_max {
-            let scheduler = Arc::new(TaskSchedulerService::new(
-                Arc::clone(&execution_state),
-                Arc::clone(&app_state.project_repo),
-                Arc::clone(&app_state.task_repo),
-                Arc::clone(&app_state.task_dependency_repo),
-                Arc::clone(&app_state.chat_message_repo),
-                Arc::clone(&app_state.chat_conversation_repo),
-                Arc::clone(&app_state.agent_run_repo),
-                Arc::clone(&app_state.ideation_session_repo),
-                Arc::clone(&app_state.activity_event_repo),
-                Arc::clone(&app_state.message_queue),
-                Arc::clone(&app_state.running_agent_registry),
-                app_state.app_handle.clone(),
-            )
-            .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)));
+            let scheduler = Arc::new(
+                TaskSchedulerService::new(
+                    Arc::clone(&execution_state),
+                    Arc::clone(&app_state.project_repo),
+                    Arc::clone(&app_state.task_repo),
+                    Arc::clone(&app_state.task_dependency_repo),
+                    Arc::clone(&app_state.chat_message_repo),
+                    Arc::clone(&app_state.chat_conversation_repo),
+                    Arc::clone(&app_state.agent_run_repo),
+                    Arc::clone(&app_state.ideation_session_repo),
+                    Arc::clone(&app_state.activity_event_repo),
+                    Arc::clone(&app_state.message_queue),
+                    Arc::clone(&app_state.running_agent_registry),
+                    app_state.app_handle.clone(),
+                )
+                .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)),
+            );
             scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
             scheduler.try_schedule_ready_tasks().await;
         }
@@ -1169,21 +1218,23 @@ pub async fn update_global_execution_settings(
 
     // If global capacity increased, trigger scheduler to pick up waiting tasks
     if updated.global_max_concurrent > old_global_max {
-        let scheduler = Arc::new(TaskSchedulerService::new(
-            Arc::clone(&execution_state),
-            Arc::clone(&app_state.project_repo),
-            Arc::clone(&app_state.task_repo),
-            Arc::clone(&app_state.task_dependency_repo),
-            Arc::clone(&app_state.chat_message_repo),
-            Arc::clone(&app_state.chat_conversation_repo),
-            Arc::clone(&app_state.agent_run_repo),
-            Arc::clone(&app_state.ideation_session_repo),
-            Arc::clone(&app_state.activity_event_repo),
-            Arc::clone(&app_state.message_queue),
-            Arc::clone(&app_state.running_agent_registry),
-            app_state.app_handle.clone(),
-        )
-        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)));
+        let scheduler = Arc::new(
+            TaskSchedulerService::new(
+                Arc::clone(&execution_state),
+                Arc::clone(&app_state.project_repo),
+                Arc::clone(&app_state.task_repo),
+                Arc::clone(&app_state.task_dependency_repo),
+                Arc::clone(&app_state.chat_message_repo),
+                Arc::clone(&app_state.chat_conversation_repo),
+                Arc::clone(&app_state.agent_run_repo),
+                Arc::clone(&app_state.ideation_session_repo),
+                Arc::clone(&app_state.activity_event_repo),
+                Arc::clone(&app_state.message_queue),
+                Arc::clone(&app_state.running_agent_registry),
+                app_state.app_handle.clone(),
+            )
+            .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)),
+        );
         scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
         scheduler.try_schedule_ready_tasks().await;
     }
@@ -1200,6 +1251,252 @@ pub async fn update_global_execution_settings(
     }
 
     Ok(GlobalExecutionSettingsResponse::from(updated))
+}
+
+// ========================================
+// Running Processes Query
+// ========================================
+
+/// A single running process with enriched data
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunningProcess {
+    /// Task ID
+    pub task_id: String,
+    /// Task title
+    pub title: String,
+    /// Current internal status
+    pub internal_status: String,
+    /// Step progress summary (if steps exist)
+    pub step_progress: Option<StepProgressSummary>,
+    /// Elapsed time in seconds since entering current status
+    pub elapsed_seconds: Option<i64>,
+    /// Trigger origin (scheduler, revision, recovery, retry, qa)
+    pub trigger_origin: Option<String>,
+    /// Task branch name
+    pub task_branch: Option<String>,
+}
+
+/// Response for get_running_processes
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunningProcessesResponse {
+    /// List of running processes
+    pub processes: Vec<RunningProcess>,
+}
+
+/// Get all currently running processes (tasks with active execution contexts)
+///
+/// Returns tasks found in the running agent registry (task_execution/review/merge)
+/// with enriched data:
+/// - Step progress via StepProgressSummary::from_steps()
+/// - Elapsed time from task_state_history
+/// - Trigger origin from metadata
+/// - Branch name
+#[tauri::command]
+pub async fn get_running_processes(
+    project_id: Option<String>,
+    active_project_state: State<'_, Arc<ActiveProjectState>>,
+    state: State<'_, AppState>,
+) -> Result<RunningProcessesResponse, String> {
+    let effective_project_id = match project_id {
+        Some(id) => Some(ProjectId::from_string(id)),
+        None => active_project_state.get().await,
+    };
+
+    // Keep the registry clean so process rows reflect truly running agents.
+    prune_stale_execution_registry_entries(&state).await;
+
+    let mut processes = Vec::new();
+    let mut seen_task_ids = std::collections::HashSet::new();
+    let registry_entries = state.running_agent_registry.list_all().await;
+
+    for (key, _) in registry_entries {
+        if !is_execution_context_type(&key.context_type) {
+            continue;
+        }
+
+        let context_type = match ChatContextType::from_str(&key.context_type) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+
+        let task_id = TaskId::from_string(key.context_id);
+        let task = match state.task_repo.get_by_id(&task_id).await {
+            Ok(Some(task)) => task,
+            _ => continue,
+        };
+
+        if let Some(pid) = &effective_project_id {
+            if task.project_id != *pid {
+                continue;
+            }
+        }
+
+        // Extra guard against races between status transitions and registry updates.
+        if !context_matches_running_status_for_gc(context_type, task.internal_status) {
+            continue;
+        }
+
+        let task_id_str = task.id.as_str().to_string();
+        if !seen_task_ids.insert(task_id_str.clone()) {
+            continue;
+        }
+
+        // Get step progress
+        let steps = state
+            .task_step_repo
+            .get_by_task(&task_id)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let step_progress = if !steps.is_empty() {
+            Some(StepProgressSummary::from_steps(&task_id, &steps))
+        } else {
+            None
+        };
+
+        // Get elapsed time from status history
+        let history = state
+            .task_repo
+            .get_status_history(&task_id)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let elapsed_seconds = history
+            .iter()
+            .rev()
+            .find(|t| t.to == task.internal_status)
+            .map(|transition| {
+                let now = chrono::Utc::now();
+                let elapsed = now.signed_duration_since(transition.timestamp);
+                elapsed.num_seconds()
+            });
+
+        // Get trigger origin
+        let trigger_origin = get_trigger_origin(&task);
+
+        processes.push(RunningProcess {
+            task_id: task_id_str,
+            title: task.title.clone(),
+            internal_status: task.internal_status.as_str().to_string(),
+            step_progress,
+            elapsed_seconds,
+            trigger_origin,
+            task_branch: task.task_branch.clone(),
+        });
+    }
+
+    Ok(RunningProcessesResponse { processes })
+}
+
+fn is_execution_context_type(context_type: &str) -> bool {
+    matches!(context_type, "task_execution" | "review" | "merge")
+}
+
+fn process_is_alive_for_gc(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(true)
+    }
+
+    #[cfg(windows)]
+    {
+        std::process::Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"])
+            .output()
+            .map(|output| {
+                if !output.status.success() {
+                    return true;
+                }
+                let text = String::from_utf8_lossy(&output.stdout);
+                !text.to_ascii_lowercase().contains("no tasks are running")
+            })
+            .unwrap_or(true)
+    }
+}
+
+fn context_matches_running_status_for_gc(
+    context_type: ChatContextType,
+    status: InternalStatus,
+) -> bool {
+    match context_type {
+        ChatContextType::TaskExecution => {
+            status == InternalStatus::Executing || status == InternalStatus::ReExecuting
+        }
+        ChatContextType::Review => status == InternalStatus::Reviewing,
+        ChatContextType::Merge => status == InternalStatus::Merging,
+        ChatContextType::Task | ChatContextType::Ideation | ChatContextType::Project => false,
+    }
+}
+
+async fn prune_stale_execution_registry_entries(app_state: &AppState) {
+    let entries = app_state.running_agent_registry.list_all().await;
+    if entries.is_empty() {
+        return;
+    }
+
+    for (key, info) in entries {
+        if !is_execution_context_type(&key.context_type) {
+            continue;
+        }
+
+        let context_type = match ChatContextType::from_str(&key.context_type) {
+            Ok(context_type) => context_type,
+            Err(_) => continue,
+        };
+
+        let pid_alive = process_is_alive_for_gc(info.pid);
+        let run = match app_state
+            .agent_run_repo
+            .get_by_id(&AgentRunId::from_string(&info.agent_run_id))
+            .await
+        {
+            Ok(run) => run,
+            Err(_) => continue,
+        };
+
+        let mut stale = !pid_alive;
+        if !matches!(
+            run.as_ref().map(|r| r.status),
+            Some(AgentRunStatus::Running)
+        ) {
+            stale = true;
+        }
+
+        let task_id = TaskId::from_string(key.context_id.clone());
+        match app_state.task_repo.get_by_id(&task_id).await {
+            Ok(Some(task)) => {
+                if !context_matches_running_status_for_gc(context_type, task.internal_status) {
+                    stale = true;
+                }
+            }
+            Ok(None) | Err(_) => {
+                stale = true;
+            }
+        }
+
+        if !stale {
+            continue;
+        }
+
+        if pid_alive {
+            let _ = app_state.running_agent_registry.stop(&key).await;
+        } else {
+            let _ = app_state.running_agent_registry.unregister(&key).await;
+        }
+
+        if let Some(agent_run) = run {
+            if agent_run.status == AgentRunStatus::Running {
+                let _ = app_state
+                    .agent_run_repo
+                    .cancel(&AgentRunId::from_string(&info.agent_run_id))
+                    .await;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1544,7 +1841,11 @@ mod tests {
 
         let mut queued_count = 0u32;
         for project in all_projects {
-            let tasks = app_state.task_repo.get_by_project(&project.id).await.unwrap();
+            let tasks = app_state
+                .task_repo
+                .get_by_project(&project.id)
+                .await
+                .unwrap();
             queued_count += tasks
                 .iter()
                 .filter(|t| t.internal_status == InternalStatus::Ready)
@@ -1586,7 +1887,11 @@ mod tests {
         let project = &projects[0];
 
         // Find the executing task and stop it (simulating stop_execution behavior)
-        let tasks = app_state.task_repo.get_by_project(&project.id).await.unwrap();
+        let tasks = app_state
+            .task_repo
+            .get_by_project(&project.id)
+            .await
+            .unwrap();
         for mut task in tasks {
             if task.internal_status == InternalStatus::Executing {
                 task.internal_status = InternalStatus::Stopped;
@@ -1596,7 +1901,11 @@ mod tests {
         }
 
         // Verify the task is now stopped (not failed)
-        let tasks = app_state.task_repo.get_by_project(&project.id).await.unwrap();
+        let tasks = app_state
+            .task_repo
+            .get_by_project(&project.id)
+            .await
+            .unwrap();
         let executing_count = tasks
             .iter()
             .filter(|t| t.internal_status == InternalStatus::Executing)
@@ -1618,7 +1927,11 @@ mod tests {
 
         // Create a test project
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         // Create tasks in all agent-active statuses
         let mut task1 = Task::new(project.id.clone(), "Executing Task".to_string());
@@ -1658,7 +1971,11 @@ mod tests {
         execution_state.pause();
 
         // Transition all agent-active tasks to Stopped (as stop_execution does)
-        let tasks = app_state.task_repo.get_by_project(&project.id).await.unwrap();
+        let tasks = app_state
+            .task_repo
+            .get_by_project(&project.id)
+            .await
+            .unwrap();
         for task in tasks {
             if AGENT_ACTIVE_STATUSES.contains(&task.internal_status) {
                 let _ = transition_service
@@ -1668,7 +1985,11 @@ mod tests {
         }
 
         // Verify: All agent-active tasks should now be Stopped
-        let tasks = app_state.task_repo.get_by_project(&project.id).await.unwrap();
+        let tasks = app_state
+            .task_repo
+            .get_by_project(&project.id)
+            .await
+            .unwrap();
 
         let stopped_count = tasks
             .iter()
@@ -1696,7 +2017,11 @@ mod tests {
 
         // Create a test project
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         // Create tasks in all agent-active statuses
         let mut task1 = Task::new(project.id.clone(), "Executing Task".to_string());
@@ -1736,7 +2061,11 @@ mod tests {
         execution_state.pause();
 
         // Transition all agent-active tasks to Paused (as pause_execution does)
-        let tasks = app_state.task_repo.get_by_project(&project.id).await.unwrap();
+        let tasks = app_state
+            .task_repo
+            .get_by_project(&project.id)
+            .await
+            .unwrap();
         for task in tasks {
             if AGENT_ACTIVE_STATUSES.contains(&task.internal_status) {
                 let _ = transition_service
@@ -1746,7 +2075,11 @@ mod tests {
         }
 
         // Verify: All agent-active tasks should now be Paused
-        let tasks = app_state.task_repo.get_by_project(&project.id).await.unwrap();
+        let tasks = app_state
+            .task_repo
+            .get_by_project(&project.id)
+            .await
+            .unwrap();
 
         let paused_count = tasks
             .iter()
@@ -1774,7 +2107,11 @@ mod tests {
 
         // Create a test project
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         // Create tasks in agent-active statuses
         let mut task1 = Task::new(project.id.clone(), "Executing Task 1".to_string());
@@ -1814,7 +2151,11 @@ mod tests {
         // Execute pause: pause and transition all agent-active tasks to Paused
         execution_state.pause();
 
-        let tasks = app_state.task_repo.get_by_project(&project.id).await.unwrap();
+        let tasks = app_state
+            .task_repo
+            .get_by_project(&project.id)
+            .await
+            .unwrap();
         for task in tasks {
             if AGENT_ACTIVE_STATUSES.contains(&task.internal_status) {
                 let _ = transition_service
@@ -1897,7 +2238,13 @@ mod tests {
         let handle = crate::testing::create_mock_app_handle();
 
         // All valid reason strings should work without panic
-        let reasons = ["task_started", "task_completed", "paused", "resumed", "stopped"];
+        let reasons = [
+            "task_started",
+            "task_completed",
+            "paused",
+            "resumed",
+            "stopped",
+        ];
         for reason in &reasons {
             state.emit_status_changed(&handle, reason);
         }
@@ -1915,7 +2262,11 @@ mod tests {
 
         // Create a test project
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         // Create tasks in agent-active statuses
         let mut task1 = Task::new(project.id.clone(), "Executing Task 1".to_string());
@@ -1956,7 +2307,11 @@ mod tests {
         // Execute stop: pause and transition all agent-active tasks to Stopped
         execution_state.pause();
 
-        let tasks = app_state.task_repo.get_by_project(&project.id).await.unwrap();
+        let tasks = app_state
+            .task_repo
+            .get_by_project(&project.id)
+            .await
+            .unwrap();
         for task in tasks {
             if AGENT_ACTIVE_STATUSES.contains(&task.internal_status) {
                 let _ = transition_service
@@ -1985,7 +2340,11 @@ mod tests {
 
         // Create a test project
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         // Create a task in Executing status
         let mut task = Task::new(project.id.clone(), "Executing Task".to_string());
@@ -2036,7 +2395,11 @@ mod tests {
 
         // Create a test project
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         // Create tasks in different agent-active states
         let test_cases = [
@@ -2240,7 +2603,11 @@ mod tests {
 
         // Create a test project
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         // Create a task in Executing state
         let mut task = Task::new(project.id.clone(), "Executing Task".to_string());
@@ -2272,12 +2639,24 @@ mod tests {
             .expect("Failed to transition to Paused");
 
         // Verify task is Paused
-        let paused_task = app_state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+        let paused_task = app_state
+            .task_repo
+            .get_by_id(&task_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(paused_task.internal_status, InternalStatus::Paused);
 
         // Verify status history shows Executing -> Paused transition
-        let history = app_state.task_repo.get_status_history(&task_id).await.unwrap();
-        let pause_transition = history.iter().rev().find(|t| t.to == InternalStatus::Paused);
+        let history = app_state
+            .task_repo
+            .get_status_history(&task_id)
+            .await
+            .unwrap();
+        let pause_transition = history
+            .iter()
+            .rev()
+            .find(|t| t.to == InternalStatus::Paused);
         assert!(pause_transition.is_some());
         assert_eq!(pause_transition.unwrap().from, InternalStatus::Executing);
 
@@ -2289,7 +2668,12 @@ mod tests {
             .expect("Failed to restore from Paused");
 
         // Verify task is back to Executing
-        let restored_task = app_state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+        let restored_task = app_state
+            .task_repo
+            .get_by_id(&task_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(restored_task.internal_status, InternalStatus::Executing);
     }
 
@@ -2301,7 +2685,11 @@ mod tests {
 
         // Create a test project
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         // Create a task and transition it to Stopped
         let mut task = Task::new(project.id.clone(), "Stopped Task".to_string());
@@ -2333,14 +2721,24 @@ mod tests {
             .expect("Failed to transition to Stopped");
 
         // Verify task is Stopped
-        let stopped_task = app_state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+        let stopped_task = app_state
+            .task_repo
+            .get_by_id(&task_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(stopped_task.internal_status, InternalStatus::Stopped);
 
         // Resume: should NOT restore Stopped tasks
         execution_state.resume();
 
         // Task should STILL be Stopped (resume doesn't restore Stopped)
-        let still_stopped = app_state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+        let still_stopped = app_state
+            .task_repo
+            .get_by_id(&task_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(
             still_stopped.internal_status,
             InternalStatus::Stopped,
@@ -2356,7 +2754,11 @@ mod tests {
 
         // Create a test project
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         // Build transition service
         let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
@@ -2401,7 +2803,12 @@ mod tests {
 
         // Verify all are Paused
         for task_id in &task_ids {
-            let task = app_state.task_repo.get_by_id(task_id).await.unwrap().unwrap();
+            let task = app_state
+                .task_repo
+                .get_by_id(task_id)
+                .await
+                .unwrap()
+                .unwrap();
             assert_eq!(task.internal_status, InternalStatus::Paused);
         }
 
@@ -2409,8 +2816,15 @@ mod tests {
         execution_state.resume();
         for task_id in &task_ids {
             // Find the pre-pause status from history and restore
-            let history = app_state.task_repo.get_status_history(task_id).await.unwrap();
-            let pause_transition = history.iter().rev().find(|t| t.to == InternalStatus::Paused);
+            let history = app_state
+                .task_repo
+                .get_status_history(task_id)
+                .await
+                .unwrap();
+            let pause_transition = history
+                .iter()
+                .rev()
+                .find(|t| t.to == InternalStatus::Paused);
             if let Some(transition) = pause_transition {
                 let _ = transition_service
                     .transition_task(task_id, transition.from)
@@ -2420,7 +2834,12 @@ mod tests {
 
         // Verify all tasks are restored to their original statuses
         for (i, task_id) in task_ids.iter().enumerate() {
-            let task = app_state.task_repo.get_by_id(task_id).await.unwrap().unwrap();
+            let task = app_state
+                .task_repo
+                .get_by_id(task_id)
+                .await
+                .unwrap()
+                .unwrap();
             assert_eq!(
                 task.internal_status, original_statuses[i],
                 "Task should be restored to original status {:?}",
@@ -2437,7 +2856,11 @@ mod tests {
 
         // Create a test project
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         // Build transition service
         let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
@@ -2488,8 +2911,16 @@ mod tests {
             .await
             .unwrap();
         for task in paused_tasks {
-            let history = app_state.task_repo.get_status_history(&task.id).await.unwrap();
-            if let Some(transition) = history.iter().rev().find(|t| t.to == InternalStatus::Paused) {
+            let history = app_state
+                .task_repo
+                .get_status_history(&task.id)
+                .await
+                .unwrap();
+            if let Some(transition) = history
+                .iter()
+                .rev()
+                .find(|t| t.to == InternalStatus::Paused)
+            {
                 let _ = transition_service
                     .transition_task(&task.id, transition.from)
                     .await;
@@ -2497,7 +2928,12 @@ mod tests {
         }
 
         // Verify: task1 (was Paused) should be restored to Executing
-        let task1_final = app_state.task_repo.get_by_id(&task1_id).await.unwrap().unwrap();
+        let task1_final = app_state
+            .task_repo
+            .get_by_id(&task1_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(
             task1_final.internal_status,
             InternalStatus::Executing,
@@ -2505,7 +2941,12 @@ mod tests {
         );
 
         // Verify: task2 (was Stopped) should remain Stopped
-        let task2_final = app_state.task_repo.get_by_id(&task2_id).await.unwrap().unwrap();
+        let task2_final = app_state
+            .task_repo
+            .get_by_id(&task2_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(
             task2_final.internal_status,
             InternalStatus::Stopped,

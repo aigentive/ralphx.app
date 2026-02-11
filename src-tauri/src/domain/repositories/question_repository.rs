@@ -17,20 +17,13 @@ pub trait QuestionRepository: Send + Sync {
     async fn create_pending(&self, info: &PendingQuestionInfo) -> AppResult<()>;
 
     /// Mark a question as resolved with the given answer
-    async fn resolve(
-        &self,
-        request_id: &str,
-        answer: &QuestionAnswer,
-    ) -> AppResult<bool>;
+    async fn resolve(&self, request_id: &str, answer: &QuestionAnswer) -> AppResult<bool>;
 
     /// Get all currently pending questions
     async fn get_pending(&self) -> AppResult<Vec<PendingQuestionInfo>>;
 
     /// Get a single question by its request_id
-    async fn get_by_request_id(
-        &self,
-        request_id: &str,
-    ) -> AppResult<Option<PendingQuestionInfo>>;
+    async fn get_by_request_id(&self, request_id: &str) -> AppResult<Option<PendingQuestionInfo>>;
 
     /// Expire all pending questions (e.g., on startup — agents that asked are gone)
     async fn expire_all_pending(&self) -> AppResult<u64>;
@@ -66,11 +59,7 @@ mod tests {
             Ok(())
         }
 
-        async fn resolve(
-            &self,
-            request_id: &str,
-            answer: &QuestionAnswer,
-        ) -> AppResult<bool> {
+        async fn resolve(&self, request_id: &str, answer: &QuestionAnswer) -> AppResult<bool> {
             let mut questions = self.questions.write().unwrap();
             if let Some(entry) = questions.get_mut(request_id) {
                 entry.1 = Some(answer.clone());

@@ -43,7 +43,12 @@ impl std::fmt::Display for AgentProfileId {
 #[async_trait]
 pub trait AgentProfileRepository: Send + Sync {
     /// Create a new agent profile
-    async fn create(&self, id: &AgentProfileId, profile: &AgentProfile, is_builtin: bool) -> AppResult<()>;
+    async fn create(
+        &self,
+        id: &AgentProfileId,
+        profile: &AgentProfile,
+        is_builtin: bool,
+    ) -> AppResult<()>;
 
     /// Get agent profile by ID
     async fn get_by_id(&self, id: &AgentProfileId) -> AppResult<Option<AgentProfile>>;
@@ -98,7 +103,12 @@ mod tests {
 
     #[async_trait]
     impl AgentProfileRepository for MockAgentProfileRepository {
-        async fn create(&self, id: &AgentProfileId, profile: &AgentProfile, is_builtin: bool) -> AppResult<()> {
+        async fn create(
+            &self,
+            id: &AgentProfileId,
+            profile: &AgentProfile,
+            is_builtin: bool,
+        ) -> AppResult<()> {
             let mut profiles = self.profiles.write().unwrap();
             profiles.insert(id.as_str().to_string(), (profile.clone(), is_builtin));
             Ok(())
@@ -111,7 +121,10 @@ mod tests {
 
         async fn get_by_name(&self, name: &str) -> AppResult<Option<AgentProfile>> {
             let profiles = self.profiles.read().unwrap();
-            Ok(profiles.values().find(|(p, _)| p.name == name).map(|(p, _)| p.clone()))
+            Ok(profiles
+                .values()
+                .find(|(p, _)| p.name == name)
+                .map(|(p, _)| p.clone()))
         }
 
         async fn get_all(&self) -> AppResult<Vec<AgentProfile>> {
@@ -232,12 +245,20 @@ mod tests {
     async fn test_mock_repository_get_by_role() {
         let repo = MockAgentProfileRepository::new();
 
-        repo.create(&AgentProfileId::from_string("w1"), &AgentProfile::worker(), true)
-            .await
-            .unwrap();
-        repo.create(&AgentProfileId::from_string("r1"), &AgentProfile::reviewer(), true)
-            .await
-            .unwrap();
+        repo.create(
+            &AgentProfileId::from_string("w1"),
+            &AgentProfile::worker(),
+            true,
+        )
+        .await
+        .unwrap();
+        repo.create(
+            &AgentProfileId::from_string("r1"),
+            &AgentProfile::reviewer(),
+            true,
+        )
+        .await
+        .unwrap();
 
         let workers = repo.get_by_role(ProfileRole::Worker).await.unwrap();
         assert_eq!(workers.len(), 1);
@@ -248,9 +269,13 @@ mod tests {
     async fn test_mock_repository_get_builtin_vs_custom() {
         let repo = MockAgentProfileRepository::new();
 
-        repo.create(&AgentProfileId::from_string("w1"), &AgentProfile::worker(), true)
-            .await
-            .unwrap();
+        repo.create(
+            &AgentProfileId::from_string("w1"),
+            &AgentProfile::worker(),
+            true,
+        )
+        .await
+        .unwrap();
 
         let mut custom_profile = AgentProfile::worker();
         custom_profile.name = "Custom Worker".to_string();

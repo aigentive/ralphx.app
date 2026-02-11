@@ -107,9 +107,7 @@ fn test_ready_cancel_transitions_to_cancelled() {
 #[test]
 fn test_blocked_blockers_resolved_transitions_to_ready() {
     let mut machine = create_machine();
-    machine
-        .context
-        .add_blocker(Blocker::new("task-2"));
+    machine.context.add_blocker(Blocker::new("task-2"));
 
     let response = machine.blocked(&TaskEvent::BlockersResolved);
     assert_eq!(response, Response::Transition(State::Ready));
@@ -257,7 +255,10 @@ fn test_review_passed_human_request_changes_transitions_to_revision_needed() {
         feedback: "Please add tests".to_string(),
     });
     assert_eq!(response, Response::Transition(State::RevisionNeeded));
-    assert_eq!(machine.context.review_feedback, Some("Please add tests".to_string()));
+    assert_eq!(
+        machine.context.review_feedback,
+        Some("Please add tests".to_string())
+    );
 }
 
 #[test]
@@ -308,18 +309,12 @@ fn test_cancelled_retry_transitions_to_ready() {
 #[test]
 fn test_terminal_states_ignore_other_events() {
     let mut machine = create_machine();
-    assert_eq!(
-        machine.approved(&TaskEvent::Cancel),
-        Response::NotHandled
-    );
+    assert_eq!(machine.approved(&TaskEvent::Cancel), Response::NotHandled);
     assert_eq!(
         machine.failed(&TaskEvent::Cancel, &FailedData::default()),
         Response::NotHandled
     );
-    assert_eq!(
-        machine.cancelled(&TaskEvent::Cancel),
-        Response::NotHandled
-    );
+    assert_eq!(machine.cancelled(&TaskEvent::Cancel), Response::NotHandled);
 }
 
 // ==================
@@ -341,10 +336,7 @@ fn test_dispatch_routes_to_correct_state() {
 fn test_dispatch_with_state_data() {
     let mut machine = create_machine();
 
-    let response = machine.dispatch(
-        &State::Failed(FailedData::new("error")),
-        &TaskEvent::Retry,
-    );
+    let response = machine.dispatch(&State::Failed(FailedData::new("error")), &TaskEvent::Retry);
     assert_eq!(response, Response::Transition(State::Ready));
 }
 
@@ -442,7 +434,10 @@ fn test_state_as_str_returns_snake_case() {
     assert_eq!(State::QaRefining.as_str(), "qa_refining");
     assert_eq!(State::QaTesting.as_str(), "qa_testing");
     assert_eq!(State::QaPassed.as_str(), "qa_passed");
-    assert_eq!(State::QaFailed(QaFailedData::default()).as_str(), "qa_failed");
+    assert_eq!(
+        State::QaFailed(QaFailedData::default()).as_str(),
+        "qa_failed"
+    );
     assert_eq!(State::PendingReview.as_str(), "pending_review");
     assert_eq!(State::Reviewing.as_str(), "reviewing");
     assert_eq!(State::ReviewPassed.as_str(), "review_passed");
@@ -461,8 +456,14 @@ fn test_state_display_uses_snake_case() {
     assert_eq!(format!("{}", State::Backlog), "backlog");
     assert_eq!(format!("{}", State::Ready), "ready");
     assert_eq!(format!("{}", State::ReExecuting), "re_executing");
-    assert_eq!(format!("{}", State::QaFailed(QaFailedData::default())), "qa_failed");
-    assert_eq!(format!("{}", State::Failed(FailedData::default())), "failed");
+    assert_eq!(
+        format!("{}", State::QaFailed(QaFailedData::default())),
+        "qa_failed"
+    );
+    assert_eq!(
+        format!("{}", State::Failed(FailedData::default())),
+        "failed"
+    );
 }
 
 #[test]
@@ -511,10 +512,19 @@ fn test_state_from_str_parses_all_states() {
     } else {
         panic!("Expected QaFailed");
     }
-    assert_eq!("pending_review".parse::<State>().unwrap(), State::PendingReview);
+    assert_eq!(
+        "pending_review".parse::<State>().unwrap(),
+        State::PendingReview
+    );
     assert_eq!("reviewing".parse::<State>().unwrap(), State::Reviewing);
-    assert_eq!("review_passed".parse::<State>().unwrap(), State::ReviewPassed);
-    assert_eq!("revision_needed".parse::<State>().unwrap(), State::RevisionNeeded);
+    assert_eq!(
+        "review_passed".parse::<State>().unwrap(),
+        State::ReviewPassed
+    );
+    assert_eq!(
+        "revision_needed".parse::<State>().unwrap(),
+        State::RevisionNeeded
+    );
     assert_eq!("approved".parse::<State>().unwrap(), State::Approved);
     if let State::Failed(data) = "failed".parse::<State>().unwrap() {
         assert!(data.error.is_empty());
@@ -587,9 +597,7 @@ fn test_state_roundtrip_all_states() {
 fn test_state_with_data_loses_data_on_roundtrip() {
     // States with local data will lose that data when parsed from string
     // This is by design - the persistence layer stores data separately
-    let qa_failed = State::QaFailed(QaFailedData::single(
-        QaFailure::new("test", "error"),
-    ));
+    let qa_failed = State::QaFailed(QaFailedData::single(QaFailure::new("test", "error")));
     let s = qa_failed.to_string();
     let parsed: State = s.parse().unwrap();
 

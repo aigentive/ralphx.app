@@ -95,19 +95,8 @@ impl ReviewPointType {
 
 /// Keywords that indicate destructive file operations
 const DESTRUCTIVE_FILE_KEYWORDS: &[&str] = &[
-    "delete",
-    "remove",
-    "rm ",
-    "rm -",
-    "unlink",
-    "drop",
-    "truncate",
-    "purge",
-    "wipe",
-    "erase",
-    "destroy",
-    "clean up",
-    "cleanup",
+    "delete", "remove", "rm ", "rm -", "unlink", "drop", "truncate", "purge", "wipe", "erase",
+    "destroy", "clean up", "cleanup",
 ];
 
 /// Keywords that indicate config modifications
@@ -354,7 +343,9 @@ mod tests {
         assert!(ReviewPointType::AfterComplex
             .description()
             .contains("complex"));
-        assert!(ReviewPointType::Manual.description().contains("user-defined"));
+        assert!(ReviewPointType::Manual
+            .description()
+            .contains("user-defined"));
     }
 
     #[test]

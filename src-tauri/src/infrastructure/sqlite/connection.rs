@@ -20,9 +20,8 @@ pub fn get_app_data_db_path(app_handle: &AppHandle) -> AppResult<PathBuf> {
         .app_data_dir()
         .map_err(|e| AppError::Infrastructure(format!("Failed to resolve app data dir: {}", e)))?;
 
-    std::fs::create_dir_all(&app_data_dir).map_err(|e| {
-        AppError::Infrastructure(format!("Failed to create app data dir: {}", e))
-    })?;
+    std::fs::create_dir_all(&app_data_dir)
+        .map_err(|e| AppError::Infrastructure(format!("Failed to create app data dir: {}", e)))?;
 
     Ok(app_data_dir.join("ralphx.db"))
 }

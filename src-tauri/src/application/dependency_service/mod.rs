@@ -50,10 +50,7 @@ impl<P: TaskProposalRepository, D: ProposalDependencyRepository> DependencyServi
     /// 4. Creates nodes with in/out degree counts
     /// 5. Detects cycles using DFS
     /// 6. Computes the critical path (if no cycles)
-    pub async fn build_graph(
-        &self,
-        session_id: &IdeationSessionId,
-    ) -> AppResult<DependencyGraph> {
+    pub async fn build_graph(&self, session_id: &IdeationSessionId) -> AppResult<DependencyGraph> {
         // Get all proposals for the session
         let proposals = self.proposal_repo.get_by_session(session_id).await?;
 
@@ -439,7 +436,9 @@ impl<P: TaskProposalRepository, D: ProposalDependencyRepository> DependencyServi
         }
 
         // Check if this would create a cycle using the repository method
-        self.dependency_repo.would_create_cycle(from_id, to_id).await
+        self.dependency_repo
+            .would_create_cycle(from_id, to_id)
+            .await
             .map(|would_cycle| !would_cycle)
     }
 

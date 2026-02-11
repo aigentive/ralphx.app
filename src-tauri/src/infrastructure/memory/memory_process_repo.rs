@@ -7,7 +7,9 @@ use tokio::sync::RwLock;
 
 use async_trait::async_trait;
 
-use crate::domain::entities::research::{ResearchProcess, ResearchProcessId, ResearchProcessStatus};
+use crate::domain::entities::research::{
+    ResearchProcess, ResearchProcessId, ResearchProcessStatus,
+};
 use crate::domain::repositories::ProcessRepository;
 use crate::error::AppResult;
 
@@ -58,7 +60,10 @@ impl ProcessRepository for MemoryProcessRepository {
         Ok(result)
     }
 
-    async fn get_by_status(&self, status: ResearchProcessStatus) -> AppResult<Vec<ResearchProcess>> {
+    async fn get_by_status(
+        &self,
+        status: ResearchProcessStatus,
+    ) -> AppResult<Vec<ResearchProcess>> {
         let processes = self.processes.read().await;
         Ok(processes
             .values()
@@ -69,7 +74,11 @@ impl ProcessRepository for MemoryProcessRepository {
 
     async fn get_active(&self) -> AppResult<Vec<ResearchProcess>> {
         let processes = self.processes.read().await;
-        Ok(processes.values().filter(|p| p.is_active()).cloned().collect())
+        Ok(processes
+            .values()
+            .filter(|p| p.is_active())
+            .cloned()
+            .collect())
     }
 
     async fn update_progress(&self, process: &ResearchProcess) -> AppResult<()> {
@@ -164,10 +173,16 @@ mod tests {
         repo.create(pending).await.unwrap();
         repo.create(running).await.unwrap();
 
-        let pending_processes = repo.get_by_status(ResearchProcessStatus::Pending).await.unwrap();
+        let pending_processes = repo
+            .get_by_status(ResearchProcessStatus::Pending)
+            .await
+            .unwrap();
         assert_eq!(pending_processes.len(), 1);
 
-        let running_processes = repo.get_by_status(ResearchProcessStatus::Running).await.unwrap();
+        let running_processes = repo
+            .get_by_status(ResearchProcessStatus::Running)
+            .await
+            .unwrap();
         assert_eq!(running_processes.len(), 1);
     }
 

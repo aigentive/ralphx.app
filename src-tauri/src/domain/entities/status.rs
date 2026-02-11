@@ -98,7 +98,7 @@ impl InternalStatus {
             PendingMerge => &[Merged, Merging, MergeIncomplete], // Success → Merged, Conflict → Merging (agent), Error → MergeIncomplete
             Merging => &[Merged, MergeConflict, MergeIncomplete, Stopped, Paused], // Agent success → Merged, Agent failure → MergeConflict, Non-conflict error → MergeIncomplete
             MergeIncomplete => &[PendingMerge, Merging, Merged], // Retry → PendingMerge (re-attempt programmatic merge), Agent spawn → Merging, Manual resolution → Merged
-            MergeConflict => &[Merged], // Manual resolution → Merged
+            MergeConflict => &[Merged],                          // Manual resolution → Merged
 
             // Terminal states (can be re-opened)
             Merged => &[Ready],
@@ -109,7 +109,12 @@ impl InternalStatus {
             // Paused: can resume to previous agent-active state
             // Resume uses status history to restore to the pre-pause state
             Paused => &[
-                Executing, ReExecuting, QaRefining, QaTesting, Reviewing, Merging,
+                Executing,
+                ReExecuting,
+                QaRefining,
+                QaTesting,
+                Reviewing,
+                Merging,
             ],
         }
     }
@@ -153,7 +158,10 @@ impl InternalStatus {
 
     /// Returns true if this status is terminal (task is done, no agent needed).
     pub fn is_terminal(&self) -> bool {
-        matches!(self, Self::Merged | Self::Failed | Self::Cancelled | Self::Stopped)
+        matches!(
+            self,
+            Self::Merged | Self::Failed | Self::Cancelled | Self::Stopped
+        )
     }
 
     /// Returns the snake_case string representation (matches serde serialization)
@@ -294,7 +302,6 @@ mod tests {
         assert_eq!(json, "\"backlog\"");
     }
 
-
     #[test]
     fn serializes_to_snake_case_qa_refining() {
         let json = serde_json::to_string(&InternalStatus::QaRefining).unwrap();
@@ -350,12 +357,16 @@ mod tests {
 
         for (expected_str, status) in expected_serializations {
             let json = serde_json::to_string(&status).unwrap();
-            assert_eq!(json, format!("\"{}\"", expected_str), "Failed for {:?}", status);
+            assert_eq!(
+                json,
+                format!("\"{}\"", expected_str),
+                "Failed for {:?}",
+                status
+            );
         }
     }
 
     // ===== Deserialization Tests =====
-
 
     #[test]
     fn deserializes_all_variants() {
@@ -440,9 +451,11 @@ mod tests {
     fn executing_transitions() {
         use InternalStatus::*;
         let transitions = Executing.valid_transitions();
-        assert_eq!(transitions, &[QaRefining, PendingReview, Failed, Blocked, Stopped, Paused]);
+        assert_eq!(
+            transitions,
+            &[QaRefining, PendingReview, Failed, Blocked, Stopped, Paused]
+        );
     }
-
 
     #[test]
     fn qa_refining_transitions() {
@@ -758,7 +771,10 @@ mod tests {
     fn merging_transitions() {
         use InternalStatus::*;
         let transitions = Merging.valid_transitions();
-        assert_eq!(transitions, &[Merged, MergeConflict, MergeIncomplete, Stopped, Paused]);
+        assert_eq!(
+            transitions,
+            &[Merged, MergeConflict, MergeIncomplete, Stopped, Paused]
+        );
     }
 
     #[test]
@@ -961,7 +977,14 @@ mod tests {
         let transitions = Paused.valid_transitions();
         assert_eq!(
             transitions,
-            &[Executing, ReExecuting, QaRefining, QaTesting, Reviewing, Merging]
+            &[
+                Executing,
+                ReExecuting,
+                QaRefining,
+                QaTesting,
+                Reviewing,
+                Merging
+            ]
         );
     }
 

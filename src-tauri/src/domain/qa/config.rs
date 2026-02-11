@@ -273,7 +273,10 @@ mod tests {
 
     #[test]
     fn test_qa_test_status_display() {
-        assert_eq!(format!("{}", QATestStatus::WaitingForPrep), "waiting_for_prep");
+        assert_eq!(
+            format!("{}", QATestStatus::WaitingForPrep),
+            "waiting_for_prep"
+        );
     }
 
     #[test]

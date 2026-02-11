@@ -37,10 +37,7 @@ pub async fn resolve_user_question(
         text: args.custom_response,
     };
 
-    let resolved = state
-        .question_state
-        .resolve(&args.request_id, answer)
-        .await;
+    let resolved = state.question_state.resolve(&args.request_id, answer).await;
 
     if resolved {
         Ok(ResolveQuestionResponse {
@@ -48,10 +45,7 @@ pub async fn resolve_user_question(
             message: Some(format!("Question {} resolved", args.request_id)),
         })
     } else {
-        Err(format!(
-            "Question request '{}' not found",
-            args.request_id
-        ))
+        Err(format!("Question request '{}' not found", args.request_id))
     }
 }
 

@@ -7,7 +7,9 @@ use std::sync::RwLock;
 
 use async_trait::async_trait;
 
-use crate::domain::entities::{ChatMessage, ChatMessageId, ChatConversationId, IdeationSessionId, ProjectId, TaskId};
+use crate::domain::entities::{
+    ChatConversationId, ChatMessage, ChatMessageId, IdeationSessionId, ProjectId, TaskId,
+};
 use crate::domain::repositories::ChatMessageRepository;
 use crate::error::AppResult;
 
@@ -84,7 +86,10 @@ impl ChatMessageRepository for MemoryChatMessageRepository {
         Ok(messages)
     }
 
-    async fn get_by_conversation(&self, conversation_id: &ChatConversationId) -> AppResult<Vec<ChatMessage>> {
+    async fn get_by_conversation(
+        &self,
+        conversation_id: &ChatConversationId,
+    ) -> AppResult<Vec<ChatMessage>> {
         let mut messages: Vec<_> = self
             .messages
             .read()

@@ -37,11 +37,7 @@ pub trait TaskProposalRepository: Send + Sync {
     async fn update_selection(&self, id: &TaskProposalId, selected: bool) -> AppResult<()>;
 
     /// Set the created task ID after converting proposal to task
-    async fn set_created_task_id(
-        &self,
-        id: &TaskProposalId,
-        task_id: &TaskId,
-    ) -> AppResult<()>;
+    async fn set_created_task_id(&self, id: &TaskProposalId, task_id: &TaskId) -> AppResult<()>;
 
     /// Delete a proposal
     async fn delete(&self, id: &TaskProposalId) -> AppResult<()>;
@@ -68,7 +64,10 @@ pub trait TaskProposalRepository: Send + Sync {
 
     /// Get proposals linked to a plan artifact
     /// Used by proactive sync to find proposals that may need updating when a plan changes
-    async fn get_by_plan_artifact_id(&self, artifact_id: &ArtifactId) -> AppResult<Vec<TaskProposal>>;
+    async fn get_by_plan_artifact_id(
+        &self,
+        artifact_id: &ArtifactId,
+    ) -> AppResult<Vec<TaskProposal>>;
 
     /// Clear the created_task_id for all proposals in a session
     /// Used when reopening an ideation session to unlink proposals from deleted tasks
@@ -273,8 +272,7 @@ mod tests {
     #[test]
     fn test_task_proposal_repository_trait_can_be_object_safe() {
         // Verify that TaskProposalRepository can be used as a trait object
-        let repo: Arc<dyn TaskProposalRepository> =
-            Arc::new(MockTaskProposalRepository::new());
+        let repo: Arc<dyn TaskProposalRepository> = Arc::new(MockTaskProposalRepository::new());
         assert!(Arc::strong_count(&repo) == 1);
     }
 
@@ -328,10 +326,8 @@ mod tests {
         let proposal1 = create_test_proposal(&session_id);
         let proposal2 = create_test_proposal(&session_id);
 
-        let repo = MockTaskProposalRepository::with_proposals(vec![
-            proposal1.clone(),
-            proposal2.clone(),
-        ]);
+        let repo =
+            MockTaskProposalRepository::with_proposals(vec![proposal1.clone(), proposal2.clone()]);
 
         let result = repo.get_by_session(&session_id).await;
         assert!(result.is_ok());
@@ -346,10 +342,8 @@ mod tests {
         let proposal1 = create_test_proposal(&session_id1);
         let proposal2 = create_test_proposal(&session_id2);
 
-        let repo = MockTaskProposalRepository::with_proposals(vec![
-            proposal1.clone(),
-            proposal2.clone(),
-        ]);
+        let repo =
+            MockTaskProposalRepository::with_proposals(vec![proposal1.clone(), proposal2.clone()]);
 
         let result = repo.get_by_session(&session_id1).await;
         assert!(result.is_ok());
@@ -588,12 +582,17 @@ mod tests {
         let session_id = IdeationSessionId::new();
         let proposal1 = create_test_proposal(&session_id);
         let proposal2 = create_test_proposal(&session_id);
-        let repo: Arc<dyn TaskProposalRepository> = Arc::new(
-            MockTaskProposalRepository::with_proposals(vec![proposal1.clone(), proposal2.clone()]),
-        );
+        let repo: Arc<dyn TaskProposalRepository> =
+            Arc::new(MockTaskProposalRepository::with_proposals(vec![
+                proposal1.clone(),
+                proposal2.clone(),
+            ]));
 
         let result = repo
-            .reorder(&session_id, vec![proposal2.id.clone(), proposal1.id.clone()])
+            .reorder(
+                &session_id,
+                vec![proposal2.id.clone(), proposal1.id.clone()],
+            )
             .await;
         assert!(result.is_ok());
     }

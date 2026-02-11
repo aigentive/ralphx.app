@@ -64,24 +64,49 @@ fn test_migration_updates_converted_to_accepted() {
 
     // Verify 'converted' sessions are now 'accepted'
     let s1_status: String = conn
-        .query_row("SELECT status FROM ideation_sessions WHERE id = 's1'", [], |row| row.get(0))
+        .query_row(
+            "SELECT status FROM ideation_sessions WHERE id = 's1'",
+            [],
+            |row| row.get(0),
+        )
         .unwrap();
     assert_eq!(s1_status, "active", "active session should remain active");
 
     let s2_status: String = conn
-        .query_row("SELECT status FROM ideation_sessions WHERE id = 's2'", [], |row| row.get(0))
+        .query_row(
+            "SELECT status FROM ideation_sessions WHERE id = 's2'",
+            [],
+            |row| row.get(0),
+        )
         .unwrap();
-    assert_eq!(s2_status, "accepted", "converted session should be accepted");
+    assert_eq!(
+        s2_status, "accepted",
+        "converted session should be accepted"
+    );
 
     let s3_status: String = conn
-        .query_row("SELECT status FROM ideation_sessions WHERE id = 's3'", [], |row| row.get(0))
+        .query_row(
+            "SELECT status FROM ideation_sessions WHERE id = 's3'",
+            [],
+            |row| row.get(0),
+        )
         .unwrap();
-    assert_eq!(s3_status, "archived", "archived session should remain archived");
+    assert_eq!(
+        s3_status, "archived",
+        "archived session should remain archived"
+    );
 
     let s4_status: String = conn
-        .query_row("SELECT status FROM ideation_sessions WHERE id = 's4'", [], |row| row.get(0))
+        .query_row(
+            "SELECT status FROM ideation_sessions WHERE id = 's4'",
+            [],
+            |row| row.get(0),
+        )
         .unwrap();
-    assert_eq!(s4_status, "accepted", "converted session should be accepted");
+    assert_eq!(
+        s4_status, "accepted",
+        "converted session should be accepted"
+    );
 }
 
 #[test]
@@ -102,7 +127,11 @@ fn test_migration_is_idempotent() {
 
     // Should still be 'accepted'
     let status: String = conn
-        .query_row("SELECT status FROM ideation_sessions WHERE id = 's1'", [], |row| row.get(0))
+        .query_row(
+            "SELECT status FROM ideation_sessions WHERE id = 's1'",
+            [],
+            |row| row.get(0),
+        )
         .unwrap();
     assert_eq!(status, "accepted");
 }
@@ -131,12 +160,20 @@ fn test_migration_no_converted_sessions() {
 
     // Verify nothing changed
     let s1_status: String = conn
-        .query_row("SELECT status FROM ideation_sessions WHERE id = 's1'", [], |row| row.get(0))
+        .query_row(
+            "SELECT status FROM ideation_sessions WHERE id = 's1'",
+            [],
+            |row| row.get(0),
+        )
         .unwrap();
     assert_eq!(s1_status, "active");
 
     let s2_status: String = conn
-        .query_row("SELECT status FROM ideation_sessions WHERE id = 's2'", [], |row| row.get(0))
+        .query_row(
+            "SELECT status FROM ideation_sessions WHERE id = 's2'",
+            [],
+            |row| row.get(0),
+        )
         .unwrap();
     assert_eq!(s2_status, "archived");
 }

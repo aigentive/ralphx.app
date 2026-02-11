@@ -66,14 +66,14 @@ claude:
   mcp_server_name: ralphx
   setting_sources: [user, project, local]
   permission_mode: default
-  dangerously_skip_permissions: true
+  dangerously_skip_permissions: false
   permission_prompt_tool: permission_request
   append_system_prompt_file: true
 
 agents:
   - name: orchestrator-ideation
     system_prompt_file: ralphx-plugin/agents/orchestrator-ideation.md
-    model: sonnet
+    model: opus
     tools: { extends: base_tools, include: [Task] }
     mcp_tools:
       [
@@ -173,7 +173,7 @@ agents:
 
   - name: ralphx-worker
     system_prompt_file: ralphx-plugin/agents/worker.md
-    model: sonnet
+    model: opus
     tools: { extends: base_tools, include: [Write, Edit, Task] }
     mcp_tools:
       [

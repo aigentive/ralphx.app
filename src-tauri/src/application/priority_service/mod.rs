@@ -290,10 +290,7 @@ impl<P: TaskProposalRepository, D: ProposalDependencyRepository> PriorityService
         graph: &DependencyGraph,
     ) -> AppResult<PriorityAssessment> {
         // Get the number of dependents (tasks that this proposal blocks)
-        let blocks_count = self
-            .dependency_repo
-            .count_dependents(&proposal.id)
-            .await? as i32;
+        let blocks_count = self.dependency_repo.count_dependents(&proposal.id).await? as i32;
 
         // Calculate dependency factor
         let dependency_factor = self.calculate_dependency_factor(blocks_count);
@@ -305,7 +302,8 @@ impl<P: TaskProposalRepository, D: ProposalDependencyRepository> PriorityService
         } else {
             0
         };
-        let critical_path_factor = self.calculate_critical_path_factor(is_on_critical_path, path_length);
+        let critical_path_factor =
+            self.calculate_critical_path_factor(is_on_critical_path, path_length);
 
         // Calculate business value factor from title and description
         let text = format!(

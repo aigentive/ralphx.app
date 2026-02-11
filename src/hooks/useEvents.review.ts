@@ -10,6 +10,50 @@ import { useEventBus } from "@/providers/EventProvider";
 import { ReviewEventSchema } from "@/types/events";
 import { reviewKeys } from "@/hooks/useReviews";
 
+function normalizeReviewEventPayload(payload: unknown): unknown | null {
+  if (!payload || typeof payload !== "object") {
+    return payload;
+  }
+
+  const raw = payload as Record<string, unknown>;
+
+  // Legacy/backend shape from EventEmitter.emit_with_payload:
+  // { taskId: "...", payload: "{\"type\":\"started\",\"reviewId\":\"...\"}" }
+  if ("payload" in raw) {
+    const envelopeTaskId = typeof raw.taskId === "string" ? raw.taskId : undefined;
+    const nestedPayload = raw.payload;
+
+    if (typeof nestedPayload === "string") {
+      try {
+        const parsed = JSON.parse(nestedPayload) as Record<string, unknown>;
+        // Ignore disabled review-start notifications (not actionable in frontend queries)
+        if (parsed.type === "disabled") {
+          return null;
+        }
+        if (envelopeTaskId && typeof parsed.taskId !== "string") {
+          parsed.taskId = envelopeTaskId;
+        }
+        return parsed;
+      } catch {
+        return payload;
+      }
+    }
+
+    if (nestedPayload && typeof nestedPayload === "object") {
+      const parsed = { ...(nestedPayload as Record<string, unknown>) };
+      if (parsed.type === "disabled") {
+        return null;
+      }
+      if (envelopeTaskId && typeof parsed.taskId !== "string") {
+        parsed.taskId = envelopeTaskId;
+      }
+      return parsed;
+    }
+  }
+
+  return payload;
+}
+
 /**
  * Hook to listen for review events
  *
@@ -31,8 +75,13 @@ export function useReviewEvents() {
 
   useEffect(() => {
     return bus.subscribe<unknown>("review:update", (payload) => {
+      const normalizedPayload = normalizeReviewEventPayload(payload);
+      if (normalizedPayload === null) {
+        return;
+      }
+
       // Runtime validation of backend events
-      const parsed = ReviewEventSchema.safeParse(payload);
+      const parsed = ReviewEventSchema.safeParse(normalizedPayload);
 
       if (!parsed.success) {
         console.error("Invalid review event:", parsed.error.message);

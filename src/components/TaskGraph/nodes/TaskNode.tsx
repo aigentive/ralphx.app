@@ -217,29 +217,27 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
           border: (selected || isHighlighted || isFocused)
             ? "2px solid hsl(14 100% 55%)"
             : GLASS_SURFACE.border,
-          // Left border colored by status (only when not selected/focused)
-          borderLeft: (selected || isHighlighted || isFocused)
-            ? "2px solid hsl(14 100% 55%)"
-            : `3px solid ${statusColor}`,
+          // Keep status-colored left stripe visible in all states
+          borderLeft: `3px solid ${statusColor}`,
           boxShadow: GLASS_SURFACE.boxShadow,
           transition: "background 150ms ease, transform 150ms ease, box-shadow 150ms ease, border 150ms ease",
         }}
       >
         {/* Status badge - top-right corner (shared with Kanban) */}
-        <div className="absolute top-1.5 right-1.5" data-testid="status-badge-container">
+        <div className="absolute top-1 right-1" data-testid="status-badge-container">
           <TaskStatusBadge status={internalStatus as InternalStatus} />
         </div>
 
-        {/* Title - Kanban parity (13px, 500 weight) - 2-line clamp */}
+        {/* Title - merge popover typography parity - 2-line clamp */}
         <div
-          className="leading-tight pr-8 line-clamp-2"
+          className="leading-tight pr-7 line-clamp-2"
           style={{
-            fontSize: "13px",
+            fontSize: "12px",
             fontWeight: 500,
-            color: "hsl(220 10% 90%)",
-            lineHeight: 1.4,
-            minHeight: "18px",
-            maxHeight: "36px",
+            color: "hsl(220 10% 88%)",
+            lineHeight: 1.35,
+            minHeight: "17px",
+            maxHeight: "34px",
           }}
           title={label}
         >
@@ -258,9 +256,9 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
             <div
               className="line-clamp-2"
               style={{
-                fontSize: "12px",
-                color: "hsl(220 10% 55%)",
-                lineHeight: 1.45,
+                fontSize: "11px",
+                color: "hsl(220 10% 50%)",
+                lineHeight: 1.4,
               }}
             >
               {description}
@@ -270,7 +268,7 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
 
         {/* Category + step dots - same line */}
         <div
-          className="flex items-center gap-2 mt-2.5"
+          className="flex items-center gap-2 mt-2"
           style={{ height: "16px" }}
           data-testid="step-progress-footer"
         >
@@ -279,7 +277,7 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
               style={{
                 fontSize: "10px",
                 fontWeight: 500,
-                color: "hsl(220 10% 45%)",
+                color: "hsl(220 10% 42%)",
                 textTransform: "capitalize",
               }}
             >
@@ -308,7 +306,7 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
 
         {/* Progress bar */}
         {stepProgress && stepProgress.total > 0 && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mt-1">
             <div
               className="flex-1 h-1 rounded-full overflow-hidden"
               style={{ backgroundColor: "hsl(220 10% 14%)" }}
