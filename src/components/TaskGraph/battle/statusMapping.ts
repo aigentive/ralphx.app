@@ -48,3 +48,33 @@ export function getBattleSpecForStatus(status: InternalStatus): BattleGroupSpec 
   if (group === "complete") return null;
   return GROUP_SPECS[group];
 }
+
+export function isActivelyWorkedStatus(status: InternalStatus): boolean {
+  return [
+    "executing",
+    "re_executing",
+    "qa_refining",
+    "qa_testing",
+    "pending_review",
+    "reviewing",
+    "merging",
+  ].includes(status);
+}
+
+export function getThreatWeight(status: InternalStatus): number {
+  const group = mapStatusToBattleGroup(status);
+  switch (group) {
+    case "failure":
+      return 5;
+    case "merge":
+      return 4;
+    case "review":
+      return 3;
+    case "execution":
+      return 2;
+    case "queue":
+      return 1;
+    case "complete":
+      return 0;
+  }
+}

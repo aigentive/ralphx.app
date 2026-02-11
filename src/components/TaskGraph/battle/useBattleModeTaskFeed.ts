@@ -5,7 +5,10 @@ import type { InternalStatus } from "@/types/status";
 
 export interface BattleTaskStatusEvent {
   taskId: string;
-  status: InternalStatus;
+  fromStatus: InternalStatus | null;
+  toStatus: InternalStatus;
+  timestamp: number;
+  source: "task:event" | "task:status_changed";
 }
 
 interface UseBattleModeTaskFeedOptions {
@@ -35,7 +38,10 @@ export function useBattleModeTaskFeed({
 
       onStatusEvent({
         taskId,
-        status: parsed.data.to,
+        fromStatus: parsed.data.from,
+        toStatus: parsed.data.to,
+        timestamp: Date.now(),
+        source: "task:event",
       });
     });
 
@@ -50,7 +56,10 @@ export function useBattleModeTaskFeed({
 
       onStatusEvent({
         taskId,
-        status: parsed.data.new_status,
+        fromStatus: parsed.data.old_status,
+        toStatus: parsed.data.new_status,
+        timestamp: Date.now(),
+        source: "task:status_changed",
       });
     });
 
