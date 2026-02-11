@@ -26,6 +26,7 @@ pub mod task_step_commands_types;
 pub mod test_data_commands;
 pub mod unified_chat_commands;
 pub mod plan_branch_commands;
+pub mod plan_commands;
 pub mod workflow_commands;
 
 // Re-export commands for registration
@@ -133,6 +134,10 @@ pub use plan_branch_commands::{
     disable_feature_branch, enable_feature_branch, get_plan_branch,
     get_project_plan_branches, update_project_feature_branch_setting,
     EnableFeatureBranchInput, PlanBranchResponse,
+};
+// Plan commands (Active plan management)
+pub use plan_commands::{
+    clear_active_plan, get_active_plan, set_active_plan,
 };
 // Git commands (Phase 66 - Per-task branch isolation)
 pub use git_commands::{
