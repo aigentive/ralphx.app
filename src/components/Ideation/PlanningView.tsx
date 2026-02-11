@@ -31,6 +31,8 @@ import { PlanDisplay } from "./PlanDisplay";
 import { useUiStore } from "@/stores/uiStore";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
+import { usePlanStore } from "@/stores/planStore";
+import { useProjectStore } from "@/stores/projectStore";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { ConversationEmptyState } from "./EmptyStates";
 import { animationStyles } from "./PlanningView.constants";
@@ -322,20 +324,39 @@ export function PlanningView({
     };
   }, [isResizing]);
 
+  // Navigate to task handler - switches to kanban view and selects the task
+  const setCurrentView = useUiStore((state) => state.setCurrentView);
+  const setSelectedTaskId = useUiStore((state) => state.setSelectedTaskId);
+
+  // Plan store actions
+  const setActivePlan = usePlanStore((state) => state.setActivePlan);
+  const activeProjectId = useProjectStore((state) => state.activeProjectId);
+
   // Accept Plan handler - accepts ALL proposals (no selection)
-  const handleAcceptPlan = useCallback((targetColumn: string) => {
-    if (!session) return;
-    onApply({
+  const handleAcceptPlan = useCallback(async (targetColumn: string) => {
+    if (!session || !activeProjectId) return;
+
+    // Apply proposals to Kanban (returns void in type, but may actually return a promise)
+    const applyResult = onApply({
       sessionId: session.id,
       proposalIds: proposals.map((p) => p.id),
       targetColumn,
       preserveDependencies: true,
-    });
-  }, [session, proposals, onApply]);
+    }) as unknown;
 
-  // Navigate to task handler - switches to kanban view and selects the task
-  const setCurrentView = useUiStore((state) => state.setCurrentView);
-  const setSelectedTaskId = useUiStore((state) => state.setSelectedTaskId);
+    // Wait for apply to complete if it returns a promise
+    if (applyResult && typeof applyResult === "object" && "then" in applyResult) {
+      await (applyResult as Promise<unknown>);
+    }
+
+    // Set this session as the active plan after proposals are applied
+    try {
+      await setActivePlan(activeProjectId, session.id, "ideation");
+    } catch (error) {
+      console.error("Failed to set active plan:", error);
+      toast.error("Failed to set active plan");
+    }
+  }, [session, proposals, onApply, activeProjectId, setActivePlan]);
 
   const handleNavigateToTask = useCallback((taskId: string) => {
     setCurrentView("kanban");

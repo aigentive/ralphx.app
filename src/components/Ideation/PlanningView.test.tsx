@@ -107,6 +107,40 @@ vi.mock("./ReopenSessionDialog", () => ({
   ReopenSessionDialog: () => null,
 }));
 
+const mockSetActivePlan = vi.fn().mockResolvedValue(undefined);
+
+// Mock the store modules before importing the component
+vi.mock("@/stores/planStore", () => ({
+  usePlanStore: vi.fn((selector) => {
+    const state = {
+      setActivePlan: mockSetActivePlan,
+      activePlanByProject: {},
+      planCandidates: [],
+      isLoading: false,
+      error: null,
+      loadActivePlan: vi.fn(),
+      clearActivePlan: vi.fn(),
+      loadCandidates: vi.fn(),
+    };
+    return selector ? selector(state) : state;
+  }),
+}));
+
+vi.mock("@/stores/projectStore", () => ({
+  useProjectStore: vi.fn((selector) => {
+    const state = {
+      activeProjectId: "project-1",
+      projects: {},
+      setProjects: vi.fn(),
+      updateProject: vi.fn(),
+      selectProject: vi.fn(),
+      addProject: vi.fn(),
+      removeProject: vi.fn(),
+    };
+    return selector ? selector(state) : state;
+  }),
+}));
+
 vi.mock("@/components/ui/ResizeHandle", () => ({
   CHAT_PANEL_DEFAULT_WIDTH: 420,
   CHAT_PANEL_MIN_WIDTH: 320,
@@ -277,5 +311,28 @@ describe("PlanningView", () => {
     );
 
     expect(screen.queryByRole("button", { name: /Archive/i })).not.toBeInTheDocument();
+  });
+
+  it("sets active plan after accepting proposals", async () => {
+    const onApply = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    render(<PlanningView {...defaultProps} onApply={onApply} />);
+
+    await user.click(screen.getByRole("button", { name: "Accept Plan" }));
+
+    // Wait for async operations to complete
+    await vi.waitFor(() => {
+      expect(onApply).toHaveBeenCalledWith({
+        sessionId: "session-1",
+        proposalIds: ["proposal-1", "proposal-2"],
+        targetColumn: "backlog",
+        preserveDependencies: true,
+      });
+    });
+
+    // Verify setActivePlan was called after onApply
+    await vi.waitFor(() => {
+      expect(mockSetActivePlan).toHaveBeenCalledWith("project-1", "session-1", "ideation");
+    });
   });
 });
