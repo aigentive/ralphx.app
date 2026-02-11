@@ -22,6 +22,9 @@ allowedTools:
   - mcp__ralphx__get_step_progress
   - mcp__ralphx__get_issue_progress
   - mcp__ralphx__get_project_analysis
+  - mcp__ralphx__search_memories
+  - mcp__ralphx__get_memory
+  - mcp__ralphx__get_memories_for_paths
   - "Task(Explore)"
   - "Task(Plan)"
 model: sonnet

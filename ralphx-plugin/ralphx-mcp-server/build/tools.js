@@ -6,7 +6,7 @@ import { PLAN_TOOLS } from "./plan-tools.js";
 import { WORKER_CONTEXT_TOOLS } from "./worker-context-tools.js";
 import { STEP_TOOLS } from "./step-tools.js";
 import { ISSUE_TOOLS } from "./issue-tools.js";
-import { ORCHESTRATOR_IDEATION, CHAT_TASK, CHAT_PROJECT, REVIEWER, REVIEW_CHAT, REVIEW_HISTORY, WORKER, SESSION_NAMER, DEPENDENCY_SUGGESTER, MERGER, PROJECT_ANALYZER, SUPERVISOR, QA_PREP, QA_TESTER, } from "./agentNames.js";
+import { ORCHESTRATOR_IDEATION, CHAT_TASK, CHAT_PROJECT, REVIEWER, REVIEW_CHAT, REVIEW_HISTORY, WORKER, SESSION_NAMER, DEPENDENCY_SUGGESTER, MERGER, PROJECT_ANALYZER, SUPERVISOR, QA_PREP, QA_TESTER, MEMORY_MAINTAINER, MEMORY_CAPTURE, } from "./agentNames.js";
 /**
  * All available MCP tools
  * Tools are filtered based on RALPHX_AGENT_TYPE environment variable
@@ -810,6 +810,28 @@ export const TOOL_ALLOWLIST = {
     [SUPERVISOR]: [],
     [QA_PREP]: [],
     [QA_TESTER]: [],
+    // Memory agents - background memory maintenance and capture
+    [MEMORY_MAINTAINER]: [
+        // Write tools for memory maintenance
+        "upsert_memories",
+        "mark_memory_obsolete",
+        "refresh_memory_rule_index",
+        "ingest_rule_file",
+        "rebuild_archive_snapshots",
+        // Read tools for context
+        "search_memories",
+        "get_memory",
+        "get_memories_for_paths",
+    ],
+    [MEMORY_CAPTURE]: [
+        // Write tools for memory capture
+        "upsert_memories",
+        // Read tools for deduplication and context
+        "search_memories",
+        "get_memory",
+        "get_memories_for_paths",
+        "get_conversation_transcript",
+    ],
     // Debug mode: shows ALL tools (use RALPHX_AGENT_TYPE=debug)
     debug: ALL_TOOLS.map((t) => t.name),
 };
