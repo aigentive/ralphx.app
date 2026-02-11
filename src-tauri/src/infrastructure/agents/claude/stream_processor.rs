@@ -410,19 +410,39 @@ impl StreamProcessor {
             trimmed
         };
 
-        // First extract parent_tool_use_id and isSynthetic from raw JSON before typed parsing
-        let raw_value = serde_json::from_str::<serde_json::Value>(candidate).ok();
-        let parent_tool_use_id = raw_value.as_ref().and_then(|v| {
-            v.get("parent_tool_use_id")
+        // First parse raw JSON so we can extract metadata and support envelope drift.
+        let raw_value = serde_json::from_str::<serde_json::Value>(candidate).ok()?;
+        let parent_tool_use_id = raw_value
+            .get("parent_tool_use_id")
+            .and_then(|p| p.as_str())
+            .map(|s| s.to_string());
+        let parent_tool_use_id = parent_tool_use_id.or_else(|| {
+            raw_value
+                .get("message")
+                .and_then(|m| m.get("parent_tool_use_id"))
                 .and_then(|p| p.as_str())
                 .map(|s| s.to_string())
         });
         let is_synthetic = raw_value
-            .as_ref()
-            .and_then(|v| v.get("isSynthetic").and_then(|s| s.as_bool()))
+            .get("isSynthetic")
+            .and_then(|s| s.as_bool())
             .unwrap_or(false);
 
-        let message: StreamMessage = serde_json::from_str(candidate).ok()?;
+        // Parse either direct event objects ({type: ...}) or wrapped envelopes
+        // ({message: {type: ...}}, {data: {type: ...}}, {event: {type: ...}}).
+        let message_value = if raw_value.get("type").is_some() {
+            raw_value
+        } else if let Some(inner) = raw_value.get("message").filter(|v| v.is_object()) {
+            inner.clone()
+        } else if let Some(inner) = raw_value.get("data").filter(|v| v.is_object()) {
+            inner.clone()
+        } else if let Some(inner) = raw_value.get("event").filter(|v| v.is_object()) {
+            inner.clone()
+        } else {
+            return None;
+        };
+
+        let message: StreamMessage = serde_json::from_value(message_value).ok()?;
         Some(ParsedLine {
             message,
             parent_tool_use_id,
