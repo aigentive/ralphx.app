@@ -303,7 +303,7 @@ mod tests {
 
     #[test]
     fn test_memory_archive_job_lifecycle() {
-        let project_id = ProjectId::from("test-project");
+        let project_id = ProjectId::from_string("test-project".to_string());
         let payload = ArchiveJobPayload::memory_snapshot("mem_123");
         let mut job = MemoryArchiveJob::new(project_id, ArchiveJobType::MemorySnapshot, payload);
 
@@ -330,7 +330,7 @@ mod tests {
 
     #[test]
     fn test_memory_archive_job_failure() {
-        let project_id = ProjectId::from("test-project");
+        let project_id = ProjectId::from_string("test-project".to_string());
         let payload = ArchiveJobPayload::memory_snapshot("mem_123");
         let mut job = MemoryArchiveJob::new(project_id, ArchiveJobType::MemorySnapshot, payload);
 
