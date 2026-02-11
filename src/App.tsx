@@ -24,6 +24,7 @@ import { WelcomeScreen } from "@/components/WelcomeScreen";
 import { UpdateChecker } from "@/components/UpdateChecker";
 import { ProjectSelector } from "@/components/projects/ProjectSelector";
 import { ProjectCreationWizard } from "@/components/projects/ProjectCreationWizard";
+import { PlanQuickSwitcherPalette } from "@/components/plan/PlanQuickSwitcherPalette";
 import { useUiStore } from "@/stores/uiStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useIdeationStore, selectActiveSession } from "@/stores/ideationStore";
@@ -156,6 +157,9 @@ function AppContent() {
   const [isProjectWizardOpen, setIsProjectWizardOpen] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [projectCreationError, setProjectCreationError] = useState<string | null>(null);
+
+  // Plan quick switcher state
+  const [isPlanQuickSwitcherOpen, setIsPlanQuickSwitcherOpen] = useState(false);
 
   // Ideation state
   const activeSession = useIdeationStore(selectActiveSession);
@@ -626,6 +630,10 @@ function AppContent() {
     }
   }, [isNavCompact, toggleGraphRightPanelCompactOpen, toggleGraphRightPanelUserOpen]);
 
+  const handleOpenPlanQuickSwitcher = useCallback(() => {
+    setIsPlanQuickSwitcherOpen(true);
+  }, []);
+
   useAppKeyboardShortcuts({
     currentView,
     setCurrentView: handleViewChange,
@@ -638,6 +646,7 @@ function AppContent() {
     openWelcomeOverlay,
     closeWelcomeOverlay,
     welcomeOverlayReturnView,
+    openPlanQuickSwitcher: handleOpenPlanQuickSwitcher,
   });
 
   // Test page routing - return early if on a test page
@@ -998,6 +1007,15 @@ function AppContent() {
 
       {/* Confirmation Dialog */}
       <ConfirmationDialog {...confirmationDialogProps} />
+
+      {/* Plan Quick Switcher */}
+      {!hasNoProjects && (
+        <PlanQuickSwitcherPalette
+          projectId={currentProjectId}
+          isOpen={isPlanQuickSwitcherOpen}
+          onClose={() => setIsPlanQuickSwitcherOpen(false)}
+        />
+      )}
 
       {/* Toast notifications */}
       <Toaster position="bottom-left" offset={toastBottomOffset} />
