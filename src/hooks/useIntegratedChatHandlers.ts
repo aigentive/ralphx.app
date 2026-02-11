@@ -20,6 +20,7 @@ import type { ContextType } from "@/types/chat-conversation";
 interface UseIntegratedChatHandlersProps {
   isExecutionMode: boolean;
   isReviewMode: boolean;
+  isMergeMode: boolean;
   selectedTaskId: string | undefined;
   projectId: string;
   ideationSessionId: string | undefined;
@@ -35,6 +36,7 @@ interface UseIntegratedChatHandlersProps {
 export function useIntegratedChatHandlers({
   isExecutionMode,
   isReviewMode,
+  isMergeMode,
   selectedTaskId,
   projectId,
   ideationSessionId,
@@ -51,20 +53,23 @@ export function useIntegratedChatHandlers({
     setAgentRunning,
   } = useChatStore();
 
-  // Get current context type and ID for queue operations
-  const getQueueContext = useCallback(() => {
-    const ctxType: ContextType = isExecutionMode
+  // Get current context type and ID for all operations
+  // Single source of truth for context resolution across all chat modes
+  const getContextForMode = useCallback(() => {
+    const contextType: ContextType = isExecutionMode
       ? "task_execution"
       : isReviewMode
         ? "review"
-        : ideationSessionId
-          ? "ideation"
-          : selectedTaskId
-            ? "task"
-            : "project";
-    const ctxId = ideationSessionId || selectedTaskId || projectId;
-    return { ctxType, ctxId } as const;
-  }, [isExecutionMode, isReviewMode, ideationSessionId, selectedTaskId, projectId]);
+        : isMergeMode
+          ? "merge"
+          : ideationSessionId
+            ? "ideation"
+            : selectedTaskId
+              ? "task"
+              : "project";
+    const contextId = ideationSessionId || selectedTaskId || projectId;
+    return { contextType, contextId } as const;
+  }, [isExecutionMode, isReviewMode, isMergeMode, ideationSessionId, selectedTaskId, projectId]);
 
   // Generate a unique ID for queued messages
   const generateQueuedMessageId = useCallback(() => {
@@ -131,7 +136,7 @@ export function useIntegratedChatHandlers({
     async (content: string) => {
       if (!content.trim()) return;
 
-      const { ctxType, ctxId } = getQueueContext();
+      const { contextType, contextId } = getContextForMode();
 
       // Generate ID FIRST - this ID will be used by both frontend and backend
       const messageId = generateQueuedMessageId();
@@ -142,12 +147,12 @@ export function useIntegratedChatHandlers({
 
       // ALSO queue to backend so it gets processed when agent completes
       try {
-        await chatApi.queueAgentMessage(ctxType, ctxId, content, messageId);
+        await chatApi.queueAgentMessage(contextType, contextId, content, messageId);
       } catch {
         // Message is already in local store, which is fine - it just won't be processed by backend
       }
     },
-    [queueMessage, storeContextKey, getQueueContext, generateQueuedMessageId]
+    [queueMessage, storeContextKey, getContextForMode, generateQueuedMessageId]
   );
 
   // Edit last queued message - now using unified queue with context-aware keys
@@ -163,29 +168,29 @@ export function useIntegratedChatHandlers({
   // Delete queued message handler - syncs with backend
   const handleDeleteQueuedMessage = useCallback(
     async (messageId: string) => {
-      const { ctxType, ctxId } = getQueueContext();
+      const { contextType, contextId } = getContextForMode();
 
       // Delete from local store immediately (optimistic) - unified queue with context-aware keys
       deleteQueuedMessage(storeContextKey, messageId);
 
       // Delete from backend using the same ID
       try {
-        await chatApi.deleteQueuedAgentMessage(ctxType, ctxId, messageId);
+        await chatApi.deleteQueuedAgentMessage(contextType, contextId, messageId);
       } catch {
         // Silently ignore - local state already updated (optimistic)
       }
     },
-    [deleteQueuedMessage, getQueueContext, storeContextKey]
+    [deleteQueuedMessage, getContextForMode, storeContextKey]
   );
 
   // Edit queued message handler - delete old and queue new (syncs with backend)
   const handleEditQueuedMessage = useCallback(
     async (messageId: string, newContent: string) => {
-      const { ctxType, ctxId } = getQueueContext();
+      const { contextType, contextId } = getContextForMode();
 
       // Delete old message from backend
       try {
-        await chatApi.deleteQueuedAgentMessage(ctxType, ctxId, messageId);
+        await chatApi.deleteQueuedAgentMessage(contextType, contextId, messageId);
       } catch {
         // Silently ignore - will clean up local state regardless
       }
@@ -201,35 +206,30 @@ export function useIntegratedChatHandlers({
 
       // Queue to backend with same ID
       try {
-        await chatApi.queueAgentMessage(ctxType, ctxId, newContent, newMessageId);
+        await chatApi.queueAgentMessage(contextType, contextId, newContent, newMessageId);
       } catch {
         // Silently ignore - local state already updated (optimistic)
       }
     },
-    [deleteQueuedMessage, queueMessage, getQueueContext, generateQueuedMessageId, storeContextKey]
+    [deleteQueuedMessage, queueMessage, getContextForMode, generateQueuedMessageId, storeContextKey]
   );
 
   // Stop the running agent
   const handleStopAgent = useCallback(async () => {
-    const ctxType: ContextType = isExecutionMode
-      ? "task_execution"
-      : ideationSessionId
-        ? "ideation"
-        : selectedTaskId
-          ? "task"
-          : "project";
-    const ctxId = ideationSessionId || selectedTaskId || projectId;
+    const { contextType, contextId } = getContextForMode();
 
     try {
+      // Always call stopAgent first to cancel the active run
+      await stopAgent(contextType, contextId);
+
+      // For execution mode, run recovery after stopping to reconcile task status
       if (isExecutionMode && selectedTaskId) {
         await recoverTaskExecution(selectedTaskId);
-        return;
       }
-      await stopAgent(ctxType, ctxId);
     } catch {
       // Silently ignore - agent stop is fire-and-forget
     }
-  }, [isExecutionMode, ideationSessionId, selectedTaskId, projectId]);
+  }, [getContextForMode, isExecutionMode, selectedTaskId]);
 
   return {
     handleSend,
