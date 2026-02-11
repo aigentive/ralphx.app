@@ -50,15 +50,11 @@ export function TextBubble({ text, isUser }: TextBubbleProps) {
         boxShadow: "none",
       }}
     >
-      {isUser ? (
-        <p className="whitespace-pre-wrap break-words overflow-hidden leading-relaxed">{text}</p>
-      ) : (
-        <div className="max-w-none overflow-hidden [&>p]:mb-0">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-            {text}
-          </ReactMarkdown>
-        </div>
-      )}
+      <div className="max-w-none overflow-hidden [&>p]:mb-0">
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+          {text}
+        </ReactMarkdown>
+      </div>
       <Button
         variant="ghost"
         size="icon-sm"
