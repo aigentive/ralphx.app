@@ -42,6 +42,7 @@ mod v21_questions_permissions;
 mod v22_project_active_plan;
 mod v23_plan_selection_stats;
 mod v24_seed_artifact_buckets;
+mod v25_running_agent_worktree;
 mod v2_add_dependency_reason;
 mod v3_add_activity_events;
 mod v4_add_blocked_reason;
@@ -84,6 +85,8 @@ mod v22_project_active_plan_tests;
 #[cfg(test)]
 mod v23_plan_selection_stats_tests;
 #[cfg(test)]
+mod v25_running_agent_worktree_tests;
+#[cfg(test)]
 mod v2_add_dependency_reason_tests;
 #[cfg(test)]
 mod v3_add_activity_events_tests;
@@ -99,7 +102,7 @@ mod v8_task_git_fields_tests;
 mod v9_project_git_fields_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 24;
+pub const SCHEMA_VERSION: i32 = 25;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -233,6 +236,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 24,
         name: "seed_artifact_buckets",
         migrate: v24_seed_artifact_buckets::migrate,
+    },
+    Migration {
+        version: 25,
+        name: "running_agent_worktree",
+        migrate: v25_running_agent_worktree::migrate,
     },
 ];
 

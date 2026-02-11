@@ -19,8 +19,8 @@ pub use methodology_service::{MethodologyActivationResult, MethodologyService};
 pub use research_service::ResearchService;
 // Running agent registry for tracking and stopping agents
 pub use running_agent_registry::{
-    kill_process, MemoryRunningAgentRegistry, RunningAgentInfo, RunningAgentKey,
-    RunningAgentRegistry,
+    kill_process, kill_worktree_processes, MemoryRunningAgentRegistry, RunningAgentInfo,
+    RunningAgentKey, RunningAgentRegistry,
 };
 pub use workflow_service::{
     AppliedColumn, AppliedWorkflow, ColumnMappingError, ValidationResult, WorkflowService,

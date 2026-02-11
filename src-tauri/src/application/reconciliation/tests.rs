@@ -292,6 +292,7 @@ async fn reconcile_stuck_tasks_prunes_stale_registry_for_terminal_task() {
             999_999, // guaranteed nonexistent PID for liveness check
             "conv-stale".to_string(),
             run_id.as_str(),
+            Some("/tmp/stale".to_string()),
         )
         .await;
 
