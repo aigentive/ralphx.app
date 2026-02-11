@@ -1126,6 +1126,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     isLoading,
     onDeletePlanGroup: handleDeletePlan,
     onDeleteTask: handleDeleteTask,
+    keyboardNavigationEnabled: !battleModeActive,
   });
 
   // Compute visible nodes and edges (controlled mode).
