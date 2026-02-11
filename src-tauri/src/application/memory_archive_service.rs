@@ -471,8 +471,17 @@ mod tests {
         let snapshot1 = service.format_project_snapshot(&project_id, &entries1).unwrap();
         let snapshot2 = service.format_project_snapshot(&project_id, &entries2).unwrap();
 
-        // Should produce identical output regardless of input order
-        assert_eq!(snapshot1, snapshot2);
+        // Strip snapshot_date lines since Utc::now() differs between calls
+        // We're testing content ordering determinism, not timestamp equality
+        let strip_date = |s: &str| -> String {
+            s.lines()
+                .filter(|line| !line.starts_with("snapshot_date:"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+
+        // Should produce identical output regardless of input order (ignoring timestamp)
+        assert_eq!(strip_date(&snapshot1), strip_date(&snapshot2));
 
         // Verify bucket ordering is deterministic
         assert!(snapshot1.contains("architecture_patterns"));

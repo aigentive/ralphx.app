@@ -462,9 +462,17 @@ mod tests {
     use super::*;
     use crate::domain::entities::ArchiveJobPayload;
     use crate::infrastructure::sqlite::connection::open_memory_connection;
+    use crate::infrastructure::sqlite::migrations::run_migrations;
 
     async fn setup_test_repo() -> SqliteMemoryArchiveRepository {
         let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+        // Insert a test project (required for foreign key)
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('test-project', 'Test Project', '/test/path')",
+            [],
+        )
+        .unwrap();
         SqliteMemoryArchiveRepository::new(conn)
     }
 
