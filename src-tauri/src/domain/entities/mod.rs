@@ -8,6 +8,10 @@ pub mod artifact;
 pub mod artifact_flow;
 pub mod chat_conversation;
 pub mod ideation;
+pub mod memory_archive_job;
+pub mod memory_entry;
+pub mod memory_event;
+pub mod memory_rule_binding;
 pub mod methodology;
 pub mod plan_branch;
 pub mod plan_selection_stats;
@@ -51,6 +55,16 @@ pub use ideation::{
     PriorityAssessmentFactors, PriorityFactors, ProposalStatus, TaskCategory, TaskProposal,
     UserHintFactor,
 };
+pub use memory_archive_job::{
+    MemoryArchiveJob, MemoryArchiveJobId, MemoryArchiveJobStatus, MemoryArchiveJobType,
+    ParseMemoryArchiveJobStatusError, ParseMemoryArchiveJobTypeError,
+};
+pub use memory_entry::{
+    MemoryBucket, MemoryEntry, MemoryEntryId, MemoryStatus, ParseMemoryBucketError,
+    ParseMemoryStatusError,
+};
+pub use memory_event::{MemoryActorType, MemoryEvent, MemoryEventId, ParseMemoryActorTypeError};
+pub use memory_rule_binding::MemoryRuleBinding;
 pub use methodology::{
     MethodologyExtension, MethodologyId, MethodologyPhase, MethodologyPlanArtifactConfig,
     MethodologyPlanTemplate, MethodologyStatus, MethodologyTemplate, ParseMethodologyStatusError,
