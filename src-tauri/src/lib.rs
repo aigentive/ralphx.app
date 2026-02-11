@@ -222,6 +222,14 @@ pub fn run() {
                 // Wait for HTTP server to be ready
                 tokio::time::sleep(Duration::from_millis(500)).await;
 
+                if application::startup_jobs::is_startup_recovery_disabled() {
+                    info!(
+                        env_var = application::startup_jobs::RALPHX_DISABLE_STARTUP_RECOVERY_ENV,
+                        "Startup recovery disabled via environment; skipping startup recovery pipeline"
+                    );
+                    return;
+                }
+
                 info!("Starting startup job runner...");
 
                 // Create TaskSchedulerService for auto-scheduling Ready tasks

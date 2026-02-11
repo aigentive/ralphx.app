@@ -55,6 +55,16 @@ fn build_runner(
     (runner, app_state_repo)
 }
 
+#[test]
+fn test_startup_recovery_flag_detection() {
+    use std::ffi::OsStr;
+
+    assert!(super::is_startup_recovery_disabled_var(Some(OsStr::new("1"))));
+    assert!(super::is_startup_recovery_disabled_var(Some(OsStr::new("true"))));
+    assert!(super::is_startup_recovery_disabled_var(Some(OsStr::new(""))));
+    assert!(!super::is_startup_recovery_disabled_var(None));
+}
+
 #[tokio::test]
 async fn test_resumption_skipped_when_paused() {
     let (execution_state, app_state) = setup_test_state().await;
