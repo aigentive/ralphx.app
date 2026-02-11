@@ -370,7 +370,6 @@ export function IntegratedChatPanel({
   } = regularChatData;
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Track scroll settling period - hide messages until scroll animation completes
   const [isScrollSettling, setIsScrollSettling] = useState(false);
@@ -677,7 +676,6 @@ export function IntegratedChatPanel({
               streamingToolCalls={streamingToolCalls}
               streamingTasks={streamingTasks}
               streamingText={streamingText}
-              messagesEndRef={messagesEndRef}
               scrollToTimestamp={isHistoryMode ? taskHistoryState?.timestamp : null}
             />
           )}
