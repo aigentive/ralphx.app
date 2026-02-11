@@ -213,7 +213,8 @@ function AppContent() {
   // Real-time execution status updates via Tauri events
   useExecutionEvents();
   // Fetch initial execution status and poll every 30s as fallback
-  useExecutionStatus();
+  // Phase 82: Pass currentProjectId for per-project execution status scoping
+  useExecutionStatus(currentProjectId || undefined);
   const { isApproving, isRequestingChanges } = useReviewMutations();
 
   // Ideation hooks

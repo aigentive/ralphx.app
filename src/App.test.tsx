@@ -6,6 +6,8 @@ import { useUiStore } from "@/stores/uiStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
+import { useExecutionStatus } from "@/hooks/useExecutionControl";
+import { useExecutionEvents } from "@/hooks/useExecutionEvents";
 
 Object.defineProperty(window, "matchMedia", {
   writable: true,
@@ -127,6 +129,75 @@ vi.mock("@/hooks/useApplyProposals", () => ({
   }),
 }));
 
+// Mock execution hooks
+vi.mock("@/hooks/useExecutionControl", () => ({
+  useExecutionStatus: vi.fn(),
+}));
+
+vi.mock("@/hooks/useExecutionEvents", () => ({
+  useExecutionEvents: vi.fn(),
+}));
+
+// Mock other required hooks
+vi.mock("@/hooks/useReviews", () => ({
+  reviewKeys: {
+    all: ["reviews"],
+    pending: () => ["reviews", "pending"],
+  },
+  usePendingReviews: vi.fn().mockReturnValue({
+    data: [],
+    isLoading: false,
+  }),
+  useReviewsByTaskId: vi.fn().mockReturnValue({
+    data: [],
+    isLoading: false,
+  }),
+  useTaskStateHistory: vi.fn().mockReturnValue({
+    data: [],
+    isLoading: false,
+  }),
+  useTasksAwaitingReview: vi.fn().mockReturnValue({
+    totalCount: 0,
+    isLoading: false,
+  }),
+}));
+
+vi.mock("@/hooks/useReviewMutations", () => ({
+  useReviewMutations: vi.fn().mockReturnValue({
+    isApproving: false,
+    isRequestingChanges: false,
+  }),
+}));
+
+vi.mock("@/hooks/useProjects", () => ({
+  useProjects: vi.fn().mockReturnValue({
+    data: [],
+    isLoading: false,
+  }),
+  projectKeys: {
+    all: ["projects"],
+    list: () => ["projects", "list"],
+  },
+}));
+
+vi.mock("@/hooks/useConfirmation", () => ({
+  useConfirmation: vi.fn().mockReturnValue({
+    confirm: vi.fn(),
+    confirmationDialogProps: {},
+    ConfirmationDialog: () => null,
+  }),
+}));
+
+vi.mock("@/hooks/useAppKeyboardShortcuts", () => ({
+  useAppKeyboardShortcuts: vi.fn(),
+}));
+
+vi.mock("@/hooks", () => ({
+  useNavCompactBreakpoint: vi.fn().mockReturnValue({
+    isNavCompact: false,
+  }),
+}));
+
 // Reset stores before each test
 function resetStores() {
   useUiStore.setState({
@@ -181,6 +252,26 @@ function resetStores() {
 describe("App", () => {
   beforeEach(() => {
     resetStores();
+
+    // Setup default mock return values for execution hooks
+    vi.mocked(useExecutionStatus).mockReturnValue({
+      data: {
+        isPaused: false,
+        runningCount: 0,
+        maxConcurrent: 2,
+        queuedCount: 0,
+        canStartTask: true,
+      },
+      isPaused: false,
+      runningCount: 0,
+      queuedCount: 0,
+      maxConcurrent: 2,
+      globalMaxConcurrent: 20,
+      canStartTask: true,
+      isLoading: false,
+    });
+
+    vi.mocked(useExecutionEvents).mockReturnValue(undefined);
   });
 
   it("should render without crashing", () => {
@@ -407,6 +498,33 @@ describe("App", () => {
 
       // Should still be on kanban (default)
       expect(useUiStore.getState().currentView).toBe("kanban");
+    });
+  });
+
+  describe("Execution Status Query Scoping", () => {
+    it("should call useExecutionStatus with undefined when no active project", () => {
+      // This test verifies Phase 82 requirement: execution status queries are scoped to active project
+      // When no project is set, activeProjectId is null, so currentProjectId = ""
+      // and "" || undefined = undefined
+      render(<App />);
+
+      // useExecutionStatus should be called with undefined (no active project)
+      expect(vi.mocked(useExecutionStatus)).toHaveBeenCalledWith(undefined);
+    });
+
+    it("should call useExecutionStatus with project ID when project is active", () => {
+      // Set up an active project
+      const { useProjectStore } = vi.importActual<typeof import("@/stores/projectStore")>(
+        "@/stores/projectStore"
+      );
+      if (useProjectStore) {
+        useProjectStore.setState({ activeProjectId: "test-project-123" });
+      }
+
+      render(<App />);
+
+      // When a project is active, useExecutionStatus should be called with that project ID
+      expect(vi.mocked(useExecutionStatus)).toHaveBeenCalledWith("test-project-123");
     });
   });
 });
