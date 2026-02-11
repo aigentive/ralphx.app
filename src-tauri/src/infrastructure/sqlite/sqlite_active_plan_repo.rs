@@ -109,6 +109,27 @@ impl ActivePlanRepository for SqliteActivePlanRepository {
 
         Ok(exists)
     }
+
+    async fn record_selection(
+        &self,
+        project_id: &ProjectId,
+        ideation_session_id: &IdeationSessionId,
+        source: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let conn = self.conn.lock().await;
+
+        conn.execute(
+            "INSERT INTO plan_selection_stats (project_id, ideation_session_id, selected_count, last_selected_at, last_selected_source)
+             VALUES (?1, ?2, 1, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), ?3)
+             ON CONFLICT(project_id, ideation_session_id) DO UPDATE SET
+                 selected_count = selected_count + 1,
+                 last_selected_at = excluded.last_selected_at,
+                 last_selected_source = excluded.last_selected_source",
+            [project_id.as_str(), ideation_session_id.as_str(), source],
+        )?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -375,5 +396,121 @@ mod tests {
         // Active plan should be gone due to CASCADE
         let result = repo.get(&project_id).await.unwrap();
         assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_record_selection_creates_new_stats() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let project_id = ProjectId::from_string("proj-123".to_string());
+        let session_id = IdeationSessionId::from_string("session-456");
+        setup_test_data(&conn, project_id.as_str(), session_id.as_str()).await;
+
+        let shared_conn = Arc::new(Mutex::new(conn));
+        let repo = SqliteActivePlanRepository::from_shared(Arc::clone(&shared_conn));
+
+        // Record selection
+        repo.record_selection(&project_id, &session_id, "kanban_inline")
+            .await
+            .unwrap();
+
+        // Verify stats were created
+        let conn = shared_conn.lock().await;
+        let (count, source): (u32, String) = conn
+            .query_row(
+                "SELECT selected_count, last_selected_source FROM plan_selection_stats WHERE project_id = ?1 AND ideation_session_id = ?2",
+                [project_id.as_str(), session_id.as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+
+        assert_eq!(count, 1);
+        assert_eq!(source, "kanban_inline");
+    }
+
+    #[tokio::test]
+    async fn test_record_selection_increments_count() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let project_id = ProjectId::from_string("proj-123".to_string());
+        let session_id = IdeationSessionId::from_string("session-456");
+        setup_test_data(&conn, project_id.as_str(), session_id.as_str()).await;
+
+        let shared_conn = Arc::new(Mutex::new(conn));
+        let repo = SqliteActivePlanRepository::from_shared(Arc::clone(&shared_conn));
+
+        // Record multiple selections
+        repo.record_selection(&project_id, &session_id, "kanban_inline")
+            .await
+            .unwrap();
+        repo.record_selection(&project_id, &session_id, "graph_inline")
+            .await
+            .unwrap();
+        repo.record_selection(&project_id, &session_id, "quick_switcher")
+            .await
+            .unwrap();
+
+        // Verify count incremented and last source updated
+        let conn = shared_conn.lock().await;
+        let (count, source): (u32, String) = conn
+            .query_row(
+                "SELECT selected_count, last_selected_source FROM plan_selection_stats WHERE project_id = ?1 AND ideation_session_id = ?2",
+                [project_id.as_str(), session_id.as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+
+        assert_eq!(count, 3);
+        assert_eq!(source, "quick_switcher"); // Last source
+    }
+
+    #[tokio::test]
+    async fn test_record_selection_updates_timestamp() {
+        let conn = open_memory_connection().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let project_id = ProjectId::from_string("proj-123".to_string());
+        let session_id = IdeationSessionId::from_string("session-456");
+        setup_test_data(&conn, project_id.as_str(), session_id.as_str()).await;
+
+        let shared_conn = Arc::new(Mutex::new(conn));
+        let repo = SqliteActivePlanRepository::from_shared(Arc::clone(&shared_conn));
+
+        // Record first selection
+        repo.record_selection(&project_id, &session_id, "kanban_inline")
+            .await
+            .unwrap();
+
+        let first_timestamp: String = {
+            let conn = shared_conn.lock().await;
+            conn.query_row(
+                "SELECT last_selected_at FROM plan_selection_stats WHERE project_id = ?1 AND ideation_session_id = ?2",
+                [project_id.as_str(), session_id.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+
+        // Wait more than 1 second to ensure different timestamp (SQLite datetime has second precision)
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        repo.record_selection(&project_id, &session_id, "graph_inline")
+            .await
+            .unwrap();
+
+        let second_timestamp: String = {
+            let conn = shared_conn.lock().await;
+            conn.query_row(
+                "SELECT last_selected_at FROM plan_selection_stats WHERE project_id = ?1 AND ideation_session_id = ?2",
+                [project_id.as_str(), session_id.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+
+        // Timestamps should be different (at least 2 seconds apart)
+        assert_ne!(first_timestamp, second_timestamp);
+        assert!(second_timestamp > first_timestamp);
     }
 }
