@@ -720,6 +720,8 @@ pub async fn resume_execution(
     )
     .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)));
     scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
+    // Set active project scope before scheduling to prevent cross-project scheduling
+    scheduler.set_active_project(effective_project_id.clone()).await;
     scheduler.try_schedule_ready_tasks().await;
 
     // Get current status
@@ -987,6 +989,9 @@ pub async fn set_max_concurrent(
 
     // If capacity increased, trigger scheduler to pick up waiting Ready tasks
     if max > old_max {
+        // Get active project for scoped scheduling
+        let active_project_id = active_project_state.get().await;
+
         let scheduler = Arc::new(TaskSchedulerService::new(
             Arc::clone(&execution_state),
             Arc::clone(&app_state.project_repo),
@@ -1003,6 +1008,8 @@ pub async fn set_max_concurrent(
         )
         .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)));
         scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
+        // Set active project scope before scheduling to prevent cross-project scheduling
+        scheduler.set_active_project(active_project_id).await;
         scheduler.try_schedule_ready_tasks().await;
     }
 
@@ -1089,6 +1096,8 @@ pub async fn update_execution_settings(
             )
             .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)));
             scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
+            // Set active project scope before scheduling to prevent cross-project scheduling
+            scheduler.set_active_project(project_id.clone()).await;
             scheduler.try_schedule_ready_tasks().await;
         }
     }
@@ -1226,6 +1235,7 @@ pub async fn get_global_execution_settings(
 #[tauri::command]
 pub async fn update_global_execution_settings(
     input: UpdateGlobalExecutionSettingsInput,
+    active_project_state: State<'_, Arc<ActiveProjectState>>,
     execution_state: State<'_, Arc<ExecutionState>>,
     app_state: State<'_, AppState>,
 ) -> Result<GlobalExecutionSettingsResponse, String> {
@@ -1248,6 +1258,9 @@ pub async fn update_global_execution_settings(
 
     // If global capacity increased, trigger scheduler to pick up waiting tasks
     if updated.global_max_concurrent > old_global_max {
+        // Get active project for scoped scheduling
+        let active_project_id = active_project_state.get().await;
+
         let scheduler = Arc::new(TaskSchedulerService::new(
             Arc::clone(&execution_state),
             Arc::clone(&app_state.project_repo),
@@ -1264,6 +1277,8 @@ pub async fn update_global_execution_settings(
         )
         .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)));
         scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
+        // Set active project scope before scheduling to prevent cross-project scheduling
+        scheduler.set_active_project(active_project_id).await;
         scheduler.try_schedule_ready_tasks().await;
     }
 
@@ -1284,6 +1299,7 @@ pub async fn update_global_execution_settings(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::entities::GitMode;
     use std::sync::Arc;
 
     // ========================================
@@ -2851,5 +2867,144 @@ mod tests {
         // Verify: quota correctly synced back to project1's max (5)
         assert_eq!(max3, 5);
         assert_eq!(execution_state.max_concurrent(), 5);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Active Project Scoping Tests
+    // ═══════════════════════════════════════════════════════════════════════
+
+    #[tokio::test]
+    async fn test_project_switch_prevents_other_projects_from_scheduling() {
+        use crate::application::TaskSchedulerService;
+        use crate::domain::state_machine::services::TaskScheduler;
+
+        let app_state = AppState::new_test();
+        let execution_state = Arc::new(ExecutionState::with_max_concurrent(10));
+        let active_project_state = Arc::new(ActiveProjectState::new());
+
+        // Create two projects
+        let mut project1 = Project::new("Project 1".to_string(), "/test/path1".to_string());
+        project1.git_mode = GitMode::Worktree; // Worktree mode allows concurrent tasks
+        app_state
+            .project_repo
+            .create(project1.clone())
+            .await
+            .unwrap();
+
+        let mut project2 = Project::new("Project 2".to_string(), "/test/path2".to_string());
+        project2.git_mode = GitMode::Worktree;
+        app_state
+            .project_repo
+            .create(project2.clone())
+            .await
+            .unwrap();
+
+        // Create Ready tasks in both projects
+        let mut p1_task = Task::new(project1.id.clone(), "Project 1 Task".to_string());
+        p1_task.internal_status = InternalStatus::Ready;
+        app_state
+            .task_repo
+            .create(p1_task.clone())
+            .await
+            .unwrap();
+
+        let mut p2_task = Task::new(project2.id.clone(), "Project 2 Task".to_string());
+        p2_task.internal_status = InternalStatus::Ready;
+        app_state
+            .task_repo
+            .create(p2_task.clone())
+            .await
+            .unwrap();
+
+        // Set active project to project 1
+        active_project_state.set(Some(project1.id.clone())).await;
+
+        // Build scheduler with active project 1
+        let scheduler = Arc::new(TaskSchedulerService::<tauri::Wry>::new(
+            Arc::clone(&execution_state),
+            Arc::clone(&app_state.project_repo),
+            Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.task_dependency_repo),
+            Arc::clone(&app_state.chat_message_repo),
+            Arc::clone(&app_state.chat_conversation_repo),
+            Arc::clone(&app_state.agent_run_repo),
+            Arc::clone(&app_state.ideation_session_repo),
+            Arc::clone(&app_state.activity_event_repo),
+            Arc::clone(&app_state.message_queue),
+            Arc::clone(&app_state.running_agent_registry),
+            None,
+        ));
+        scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
+
+        // Set active project on scheduler (simulating what execution commands do)
+        scheduler
+            .set_active_project(Some(project1.id.clone()))
+            .await;
+        scheduler.try_schedule_ready_tasks().await;
+
+        // Verify: Project 1 task should be scheduled
+        let p1_updated = app_state
+            .task_repo
+            .get_by_id(&p1_task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            p1_updated.internal_status,
+            InternalStatus::Executing,
+            "Project 1 task should be scheduled when project 1 is active"
+        );
+
+        // Verify: Project 2 task should NOT be scheduled
+        let p2_updated = app_state
+            .task_repo
+            .get_by_id(&p2_task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            p2_updated.internal_status,
+            InternalStatus::Ready,
+            "Project 2 task should NOT be scheduled when project 1 is active"
+        );
+
+        // Now switch active project to project 2
+        active_project_state.set(Some(project2.id.clone())).await;
+
+        // Create new scheduler instance for project 2
+        let scheduler2 = Arc::new(TaskSchedulerService::<tauri::Wry>::new(
+            Arc::clone(&execution_state),
+            Arc::clone(&app_state.project_repo),
+            Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.task_dependency_repo),
+            Arc::clone(&app_state.chat_message_repo),
+            Arc::clone(&app_state.chat_conversation_repo),
+            Arc::clone(&app_state.agent_run_repo),
+            Arc::clone(&app_state.ideation_session_repo),
+            Arc::clone(&app_state.activity_event_repo),
+            Arc::clone(&app_state.message_queue),
+            Arc::clone(&app_state.running_agent_registry),
+            None,
+        ));
+        scheduler2.set_self_ref(Arc::clone(&scheduler2) as Arc<dyn TaskScheduler>);
+
+        // Set active project on new scheduler (simulating what execution commands do)
+        scheduler2
+            .set_active_project(Some(project2.id.clone()))
+            .await;
+        scheduler2.try_schedule_ready_tasks().await;
+
+        // Verify: Project 2 task should now be scheduled
+        let p2_final = app_state
+            .task_repo
+            .get_by_id(&p2_task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            p2_final.internal_status,
+            InternalStatus::Executing,
+            "Project 2 task should be scheduled after switching to project 2"
+        );
     }
 }
