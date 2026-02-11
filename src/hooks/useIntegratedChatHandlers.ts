@@ -219,11 +219,13 @@ export function useIntegratedChatHandlers({
     const { contextType, contextId } = getContextForMode();
 
     try {
+      // Always call stopAgent first to cancel the active run
+      await stopAgent(contextType, contextId);
+
+      // For execution mode, run recovery after stopping to reconcile task status
       if (isExecutionMode && selectedTaskId) {
         await recoverTaskExecution(selectedTaskId);
-        return;
       }
-      await stopAgent(contextType, contextId);
     } catch {
       // Silently ignore - agent stop is fire-and-forget
     }
