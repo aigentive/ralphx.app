@@ -674,6 +674,12 @@ function AppContent() {
   }
 
   const toastBottomOffset = (currentView === "kanban" || currentView === "graph") ? "92px" : "16px";
+  const quickSwitcherAnchorSelector =
+    currentView === "kanban"
+      ? '[data-testid="kanban-split-left"]'
+      : currentView === "graph"
+        ? '[data-testid="graph-split-left"]'
+        : undefined;
 
   return (
     <main
@@ -1033,6 +1039,9 @@ function AppContent() {
           projectId={currentProjectId}
           isOpen={isPlanQuickSwitcherOpen}
           onClose={() => setIsPlanQuickSwitcherOpen(false)}
+          {...(quickSwitcherAnchorSelector
+            ? { anchorSelector: quickSwitcherAnchorSelector }
+            : {})}
         />
       )}
 

@@ -13,6 +13,7 @@ vi.mock("@/api/plan", () => ({
     getActivePlan: vi.fn(),
     setActivePlan: vi.fn(),
     clearActivePlan: vi.fn(),
+    listCandidates: vi.fn(),
   },
 }));
 
@@ -20,6 +21,7 @@ const mockPlanApi = planApi as {
   getActivePlan: ReturnType<typeof vi.fn>;
   setActivePlan: ReturnType<typeof vi.fn>;
   clearActivePlan: ReturnType<typeof vi.fn>;
+  listCandidates: ReturnType<typeof vi.fn>;
 };
 
 // Helper to create test plan candidates
@@ -55,6 +57,7 @@ describe("planStore", () => {
     mockPlanApi.getActivePlan.mockReset();
     mockPlanApi.setActivePlan.mockReset();
     mockPlanApi.clearActivePlan.mockReset();
+    mockPlanApi.listCandidates.mockReset();
   });
 
   describe("loadActivePlan", () => {
@@ -294,18 +297,37 @@ describe("planStore", () => {
   });
 
   describe("loadCandidates", () => {
-    it("sets loading state and placeholder implementation", async () => {
+    it("loads candidates from backend", async () => {
+      const candidates = [
+        createTestCandidate({ sessionId: "session-1", title: "Plan 1" }),
+        createTestCandidate({ sessionId: "session-2", title: "Plan 2" }),
+      ];
+      mockPlanApi.listCandidates.mockResolvedValue(candidates);
+
       await usePlanStore.getState().loadCandidates("project-1");
 
+      expect(mockPlanApi.listCandidates).toHaveBeenCalledWith("project-1", undefined);
       const state = usePlanStore.getState();
-      expect(state.planCandidates).toEqual([]);
+      expect(state.planCandidates).toEqual(candidates);
       expect(state.isLoading).toBe(false);
     });
 
     it("accepts optional query parameter", async () => {
+      mockPlanApi.listCandidates.mockResolvedValue([]);
       await usePlanStore.getState().loadCandidates("project-1", "search term");
 
+      expect(mockPlanApi.listCandidates).toHaveBeenCalledWith("project-1", "search term");
       const state = usePlanStore.getState();
+      expect(state.isLoading).toBe(false);
+    });
+
+    it("handles backend errors", async () => {
+      mockPlanApi.listCandidates.mockRejectedValue(new Error("Failed to load candidates"));
+
+      await usePlanStore.getState().loadCandidates("project-1");
+
+      const state = usePlanStore.getState();
+      expect(state.error).toBe("Failed to load candidates");
       expect(state.isLoading).toBe(false);
     });
   });

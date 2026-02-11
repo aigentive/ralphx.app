@@ -144,7 +144,11 @@ export function KanbanSplitLayout({ children, projectId, footer }: KanbanSplitLa
             transition: isResizing ? "none" : "width 150ms ease-out",
           }}
         >
-          <IntegratedChatPanel projectId={projectId} onClose={() => toggleChatVisible("kanban")} />
+          <IntegratedChatPanel
+            projectId={projectId}
+            onClose={() => toggleChatVisible("kanban")}
+            autoFocusInput={false}
+          />
         </div>
       )}
     </div>

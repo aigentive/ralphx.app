@@ -61,6 +61,8 @@ interface IntegratedChatPanelProps {
   headerContent?: React.ReactNode;
   /** Called when Escape is pressed with input blurred - used to close the panel */
   onClose?: () => void;
+  /** Whether to autofocus chat input on mount */
+  autoFocusInput?: boolean;
 }
 
 export function IntegratedChatPanel({
@@ -71,6 +73,7 @@ export function IntegratedChatPanel({
   inputContainerClassName,
   headerContent,
   onClose,
+  autoFocusInput = true,
 }: IntegratedChatPanelProps) {
   const queryClient = useQueryClient();
   const bus = useEventBus();
@@ -713,7 +716,7 @@ export function IntegratedChatPanel({
                     onMatchedOptions: handleMatchedOptions,
                   },
                 } : {})}
-                autoFocus
+                autoFocus={autoFocusInput}
               />
             </div>
           </div>

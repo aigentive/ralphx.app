@@ -84,4 +84,26 @@ describe("plan api", () => {
       planApi.setActivePlan("project-1", "invalid-session", "kanban_inline")
     ).rejects.toThrow("Session not found");
   });
+
+  it("lists plan selector candidates", async () => {
+    mockInvoke.mockResolvedValue([
+      {
+        sessionId: "session-1",
+        title: "Plan 1",
+        acceptedAt: "2026-02-11T06:21:42Z",
+        taskStats: { total: 5, incomplete: 2, activeNow: 1 },
+        interactionStats: { selectedCount: 3, lastSelectedAt: null },
+        score: 0.8,
+      },
+    ]);
+
+    const result = await planApi.listCandidates("project-1", "Plan");
+
+    expect(mockInvoke).toHaveBeenCalledWith("list_plan_selector_candidates", {
+      projectId: "project-1",
+      query: "Plan",
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0]?.sessionId).toBe("session-1");
+  });
 });

@@ -539,7 +539,7 @@ function computeLayoutWithCache(
   const hash = computeGraphHash(
     allNodeIds,
     allEdgePairs,
-    config.direction,
+    config,
     layoutPlanGroups,
     layoutTierGroups,
     collapsedPlanIds,
@@ -972,12 +972,18 @@ function computeLayoutWithCache(
       if (!bbox) continue;
       const expanded = expandBoundingBox(bbox, GROUP_PADDING, HEADER_HEIGHT);
       const groupDims = boundingBoxToGroupNode(expanded);
-      planGroupNode.position = groupDims.position;
-      planGroupNode.data.width = groupDims.width;
+      // Keep existing plan width so full-width tier lanes don't recursively expand the plan container.
+      // We only refresh vertical geometry from the tier stack.
+      const preservedWidth = planGroupNode.data.width;
+      planGroupNode.position = {
+        x: planGroupNode.position.x,
+        y: groupDims.position.y,
+      };
+      planGroupNode.data.width = preservedWidth;
       planGroupNode.data.height = groupDims.height;
       planGroupNode.style = {
         ...planGroupNode.style,
-        width: groupDims.width,
+        width: preservedWidth,
         height: groupDims.height,
       };
     }
@@ -1134,13 +1140,14 @@ interface LayoutTierGroup {
 
 /**
  * Compute a structural hash of the graph for cache key.
- * Hash includes: node IDs (sorted), edge pairs (sorted), config direction, compact mode, plan groups, and collapsed state.
+ * Hash includes: node IDs (sorted), edge pairs (sorted), layout spacing config,
+ * compact mode, plan groups, and collapsed state.
  * Does NOT include node data (status, title, priority) since those don't affect layout.
  */
 function computeGraphHash(
   nodeIds: string[],
   edges: { source: string; target: string }[],
-  direction: "TB" | "LR",
+  config: Pick<LayoutConfig, "direction" | "nodesep" | "ranksep" | "marginx" | "marginy">,
   planGroups: LayoutPlanGroup[] = [],
   tierGroups: LayoutTierGroup[] = [],
   collapsedPlanIds: Set<string> = new Set(),
@@ -1170,7 +1177,9 @@ function computeGraphHash(
   const modeHash = nodeModeLookup
     ? [...nodeModeLookup.entries()].filter(([, m]) => m === "compact").map(([id]) => id).sort().join(",")
     : "standard";
-  return `${direction}:${modeHash}:${sortedNodes}|${sortedEdges}|${sortedGroups}|${sortedTierGroups}|${sortedCollapsed}|${sortedCollapsedTiers}|${includeUncategorized ? "uncategorized" : "no-uncategorized"}`;
+  const spacingHash = `${config.direction}:${config.nodesep}:${config.ranksep}:${config.marginx}:${config.marginy}`;
+  const layoutVersion = "layout-v3";
+  return `${layoutVersion}:${spacingHash}:${modeHash}:${sortedNodes}|${sortedEdges}|${sortedGroups}|${sortedTierGroups}|${sortedCollapsed}|${sortedCollapsedTiers}|${includeUncategorized ? "uncategorized" : "no-uncategorized"}`;
 }
 
 /**

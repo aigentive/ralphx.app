@@ -113,7 +113,8 @@ vi.mock("./ProactiveSyncNotification", () => ({
 }));
 
 vi.mock("./ReopenSessionDialog", () => ({
-  ReopenSessionDialog: () => null,
+  ReopenSessionDialog: ({ open, onConfirm }: { open: boolean; onConfirm: () => void }) =>
+    open ? <button onClick={onConfirm}>Confirm Reopen</button> : null,
 }));
 
 vi.mock("@/stores/planStore", () => ({
@@ -364,6 +365,7 @@ describe("PlanningView", () => {
     // Click the Reopen button
     const reopenButton = screen.getByRole("button", { name: /Reopen/i });
     await user.click(reopenButton);
+    await user.click(screen.getByRole("button", { name: "Confirm Reopen" }));
 
     // This should trigger the reopen dialog (mocked away)
     // Simulate the mutation succeeding by calling the onSuccess callback
@@ -405,6 +407,7 @@ describe("PlanningView", () => {
     // Click the Reopen button
     const reopenButton = screen.getByRole("button", { name: /Reopen/i });
     await user.click(reopenButton);
+    await user.click(screen.getByRole("button", { name: "Confirm Reopen" }));
 
     // Simulate the mutation succeeding
     const onSuccessHandler = mockReopenMutate.mock.calls[0][1].onSuccess;
@@ -436,6 +439,7 @@ describe("PlanningView", () => {
     // Click the Reopen button
     const reopenButton = screen.getByRole("button", { name: /Reopen/i });
     await user.click(reopenButton);
+    await user.click(screen.getByRole("button", { name: "Confirm Reopen" }));
 
     // Simulate the mutation succeeding
     const onSuccessHandler = mockReopenMutate.mock.calls[0][1].onSuccess;

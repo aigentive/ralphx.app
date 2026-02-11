@@ -6,6 +6,7 @@ import {
   boundingBoxToGroupNode,
   GROUP_PADDING,
   HEADER_HEIGHT,
+  MIN_GROUP_HEIGHT,
 } from "./groupUtils";
 import { createPlanGroupNode, type PlanGroupNode } from "./PlanGroup";
 import {
@@ -19,6 +20,7 @@ export const COLLAPSED_GROUP_WIDTH = 420;
 export const COLLAPSED_GROUP_HEIGHT = HEADER_HEIGHT + 8;
 export const COLLAPSED_TIER_WIDTH = COLLAPSED_GROUP_WIDTH;
 export const COLLAPSED_TIER_HEIGHT = TIER_HEADER_HEIGHT + 8;
+const MIN_TIER_GROUP_WIDTH = 260;
 
 interface PlanGroupBuilderArgs {
   taskNodes: Node[];
@@ -304,7 +306,7 @@ export function buildTierGroupNodes({
       const placeholderPos = positions.get(`__tier_group_position_${tg.id}__`);
       const desiredWidth =
         planBounds?.width !== undefined
-          ? Math.max(planBounds.width - GROUP_PADDING * 2, COLLAPSED_TIER_WIDTH)
+          ? Math.max(planBounds.width - GROUP_PADDING * 2, MIN_TIER_GROUP_WIDTH)
           : COLLAPSED_TIER_WIDTH;
       const centeredX =
         planBounds?.position.x !== undefined && planBounds.width !== undefined
@@ -331,11 +333,17 @@ export function buildTierGroupNodes({
       const bbox = boundingBoxes[0];
       if (!bbox) continue;
 
-      const expanded = expandBoundingBox(bbox, GROUP_PADDING, TIER_HEADER_HEIGHT);
+      const expanded = expandBoundingBox(
+        bbox,
+        GROUP_PADDING,
+        TIER_HEADER_HEIGHT,
+        MIN_TIER_GROUP_WIDTH,
+        MIN_GROUP_HEIGHT
+      );
       const groupDims = boundingBoxToGroupNode(expanded);
       const desiredWidth =
         planBounds?.width !== undefined
-          ? Math.max(planBounds.width - GROUP_PADDING * 2, groupDims.width)
+          ? Math.max(planBounds.width - GROUP_PADDING * 2, MIN_TIER_GROUP_WIDTH)
           : groupDims.width;
       const centeredX =
         planBounds?.position.x !== undefined && planBounds.width !== undefined

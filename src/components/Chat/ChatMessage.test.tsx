@@ -434,7 +434,8 @@ describe("ChatMessage", () => {
       render(<ChatMessage message={messageWithFailedToolCall} />);
 
       expect(screen.getByTestId("chat-message-tool-calls")).toBeInTheDocument();
-      expect(screen.getByTestId("tool-call-indicator")).toBeInTheDocument();
+      expect(screen.getByText("error")).toBeInTheDocument();
+      expect(screen.getByText("File not found")).toBeInTheDocument();
     });
 
     it("handles invalid JSON in toolCalls gracefully", () => {

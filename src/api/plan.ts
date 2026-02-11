@@ -8,6 +8,21 @@ import { invoke } from "@tauri-apps/api/core";
 // ============================================================================
 
 export type SelectionSource = "kanban_inline" | "graph_inline" | "quick_switcher" | "ideation";
+export interface PlanCandidateResponse {
+  sessionId: string;
+  title: string | null;
+  acceptedAt: string;
+  taskStats: {
+    total: number;
+    incomplete: number;
+    activeNow: number;
+  };
+  interactionStats: {
+    selectedCount: number;
+    lastSelectedAt: string | null;
+  };
+  score: number;
+}
 
 // ============================================================================
 // API Object
@@ -45,4 +60,18 @@ export const planApi = {
    */
   clearActivePlan: (projectId: string): Promise<void> =>
     invoke("clear_active_plan", { projectId }),
+
+  /**
+   * List accepted plan candidates for selectors
+   * @param projectId The project ID
+   * @param query Optional search query (title filter)
+   */
+  listCandidates: (
+    projectId: string,
+    query?: string
+  ): Promise<PlanCandidateResponse[]> =>
+    invoke<PlanCandidateResponse[]>("list_plan_selector_candidates", {
+      projectId,
+      query,
+    }),
 } as const;

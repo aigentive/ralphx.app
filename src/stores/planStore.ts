@@ -8,7 +8,11 @@
 
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
-import { planApi, type SelectionSource } from "@/api/plan";
+import {
+  planApi,
+  type PlanCandidateResponse,
+  type SelectionSource,
+} from "@/api/plan";
 
 // ============================================================================
 // State Interface
@@ -132,13 +136,14 @@ export const usePlanStore = create<PlanState & PlanActions>()(
       }
     },
 
-    loadCandidates: async (_projectId, _query) => {
-      // Placeholder - will be implemented when list_plan_selector_candidates backend command is ready
+    loadCandidates: async (projectId, query) => {
       set({ isLoading: true, error: null });
       try {
-        // TODO: Call planApi.listCandidates(_projectId, _query) when backend command is ready
-        console.warn("loadCandidates not yet implemented - waiting for backend");
-        set({ planCandidates: [], isLoading: false });
+        const candidates: PlanCandidateResponse[] = await planApi.listCandidates(
+          projectId,
+          query
+        );
+        set({ planCandidates: candidates, isLoading: false });
       } catch (error) {
         set({
           error: error instanceof Error ? error.message : "Failed to load candidates",
