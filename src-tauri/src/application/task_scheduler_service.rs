@@ -41,6 +41,7 @@ const LOCAL_MODE_RUNNING_STATES: &[InternalStatus] = &[
 ];
 
 use super::TaskTransitionService;
+use crate::domain::state_machine::transition_handler::{get_trigger_origin, set_trigger_origin};
 
 /// Production implementation of TaskScheduler for auto-scheduling Ready tasks.
 ///
@@ -302,6 +303,19 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
             } else {
                 InternalStatus::Executing
             };
+
+            // Set trigger_origin to "scheduler" if not already set (preserves retry/recovery origins)
+            if get_trigger_origin(&task).is_none() {
+                let mut task_mut = task.clone();
+                set_trigger_origin(&mut task_mut, "scheduler");
+                if let Err(e) = self.task_repo.update(&task_mut).await {
+                    tracing::error!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Failed to set trigger_origin=scheduler in metadata"
+                    );
+                }
+            }
 
             // Transition the task to the target status
             // For Executing: triggers on_enter(Executing) which spawns worker agent
