@@ -33,6 +33,23 @@ vi.mock("@/lib/tauri", () => ({
   },
 }));
 
+// Mock planStore
+vi.mock("@/stores/planStore", () => ({
+  usePlanStore: vi.fn((selector) => {
+    const mockState = {
+      activePlanByProject: { "p1": "session-1" },
+      planCandidates: [],
+      isLoading: false,
+      error: null,
+      loadActivePlan: vi.fn(),
+      setActivePlan: vi.fn(),
+      clearActivePlan: vi.fn(),
+      loadCandidates: vi.fn(),
+    };
+    return selector ? selector(mockState) : mockState;
+  }),
+}));
+
 // Mock workflows API
 vi.mock("@/lib/api/workflows", () => ({
   getActiveWorkflowColumns: vi.fn(),
