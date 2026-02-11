@@ -1,10 +1,12 @@
 // SQLite implementation of MemoryEventRepository
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 use serde_json::Value as JsonValue;
-use std::sync::Mutex;
+use tokio::sync::Mutex;
 
 use crate::domain::entities::{MemoryActorType, MemoryEvent, MemoryEventId, ProcessId};
 use crate::domain::repositories::MemoryEventRepository;
@@ -12,15 +14,20 @@ use crate::error::{AppError, AppResult};
 
 /// SQLite-backed memory event repository
 pub struct SqliteMemoryEventRepository {
-    conn: Mutex<Connection>,
+    conn: Arc<Mutex<Connection>>,
 }
 
 impl SqliteMemoryEventRepository {
     /// Create a new repository with the given connection
     pub fn new(conn: Connection) -> Self {
         Self {
-            conn: Mutex::new(conn),
+            conn: Arc::new(Mutex::new(conn)),
         }
+    }
+
+    /// Create from an Arc-wrapped mutex connection (for sharing)
+    pub fn from_shared(conn: Arc<Mutex<Connection>>) -> Self {
+        Self { conn }
     }
 
     /// Helper to parse a row into a MemoryEvent
@@ -64,8 +71,7 @@ impl SqliteMemoryEventRepository {
 #[async_trait]
 impl MemoryEventRepository for SqliteMemoryEventRepository {
     async fn create(&self, event: MemoryEvent) -> AppResult<MemoryEvent> {
-        let conn = self.conn.lock()
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        let conn = self.conn.lock().await;
 
         let details_json = serde_json::to_string(&event.details)
             .map_err(|e| AppError::Database(format!("Failed to serialize details: {}", e)))?;
@@ -89,8 +95,7 @@ impl MemoryEventRepository for SqliteMemoryEventRepository {
     }
 
     async fn get_by_project(&self, project_id: &ProcessId) -> AppResult<Vec<MemoryEvent>> {
-        let conn = self.conn.lock()
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        let conn = self.conn.lock().await;
 
         let mut stmt = conn.prepare(
             "SELECT id, project_id, event_type, actor_type, details_json, created_at
@@ -110,8 +115,7 @@ impl MemoryEventRepository for SqliteMemoryEventRepository {
     }
 
     async fn get_by_type(&self, event_type: &str) -> AppResult<Vec<MemoryEvent>> {
-        let conn = self.conn.lock()
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        let conn = self.conn.lock().await;
 
         let mut stmt = conn.prepare(
             "SELECT id, project_id, event_type, actor_type, details_json, created_at

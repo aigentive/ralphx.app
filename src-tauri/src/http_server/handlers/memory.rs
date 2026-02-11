@@ -2,39 +2,106 @@
 // These handlers are restricted to memory agents only (memory-maintainer, memory-capture)
 // Access control is enforced via three-layer allowlist model
 
+use std::sync::Arc;
+
 use axum::{
     extract::State,
     http::StatusCode,
     Json,
 };
-use tracing::warn;
+use serde_json::json;
+use tracing::{error, info};
 
 use super::*;
+use crate::domain::entities::{
+    MemoryActorType, MemoryArchiveJob, MemoryArchiveJobType, MemoryBucket, MemoryEntry,
+    MemoryEntryId, MemoryEvent, MemoryStatus, ProcessId,
+};
+use crate::domain::services::RuleIngestionService;
 
 // ============================================================================
 // Handler: upsert_memories
 // ============================================================================
 
 pub async fn upsert_memories(
-    State(_state): State<HttpServerState>,
-    Json(_req): Json<UpsertMemoriesRequest>,
+    State(state): State<HttpServerState>,
+    Json(req): Json<UpsertMemoriesRequest>,
 ) -> Result<Json<UpsertMemoriesResponse>, StatusCode> {
-    // TODO: Implement once memory_entry_repository is available
-    // 1. Validate project_id exists
-    // 2. For each memory entry:
-    //    a. Compute content_hash from (title + summary + details_markdown)
-    //    b. Check if hash already exists for this project+bucket
-    //    c. If exists: skip (deduplication)
-    //    d. If new: validate bucket + scope_paths, then insert
-    // 3. Return counts: inserted, skipped, failed
+    let project_id = ProcessId::from_string(&req.project_id);
+    let mut inserted = 0;
+    let mut skipped = 0;
+    let mut failed = 0;
 
-    warn!("upsert_memories called but not yet implemented (awaiting repository layer)");
+    for input in &req.memories {
+        // Parse bucket
+        let bucket = match input.bucket.parse::<MemoryBucket>() {
+            Ok(b) => b,
+            Err(_) => {
+                error!("Invalid bucket: {}", input.bucket);
+                failed += 1;
+                continue;
+            }
+        };
+
+        // Compute content hash for deduplication
+        let content_hash =
+            MemoryEntry::compute_content_hash(&input.title, &input.summary, &input.details_markdown);
+
+        // Check for duplicate
+        let existing = state
+            .app_state
+            .memory_entry_repo
+            .find_by_content_hash(&project_id, &bucket, &content_hash)
+            .await
+            .map_err(|e| {
+                error!("Failed to check content hash: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+        if existing.is_some() {
+            skipped += 1;
+            continue;
+        }
+
+        // Create new memory entry
+        let mut entry = MemoryEntry::new(
+            project_id.clone(),
+            bucket,
+            input.title.clone(),
+            input.summary.clone(),
+            input.details_markdown.clone(),
+            input.scope_paths.clone(),
+        );
+        entry.source_context_type = input.source_context_type.clone();
+        entry.source_context_id = input.source_context_id.clone();
+        entry.source_conversation_id = input.source_conversation_id.clone();
+        entry.quality_score = input.quality_score;
+
+        match state.app_state.memory_entry_repo.create(entry).await {
+            Ok(_) => inserted += 1,
+            Err(e) => {
+                error!("Failed to create memory entry: {}", e);
+                failed += 1;
+            }
+        }
+    }
+
+    info!(
+        "upsert_memories: inserted={}, skipped={}, failed={}",
+        inserted, skipped, failed
+    );
 
     Ok(Json(UpsertMemoriesResponse {
-        inserted: 0,
-        skipped: 0,
-        failed: 0,
-        message: "Not yet implemented - awaiting memory repository layer".to_string(),
+        inserted,
+        skipped,
+        failed,
+        message: format!(
+            "Processed {} memories: {} inserted, {} skipped (duplicates), {} failed",
+            req.memories.len(),
+            inserted,
+            skipped,
+            failed
+        ),
     }))
 }
 
@@ -43,20 +110,49 @@ pub async fn upsert_memories(
 // ============================================================================
 
 pub async fn mark_memory_obsolete(
-    State(_state): State<HttpServerState>,
-    Json(_req): Json<MarkMemoryObsoleteRequest>,
+    State(state): State<HttpServerState>,
+    Json(req): Json<MarkMemoryObsoleteRequest>,
 ) -> Result<Json<MarkMemoryObsoleteResponse>, StatusCode> {
-    // TODO: Implement once memory_entry_repository is available
-    // 1. Validate memory_id exists
-    // 2. Update status field to 'obsolete' (soft delete)
-    // 3. Record event in memory_events table
-    // 4. Return success status
+    let memory_id = MemoryEntryId::from_string(&req.memory_id);
 
-    warn!("mark_memory_obsolete called but not yet implemented (awaiting repository layer)");
+    // Verify entry exists
+    let entry = state
+        .app_state
+        .memory_entry_repo
+        .get_by_id(&memory_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get memory entry: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Update status to obsolete
+    state
+        .app_state
+        .memory_entry_repo
+        .update_status(&memory_id, MemoryStatus::Obsolete)
+        .await
+        .map_err(|e| {
+            error!("Failed to update memory status: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // Record audit event
+    let event = MemoryEvent::new(
+        entry.project_id.clone(),
+        "memory_obsoleted",
+        MemoryActorType::System,
+        json!({
+            "memory_id": req.memory_id,
+            "title": entry.title,
+        }),
+    );
+    let _ = state.app_state.memory_event_repo.create(event).await;
 
     Ok(Json(MarkMemoryObsoleteResponse {
-        success: false,
-        message: "Not yet implemented - awaiting memory repository layer".to_string(),
+        success: true,
+        message: format!("Memory {} marked as obsolete", req.memory_id),
     }))
 }
 
@@ -68,20 +164,11 @@ pub async fn refresh_memory_rule_index(
     State(_state): State<HttpServerState>,
     Json(_req): Json<RefreshMemoryRuleIndexRequest>,
 ) -> Result<Json<RefreshMemoryRuleIndexResponse>, StatusCode> {
-    // TODO: Implement once memory repositories are available
-    // 1. Load memory_rule_bindings for project
-    // 2. For each scope_key:
-    //    a. Query memory_entries matching scope_paths
-    //    b. Generate canonical index file format (frontmatter + summaries + memory IDs)
-    //    c. Write to .claude/rules/<rule_file_path>
-    //    d. Update last_synced_at + last_content_hash
-    // 3. Return count of refreshed files
-
-    warn!("refresh_memory_rule_index called but not yet implemented (awaiting repository layer)");
-
+    // This handler requires memory_rule_bindings which is not yet part of the
+    // repository layer. Return a stub response for now.
     Ok(Json(RefreshMemoryRuleIndexResponse {
         files_refreshed: 0,
-        message: "Not yet implemented - awaiting memory repository layer".to_string(),
+        message: "Rule binding refresh not yet implemented - requires memory_rule_binding repository".to_string(),
     }))
 }
 
@@ -90,28 +177,38 @@ pub async fn refresh_memory_rule_index(
 // ============================================================================
 
 pub async fn ingest_rule_file(
-    State(_state): State<HttpServerState>,
-    Json(_req): Json<IngestRuleFileRequest>,
+    State(state): State<HttpServerState>,
+    Json(req): Json<IngestRuleFileRequest>,
 ) -> Result<Json<IngestRuleFileResponse>, StatusCode> {
-    // TODO: Implement once memory repositories are available
-    // 1. Read rule file from filesystem (req.rule_file_path)
-    // 2. Parse frontmatter (extract paths: globs)
-    // 3. Parse content into semantic chunks
-    // 4. Classify each chunk into bucket (architecture_patterns, implementation_discoveries, operational_playbooks)
-    // 5. For each chunk:
-    //    a. Compute content_hash
-    //    b. Upsert to memory_entries with source_rule_file metadata
-    // 6. Rewrite rule file to canonical index format
-    // 7. Enqueue archive jobs for affected memories
-    // 8. Return ingestion stats
+    let project_id = ProcessId::from_string(&req.project_id);
 
-    warn!("ingest_rule_file called but not yet implemented (awaiting repository layer)");
+    let service = RuleIngestionService::new(
+        Arc::clone(&state.app_state.memory_entry_repo),
+        Arc::clone(&state.app_state.memory_event_repo),
+        Arc::clone(&state.app_state.memory_archive_job_repo),
+    );
+
+    let result = service
+        .ingest_rule_file(project_id, &req.rule_file_path)
+        .await
+        .map_err(|e| {
+            error!("Failed to ingest rule file '{}': {}", req.rule_file_path, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    info!(
+        "ingest_rule_file '{}': created={}, updated={}, rewritten={}",
+        req.rule_file_path, result.memories_created, result.memories_updated, result.file_rewritten
+    );
 
     Ok(Json(IngestRuleFileResponse {
-        memories_created: 0,
-        memories_updated: 0,
-        file_rewritten: false,
-        message: "Not yet implemented - awaiting memory repository layer".to_string(),
+        memories_created: result.memories_created,
+        memories_updated: result.memories_updated,
+        file_rewritten: result.file_rewritten,
+        message: format!(
+            "Ingested '{}': {} memories created, {} updated",
+            req.rule_file_path, result.memories_created, result.memories_updated
+        ),
     }))
 }
 
@@ -120,18 +217,32 @@ pub async fn ingest_rule_file(
 // ============================================================================
 
 pub async fn rebuild_archive_snapshots(
-    State(_state): State<HttpServerState>,
-    Json(_req): Json<RebuildArchiveSnapshotsRequest>,
+    State(state): State<HttpServerState>,
+    Json(req): Json<RebuildArchiveSnapshotsRequest>,
 ) -> Result<Json<RebuildArchiveSnapshotsResponse>, StatusCode> {
-    // TODO: Implement once memory repositories are available
-    // 1. Enqueue full rebuild job in memory_archive_jobs table
-    // 2. Job will be processed by background archive service
-    // 3. Return job_id for tracking
+    let project_id = ProcessId::from_string(&req.project_id);
 
-    warn!("rebuild_archive_snapshots called but not yet implemented (awaiting repository layer)");
+    let job = MemoryArchiveJob::new(
+        project_id,
+        MemoryArchiveJobType::FullRebuild,
+        json!({ "trigger": "manual" }),
+    );
+    let job_id = job.id.as_str().to_string();
+
+    state
+        .app_state
+        .memory_archive_job_repo
+        .create(job)
+        .await
+        .map_err(|e| {
+            error!("Failed to create archive rebuild job: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    info!("rebuild_archive_snapshots: enqueued job {}", job_id);
 
     Ok(Json(RebuildArchiveSnapshotsResponse {
-        job_id: "pending".to_string(),
-        message: "Not yet implemented - awaiting memory repository layer".to_string(),
+        job_id,
+        message: "Full archive rebuild job enqueued".to_string(),
     }))
 }

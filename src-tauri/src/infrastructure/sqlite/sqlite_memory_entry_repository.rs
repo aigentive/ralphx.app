@@ -1,9 +1,11 @@
 // SQLite implementation of MemoryEntryRepository
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rusqlite::Connection;
-use std::sync::Mutex;
+use tokio::sync::Mutex;
 
 use crate::domain::entities::{MemoryBucket, MemoryEntry, MemoryEntryId, MemoryStatus, ProcessId};
 use crate::domain::repositories::MemoryEntryRepository;
@@ -11,15 +13,20 @@ use crate::error::{AppError, AppResult};
 
 /// SQLite-backed memory entry repository
 pub struct SqliteMemoryEntryRepository {
-    conn: Mutex<Connection>,
+    conn: Arc<Mutex<Connection>>,
 }
 
 impl SqliteMemoryEntryRepository {
     /// Create a new repository with the given connection
     pub fn new(conn: Connection) -> Self {
         Self {
-            conn: Mutex::new(conn),
+            conn: Arc::new(Mutex::new(conn)),
         }
+    }
+
+    /// Create from an Arc-wrapped mutex connection (for sharing)
+    pub fn from_shared(conn: Arc<Mutex<Connection>>) -> Self {
+        Self { conn }
     }
 
     /// Helper to parse a row into a MemoryEntry
@@ -86,8 +93,7 @@ impl SqliteMemoryEntryRepository {
 #[async_trait]
 impl MemoryEntryRepository for SqliteMemoryEntryRepository {
     async fn create(&self, entry: MemoryEntry) -> AppResult<MemoryEntry> {
-        let conn = self.conn.lock()
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        let conn = self.conn.lock().await;
 
         let scope_paths_json = serde_json::to_string(&entry.scope_paths)
             .map_err(|e| AppError::Database(format!("Failed to serialize scope_paths: {}", e)))?;
@@ -124,8 +130,7 @@ impl MemoryEntryRepository for SqliteMemoryEntryRepository {
     }
 
     async fn get_by_id(&self, id: &MemoryEntryId) -> AppResult<Option<MemoryEntry>> {
-        let conn = self.conn.lock()
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        let conn = self.conn.lock().await;
 
         let result = conn.query_row(
             "SELECT id, project_id, bucket, title, summary, details_markdown,
@@ -150,8 +155,7 @@ impl MemoryEntryRepository for SqliteMemoryEntryRepository {
         bucket: &MemoryBucket,
         content_hash: &str,
     ) -> AppResult<Option<MemoryEntry>> {
-        let conn = self.conn.lock()
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        let conn = self.conn.lock().await;
 
         let result = conn.query_row(
             "SELECT id, project_id, bucket, title, summary, details_markdown,
@@ -176,8 +180,7 @@ impl MemoryEntryRepository for SqliteMemoryEntryRepository {
     }
 
     async fn get_by_project(&self, project_id: &ProcessId) -> AppResult<Vec<MemoryEntry>> {
-        let conn = self.conn.lock()
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        let conn = self.conn.lock().await;
 
         let mut stmt = conn.prepare(
             "SELECT id, project_id, bucket, title, summary, details_markdown,
@@ -204,8 +207,7 @@ impl MemoryEntryRepository for SqliteMemoryEntryRepository {
         project_id: &ProcessId,
         bucket: &MemoryBucket,
     ) -> AppResult<Vec<MemoryEntry>> {
-        let conn = self.conn.lock()
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        let conn = self.conn.lock().await;
 
         let mut stmt = conn.prepare(
             "SELECT id, project_id, bucket, title, summary, details_markdown,
@@ -231,8 +233,7 @@ impl MemoryEntryRepository for SqliteMemoryEntryRepository {
     }
 
     async fn update_status(&self, id: &MemoryEntryId, status: MemoryStatus) -> AppResult<()> {
-        let conn = self.conn.lock()
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        let conn = self.conn.lock().await;
 
         let affected = conn.execute(
             "UPDATE memory_entries
@@ -250,8 +251,7 @@ impl MemoryEntryRepository for SqliteMemoryEntryRepository {
     }
 
     async fn update(&self, entry: &MemoryEntry) -> AppResult<()> {
-        let conn = self.conn.lock()
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        let conn = self.conn.lock().await;
 
         let scope_paths_json = serde_json::to_string(&entry.scope_paths)
             .map_err(|e| AppError::Database(format!("Failed to serialize scope_paths: {}", e)))?;
@@ -289,8 +289,7 @@ impl MemoryEntryRepository for SqliteMemoryEntryRepository {
     }
 
     async fn delete(&self, id: &MemoryEntryId) -> AppResult<()> {
-        let conn = self.conn.lock()
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        let conn = self.conn.lock().await;
 
         let affected = conn.execute(
             "DELETE FROM memory_entries WHERE id = ?1",
@@ -310,8 +309,7 @@ impl MemoryEntryRepository for SqliteMemoryEntryRepository {
         project_id: &ProcessId,
         paths: &[String],
     ) -> AppResult<Vec<MemoryEntry>> {
-        let conn = self.conn.lock()
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        let conn = self.conn.lock().await;
 
         // Get all active memories for the project
         let mut stmt = conn.prepare(
