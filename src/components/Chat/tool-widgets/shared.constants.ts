@@ -162,7 +162,53 @@ export function parseToolResultAsLines(result: unknown): string[] {
     .filter(Boolean);
 }
 
-/** Shorten a file path by collapsing middle directories */
+/**
+ * Normalize a path to repo-relative display format.
+ * Converts backslashes to forward slashes, removes absolute prefixes,
+ * and anchors on known project segments (src, src-tauri, tests, etc.).
+ */
+export function normalizeDisplayPath(path: string): string {
+  if (!path) return path;
+
+  // Convert backslashes to forward slashes
+  let normalized = path.replace(/\\/g, "/");
+
+  // Remove leading /.../ or .../ artifacts
+  normalized = normalized.replace(/^\/?\.\.\.\//g, "");
+
+  // Known project segments to anchor on (order matters - check src-tauri before src)
+  const projectSegments = [
+    "src-tauri",
+    "src",
+    "tests",
+    "specs",
+    "scripts",
+    "docs",
+    "mockups",
+    "assets",
+    "public",
+  ];
+
+  // Find first known segment and extract from there
+  for (const segment of projectSegments) {
+    // Look for segment preceded by / or at start
+    const pattern = new RegExp(`(^|/)${segment.replace("-", "\\-")}/`);
+    const match = normalized.match(pattern);
+    if (match) {
+      const segmentIndex = match.index! + (match[1] ? 1 : 0);
+      return normalized.substring(segmentIndex);
+    }
+  }
+
+  // No known anchor found - return just the filename
+  const parts = normalized.split("/");
+  return parts[parts.length - 1] || normalized;
+}
+
+/**
+ * Shorten a file path by collapsing middle directories.
+ * Works on normalized paths only (never produces /.../...).
+ */
 export function shortenPath(path: string, maxLength: number): string {
   if (path.length <= maxLength) return path;
 
@@ -172,13 +218,152 @@ export function shortenPath(path: string, maxLength: number): string {
   // Keep first directory and last 2 segments
   const first = parts[0] || "";
   const last2 = parts.slice(-2).join("/");
-  const shortened = `${first}/.../${last2}`;
+  const shortened = `${first}/.../.../${last2}`;
 
-  if (shortened.length <= maxLength) return shortened;
+  // Remove duplicate .../ sequences
+  const cleaned = shortened.replace(/\/\.\.\.\/\.\.\.\//, "/.../");
+
+  if (cleaned.length <= maxLength) return cleaned;
 
   // Last resort: just show .../ + filename
   const filename = parts[parts.length - 1] || "";
-  return `.../${filename}`;
+  return `.../.../${filename}`.replace(/\.\.\.\/\.\.\.\//, ".../");
+}
+
+/**
+ * Parse search result output (Grep/Glob) into file paths.
+ * Handles path:line:match format, metadata lines, and no-match states.
+ */
+export function parseSearchResult(result: unknown): {
+  paths: string[];
+  isEmpty: boolean;
+  note?: string;
+} {
+  const lines = parseToolResultAsLines(result);
+
+  if (lines.length === 0) {
+    return { paths: [], isEmpty: false };
+  }
+
+  // Check for explicit no-match states
+  const noMatchPatterns = [
+    /^No matches found/i,
+    /^No files found/i,
+    /^No files matched/i,
+  ];
+
+  for (const line of lines) {
+    for (const pattern of noMatchPatterns) {
+      if (pattern.test(line)) {
+        return { paths: [], isEmpty: true, note: line };
+      }
+    }
+  }
+
+  // Metadata line patterns to skip
+  const metadataPatterns = [
+    /^Found \d+ files?/i,
+    /^Page \d+ of \d+/i,
+    /^\d+ matches? in \d+ files?/i,
+  ];
+
+  const pathSet = new Set<string>();
+
+  for (const line of lines) {
+    // Skip metadata lines
+    if (metadataPatterns.some((p) => p.test(line))) {
+      continue;
+    }
+
+    // Extract path from path:line:match format
+    const colonIndex = line.indexOf(":");
+    if (colonIndex > 0) {
+      const pathPart = line.substring(0, colonIndex);
+      if (pathPart && pathPart.includes("/") || pathPart.includes(".")) {
+        pathSet.add(normalizeDisplayPath(pathPart));
+        continue;
+      }
+    }
+
+    // Plain file path (glob output)
+    if (line.includes("/") || line.includes(".")) {
+      pathSet.add(normalizeDisplayPath(line));
+    }
+  }
+
+  return { paths: Array.from(pathSet), isEmpty: false };
+}
+
+/**
+ * Parse Read tool output, stripping line-number prefixes and extracting errors.
+ * Returns cleaned lines with inferred start line number.
+ */
+export function parseReadOutput(
+  result: unknown,
+  offset?: number,
+): {
+  lines: string[];
+  inferredStartLine: number;
+  error?: string;
+} {
+  // Extract text from MCP wrapper or plain string
+  let text = "";
+  if (typeof result === "string") {
+    text = result;
+  } else if (Array.isArray(result)) {
+    const first = result[0];
+    if (first && typeof first === "object" && "text" in first) {
+      text = String((first as { text: string }).text);
+    }
+  } else if (typeof result === "object" && result !== null && "text" in result) {
+    text = String((result as { text: string }).text);
+  }
+
+  // Return early for empty text
+  if (!text) {
+    return { lines: [], inferredStartLine: offset ?? 1 };
+  }
+
+  // Check for tool_use_error tags
+  const errorMatch = text.match(/<tool_use_error>(.*?)<\/tool_use_error>/s);
+  if (errorMatch && errorMatch[1]) {
+    return {
+      lines: [],
+      inferredStartLine: offset ?? 1,
+      error: errorMatch[1].trim(),
+    };
+  }
+
+  // Parse lines and strip prefixes
+  const rawLines = text.split("\n");
+  const lines: string[] = [];
+  let inferredStartLine = offset ?? 1;
+
+  // Regex to match line prefixes like "   500→"
+  const prefixRegex = /^\s*(\d+)→(.*)$/;
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i];
+    if (line === undefined) continue;
+
+    const match = prefixRegex.exec(line);
+
+    if (match && match[1] && match[2] !== undefined) {
+      // Extract line number from first match
+      if (i === 0 && !offset && match[1]) {
+        inferredStartLine = parseInt(match[1], 10);
+      }
+      // Add the content after arrow, preserving indentation
+      if (match[2] !== undefined) {
+        lines.push(match[2]);
+      }
+    } else {
+      // No prefix found, add line as-is
+      lines.push(line);
+    }
+  }
+
+  return { lines, inferredStartLine };
 }
 
 // ============================================================================
