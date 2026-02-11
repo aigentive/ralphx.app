@@ -212,6 +212,8 @@ export function ExecutionControlBar({
               data-testid="queued-count"
               className="text-[13px] cursor-pointer hover:underline transition-all"
               style={{ color: "hsl(220 10% 65%)" }}
+              aria-label="View queued tasks"
+              aria-haspopup="dialog"
             >
               {queuedLabel}{queuedCount}
             </button>
