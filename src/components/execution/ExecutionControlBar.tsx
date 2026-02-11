@@ -169,7 +169,7 @@ export function ExecutionControlBar({
         {/* Status Section (Left) */}
         <div
           className="flex items-center gap-4"
-          aria-label={`${runningCount} tasks running out of ${maxConcurrent}, ${queuedCount} queued, ${mergingCount} merging`}
+          aria-label={`${runningCount} tasks running out of ${maxConcurrent}, ${queuedCount} queued`}
         >
           {/* Animated Status Indicator */}
           <div
