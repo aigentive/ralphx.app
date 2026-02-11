@@ -360,10 +360,13 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
             return;
         }
 
+        // Structured retry trigger event
         tracing::info!(
+            event = "merge_retry_triggered",
             project_id = project_id,
             deferred_count = deferred_count,
-            "Found deferred merges to retry (will retry one at a time)"
+            trigger_reason = "blocker_exited_merge_workflow",
+            "Retry triggered for deferred merges (will retry one at a time)"
         );
 
         for task in deferred_tasks {
@@ -382,13 +385,15 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
                 })
                 .unwrap_or_else(|| ("unknown".to_string(), None));
 
+            // Structured retry attempt event
             tracing::info!(
+                event = "merge_retry_attempt",
                 task_id = task.id.as_str(),
                 project_id = project_id,
                 target_branch = %target_branch,
-                blocking_task_id = blocking_task_id,
+                blocking_task_id = blocking_task_id.as_deref().unwrap_or("unknown"),
                 remaining_deferred = deferred_count,
-                "Re-triggering deferred merge"
+                "Re-triggering deferred merge attempt"
             );
 
             // Clear the deferred flag
@@ -397,9 +402,11 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
             updated.touch();
             if let Err(e) = self.task_repo.update(&updated).await {
                 tracing::warn!(
+                    event = "merge_retry_failed",
                     error = %e,
                     task_id = task.id.as_str(),
-                    "Failed to clear merge_deferred metadata"
+                    reason = "metadata_update_failed",
+                    "Failed to clear merge_deferred metadata, skipping retry"
                 );
                 continue;
             }
