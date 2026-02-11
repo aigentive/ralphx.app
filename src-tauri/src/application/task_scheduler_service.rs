@@ -341,17 +341,53 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
             }
         };
 
-        for task in &all_tasks {
-            if task.internal_status != InternalStatus::PendingMerge {
-                continue;
-            }
-            if !has_merge_deferred_metadata(task) {
-                continue;
-            }
+        // Count deferred tasks for logging
+        let deferred_tasks: Vec<_> = all_tasks
+            .iter()
+            .filter(|t| {
+                t.internal_status == InternalStatus::PendingMerge
+                    && has_merge_deferred_metadata(t)
+            })
+            .collect();
+
+        let deferred_count = deferred_tasks.len();
+
+        if deferred_count == 0 {
+            tracing::debug!(
+                project_id = project_id,
+                "No deferred merges to retry"
+            );
+            return;
+        }
+
+        tracing::info!(
+            project_id = project_id,
+            deferred_count = deferred_count,
+            "Found deferred merges to retry (will retry one at a time)"
+        );
+
+        for task in deferred_tasks {
+            // Extract metadata for logging
+            let (target_branch, blocking_task_id) = task
+                .metadata
+                .as_ref()
+                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                .map(|val| {
+                    let target = val.get("target_branch")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
+                    let blocker = val.get("blocking_task_id")
+                        .and_then(|v| v.as_str());
+                    (target.to_string(), blocker.map(|s| s.to_string()))
+                })
+                .unwrap_or_else(|| ("unknown".to_string(), None));
 
             tracing::info!(
                 task_id = task.id.as_str(),
                 project_id = project_id,
+                target_branch = %target_branch,
+                blocking_task_id = blocking_task_id,
+                remaining_deferred = deferred_count,
                 "Re-triggering deferred merge"
             );
 

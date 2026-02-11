@@ -1072,3 +1072,167 @@ async fn test_on_exit_emits_for_all_agent_active_states() {
         );
     }
 }
+
+// ==================
+// Deferred Merge Retry Tests
+// ==================
+
+#[tokio::test]
+async fn test_exiting_pending_merge_triggers_retry_deferred_merges() {
+    use crate::domain::state_machine::mocks::MockTaskScheduler;
+
+    let scheduler = Arc::new(MockTaskScheduler::new());
+    let services = TaskServices::new_mock()
+        .with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
+
+    let context = create_context_with_services("task-1", "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+
+    let handler = TransitionHandler::new(&mut machine);
+
+    // Transition from PendingMerge to Merged (successful merge)
+    handler.on_exit(&State::PendingMerge, &State::Merged).await;
+
+    // Give the spawned task a moment to execute
+    tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
+
+    // Verify try_retry_deferred_merges was called
+    let calls = scheduler.get_calls();
+    let retry_calls: Vec<_> = calls.iter()
+        .filter(|c| c.method == "try_retry_deferred_merges")
+        .collect();
+
+    assert_eq!(retry_calls.len(), 1, "Expected exactly one try_retry_deferred_merges call");
+    assert_eq!(retry_calls[0].args, vec!["proj-1"], "Expected project_id to be passed");
+}
+
+#[tokio::test]
+async fn test_exiting_pending_merge_to_merge_incomplete_triggers_retry() {
+    use crate::domain::state_machine::mocks::MockTaskScheduler;
+
+    let scheduler = Arc::new(MockTaskScheduler::new());
+    let services = TaskServices::new_mock()
+        .with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
+
+    let context = create_context_with_services("task-1", "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+
+    let handler = TransitionHandler::new(&mut machine);
+
+    // Transition from PendingMerge to MergeIncomplete (failed merge)
+    handler.on_exit(&State::PendingMerge, &State::MergeIncomplete).await;
+
+    // Give the spawned task a moment to execute
+    tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
+
+    // Verify try_retry_deferred_merges was called even on failure
+    let calls = scheduler.get_calls();
+    let retry_calls: Vec<_> = calls.iter()
+        .filter(|c| c.method == "try_retry_deferred_merges")
+        .collect();
+
+    assert_eq!(retry_calls.len(), 1, "Expected retry even on merge_incomplete");
+    assert_eq!(retry_calls[0].args, vec!["proj-1"]);
+}
+
+#[tokio::test]
+async fn test_exiting_merging_to_merged_triggers_retry() {
+    use crate::domain::state_machine::mocks::MockTaskScheduler;
+
+    let scheduler = Arc::new(MockTaskScheduler::new());
+    let services = TaskServices::new_mock()
+        .with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
+
+    let context = create_context_with_services("task-1", "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+
+    let handler = TransitionHandler::new(&mut machine);
+
+    // Transition from Merging to Merged (manual merge completion)
+    handler.on_exit(&State::Merging, &State::Merged).await;
+
+    // Give the spawned task a moment to execute
+    tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
+
+    // Verify try_retry_deferred_merges was called
+    let calls = scheduler.get_calls();
+    let retry_calls: Vec<_> = calls.iter()
+        .filter(|c| c.method == "try_retry_deferred_merges")
+        .collect();
+
+    assert_eq!(retry_calls.len(), 1);
+    assert_eq!(retry_calls[0].args, vec!["proj-1"]);
+}
+
+#[tokio::test]
+async fn test_exiting_merging_to_merge_incomplete_triggers_retry() {
+    use crate::domain::state_machine::mocks::MockTaskScheduler;
+
+    let scheduler = Arc::new(MockTaskScheduler::new());
+    let services = TaskServices::new_mock()
+        .with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
+
+    let context = create_context_with_services("task-1", "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+
+    let handler = TransitionHandler::new(&mut machine);
+
+    // Transition from Merging to MergeIncomplete (merge failed during conflict resolution)
+    handler.on_exit(&State::Merging, &State::MergeIncomplete).await;
+
+    // Give the spawned task a moment to execute
+    tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
+
+    // Verify try_retry_deferred_merges was called
+    let calls = scheduler.get_calls();
+    let retry_calls: Vec<_> = calls.iter()
+        .filter(|c| c.method == "try_retry_deferred_merges")
+        .collect();
+
+    assert_eq!(retry_calls.len(), 1);
+    assert_eq!(retry_calls[0].args, vec!["proj-1"]);
+}
+
+#[tokio::test]
+async fn test_exiting_other_states_does_not_trigger_retry() {
+    use crate::domain::state_machine::mocks::MockTaskScheduler;
+
+    let scheduler = Arc::new(MockTaskScheduler::new());
+    let services = TaskServices::new_mock()
+        .with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
+
+    let context = create_context_with_services("task-1", "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+
+    let handler = TransitionHandler::new(&mut machine);
+
+    // Transition from Ready to Executing (normal execution start)
+    handler.on_exit(&State::Ready, &State::Executing).await;
+
+    // Give potential spawned tasks time (though none should spawn)
+    tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
+
+    // Verify try_retry_deferred_merges was NOT called for non-merge states
+    let calls = scheduler.get_calls();
+    let retry_calls: Vec<_> = calls.iter()
+        .filter(|c| c.method == "try_retry_deferred_merges")
+        .collect();
+
+    assert_eq!(retry_calls.len(), 0, "Expected no retry calls for non-merge state transitions");
+}
+
+#[tokio::test]
+async fn test_no_scheduler_does_not_panic_on_exit() {
+    // Create services without a scheduler
+    let services = TaskServices::new_mock();
+    let context = create_context_with_services("task-1", "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+
+    let handler = TransitionHandler::new(&mut machine);
+
+    // Should not panic when scheduler is None
+    handler.on_exit(&State::PendingMerge, &State::Merged).await;
+
+    // Wait a bit to ensure no panic from spawned task
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+}
