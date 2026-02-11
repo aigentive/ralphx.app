@@ -10,6 +10,7 @@ use tauri::{AppHandle, Emitter};
 use super::super::machine::State;
 use crate::application::{GitService, MergeAttemptResult};
 use crate::domain::entities::{
+    merge_progress_event::{map_command_to_phase, MergePhase, MergePhaseStatus, MergeProgressEvent},
     task_metadata::{
         MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
         MergeRecoverySource, MergeRecoveryState,
@@ -58,6 +59,15 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
         commit_sha = %commit_sha,
         old_status = ?old_status,
         "complete_merge_internal: completing merge"
+    );
+
+    // Emit finalize merge progress event
+    emit_merge_progress(
+        app_handle,
+        task_id_str,
+        MergePhase::Finalize,
+        MergePhaseStatus::Started,
+        "Finalizing merge and cleaning up".to_string(),
     );
 
     // 1. Append attempt_succeeded event to merge recovery metadata
@@ -144,6 +154,15 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
             }),
         );
     }
+
+    // Emit finalize success merge progress event
+    emit_merge_progress(
+        app_handle,
+        task_id_str,
+        MergePhase::Finalize,
+        MergePhaseStatus::Passed,
+        format!("Merge finalized successfully: {}", commit_sha),
+    );
 
     tracing::info!(
         task_id = task_id_str,
@@ -549,6 +568,25 @@ fn truncate_output(s: &str, max_len: usize) -> String {
     }
 }
 
+/// Emit a high-level merge progress event for UI display
+fn emit_merge_progress<R: tauri::Runtime>(
+    app_handle: Option<&AppHandle<R>>,
+    task_id: &str,
+    phase: MergePhase,
+    status: MergePhaseStatus,
+    message: String,
+) {
+    if let Some(handle) = app_handle {
+        let event = MergeProgressEvent::new(
+            task_id.to_string(),
+            phase,
+            status,
+            message,
+        );
+        let _ = handle.emit("task:merge_progress", event);
+    }
+}
+
 /// Load effective analysis, resolve template vars, and run all validate commands.
 ///
 /// Returns `None` if no analysis entries exist (backward compatible — skip validation).
@@ -606,6 +644,18 @@ pub(crate) async fn run_validation_commands(
 
     let mut log: Vec<ValidationLogEntry> = Vec::new();
 
+    // Check if there are any setup commands to run
+    let has_setup_commands = entries.iter().any(|e| !e.worktree_setup.is_empty());
+    if has_setup_commands {
+        emit_merge_progress(
+            app_handle,
+            task_id_str,
+            MergePhase::WorktreeSetup,
+            MergePhaseStatus::Started,
+            "Setting up worktree environment".to_string(),
+        );
+    }
+
     // Run worktree_setup commands first (symlinks, etc.) — non-fatal
     let setup_phase_start = std::time::Instant::now();
     let mut setup_count = 0;
@@ -620,6 +670,7 @@ pub(crate) async fn run_validation_commands(
         );
     }
 
+    let mut setup_had_failures = false;
     for entry in &entries {
         for cmd_str in &entry.worktree_setup {
             let resolved_cmd = resolve(cmd_str);
@@ -678,6 +729,7 @@ pub(crate) async fn run_validation_commands(
                     };
 
                     if !output.status.success() {
+                        setup_had_failures = true;
                         tracing::warn!(
                             command = %resolved_cmd,
                             stderr = %stderr_raw,
@@ -717,6 +769,7 @@ pub(crate) async fn run_validation_commands(
                     log.push(log_entry);
                 }
                 Ok(Err(e)) => {
+                    setup_had_failures = true;
                     // Command execution failed
                     let duration_ms = start.elapsed().as_millis() as u64;
                     tracing::warn!(
@@ -758,6 +811,7 @@ pub(crate) async fn run_validation_commands(
                 }
                 Err(e) => {
                     // tokio task join error (cancelled/panicked)
+                    setup_had_failures = true;
                     let duration_ms = start.elapsed().as_millis() as u64;
                     tracing::error!(
                         command = %resolved_cmd,
@@ -810,6 +864,27 @@ pub(crate) async fn run_validation_commands(
         );
     }
 
+    // Emit worktree setup completion event
+    if has_setup_commands {
+        if setup_had_failures {
+            emit_merge_progress(
+                app_handle,
+                task_id_str,
+                MergePhase::WorktreeSetup,
+                MergePhaseStatus::Failed,
+                "Worktree setup completed with warnings (non-fatal)".to_string(),
+            );
+        } else {
+            emit_merge_progress(
+                app_handle,
+                task_id_str,
+                MergePhase::WorktreeSetup,
+                MergePhaseStatus::Passed,
+                "Worktree setup completed successfully".to_string(),
+            );
+        }
+    }
+
     let mut failures = Vec::new();
     let mut ran_any = false;
 
@@ -856,6 +931,17 @@ pub(crate) async fn run_validation_commands(
                         command = %resolved_cmd,
                         "Skipping validation command (cached, SHA unchanged)"
                     );
+
+                    // Emit high-level merge progress event for cached result
+                    let phase = map_command_to_phase(&resolved_cmd);
+                    emit_merge_progress(
+                        app_handle,
+                        task_id_str,
+                        phase,
+                        MergePhaseStatus::Passed,
+                        format!("{} (cached)", resolved_cmd),
+                    );
+
                     let log_entry = ValidationLogEntry {
                         phase: "validate".to_string(),
                         command: resolved_cmd,
@@ -886,6 +972,16 @@ pub(crate) async fn run_validation_commands(
                     continue;
                 }
             }
+
+            // Emit high-level merge progress event
+            let phase = map_command_to_phase(&resolved_cmd);
+            emit_merge_progress(
+                app_handle,
+                task_id_str,
+                phase,
+                MergePhaseStatus::Started,
+                format!("Running {}", resolved_cmd),
+            );
 
             // Emit "running" event before execution
             if let Some(handle) = app_handle {
@@ -958,6 +1054,25 @@ pub(crate) async fn run_validation_commands(
                         tracing::info!(command = %resolved_cmd, "Post-merge validation command passed");
                     }
 
+                    // Emit high-level merge progress completion event
+                    if output.status.success() {
+                        emit_merge_progress(
+                            app_handle,
+                            task_id_str,
+                            phase,
+                            MergePhaseStatus::Passed,
+                            format!("{} passed", resolved_cmd),
+                        );
+                    } else {
+                        emit_merge_progress(
+                            app_handle,
+                            task_id_str,
+                            phase,
+                            MergePhaseStatus::Failed,
+                            format!("{} failed", resolved_cmd),
+                        );
+                    }
+
                     let status = if output.status.success() {
                         "success"
                     } else {
@@ -998,6 +1113,16 @@ pub(crate) async fn run_validation_commands(
                     // Command execution failed
                     let duration_ms = start.elapsed().as_millis() as u64;
                     tracing::error!(command = %resolved_cmd, error = %e, "Failed to execute validation command");
+
+                    // Emit high-level merge progress failure event
+                    emit_merge_progress(
+                        app_handle,
+                        task_id_str,
+                        phase,
+                        MergePhaseStatus::Failed,
+                        format!("Failed to execute: {}", e),
+                    );
+
                     failures.push(ValidationFailure {
                         command: resolved_cmd.clone(),
                         path: resolved_path.clone(),
@@ -1940,6 +2065,15 @@ impl<'a> super::TransitionHandler<'a> {
 
         let repo_path = Path::new(&project.working_directory);
 
+        // Emit merge progress event
+        emit_merge_progress(
+            self.machine.context.services.app_handle.as_ref(),
+            task_id_str,
+            MergePhase::ProgrammaticMerge,
+            MergePhaseStatus::Started,
+            format!("Merging {} into {}", source_branch, target_branch),
+        );
+
         tracing::info!(
             task_id = task_id_str,
             source_branch = %source_branch,
@@ -2336,6 +2470,15 @@ impl<'a> super::TransitionHandler<'a> {
                             "Programmatic merge in-repo succeeded (fast path)"
                         );
 
+                        // Emit merge progress success event
+                        emit_merge_progress(
+                            self.machine.context.services.app_handle.as_ref(),
+                            task_id_str,
+                            MergePhase::ProgrammaticMerge,
+                            MergePhaseStatus::Passed,
+                            format!("Merge completed: {}", commit_sha),
+                        );
+
                         // Post-merge validation gate: check mode + skip flag
                         let skip_validation = take_skip_validation_flag(&mut task);
                         let validation_mode = &project.merge_validation_mode;
@@ -2454,6 +2597,15 @@ impl<'a> super::TransitionHandler<'a> {
                             task_id = task_id_str,
                             conflict_count = conflict_files.len(),
                             "Merge in-repo has conflicts, transitioning to Merging"
+                        );
+
+                        // Emit merge progress conflict event
+                        emit_merge_progress(
+                            self.machine.context.services.app_handle.as_ref(),
+                            task_id_str,
+                            MergePhase::ProgrammaticMerge,
+                            MergePhaseStatus::Failed,
+                            format!("Merge conflicts detected in {} files", conflict_files.len()),
                         );
 
                         for file in &conflict_files {
@@ -2722,6 +2874,15 @@ impl<'a> super::TransitionHandler<'a> {
                             "Programmatic merge in worktree succeeded (fast path)"
                         );
 
+                        // Emit merge progress success event
+                        emit_merge_progress(
+                            self.machine.context.services.app_handle.as_ref(),
+                            task_id_str,
+                            MergePhase::ProgrammaticMerge,
+                            MergePhaseStatus::Passed,
+                            format!("Merge completed: {}", commit_sha),
+                        );
+
                         // Post-merge validation gate: check mode + skip flag
                         let skip_validation = take_skip_validation_flag(&mut task);
                         let validation_mode = &project.merge_validation_mode;
@@ -2857,6 +3018,15 @@ impl<'a> super::TransitionHandler<'a> {
                             conflict_count = conflict_files.len(),
                             merge_worktree_path = %merge_wt_path_str,
                             "Merge in worktree has conflicts, transitioning to Merging"
+                        );
+
+                        // Emit merge progress conflict event
+                        emit_merge_progress(
+                            self.machine.context.services.app_handle.as_ref(),
+                            task_id_str,
+                            MergePhase::ProgrammaticMerge,
+                            MergePhaseStatus::Failed,
+                            format!("Merge conflicts detected in {} files", conflict_files.len()),
                         );
 
                         for file in &conflict_files {
@@ -3119,6 +3289,15 @@ impl<'a> super::TransitionHandler<'a> {
                         "Programmatic merge succeeded (fast path)"
                     );
 
+                    // Emit merge progress success event
+                    emit_merge_progress(
+                        self.machine.context.services.app_handle.as_ref(),
+                        task_id_str,
+                        MergePhase::ProgrammaticMerge,
+                        MergePhaseStatus::Passed,
+                        format!("Merge completed: {}", commit_sha),
+                    );
+
                     // Post-merge validation gate: check mode + skip flag
                     let skip_validation = take_skip_validation_flag(&mut task);
                     let validation_mode = &project.merge_validation_mode;
@@ -3226,6 +3405,15 @@ impl<'a> super::TransitionHandler<'a> {
                         task_id = task_id_str,
                         conflict_count = conflict_files.len(),
                         "Programmatic merge failed: conflicts detected, transitioning to Merging"
+                    );
+
+                    // Emit merge progress conflict event
+                    emit_merge_progress(
+                        self.machine.context.services.app_handle.as_ref(),
+                        task_id_str,
+                        MergePhase::ProgrammaticMerge,
+                        MergePhaseStatus::Failed,
+                        format!("Merge conflicts detected in {} files", conflict_files.len()),
                     );
 
                     for file in &conflict_files {
