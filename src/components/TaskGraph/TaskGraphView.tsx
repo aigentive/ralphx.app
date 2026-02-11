@@ -291,6 +291,11 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   // Get active plan ID from plan store
   const activePlanId = usePlanStore(selectActivePlanId(projectId));
 
+  // Load active plan from backend on mount or project change
+  useEffect(() => {
+    usePlanStore.getState().loadActivePlan(projectId);
+  }, [projectId]);
+
   const { data: graphData, isLoading, error } = useTaskGraph(projectId, filters.showArchived, activePlanId);
   const {
     fitNodeInView,
@@ -1379,7 +1384,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   // Empty state (no tasks at all)
   if (!graphData || graphData.nodes.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex items-center justify-center h-full" data-testid="graph-empty-state">
         <div className="text-center">
           <p className="text-muted-foreground mb-2">No tasks to display</p>
           <p className="text-sm text-muted-foreground">
