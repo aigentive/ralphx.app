@@ -39,7 +39,11 @@ impl MergeRecoveryMetadata {
     }
 
     /// Append a new event and update last_state
-    pub fn append_event_with_state(&mut self, event: MergeRecoveryEvent, state: MergeRecoveryState) {
+    pub fn append_event_with_state(
+        &mut self,
+        event: MergeRecoveryEvent,
+        state: MergeRecoveryState,
+    ) {
         self.append_event(event);
         self.last_state = state;
     }
@@ -57,7 +61,9 @@ impl MergeRecoveryMetadata {
     /// Returns Ok(Some(metadata)) if merge_recovery key exists and is valid
     /// Returns Ok(None) if merge_recovery key doesn't exist
     /// Returns Err if JSON is invalid or merge_recovery value can't be parsed
-    pub fn from_task_metadata(metadata_json: Option<&str>) -> Result<Option<Self>, serde_json::Error> {
+    pub fn from_task_metadata(
+        metadata_json: Option<&str>,
+    ) -> Result<Option<Self>, serde_json::Error> {
         let Some(json_str) = metadata_json else {
             return Ok(None);
         };
@@ -75,7 +81,10 @@ impl MergeRecoveryMetadata {
     /// Update task's metadata JSON string with this merge recovery metadata
     /// Preserves other keys in the metadata object
     /// Returns updated JSON string
-    pub fn update_task_metadata(&self, existing_metadata: Option<&str>) -> Result<String, serde_json::Error> {
+    pub fn update_task_metadata(
+        &self,
+        existing_metadata: Option<&str>,
+    ) -> Result<String, serde_json::Error> {
         let mut metadata_obj = if let Some(json_str) = existing_metadata {
             serde_json::from_str::<serde_json::Value>(json_str)
                 .unwrap_or_else(|_| serde_json::json!({}))
@@ -412,10 +421,16 @@ mod tests {
     fn merge_recovery_event_kind_serialization() {
         let kinds = [
             (MergeRecoveryEventKind::Deferred, "deferred"),
-            (MergeRecoveryEventKind::AutoRetryTriggered, "auto_retry_triggered"),
+            (
+                MergeRecoveryEventKind::AutoRetryTriggered,
+                "auto_retry_triggered",
+            ),
             (MergeRecoveryEventKind::AttemptStarted, "attempt_started"),
             (MergeRecoveryEventKind::AttemptFailed, "attempt_failed"),
-            (MergeRecoveryEventKind::AttemptSucceeded, "attempt_succeeded"),
+            (
+                MergeRecoveryEventKind::AttemptSucceeded,
+                "attempt_succeeded",
+            ),
             (MergeRecoveryEventKind::ManualRetry, "manual_retry"),
         ];
 
@@ -442,9 +457,15 @@ mod tests {
     #[test]
     fn merge_recovery_reason_code_serialization() {
         let codes = [
-            (MergeRecoveryReasonCode::TargetBranchBusy, "target_branch_busy"),
+            (
+                MergeRecoveryReasonCode::TargetBranchBusy,
+                "target_branch_busy",
+            ),
             (MergeRecoveryReasonCode::GitError, "git_error"),
-            (MergeRecoveryReasonCode::ValidationFailed, "validation_failed"),
+            (
+                MergeRecoveryReasonCode::ValidationFailed,
+                "validation_failed",
+            ),
             (MergeRecoveryReasonCode::Unknown, "unknown"),
         ];
 
@@ -629,7 +650,10 @@ mod tests {
         let value: serde_json::Value = serde_json::from_str(&result).unwrap();
         assert!(value.get("merge_recovery").is_some());
         assert_eq!(value["merge_recovery"]["version"], 1);
-        assert_eq!(value["merge_recovery"]["events"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            value["merge_recovery"]["events"].as_array().unwrap().len(),
+            1
+        );
         assert_eq!(value["merge_recovery"]["last_state"], "deferred");
     }
 
@@ -679,7 +703,10 @@ mod tests {
         let result = meta.update_task_metadata(Some(existing)).unwrap();
 
         let value: serde_json::Value = serde_json::from_str(&result).unwrap();
-        assert_eq!(value["merge_recovery"]["events"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            value["merge_recovery"]["events"].as_array().unwrap().len(),
+            1
+        );
         assert_eq!(value["merge_recovery"]["last_state"], "retrying");
     }
 
