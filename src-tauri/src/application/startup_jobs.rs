@@ -39,10 +39,12 @@ fn is_startup_recovery_disabled_var(value: Option<&std::ffi::OsStr>) -> bool {
 }
 
 /// Returns true when startup recovery should be skipped for this process.
+/// Always returns false in test builds to avoid env-var leakage from outer processes.
 pub fn is_startup_recovery_disabled() -> bool {
-    is_startup_recovery_disabled_var(
-        std::env::var_os(RALPHX_DISABLE_STARTUP_RECOVERY_ENV).as_deref(),
-    )
+    #[cfg(test)]
+    { false }
+    #[cfg(not(test))]
+    { is_startup_recovery_disabled_var(std::env::var_os(RALPHX_DISABLE_STARTUP_RECOVERY_ENV).as_deref()) }
 }
 
 /// Runs startup jobs, primarily task resumption.

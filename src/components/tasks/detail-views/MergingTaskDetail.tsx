@@ -32,6 +32,8 @@ import {
   TwoColumnLayout,
 } from "./shared";
 import { useMergeValidationEvents } from "@/hooks/useMergeValidationEvents";
+import { useMergeProgressEvents } from "@/hooks/useMergeProgressEvents";
+import { MergePhaseTimeline } from "./MergePhaseTimeline";
 import type { Task } from "@/types/task";
 import type { MergeValidationStepEvent } from "@/types/events";
 
@@ -605,6 +607,9 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
   // Live validation events (only meaningful during active pending_merge)
   const liveSteps = useMergeValidationEvents(task.id);
 
+  // High-level merge progress phases
+  const mergePhases = useMergeProgressEvents(task.id);
+
   // Parse conflict files from task metadata if available
   const conflictFiles: string[] = (() => {
     if (!task.metadata) return [];
@@ -738,6 +743,25 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
           />
         </DetailCard>
       </section>
+
+      {/* Phase-level progress timeline (live, during programmatic merge) */}
+      {!isHistorical && isProgrammaticPhase && (
+        mergePhases.length > 0 ? (
+          <MergePhaseTimeline phases={mergePhases} />
+        ) : (
+          <section data-testid="merge-resuming-section">
+            <SectionTitle>Merge Progress</SectionTitle>
+            <DetailCard>
+              <div className="flex items-center gap-2.5 py-1.5">
+                <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#0a84ff" }} />
+                <span className="text-[13px] text-white/50">
+                  Waiting for merge progress...
+                </span>
+              </div>
+            </DetailCard>
+          </section>
+        )
+      )}
 
       {/* Validation Failures (only in recovery mode during agent phase) */}
       {isRecoveryAgent && validationFailures.length > 0 && (

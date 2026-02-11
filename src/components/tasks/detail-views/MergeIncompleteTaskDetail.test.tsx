@@ -11,12 +11,26 @@ import { invoke } from "@tauri-apps/api/core";
 import { MergeIncompleteTaskDetail } from "./MergeIncompleteTaskDetail";
 import type { Task, MergeRecoveryEvent } from "@/types/task";
 
-// Mock Tauri API
-vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(),
+// Create stable mock functions using vi.hoisted
+const { mockInvoke, mockSetTaskHistoryState } = vi.hoisted(() => ({
+  mockInvoke: vi.fn(),
+  mockSetTaskHistoryState: vi.fn(),
 }));
 
-const mockInvoke = vi.mocked(invoke);
+// Mock Tauri API
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: mockInvoke,
+}));
+
+// Mock useUiStore
+vi.mock("@/stores/uiStore", () => ({
+  useUiStore: vi.fn((selector) => {
+    if (selector) {
+      return selector({ setTaskHistoryState: mockSetTaskHistoryState });
+    }
+    return { setTaskHistoryState: mockSetTaskHistoryState };
+  }),
+}));
 
 function createTestTask(overrides?: Partial<Task>): Task {
   return {
@@ -69,6 +83,7 @@ function TestWrapper({ children }: { children: React.ReactNode }) {
 describe("MergeIncompleteTaskDetail", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockInvoke.mockResolvedValue(undefined);
   });
 
   it("renders container with status banner", () => {
@@ -439,5 +454,115 @@ describe("MergeIncompleteTaskDetail", () => {
         expect(screen.getByText("Failed to mark merge as resolved")).toBeInTheDocument();
       });
     });
+  });
+
+  it("exits history mode and optimistically updates to pending_merge when retry is clicked", async () => {
+    const user = userEvent.setup();
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+      },
+    });
+
+    // Set up initial task data in the query cache
+    const task = createTestTask();
+    queryClient.setQueryData(["tasks", "list", task.projectId], [task]);
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MergeIncompleteTaskDetail task={task} />
+      </QueryClientProvider>
+    );
+
+    // Click retry button
+    const retryButton = screen.getByTestId("retry-merge-button");
+    await user.click(retryButton);
+
+    // Verify setHistoryState(null) was called to exit history mode
+    expect(mockSetTaskHistoryState).toHaveBeenCalledWith(null);
+
+    // Verify the query cache was optimistically updated
+    await waitFor(() => {
+      const cachedTasks = queryClient.getQueryData<Task[]>(["tasks", "list", task.projectId]);
+      expect(cachedTasks).toBeDefined();
+      expect(cachedTasks?.[0]?.internalStatus).toBe("pending_merge");
+    });
+
+    // Verify backend command was invoked
+    expect(mockInvoke).toHaveBeenCalledWith("retry_merge", { taskId: task.id });
+  });
+
+  it("exits history mode and optimistically updates to pending_merge when retry skip validation is clicked", async () => {
+    const user = userEvent.setup();
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+      },
+    });
+
+    // Create task with validation failures to show skip validation button
+    const metadata = JSON.stringify({
+      validation_failures: [
+        { command: "npm run typecheck", exit_code: 1, stderr: "Type error" }
+      ]
+    });
+    const task = createTestTask({ metadata });
+    queryClient.setQueryData(["tasks", "list", task.projectId], [task]);
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MergeIncompleteTaskDetail task={task} />
+      </QueryClientProvider>
+    );
+
+    // Click retry skip validation button
+    const retrySkipButton = screen.getByTestId("retry-skip-validation-button");
+    await user.click(retrySkipButton);
+
+    // Verify setHistoryState(null) was called to exit history mode
+    expect(mockSetTaskHistoryState).toHaveBeenCalledWith(null);
+
+    // Verify the query cache was optimistically updated
+    await waitFor(() => {
+      const cachedTasks = queryClient.getQueryData<Task[]>(["tasks", "list", task.projectId]);
+      expect(cachedTasks).toBeDefined();
+      expect(cachedTasks?.[0]?.internalStatus).toBe("pending_merge");
+    });
+
+    // Verify backend command was invoked with skipValidation flag
+    expect(mockInvoke).toHaveBeenCalledWith("retry_merge", { taskId: task.id, skipValidation: true });
+  });
+
+  it("rolls back optimistic update when retry fails", async () => {
+    const user = userEvent.setup();
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+      },
+    });
+
+    // Mock invoke to fail
+    mockInvoke.mockRejectedValueOnce(new Error("Merge failed"));
+
+    const task = createTestTask();
+    queryClient.setQueryData(["tasks", "list", task.projectId], [task]);
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MergeIncompleteTaskDetail task={task} />
+      </QueryClientProvider>
+    );
+
+    // Click retry button
+    const retryButton = screen.getByTestId("retry-merge-button");
+    await user.click(retryButton);
+
+    // Wait for error handling
+    await waitFor(() => {
+      expect(screen.getByText("Merge failed")).toBeInTheDocument();
+    });
+
+    // Verify query was invalidated to rollback optimistic update
+    expect(mockInvoke).toHaveBeenCalledWith("retry_merge", { taskId: task.id });
   });
 });
