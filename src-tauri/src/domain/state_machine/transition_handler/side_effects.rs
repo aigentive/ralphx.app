@@ -3309,63 +3309,72 @@ impl<'a> super::TransitionHandler<'a> {
                         format!("Merge completed: {}", commit_sha),
                     );
 
-                    // Post-merge validation gate: check mode + skip flag
-                    let skip_validation = take_skip_validation_flag(&mut task);
-                    let validation_mode = &project.merge_validation_mode;
-                    if !skip_validation && *validation_mode != MergeValidationMode::Off {
-                        let source_sha = GitService::get_branch_sha(repo_path, &source_branch).ok();
-                        let cached_log = source_sha
-                            .as_deref()
-                            .and_then(|sha| extract_cached_validation(&task, sha));
-                        let app_handle_ref = self.machine.context.services.app_handle.as_ref();
-                        if let Some(validation) = run_validation_commands(
-                            &project,
-                            &task,
-                            repo_path,
-                            task_id_str,
-                            app_handle_ref,
-                            cached_log.as_deref(),
-                        )
-                        .await
-                        {
-                            if !validation.all_passed {
-                                if *validation_mode == MergeValidationMode::Warn {
-                                    tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode (local), proceeding with merge");
-                                    task.metadata = Some(format_validation_warn_metadata(
-                                        &validation.log,
-                                        &source_branch,
-                                        &target_branch,
-                                    ));
+                    if TEMP_SKIP_POST_MERGE_VALIDATION {
+                        tracing::warn!(
+                            task_id = task_id_str,
+                            "Post-merge validation temporarily disabled (global flag, local merge)"
+                        );
+                    } else {
+                        // Post-merge validation gate: check mode + skip flag
+                        let skip_validation = take_skip_validation_flag(&mut task);
+                        let validation_mode = &project.merge_validation_mode;
+                        if !skip_validation && *validation_mode != MergeValidationMode::Off {
+                            let source_sha =
+                                GitService::get_branch_sha(repo_path, &source_branch).ok();
+                            let cached_log = source_sha
+                                .as_deref()
+                                .and_then(|sha| extract_cached_validation(&task, sha));
+                            let app_handle_ref = self.machine.context.services.app_handle.as_ref();
+                            if let Some(validation) = run_validation_commands(
+                                &project,
+                                &task,
+                                repo_path,
+                                task_id_str,
+                                app_handle_ref,
+                                cached_log.as_deref(),
+                            )
+                            .await
+                            {
+                                if !validation.all_passed {
+                                    if *validation_mode == MergeValidationMode::Warn {
+                                        tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode (local), proceeding with merge");
+                                        task.metadata = Some(format_validation_warn_metadata(
+                                            &validation.log,
+                                            &source_branch,
+                                            &target_branch,
+                                        ));
+                                    } else {
+                                        self.handle_validation_failure(
+                                            &mut task,
+                                            &task_id,
+                                            task_id_str,
+                                            task_repo,
+                                            &validation.failures,
+                                            &validation.log,
+                                            &source_branch,
+                                            &target_branch,
+                                            repo_path,
+                                            "local",
+                                            validation_mode,
+                                        )
+                                        .await;
+                                        return;
+                                    }
                                 } else {
-                                    self.handle_validation_failure(
-                                        &mut task,
-                                        &task_id,
-                                        task_id_str,
-                                        task_repo,
-                                        &validation.failures,
-                                        &validation.log,
-                                        &source_branch,
-                                        &target_branch,
-                                        repo_path,
-                                        "local",
-                                        validation_mode,
-                                    )
-                                    .await;
-                                    return;
+                                    task.metadata = Some(
+                                        serde_json::json!({
+                                            "validation_log": validation.log,
+                                            "validation_source_sha": source_sha,
+                                            "source_branch": source_branch,
+                                            "target_branch": target_branch,
+                                        })
+                                        .to_string(),
+                                    );
                                 }
-                            } else {
-                                task.metadata = Some(
-                                    serde_json::json!({
-                                        "validation_log": validation.log,
-                                        "validation_source_sha": source_sha,
-                                        "source_branch": source_branch,
-                                        "target_branch": target_branch,
-                                    })
-                                    .to_string(),
-                                );
                             }
                         }
                     }
+
 
                     let app_handle = self.machine.context.services.app_handle.as_ref();
                     if let Err(e) = complete_merge_internal(
