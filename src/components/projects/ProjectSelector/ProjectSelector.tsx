@@ -153,14 +153,17 @@ export function ProjectSelector({ onNewProject, className = "", align = "center"
     );
   }, [fetchedProjects]);
 
-  // Resolve active project: prefer store (already synced), fall back to query data
-  // This handles the window where activeProjectId is hydrated from localStorage
-  // but the store's projects record hasn't been populated yet.
+  // Resolve active project for trigger label.
+  // Prefer fresh query data keyed by activeProjectId; fall back to store snapshot.
+  // This avoids stale trigger labels when the selected ID changed but store project
+  // records haven't caught up yet.
   const activeProject = useMemo(() => {
-    if (storeActiveProject) return storeActiveProject;
-    if (!activeProjectId || !fetchedProjects) return null;
-    return fetchedProjects.find((p) => p.id === activeProjectId) ?? null;
-  }, [storeActiveProject, activeProjectId, fetchedProjects]);
+    if (!activeProjectId) return null;
+    const fromQuery = fetchedProjects?.find((p) => p.id === activeProjectId);
+    if (fromQuery) return fromQuery;
+    if (storeActiveProject?.id === activeProjectId) return storeActiveProject;
+    return null;
+  }, [activeProjectId, fetchedProjects, storeActiveProject]);
 
   const handleSelectProject = useCallback(
     (projectId: string) => {

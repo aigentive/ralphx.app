@@ -349,7 +349,9 @@ export function PlanningView({
 
   // Accept Plan handler - accepts ALL proposals (no selection)
   const handleAcceptPlan = useCallback(async (targetColumn: string) => {
-    if (!session || !activeProjectId) return;
+    if (!session) return;
+    const projectId = activeProjectId || session.projectId;
+    if (!projectId) return;
 
     // Apply proposals to Kanban (returns void in type, but may actually return a promise)
     const applyResult = onApply({
@@ -366,7 +368,7 @@ export function PlanningView({
 
     // Set this session as the active plan after proposals are applied
     try {
-      await setActivePlan(activeProjectId, session.id, "ideation");
+      await setActivePlan(projectId, session.id, "ideation");
     } catch (error) {
       console.error("Failed to set active plan:", error);
       toast.error("Failed to set active plan");
@@ -378,9 +380,19 @@ export function PlanningView({
     setSelectedTaskId(taskId);
   }, [setCurrentView, setSelectedTaskId]);
 
-  const handleViewWork = useCallback(() => {
+  const handleViewWork = useCallback(async () => {
+    if (session) {
+      const projectId = activeProjectId || session.projectId;
+      if (projectId) {
+        try {
+          await setActivePlan(projectId, session.id, "ideation");
+        } catch (error) {
+          console.error("Failed to set active plan before navigating to graph:", error);
+        }
+      }
+    }
     setCurrentView("graph");
-  }, [setCurrentView]);
+  }, [session, activeProjectId, setActivePlan, setCurrentView]);
 
   const {
     highlightedProposalIds,
