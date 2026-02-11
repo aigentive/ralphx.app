@@ -42,6 +42,7 @@ export function PlanSelectorInline({
     (state) => state.activePlanByProject[projectId] ?? null
   );
   const planCandidates = usePlanStore((state) => state.planCandidates);
+  const loadCandidates = usePlanStore((state) => state.loadCandidates);
 
   // Find active plan details
   const activePlan = React.useMemo(
@@ -49,9 +50,20 @@ export function PlanSelectorInline({
     [planCandidates, activePlanId]
   );
 
+  // Ensure inline selector can resolve active plan title/stats without requiring
+  // the command palette to be opened first.
+  React.useEffect(() => {
+    if (!projectId) return;
+    if (!activePlanId) return;
+    if (activePlan) return;
+    void loadCandidates(projectId);
+  }, [projectId, activePlanId, activePlan, loadCandidates]);
+
   const handleOpenPalette = React.useCallback(() => {
     onOpenPalette(source);
   }, [onOpenPalette, source]);
+
+  const hasActivePlan = Boolean(activePlanId);
 
   return (
     <Button
@@ -60,21 +72,23 @@ export function PlanSelectorInline({
       onClick={handleOpenPalette}
       className={cn(
         "gap-1.5",
-        !activePlanId && "text-muted-foreground"
+        !hasActivePlan && "text-muted-foreground"
       )}
       data-testid="plan-selector-inline-trigger"
     >
-      {activePlan ? (
+      {hasActivePlan ? (
         <>
           <FileText className="h-4 w-4" />
           {!compact && (
             <>
               <span className="truncate max-w-[200px]">
-                {activePlan.title || "Untitled Plan"}
+                {activePlan?.title || "Untitled Plan"}
               </span>
-              <Badge variant="secondary" className="ml-1">
-                {activePlan.taskStats.incomplete}/{activePlan.taskStats.total}
-              </Badge>
+              {activePlan?.taskStats && (
+                <Badge variant="secondary" className="ml-1">
+                  {activePlan.taskStats.incomplete}/{activePlan.taskStats.total}
+                </Badge>
+              )}
             </>
           )}
           {compact && (
