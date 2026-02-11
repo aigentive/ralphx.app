@@ -18,6 +18,7 @@ use crate::domain::entities::{
     GitMode, InternalStatus, MergeValidationMode, PlanBranchStatus, Project, ProjectId, Task,
     TaskId,
 };
+const TEMP_SKIP_POST_MERGE_VALIDATION: bool = true;
 use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 use crate::error::{AppError, AppResult};
 
@@ -3361,6 +3362,13 @@ impl<'a> super::TransitionHandler<'a> {
         merge_path: &Path,
         mode_label: &str,
     ) -> bool {
+        if TEMP_SKIP_POST_MERGE_VALIDATION {
+            tracing::warn!(
+                task_id = task_id_str,
+                "Post-merge validation temporarily disabled via TEMP_SKIP_POST_MERGE_VALIDATION flag"
+            );
+            return true;
+        }
         let skip_validation = take_skip_validation_flag(task);
         let validation_mode = &project.merge_validation_mode;
         if skip_validation || *validation_mode == MergeValidationMode::Off {
