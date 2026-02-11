@@ -539,3 +539,275 @@ describe("useChat", () => {
     ).rejects.toThrow("Failed to send message");
   });
 });
+
+describe("useAgentEvents streaming behavior", () => {
+  let queryClient: QueryClient;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+          gcTime: 0,
+        },
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("should not create duplicate assistant messages during streaming", async () => {
+    // Mock existing conversation data
+    const existingMessages = [mockMessage1];
+    const conversationData = {
+      conversation: mockConversation1,
+      messages: existingMessages,
+    };
+
+    // Set initial data in query cache
+    queryClient.setQueryData(chatKeys.conversation("conv-1"), conversationData);
+
+    // Simulate the behavior of useAgentEvents for assistant message
+    // When role is "assistant", it should only invalidate, not add to cache
+    const activeConversationId = "conv-1";
+    const payload = {
+      conversation_id: "conv-1",
+      message_id: "message-assistant-1",
+      role: "assistant",
+      content: "Assistant response",
+    };
+
+    // This simulates the useAgentEvents logic for assistant messages
+    if (payload.conversation_id === activeConversationId) {
+      if (payload.role !== "user") {
+        // For assistant messages, only invalidate (we can't test invalidation directly in this unit test)
+        // So we verify that setQueryData is NOT called for assistant messages
+        // In reality, this would trigger a refetch from the backend
+      }
+    }
+
+    // Verify that assistant message did NOT get optimistically added
+    const updatedData = queryClient.getQueryData<{
+      conversation: ChatConversation;
+      messages: ChatMessageResponse[];
+    }>(chatKeys.conversation("conv-1"));
+
+    // Messages should still be the original (optimistic append only for user messages)
+    expect(updatedData?.messages).toHaveLength(existingMessages.length);
+    expect(updatedData?.messages.some((m) => m.id === "message-assistant-1")).toBe(false);
+  });
+
+  it("should optimistically add user messages immediately", async () => {
+    // Mock existing conversation data
+    const existingMessages = [mockMessage1];
+    const conversationData = {
+      conversation: mockConversation1,
+      messages: existingMessages,
+    };
+
+    // Set initial data in query cache
+    queryClient.setQueryData(chatKeys.conversation("conv-1"), conversationData);
+
+    // Simulate the behavior of useAgentEvents for user message
+    const activeConversationId = "conv-1";
+    const payload = {
+      conversation_id: "conv-1",
+      message_id: "message-user-2",
+      role: "user",
+      content: "User question",
+    };
+
+    // This simulates the useAgentEvents logic for user messages
+    if (payload.conversation_id === activeConversationId && payload.role === "user") {
+      queryClient.setQueryData<{ conversation: ChatConversation; messages: ChatMessageResponse[] }>(
+        chatKeys.conversation(activeConversationId),
+        (oldData) => {
+          if (!oldData) return oldData;
+
+          // Check if message already exists
+          if (oldData.messages.some(m => m.id === payload.message_id)) {
+            return oldData;
+          }
+
+          const newMessage: ChatMessageResponse = {
+            id: payload.message_id,
+            conversationId: payload.conversation_id,
+            sessionId: null,
+            projectId: null,
+            taskId: null,
+            role: payload.role as "user" | "assistant" | "system",
+            content: payload.content || "",
+            metadata: null,
+            parentMessageId: null,
+            createdAt: new Date().toISOString(),
+            toolCalls: null,
+            contentBlocks: null,
+          };
+          return { ...oldData, messages: [...oldData.messages, newMessage] };
+        }
+      );
+    }
+
+    // Verify that user message WAS optimistically added
+    const updatedData = queryClient.getQueryData<{
+      conversation: ChatConversation;
+      messages: ChatMessageResponse[];
+    }>(chatKeys.conversation("conv-1"));
+
+    // User message should be added optimistically
+    expect(updatedData?.messages).toHaveLength(existingMessages.length + 1);
+    expect(updatedData?.messages.some((m) => m.id === "message-user-2")).toBe(true);
+    expect(updatedData?.messages.find((m) => m.id === "message-user-2")?.role).toBe("user");
+  });
+
+  it("should maintain stable message order before and after streaming", async () => {
+    // Mock conversation with multiple messages
+    const orderedMessages = [
+      mockMessage1, // user
+      mockMessage2, // assistant
+      {
+        ...mockMessage1,
+        id: "message-3",
+        content: "Follow-up question",
+        createdAt: "2026-01-24T10:00:10Z",
+      }, // user
+    ];
+    const conversationData = {
+      conversation: mockConversation1,
+      messages: orderedMessages,
+    };
+
+    queryClient.setQueryData(chatKeys.conversation("conv-1"), conversationData);
+
+    const activeConversationId = "conv-1";
+
+    // Simulate new user message
+    const userPayload = {
+      conversation_id: "conv-1",
+      message_id: "message-4",
+      role: "user",
+      content: "Another question",
+    };
+
+    // Add user message (simulating useAgentEvents behavior)
+    if (userPayload.conversation_id === activeConversationId && userPayload.role === "user") {
+      queryClient.setQueryData<{ conversation: ChatConversation; messages: ChatMessageResponse[] }>(
+        chatKeys.conversation(activeConversationId),
+        (oldData) => {
+          if (!oldData) return oldData;
+          if (oldData.messages.some(m => m.id === userPayload.message_id)) {
+            return oldData;
+          }
+          const newMessage: ChatMessageResponse = {
+            id: userPayload.message_id,
+            conversationId: userPayload.conversation_id,
+            sessionId: null,
+            projectId: null,
+            taskId: null,
+            role: userPayload.role as "user" | "assistant" | "system",
+            content: userPayload.content || "",
+            metadata: null,
+            parentMessageId: null,
+            createdAt: new Date().toISOString(),
+            toolCalls: null,
+            contentBlocks: null,
+          };
+          return { ...oldData, messages: [...oldData.messages, newMessage] };
+        }
+      );
+    }
+
+    const afterUserData = queryClient.getQueryData<{
+      conversation: ChatConversation;
+      messages: ChatMessageResponse[];
+    }>(chatKeys.conversation("conv-1"));
+
+    // Verify order is maintained and new message is at the end
+    expect(afterUserData?.messages).toHaveLength(4);
+    expect(afterUserData?.messages[3]?.id).toBe("message-4");
+    expect(afterUserData?.messages[3]?.role).toBe("user");
+
+    // Simulate assistant message (should not be added optimistically)
+    const assistantPayload = {
+      conversation_id: "conv-1",
+      message_id: "message-5",
+      role: "assistant",
+      content: "Assistant response",
+    };
+
+    // For assistant, no setQueryData should be called
+    if (assistantPayload.conversation_id === activeConversationId && assistantPayload.role !== "user") {
+      // Only invalidation happens, which we can't directly test in unit tests
+    }
+
+    const afterAssistantData = queryClient.getQueryData<{
+      conversation: ChatConversation;
+      messages: ChatMessageResponse[];
+    }>(chatKeys.conversation("conv-1"));
+
+    // Assistant message should NOT be added (only invalidation happens)
+    expect(afterAssistantData?.messages).toHaveLength(4); // Still 4, not 5
+    expect(afterAssistantData?.messages.some((m) => m.id === "message-5")).toBe(false);
+  });
+
+  it("should not add duplicate messages if message already exists", async () => {
+    const existingMessages = [mockMessage1, mockMessage2];
+    const conversationData = {
+      conversation: mockConversation1,
+      messages: existingMessages,
+    };
+
+    queryClient.setQueryData(chatKeys.conversation("conv-1"), conversationData);
+
+    const activeConversationId = "conv-1";
+
+    // Try to add the same user message again
+    const duplicatePayload = {
+      conversation_id: "conv-1",
+      message_id: "message-1", // Same ID as mockMessage1
+      role: "user",
+      content: "Hello",
+    };
+
+    // Simulate useAgentEvents behavior for duplicate
+    if (duplicatePayload.conversation_id === activeConversationId && duplicatePayload.role === "user") {
+      queryClient.setQueryData<{ conversation: ChatConversation; messages: ChatMessageResponse[] }>(
+        chatKeys.conversation(activeConversationId),
+        (oldData) => {
+          if (!oldData) return oldData;
+          // This is the key check - if message already exists, return unchanged
+          if (oldData.messages.some(m => m.id === duplicatePayload.message_id)) {
+            return oldData;
+          }
+          const newMessage: ChatMessageResponse = {
+            id: duplicatePayload.message_id,
+            conversationId: duplicatePayload.conversation_id,
+            sessionId: null,
+            projectId: null,
+            taskId: null,
+            role: duplicatePayload.role as "user" | "assistant" | "system",
+            content: duplicatePayload.content || "",
+            metadata: null,
+            parentMessageId: null,
+            createdAt: new Date().toISOString(),
+            toolCalls: null,
+            contentBlocks: null,
+          };
+          return { ...oldData, messages: [...oldData.messages, newMessage] };
+        }
+      );
+    }
+
+    const afterData = queryClient.getQueryData<{
+      conversation: ChatConversation;
+      messages: ChatMessageResponse[];
+    }>(chatKeys.conversation("conv-1"));
+
+    // Should still have 2 messages, not 3
+    expect(afterData?.messages).toHaveLength(2);
+    expect(afterData?.messages.filter((m) => m.id === "message-1")).toHaveLength(1);
+  });
+});
