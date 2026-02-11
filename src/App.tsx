@@ -58,6 +58,7 @@ import { useNavCompactBreakpoint } from "@/hooks";
 import { api, getGitBranches, getGitDefaultBranch } from "@/lib/tauri";
 import { executionApi } from "@/api/execution";
 import { tasksApi } from "@/api/tasks";
+import type { SelectionSource } from "@/api/plan";
 import type { ProjectSettings } from "@/types/settings";
 import { DEFAULT_PROJECT_SETTINGS } from "@/types/settings";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -163,6 +164,8 @@ function AppContent() {
 
   // Plan quick switcher state
   const [isPlanQuickSwitcherOpen, setIsPlanQuickSwitcherOpen] = useState(false);
+  const [planQuickSwitcherSource, setPlanQuickSwitcherSource] =
+    useState<SelectionSource>("quick_switcher");
 
   // Ideation state
   const activeSession = useIdeationStore(selectActiveSession);
@@ -668,9 +671,13 @@ function AppContent() {
     }
   }, [isNavCompact, toggleGraphRightPanelCompactOpen, toggleGraphRightPanelUserOpen]);
 
-  const handleOpenPlanQuickSwitcher = useCallback(() => {
-    setIsPlanQuickSwitcherOpen(true);
-  }, []);
+  const handleOpenPlanQuickSwitcher = useCallback(
+    (source: SelectionSource = "quick_switcher") => {
+      setPlanQuickSwitcherSource(source);
+      setIsPlanQuickSwitcherOpen(true);
+    },
+    []
+  );
 
   useAppKeyboardShortcuts({
     currentView,
@@ -954,12 +961,16 @@ function AppContent() {
                     />
                   }
                 >
-                  <TaskBoard projectId={currentProjectId} />
+                  <TaskBoard
+                    projectId={currentProjectId}
+                    onOpenPlanQuickSwitcher={handleOpenPlanQuickSwitcher}
+                  />
                 </KanbanSplitLayout>
               )}
               {currentView === "graph" && (
                 <TaskGraphView
                   projectId={currentProjectId}
+                  onOpenPlanQuickSwitcher={handleOpenPlanQuickSwitcher}
                   footer={
                     <ExecutionControlBar
                       projectId={currentProjectId}
@@ -1093,6 +1104,7 @@ function AppContent() {
           projectId={currentProjectId}
           isOpen={isPlanQuickSwitcherOpen}
           onClose={() => setIsPlanQuickSwitcherOpen(false)}
+          selectionSource={planQuickSwitcherSource}
           {...(quickSwitcherAnchorSelector
             ? { anchorSelector: quickSwitcherAnchorSelector }
             : {})}
