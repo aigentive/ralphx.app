@@ -70,8 +70,6 @@ interface ChatMessageListProps {
   streamingTasks?: Map<string, StreamingTask>;
   /** Streaming assistant text from agent:chunk events */
   streamingText?: string;
-  /** Ref to scroll to */
-  messagesEndRef: React.RefObject<HTMLDivElement | null>;
   /** Optional timestamp to scroll to (for history mode) - scrolls to first message at or after this time */
   scrollToTimestamp?: string | null;
 }
@@ -92,7 +90,6 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       streamingToolCalls,
       streamingTasks,
       streamingText,
-      messagesEndRef,
       scrollToTimestamp,
     },
     ref
@@ -126,6 +123,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     // Unified auto-scroll hook
     const isStreaming = isSending || isAgentRunning;
     const {
+      messagesEndRef,
       isAtBottom,
       scrollToBottom,
       handleAtBottomStateChange,
