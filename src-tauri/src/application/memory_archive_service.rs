@@ -365,7 +365,7 @@ mod tests {
 
     #[test]
     fn test_format_memory_snapshot() {
-        let project_id = ProjectId::from("test-project");
+        let project_id = ProjectId::from_string("test-project".to_string());
         let entry = MemoryEntry::new(
             project_id,
             MemoryBucket::ImplementationDiscoveries,
@@ -398,7 +398,7 @@ mod tests {
     #[test]
     fn test_format_memory_snapshot_deterministic() {
         // Test that formatting is deterministic
-        let project_id = ProjectId::from("test-project");
+        let project_id = ProjectId::from_string("test-project".to_string());
         let entry = MemoryEntry::new(
             project_id,
             MemoryBucket::ArchitecturePatterns,
@@ -433,7 +433,7 @@ mod tests {
     #[test]
     fn test_format_project_snapshot_deterministic() {
         // Test that project snapshots are deterministic and group by bucket
-        let project_id = ProjectId::from("test-project");
+        let project_id = ProjectId::from_string("test-project".to_string());
 
         let entry1 = MemoryEntry::new(
             project_id.clone(),
@@ -487,7 +487,7 @@ mod tests {
     #[test]
     fn test_format_rule_snapshot_sorting() {
         // Test that rule snapshots sort entries by ID for determinism
-        let project_id = ProjectId::from("test-project");
+        let project_id = ProjectId::from_string("test-project".to_string());
 
         let entry1 = MemoryEntry::new(
             project_id.clone(),

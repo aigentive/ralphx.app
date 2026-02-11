@@ -461,17 +461,17 @@ impl MemoryArchiveRepository for SqliteMemoryArchiveRepository {
 mod tests {
     use super::*;
     use crate::domain::entities::ArchiveJobPayload;
-    use crate::infrastructure::sqlite::connection::create_in_memory_connection;
+    use crate::infrastructure::sqlite::connection::open_memory_connection;
 
     async fn setup_test_repo() -> SqliteMemoryArchiveRepository {
-        let conn = create_in_memory_connection().unwrap();
+        let conn = open_memory_connection().unwrap();
         SqliteMemoryArchiveRepository::new(conn)
     }
 
     #[tokio::test]
     async fn test_create_and_get_job() {
         let repo = setup_test_repo().await;
-        let project_id = ProjectId::from("test-project");
+        let project_id = ProjectId::from_string("test-project".to_string());
         let payload = ArchiveJobPayload::memory_snapshot("mem_123");
         let job = MemoryArchiveJob::new(project_id.clone(), ArchiveJobType::MemorySnapshot, payload);
 
@@ -486,7 +486,7 @@ mod tests {
     #[tokio::test]
     async fn test_claim_next() {
         let repo = setup_test_repo().await;
-        let project_id = ProjectId::from("test-project");
+        let project_id = ProjectId::from_string("test-project".to_string());
 
         // Create two jobs
         let job1 = MemoryArchiveJob::new(
@@ -525,7 +525,7 @@ mod tests {
     #[tokio::test]
     async fn test_update_job_status() {
         let repo = setup_test_repo().await;
-        let project_id = ProjectId::from("test-project");
+        let project_id = ProjectId::from_string("test-project".to_string());
         let mut job = MemoryArchiveJob::new(
             project_id,
             ArchiveJobType::MemorySnapshot,
@@ -552,7 +552,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_by_status() {
         let repo = setup_test_repo().await;
-        let project_id = ProjectId::from("test-project");
+        let project_id = ProjectId::from_string("test-project".to_string());
 
         let mut job1 = MemoryArchiveJob::new(
             project_id.clone(),
@@ -582,7 +582,7 @@ mod tests {
     #[tokio::test]
     async fn test_count_claimable() {
         let repo = setup_test_repo().await;
-        let project_id = ProjectId::from("test-project");
+        let project_id = ProjectId::from_string("test-project".to_string());
 
         assert_eq!(repo.count_claimable().await.unwrap(), 0);
 

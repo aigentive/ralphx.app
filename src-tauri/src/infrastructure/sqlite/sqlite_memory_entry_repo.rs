@@ -248,9 +248,6 @@ impl MemoryEntryRepository for SqliteMemoryEntryRepository {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::infrastructure::sqlite::connection::create_in_memory_connection;
-
     // Note: Tests would require full schema setup including memory_entries table
     // These are integration tests that would run against a migrated test database
 }

@@ -250,7 +250,7 @@ mod tests {
 
     #[test]
     fn test_memory_entry_lifecycle() {
-        let project_id = ProjectId::from("test-project");
+        let project_id = ProjectId::from_string("test-project".to_string());
         let mut entry = MemoryEntry::new(
             project_id,
             MemoryBucket::ImplementationDiscoveries,
@@ -272,7 +272,7 @@ mod tests {
 
     #[test]
     fn test_scope_paths_json_roundtrip() {
-        let project_id = ProjectId::from("test-project");
+        let project_id = ProjectId::from_string("test-project".to_string());
         let entry = MemoryEntry::new(
             project_id,
             MemoryBucket::ArchitecturePatterns,
