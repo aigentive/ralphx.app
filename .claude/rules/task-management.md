@@ -1,3 +1,10 @@
+---
+paths:
+  - "src/**/*.{ts,tsx,js,jsx}"
+  - "src-tauri/src/**/*.rs"
+  - "ralphx-plugin/**/*.{ts,js}"
+---
+
 # Task Management Enforcement
 
 ## When to Use Task Tools
