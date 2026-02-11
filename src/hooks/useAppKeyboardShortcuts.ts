@@ -2,7 +2,7 @@
  * useAppKeyboardShortcuts - Keyboard shortcuts for view switching and chat toggle
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import type { ViewType } from "@/types/chat";
 
@@ -33,6 +33,8 @@ export function useAppKeyboardShortcuts({
   closeWelcomeOverlay,
   welcomeOverlayReturnView,
 }: UseAppKeyboardShortcutsProps) {
+  // State for plan quick switcher
+  const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
   // Keyboard shortcuts for view switching (Cmd+1-5 for main views, Cmd+K for chat)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -177,6 +179,23 @@ export function useAppKeyboardShortcuts({
             toggleGraphRightPanel();
             break;
           }
+          case "p":
+          case "P": {
+            // Cmd+Shift+P: Open plan quick switcher
+            if (!e.shiftKey) {
+              return;
+            }
+            const activeEl = document.activeElement;
+            if (
+              activeEl instanceof HTMLInputElement ||
+              activeEl instanceof HTMLTextAreaElement
+            ) {
+              return;
+            }
+            e.preventDefault();
+            setQuickSwitcherOpen(true);
+            break;
+          }
         }
       }
     };
@@ -207,4 +226,9 @@ export function useAppKeyboardShortcuts({
       });
     };
   }, []);
+
+  return {
+    quickSwitcherOpen,
+    setQuickSwitcherOpen,
+  };
 }
