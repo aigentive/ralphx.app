@@ -420,11 +420,6 @@ export function TaskBoard({ projectId, ideationSessionId: ideationSessionIdProp 
               </div>
             )}
 
-            {/* Plan Selector - compact mode (only when a plan is already selected) */}
-            {activePlanId && (
-              <PlanSelectorInline projectId={projectId} compact source="kanban_inline" />
-            )}
-
             {/* Show Archived toggle - simple Tahoe style */}
             {archivedCount > 0 && (
               <Toggle
@@ -482,6 +477,13 @@ export function TaskBoard({ projectId, ideationSessionId: ideationSessionIdProp 
             WebkitOverflowScrolling: "touch",
           }}
         >
+          {/* Plan selector control (same centered treatment as Graph) */}
+          {activePlanId && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
+              <PlanSelectorInline projectId={projectId} source="kanban_inline" />
+            </div>
+          )}
+
           {/* Show no plan state when no active plan is selected */}
           {showNoPlanState ? (
             <div className="flex-1 flex items-center justify-center">

@@ -217,6 +217,30 @@ describe("StepProgressBar", () => {
       // Should not contain text summary
       expect(screen.queryByText("3/7")).not.toBeInTheDocument();
     });
+
+    it("caps visible dots and shows +X more for large step counts", async () => {
+      const manySteps: StepProgressSummary = {
+        ...mockProgress,
+        total: 28,
+        completed: 10,
+        skipped: 2,
+        failed: 1,
+        inProgress: 1,
+        pending: 14,
+      };
+      mockApi.steps.getProgress.mockResolvedValue(manySteps);
+
+      const { container } = render(<StepProgressBar taskId="task-1" compact />, {
+        wrapper: createWrapper(),
+      });
+
+      await vi.waitFor(() => {
+        const dots = container.querySelectorAll(".h-1\\.5.w-1\\.5.rounded-full");
+        expect(dots).toHaveLength(19);
+      });
+
+      expect(screen.getByText("+9 more")).toBeInTheDocument();
+    });
   });
 
   describe("Full Mode", () => {
