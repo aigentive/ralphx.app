@@ -2,8 +2,10 @@
  * Tests for IntegratedChatPanel
  *
  * Covers:
- * - Stop button visibility follows isAgentRunning (not isExecutionMode alone)
- * - Status badge "Agent responding..." reflects live run state
+ * - Stop button visibility follows isAgentRunning (live run state only)
+ * - Stop button hidden in execution mode without live agent run
+ * - Status badge "Agent responding..." reflects live run state, not workflow status
+ * - History mode disables stop button and status badge
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -217,21 +219,19 @@ describe("IntegratedChatPanel", () => {
       expect(screen.getByTestId("chat-input-stop")).toBeInTheDocument();
     });
 
-    it("shows Stop button in execution mode even without live agent run (documents isExecutionMode bug)", () => {
+    it("hides Stop button in execution mode when no live agent run is active", () => {
       // Provide a task with "executing" status so isExecutionMode becomes true
       mockTasks = [{ id: "task-1", internalStatus: "executing" }];
 
-      // The component at line 695: isAgentRunning={isExecutionMode || isAgentRunning}
-      // When isExecutionMode is true but no agent is running, Stop still shows.
-      // This documents the current (buggy) behavior.
+      // After fix: isAgentRunning prop uses live run state only, not isExecutionMode
       render(
         <TestWrapper>
           <IntegratedChatPanel projectId="project-1" />
         </TestWrapper>
       );
 
-      // Bug: Stop button is visible because isExecutionMode is used as run signal
-      expect(screen.getByTestId("chat-input-stop")).toBeInTheDocument();
+      // Stop button should NOT show without a live agent run
+      expect(screen.queryByTestId("chat-input-stop")).not.toBeInTheDocument();
     });
 
     it("hides Stop button when agent is not running and not in execution mode", () => {
@@ -340,7 +340,7 @@ describe("IntegratedChatPanel", () => {
       expect(screen.queryByText("Worker running...")).not.toBeInTheDocument();
     });
 
-    it("shows 'Worker running...' in execution mode even without live agent run (documents bug)", () => {
+    it("does not show 'Worker running...' in execution mode without live agent run", () => {
       // Provide a task with "executing" status so isExecutionMode becomes true
       mockTasks = [{ id: "task-1", internalStatus: "executing" }];
       // Do NOT set isAgentRunning - no live agent run
@@ -351,9 +351,9 @@ describe("IntegratedChatPanel", () => {
         </TestWrapper>
       );
 
-      // Bug: isAgentActive includes isExecutionMode, so badge shows even without live run
-      // Line 538: isAgentActive = !isHistoryMode && (isSending || isAgentRunning || isExecutionMode)
-      expect(screen.getByText("Worker running...")).toBeInTheDocument();
+      // After fix: isAgentActive only uses isSending || isAgentRunning (live run state)
+      // isExecutionMode no longer used as activity signal
+      expect(screen.queryByText("Worker running...")).not.toBeInTheDocument();
     });
   });
 
