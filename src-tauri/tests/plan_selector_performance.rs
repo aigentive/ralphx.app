@@ -229,7 +229,7 @@ async fn test_ranking_algorithm_performance_150_plans() {
     let mut test_data = Vec::new();
     for i in 0..150 {
         let days_ago = (i * 60) / 150;
-        let converted_at = base - Duration::days(days_ago as i64);
+        let converted_at = base - Duration::days(days_ago);
         let selected_count = (i % 31) as u32;
         let last_selected_at = if selected_count > 0 {
             Some(base - Duration::days(1 + (i % 42)))
@@ -278,7 +278,7 @@ async fn test_ranking_algorithm_performance_150_plans() {
 
     // Verify all scores are in valid range
     for score in scores {
-        assert!(score >= 0.0 && score <= 1.0, "Score should be in [0, 1]");
+        assert!((0.0..=1.0).contains(&score), "Score should be in [0, 1]");
     }
 }
 
@@ -530,7 +530,7 @@ async fn test_score_breakdown_with_150_plans() {
     let mut breakdowns = Vec::new();
     for i in 0..150 {
         let days_ago = (i * 60) / 150;
-        let converted_at = base - Duration::days(days_ago as i64);
+        let converted_at = base - Duration::days(days_ago);
         let selected_count = (i % 31) as u32;
         let last_selected_at = if selected_count > 0 {
             Some(base - Duration::days(1 + (i % 42)))
