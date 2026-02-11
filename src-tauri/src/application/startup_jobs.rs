@@ -31,6 +31,18 @@ use crate::domain::state_machine::services::TaskScheduler;
 
 use super::TaskTransitionService;
 
+/// Environment variable that disables startup recovery mechanisms when present.
+pub const RALPHX_DISABLE_STARTUP_RECOVERY_ENV: &str = "RALPHX_DISABLE_STARTUP_RECOVERY";
+
+fn is_startup_recovery_disabled_var(value: Option<&std::ffi::OsStr>) -> bool {
+    value.is_some()
+}
+
+/// Returns true when startup recovery should be skipped for this process.
+pub fn is_startup_recovery_disabled() -> bool {
+    is_startup_recovery_disabled_var(std::env::var_os(RALPHX_DISABLE_STARTUP_RECOVERY_ENV).as_deref())
+}
+
 /// Runs startup jobs, primarily task resumption.
 ///
 /// Finds all tasks that were in agent-active states when the app shut down
@@ -135,6 +147,14 @@ impl<R: Runtime> StartupJobRunner<R> {
     /// respawn the appropriate agent.
     pub async fn run(&self) {
         debug!("StartupJobRunner::run() called");
+
+        if is_startup_recovery_disabled() {
+            info!(
+                env_var = RALPHX_DISABLE_STARTUP_RECOVERY_ENV,
+                "Startup recovery disabled via environment; skipping startup jobs"
+            );
+            return;
+        }
 
         // Kill orphaned MCP server node processes from previous session.
         // Pattern-based cleanup catches leaked processes that escaped PID tracking
