@@ -12,6 +12,9 @@ use tracing::info;
 /// Maximum time to wait for a single line of stdout output before killing the agent.
 /// If no output is received for this duration, the agent is considered stuck.
 const LINE_READ_TIMEOUT: Duration = Duration::from_secs(300); // 5 minutes
+/// Maximum time to tolerate stdout traffic with no parseable stream events.
+/// Prevents "alive but no UI updates" stalls when output format drifts.
+const PARSE_STALL_TIMEOUT: Duration = Duration::from_secs(120); // 2 minutes
 
 use crate::domain::entities::{
     ActivityEvent, ActivityEventType, ChatContextType, ChatConversationId, ChatMessageId, TaskId,
@@ -124,6 +127,7 @@ pub async fn process_stream_background<R: Runtime>(
     let mut debug_lines: Vec<String> = Vec::new();
     let mut lines_seen: usize = 0;
     let mut lines_parsed: usize = 0;
+    let mut last_parsed_at = std::time::Instant::now();
 
     // Debounced flush for incremental persistence (every 2 seconds)
     let mut last_flush = std::time::Instant::now();
@@ -165,6 +169,7 @@ pub async fn process_stream_background<R: Runtime>(
         }
         if let Some(parsed) = StreamProcessor::parse_line(&line) {
             lines_parsed += 1;
+            last_parsed_at = std::time::Instant::now();
             let stream_events = processor.process_parsed_line(parsed);
 
             for event in stream_events {
@@ -568,6 +573,32 @@ pub async fn process_stream_background<R: Runtime>(
                     }
                 }
             }
+        } else if lines_seen > 0 && last_parsed_at.elapsed() >= PARSE_STALL_TIMEOUT {
+            let sample = debug_lines
+                .iter()
+                .rev()
+                .take(5)
+                .cloned()
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect::<Vec<_>>()
+                .join("\n");
+            tracing::warn!(
+                conversation_id = %conversation_id_str,
+                lines_seen,
+                lines_parsed,
+                stall_secs = PARSE_STALL_TIMEOUT.as_secs(),
+                "Stream parse stall: received stdout but no parseable events, killing agent"
+            );
+            let _ = child.kill().await;
+            return Err(format!(
+                "Agent stream stalled: {}s without parseable events (lines_seen={}, lines_parsed={}). Sample:\n{}",
+                PARSE_STALL_TIMEOUT.as_secs(),
+                lines_seen,
+                lines_parsed,
+                sample
+            ));
         }
 
         // Debounced flush: persist accumulated content every 2s for crash recovery
