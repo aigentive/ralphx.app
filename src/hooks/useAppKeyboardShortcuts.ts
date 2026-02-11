@@ -226,4 +226,5 @@ export function useAppKeyboardShortcuts({
       });
     };
   }, []);
+
 }
