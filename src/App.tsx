@@ -72,6 +72,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/sonner";
 import { ScreenshotGalleryTestPage } from "@/test-pages/ScreenshotGalleryTest";
+import { PlanQuickSwitcherPalette } from "@/components/plan/PlanQuickSwitcherPalette";
 
 // Local storage key for persisting chat panel width
 const CHAT_WIDTH_STORAGE_KEY = "ralphx-chat-panel-width";
@@ -1017,6 +1018,12 @@ function AppContent() {
 
       {/* Confirmation Dialog */}
       <ConfirmationDialog {...confirmationDialogProps} />
+
+      {/* Plan Quick Switcher Palette - Cmd+Shift+P */}
+      <PlanQuickSwitcherPalette
+        isOpen={quickSwitcherOpen}
+        onClose={() => setQuickSwitcherOpen(false)}
+      />
 
       {/* Toast notifications */}
       <Toaster position="bottom-left" offset={toastBottomOffset} />
