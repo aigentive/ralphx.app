@@ -1367,4 +1367,159 @@ mod tests {
             "Task in project 1 should not be touched when retrying for project 2"
         );
     }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Active Project Scoping Tests (Phase 82)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    #[tokio::test]
+    async fn test_scheduler_only_schedules_active_project_tasks() {
+        let (execution_state, app_state) = setup_test_state().await;
+        execution_state.set_max_concurrent(10);
+
+        // Create two projects
+        let project1 = Project::new("Project 1".to_string(), "/test/path1".to_string());
+        app_state
+            .project_repo
+            .create(project1.clone())
+            .await
+            .unwrap();
+
+        let project2 = Project::new("Project 2".to_string(), "/test/path2".to_string());
+        app_state
+            .project_repo
+            .create(project2.clone())
+            .await
+            .unwrap();
+
+        // Create older Ready task in project 1
+        let mut p1_task = Task::new(project1.id.clone(), "Project 1 Task".to_string());
+        p1_task.internal_status = InternalStatus::Ready;
+        app_state
+            .task_repo
+            .create(p1_task.clone())
+            .await
+            .unwrap();
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Create newer Ready task in project 2 (chronologically newer but should be ignored)
+        let mut p2_task = Task::new(project2.id.clone(), "Project 2 Task".to_string());
+        p2_task.internal_status = InternalStatus::Ready;
+        app_state
+            .task_repo
+            .create(p2_task.clone())
+            .await
+            .unwrap();
+
+        let scheduler = build_scheduler(&app_state, &execution_state);
+
+        // Set active project to project 2 only
+        scheduler
+            .set_active_project(Some(project2.id.clone()))
+            .await;
+
+        // Schedule - should only pick task from project 2 (active project)
+        scheduler.try_schedule_ready_tasks().await;
+
+        // Project 1 task should still be Ready (not scheduled, not active project)
+        let updated_p1 = app_state
+            .task_repo
+            .get_by_id(&p1_task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            updated_p1.internal_status,
+            InternalStatus::Ready,
+            "Project 1 task should NOT be scheduled (not active project)"
+        );
+
+        // Project 2 task should be Executing (scheduled from active project)
+        let updated_p2 = app_state
+            .task_repo
+            .get_by_id(&p2_task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            updated_p2.internal_status,
+            InternalStatus::Executing,
+            "Project 2 task should be scheduled (active project)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_scheduler_schedules_all_projects_when_no_active_project() {
+        let (execution_state, app_state) = setup_test_state().await;
+        execution_state.set_max_concurrent(10);
+
+        // Create two projects
+        let project1 = Project::new("Project 1".to_string(), "/test/path1".to_string());
+        app_state
+            .project_repo
+            .create(project1.clone())
+            .await
+            .unwrap();
+
+        let project2 = Project::new("Project 2".to_string(), "/test/path2".to_string());
+        app_state
+            .project_repo
+            .create(project2.clone())
+            .await
+            .unwrap();
+
+        // Create older Ready task in project 2
+        let mut p2_task = Task::new(project2.id.clone(), "Project 2 Task".to_string());
+        p2_task.internal_status = InternalStatus::Ready;
+        app_state
+            .task_repo
+            .create(p2_task.clone())
+            .await
+            .unwrap();
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Create newer Ready task in project 1
+        let mut p1_task = Task::new(project1.id.clone(), "Project 1 Task".to_string());
+        p1_task.internal_status = InternalStatus::Ready;
+        app_state
+            .task_repo
+            .create(p1_task.clone())
+            .await
+            .unwrap();
+
+        let scheduler = build_scheduler(&app_state, &execution_state);
+
+        // No active project set (default is None)
+        assert_eq!(scheduler.get_active_project().await, None);
+
+        // Schedule - should schedule tasks across all projects
+        scheduler.try_schedule_ready_tasks().await;
+
+        // Both tasks should be Executing (no active project filter, both ready)
+        let updated_p2 = app_state
+            .task_repo
+            .get_by_id(&p2_task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            updated_p2.internal_status,
+            InternalStatus::Executing,
+            "Project 2 task should be scheduled when no active project"
+        );
+
+        let updated_p1 = app_state
+            .task_repo
+            .get_by_id(&p1_task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            updated_p1.internal_status,
+            InternalStatus::Executing,
+            "Project 1 task should also be scheduled when no active project (max_concurrent=10)"
+        );
+    }
 }
