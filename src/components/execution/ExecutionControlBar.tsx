@@ -23,8 +23,6 @@ interface ExecutionControlBarProps {
   maxConcurrent: number;
   /** Number of queued (planned) tasks */
   queuedCount: number;
-  /** Number of tasks in the merge pipeline */
-  mergingCount?: number;
   /** Whether execution is paused */
   isPaused: boolean;
   /** Whether a control action is in progress */
@@ -65,7 +63,6 @@ export function ExecutionControlBar({
   runningCount,
   maxConcurrent,
   queuedCount,
-  mergingCount = 0,
   isPaused,
   isLoading = false,
   currentTaskName,
@@ -111,7 +108,7 @@ export function ExecutionControlBar({
         {/* Status Section (Left) */}
         <div
           className="flex items-center gap-4"
-          aria-label={`${runningCount} tasks running out of ${maxConcurrent}, ${queuedCount} queued, ${mergingCount} merging`}
+          aria-label={`${runningCount} tasks running out of ${maxConcurrent}, ${queuedCount} queued`}
         >
           {/* Animated Status Indicator */}
           <div
@@ -188,42 +185,6 @@ export function ExecutionControlBar({
                   <div>
                     <p style={{ color: "hsl(220 10% 75%)" }}>
                       Blocked tasks are NOT counted here.
-                    </p>
-                  </div>
-                </div>
-              }
-            />
-          </div>
-
-          {/* Separator */}
-          <span style={{ color: "hsl(220 10% 45%)" }}>•</span>
-
-          {/* Merging Count */}
-          <div className="flex items-center gap-1.5">
-            <span
-              data-testid="merging-count"
-              className="text-[13px]"
-              style={{ color: "hsl(220 10% 65%)" }}
-            >
-              Merging: {mergingCount}
-            </span>
-            <InfoTooltip
-              testId="merging-info-tooltip"
-              content={
-                <div className="space-y-2">
-                  <div>
-                    <strong className="block mb-1" style={{ color: "hsl(220 10% 95%)" }}>
-                      Merge Pipeline
-                    </strong>
-                    <p style={{ color: "hsl(220 10% 75%)" }}>
-                      Two-phase: fast programmatic merge first, then AI agent for conflicts.
-                      Merges run one at a time per target branch to avoid concurrent git conflicts.
-                    </p>
-                  </div>
-                  <div>
-                    <p style={{ color: "hsl(220 10% 75%)" }}>
-                      Merges to different branches run in parallel.
-                      Deferred merges auto-retry when the current merge completes.
                     </p>
                   </div>
                 </div>
