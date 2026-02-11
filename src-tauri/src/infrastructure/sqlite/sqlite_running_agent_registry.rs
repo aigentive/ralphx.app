@@ -3,9 +3,9 @@
 // Persists running agent PIDs to the running_agents table so they survive app restarts.
 // On restart, stop_all() kills orphaned processes before new agents are spawned.
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use rusqlite::Connection;
+use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::domain::services::{
@@ -136,19 +136,45 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
         };
 
         while let Ok(Some(row)) = rows.next() {
-            let context_type: String = match row.get(0) { Ok(v) => v, Err(_) => continue };
-            let context_id: String = match row.get(1) { Ok(v) => v, Err(_) => continue };
-            let pid: u32 = match row.get(2) { Ok(v) => v, Err(_) => continue };
-            let conversation_id: String = match row.get(3) { Ok(v) => v, Err(_) => continue };
-            let agent_run_id: String = match row.get(4) { Ok(v) => v, Err(_) => continue };
-            let started_at_str: String = match row.get(5) { Ok(v) => v, Err(_) => continue };
+            let context_type: String = match row.get(0) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            let context_id: String = match row.get(1) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            let pid: u32 = match row.get(2) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            let conversation_id: String = match row.get(3) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            let agent_run_id: String = match row.get(4) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            let started_at_str: String = match row.get(5) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
             let started_at = chrono::DateTime::parse_from_rfc3339(&started_at_str)
                 .map(|dt| dt.with_timezone(&chrono::Utc))
                 .unwrap_or_else(|_| chrono::Utc::now());
 
             results.push((
-                RunningAgentKey { context_type, context_id },
-                RunningAgentInfo { pid, conversation_id, agent_run_id, started_at },
+                RunningAgentKey {
+                    context_type,
+                    context_id,
+                },
+                RunningAgentInfo {
+                    pid,
+                    conversation_id,
+                    agent_run_id,
+                    started_at,
+                },
             ));
         }
 
@@ -191,7 +217,12 @@ mod tests {
         let key = RunningAgentKey::new("ideation", "session-123");
 
         registry
-            .register(key.clone(), 12345, "conv-abc".to_string(), "run-xyz".to_string())
+            .register(
+                key.clone(),
+                12345,
+                "conv-abc".to_string(),
+                "run-xyz".to_string(),
+            )
             .await;
 
         let info = registry.get(&key).await;
@@ -302,10 +333,20 @@ mod tests {
         let key = RunningAgentKey::new("task", "task-1");
 
         registry
-            .register(key.clone(), 100, "conv-old".to_string(), "run-old".to_string())
+            .register(
+                key.clone(),
+                100,
+                "conv-old".to_string(),
+                "run-old".to_string(),
+            )
             .await;
         registry
-            .register(key.clone(), 200, "conv-new".to_string(), "run-new".to_string())
+            .register(
+                key.clone(),
+                200,
+                "conv-new".to_string(),
+                "run-new".to_string(),
+            )
             .await;
 
         let info = registry.get(&key).await.unwrap();

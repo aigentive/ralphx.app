@@ -183,7 +183,10 @@ mod tests {
     #[test]
     fn test_activity_score_no_activity() {
         let score = compute_activity_score(0, 0, 10);
-        assert_eq!(score, 0.0, "No active tasks and all complete should be zero");
+        assert_eq!(
+            score, 0.0,
+            "No active tasks and all complete should be zero"
+        );
     }
 
     #[test]
@@ -240,15 +243,8 @@ mod tests {
         let accepted = now - chrono::Duration::days(10);
         let last_selected = now - chrono::Duration::days(5);
 
-        let breakdown = compute_final_score_with_breakdown(
-            5,
-            Some(last_selected),
-            1,
-            5,
-            10,
-            accepted,
-            now,
-        );
+        let breakdown =
+            compute_final_score_with_breakdown(5, Some(last_selected), 1, 5, 10, accepted, now);
 
         // Verify weights are applied correctly
         let expected = 0.45 * breakdown.interaction_score

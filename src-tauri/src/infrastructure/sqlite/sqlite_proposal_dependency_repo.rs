@@ -103,10 +103,7 @@ impl ProposalDependencyRepository for SqliteProposalDependencyRepository {
         Ok(deps)
     }
 
-    async fn get_dependents(
-        &self,
-        proposal_id: &TaskProposalId,
-    ) -> AppResult<Vec<TaskProposalId>> {
+    async fn get_dependents(&self, proposal_id: &TaskProposalId) -> AppResult<Vec<TaskProposalId>> {
         let conn = self.conn.lock().await;
 
         let mut stmt = conn
@@ -149,7 +146,11 @@ impl ProposalDependencyRepository for SqliteProposalDependencyRepository {
                 let from_id: String = row.get(0)?;
                 let to_id: String = row.get(1)?;
                 let reason: Option<String> = row.get(2)?;
-                Ok((Self::string_to_proposal_id(from_id), Self::string_to_proposal_id(to_id), reason))
+                Ok((
+                    Self::string_to_proposal_id(from_id),
+                    Self::string_to_proposal_id(to_id),
+                    reason,
+                ))
             })
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()

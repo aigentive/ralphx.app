@@ -10,9 +10,12 @@
 use std::sync::Arc;
 
 use crate::domain::entities::{
-    ArtifactSummary, Task, TaskContext, TaskDependencySummary, TaskId, TaskProposalSummary, StepProgressSummary,
+    ArtifactSummary, StepProgressSummary, Task, TaskContext, TaskDependencySummary, TaskId,
+    TaskProposalSummary,
 };
-use crate::domain::repositories::{ArtifactRepository, TaskProposalRepository, TaskRepository, TaskStepRepository};
+use crate::domain::repositories::{
+    ArtifactRepository, TaskProposalRepository, TaskRepository, TaskStepRepository,
+};
 use crate::error::{AppError, AppResult};
 
 /// Service for aggregating task context for worker execution
@@ -23,8 +26,7 @@ pub struct TaskContextService {
     step_repo: Arc<dyn TaskStepRepository>,
 }
 
-impl TaskContextService
-{
+impl TaskContextService {
     /// Create a new TaskContextService with the given repositories
     pub fn new(
         task_repo: Arc<dyn TaskRepository>,
@@ -162,7 +164,12 @@ impl TaskContextService
             // Count how many blockers are not yet completed
             let incomplete_blockers = blocked_by
                 .iter()
-                .filter(|b| !matches!(b.internal_status, crate::domain::entities::InternalStatus::Approved))
+                .filter(|b| {
+                    !matches!(
+                        b.internal_status,
+                        crate::domain::entities::InternalStatus::Approved
+                    )
+                })
                 .count();
             Some((incomplete_blockers as u32) + 1)
         };
@@ -232,7 +239,12 @@ impl TaskContextService
         if !blocked_by.is_empty() {
             let incomplete: Vec<_> = blocked_by
                 .iter()
-                .filter(|b| !matches!(b.internal_status, crate::domain::entities::InternalStatus::Approved))
+                .filter(|b| {
+                    !matches!(
+                        b.internal_status,
+                        crate::domain::entities::InternalStatus::Approved
+                    )
+                })
                 .collect();
             if !incomplete.is_empty() {
                 let names: Vec<_> = incomplete.iter().map(|t| t.title.as_str()).collect();
@@ -295,11 +307,13 @@ impl TaskContextService
 mod tests {
     use super::*;
     use crate::domain::entities::{
-        Artifact, ArtifactId, ArtifactRelation, ArtifactRelationType, ArtifactType,
-        InternalStatus, Priority, ProjectId, TaskCategory, TaskProposal, TaskProposalId,
-        TaskStep, TaskStepId,
+        Artifact, ArtifactId, ArtifactRelation, ArtifactRelationType, ArtifactType, InternalStatus,
+        Priority, ProjectId, TaskCategory, TaskProposal, TaskProposalId, TaskStep, TaskStepId,
     };
-    use crate::domain::repositories::{ArtifactRepository, StateHistoryMetadata, TaskProposalRepository, TaskRepository, TaskStepRepository};
+    use crate::domain::repositories::{
+        ArtifactRepository, StateHistoryMetadata, TaskProposalRepository, TaskRepository,
+        TaskStepRepository,
+    };
     use async_trait::async_trait;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
@@ -386,11 +400,7 @@ mod tests {
             Ok(())
         }
 
-        async fn resolve_blocker(
-            &self,
-            _task_id: &TaskId,
-            _blocker_id: &TaskId,
-        ) -> AppResult<()> {
+        async fn resolve_blocker(&self, _task_id: &TaskId, _blocker_id: &TaskId) -> AppResult<()> {
             Ok(())
         }
 
@@ -435,7 +445,11 @@ mod tests {
             }
         }
 
-        async fn get_archived_count(&self, _project_id: &ProjectId, _ideation_session_id: Option<&str>) -> AppResult<u32> {
+        async fn get_archived_count(
+            &self,
+            _project_id: &ProjectId,
+            _ideation_session_id: Option<&str>,
+        ) -> AppResult<u32> {
             Ok(0)
         }
 
@@ -455,7 +469,12 @@ mod tests {
             }
         }
 
-        async fn count_tasks(&self, _project_id: &ProjectId, _include_archived: bool, _ideation_session_id: Option<&str>) -> AppResult<u32> {
+        async fn count_tasks(
+            &self,
+            _project_id: &ProjectId,
+            _include_archived: bool,
+            _ideation_session_id: Option<&str>,
+        ) -> AppResult<u32> {
             Ok(if self.task.is_some() { 1 } else { 0 })
         }
 
@@ -941,8 +960,12 @@ mod tests {
             "user",
         );
 
-        let related1 =
-            Artifact::new_inline("Research Doc", ArtifactType::ResearchDocument, "Research", "user");
+        let related1 = Artifact::new_inline(
+            "Research Doc",
+            ArtifactType::ResearchDocument,
+            "Research",
+            "user",
+        );
         let related2 =
             Artifact::new_inline("Design Doc", ArtifactType::DesignDoc, "Design", "user");
 
@@ -968,17 +991,14 @@ mod tests {
     #[tokio::test]
     async fn test_content_preview_truncation() {
         let short_content = "Short content";
-        let artifact = Artifact::new_inline(
-            "Test",
-            ArtifactType::Specification,
-            short_content,
-            "user",
-        );
+        let artifact =
+            Artifact::new_inline("Test", ArtifactType::Specification, short_content, "user");
         let preview = TaskContextService::create_content_preview(&artifact);
         assert_eq!(preview, short_content);
 
         let long_content = "x".repeat(600);
-        let artifact = Artifact::new_inline("Test", ArtifactType::Specification, long_content, "user");
+        let artifact =
+            Artifact::new_inline("Test", ArtifactType::Specification, long_content, "user");
         let preview = TaskContextService::create_content_preview(&artifact);
         assert_eq!(preview.len(), 503); // 500 + "..."
         assert!(preview.ends_with("..."));

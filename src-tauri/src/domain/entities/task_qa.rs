@@ -146,7 +146,9 @@ impl TaskQA {
 
     /// Get the test steps to use (refined if available, otherwise initial)
     pub fn effective_test_steps(&self) -> Option<&QATestSteps> {
-        self.refined_test_steps.as_ref().or(self.qa_test_steps.as_ref())
+        self.refined_test_steps
+            .as_ref()
+            .or(self.qa_test_steps.as_ref())
     }
 
     // ----- Phase 3: QA Testing Methods -----
@@ -238,12 +240,17 @@ mod tests {
 
         qa.start_prep("agent-1".to_string());
 
-        let criteria = AcceptanceCriteria::from_criteria(vec![
-            AcceptanceCriterion::visual("AC1", "Test visual"),
-        ]);
-        let steps = QATestSteps::from_steps(vec![
-            QATestStep::new("QA1", "AC1", "Test step", vec![], "Expected"),
-        ]);
+        let criteria = AcceptanceCriteria::from_criteria(vec![AcceptanceCriterion::visual(
+            "AC1",
+            "Test visual",
+        )]);
+        let steps = QATestSteps::from_steps(vec![QATestStep::new(
+            "QA1",
+            "AC1",
+            "Test step",
+            vec![],
+            "Expected",
+        )]);
 
         qa.complete_prep(criteria.clone(), steps.clone());
 
@@ -258,9 +265,13 @@ mod tests {
         let task_id = TaskId::from_string("task-123".to_string());
         let mut qa = TaskQA::new(task_id);
 
-        let refined_steps = QATestSteps::from_steps(vec![
-            QATestStep::new("QA1", "AC1", "Refined step", vec![], "Expected"),
-        ]);
+        let refined_steps = QATestSteps::from_steps(vec![QATestStep::new(
+            "QA1",
+            "AC1",
+            "Refined step",
+            vec![],
+            "Expected",
+        )]);
 
         qa.complete_refinement(
             "agent-2".to_string(),
@@ -283,23 +294,37 @@ mod tests {
         assert!(qa.effective_test_steps().is_none());
 
         // Add initial steps
-        let initial_steps = QATestSteps::from_steps(vec![
-            QATestStep::new("QA1", "AC1", "Initial step", vec![], "Expected"),
-        ]);
+        let initial_steps = QATestSteps::from_steps(vec![QATestStep::new(
+            "QA1",
+            "AC1",
+            "Initial step",
+            vec![],
+            "Expected",
+        )]);
         qa.qa_test_steps = Some(initial_steps);
 
         // Should return initial steps
         assert!(qa.effective_test_steps().is_some());
-        assert_eq!(qa.effective_test_steps().unwrap().qa_steps[0].description, "Initial step");
+        assert_eq!(
+            qa.effective_test_steps().unwrap().qa_steps[0].description,
+            "Initial step"
+        );
 
         // Add refined steps
-        let refined_steps = QATestSteps::from_steps(vec![
-            QATestStep::new("QA1", "AC1", "Refined step", vec![], "Expected"),
-        ]);
+        let refined_steps = QATestSteps::from_steps(vec![QATestStep::new(
+            "QA1",
+            "AC1",
+            "Refined step",
+            vec![],
+            "Expected",
+        )]);
         qa.refined_test_steps = Some(refined_steps);
 
         // Should return refined steps
-        assert_eq!(qa.effective_test_steps().unwrap().qa_steps[0].description, "Refined step");
+        assert_eq!(
+            qa.effective_test_steps().unwrap().qa_steps[0].description,
+            "Refined step"
+        );
     }
 
     #[test]
@@ -317,10 +342,8 @@ mod tests {
         let task_id = TaskId::from_string("task-123".to_string());
         let mut qa = TaskQA::new(task_id.clone());
 
-        let results = QAResults::from_results(
-            task_id.as_str(),
-            vec![QAStepResult::passed("QA1", None)],
-        );
+        let results =
+            QAResults::from_results(task_id.as_str(), vec![QAStepResult::passed("QA1", None)]);
 
         qa.complete_testing(results);
 
@@ -355,7 +378,9 @@ mod tests {
         qa.add_screenshot("screenshots/test2.png".to_string());
 
         assert_eq!(qa.screenshots.len(), 2);
-        assert!(qa.screenshots.contains(&"screenshots/test1.png".to_string()));
+        assert!(qa
+            .screenshots
+            .contains(&"screenshots/test1.png".to_string()));
     }
 
     #[test]

@@ -5,9 +5,9 @@ use chrono::{DateTime, TimeZone, Utc};
 use rusqlite::Row;
 use serde::{Deserialize, Serialize};
 
-use super::{IdeationSessionId, InternalStatus, ProjectId, TaskId};
 use super::super::entities::artifact::ArtifactId;
 use super::super::entities::types::TaskProposalId;
+use super::{IdeationSessionId, InternalStatus, ProjectId, TaskId};
 
 /// A task managed by RalphX
 /// Tasks belong to a project and have an internal status that follows the state machine
@@ -181,7 +181,9 @@ impl Task {
                 .get::<_, String>("internal_status")?
                 .parse()
                 .unwrap_or(InternalStatus::Backlog),
-            needs_review_point: row.get::<_, Option<bool>>("needs_review_point")?.unwrap_or(false),
+            needs_review_point: row
+                .get::<_, Option<bool>>("needs_review_point")?
+                .unwrap_or(false),
             source_proposal_id: row
                 .get::<_, Option<String>>("source_proposal_id")?
                 .map(TaskProposalId::from_string),
@@ -280,11 +282,8 @@ mod tests {
 
     #[test]
     fn task_new_with_category_sets_category() {
-        let task = Task::new_with_category(
-            ProjectId::new(),
-            "Bug Fix".to_string(),
-            "bug".to_string(),
-        );
+        let task =
+            Task::new_with_category(ProjectId::new(), "Bug Fix".to_string(), "bug".to_string());
 
         assert_eq!(task.category, "bug");
         assert_eq!(task.title, "Bug Fix");
@@ -405,11 +404,7 @@ mod tests {
             InternalStatus::Blocked,
         ] {
             task.internal_status = *status;
-            assert!(
-                !task.is_terminal(),
-                "{:?} should not be terminal",
-                status
-            );
+            assert!(!task.is_terminal(), "{:?} should not be terminal", status);
         }
     }
 
@@ -456,7 +451,10 @@ mod tests {
 
     #[test]
     fn task_serializes_to_json() {
-        let task = Task::new(ProjectId::from_string("proj-123".to_string()), "JSON Test".to_string());
+        let task = Task::new(
+            ProjectId::from_string("proj-123".to_string()),
+            "JSON Test".to_string(),
+        );
         let json = serde_json::to_string(&task).expect("Should serialize");
 
         assert!(json.contains("\"title\":\"JSON Test\""));
@@ -489,7 +487,10 @@ mod tests {
         assert_eq!(task.project_id.as_str(), "proj-id-456");
         assert_eq!(task.category, "bug");
         assert_eq!(task.title, "Fix the bug");
-        assert_eq!(task.description, Some("Detailed description here".to_string()));
+        assert_eq!(
+            task.description,
+            Some("Detailed description here".to_string())
+        );
         assert_eq!(task.priority, 5);
         assert_eq!(task.internal_status, InternalStatus::Executing);
         assert!(task.started_at.is_some());
@@ -1095,7 +1096,10 @@ mod tests {
         }"#;
 
         let task: Task = serde_json::from_str(json).unwrap();
-        assert_eq!(task.blocked_reason, Some("Waiting for dependency".to_string()));
+        assert_eq!(
+            task.blocked_reason,
+            Some("Waiting for dependency".to_string())
+        );
         assert_eq!(task.internal_status, InternalStatus::Blocked);
     }
 
@@ -1139,7 +1143,10 @@ mod tests {
             })
             .unwrap();
 
-        assert_eq!(task.blocked_reason, Some("Waiting for API design".to_string()));
+        assert_eq!(
+            task.blocked_reason,
+            Some("Waiting for API design".to_string())
+        );
         assert_eq!(task.internal_status, InternalStatus::Blocked);
     }
 

@@ -34,10 +34,7 @@ pub trait ProposalDependencyRepository: Send + Sync {
     ) -> AppResult<Vec<TaskProposalId>>;
 
     /// Get all proposals that depend on this proposal
-    async fn get_dependents(
-        &self,
-        proposal_id: &TaskProposalId,
-    ) -> AppResult<Vec<TaskProposalId>>;
+    async fn get_dependents(&self, proposal_id: &TaskProposalId) -> AppResult<Vec<TaskProposalId>>;
 
     /// Get all dependency relationships for a session
     /// Returns tuples of (proposal_id, depends_on_proposal_id, reason)
@@ -183,7 +180,10 @@ mod tests {
             Ok(())
         }
 
-        async fn clear_session_dependencies(&self, _session_id: &IdeationSessionId) -> AppResult<()> {
+        async fn clear_session_dependencies(
+            &self,
+            _session_id: &IdeationSessionId,
+        ) -> AppResult<()> {
             Ok(())
         }
 
@@ -218,7 +218,9 @@ mod tests {
         let proposal_id = TaskProposalId::new();
         let depends_on_id = TaskProposalId::new();
 
-        let result = repo.add_dependency(&proposal_id, &depends_on_id, None).await;
+        let result = repo
+            .add_dependency(&proposal_id, &depends_on_id, None)
+            .await;
         assert!(result.is_ok());
     }
 
@@ -418,9 +420,11 @@ mod tests {
     async fn test_repository_trait_object_in_arc() {
         let proposal_a = TaskProposalId::new();
         let proposal_b = TaskProposalId::new();
-        let repo: Arc<dyn ProposalDependencyRepository> = Arc::new(
-            MockProposalDependencyRepository::with_dependency(proposal_a.clone(), proposal_b.clone()),
-        );
+        let repo: Arc<dyn ProposalDependencyRepository> =
+            Arc::new(MockProposalDependencyRepository::with_dependency(
+                proposal_a.clone(),
+                proposal_b.clone(),
+            ));
 
         // Use through trait object
         let deps = repo.get_dependencies(&proposal_a).await;
@@ -436,9 +440,11 @@ mod tests {
     async fn test_repository_trait_object_cycle_detection() {
         let proposal_a = TaskProposalId::new();
         let proposal_b = TaskProposalId::new();
-        let repo: Arc<dyn ProposalDependencyRepository> = Arc::new(
-            MockProposalDependencyRepository::with_dependency(proposal_b.clone(), proposal_a.clone()),
-        );
+        let repo: Arc<dyn ProposalDependencyRepository> =
+            Arc::new(MockProposalDependencyRepository::with_dependency(
+                proposal_b.clone(),
+                proposal_a.clone(),
+            ));
 
         let would_cycle = repo.would_create_cycle(&proposal_a, &proposal_b).await;
         assert!(would_cycle.is_ok());
@@ -449,9 +455,11 @@ mod tests {
     async fn test_repository_trait_object_count_operations() {
         let proposal_a = TaskProposalId::new();
         let proposal_b = TaskProposalId::new();
-        let repo: Arc<dyn ProposalDependencyRepository> = Arc::new(
-            MockProposalDependencyRepository::with_dependency(proposal_a.clone(), proposal_b.clone()),
-        );
+        let repo: Arc<dyn ProposalDependencyRepository> =
+            Arc::new(MockProposalDependencyRepository::with_dependency(
+                proposal_a.clone(),
+                proposal_b.clone(),
+            ));
 
         let dep_count = repo.count_dependencies(&proposal_a).await;
         assert!(dep_count.is_ok());

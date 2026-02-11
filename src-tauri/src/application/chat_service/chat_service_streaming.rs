@@ -17,7 +17,9 @@ use crate::domain::entities::{
     ActivityEvent, ActivityEventType, ChatContextType, ChatConversationId, ChatMessageId, TaskId,
 };
 use crate::domain::repositories::{ActivityEventRepository, ChatMessageRepository, TaskRepository};
-use crate::infrastructure::agents::claude::{ContentBlockItem, DiffContext, StreamEvent, StreamProcessor, ToolCall};
+use crate::infrastructure::agents::claude::{
+    ContentBlockItem, DiffContext, StreamEvent, StreamProcessor, ToolCall,
+};
 
 use super::{
     event_context, events, has_meaningful_output, AgentChunkPayload, AgentHookPayload,
@@ -85,8 +87,8 @@ pub async fn process_stream_background<R: Runtime>(
     let conversation_id_str = event_ctx.conversation_id.clone();
     let context_type_str = event_ctx.context_type.clone();
     let context_id_str = event_ctx.context_id.clone();
-    let debug_path = std::env::temp_dir()
-        .join(format!("ralphx-stream-debug-{}.log", conversation_id_str));
+    let debug_path =
+        std::env::temp_dir().join(format!("ralphx-stream-debug-{}.log", conversation_id_str));
     tracing::debug!(
         path = %debug_path.display(),
         "Debug log path (written on parse failure)"
@@ -254,7 +256,11 @@ pub async fn process_stream_background<R: Runtime>(
                             }
                         }
                     }
-                    StreamEvent::ToolCallStarted { name, id, parent_tool_use_id } => {
+                    StreamEvent::ToolCallStarted {
+                        name,
+                        id,
+                        parent_tool_use_id,
+                    } => {
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
                                 events::AGENT_TOOL_CALL,
@@ -270,14 +276,20 @@ pub async fn process_stream_background<R: Runtime>(
                                     parent_tool_use_id,
                                 },
                             );
-
                         }
                     }
-                    StreamEvent::ToolCallCompleted { mut tool_call, parent_tool_use_id } => {
+                    StreamEvent::ToolCallCompleted {
+                        mut tool_call,
+                        parent_tool_use_id,
+                    } => {
                         // Capture old file content for Edit/Write tool calls
                         let name_lower = tool_call.name.to_lowercase();
                         if name_lower == "edit" || name_lower == "write" {
-                            if let Some(file_path) = tool_call.arguments.get("file_path").and_then(|v| v.as_str()) {
+                            if let Some(file_path) = tool_call
+                                .arguments
+                                .get("file_path")
+                                .and_then(|v| v.as_str())
+                            {
                                 let old_content = std::fs::read_to_string(file_path).ok();
                                 let diff_ctx = DiffContext {
                                     old_content,
@@ -290,13 +302,17 @@ pub async fn process_stream_background<R: Runtime>(
                                 if let Some(last_tc) = processor.tool_calls.last_mut() {
                                     last_tc.diff_context = Some(diff_ctx.clone());
                                 }
-                                if let Some(ContentBlockItem::ToolUse { diff_context, .. }) = processor.content_blocks.last_mut() {
+                                if let Some(ContentBlockItem::ToolUse { diff_context, .. }) =
+                                    processor.content_blocks.last_mut()
+                                {
                                     *diff_context = serde_json::to_value(&diff_ctx).ok();
                                 }
                             }
                         }
 
-                        let diff_context_value = tool_call.diff_context.as_ref()
+                        let diff_context_value = tool_call
+                            .diff_context
+                            .as_ref()
                             .and_then(|dc| serde_json::to_value(dc).ok());
 
                         if let Some(ref handle) = app_handle {
@@ -366,7 +382,12 @@ pub async fn process_stream_background<R: Runtime>(
                     StreamEvent::SessionId(_) => {
                         // Captured in processor.finish()
                     }
-                    StreamEvent::TaskStarted { tool_use_id, description, subagent_type, model } => {
+                    StreamEvent::TaskStarted {
+                        tool_use_id,
+                        description,
+                        subagent_type,
+                        model,
+                    } => {
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
                                 events::AGENT_TASK_STARTED,
@@ -382,7 +403,13 @@ pub async fn process_stream_background<R: Runtime>(
                             );
                         }
                     }
-                    StreamEvent::TaskCompleted { tool_use_id, agent_id, total_duration_ms, total_tokens, total_tool_use_count } => {
+                    StreamEvent::TaskCompleted {
+                        tool_use_id,
+                        agent_id,
+                        total_duration_ms,
+                        total_tokens,
+                        total_tool_use_count,
+                    } => {
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
                                 events::AGENT_TASK_COMPLETED,
@@ -399,7 +426,11 @@ pub async fn process_stream_background<R: Runtime>(
                             );
                         }
                     }
-                    StreamEvent::HookStarted { hook_id, hook_name, hook_event } => {
+                    StreamEvent::HookStarted {
+                        hook_id,
+                        hook_name,
+                        hook_event,
+                    } => {
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
                                 events::AGENT_HOOK,
@@ -420,7 +451,14 @@ pub async fn process_stream_background<R: Runtime>(
                             );
                         }
                     }
-                    StreamEvent::HookCompleted { hook_id, hook_name, hook_event, output, exit_code, outcome } => {
+                    StreamEvent::HookCompleted {
+                        hook_id,
+                        hook_name,
+                        hook_event,
+                        output,
+                        exit_code,
+                        outcome,
+                    } => {
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
                                 events::AGENT_HOOK,
@@ -463,7 +501,11 @@ pub async fn process_stream_background<R: Runtime>(
                         }
                     }
 
-                    StreamEvent::ToolResultReceived { tool_use_id, result, parent_tool_use_id } => {
+                    StreamEvent::ToolResultReceived {
+                        tool_use_id,
+                        result,
+                        parent_tool_use_id,
+                    } => {
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
                                 events::AGENT_TOOL_CALL,
@@ -530,15 +572,18 @@ pub async fn process_stream_background<R: Runtime>(
 
         // Debounced flush: persist accumulated content every 2s for crash recovery
         if last_flush.elapsed() >= FLUSH_INTERVAL {
-            if let (Some(ref repo), Some(ref msg_id)) = (&chat_message_repo, &assistant_message_id) {
+            if let (Some(ref repo), Some(ref msg_id)) = (&chat_message_repo, &assistant_message_id)
+            {
                 let current_text = processor.response_text.clone();
                 let current_tools = serde_json::to_string(&processor.tool_calls).ok();
-                let _ = repo.update_content(
-                    &ChatMessageId::from_string(msg_id.clone()),
-                    &current_text,
-                    current_tools.as_deref(),
-                    None, // content_blocks only on final update
-                ).await;
+                let _ = repo
+                    .update_content(
+                        &ChatMessageId::from_string(msg_id.clone()),
+                        &current_text,
+                        current_tools.as_deref(),
+                        None, // content_blocks only on final update
+                    )
+                    .await;
             }
             last_flush = std::time::Instant::now();
         }

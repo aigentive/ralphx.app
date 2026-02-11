@@ -18,13 +18,14 @@ pub enum StreamMessage {
         content_block: ContentBlock,
     },
     #[serde(rename = "content_block_delta")]
-    ContentBlockDelta { index: Option<i32>, delta: ContentDelta },
+    ContentBlockDelta {
+        index: Option<i32>,
+        delta: ContentDelta,
+    },
     #[serde(rename = "content_block_stop")]
     ContentBlockStop { index: Option<i32> },
     #[serde(rename = "message_start")]
-    MessageStart {
-        message: Option<serde_json::Value>,
-    },
+    MessageStart { message: Option<serde_json::Value> },
     #[serde(rename = "message_delta")]
     MessageDelta {
         delta: Option<serde_json::Value>,
@@ -74,9 +75,7 @@ pub enum StreamMessage {
     },
     /// User message (contains tool results when using MCP)
     #[serde(rename = "user")]
-    User {
-        message: UserMessage,
-    },
+    User { message: UserMessage },
     #[serde(other)]
     Other,
 }
@@ -251,9 +250,7 @@ pub enum StreamEvent {
         outcome: Option<String>,
     },
     /// Hook block (from synthetic user message with text content)
-    HookBlock {
-        reason: String,
-    },
+    HookBlock { reason: String },
 }
 
 // ============================================================================
@@ -271,21 +268,19 @@ pub enum StreamEvent {
 /// duration_ms: 45000</usage>
 /// ```
 fn parse_usage_text(text: &str) -> (Option<String>, Option<u64>, Option<u64>, Option<u64>) {
-    let agent_id = text
-        .find("agentId:")
-        .and_then(|start| {
-            let after = &text[start + "agentId:".len()..];
-            let trimmed = after.trim_start();
-            // agentId is a hex string, take chars until non-hex
-            let end = trimmed
-                .find(|c: char| !c.is_ascii_hexdigit())
-                .unwrap_or(trimmed.len());
-            if end > 0 {
-                Some(trimmed[..end].to_string())
-            } else {
-                None
-            }
-        });
+    let agent_id = text.find("agentId:").and_then(|start| {
+        let after = &text[start + "agentId:".len()..];
+        let trimmed = after.trim_start();
+        // agentId is a hex string, take chars until non-hex
+        let end = trimmed
+            .find(|c: char| !c.is_ascii_hexdigit())
+            .unwrap_or(trimmed.len());
+        if end > 0 {
+            Some(trimmed[..end].to_string())
+        } else {
+            None
+        }
+    });
 
     let (duration_ms, total_tokens, tool_use_count) =
         if let Some(usage_start) = text.find("<usage>") {
@@ -325,18 +320,19 @@ fn extract_stat(block: &str, key: &str) -> Option<u64> {
 fn value_to_text(value: &serde_json::Value) -> String {
     match value {
         serde_json::Value::String(s) => s.clone(),
-        serde_json::Value::Array(arr) => {
-            arr.iter()
-                .filter_map(|item| {
-                    if item.get("type").and_then(|t| t.as_str()) == Some("text") {
-                        item.get("text").and_then(|t| t.as_str()).map(|s| s.to_string())
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join("\n")
-        }
+        serde_json::Value::Array(arr) => arr
+            .iter()
+            .filter_map(|item| {
+                if item.get("type").and_then(|t| t.as_str()) == Some("text") {
+                    item.get("text")
+                        .and_then(|t| t.as_str())
+                        .map(|s| s.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
         other => other.to_string(),
     }
 }
@@ -394,7 +390,11 @@ impl StreamProcessor {
 
     /// Process a parsed line (message + parent_tool_use_id + is_synthetic)
     pub fn process_parsed_line(&mut self, parsed: ParsedLine) -> Vec<StreamEvent> {
-        self.process_message_with_parent(parsed.message, parsed.parent_tool_use_id, parsed.is_synthetic)
+        self.process_message_with_parent(
+            parsed.message,
+            parsed.parent_tool_use_id,
+            parsed.is_synthetic,
+        )
     }
 
     /// Parse a stream-json line, extracting parent_tool_use_id from the top-level JSON envelope
@@ -495,9 +495,18 @@ impl StreamProcessor {
                         if let Some(ref tool_id) = self.current_tool_id {
                             events.push(StreamEvent::TaskStarted {
                                 tool_use_id: tool_id.clone(),
-                                description: args.get("description").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                                subagent_type: args.get("subagent_type").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                                model: args.get("model").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                                description: args
+                                    .get("description")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string()),
+                                subagent_type: args
+                                    .get("subagent_type")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string()),
+                                model: args
+                                    .get("model")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string()),
                             });
                         }
                     }
@@ -558,16 +567,18 @@ impl StreamProcessor {
                     }
                 }
             }
-            StreamMessage::Assistant { message, session_id } => {
+            StreamMessage::Assistant {
+                message,
+                session_id,
+            } => {
                 // Handle --verbose mode assistant messages (full content in one message)
                 for content in message.content {
                     match content {
                         AssistantContent::Text { text } => {
                             self.response_text.push_str(&text);
                             // Add as content block directly (verbose mode gives us complete blocks)
-                            self.content_blocks.push(ContentBlockItem::Text {
-                                text: text.clone(),
-                            });
+                            self.content_blocks
+                                .push(ContentBlockItem::Text { text: text.clone() });
                             events.push(StreamEvent::TextChunk(text));
                         }
                         AssistantContent::ToolUse { id, name, input } => {
@@ -575,9 +586,18 @@ impl StreamProcessor {
                             if name == "Task" {
                                 events.push(StreamEvent::TaskStarted {
                                     tool_use_id: id.clone(),
-                                    description: input.get("description").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                                    subagent_type: input.get("subagent_type").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                                    model: input.get("model").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                                    description: input
+                                        .get("description")
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string()),
+                                    subagent_type: input
+                                        .get("subagent_type")
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string()),
+                                    model: input
+                                        .get("model")
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string()),
                                 });
                             }
 
@@ -710,15 +730,15 @@ impl StreamProcessor {
                         if is_task_result {
                             // Try JSON extraction first (tool_use_result sub-object or content itself)
                             let metadata = content.get("tool_use_result").unwrap_or(&content);
-                            let json_agent_id = metadata.get("agentId")
+                            let json_agent_id = metadata
+                                .get("agentId")
                                 .and_then(|v| v.as_str())
                                 .map(|s| s.to_string());
-                            let json_duration = metadata.get("totalDurationMs")
-                                .and_then(|v| v.as_u64());
-                            let json_tokens = metadata.get("totalTokens")
-                                .and_then(|v| v.as_u64());
-                            let json_tools = metadata.get("totalToolUseCount")
-                                .and_then(|v| v.as_u64());
+                            let json_duration =
+                                metadata.get("totalDurationMs").and_then(|v| v.as_u64());
+                            let json_tokens = metadata.get("totalTokens").and_then(|v| v.as_u64());
+                            let json_tools =
+                                metadata.get("totalToolUseCount").and_then(|v| v.as_u64());
 
                             let has_json_stats = json_duration.is_some()
                                 || json_tokens.is_some()
@@ -732,12 +752,7 @@ impl StreamProcessor {
                                     let text = value_to_text(&content);
                                     let (text_agent, text_dur, text_tok, text_tools) =
                                         parse_usage_text(&text);
-                                    (
-                                        json_agent_id.or(text_agent),
-                                        text_dur,
-                                        text_tok,
-                                        text_tools,
-                                    )
+                                    (json_agent_id.or(text_agent), text_dur, text_tok, text_tools)
                                 };
 
                             events.push(StreamEvent::TaskCompleted {
@@ -826,11 +841,15 @@ mod tests {
 
     #[test]
     fn test_parse_line_with_data_prefix() {
-        let line = r#"data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hi"}}"#;
+        let line =
+            r#"data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hi"}}"#;
         let parsed = StreamProcessor::parse_line(line);
 
         let parsed = parsed.expect("Expected Some(ParsedLine)");
-        assert!(matches!(parsed.message, StreamMessage::ContentBlockDelta { .. }));
+        assert!(matches!(
+            parsed.message,
+            StreamMessage::ContentBlockDelta { .. }
+        ));
     }
 
     #[test]
@@ -864,7 +883,10 @@ mod tests {
         let StreamMessage::Result { session_id, .. } = parsed.message else {
             unreachable!()
         };
-        assert_eq!(session_id, Some("550e8400-e29b-41d4-a716-446655440000".to_string()));
+        assert_eq!(
+            session_id,
+            Some("550e8400-e29b-41d4-a716-446655440000".to_string())
+        );
     }
 
     #[test]
@@ -877,7 +899,11 @@ mod tests {
             matches!(parsed.message, StreamMessage::Assistant { .. }),
             "Expected Assistant message, got different variant"
         );
-        let StreamMessage::Assistant { message, session_id } = parsed.message else {
+        let StreamMessage::Assistant {
+            message,
+            session_id,
+        } = parsed.message
+        else {
             unreachable!()
         };
         assert_eq!(session_id, Some("sess-123".to_string()));
@@ -974,7 +1000,9 @@ mod tests {
         let msg = StreamMessage::Assistant {
             message: AssistantMessage {
                 content: vec![
-                    AssistantContent::Text { text: "Here's my response".to_string() },
+                    AssistantContent::Text {
+                        text: "Here's my response".to_string(),
+                    },
                     AssistantContent::ToolUse {
                         id: "toolu_456".to_string(),
                         name: "search".to_string(),
@@ -991,7 +1019,9 @@ mod tests {
         // Should emit: TextChunk, ToolCallCompleted, SessionId
         assert_eq!(events.len(), 3);
         assert!(matches!(&events[0], StreamEvent::TextChunk(t) if t == "Here's my response"));
-        assert!(matches!(&events[1], StreamEvent::ToolCallCompleted { ref tool_call, .. } if tool_call.name == "search"));
+        assert!(
+            matches!(&events[1], StreamEvent::ToolCallCompleted { ref tool_call, .. } if tool_call.name == "search")
+        );
         assert!(matches!(&events[2], StreamEvent::SessionId(id) if id == "session-abc"));
 
         let result = processor.finish();
@@ -1041,7 +1071,9 @@ mod tests {
 
         let events1 = processor.process_message(assistant_msg);
         assert_eq!(events1.len(), 1);
-        assert!(matches!(&events1[0], StreamEvent::ToolCallCompleted { ref tool_call, .. } if tool_call.name == "bash"));
+        assert!(
+            matches!(&events1[0], StreamEvent::ToolCallCompleted { ref tool_call, .. } if tool_call.name == "bash")
+        );
 
         // Verify tool call is stored with no result
         assert_eq!(processor.tool_calls.len(), 1);
@@ -1218,7 +1250,9 @@ mod tests {
 
         // Should emit: Thinking, TextChunk, SessionId
         assert_eq!(events.len(), 3);
-        assert!(matches!(&events[0], StreamEvent::Thinking(t) if t == "Deep analysis of the problem..."));
+        assert!(
+            matches!(&events[0], StreamEvent::Thinking(t) if t == "Deep analysis of the problem...")
+        );
         assert!(matches!(&events[1], StreamEvent::TextChunk(t) if t == "Here's my answer."));
         assert!(matches!(&events[2], StreamEvent::SessionId(id) if id == "sess-456"));
     }
@@ -1257,7 +1291,10 @@ mod tests {
         let line = r#"{"type":"assistant","parent_tool_use_id":"toolu_01CdYLhs","message":{"content":[{"type":"text","text":"subagent text"}],"stop_reason":"end_turn"}}"#;
         let parsed = StreamProcessor::parse_line(line).expect("Expected Some(ParsedLine)");
 
-        assert_eq!(parsed.parent_tool_use_id, Some("toolu_01CdYLhs".to_string()));
+        assert_eq!(
+            parsed.parent_tool_use_id,
+            Some("toolu_01CdYLhs".to_string())
+        );
         assert!(matches!(parsed.message, StreamMessage::Assistant { .. }));
     }
 
@@ -1291,7 +1328,11 @@ mod tests {
         let events = processor.process_parsed_line(parsed);
         assert_eq!(events.len(), 1);
         match &events[0] {
-            StreamEvent::ToolCallStarted { name, id, parent_tool_use_id } => {
+            StreamEvent::ToolCallStarted {
+                name,
+                id,
+                parent_tool_use_id,
+            } => {
                 assert_eq!(name, "Grep");
                 assert_eq!(id, &Some("toolu_sub1".to_string()));
                 assert_eq!(parent_tool_use_id, &Some("toolu_parent".to_string()));
@@ -1336,7 +1377,10 @@ mod tests {
         let events = processor.process_parsed_line(parsed);
         assert_eq!(events.len(), 1);
         match &events[0] {
-            StreamEvent::ToolCallCompleted { tool_call, parent_tool_use_id } => {
+            StreamEvent::ToolCallCompleted {
+                tool_call,
+                parent_tool_use_id,
+            } => {
                 assert_eq!(tool_call.name, "Read");
                 assert_eq!(parent_tool_use_id, &Some("toolu_parent".to_string()));
             }
@@ -1370,7 +1414,12 @@ mod tests {
         // Should emit: TaskStarted, ToolCallCompleted
         assert_eq!(events.len(), 2);
         match &events[0] {
-            StreamEvent::TaskStarted { tool_use_id, description, subagent_type, model } => {
+            StreamEvent::TaskStarted {
+                tool_use_id,
+                description,
+                subagent_type,
+                model,
+            } => {
                 assert_eq!(tool_use_id, "toolu_task1");
                 assert_eq!(description, &Some("Search codebase".to_string()));
                 assert_eq!(subagent_type, &Some("Explore".to_string()));
@@ -1403,7 +1452,10 @@ mod tests {
             delta: ContentDelta {
                 delta_type: "input_json_delta".to_string(),
                 text: None,
-                partial_json: Some(r#"{"description":"Run tests","subagent_type":"Bash","model":"haiku"}"#.to_string()),
+                partial_json: Some(
+                    r#"{"description":"Run tests","subagent_type":"Bash","model":"haiku"}"#
+                        .to_string(),
+                ),
             },
         });
 
@@ -1413,7 +1465,12 @@ mod tests {
         // Should emit: TaskStarted, ToolCallCompleted
         assert_eq!(events.len(), 2);
         match &events[0] {
-            StreamEvent::TaskStarted { tool_use_id, description, subagent_type, model } => {
+            StreamEvent::TaskStarted {
+                tool_use_id,
+                description,
+                subagent_type,
+                model,
+            } => {
                 assert_eq!(tool_use_id, "toolu_task2");
                 assert_eq!(description, &Some("Run tests".to_string()));
                 assert_eq!(subagent_type, &Some("Bash".to_string()));
@@ -1467,7 +1524,13 @@ mod tests {
         // Should emit: TaskCompleted, ToolResultReceived
         assert_eq!(events.len(), 2);
         match &events[0] {
-            StreamEvent::TaskCompleted { tool_use_id, agent_id, total_duration_ms, total_tokens, total_tool_use_count } => {
+            StreamEvent::TaskCompleted {
+                tool_use_id,
+                agent_id,
+                total_duration_ms,
+                total_tokens,
+                total_tool_use_count,
+            } => {
                 assert_eq!(tool_use_id, "toolu_task3");
                 assert_eq!(agent_id, &Some("agent-abc-123".to_string()));
                 assert_eq!(total_duration_ms, &Some(12500));
@@ -1536,7 +1599,11 @@ mod tests {
         let events = processor.process_parsed_line(parsed);
         assert_eq!(events.len(), 1);
         match &events[0] {
-            StreamEvent::ToolResultReceived { tool_use_id, parent_tool_use_id, .. } => {
+            StreamEvent::ToolResultReceived {
+                tool_use_id,
+                parent_tool_use_id,
+                ..
+            } => {
                 assert_eq!(tool_use_id, "toolu_sub_result");
                 assert_eq!(parent_tool_use_id, &Some("toolu_parent_task".to_string()));
             }
@@ -1860,9 +1927,7 @@ mod tests {
         assert_eq!(events.len(), 1);
         match &events[0] {
             StreamEvent::HookCompleted {
-                exit_code,
-                outcome,
-                ..
+                exit_code, outcome, ..
             } => {
                 assert_eq!(exit_code, &Some(1));
                 assert_eq!(outcome, &Some("error".to_string()));
@@ -1916,7 +1981,10 @@ mod tests {
         };
 
         let events = processor.process_parsed_line(parsed);
-        assert!(events.is_empty(), "Non-synthetic text should not emit events");
+        assert!(
+            events.is_empty(),
+            "Non-synthetic text should not emit events"
+        );
     }
 
     #[test]
@@ -1984,7 +2052,8 @@ mod tests {
         assert!(parsed.is_synthetic);
 
         // Non-synthetic message (no isSynthetic field)
-        let line2 = r#"{"type":"user","message":{"content":[{"type":"text","text":"Normal message"}]}}"#;
+        let line2 =
+            r#"{"type":"user","message":{"content":[{"type":"text","text":"Normal message"}]}}"#;
         let parsed2 = StreamProcessor::parse_line(line2).expect("Expected Some(ParsedLine)");
         assert!(!parsed2.is_synthetic);
 

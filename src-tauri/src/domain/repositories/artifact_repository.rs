@@ -23,7 +23,11 @@ pub trait ArtifactRepository: Send + Sync {
 
     /// Get artifact at a specific version by traversing the version history
     /// Returns None if the artifact doesn't exist or the version is not found
-    async fn get_by_id_at_version(&self, id: &ArtifactId, version: u32) -> AppResult<Option<Artifact>>;
+    async fn get_by_id_at_version(
+        &self,
+        id: &ArtifactId,
+        version: u32,
+    ) -> AppResult<Option<Artifact>>;
 
     /// Get all artifacts in a bucket
     async fn get_by_bucket(&self, bucket_id: &ArtifactBucketId) -> AppResult<Vec<Artifact>>;
@@ -53,10 +57,7 @@ pub trait ArtifactRepository: Send + Sync {
     async fn add_relation(&self, relation: ArtifactRelation) -> AppResult<ArtifactRelation>;
 
     /// Get relations for an artifact
-    async fn get_relations(
-        &self,
-        artifact_id: &ArtifactId,
-    ) -> AppResult<Vec<ArtifactRelation>>;
+    async fn get_relations(&self, artifact_id: &ArtifactId) -> AppResult<Vec<ArtifactRelation>>;
 
     /// Get relations of a specific type for an artifact
     async fn get_relations_by_type(
@@ -66,11 +67,7 @@ pub trait ArtifactRepository: Send + Sync {
     ) -> AppResult<Vec<ArtifactRelation>>;
 
     /// Delete a relation
-    async fn delete_relation(
-        &self,
-        from_id: &ArtifactId,
-        to_id: &ArtifactId,
-    ) -> AppResult<()>;
+    async fn delete_relation(&self, from_id: &ArtifactId, to_id: &ArtifactId) -> AppResult<()>;
 
     /// Create a new artifact with a link to the previous version
     /// This is used for version chaining in plan artifacts
@@ -133,7 +130,11 @@ mod tests {
             Ok(self.return_artifact.clone())
         }
 
-        async fn get_by_id_at_version(&self, _id: &ArtifactId, _version: u32) -> AppResult<Option<Artifact>> {
+        async fn get_by_id_at_version(
+            &self,
+            _id: &ArtifactId,
+            _version: u32,
+        ) -> AppResult<Option<Artifact>> {
             Ok(self.return_artifact.clone())
         }
 
@@ -216,7 +217,10 @@ mod tests {
             Ok(artifact)
         }
 
-        async fn get_version_history(&self, _id: &ArtifactId) -> AppResult<Vec<ArtifactVersionSummary>> {
+        async fn get_version_history(
+            &self,
+            _id: &ArtifactId,
+        ) -> AppResult<Vec<ArtifactVersionSummary>> {
             Ok(vec![])
         }
 
@@ -441,12 +445,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_artifact_content_inline_stored_correctly() {
-        let artifact = Artifact::new_inline(
-            "Test",
-            ArtifactType::Prd,
-            "inline content here",
-            "user",
-        );
+        let artifact =
+            Artifact::new_inline("Test", ArtifactType::Prd, "inline content here", "user");
         assert!(artifact.content.is_inline());
         if let ArtifactContent::Inline { text } = &artifact.content {
             assert_eq!(text, "inline content here");
@@ -455,12 +455,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_artifact_content_file_stored_correctly() {
-        let artifact = Artifact::new_file(
-            "Test",
-            ArtifactType::Prd,
-            "/path/to/file.md",
-            "user",
-        );
+        let artifact = Artifact::new_file("Test", ArtifactType::Prd, "/path/to/file.md", "user");
         assert!(artifact.content.is_file());
         if let ArtifactContent::File { path } = &artifact.content {
             assert_eq!(path, "/path/to/file.md");
@@ -488,8 +483,9 @@ mod tests {
     #[tokio::test]
     async fn test_artifact_with_process_association() {
         let process_id = ProcessId::from_string("process-123");
-        let artifact = Artifact::new_inline("Test", ArtifactType::Findings, "findings", "researcher")
-            .with_process(process_id.clone());
+        let artifact =
+            Artifact::new_inline("Test", ArtifactType::Findings, "findings", "researcher")
+                .with_process(process_id.clone());
 
         assert_eq!(artifact.metadata.process_id, Some(process_id));
     }

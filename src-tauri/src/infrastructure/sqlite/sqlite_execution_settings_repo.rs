@@ -1,8 +1,6 @@
 use crate::domain::entities::ProjectId;
 use crate::domain::execution::{ExecutionSettings, GlobalExecutionSettings};
-use crate::domain::repositories::{
-    ExecutionSettingsRepository, GlobalExecutionSettingsRepository,
-};
+use crate::domain::repositories::{ExecutionSettingsRepository, GlobalExecutionSettingsRepository};
 use async_trait::async_trait;
 use rusqlite::Connection;
 use std::sync::Arc;
@@ -175,9 +173,8 @@ impl GlobalExecutionSettingsRepository for SqliteGlobalExecutionSettingsReposito
     async fn get_settings(&self) -> Result<GlobalExecutionSettings, Box<dyn std::error::Error>> {
         let conn = self.conn.lock().await;
 
-        let mut stmt = conn.prepare(
-            "SELECT global_max_concurrent FROM global_execution_settings WHERE id = 1",
-        )?;
+        let mut stmt = conn
+            .prepare("SELECT global_max_concurrent FROM global_execution_settings WHERE id = 1")?;
 
         let result = stmt.query_row([], |row| {
             let global_max_concurrent: i64 = row.get(0)?;
@@ -198,7 +195,9 @@ impl GlobalExecutionSettingsRepository for SqliteGlobalExecutionSettingsReposito
         settings: &GlobalExecutionSettings,
     ) -> Result<GlobalExecutionSettings, Box<dyn std::error::Error>> {
         // Enforce max limit of 50
-        let clamped_max = settings.global_max_concurrent.min(GLOBAL_MAX_CONCURRENT_LIMIT);
+        let clamped_max = settings
+            .global_max_concurrent
+            .min(GLOBAL_MAX_CONCURRENT_LIMIT);
 
         let conn = self.conn.lock().await;
 

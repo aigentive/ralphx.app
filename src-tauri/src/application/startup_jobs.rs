@@ -18,10 +18,10 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 use tracing::{debug, info};
 
+use crate::application::ReconciliationRunner;
 use crate::commands::execution_commands::{
     ActiveProjectState, ExecutionState, AGENT_ACTIVE_STATUSES, AUTO_TRANSITION_STATES,
 };
-use crate::application::ReconciliationRunner;
 use crate::domain::entities::InternalStatus;
 use crate::domain::repositories::{
     AgentRunRepository, AppStateRepository, ChatConversationRepository, ProjectRepository,
@@ -163,7 +163,8 @@ impl<R: Runtime> StartupJobRunner<R> {
         // Kill orphaned MCP server node processes from previous session.
         // Pattern-based cleanup catches leaked processes that escaped PID tracking
         // (e.g. app crashed before registering PID, or child survived parent kill).
-        let mcp_killed = crate::domain::services::running_agent_registry::kill_orphaned_mcp_servers();
+        let mcp_killed =
+            crate::domain::services::running_agent_registry::kill_orphaned_mcp_servers();
         if mcp_killed > 0 {
             info!(count = mcp_killed, "Killed orphaned MCP server processes");
         }
@@ -174,14 +175,20 @@ impl<R: Runtime> StartupJobRunner<R> {
         // Now uses process-tree kill (children first, then parent).
         let killed = self.running_agent_registry.stop_all().await;
         if !killed.is_empty() {
-            info!(count = killed.len(), "Killed orphaned agent processes from previous session");
+            info!(
+                count = killed.len(),
+                "Killed orphaned agent processes from previous session"
+            );
         }
 
         // Clean up orphaned agent runs from previous sessions
         // These are runs that were left in "running" status when the app was closed/crashed
         match self.agent_run_repo.cancel_all_running().await {
             Ok(count) if count > 0 => {
-                info!(count = count, "Cancelled orphaned agent runs from previous session");
+                info!(
+                    count = count,
+                    "Cancelled orphaned agent runs from previous session"
+                );
             }
             Ok(_) => {
                 // No orphaned runs, nothing to log
@@ -268,7 +275,10 @@ impl<R: Runtime> StartupJobRunner<R> {
 
         // Iterate through projects and their tasks in agent-active states
         for project in &projects {
-            debug!(project_id = project.id.as_str(), "Checking project for resumable tasks");
+            debug!(
+                project_id = project.id.as_str(),
+                "Checking project for resumable tasks"
+            );
             for status in AGENT_ACTIVE_STATUSES {
                 // Get tasks in this status for this project
                 let tasks = match self.task_repo.get_by_status(&project.id, *status).await {
@@ -344,7 +354,11 @@ impl<R: Runtime> StartupJobRunner<R> {
                     }
                 };
 
-                debug!(count = tasks.len(), ?status, "Found tasks in auto-transition status");
+                debug!(
+                    count = tasks.len(),
+                    ?status,
+                    "Found tasks in auto-transition status"
+                );
                 for task in tasks {
                     // Phase 106: Defense-in-depth — skip archived tasks even if query returns them
                     if task.archived_at.is_some() {
@@ -383,7 +397,6 @@ impl<R: Runtime> StartupJobRunner<R> {
             scheduler.try_schedule_ready_tasks().await;
         }
     }
-
 
     /// Unblock tasks whose blockers are all complete.
     ///
@@ -508,18 +521,13 @@ impl<R: Runtime> StartupJobRunner<R> {
     /// Approved is NOT terminal — the task still needs to be merged.
     /// Paused/Stopped are NOT treated as complete blockers.
     /// If a blocker doesn't exist (was deleted), it's considered complete.
-    async fn all_blockers_complete(
-        &self,
-        blocker_ids: &[crate::domain::entities::TaskId],
-    ) -> bool {
+    async fn all_blockers_complete(&self, blocker_ids: &[crate::domain::entities::TaskId]) -> bool {
         for blocker_id in blocker_ids {
             match self.task_repo.get_by_id(blocker_id).await {
                 Ok(Some(task)) => {
                     if !matches!(
                         task.internal_status,
-                        InternalStatus::Merged
-                            | InternalStatus::Failed
-                            | InternalStatus::Cancelled
+                        InternalStatus::Merged | InternalStatus::Failed | InternalStatus::Cancelled
                     ) {
                         return false;
                     }

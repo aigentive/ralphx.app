@@ -15,8 +15,8 @@ use std::sync::Arc;
 
 use ralphx_lib::application::AppState;
 use ralphx_lib::domain::entities::{
-    ColumnBehavior, InternalStatus, MethodologyExtension, MethodologyPhase, Project, ProjectId, Task,
-    WorkflowColumn, WorkflowSchema,
+    ColumnBehavior, InternalStatus, MethodologyExtension, MethodologyPhase, Project, ProjectId,
+    Task, WorkflowColumn, WorkflowSchema,
 };
 use ralphx_lib::infrastructure::sqlite::{
     open_memory_connection, run_migrations, SqliteMethodologyRepository, SqliteProjectRepository,
@@ -40,8 +40,9 @@ fn create_sqlite_state() -> AppState {
     let shared_conn = Arc::new(Mutex::new(conn));
 
     let mut state = AppState::new_test();
-    state.methodology_repo =
-        Arc::new(SqliteMethodologyRepository::from_shared(shared_conn.clone()));
+    state.methodology_repo = Arc::new(SqliteMethodologyRepository::from_shared(
+        shared_conn.clone(),
+    ));
     state.workflow_repo = Arc::new(SqliteWorkflowRepository::from_shared(shared_conn.clone()));
     state.task_repo = Arc::new(SqliteTaskRepository::from_shared(shared_conn.clone()));
     state.project_repo = Arc::new(SqliteProjectRepository::from_shared(shared_conn));
@@ -200,7 +201,11 @@ async fn test_activate_gsd_methodology(state: &AppState) {
     assert_eq!(active.workflow.columns.len(), 11);
 
     // Verify checkpoint column maps to Blocked
-    let checkpoint_column = active.workflow.columns.iter().find(|c| c.id == "checkpoint");
+    let checkpoint_column = active
+        .workflow
+        .columns
+        .iter()
+        .find(|c| c.id == "checkpoint");
     assert!(checkpoint_column.is_some());
     assert_eq!(checkpoint_column.unwrap().maps_to, InternalStatus::Blocked);
 
@@ -211,12 +216,20 @@ async fn test_activate_gsd_methodology(state: &AppState) {
 }
 
 /// Test 2: Create tasks with wave=1 and checkpoint_type
-async fn test_create_tasks_with_wave_and_checkpoint(state: &AppState, project_id: Option<ProjectId>) {
+async fn test_create_tasks_with_wave_and_checkpoint(
+    state: &AppState,
+    project_id: Option<ProjectId>,
+) {
     let project_id = project_id.unwrap_or_default();
 
     // Create Wave 1 tasks (parallel execution)
     let task1 = create_gsd_task(project_id.clone(), "Setup database", 1, None);
-    let task2 = create_gsd_task(project_id.clone(), "Configure auth", 1, Some("human-verify"));
+    let task2 = create_gsd_task(
+        project_id.clone(),
+        "Configure auth",
+        1,
+        Some("human-verify"),
+    );
     let task3 = create_gsd_task(project_id.clone(), "API scaffolding", 1, None);
 
     state.task_repo.create(task1.clone()).await.unwrap();
@@ -307,7 +320,12 @@ async fn test_checkpoint_transitions_to_blocked(state: &AppState, project_id: Op
 
     // Create a task in executing state
     let project_id = project_id.unwrap_or_default();
-    let mut task = create_gsd_task(project_id.clone(), "Critical operation", 1, Some("human-verify"));
+    let mut task = create_gsd_task(
+        project_id.clone(),
+        "Critical operation",
+        1,
+        Some("human-verify"),
+    );
     task.internal_status = InternalStatus::Executing;
 
     state.task_repo.create(task.clone()).await.unwrap();
@@ -487,13 +505,22 @@ async fn test_gsd_phase_structure(state: &AppState) {
     let gsd_id = gsd.id.clone();
     state.methodology_repo.create(gsd).await.unwrap();
 
-    let methodology = state.methodology_repo.get_by_id(&gsd_id).await.unwrap().unwrap();
+    let methodology = state
+        .methodology_repo
+        .get_by_id(&gsd_id)
+        .await
+        .unwrap()
+        .unwrap();
 
     // Verify 4 phases
     assert_eq!(methodology.phases.len(), 4);
 
     // Verify Initialize phase
-    let init_phase = methodology.phases.iter().find(|p| p.id == "initialize").unwrap();
+    let init_phase = methodology
+        .phases
+        .iter()
+        .find(|p| p.id == "initialize")
+        .unwrap();
     assert_eq!(init_phase.order, 0);
     assert!(init_phase.column_ids.contains(&"initialize".to_string()));
 
@@ -506,12 +533,20 @@ async fn test_gsd_phase_structure(state: &AppState) {
     assert!(plan_phase.column_ids.contains(&"plan-check".to_string()));
 
     // Verify Execute phase has checkpoint column
-    let exec_phase = methodology.phases.iter().find(|p| p.id == "execute").unwrap();
+    let exec_phase = methodology
+        .phases
+        .iter()
+        .find(|p| p.id == "execute")
+        .unwrap();
     assert_eq!(exec_phase.order, 2);
     assert!(exec_phase.column_ids.contains(&"checkpoint".to_string()));
 
     // Verify Verify phase
-    let verify_phase = methodology.phases.iter().find(|p| p.id == "verify").unwrap();
+    let verify_phase = methodology
+        .phases
+        .iter()
+        .find(|p| p.id == "verify")
+        .unwrap();
     assert_eq!(verify_phase.order, 3);
     assert!(verify_phase.column_ids.contains(&"done".to_string()));
 }
@@ -522,17 +557,32 @@ async fn test_gsd_agent_profiles(state: &AppState) {
     let gsd_id = gsd.id.clone();
     state.methodology_repo.create(gsd).await.unwrap();
 
-    let methodology = state.methodology_repo.get_by_id(&gsd_id).await.unwrap().unwrap();
+    let methodology = state
+        .methodology_repo
+        .get_by_id(&gsd_id)
+        .await
+        .unwrap()
+        .unwrap();
 
     // Verify 11 agent profiles
     assert_eq!(methodology.agent_profiles.len(), 11);
 
     // Verify key agents exist
-    assert!(methodology.agent_profiles.contains(&"gsd-executor".to_string()));
-    assert!(methodology.agent_profiles.contains(&"gsd-verifier".to_string()));
-    assert!(methodology.agent_profiles.contains(&"gsd-planner".to_string()));
-    assert!(methodology.agent_profiles.contains(&"gsd-debugger".to_string()));
-    assert!(methodology.agent_profiles.contains(&"gsd-orchestrator".to_string()));
+    assert!(methodology
+        .agent_profiles
+        .contains(&"gsd-executor".to_string()));
+    assert!(methodology
+        .agent_profiles
+        .contains(&"gsd-verifier".to_string()));
+    assert!(methodology
+        .agent_profiles
+        .contains(&"gsd-planner".to_string()));
+    assert!(methodology
+        .agent_profiles
+        .contains(&"gsd-debugger".to_string()));
+    assert!(methodology
+        .agent_profiles
+        .contains(&"gsd-orchestrator".to_string()));
     assert!(methodology.agent_profiles.contains(&"gsd-qa".to_string()));
 }
 

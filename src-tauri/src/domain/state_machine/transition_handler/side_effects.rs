@@ -392,8 +392,7 @@ pub(crate) fn set_trigger_origin(task: &mut Task, origin: &str) {
 ///
 /// Returns the origin string if present, otherwise `None`.
 pub(crate) fn get_trigger_origin(task: &Task) -> Option<String> {
-    parse_metadata(task)
-        .and_then(|v| v.get("trigger_origin")?.as_str().map(String::from))
+    parse_metadata(task).and_then(|v| v.get("trigger_origin")?.as_str().map(String::from))
 }
 
 /// Clear the `trigger_origin` field from a task's metadata.
@@ -3550,13 +3549,19 @@ impl<'a> super::TransitionHandler<'a> {
                         );
 
                         // Append attempt_failed event
-                        let mut recovery = MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
-                            .unwrap_or(None)
-                            .unwrap_or_else(MergeRecoveryMetadata::new);
+                        let mut recovery =
+                            MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+                                .unwrap_or(None)
+                                .unwrap_or_else(MergeRecoveryMetadata::new);
 
-                        let attempt_count = recovery.events.iter()
-                            .filter(|ev| matches!(ev.kind, MergeRecoveryEventKind::AutoRetryTriggered))
-                            .count() as u32 + 1;
+                        let attempt_count = recovery
+                            .events
+                            .iter()
+                            .filter(|ev| {
+                                matches!(ev.kind, MergeRecoveryEventKind::AutoRetryTriggered)
+                            })
+                            .count() as u32
+                            + 1;
 
                         let failed_event = MergeRecoveryEvent::new(
                             MergeRecoveryEventKind::AttemptFailed,
@@ -3574,11 +3579,22 @@ impl<'a> super::TransitionHandler<'a> {
                         match recovery.update_task_metadata(task.metadata.as_deref()) {
                             Ok(updated_json) => {
                                 // Also preserve legacy error metadata
-                                if let Ok(mut meta) = serde_json::from_str::<serde_json::Value>(&updated_json) {
+                                if let Ok(mut meta) =
+                                    serde_json::from_str::<serde_json::Value>(&updated_json)
+                                {
                                     if let Some(obj) = meta.as_object_mut() {
-                                        obj.insert("error".to_string(), serde_json::json!(e.to_string()));
-                                        obj.insert("source_branch".to_string(), serde_json::json!(source_branch));
-                                        obj.insert("target_branch".to_string(), serde_json::json!(target_branch));
+                                        obj.insert(
+                                            "error".to_string(),
+                                            serde_json::json!(e.to_string()),
+                                        );
+                                        obj.insert(
+                                            "source_branch".to_string(),
+                                            serde_json::json!(source_branch),
+                                        );
+                                        obj.insert(
+                                            "target_branch".to_string(),
+                                            serde_json::json!(target_branch),
+                                        );
                                     }
                                     task.metadata = Some(meta.to_string());
                                 } else {

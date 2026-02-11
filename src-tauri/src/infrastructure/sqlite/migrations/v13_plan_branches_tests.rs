@@ -17,13 +17,29 @@ fn test_v13_plan_branches_has_correct_columns() {
     run_migrations(&conn).unwrap();
 
     assert!(helpers::column_exists(&conn, "plan_branches", "id"));
-    assert!(helpers::column_exists(&conn, "plan_branches", "plan_artifact_id"));
+    assert!(helpers::column_exists(
+        &conn,
+        "plan_branches",
+        "plan_artifact_id"
+    ));
     assert!(helpers::column_exists(&conn, "plan_branches", "session_id"));
     assert!(helpers::column_exists(&conn, "plan_branches", "project_id"));
-    assert!(helpers::column_exists(&conn, "plan_branches", "branch_name"));
-    assert!(helpers::column_exists(&conn, "plan_branches", "source_branch"));
+    assert!(helpers::column_exists(
+        &conn,
+        "plan_branches",
+        "branch_name"
+    ));
+    assert!(helpers::column_exists(
+        &conn,
+        "plan_branches",
+        "source_branch"
+    ));
     assert!(helpers::column_exists(&conn, "plan_branches", "status"));
-    assert!(helpers::column_exists(&conn, "plan_branches", "merge_task_id"));
+    assert!(helpers::column_exists(
+        &conn,
+        "plan_branches",
+        "merge_task_id"
+    ));
     assert!(helpers::column_exists(&conn, "plan_branches", "created_at"));
     assert!(helpers::column_exists(&conn, "plan_branches", "merged_at"));
 }

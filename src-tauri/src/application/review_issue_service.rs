@@ -28,9 +28,7 @@ impl CreateIssueInput {
     /// Validate that either step_id or no_step_reason is provided
     pub fn validate(&self) -> Result<(), String> {
         if self.step_id.is_none() && self.no_step_reason.is_none() {
-            return Err(
-                "Either step_id or no_step_reason must be provided for issue".to_string(),
-            );
+            return Err("Either step_id or no_step_reason must be provided for issue".to_string());
         }
         if self.title.trim().is_empty() {
             return Err("Issue title cannot be empty".to_string());
@@ -95,7 +93,10 @@ impl<R: ReviewIssueRepository> ReviewIssueService<R> {
     /// Mark an issue as being worked on
     ///
     /// Transitions issue from Open to InProgress.
-    pub async fn mark_issue_in_progress(&self, issue_id: &ReviewIssueId) -> AppResult<ReviewIssueEntity> {
+    pub async fn mark_issue_in_progress(
+        &self,
+        issue_id: &ReviewIssueId,
+    ) -> AppResult<ReviewIssueEntity> {
         let mut issue = self.get_issue_or_error(issue_id).await?;
 
         if issue.status != IssueStatus::Open {
@@ -207,7 +208,10 @@ impl<R: ReviewIssueRepository> ReviewIssueService<R> {
     }
 
     /// Get an issue by ID
-    pub async fn get_issue(&self, issue_id: &ReviewIssueId) -> AppResult<Option<ReviewIssueEntity>> {
+    pub async fn get_issue(
+        &self,
+        issue_id: &ReviewIssueId,
+    ) -> AppResult<Option<ReviewIssueEntity>> {
         self.repo.get_by_id(issue_id).await
     }
 
@@ -217,7 +221,10 @@ impl<R: ReviewIssueRepository> ReviewIssueService<R> {
     }
 
     /// Get open issues for a task
-    pub async fn get_open_issues_by_task(&self, task_id: &TaskId) -> AppResult<Vec<ReviewIssueEntity>> {
+    pub async fn get_open_issues_by_task(
+        &self,
+        task_id: &TaskId,
+    ) -> AppResult<Vec<ReviewIssueEntity>> {
         self.repo.get_open_by_task_id(task_id).await
     }
 
@@ -367,7 +374,10 @@ mod tests {
             code_snippet: None,
         };
         assert!(input.validate().is_err());
-        assert!(input.validate().unwrap_err().contains("step_id or no_step_reason"));
+        assert!(input
+            .validate()
+            .unwrap_err()
+            .contains("step_id or no_step_reason"));
     }
 
     #[test]
@@ -388,10 +398,7 @@ mod tests {
         let review_note_id = create_test_review_note(&conn, &task_id);
         let service = create_service(conn);
 
-        let inputs = vec![
-            create_test_input("Issue 1"),
-            create_test_input("Issue 2"),
-        ];
+        let inputs = vec![create_test_input("Issue 1"), create_test_input("Issue 2")];
 
         let issues = service
             .create_issues_from_review(review_note_id, task_id.clone(), inputs)
@@ -629,7 +636,11 @@ mod tests {
             .unwrap();
 
         assert_eq!(reopened.status, IssueStatus::Open);
-        assert!(reopened.resolution_notes.as_ref().unwrap().contains("Reopened"));
+        assert!(reopened
+            .resolution_notes
+            .as_ref()
+            .unwrap()
+            .contains("Reopened"));
     }
 
     #[tokio::test]
@@ -708,7 +719,9 @@ mod tests {
             .unwrap();
 
         // Try to mark as wontfix - should fail
-        let result = service.mark_issue_wontfix(issue_id, "Too late".to_string()).await;
+        let result = service
+            .mark_issue_wontfix(issue_id, "Too late".to_string())
+            .await;
         assert!(result.is_err());
     }
 

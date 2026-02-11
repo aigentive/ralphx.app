@@ -9,15 +9,13 @@ use std::sync::Arc;
 
 use ralphx_lib::domain::agents::{AgentRole, AgenticClient};
 use ralphx_lib::domain::entities::TaskId;
-use ralphx_lib::domain::state_machine::{
-    AgentSpawner, State, TaskEvent, QaFailedData,
-};
 use ralphx_lib::domain::state_machine::types::QaFailure;
-use ralphx_lib::infrastructure::{MockAgenticClient, MockCallType};
+use ralphx_lib::domain::state_machine::{AgentSpawner, QaFailedData, State, TaskEvent};
 use ralphx_lib::infrastructure::agents::AgenticClientSpawner;
 use ralphx_lib::infrastructure::sqlite::{
     open_memory_connection, run_migrations, TaskStateMachineRepository,
 };
+use ralphx_lib::infrastructure::{MockAgenticClient, MockCallType};
 use ralphx_lib::testing::test_prompts;
 
 /// Helper to set up a test environment with a repository and task
@@ -79,16 +77,25 @@ async fn test_qa_prep_runs_in_parallel_with_execution() {
     assert_eq!(calls.len(), 2, "Expected 2 spawn calls (worker + qa-prep)");
 
     // Verify roles
-    let roles: Vec<AgentRole> = calls.iter().map(|c| {
-        if let MockCallType::Spawn { role, .. } = &c.call_type {
-            role.clone()
-        } else {
-            panic!("Expected Spawn call")
-        }
-    }).collect();
+    let roles: Vec<AgentRole> = calls
+        .iter()
+        .map(|c| {
+            if let MockCallType::Spawn { role, .. } = &c.call_type {
+                role.clone()
+            } else {
+                panic!("Expected Spawn call")
+            }
+        })
+        .collect();
 
-    assert!(roles.contains(&AgentRole::Worker), "Worker should be spawned");
-    assert!(roles.contains(&AgentRole::QaPrep), "QaPrep should be spawned in background");
+    assert!(
+        roles.contains(&AgentRole::Worker),
+        "Worker should be spawned"
+    );
+    assert!(
+        roles.contains(&AgentRole::QaPrep),
+        "QaPrep should be spawned in background"
+    );
 }
 
 /// Test: State machine waits for QA Prep if worker completes first
@@ -128,7 +135,8 @@ async fn test_mock_client_distinguishes_spawn_modes() {
     let calls = client.get_calls().await;
 
     // Filter spawn calls and check they were recorded
-    let spawn_calls: Vec<_> = calls.iter()
+    let spawn_calls: Vec<_> = calls
+        .iter()
         .filter(|c| matches!(c.call_type, MockCallType::Spawn { .. }))
         .collect();
 
@@ -154,11 +162,15 @@ fn test_qa_testing_flow_pass() {
     assert_eq!(repo.load_state(&task_id).unwrap(), State::QaRefining);
 
     // QA Refinement complete -> QaTesting
-    let state = repo.process_event(&task_id, &TaskEvent::QaRefinementComplete).unwrap();
+    let state = repo
+        .process_event(&task_id, &TaskEvent::QaRefinementComplete)
+        .unwrap();
     assert_eq!(state, State::QaTesting);
 
     // QA Tests pass -> QaPassed
-    let state = repo.process_event(&task_id, &TaskEvent::QaTestsComplete { passed: true }).unwrap();
+    let state = repo
+        .process_event(&task_id, &TaskEvent::QaTestsComplete { passed: true })
+        .unwrap();
     assert_eq!(state, State::QaPassed);
 
     // Transition to PendingReview (entry action in real system)
@@ -175,7 +187,9 @@ fn test_qa_passed_records_success() {
     repo.persist_state(&task_id, &State::QaTesting).unwrap();
 
     // QA Tests pass
-    let state = repo.process_event(&task_id, &TaskEvent::QaTestsComplete { passed: true }).unwrap();
+    let state = repo
+        .process_event(&task_id, &TaskEvent::QaTestsComplete { passed: true })
+        .unwrap();
 
     // Verify we're in QaPassed
     assert_eq!(state, State::QaPassed);
@@ -198,7 +212,9 @@ fn test_qa_testing_flow_failure() {
     repo.persist_state(&task_id, &State::QaTesting).unwrap();
 
     // QA Tests fail -> QaFailed
-    let state = repo.process_event(&task_id, &TaskEvent::QaTestsComplete { passed: false }).unwrap();
+    let state = repo
+        .process_event(&task_id, &TaskEvent::QaTestsComplete { passed: false })
+        .unwrap();
 
     if let State::QaFailed(_) = state {
         // Success - we're in QaFailed state
@@ -218,7 +234,8 @@ fn test_qa_failed_preserves_failure_details() {
         QaFailure::new("test_form_submit", "Expected 200, got 401"),
     ]);
 
-    repo.persist_state(&task_id, &State::QaFailed(failures)).unwrap();
+    repo.persist_state(&task_id, &State::QaFailed(failures))
+        .unwrap();
 
     // Reload and verify failures preserved
     if let State::QaFailed(data) = repo.load_state(&task_id).unwrap() {
@@ -238,7 +255,8 @@ fn test_qa_failed_retry_to_revision_needed() {
 
     // Set up QaFailed state
     let failures = QaFailedData::single(QaFailure::new("test_x", "Test failed"));
-    repo.persist_state(&task_id, &State::QaFailed(failures)).unwrap();
+    repo.persist_state(&task_id, &State::QaFailed(failures))
+        .unwrap();
 
     // Retry: QaFailed -> RevisionNeeded
     let state = repo.process_event(&task_id, &TaskEvent::Retry).unwrap();
@@ -252,7 +270,8 @@ fn test_qa_failed_skip_to_pending_review() {
 
     // Set up QaFailed state (maybe flaky test)
     let failures = QaFailedData::single(QaFailure::new("flaky_test", "Random timeout"));
-    repo.persist_state(&task_id, &State::QaFailed(failures)).unwrap();
+    repo.persist_state(&task_id, &State::QaFailed(failures))
+        .unwrap();
 
     // SkipQa: QaFailed -> PendingReview
     let state = repo.process_event(&task_id, &TaskEvent::SkipQa).unwrap();
@@ -280,11 +299,15 @@ fn test_complete_lifecycle_with_qa() {
     repo.persist_state(&task_id, &State::QaRefining).unwrap();
 
     // 5. QaRefinementComplete: QaRefining -> QaTesting
-    let state = repo.process_event(&task_id, &TaskEvent::QaRefinementComplete).unwrap();
+    let state = repo
+        .process_event(&task_id, &TaskEvent::QaRefinementComplete)
+        .unwrap();
     assert_eq!(state, State::QaTesting);
 
     // 6. QaTestsComplete (passed): QaTesting -> QaPassed
-    let state = repo.process_event(&task_id, &TaskEvent::QaTestsComplete { passed: true }).unwrap();
+    let state = repo
+        .process_event(&task_id, &TaskEvent::QaTestsComplete { passed: true })
+        .unwrap();
     assert_eq!(state, State::QaPassed);
 
     // 7. Move to PendingReview (simulated entry action)
@@ -294,11 +317,21 @@ fn test_complete_lifecycle_with_qa() {
     repo.persist_state(&task_id, &State::Reviewing).unwrap();
 
     // 9. ReviewComplete (approved): Reviewing -> ReviewPassed
-    let state = repo.process_event(&task_id, &TaskEvent::ReviewComplete { approved: true, feedback: None }).unwrap();
+    let state = repo
+        .process_event(
+            &task_id,
+            &TaskEvent::ReviewComplete {
+                approved: true,
+                feedback: None,
+            },
+        )
+        .unwrap();
     assert_eq!(state, State::ReviewPassed);
 
     // 10. HumanApprove: ReviewPassed -> Approved
-    let state = repo.process_event(&task_id, &TaskEvent::HumanApprove).unwrap();
+    let state = repo
+        .process_event(&task_id, &TaskEvent::HumanApprove)
+        .unwrap();
     assert_eq!(state, State::Approved);
 }
 
@@ -311,7 +344,9 @@ fn test_qa_failure_reexecution_cycle() {
     repo.persist_state(&task_id, &State::QaTesting).unwrap();
 
     // QA fails
-    let state = repo.process_event(&task_id, &TaskEvent::QaTestsComplete { passed: false }).unwrap();
+    let state = repo
+        .process_event(&task_id, &TaskEvent::QaTestsComplete { passed: false })
+        .unwrap();
     assert!(matches!(state, State::QaFailed(_)));
 
     // Retry triggers revision
@@ -323,8 +358,11 @@ fn test_qa_failure_reexecution_cycle() {
 
     // Execution completes again -> QaRefining (with QA enabled)
     repo.persist_state(&task_id, &State::QaRefining).unwrap();
-    repo.process_event(&task_id, &TaskEvent::QaRefinementComplete).unwrap();
-    let state = repo.process_event(&task_id, &TaskEvent::QaTestsComplete { passed: true }).unwrap();
+    repo.process_event(&task_id, &TaskEvent::QaRefinementComplete)
+        .unwrap();
+    let state = repo
+        .process_event(&task_id, &TaskEvent::QaTestsComplete { passed: true })
+        .unwrap();
     assert_eq!(state, State::QaPassed);
 }
 
@@ -339,16 +377,21 @@ async fn test_mock_client_qa_prep_responses() {
     let handle = ralphx_lib::domain::agents::AgentHandle::mock(AgentRole::QaPrep);
 
     // Configure QA prep response
-    client.when_prompt_contains(
-        "acceptance criteria",
-        "Generated 5 acceptance criteria for login feature"
-    ).await;
+    client
+        .when_prompt_contains(
+            "acceptance criteria",
+            "Generated 5 acceptance criteria for login feature",
+        )
+        .await;
 
     // Test the configured response
-    let response = client.send_prompt(
-        &handle,
-        "Generate acceptance criteria for the login feature"
-    ).await.unwrap();
+    let response = client
+        .send_prompt(
+            &handle,
+            "Generate acceptance criteria for the login feature",
+        )
+        .await
+        .unwrap();
 
     assert!(response.content.contains("5 acceptance criteria"));
 }
@@ -366,24 +409,26 @@ async fn test_mock_client_qa_test_responses() {
     ).await;
 
     // Configure QA test fail response
-    client.when_prompt_contains(
-        "failing tests",
-        "2 of 5 tests failed: form_submit (Expected 200, got 401), validation (Timeout)"
-    ).await;
+    client
+        .when_prompt_contains(
+            "failing tests",
+            "2 of 5 tests failed: form_submit (Expected 200, got 401), validation (Timeout)",
+        )
+        .await;
 
     // Test pass scenario
-    let response = client.send_prompt(
-        &handle,
-        "run tests for login feature"
-    ).await.unwrap();
+    let response = client
+        .send_prompt(&handle, "run tests for login feature")
+        .await
+        .unwrap();
     assert!(response.content.contains("All 5 tests passed"));
 
     // Test fail scenario (new prompt)
     let handle2 = ralphx_lib::domain::agents::AgentHandle::mock(AgentRole::QaTester);
-    let response = client.send_prompt(
-        &handle2,
-        "check failing tests"
-    ).await.unwrap();
+    let response = client
+        .send_prompt(&handle2, "check failing tests")
+        .await
+        .unwrap();
     assert!(response.content.contains("2 of 5 tests failed"));
 }
 
@@ -394,11 +439,13 @@ async fn test_qa_agents_use_test_prompts() {
     let handle = ralphx_lib::domain::agents::AgentHandle::mock(AgentRole::QaPrep);
 
     // Use the echo marker for minimal cost testing
-    client.when_prompt_contains(
-        test_prompts::ECHO_MARKER,
-        test_prompts::expected::ECHO_OK
-    ).await;
+    client
+        .when_prompt_contains(test_prompts::ECHO_MARKER, test_prompts::expected::ECHO_OK)
+        .await;
 
-    let response = client.send_prompt(&handle, test_prompts::ECHO_MARKER).await.unwrap();
+    let response = client
+        .send_prompt(&handle, test_prompts::ECHO_MARKER)
+        .await
+        .unwrap();
     test_prompts::assert_marker(&response.content, test_prompts::expected::ECHO_OK);
 }

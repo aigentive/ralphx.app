@@ -144,8 +144,7 @@ pub async fn complete_merge(
 
     // 6. Verify commit is on target branch (resolved via plan branch or base branch)
     let plan_branch_repo = Some(Arc::clone(&state.app_state.plan_branch_repo));
-    let (_, target_branch) =
-        resolve_merge_branches(&task, &project, &plan_branch_repo).await;
+    let (_, target_branch) = resolve_merge_branches(&task, &project, &plan_branch_repo).await;
     let repo_path = PathBuf::from(&project.working_directory);
 
     if !GitService::is_commit_on_branch(&repo_path, &req.commit_sha, &target_branch)
@@ -187,20 +186,23 @@ pub async fn complete_merge(
     }
 
     // 9. Create transition service and transition to Merged
-    let scheduler_concrete = Arc::new(TaskSchedulerService::new(
-        Arc::clone(&state.execution_state),
-        Arc::clone(&state.app_state.project_repo),
-        Arc::clone(&state.app_state.task_repo),
-        Arc::clone(&state.app_state.task_dependency_repo),
-        Arc::clone(&state.app_state.chat_message_repo),
-        Arc::clone(&state.app_state.chat_conversation_repo),
-        Arc::clone(&state.app_state.agent_run_repo),
-        Arc::clone(&state.app_state.ideation_session_repo),
-        Arc::clone(&state.app_state.activity_event_repo),
-        Arc::clone(&state.app_state.message_queue),
-        Arc::clone(&state.app_state.running_agent_registry),
-        state.app_state.app_handle.as_ref().cloned(),
-    ).with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo)));
+    let scheduler_concrete = Arc::new(
+        TaskSchedulerService::new(
+            Arc::clone(&state.execution_state),
+            Arc::clone(&state.app_state.project_repo),
+            Arc::clone(&state.app_state.task_repo),
+            Arc::clone(&state.app_state.task_dependency_repo),
+            Arc::clone(&state.app_state.chat_message_repo),
+            Arc::clone(&state.app_state.chat_conversation_repo),
+            Arc::clone(&state.app_state.agent_run_repo),
+            Arc::clone(&state.app_state.ideation_session_repo),
+            Arc::clone(&state.app_state.activity_event_repo),
+            Arc::clone(&state.app_state.message_queue),
+            Arc::clone(&state.app_state.running_agent_registry),
+            state.app_state.app_handle.as_ref().cloned(),
+        )
+        .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo)),
+    );
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
@@ -635,8 +637,7 @@ mod tests {
 
         #[test]
         fn error_without_details() {
-            let (status, Json(body)) =
-                json_error(StatusCode::BAD_REQUEST, "Invalid input", None);
+            let (status, Json(body)) = json_error(StatusCode::BAD_REQUEST, "Invalid input", None);
             assert_eq!(status, StatusCode::BAD_REQUEST);
             assert_eq!(body["error"], "Invalid input");
             assert!(body.get("details").is_none());
@@ -664,8 +665,7 @@ mod tests {
 
         #[test]
         fn not_found_error_status() {
-            let (status, Json(body)) =
-                json_error(StatusCode::NOT_FOUND, "Task not found", None);
+            let (status, Json(body)) = json_error(StatusCode::NOT_FOUND, "Task not found", None);
             assert_eq!(status, StatusCode::NOT_FOUND);
             assert_eq!(body["error"], "Task not found");
         }

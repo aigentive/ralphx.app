@@ -108,11 +108,8 @@ fn test_v4_blocked_reason_can_be_updated() {
     assert_eq!(reason, Some("Blocked by dependency".to_string()));
 
     // Clear blocked_reason
-    conn.execute(
-        "UPDATE tasks SET blocked_reason = NULL WHERE id = 't1'",
-        [],
-    )
-    .unwrap();
+    conn.execute("UPDATE tasks SET blocked_reason = NULL WHERE id = 't1'", [])
+        .unwrap();
 
     let reason: Option<String> = conn
         .query_row(

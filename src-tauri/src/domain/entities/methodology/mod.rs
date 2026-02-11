@@ -140,8 +140,12 @@ impl MethodologyExtension {
     }
 
     /// Adds multiple agent profiles
-    pub fn with_agent_profiles(mut self, profiles: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        self.agent_profiles.extend(profiles.into_iter().map(|p| p.into()));
+    pub fn with_agent_profiles(
+        mut self,
+        profiles: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        self.agent_profiles
+            .extend(profiles.into_iter().map(|p| p.into()));
         self
     }
 
@@ -176,7 +180,10 @@ impl MethodologyExtension {
     }
 
     /// Adds multiple templates
-    pub fn with_templates(mut self, templates: impl IntoIterator<Item = MethodologyTemplate>) -> Self {
+    pub fn with_templates(
+        mut self,
+        templates: impl IntoIterator<Item = MethodologyTemplate>,
+    ) -> Self {
         self.templates.extend(templates);
         self
     }
@@ -194,7 +201,10 @@ impl MethodologyExtension {
     }
 
     /// Adds multiple plan templates
-    pub fn with_plan_templates(mut self, templates: impl IntoIterator<Item = MethodologyPlanTemplate>) -> Self {
+    pub fn with_plan_templates(
+        mut self,
+        templates: impl IntoIterator<Item = MethodologyPlanTemplate>,
+    ) -> Self {
         self.plan_templates.extend(templates);
         self
     }
@@ -443,7 +453,11 @@ impl MethodologyExtension {
                     .with_column("initialize"),
                 MethodologyPhase::new("plan", "Plan", 1)
                     .with_description("Research, planning, and plan verification")
-                    .with_agent_profiles(["gsd-phase-researcher", "gsd-planner", "gsd-plan-checker"])
+                    .with_agent_profiles([
+                        "gsd-phase-researcher",
+                        "gsd-planner",
+                        "gsd-plan-checker",
+                    ])
                     .with_columns(["discuss", "research", "planning", "plan-check"]),
                 MethodologyPhase::new("execute", "Execute", 2)
                     .with_description("Wave-based parallel execution with checkpoints")
@@ -535,8 +549,12 @@ impl MethodologyPhase {
     }
 
     /// Adds multiple agent profiles
-    pub fn with_agent_profiles(mut self, profiles: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        self.agent_profiles.extend(profiles.into_iter().map(|p| p.into()));
+    pub fn with_agent_profiles(
+        mut self,
+        profiles: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        self.agent_profiles
+            .extend(profiles.into_iter().map(|p| p.into()));
         self
     }
 
@@ -548,7 +566,8 @@ impl MethodologyPhase {
 
     /// Adds multiple column IDs
     pub fn with_columns(mut self, columns: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        self.column_ids.extend(columns.into_iter().map(|c| c.into()));
+        self.column_ids
+            .extend(columns.into_iter().map(|c| c.into()));
         self
     }
 }

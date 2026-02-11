@@ -32,7 +32,10 @@ impl TaskStateMachineRepository {
     ///
     /// Returns the State enum, rehydrating state-local data if present.
     pub fn load_state(&self, task_id: &TaskId) -> AppResult<State> {
-        let conn = self.conn.lock().map_err(|e| AppError::Database(e.to_string()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| AppError::Database(e.to_string()))?;
 
         // Get current internal_status from tasks table
         let status_str: String = conn
@@ -91,7 +94,10 @@ impl TaskStateMachineRepository {
     ///
     /// Updates the tasks table internal_status and manages state-local data.
     pub fn persist_state(&self, task_id: &TaskId, state: &State) -> AppResult<()> {
-        let conn = self.conn.lock().map_err(|e| AppError::Database(e.to_string()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| AppError::Database(e.to_string()))?;
         self.persist_state_inner(&conn, task_id, state)
     }
 
@@ -145,7 +151,10 @@ impl TaskStateMachineRepository {
     /// - The event is not valid in the current state
     /// - A database error occurs
     pub fn process_event(&self, task_id: &TaskId, event: &TaskEvent) -> AppResult<State> {
-        let conn = self.conn.lock().map_err(|e| AppError::Database(e.to_string()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| AppError::Database(e.to_string()))?;
 
         // Start transaction
         let tx = conn
@@ -228,7 +237,10 @@ impl TaskStateMachineRepository {
     ///
     /// This is useful when you need to inspect the state machine's state
     /// or manually process events.
-    pub fn load_with_state_machine(&self, task_id: &TaskId) -> AppResult<(State, TaskStateMachine)> {
+    pub fn load_with_state_machine(
+        &self,
+        task_id: &TaskId,
+    ) -> AppResult<(State, TaskStateMachine)> {
         let state = self.load_state(task_id)?;
         let context = TaskContext::new_test(task_id.as_str(), "");
         let machine = TaskStateMachine::new(context);
@@ -263,7 +275,10 @@ impl TaskStateMachineRepository {
     where
         F: FnOnce(&State, &State) -> AppResult<()>,
     {
-        let conn = self.conn.lock().map_err(|e| AppError::Database(e.to_string()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| AppError::Database(e.to_string()))?;
 
         // Start transaction
         let tx = conn
@@ -312,8 +327,8 @@ impl TaskStateMachineRepository {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::state_machine::{FailedData, QaFailedData};
     use crate::domain::state_machine::types::QaFailure;
+    use crate::domain::state_machine::{FailedData, QaFailedData};
     use crate::infrastructure::sqlite::connection::open_memory_connection;
     use crate::infrastructure::sqlite::migrations::run_migrations;
 
@@ -748,7 +763,10 @@ mod tests {
         // First transition: Backlog -> Ready
         let transitions_clone = transitions.clone();
         repo.transition_atomically(&task_id, &TaskEvent::Schedule, move |from, to| {
-            transitions_clone.lock().unwrap().push((from.clone(), to.clone()));
+            transitions_clone
+                .lock()
+                .unwrap()
+                .push((from.clone(), to.clone()));
             Ok(())
         })
         .unwrap();
@@ -756,7 +774,10 @@ mod tests {
         // Second transition: Ready -> Cancelled
         let transitions_clone = transitions.clone();
         repo.transition_atomically(&task_id, &TaskEvent::Cancel, move |from, to| {
-            transitions_clone.lock().unwrap().push((from.clone(), to.clone()));
+            transitions_clone
+                .lock()
+                .unwrap()
+                .push((from.clone(), to.clone()));
             Ok(())
         })
         .unwrap();

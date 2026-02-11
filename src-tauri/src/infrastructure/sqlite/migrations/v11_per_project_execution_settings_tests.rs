@@ -9,7 +9,11 @@ fn test_v11_adds_project_id_column() {
     run_migrations(&conn).unwrap();
 
     // Verify project_id column exists in execution_settings
-    assert!(helpers::column_exists(&conn, "execution_settings", "project_id"));
+    assert!(helpers::column_exists(
+        &conn,
+        "execution_settings",
+        "project_id"
+    ));
 }
 
 #[test]
@@ -137,6 +141,10 @@ fn test_v11_idempotent() {
     run_migrations(&conn).unwrap();
 
     // Verify state is still correct
-    assert!(helpers::column_exists(&conn, "execution_settings", "project_id"));
+    assert!(helpers::column_exists(
+        &conn,
+        "execution_settings",
+        "project_id"
+    ));
     assert!(helpers::table_exists(&conn, "global_execution_settings"));
 }

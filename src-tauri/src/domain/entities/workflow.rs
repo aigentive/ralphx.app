@@ -37,7 +37,11 @@ pub struct StateGroup {
 
 impl StateGroup {
     /// Creates a new state group with the given id, label, and statuses
-    pub fn new(id: impl Into<String>, label: impl Into<String>, statuses: Vec<InternalStatus>) -> Self {
+    pub fn new(
+        id: impl Into<String>,
+        label: impl Into<String>,
+        statuses: Vec<InternalStatus>,
+    ) -> Self {
         Self {
             id: id.into(),
             label: label.into(),
@@ -172,21 +176,28 @@ impl WorkflowSchema {
             description: Some("Default RalphX workflow".to_string()),
             columns: vec![
                 WorkflowColumn::new("draft", "Draft", InternalStatus::Backlog),
-                WorkflowColumn::new("ready", "Ready", InternalStatus::Ready)
-                    .with_groups(vec![
-                        StateGroup::new("fresh", "Fresh Tasks", vec![InternalStatus::Ready])
-                            .with_can_drag_from(true)
-                            .with_can_drop_to(true),
-                        StateGroup::new("needs_revision", "Needs Revision", vec![InternalStatus::RevisionNeeded])
-                            .with_icon("RotateCcw")
-                            .with_accent_color("hsl(var(--warning))")
-                            .with_can_drag_from(true)
-                            .with_can_drop_to(false), // Only review process can add here
-                    ]),
+                WorkflowColumn::new("ready", "Ready", InternalStatus::Ready).with_groups(vec![
+                    StateGroup::new("fresh", "Fresh Tasks", vec![InternalStatus::Ready])
+                        .with_can_drag_from(true)
+                        .with_can_drop_to(true),
+                    StateGroup::new(
+                        "needs_revision",
+                        "Needs Revision",
+                        vec![InternalStatus::RevisionNeeded],
+                    )
+                    .with_icon("RotateCcw")
+                    .with_accent_color("hsl(var(--warning))")
+                    .with_can_drag_from(true)
+                    .with_can_drop_to(false), // Only review process can add here
+                ]),
                 WorkflowColumn::new("in_progress", "In Progress", InternalStatus::Executing)
                     .with_groups(vec![
-                        StateGroup::new("first_attempt", "First Attempt", vec![InternalStatus::Executing])
-                            .locked(), // System-managed (agent working)
+                        StateGroup::new(
+                            "first_attempt",
+                            "First Attempt",
+                            vec![InternalStatus::Executing],
+                        )
+                        .locked(), // System-managed (agent working)
                         StateGroup::new("revising", "Revising", vec![InternalStatus::ReExecuting])
                             .with_icon("RefreshCw")
                             .with_accent_color("hsl(var(--warning))")
@@ -194,17 +205,29 @@ impl WorkflowSchema {
                     ]),
                 WorkflowColumn::new("in_review", "In Review", InternalStatus::PendingReview)
                     .with_groups(vec![
-                        StateGroup::new("waiting_ai", "Waiting for AI", vec![InternalStatus::PendingReview])
-                            .with_icon("Clock")
-                            .locked(), // System-managed
-                        StateGroup::new("ai_reviewing", "AI Reviewing", vec![InternalStatus::Reviewing])
-                            .with_icon("Bot")
-                            .with_accent_color("hsl(var(--primary))")
-                            .locked(), // System-managed (AI working)
-                        StateGroup::new("ready_approval", "Ready for Approval", vec![InternalStatus::ReviewPassed])
-                            .with_icon("CheckCircle")
-                            .with_accent_color("hsl(var(--success))")
-                            .locked(), // User interacts via Approve/Revise buttons
+                        StateGroup::new(
+                            "waiting_ai",
+                            "Waiting for AI",
+                            vec![InternalStatus::PendingReview],
+                        )
+                        .with_icon("Clock")
+                        .locked(), // System-managed
+                        StateGroup::new(
+                            "ai_reviewing",
+                            "AI Reviewing",
+                            vec![InternalStatus::Reviewing],
+                        )
+                        .with_icon("Bot")
+                        .with_accent_color("hsl(var(--primary))")
+                        .locked(), // System-managed (AI working)
+                        StateGroup::new(
+                            "ready_approval",
+                            "Ready for Approval",
+                            vec![InternalStatus::ReviewPassed],
+                        )
+                        .with_icon("CheckCircle")
+                        .with_accent_color("hsl(var(--success))")
+                        .locked(), // User interacts via Approve/Revise buttons
                     ]),
                 WorkflowColumn::new("done", "Done", InternalStatus::Approved),
             ],
@@ -521,7 +544,11 @@ mod tests {
     fn workflow_schema_new_creates_with_id() {
         let schema = WorkflowSchema::new(
             "Test Workflow",
-            vec![WorkflowColumn::new("col1", "Column 1", InternalStatus::Backlog)],
+            vec![WorkflowColumn::new(
+                "col1",
+                "Column 1",
+                InternalStatus::Backlog,
+            )],
         );
         assert!(!schema.id.as_str().is_empty());
         assert_eq!(schema.name, "Test Workflow");
@@ -531,8 +558,7 @@ mod tests {
 
     #[test]
     fn workflow_schema_with_description() {
-        let schema = WorkflowSchema::new("Test", vec![])
-            .with_description("A test workflow");
+        let schema = WorkflowSchema::new("Test", vec![]).with_description("A test workflow");
         assert_eq!(schema.description, Some("A test workflow".to_string()));
     }
 
@@ -585,10 +611,18 @@ mod tests {
             .map(|c| (&c.id, c.maps_to))
             .collect();
 
-        assert!(column_mappings.iter().any(|(id, status)| *id == "draft" && *status == InternalStatus::Backlog));
-        assert!(column_mappings.iter().any(|(id, status)| *id == "ready" && *status == InternalStatus::Ready));
-        assert!(column_mappings.iter().any(|(id, status)| *id == "in_progress" && *status == InternalStatus::Executing));
-        assert!(column_mappings.iter().any(|(id, status)| *id == "done" && *status == InternalStatus::Approved));
+        assert!(column_mappings
+            .iter()
+            .any(|(id, status)| *id == "draft" && *status == InternalStatus::Backlog));
+        assert!(column_mappings
+            .iter()
+            .any(|(id, status)| *id == "ready" && *status == InternalStatus::Ready));
+        assert!(column_mappings
+            .iter()
+            .any(|(id, status)| *id == "in_progress" && *status == InternalStatus::Executing));
+        assert!(column_mappings
+            .iter()
+            .any(|(id, status)| *id == "done" && *status == InternalStatus::Approved));
     }
 
     #[test]
@@ -625,15 +659,14 @@ mod tests {
 
     #[test]
     fn workflow_column_with_color() {
-        let col = WorkflowColumn::new("col", "Col", InternalStatus::Backlog)
-            .with_color("#ff6b35");
+        let col = WorkflowColumn::new("col", "Col", InternalStatus::Backlog).with_color("#ff6b35");
         assert_eq!(col.color, Some("#ff6b35".to_string()));
     }
 
     #[test]
     fn workflow_column_with_icon() {
-        let col = WorkflowColumn::new("col", "Col", InternalStatus::Backlog)
-            .with_icon("check-circle");
+        let col =
+            WorkflowColumn::new("col", "Col", InternalStatus::Backlog).with_icon("check-circle");
         assert_eq!(col.icon, Some("check-circle".to_string()));
     }
 
@@ -642,8 +675,8 @@ mod tests {
         let behavior = ColumnBehavior::new()
             .with_skip_review(true)
             .with_agent_profile("worker-fast");
-        let col = WorkflowColumn::new("col", "Col", InternalStatus::Executing)
-            .with_behavior(behavior);
+        let col =
+            WorkflowColumn::new("col", "Col", InternalStatus::Executing).with_behavior(behavior);
 
         let b = col.behavior.unwrap();
         assert_eq!(b.skip_review, Some(true));
@@ -652,8 +685,8 @@ mod tests {
 
     #[test]
     fn workflow_column_serializes() {
-        let col = WorkflowColumn::new("test", "Test", InternalStatus::Blocked)
-            .with_color("#aabbcc");
+        let col =
+            WorkflowColumn::new("test", "Test", InternalStatus::Blocked).with_color("#aabbcc");
         let json = serde_json::to_string(&col).unwrap();
         assert!(json.contains("\"id\":\"test\""));
         assert!(json.contains("\"maps_to\":\"blocked\""));
@@ -707,11 +740,15 @@ mod tests {
 
     #[test]
     fn state_group_builder_chain() {
-        let group = StateGroup::new("needs_revision", "Needs Revision", vec![InternalStatus::RevisionNeeded])
-            .with_icon("RotateCcw")
-            .with_accent_color("hsl(var(--warning))")
-            .with_can_drag_from(true)
-            .with_can_drop_to(false);
+        let group = StateGroup::new(
+            "needs_revision",
+            "Needs Revision",
+            vec![InternalStatus::RevisionNeeded],
+        )
+        .with_icon("RotateCcw")
+        .with_accent_color("hsl(var(--warning))")
+        .with_can_drag_from(true)
+        .with_can_drop_to(false);
 
         assert_eq!(group.id, "needs_revision");
         assert_eq!(group.icon, Some("RotateCcw".to_string()));
@@ -722,8 +759,8 @@ mod tests {
 
     #[test]
     fn state_group_locked_sets_both_flags() {
-        let group = StateGroup::new("locked", "Locked Group", vec![InternalStatus::Executing])
-            .locked();
+        let group =
+            StateGroup::new("locked", "Locked Group", vec![InternalStatus::Executing]).locked();
         assert_eq!(group.can_drag_from, Some(false));
         assert_eq!(group.can_drop_to, Some(false));
     }
@@ -733,7 +770,11 @@ mod tests {
         let group = StateGroup::new(
             "review_states",
             "Review States",
-            vec![InternalStatus::PendingReview, InternalStatus::Reviewing, InternalStatus::ReviewPassed],
+            vec![
+                InternalStatus::PendingReview,
+                InternalStatus::Reviewing,
+                InternalStatus::ReviewPassed,
+            ],
         );
         assert_eq!(group.statuses.len(), 3);
         assert!(group.statuses.contains(&InternalStatus::PendingReview));
@@ -760,7 +801,10 @@ mod tests {
         let group: StateGroup = serde_json::from_str(json).unwrap();
         assert_eq!(group.id, "group1");
         assert_eq!(group.label, "Group 1");
-        assert_eq!(group.statuses, vec![InternalStatus::Ready, InternalStatus::RevisionNeeded]);
+        assert_eq!(
+            group.statuses,
+            vec![InternalStatus::Ready, InternalStatus::RevisionNeeded]
+        );
     }
 
     // ===== WorkflowColumn with Groups Tests =====
@@ -769,10 +813,13 @@ mod tests {
     fn workflow_column_with_groups() {
         let groups = vec![
             StateGroup::new("fresh", "Fresh Tasks", vec![InternalStatus::Ready]),
-            StateGroup::new("needs_revision", "Needs Revision", vec![InternalStatus::RevisionNeeded]),
+            StateGroup::new(
+                "needs_revision",
+                "Needs Revision",
+                vec![InternalStatus::RevisionNeeded],
+            ),
         ];
-        let col = WorkflowColumn::new("ready", "Ready", InternalStatus::Ready)
-            .with_groups(groups);
+        let col = WorkflowColumn::new("ready", "Ready", InternalStatus::Ready).with_groups(groups);
 
         assert!(col.groups.is_some());
         let groups = col.groups.unwrap();
@@ -783,10 +830,9 @@ mod tests {
 
     #[test]
     fn workflow_column_with_groups_serializes() {
-        let col = WorkflowColumn::new("ready", "Ready", InternalStatus::Ready)
-            .with_groups(vec![
-                StateGroup::new("fresh", "Fresh Tasks", vec![InternalStatus::Ready]),
-            ]);
+        let col = WorkflowColumn::new("ready", "Ready", InternalStatus::Ready).with_groups(vec![
+            StateGroup::new("fresh", "Fresh Tasks", vec![InternalStatus::Ready]),
+        ]);
         let json = serde_json::to_string(&col).unwrap();
         assert!(json.contains("\"groups\":["));
         assert!(json.contains("\"id\":\"fresh\""));
@@ -801,25 +847,48 @@ mod tests {
         assert!(ready_col.groups.is_some());
         let ready_groups = ready_col.groups.as_ref().unwrap();
         assert_eq!(ready_groups.len(), 2);
-        assert!(ready_groups.iter().any(|g| g.id == "fresh" && g.statuses.contains(&InternalStatus::Ready)));
-        assert!(ready_groups.iter().any(|g| g.id == "needs_revision" && g.statuses.contains(&InternalStatus::RevisionNeeded)));
+        assert!(ready_groups
+            .iter()
+            .any(|g| g.id == "fresh" && g.statuses.contains(&InternalStatus::Ready)));
+        assert!(ready_groups
+            .iter()
+            .any(|g| g.id == "needs_revision"
+                && g.statuses.contains(&InternalStatus::RevisionNeeded)));
 
         // In Progress column should have 2 groups: First Attempt, Revising
-        let progress_col = workflow.columns.iter().find(|c| c.id == "in_progress").unwrap();
+        let progress_col = workflow
+            .columns
+            .iter()
+            .find(|c| c.id == "in_progress")
+            .unwrap();
         assert!(progress_col.groups.is_some());
         let progress_groups = progress_col.groups.as_ref().unwrap();
         assert_eq!(progress_groups.len(), 2);
-        assert!(progress_groups.iter().any(|g| g.id == "first_attempt" && g.statuses.contains(&InternalStatus::Executing)));
-        assert!(progress_groups.iter().any(|g| g.id == "revising" && g.statuses.contains(&InternalStatus::ReExecuting)));
+        assert!(progress_groups
+            .iter()
+            .any(|g| g.id == "first_attempt" && g.statuses.contains(&InternalStatus::Executing)));
+        assert!(progress_groups
+            .iter()
+            .any(|g| g.id == "revising" && g.statuses.contains(&InternalStatus::ReExecuting)));
 
         // In Review column should have 3 groups
-        let review_col = workflow.columns.iter().find(|c| c.id == "in_review").unwrap();
+        let review_col = workflow
+            .columns
+            .iter()
+            .find(|c| c.id == "in_review")
+            .unwrap();
         assert!(review_col.groups.is_some());
         let review_groups = review_col.groups.as_ref().unwrap();
         assert_eq!(review_groups.len(), 3);
-        assert!(review_groups.iter().any(|g| g.id == "waiting_ai" && g.statuses.contains(&InternalStatus::PendingReview)));
-        assert!(review_groups.iter().any(|g| g.id == "ai_reviewing" && g.statuses.contains(&InternalStatus::Reviewing)));
-        assert!(review_groups.iter().any(|g| g.id == "ready_approval" && g.statuses.contains(&InternalStatus::ReviewPassed)));
+        assert!(review_groups
+            .iter()
+            .any(|g| g.id == "waiting_ai" && g.statuses.contains(&InternalStatus::PendingReview)));
+        assert!(review_groups
+            .iter()
+            .any(|g| g.id == "ai_reviewing" && g.statuses.contains(&InternalStatus::Reviewing)));
+        assert!(review_groups.iter().any(
+            |g| g.id == "ready_approval" && g.statuses.contains(&InternalStatus::ReviewPassed)
+        ));
     }
 
     #[test]
@@ -832,12 +901,19 @@ mod tests {
         let fresh = ready_groups.iter().find(|g| g.id == "fresh").unwrap();
         assert_eq!(fresh.can_drag_from, Some(true));
         assert_eq!(fresh.can_drop_to, Some(true));
-        let revision = ready_groups.iter().find(|g| g.id == "needs_revision").unwrap();
+        let revision = ready_groups
+            .iter()
+            .find(|g| g.id == "needs_revision")
+            .unwrap();
         assert_eq!(revision.can_drag_from, Some(true));
         assert_eq!(revision.can_drop_to, Some(false));
 
         // In Progress: all groups locked (system-managed)
-        let progress_col = workflow.columns.iter().find(|c| c.id == "in_progress").unwrap();
+        let progress_col = workflow
+            .columns
+            .iter()
+            .find(|c| c.id == "in_progress")
+            .unwrap();
         let progress_groups = progress_col.groups.as_ref().unwrap();
         for group in progress_groups {
             assert_eq!(group.can_drag_from, Some(false));
@@ -845,7 +921,11 @@ mod tests {
         }
 
         // In Review: all groups locked (system-managed)
-        let review_col = workflow.columns.iter().find(|c| c.id == "in_review").unwrap();
+        let review_col = workflow
+            .columns
+            .iter()
+            .find(|c| c.id == "in_review")
+            .unwrap();
         let review_groups = review_col.groups.as_ref().unwrap();
         for group in review_groups {
             assert_eq!(group.can_drag_from, Some(false));
@@ -857,10 +937,22 @@ mod tests {
 
     #[test]
     fn sync_provider_serializes_snake_case() {
-        assert_eq!(serde_json::to_string(&SyncProvider::Jira).unwrap(), "\"jira\"");
-        assert_eq!(serde_json::to_string(&SyncProvider::Github).unwrap(), "\"github\"");
-        assert_eq!(serde_json::to_string(&SyncProvider::Linear).unwrap(), "\"linear\"");
-        assert_eq!(serde_json::to_string(&SyncProvider::Notion).unwrap(), "\"notion\"");
+        assert_eq!(
+            serde_json::to_string(&SyncProvider::Jira).unwrap(),
+            "\"jira\""
+        );
+        assert_eq!(
+            serde_json::to_string(&SyncProvider::Github).unwrap(),
+            "\"github\""
+        );
+        assert_eq!(
+            serde_json::to_string(&SyncProvider::Linear).unwrap(),
+            "\"linear\""
+        );
+        assert_eq!(
+            serde_json::to_string(&SyncProvider::Notion).unwrap(),
+            "\"notion\""
+        );
     }
 
     #[test]
@@ -879,16 +971,34 @@ mod tests {
 
     #[test]
     fn sync_direction_serializes() {
-        assert_eq!(serde_json::to_string(&SyncDirection::Pull).unwrap(), "\"pull\"");
-        assert_eq!(serde_json::to_string(&SyncDirection::Push).unwrap(), "\"push\"");
-        assert_eq!(serde_json::to_string(&SyncDirection::Bidirectional).unwrap(), "\"bidirectional\"");
+        assert_eq!(
+            serde_json::to_string(&SyncDirection::Pull).unwrap(),
+            "\"pull\""
+        );
+        assert_eq!(
+            serde_json::to_string(&SyncDirection::Push).unwrap(),
+            "\"push\""
+        );
+        assert_eq!(
+            serde_json::to_string(&SyncDirection::Bidirectional).unwrap(),
+            "\"bidirectional\""
+        );
     }
 
     #[test]
     fn sync_direction_from_str() {
-        assert_eq!(SyncDirection::from_str("pull").unwrap(), SyncDirection::Pull);
-        assert_eq!(SyncDirection::from_str("push").unwrap(), SyncDirection::Push);
-        assert_eq!(SyncDirection::from_str("bidirectional").unwrap(), SyncDirection::Bidirectional);
+        assert_eq!(
+            SyncDirection::from_str("pull").unwrap(),
+            SyncDirection::Pull
+        );
+        assert_eq!(
+            SyncDirection::from_str("push").unwrap(),
+            SyncDirection::Push
+        );
+        assert_eq!(
+            SyncDirection::from_str("bidirectional").unwrap(),
+            SyncDirection::Bidirectional
+        );
     }
 
     #[test]
@@ -902,15 +1012,30 @@ mod tests {
 
     #[test]
     fn conflict_resolution_serializes() {
-        assert_eq!(serde_json::to_string(&ConflictResolution::ExternalWins).unwrap(), "\"external_wins\"");
-        assert_eq!(serde_json::to_string(&ConflictResolution::InternalWins).unwrap(), "\"internal_wins\"");
-        assert_eq!(serde_json::to_string(&ConflictResolution::Manual).unwrap(), "\"manual\"");
+        assert_eq!(
+            serde_json::to_string(&ConflictResolution::ExternalWins).unwrap(),
+            "\"external_wins\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ConflictResolution::InternalWins).unwrap(),
+            "\"internal_wins\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ConflictResolution::Manual).unwrap(),
+            "\"manual\""
+        );
     }
 
     #[test]
     fn conflict_resolution_display() {
-        assert_eq!(ConflictResolution::ExternalWins.to_string(), "external_wins");
-        assert_eq!(ConflictResolution::InternalWins.to_string(), "internal_wins");
+        assert_eq!(
+            ConflictResolution::ExternalWins.to_string(),
+            "external_wins"
+        );
+        assert_eq!(
+            ConflictResolution::InternalWins.to_string(),
+            "internal_wins"
+        );
         assert_eq!(ConflictResolution::Manual.to_string(), "manual");
     }
 

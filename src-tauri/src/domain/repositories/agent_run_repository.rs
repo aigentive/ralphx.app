@@ -5,7 +5,9 @@
 
 use async_trait::async_trait;
 
-use crate::domain::entities::{AgentRun, AgentRunId, AgentRunStatus, ChatConversationId, InterruptedConversation};
+use crate::domain::entities::{
+    AgentRun, AgentRunId, AgentRunStatus, ChatConversationId, InterruptedConversation,
+};
 use crate::error::AppResult;
 
 /// Repository trait for AgentRun persistence.
@@ -165,7 +167,10 @@ mod tests {
             Ok(())
         }
 
-        async fn delete_by_conversation(&self, _conversation_id: &ChatConversationId) -> AppResult<()> {
+        async fn delete_by_conversation(
+            &self,
+            _conversation_id: &ChatConversationId,
+        ) -> AppResult<()> {
             Ok(())
         }
 

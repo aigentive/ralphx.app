@@ -1,7 +1,7 @@
 // Type definitions for task_commands module
 
-use serde::{Deserialize, Serialize};
 use crate::domain::entities::Task;
+use serde::{Deserialize, Serialize};
 
 /// Input for creating a new task
 #[derive(Debug, Deserialize)]

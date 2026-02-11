@@ -148,11 +148,13 @@ impl<R: ArtifactFlowRepository> ArtifactFlowService<R> {
                     event_name: event_name.clone(),
                     artifact_id: artifact.id.as_str().to_string(),
                 },
-                ArtifactFlowStep::FindLinkedProposals => StepExecutionResult::LinkedProposalsFound {
-                    artifact_id: artifact.id.as_str().to_string(),
-                    // Proposal IDs will be populated by the caller who has access to the proposal repo
-                    proposal_ids: vec![],
-                },
+                ArtifactFlowStep::FindLinkedProposals => {
+                    StepExecutionResult::LinkedProposalsFound {
+                        artifact_id: artifact.id.as_str().to_string(),
+                        // Proposal IDs will be populated by the caller who has access to the proposal repo
+                        proposal_ids: vec![],
+                    }
+                }
             })
             .collect()
     }

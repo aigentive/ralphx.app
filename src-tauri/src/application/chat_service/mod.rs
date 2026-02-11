@@ -20,32 +20,32 @@ mod chat_service_send_background;
 mod chat_service_streaming;
 mod chat_service_types;
 
+use crate::domain::entities::{
+    AgentRun, ChatContextType, ChatConversation, ChatConversationId, IdeationSessionId, TaskId,
+};
+use crate::domain::repositories::{
+    ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
+    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, StateHistoryMetadata,
+    TaskDependencyRepository, TaskRepository,
+};
+use crate::domain::services::{MessageQueue, QueuedMessage, RunningAgentKey, RunningAgentRegistry};
 use async_trait::async_trait;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 use which::which;
-use crate::domain::entities::{
-    AgentRun, ChatConversation, ChatConversationId, ChatContextType, IdeationSessionId, TaskId,
-};
-use crate::domain::repositories::{
-    ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, StateHistoryMetadata, TaskDependencyRepository,
-    TaskRepository,
-};
-use crate::domain::services::{MessageQueue, QueuedMessage, RunningAgentKey, RunningAgentRegistry};
 
 // Re-exports from extracted modules
 pub use chat_service_helpers::{get_agent_name, get_assistant_role};
 pub use chat_service_mock::{MockChatResponse, MockChatService};
-pub use chat_service_streaming::process_stream_background;
 pub(crate) use chat_service_send_background::reconcile_merge_auto_complete;
+pub use chat_service_streaming::process_stream_background;
 pub use chat_service_types::{
-    events, AgentChunkPayload, AgentErrorPayload, AgentHookPayload,
-    AgentMessageCreatedPayload, AgentQueueSentPayload, AgentRunCompletedPayload,
-    AgentRunStartedPayload, AgentTaskCompletedPayload, AgentTaskStartedPayload,
-    AgentToolCallPayload, ChatConversationWithMessages, ChatServiceError, SendResult,
+    events, AgentChunkPayload, AgentErrorPayload, AgentHookPayload, AgentMessageCreatedPayload,
+    AgentQueueSentPayload, AgentRunCompletedPayload, AgentRunStartedPayload,
+    AgentTaskCompletedPayload, AgentTaskStartedPayload, AgentToolCallPayload,
+    ChatConversationWithMessages, ChatServiceError, SendResult,
 };
 
 // Types and errors are now in chat_service_types.rs
@@ -179,11 +179,7 @@ pub trait ChatService: Send + Sync {
     ) -> Result<bool, ChatServiceError>;
 
     /// Check if an agent is running for a context
-    async fn is_agent_running(
-        &self,
-        context_type: ChatContextType,
-        context_id: &str,
-    ) -> bool;
+    async fn is_agent_running(&self, context_type: ChatContextType, context_id: &str) -> bool;
 }
 
 // ============================================================================
@@ -312,7 +308,6 @@ impl<R: Runtime> ClaudeChatService<R> {
         .await
     }
 
-
     /// Create a spawnable Claude CLI command.
     fn build_command(
         &self,
@@ -336,10 +331,17 @@ impl<R: Runtime> ClaudeChatService<R> {
 
     /// Fetch entity status for context types that support it
     /// Used for dynamic agent resolution based on entity state
-    async fn get_entity_status(&self, context_type: ChatContextType, context_id: &str) -> Option<String> {
+    async fn get_entity_status(
+        &self,
+        context_type: ChatContextType,
+        context_id: &str,
+    ) -> Option<String> {
         match context_type {
             // Task-related contexts: look up task status
-            ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge => {
+            ChatContextType::Task
+            | ChatContextType::TaskExecution
+            | ChatContextType::Review
+            | ChatContextType::Merge => {
                 let task_id = TaskId::from_string(context_id.to_string());
                 if let Ok(Some(task)) = self.task_repo.get_by_id(&task_id).await {
                     Some(task.internal_status.as_str().to_string())
@@ -360,7 +362,6 @@ impl<R: Runtime> ClaudeChatService<R> {
             ChatContextType::Project => None,
         }
     }
-
 }
 
 #[async_trait]
@@ -416,7 +417,10 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 agent_run_id: agent_run_id.clone(),
             };
             // Ignore errors - state history metadata is non-critical for message flow
-            let _ = self.task_repo.update_latest_state_history_metadata(&task_id, &metadata).await;
+            let _ = self
+                .task_repo
+                .update_latest_state_history_metadata(&task_id, &metadata)
+                .await;
         }
 
         // 3. Emit run started event
@@ -492,7 +496,10 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         // This tracks concurrency for agent-active states (Executing, Reviewing, ReExecuting)
         // The count is decremented in TransitionHandler::on_exit when leaving these states
         // IMPORTANT: Must increment before spawn to ensure scheduling respects capacity
-        if matches!(context_type, ChatContextType::TaskExecution | ChatContextType::Review) {
+        if matches!(
+            context_type,
+            ChatContextType::TaskExecution | ChatContextType::Review
+        ) {
             if let Some(ref exec) = self.execution_state {
                 exec.increment_running();
                 // Emit status_changed event to frontend for real-time UI update
@@ -539,12 +546,14 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         let child_pid = child.id();
         if let Some(pid) = child_pid {
             let registry_key = RunningAgentKey::new(context_type.to_string(), context_id);
-            self.running_agent_registry.register(
-                registry_key,
-                pid,
-                conversation_id.as_str().to_string(),
-                agent_run_id.clone(),
-            ).await;
+            self.running_agent_registry
+                .register(
+                    registry_key,
+                    pid,
+                    conversation_id.as_str().to_string(),
+                    agent_run_id.clone(),
+                )
+                .await;
         }
 
         // 8. Clone values for background task
@@ -752,11 +761,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         }
     }
 
-    async fn is_agent_running(
-        &self,
-        context_type: ChatContextType,
-        context_id: &str,
-    ) -> bool {
+    async fn is_agent_running(&self, context_type: ChatContextType, context_id: &str) -> bool {
         let key = RunningAgentKey::new(context_type.to_string(), context_id);
         self.running_agent_registry.is_running(&key).await
     }

@@ -43,7 +43,10 @@ impl PlanSelectionStatsRepository for MemoryPlanSelectionStatsRepository {
         timestamp: DateTime<Utc>,
     ) -> AppResult<()> {
         let mut stats_map = self.stats.write().await;
-        let key = (project_id.as_str().to_string(), session_id.as_str().to_string());
+        let key = (
+            project_id.as_str().to_string(),
+            session_id.as_str().to_string(),
+        );
 
         stats_map
             .entry(key)
@@ -69,7 +72,10 @@ impl PlanSelectionStatsRepository for MemoryPlanSelectionStatsRepository {
         session_id: &IdeationSessionId,
     ) -> AppResult<Option<PlanSelectionStats>> {
         let stats_map = self.stats.read().await;
-        let key = (project_id.as_str().to_string(), session_id.as_str().to_string());
+        let key = (
+            project_id.as_str().to_string(),
+            session_id.as_str().to_string(),
+        );
         Ok(stats_map.get(&key).cloned())
     }
 
@@ -82,7 +88,10 @@ impl PlanSelectionStatsRepository for MemoryPlanSelectionStatsRepository {
         let result = session_ids
             .iter()
             .map(|session_id| {
-                let key = (project_id.as_str().to_string(), session_id.as_str().to_string());
+                let key = (
+                    project_id.as_str().to_string(),
+                    session_id.as_str().to_string(),
+                );
                 stats_map.get(&key).cloned()
             })
             .collect();
@@ -101,15 +110,23 @@ mod tests {
         let session_id = IdeationSessionId::new();
         let timestamp = Utc::now();
 
-        repo.record_selection(&project_id, &session_id, SelectionSource::KanbanInline, timestamp)
-            .await
-            .unwrap();
+        repo.record_selection(
+            &project_id,
+            &session_id,
+            SelectionSource::KanbanInline,
+            timestamp,
+        )
+        .await
+        .unwrap();
 
         let stats = repo.get_stats(&project_id, &session_id).await.unwrap();
         assert!(stats.is_some());
         let stats = stats.unwrap();
         assert_eq!(stats.selected_count, 1);
-        assert_eq!(stats.last_selected_source, Some("kanban_inline".to_string()));
+        assert_eq!(
+            stats.last_selected_source,
+            Some("kanban_inline".to_string())
+        );
     }
 
     #[tokio::test]
@@ -120,19 +137,36 @@ mod tests {
         let timestamp1 = Utc::now();
 
         // First selection
-        repo.record_selection(&project_id, &session_id, SelectionSource::KanbanInline, timestamp1)
-            .await
-            .unwrap();
+        repo.record_selection(
+            &project_id,
+            &session_id,
+            SelectionSource::KanbanInline,
+            timestamp1,
+        )
+        .await
+        .unwrap();
 
         // Second selection
         let timestamp2 = Utc::now();
-        repo.record_selection(&project_id, &session_id, SelectionSource::QuickSwitcher, timestamp2)
-            .await
-            .unwrap();
+        repo.record_selection(
+            &project_id,
+            &session_id,
+            SelectionSource::QuickSwitcher,
+            timestamp2,
+        )
+        .await
+        .unwrap();
 
-        let stats = repo.get_stats(&project_id, &session_id).await.unwrap().unwrap();
+        let stats = repo
+            .get_stats(&project_id, &session_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(stats.selected_count, 2);
-        assert_eq!(stats.last_selected_source, Some("quick_switcher".to_string()));
+        assert_eq!(
+            stats.last_selected_source,
+            Some("quick_switcher".to_string())
+        );
     }
 
     #[tokio::test]
@@ -145,16 +179,29 @@ mod tests {
         let timestamp = Utc::now();
 
         // Record stats for session1 and session2
-        repo.record_selection(&project_id, &session1, SelectionSource::KanbanInline, timestamp)
-            .await
-            .unwrap();
-        repo.record_selection(&project_id, &session2, SelectionSource::GraphInline, timestamp)
-            .await
-            .unwrap();
+        repo.record_selection(
+            &project_id,
+            &session1,
+            SelectionSource::KanbanInline,
+            timestamp,
+        )
+        .await
+        .unwrap();
+        repo.record_selection(
+            &project_id,
+            &session2,
+            SelectionSource::GraphInline,
+            timestamp,
+        )
+        .await
+        .unwrap();
 
         // Query batch
         let results = repo
-            .get_stats_batch(&project_id, &[session1.clone(), session2.clone(), session3.clone()])
+            .get_stats_batch(
+                &project_id,
+                &[session1.clone(), session2.clone(), session3.clone()],
+            )
             .await
             .unwrap();
 

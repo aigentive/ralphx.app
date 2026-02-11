@@ -72,17 +72,23 @@ impl SqliteTaskQARepository {
         let acceptance_criteria = acceptance_criteria
             .map(|s| serde_json::from_str(&s))
             .transpose()
-            .map_err(|e| AppError::Database(format!("JSON parse error for acceptance_criteria: {}", e)))?;
+            .map_err(|e| {
+                AppError::Database(format!("JSON parse error for acceptance_criteria: {}", e))
+            })?;
 
         let qa_test_steps = qa_test_steps
             .map(|s| serde_json::from_str(&s))
             .transpose()
-            .map_err(|e| AppError::Database(format!("JSON parse error for qa_test_steps: {}", e)))?;
+            .map_err(|e| {
+                AppError::Database(format!("JSON parse error for qa_test_steps: {}", e))
+            })?;
 
         let refined_test_steps = refined_test_steps
             .map(|s| serde_json::from_str(&s))
             .transpose()
-            .map_err(|e| AppError::Database(format!("JSON parse error for refined_test_steps: {}", e)))?;
+            .map_err(|e| {
+                AppError::Database(format!("JSON parse error for refined_test_steps: {}", e))
+            })?;
 
         let test_results = test_results
             .map(|s| serde_json::from_str(&s))
@@ -93,8 +99,7 @@ impl SqliteTaskQARepository {
             .map(|s| serde_json::from_str(&s).unwrap_or_default())
             .unwrap_or_default();
 
-        let created_at = Self::parse_datetime(&created_at)
-            .unwrap_or_else(Utc::now);
+        let created_at = Self::parse_datetime(&created_at).unwrap_or_else(Utc::now);
 
         Ok(TaskQA {
             id: TaskQAId::from_string(id),
@@ -122,25 +127,29 @@ impl TaskQARepository for SqliteTaskQARepository {
     async fn create(&self, task_qa: &TaskQA) -> AppResult<()> {
         let conn = self.conn.lock().await;
 
-        let acceptance_criteria_json = task_qa.acceptance_criteria
+        let acceptance_criteria_json = task_qa
+            .acceptance_criteria
             .as_ref()
             .map(|c| serde_json::to_string(c))
             .transpose()
             .map_err(|e| AppError::Database(format!("JSON serialization error: {}", e)))?;
 
-        let qa_test_steps_json = task_qa.qa_test_steps
+        let qa_test_steps_json = task_qa
+            .qa_test_steps
             .as_ref()
             .map(|s| serde_json::to_string(s))
             .transpose()
             .map_err(|e| AppError::Database(format!("JSON serialization error: {}", e)))?;
 
-        let refined_test_steps_json = task_qa.refined_test_steps
+        let refined_test_steps_json = task_qa
+            .refined_test_steps
             .as_ref()
             .map(|s| serde_json::to_string(s))
             .transpose()
             .map_err(|e| AppError::Database(format!("JSON serialization error: {}", e)))?;
 
-        let test_results_json = task_qa.test_results
+        let test_results_json = task_qa
+            .test_results
             .as_ref()
             .map(|r| serde_json::to_string(r))
             .transpose()
@@ -149,8 +158,10 @@ impl TaskQARepository for SqliteTaskQARepository {
         let screenshots_json = if task_qa.screenshots.is_empty() {
             None
         } else {
-            Some(serde_json::to_string(&task_qa.screenshots)
-                .map_err(|e| AppError::Database(format!("JSON serialization error: {}", e)))?)
+            Some(
+                serde_json::to_string(&task_qa.screenshots)
+                    .map_err(|e| AppError::Database(format!("JSON serialization error: {}", e)))?,
+            )
         };
 
         conn.execute(
@@ -307,13 +318,7 @@ impl TaskQARepository for SqliteTaskQARepository {
                 qa_test_steps = ?3,
                 prep_completed_at = ?4
             WHERE id = ?5",
-            rusqlite::params![
-                agent_id,
-                criteria_json,
-                steps_json,
-                now,
-                id.as_str(),
-            ],
+            rusqlite::params![agent_id, criteria_json, steps_json, now, id.as_str(),],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
 
@@ -369,8 +374,10 @@ impl TaskQARepository for SqliteTaskQARepository {
         let screenshots_json = if screenshots.is_empty() {
             None
         } else {
-            Some(serde_json::to_string(screenshots)
-                .map_err(|e| AppError::Database(format!("JSON serialization error: {}", e)))?)
+            Some(
+                serde_json::to_string(screenshots)
+                    .map_err(|e| AppError::Database(format!("JSON serialization error: {}", e)))?,
+            )
         };
 
         let now = Self::format_datetime(&Utc::now());
@@ -382,13 +389,7 @@ impl TaskQARepository for SqliteTaskQARepository {
                 screenshots = ?3,
                 test_completed_at = ?4
             WHERE id = ?5",
-            rusqlite::params![
-                agent_id,
-                results_json,
-                screenshots_json,
-                now,
-                id.as_str(),
-            ],
+            rusqlite::params![agent_id, results_json, screenshots_json, now, id.as_str(),],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
 
@@ -408,26 +409,28 @@ impl TaskQARepository for SqliteTaskQARepository {
             FROM task_qa WHERE acceptance_criteria IS NULL"
         ).map_err(|e| AppError::Database(e.to_string()))?;
 
-        let rows = stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, Option<String>>(2)?,
-                row.get::<_, Option<String>>(3)?,
-                row.get::<_, Option<String>>(4)?,
-                row.get::<_, Option<String>>(5)?,
-                row.get::<_, Option<String>>(6)?,
-                row.get::<_, Option<String>>(7)?,
-                row.get::<_, Option<String>>(8)?,
-                row.get::<_, Option<String>>(9)?,
-                row.get::<_, Option<String>>(10)?,
-                row.get::<_, Option<String>>(11)?,
-                row.get::<_, Option<String>>(12)?,
-                row.get::<_, Option<String>>(13)?,
-                row.get::<_, Option<String>>(14)?,
-                row.get::<_, String>(15)?,
-            ))
-        }).map_err(|e| AppError::Database(e.to_string()))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                    row.get::<_, Option<String>>(7)?,
+                    row.get::<_, Option<String>>(8)?,
+                    row.get::<_, Option<String>>(9)?,
+                    row.get::<_, Option<String>>(10)?,
+                    row.get::<_, Option<String>>(11)?,
+                    row.get::<_, Option<String>>(12)?,
+                    row.get::<_, Option<String>>(13)?,
+                    row.get::<_, Option<String>>(14)?,
+                    row.get::<_, String>(15)?,
+                ))
+            })
+            .map_err(|e| AppError::Database(e.to_string()))?;
 
         let mut results = Vec::new();
         for row in rows {
@@ -445,11 +448,8 @@ impl TaskQARepository for SqliteTaskQARepository {
     async fn delete(&self, id: &TaskQAId) -> AppResult<()> {
         let conn = self.conn.lock().await;
 
-        conn.execute(
-            "DELETE FROM task_qa WHERE id = ?1",
-            [id.as_str()],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
+        conn.execute("DELETE FROM task_qa WHERE id = ?1", [id.as_str()])
+            .map_err(|e| AppError::Database(e.to_string()))?;
 
         Ok(())
     }
@@ -457,11 +457,8 @@ impl TaskQARepository for SqliteTaskQARepository {
     async fn delete_by_task_id(&self, task_id: &TaskId) -> AppResult<()> {
         let conn = self.conn.lock().await;
 
-        conn.execute(
-            "DELETE FROM task_qa WHERE task_id = ?1",
-            [task_id.as_str()],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
+        conn.execute("DELETE FROM task_qa WHERE task_id = ?1", [task_id.as_str()])
+            .map_err(|e| AppError::Database(e.to_string()))?;
 
         Ok(())
     }
@@ -469,12 +466,13 @@ impl TaskQARepository for SqliteTaskQARepository {
     async fn exists_for_task(&self, task_id: &TaskId) -> AppResult<bool> {
         let conn = self.conn.lock().await;
 
-        let count: i32 = conn.query_row(
-            "SELECT COUNT(*) FROM task_qa WHERE task_id = ?1",
-            [task_id.as_str()],
-            |row| row.get(0),
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM task_qa WHERE task_id = ?1",
+                [task_id.as_str()],
+                |row| row.get(0),
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
 
         Ok(count > 0)
     }
@@ -495,7 +493,8 @@ mod tests {
         conn.execute(
             "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Test Task')",
@@ -541,14 +540,21 @@ mod tests {
 
         repo.create(&task_qa).await.unwrap();
 
-        let criteria = AcceptanceCriteria::from_criteria(vec![
-            AcceptanceCriterion::visual("AC1", "Test visual check"),
-        ]);
-        let steps = QATestSteps::from_steps(vec![
-            QATestStep::new("QA1", "AC1", "Test step", vec!["cmd".into()], "Expected"),
-        ]);
+        let criteria = AcceptanceCriteria::from_criteria(vec![AcceptanceCriterion::visual(
+            "AC1",
+            "Test visual check",
+        )]);
+        let steps = QATestSteps::from_steps(vec![QATestStep::new(
+            "QA1",
+            "AC1",
+            "Test step",
+            vec!["cmd".into()],
+            "Expected",
+        )]);
 
-        repo.update_prep(&qa_id, "agent-1", &criteria, &steps).await.unwrap();
+        repo.update_prep(&qa_id, "agent-1", &criteria, &steps)
+            .await
+            .unwrap();
 
         let retrieved = repo.get_by_id(&qa_id).await.unwrap().unwrap();
         assert!(retrieved.acceptance_criteria.is_some());
@@ -566,9 +572,13 @@ mod tests {
 
         repo.create(&task_qa).await.unwrap();
 
-        let refined_steps = QATestSteps::from_steps(vec![
-            QATestStep::new("QA1", "AC1", "Refined step", vec![], "Expected"),
-        ]);
+        let refined_steps = QATestSteps::from_steps(vec![QATestStep::new(
+            "QA1",
+            "AC1",
+            "Refined step",
+            vec![],
+            "Expected",
+        )]);
 
         repo.update_refinement(&qa_id, "agent-2", "Added button to header", &refined_steps)
             .await
@@ -635,16 +645,20 @@ mod tests {
         repo.create(&task_qa2).await.unwrap();
 
         // Update prep for first one
-        let criteria = AcceptanceCriteria::from_criteria(vec![
-            AcceptanceCriterion::visual("AC1", "Test"),
-        ]);
+        let criteria =
+            AcceptanceCriteria::from_criteria(vec![AcceptanceCriterion::visual("AC1", "Test")]);
         let steps = QATestSteps::from_steps(vec![]);
-        repo.update_prep(&qa_id1, "agent-1", &criteria, &steps).await.unwrap();
+        repo.update_prep(&qa_id1, "agent-1", &criteria, &steps)
+            .await
+            .unwrap();
 
         // Get pending prep - should only return task-2
         let pending = repo.get_pending_prep().await.unwrap();
         assert_eq!(pending.len(), 1);
-        assert_eq!(pending[0].task_id, TaskId::from_string("task-2".to_string()));
+        assert_eq!(
+            pending[0].task_id,
+            TaskId::from_string("task-2".to_string())
+        );
     }
 
     #[tokio::test]
@@ -702,11 +716,19 @@ mod tests {
             AcceptanceCriterion::behavior("AC2", "Behavior test"),
         ]);
         let steps = QATestSteps::from_steps(vec![
-            QATestStep::new("QA1", "AC1", "Step 1", vec!["cmd1".into(), "cmd2".into()], "Expected 1"),
+            QATestStep::new(
+                "QA1",
+                "AC1",
+                "Step 1",
+                vec!["cmd1".into(), "cmd2".into()],
+                "Expected 1",
+            ),
             QATestStep::new("QA2", "AC2", "Step 2", vec!["cmd3".into()], "Expected 2"),
         ]);
 
-        repo.update_prep(&qa_id, "agent-1", &criteria, &steps).await.unwrap();
+        repo.update_prep(&qa_id, "agent-1", &criteria, &steps)
+            .await
+            .unwrap();
 
         let retrieved = repo.get_by_id(&qa_id).await.unwrap().unwrap();
 

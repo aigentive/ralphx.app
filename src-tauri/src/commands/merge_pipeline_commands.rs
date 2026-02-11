@@ -62,10 +62,7 @@ fn extract_merge_metadata(task: &Task) -> (Option<Vec<String>>, Option<String>) 
                     .collect()
             });
 
-        let error_context = meta
-            .get("error")
-            .and_then(|v| v.as_str())
-            .map(String::from);
+        let error_context = meta.get("error").and_then(|v| v.as_str()).map(String::from);
 
         (conflict_files, error_context)
     } else {
@@ -117,7 +114,8 @@ pub async fn get_merge_pipeline(
 
             // Resolve merge branches
             let (source_branch, target_branch) =
-                resolve_merge_branches(&task, &project, &Some(Arc::clone(&state.plan_branch_repo))).await;
+                resolve_merge_branches(&task, &project, &Some(Arc::clone(&state.plan_branch_repo)))
+                    .await;
 
             // Check if deferred
             let is_deferred = has_merge_deferred_metadata(&task);
@@ -134,9 +132,7 @@ pub async fn get_merge_pipeline(
                     .await
                     .map_err(|e| e.to_string())?;
 
-                active_merges
-                    .first()
-                    .and_then(|t| t.task_branch.clone())
+                active_merges.first().and_then(|t| t.task_branch.clone())
             } else {
                 None
             };

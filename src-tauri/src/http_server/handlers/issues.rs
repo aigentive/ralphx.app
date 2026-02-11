@@ -25,28 +25,28 @@ pub async fn get_task_issues_http(
     let task_id = TaskId::from_string(task_id);
 
     let issues = match query.status.as_deref() {
-        Some("open") => {
-            state
-                .app_state
-                .review_issue_repo
-                .get_open_by_task_id(&task_id)
-                .await
-                .map_err(|e| {
-                    error!("Failed to get open issues for task {}: {}", task_id.as_str(), e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?
-        }
-        _ => {
-            state
-                .app_state
-                .review_issue_repo
-                .get_by_task_id(&task_id)
-                .await
-                .map_err(|e| {
-                    error!("Failed to get issues for task {}: {}", task_id.as_str(), e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?
-        }
+        Some("open") => state
+            .app_state
+            .review_issue_repo
+            .get_open_by_task_id(&task_id)
+            .await
+            .map_err(|e| {
+                error!(
+                    "Failed to get open issues for task {}: {}",
+                    task_id.as_str(),
+                    e
+                );
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?,
+        _ => state
+            .app_state
+            .review_issue_repo
+            .get_by_task_id(&task_id)
+            .await
+            .map_err(|e| {
+                error!("Failed to get issues for task {}: {}", task_id.as_str(), e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?,
     };
 
     Ok(Json(

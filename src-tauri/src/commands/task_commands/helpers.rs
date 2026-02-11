@@ -1,8 +1,8 @@
 // Helper functions for task_commands module
 
-use tauri::{Emitter, State};
 use crate::application::AppState;
 use crate::domain::entities::{InternalStatus, ProjectId};
+use tauri::{Emitter, State};
 
 /// Default target for inject_task command
 pub fn default_target() -> String {
@@ -22,7 +22,10 @@ pub async fn emit_queue_changed(
     app: &tauri::AppHandle,
 ) {
     // Count tasks currently in Ready status
-    let queued_count = match state.task_repo.get_by_status(project_id, InternalStatus::Ready).await
+    let queued_count = match state
+        .task_repo
+        .get_by_status(project_id, InternalStatus::Ready)
+        .await
     {
         Ok(tasks) => tasks.len(),
         Err(e) => {
@@ -47,7 +50,12 @@ pub async fn emit_queue_changed(
 /// Emit a task lifecycle event (archived, restored, deleted).
 ///
 /// These events share a common payload structure with task and project IDs.
-pub fn emit_task_lifecycle_event(app: &tauri::AppHandle, event_name: &str, task_id: &str, project_id: &str) {
+pub fn emit_task_lifecycle_event(
+    app: &tauri::AppHandle,
+    event_name: &str,
+    task_id: &str,
+    project_id: &str,
+) {
     let _ = app.emit(
         event_name,
         serde_json::json!({

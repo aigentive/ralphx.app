@@ -38,8 +38,16 @@ impl From<MethodologyExtension> for MethodologyResponse {
             skills: m.skills.clone(),
             workflow_id: m.workflow.id.as_str().to_string(),
             workflow_name: m.workflow.name.clone(),
-            phases: m.phases.iter().map(MethodologyPhaseResponse::from).collect(),
-            templates: m.templates.iter().map(MethodologyTemplateResponse::from).collect(),
+            phases: m
+                .phases
+                .iter()
+                .map(MethodologyPhaseResponse::from)
+                .collect(),
+            templates: m
+                .templates
+                .iter()
+                .map(MethodologyTemplateResponse::from)
+                .collect(),
             is_active: m.is_active,
             phase_count: m.phase_count(),
             agent_count: m.agent_count(),
@@ -241,10 +249,7 @@ pub async fn deactivate_methodology(
         .ok_or_else(|| format!("Methodology not found: {}", methodology_id.as_str()))?;
 
     if !methodology.is_active {
-        return Err(format!(
-            "Methodology '{}' is not active",
-            methodology.name
-        ));
+        return Err(format!("Methodology '{}' is not active", methodology.name));
     }
 
     // Deactivate the methodology
@@ -397,7 +402,12 @@ mod tests {
         assert_eq!(active.unwrap().id, id2);
 
         // Verify first is not active
-        let m1_now = state.methodology_repo.get_by_id(&id1).await.unwrap().unwrap();
+        let m1_now = state
+            .methodology_repo
+            .get_by_id(&id1)
+            .await
+            .unwrap()
+            .unwrap();
         assert!(!m1_now.is_active);
     }
 
@@ -420,7 +430,12 @@ mod tests {
         assert!(active.is_none());
 
         // Verify methodology is not active
-        let methodology = state.methodology_repo.get_by_id(&id).await.unwrap().unwrap();
+        let methodology = state
+            .methodology_repo
+            .get_by_id(&id)
+            .await
+            .unwrap()
+            .unwrap();
         assert!(!methodology.is_active);
     }
 

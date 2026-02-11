@@ -176,8 +176,7 @@ mod tests {
         let project1 = create_test_project("Project 1", "/path/one");
         let project2 = create_test_project("Project 2", "/path/two");
         let project3 = create_test_project("Project 3", "/path/three");
-        let repo =
-            MemoryProjectRepository::with_projects(vec![project1, project2, project3]);
+        let repo = MemoryProjectRepository::with_projects(vec![project1, project2, project3]);
 
         let result = repo.get_all().await;
 
@@ -264,8 +263,7 @@ mod tests {
     async fn test_delete_only_removes_specified_project() {
         let project1 = create_test_project("Project 1", "/path/one");
         let project2 = create_test_project("Project 2", "/path/two");
-        let repo =
-            MemoryProjectRepository::with_projects(vec![project1.clone(), project2.clone()]);
+        let repo = MemoryProjectRepository::with_projects(vec![project1.clone(), project2.clone()]);
 
         repo.delete(&project1.id).await.unwrap();
 
@@ -313,8 +311,7 @@ mod tests {
     async fn test_get_by_working_directory_finds_correct_project() {
         let project1 = create_test_project("Project 1", "/path/one");
         let project2 = create_test_project("Project 2", "/path/two");
-        let repo =
-            MemoryProjectRepository::with_projects(vec![project1.clone(), project2.clone()]);
+        let repo = MemoryProjectRepository::with_projects(vec![project1.clone(), project2.clone()]);
 
         let found = repo.get_by_working_directory("/path/two").await.unwrap();
 
@@ -327,7 +324,9 @@ mod tests {
     #[tokio::test]
     async fn test_concurrent_reads() {
         let project = create_test_project("Test Project", "/path/to/project");
-        let repo = Arc::new(MemoryProjectRepository::with_projects(vec![project.clone()]));
+        let repo = Arc::new(MemoryProjectRepository::with_projects(
+            vec![project.clone()],
+        ));
 
         let mut handles = vec![];
         for _ in 0..10 {

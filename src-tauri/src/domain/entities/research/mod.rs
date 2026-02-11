@@ -1,21 +1,20 @@
 // Research entities for the extensibility system
 // Support for long-running research agents with configurable depth
 
-mod types;
 #[cfg(test)]
 mod tests;
+mod types;
 
 pub use types::{
-    CustomDepth, ParseResearchDepthPresetError, ParseResearchProcessStatusError,
-    ResearchDepth, ResearchDepthPreset, ResearchPresets, ResearchProcessStatus,
-    RESEARCH_PRESETS,
+    CustomDepth, ParseResearchDepthPresetError, ParseResearchProcessStatusError, ResearchDepth,
+    ResearchDepthPreset, ResearchPresets, ResearchProcessStatus, RESEARCH_PRESETS,
 };
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use super::artifact::{ArtifactId, ArtifactType, ProcessId};
-pub use types::{ResearchPresetsMap};
+pub use types::ResearchPresetsMap;
 
 /// A unique identifier for a ResearchProcess
 /// (Reuses ProcessId from artifact module for consistency)
@@ -67,8 +66,12 @@ impl ResearchBrief {
     }
 
     /// Adds multiple constraints
-    pub fn with_constraints(mut self, constraints: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        self.constraints.extend(constraints.into_iter().map(|c| c.into()));
+    pub fn with_constraints(
+        mut self,
+        constraints: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        self.constraints
+            .extend(constraints.into_iter().map(|c| c.into()));
         self
     }
 }
@@ -113,12 +116,11 @@ impl ResearchOutput {
 
 impl Default for ResearchOutput {
     fn default() -> Self {
-        Self::new("research-outputs")
-            .with_artifact_types([
-                ArtifactType::ResearchDocument,
-                ArtifactType::Findings,
-                ArtifactType::Recommendations,
-            ])
+        Self::new("research-outputs").with_artifact_types([
+            ArtifactType::ResearchDocument,
+            ArtifactType::Findings,
+            ArtifactType::Recommendations,
+        ])
     }
 }
 

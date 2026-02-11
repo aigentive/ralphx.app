@@ -13,7 +13,10 @@ const DEFAULT_BASE_CLI_TOOLS: &[&str] = &[
     "Skill",
 ];
 
-pub const MEMORY_SKILLS: &[&str] = &["Skill(ralphx:rule-manager)", "Skill(ralphx:knowledge-capture)"];
+pub const MEMORY_SKILLS: &[&str] = &[
+    "Skill(ralphx:rule-manager)",
+    "Skill(ralphx:knowledge-capture)",
+];
 
 #[derive(Debug, Clone)]
 pub struct AgentConfig {
@@ -126,11 +129,7 @@ fn resolve_tools(raw: &AgentConfigRaw, tool_sets: &HashMap<String, Vec<String>>)
 
     let mut out = Vec::<String>::new();
 
-    let extends = raw
-        .tools
-        .extends
-        .as_deref()
-        .unwrap_or("base_tools");
+    let extends = raw.tools.extends.as_deref().unwrap_or("base_tools");
 
     if let Some(base) = tool_sets.get(extends) {
         out.extend(base.iter().cloned());
@@ -191,7 +190,10 @@ fn parse_config(yaml: &str) -> Option<LoadedConfig> {
         use_append_system_prompt_file: parsed.claude.append_system_prompt_file,
     };
 
-    Some(LoadedConfig { agents: resolved, claude })
+    Some(LoadedConfig {
+        agents: resolved,
+        claude,
+    })
 }
 
 fn load_config() -> LoadedConfig {
@@ -227,7 +229,10 @@ fn load_config() -> LoadedConfig {
 }
 
 pub fn agent_configs() -> &'static [AgentConfig] {
-    LOADED_CONFIG_CELL.get_or_init(load_config).agents.as_slice()
+    LOADED_CONFIG_CELL
+        .get_or_init(load_config)
+        .agents
+        .as_slice()
 }
 
 pub fn claude_runtime_config() -> &'static ClaudeRuntimeConfig {
@@ -281,7 +286,7 @@ mod tests {
         SHORT_CHAT_PROJECT, SHORT_CHAT_TASK, SHORT_DEEP_RESEARCHER, SHORT_DEPENDENCY_SUGGESTER,
         SHORT_MERGER, SHORT_ORCHESTRATOR, SHORT_ORCHESTRATOR_IDEATION,
         SHORT_ORCHESTRATOR_IDEATION_READONLY, SHORT_PROJECT_ANALYZER, SHORT_QA_EXECUTOR,
-        SHORT_QA_PREP, SHORT_REVIEW_CHAT, SHORT_REVIEW_HISTORY, SHORT_REVIEWER,
+        SHORT_QA_PREP, SHORT_REVIEWER, SHORT_REVIEW_CHAT, SHORT_REVIEW_HISTORY,
         SHORT_SESSION_NAMER, SHORT_SUPERVISOR, SHORT_WORKER,
     };
     use std::collections::HashSet;

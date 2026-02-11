@@ -31,9 +31,8 @@ impl ActivePlanRepository for SqliteActivePlanRepository {
     ) -> Result<Option<IdeationSessionId>, Box<dyn std::error::Error>> {
         let conn = self.conn.lock().await;
 
-        let mut stmt = conn.prepare(
-            "SELECT ideation_session_id FROM project_active_plan WHERE project_id = ?1",
-        )?;
+        let mut stmt = conn
+            .prepare("SELECT ideation_session_id FROM project_active_plan WHERE project_id = ?1")?;
 
         let result = stmt.query_row([project_id.as_str()], |row| {
             let session_id: String = row.get(0)?;
@@ -249,10 +248,7 @@ mod tests {
         let result = repo.set(&project_id, &session_id).await;
 
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("must be accepted"));
+        assert!(result.unwrap_err().to_string().contains("must be accepted"));
     }
 
     #[tokio::test]
@@ -386,11 +382,8 @@ mod tests {
         // Delete the project
         {
             let conn = shared_conn.lock().await;
-            conn.execute(
-                "DELETE FROM projects WHERE id = ?1",
-                [project_id.as_str()],
-            )
-            .unwrap();
+            conn.execute("DELETE FROM projects WHERE id = ?1", [project_id.as_str()])
+                .unwrap();
         }
 
         // Active plan should be gone due to CASCADE

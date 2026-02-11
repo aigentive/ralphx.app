@@ -2,20 +2,22 @@
 // Commands should be minimal - delegate to domain/infrastructure
 
 pub mod activity_commands;
-pub mod chat_responses;
 pub mod agent_profile_commands;
 pub mod artifact_commands;
+pub mod chat_responses;
 pub mod diff_commands;
 pub mod execution_commands;
 pub mod git_commands;
 pub mod health;
-pub mod merge_pipeline_commands;
 pub mod ideation_commands;
+pub mod merge_pipeline_commands;
 pub mod methodology_commands;
 pub mod permission_commands;
-pub mod question_commands;
+pub mod plan_branch_commands;
+pub mod plan_commands;
 pub mod project_commands;
 pub mod qa_commands;
+pub mod question_commands;
 pub mod research_commands;
 pub mod review_commands;
 pub mod review_commands_types;
@@ -26,8 +28,6 @@ pub mod task_step_commands;
 pub mod task_step_commands_types;
 pub mod test_data_commands;
 pub mod unified_chat_commands;
-pub mod plan_branch_commands;
-pub mod plan_commands;
 pub mod workflow_commands;
 
 // Re-export commands for registration
@@ -46,38 +46,53 @@ pub use artifact_commands::{
     get_buckets, get_system_buckets, update_artifact, AddRelationInput, ArtifactRelationResponse,
     ArtifactResponse, BucketResponse, CreateArtifactInput, CreateBucketInput, UpdateArtifactInput,
 };
+pub use chat_responses::ChatMessageResponse;
 pub use diff_commands::{get_file_diff, get_task_file_changes};
 pub use execution_commands::{
-    get_execution_status, get_running_processes, pause_execution, recover_task_execution, resolve_recovery_prompt,
-    resume_execution, set_active_project, get_active_project, stop_execution,
-    get_global_execution_settings, update_global_execution_settings,
-    ActiveProjectState, ExecutionState, RunningProcessesResponse,
-};
-pub use merge_pipeline_commands::{
-    get_merge_pipeline, MergePipelineResponse,
+    get_active_project, get_execution_status, get_global_execution_settings, get_running_processes,
+    pause_execution, recover_task_execution, resolve_recovery_prompt, resume_execution,
+    set_active_project, stop_execution, update_global_execution_settings, ActiveProjectState,
+    ExecutionState, RunningProcessesResponse,
 };
 pub use health::health_check;
-pub use chat_responses::ChatMessageResponse;
 pub use ideation_commands::{
     add_proposal_dependency, analyze_dependencies, apply_proposals_to_kanban,
     archive_ideation_session, assess_all_priorities, assess_proposal_priority,
-    count_session_messages, create_ideation_session, create_task_proposal,
-    delete_chat_message, delete_ideation_session, delete_session_messages, delete_task_proposal,
-    get_blocked_tasks, get_ideation_session, get_ideation_session_with_data,
-    get_project_messages, get_proposal_dependencies, get_proposal_dependents,
-    get_recent_session_messages, get_session_messages, get_task_blockers, get_task_messages,
-    get_task_proposal, is_orchestrator_available, list_ideation_sessions, list_session_proposals,
+    count_session_messages, create_ideation_session, create_task_proposal, delete_chat_message,
+    delete_ideation_session, delete_session_messages, delete_task_proposal, get_blocked_tasks,
+    get_ideation_session, get_ideation_session_with_data, get_project_messages,
+    get_proposal_dependencies, get_proposal_dependents, get_recent_session_messages,
+    get_session_messages, get_task_blockers, get_task_messages, get_task_proposal,
+    is_orchestrator_available, list_ideation_sessions, list_session_proposals,
     remove_proposal_dependency, reorder_proposals, send_chat_message, send_orchestrator_message,
     set_proposal_selection, toggle_proposal_selection, update_task_proposal,
-    ApplyProposalsResultResponse, DependencyGraphResponse,
-    IdeationSessionResponse, OrchestratorMessageResponse, PriorityAssessmentResponse,
-    SessionWithDataResponse, TaskProposalResponse, ToolCallResultResponse,
+    ApplyProposalsResultResponse, DependencyGraphResponse, IdeationSessionResponse,
+    OrchestratorMessageResponse, PriorityAssessmentResponse, SessionWithDataResponse,
+    TaskProposalResponse, ToolCallResultResponse,
+};
+pub use merge_pipeline_commands::{get_merge_pipeline, MergePipelineResponse};
+pub use methodology_commands::{
+    activate_methodology, deactivate_methodology, get_active_methodology, get_methodologies,
+    MethodologyActivationResponse, MethodologyPhaseResponse, MethodologyResponse,
+    MethodologyTemplateResponse, WorkflowSchemaResponse,
+};
+pub use permission_commands::{
+    get_pending_permissions, resolve_permission_request, ResolvePermissionArgs,
+    ResolvePermissionResponse,
 };
 pub use project_commands::{
     create_project, delete_project, get_project, list_projects, update_project,
 };
 pub use qa_commands::{
     get_qa_results, get_qa_settings, get_task_qa, retry_qa, skip_qa, update_qa_settings,
+};
+pub use question_commands::{
+    get_pending_questions, resolve_user_question, ResolveQuestionArgs, ResolveQuestionResponse,
+};
+pub use research_commands::{
+    get_research_presets, get_research_process, get_research_processes, pause_research,
+    resume_research, start_research, stop_research, CustomDepthInput, ResearchPresetResponse,
+    ResearchProcessResponse, StartResearchInput,
 };
 pub use review_commands::{
     approve_fix_task, approve_review, approve_task_for_review, get_fix_task_attempts,
@@ -90,38 +105,20 @@ pub use task_commands::{
     list_tasks, move_task, pause_task, permanently_delete_task, restore_task, search_tasks,
     stop_task, update_task, StateTransitionResponse,
 };
+pub use task_context_commands::{
+    get_artifact_full, get_artifact_version, get_related_artifacts, get_task_context,
+    search_artifacts, ArtifactSearchResult, SearchArtifactsInput,
+};
 pub use task_step_commands::{
     create_task_step, delete_task_step, get_step_progress, get_task_steps, reorder_task_steps,
     update_task_step,
 };
+pub use test_data_commands::{clear_test_data, seed_test_data, seed_visual_audit_data};
 pub use workflow_commands::{
     create_workflow, delete_workflow, get_active_workflow_columns, get_builtin_workflows,
     get_workflow, get_workflows, seed_builtin_workflows, set_default_workflow, update_workflow,
     CreateWorkflowInput, UpdateWorkflowInput, WorkflowColumnInput, WorkflowColumnResponse,
     WorkflowResponse,
-};
-pub use research_commands::{
-    get_research_presets, get_research_process, get_research_processes, pause_research,
-    resume_research, start_research, stop_research, CustomDepthInput, ResearchPresetResponse,
-    ResearchProcessResponse, StartResearchInput,
-};
-pub use methodology_commands::{
-    activate_methodology, deactivate_methodology, get_active_methodology, get_methodologies,
-    MethodologyActivationResponse, MethodologyPhaseResponse, MethodologyResponse,
-    MethodologyTemplateResponse, WorkflowSchemaResponse,
-};
-pub use test_data_commands::{clear_test_data, seed_test_data, seed_visual_audit_data};
-pub use permission_commands::{
-    get_pending_permissions, resolve_permission_request, ResolvePermissionArgs,
-    ResolvePermissionResponse,
-};
-pub use question_commands::{
-    get_pending_questions, resolve_user_question, ResolveQuestionArgs,
-    ResolveQuestionResponse,
-};
-pub use task_context_commands::{
-    get_artifact_full, get_artifact_version, get_related_artifacts, get_task_context,
-    search_artifacts, ArtifactSearchResult, SearchArtifactsInput,
 };
 // Unified chat commands (consolidates context_chat + execution_chat)
 pub use unified_chat_commands::{
@@ -135,9 +132,8 @@ pub use unified_chat_commands::{
 };
 // Plan branch commands (Phase 85 - Feature branch for plan groups)
 pub use plan_branch_commands::{
-    disable_feature_branch, enable_feature_branch, get_plan_branch,
-    get_project_plan_branches, update_project_feature_branch_setting,
-    EnableFeatureBranchInput, PlanBranchResponse,
+    disable_feature_branch, enable_feature_branch, get_plan_branch, get_project_plan_branches,
+    update_project_feature_branch_setting, EnableFeatureBranchInput, PlanBranchResponse,
 };
 // Plan commands (Active plan management)
 pub use plan_commands::{

@@ -24,8 +24,8 @@ use crate::domain::agents::{
 };
 
 use super::{
-    apply_common_spawn_env, claude_runtime_config, create_mcp_config,
-    ensure_claude_spawn_allowed, get_allowed_tools, get_preapproved_tools, sanitize_claude_user_state,
+    apply_common_spawn_env, claude_runtime_config, create_mcp_config, ensure_claude_spawn_allowed,
+    get_allowed_tools, get_preapproved_tools, sanitize_claude_user_state,
 };
 
 // ============================================================================
@@ -37,9 +37,7 @@ use super::{
 #[serde(tag = "type")]
 pub enum StreamEvent {
     /// Text chunk received from agent
-    TextChunk {
-        text: String,
-    },
+    TextChunk { text: String },
     /// Tool call started
     ToolCallStart {
         tool_name: String,
@@ -58,13 +56,9 @@ pub enum StreamEvent {
         arguments: serde_json::Value,
     },
     /// Agent execution completed with session ID
-    Completed {
-        session_id: Option<String>,
-    },
+    Completed { session_id: Option<String> },
     /// Error occurred during execution
-    Error {
-        message: String,
-    },
+    Error { message: String },
 }
 
 /// Result from spawning an agent in streaming mode
@@ -286,11 +280,7 @@ impl AgenticClient for ClaudeCodeClient {
         })
     }
 
-    async fn send_prompt(
-        &self,
-        _handle: &AgentHandle,
-        prompt: &str,
-    ) -> AgentResult<AgentResponse> {
+    async fn send_prompt(&self, _handle: &AgentHandle, prompt: &str) -> AgentResult<AgentResponse> {
         // For send_prompt, we spawn a new one-shot agent
         let config = AgentConfig::worker(prompt);
 
@@ -313,7 +303,9 @@ impl AgenticClient for ClaudeCodeClient {
         // for external stream handling (see ExecutionChatService). This trait method is a
         // placeholder for potential future trait-level streaming support.
         let chunks = vec![
-            Ok(ResponseChunk::new("Use spawn_agent_streaming() for production streaming")),
+            Ok(ResponseChunk::new(
+                "Use spawn_agent_streaming() for production streaming",
+            )),
             Ok(ResponseChunk::final_chunk("")),
         ];
         Box::pin(futures::stream::iter(chunks))
@@ -657,14 +649,22 @@ mod tests {
     fn test_build_cli_args_applies_tools_restriction() {
         let client = ClaudeCodeClient::new();
         // Use fully-qualified name as would be used in production
-        let config = AgentConfig::worker("Test").with_agent(crate::infrastructure::agents::claude::agent_names::AGENT_SESSION_NAMER);
+        let config = AgentConfig::worker("Test")
+            .with_agent(crate::infrastructure::agents::claude::agent_names::AGENT_SESSION_NAMER);
 
         let args = client.build_cli_args(&config, None);
 
         // session-namer has allowed_tools = Some("") meaning no CLI tools
         // get_allowed_tools strips the ralphx: prefix for AGENT_CONFIGS lookup
-        let tools_idx = args.iter().position(|a| a == "--tools").expect("--tools flag must be present");
-        assert_eq!(args[tools_idx + 1], "", "session-namer should have empty tools (MCP only)");
+        let tools_idx = args
+            .iter()
+            .position(|a| a == "--tools")
+            .expect("--tools flag must be present");
+        assert_eq!(
+            args[tools_idx + 1],
+            "",
+            "session-namer should have empty tools (MCP only)"
+        );
     }
 
     #[test]
@@ -675,20 +675,31 @@ mod tests {
         let args = client.build_cli_args(&config, None);
 
         // Unknown agent should NOT have --tools restriction
-        assert!(!args.contains(&"--tools".to_string()), "unknown agent should not have --tools flag");
+        assert!(
+            !args.contains(&"--tools".to_string()),
+            "unknown agent should not have --tools flag"
+        );
     }
 
     #[test]
     fn test_build_cli_args_restricted_agent_tools() {
         let client = ClaudeCodeClient::new();
         // Use fully-qualified name as would be used in production
-        let config = AgentConfig::worker("Test").with_agent(crate::infrastructure::agents::claude::agent_names::AGENT_ORCHESTRATOR_IDEATION);
+        let config = AgentConfig::worker("Test").with_agent(
+            crate::infrastructure::agents::claude::agent_names::AGENT_ORCHESTRATOR_IDEATION,
+        );
 
         let args = client.build_cli_args(&config, None);
 
-        let tools_idx = args.iter().position(|a| a == "--tools").expect("--tools flag must be present");
-        assert_eq!(args[tools_idx + 1], "Read,Grep,Glob,Bash,WebFetch,WebSearch,Skill,Task",
-            "orchestrator-ideation should have base tools + Task");
+        let tools_idx = args
+            .iter()
+            .position(|a| a == "--tools")
+            .expect("--tools flag must be present");
+        assert_eq!(
+            args[tools_idx + 1],
+            "Read,Grep,Glob,Bash,WebFetch,WebSearch,Skill,Task",
+            "orchestrator-ideation should have base tools + Task"
+        );
     }
 
     #[test]
@@ -709,7 +720,10 @@ mod tests {
             .with_agent(crate::infrastructure::agents::claude::agent_names::AGENT_MERGER);
 
         let args = client.build_cli_args(&config, None);
-        let model_idx = args.iter().position(|a| a == "--model").expect("--model flag must be present");
+        let model_idx = args
+            .iter()
+            .position(|a| a == "--model")
+            .expect("--model flag must be present");
         assert_eq!(args[model_idx + 1], "opus");
     }
 

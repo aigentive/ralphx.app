@@ -252,7 +252,10 @@ impl ArtifactFlowStep {
     }
 
     /// Creates a spawn_process step
-    pub fn spawn_process(process_type: impl Into<String>, agent_profile: impl Into<String>) -> Self {
+    pub fn spawn_process(
+        process_type: impl Into<String>,
+        agent_profile: impl Into<String>,
+    ) -> Self {
         ArtifactFlowStep::SpawnProcess {
             process_type: process_type.into(),
             agent_profile: agent_profile.into(),

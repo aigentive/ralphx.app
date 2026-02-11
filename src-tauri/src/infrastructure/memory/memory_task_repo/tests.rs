@@ -1,6 +1,6 @@
-use crate::infrastructure::memory::MemoryTaskRepository;
 use crate::domain::entities::{InternalStatus, ProjectId, Task, TaskId};
 use crate::domain::repositories::TaskRepository;
+use crate::infrastructure::memory::MemoryTaskRepository;
 
 fn create_test_task(project_id: ProjectId, title: &str, priority: i32) -> Task {
     let mut task = Task::new(project_id, title.to_string());
@@ -400,10 +400,7 @@ async fn test_get_status_entered_at_works_for_various_statuses() {
         InternalStatus::PendingReview,
         InternalStatus::Approved,
     ] {
-        let timestamp = repo
-            .get_status_entered_at(&task.id, status)
-            .await
-            .unwrap();
+        let timestamp = repo.get_status_entered_at(&task.id, status).await.unwrap();
         assert!(
             timestamp.is_some(),
             "Expected timestamp for status {:?}",
@@ -721,7 +718,10 @@ async fn test_search_by_description() {
     repo.create(task2.clone()).await.unwrap();
 
     // Search for "authentication" - should match description
-    let results = repo.search(&project, "authentication", false).await.unwrap();
+    let results = repo
+        .search(&project, "authentication", false)
+        .await
+        .unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].id, task1.id);
 }
@@ -773,7 +773,10 @@ async fn test_search_excludes_archived_by_default() {
     repo.archive(&task2.id).await.unwrap();
 
     // Search without including archived - should only find active task
-    let results = repo.search(&project, "authentication", false).await.unwrap();
+    let results = repo
+        .search(&project, "authentication", false)
+        .await
+        .unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].id, task1.id);
 }
@@ -823,7 +826,10 @@ async fn test_search_matches_in_title_or_description() {
     repo.create(task2.clone()).await.unwrap();
 
     // Search for "authentication" - should match both (title and description)
-    let results = repo.search(&project, "authentication", false).await.unwrap();
+    let results = repo
+        .search(&project, "authentication", false)
+        .await
+        .unwrap();
     assert_eq!(results.len(), 2);
 }
 
@@ -873,7 +879,11 @@ async fn test_get_oldest_ready_task_across_projects() {
 
     let result = repo.get_oldest_ready_task().await.unwrap();
     assert!(result.is_some());
-    assert_eq!(result.unwrap().id, older_task.id, "Should return oldest task regardless of project");
+    assert_eq!(
+        result.unwrap().id,
+        older_task.id,
+        "Should return oldest task regardless of project"
+    );
 }
 
 #[tokio::test]
@@ -895,7 +905,11 @@ async fn test_get_oldest_ready_task_excludes_non_ready() {
 
     let result = repo.get_oldest_ready_task().await.unwrap();
     assert!(result.is_some());
-    assert_eq!(result.unwrap().id, ready_task.id, "Should only return Ready tasks");
+    assert_eq!(
+        result.unwrap().id,
+        ready_task.id,
+        "Should only return Ready tasks"
+    );
 }
 
 #[tokio::test]
@@ -918,7 +932,11 @@ async fn test_get_oldest_ready_task_excludes_archived() {
 
     let result = repo.get_oldest_ready_task().await.unwrap();
     assert!(result.is_some());
-    assert_eq!(result.unwrap().id, active_task.id, "Should exclude archived tasks");
+    assert_eq!(
+        result.unwrap().id,
+        active_task.id,
+        "Should exclude archived tasks"
+    );
 }
 
 #[tokio::test]
@@ -936,7 +954,10 @@ async fn test_get_oldest_ready_task_returns_none_when_no_ready_tasks() {
     repo.create(executing).await.unwrap();
 
     let result = repo.get_oldest_ready_task().await.unwrap();
-    assert!(result.is_none(), "Should return None when no Ready tasks exist");
+    assert!(
+        result.is_none(),
+        "Should return None when no Ready tasks exist"
+    );
 }
 
 #[tokio::test]

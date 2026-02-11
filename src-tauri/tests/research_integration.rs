@@ -12,8 +12,8 @@ use std::sync::Arc;
 
 use ralphx_lib::application::AppState;
 use ralphx_lib::domain::entities::{
-    ArtifactId, ResearchBrief, ResearchDepth, ResearchDepthPreset, ResearchOutput, ResearchProcess,
-    ResearchProcessStatus, ArtifactType,
+    ArtifactId, ArtifactType, ResearchBrief, ResearchDepth, ResearchDepthPreset, ResearchOutput,
+    ResearchProcess, ResearchProcessStatus,
 };
 use ralphx_lib::infrastructure::sqlite::{
     open_memory_connection, run_migrations, SqliteProcessRepository,
@@ -64,8 +64,7 @@ fn create_standard_research() -> ResearchProcess {
         .with_context("Building a new microservice")
         .with_scope("SQL vs NoSQL options");
 
-    let output = ResearchOutput::new("research-outputs")
-        .with_artifact_type(ArtifactType::Findings);
+    let output = ResearchOutput::new("research-outputs").with_artifact_type(ArtifactType::Findings);
 
     ResearchProcess::new("Database Research", brief, "deep-researcher")
         .with_depth(ResearchDepth::Preset(ResearchDepthPreset::Standard))
@@ -125,7 +124,12 @@ async fn test_start_and_run_research(state: &AppState) {
     state.process_repo.update(&process).await.unwrap();
 
     // Verify the update persisted
-    let found = state.process_repo.get_by_id(&process_id).await.unwrap().unwrap();
+    let found = state
+        .process_repo
+        .get_by_id(&process_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(found.progress.status, ResearchProcessStatus::Running);
     assert!(found.started_at.is_some());
 
@@ -157,12 +161,21 @@ async fn test_pause_research(state: &AppState) {
     state.process_repo.update(&process).await.unwrap();
 
     // Verify paused state persisted
-    let found = state.process_repo.get_by_id(&process_id).await.unwrap().unwrap();
+    let found = state
+        .process_repo
+        .get_by_id(&process_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(found.progress.status, ResearchProcessStatus::Paused);
     assert_eq!(found.progress.current_iteration, 3);
 
     // Should still be in "active" (non-terminal) queries via get_by_status
-    let paused = state.process_repo.get_by_status(ResearchProcessStatus::Paused).await.unwrap();
+    let paused = state
+        .process_repo
+        .get_by_status(ResearchProcessStatus::Paused)
+        .await
+        .unwrap();
     assert!(paused.iter().any(|p| p.id == process_id));
 }
 
@@ -185,13 +198,22 @@ async fn test_resume_research(state: &AppState) {
     state.process_repo.update(&process).await.unwrap();
 
     // Verify resumed state persisted
-    let found = state.process_repo.get_by_id(&process_id).await.unwrap().unwrap();
+    let found = state
+        .process_repo
+        .get_by_id(&process_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(found.progress.status, ResearchProcessStatus::Running);
     // Iterations should still be preserved
     assert_eq!(found.progress.current_iteration, 2);
 
     // Should be in running processes
-    let running = state.process_repo.get_by_status(ResearchProcessStatus::Running).await.unwrap();
+    let running = state
+        .process_repo
+        .get_by_status(ResearchProcessStatus::Running)
+        .await
+        .unwrap();
     assert!(running.iter().any(|p| p.id == process_id));
 }
 
@@ -227,7 +249,12 @@ async fn test_pause_resume_cycle_preserves_progress(state: &AppState) {
     assert_eq!(process.progress.current_iteration, 8);
 
     // Verify persistence
-    let found = state.process_repo.get_by_id(&process_id).await.unwrap().unwrap();
+    let found = state
+        .process_repo
+        .get_by_id(&process_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(found.progress.current_iteration, 8);
     assert_eq!(found.progress.status, ResearchProcessStatus::Running);
 }
@@ -256,7 +283,12 @@ async fn test_checkpoint_saves_progress(state: &AppState) {
     state.process_repo.update_progress(&process).await.unwrap();
 
     // Verify checkpoint persisted
-    let found = state.process_repo.get_by_id(&process_id).await.unwrap().unwrap();
+    let found = state
+        .process_repo
+        .get_by_id(&process_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(
         found.progress.last_checkpoint,
         Some(ArtifactId::from_string("artifact-checkpoint-001"))
@@ -288,8 +320,16 @@ async fn test_multiple_checkpoints(state: &AppState) {
     state.process_repo.update_progress(&process).await.unwrap();
 
     // Verify latest checkpoint is stored
-    let found = state.process_repo.get_by_id(&process_id).await.unwrap().unwrap();
-    assert_eq!(found.progress.last_checkpoint, Some(ArtifactId::from_string("checkpoint-2")));
+    let found = state
+        .process_repo
+        .get_by_id(&process_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        found.progress.last_checkpoint,
+        Some(ArtifactId::from_string("checkpoint-2"))
+    );
     assert_eq!(found.progress.current_iteration, 20);
 }
 
@@ -316,7 +356,12 @@ async fn test_complete_research(state: &AppState) {
     state.process_repo.update(&process).await.unwrap();
 
     // Verify completion persisted
-    let found = state.process_repo.get_by_id(&process_id).await.unwrap().unwrap();
+    let found = state
+        .process_repo
+        .get_by_id(&process_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(found.progress.status, ResearchProcessStatus::Completed);
     assert!(found.completed_at.is_some());
 
@@ -325,7 +370,11 @@ async fn test_complete_research(state: &AppState) {
     assert!(!active.iter().any(|p| p.id == process_id));
 
     // Should be in completed processes
-    let completed = state.process_repo.get_by_status(ResearchProcessStatus::Completed).await.unwrap();
+    let completed = state
+        .process_repo
+        .get_by_status(ResearchProcessStatus::Completed)
+        .await
+        .unwrap();
     assert!(completed.iter().any(|p| p.id == process_id));
 }
 
@@ -350,7 +399,12 @@ async fn test_fail_research(state: &AppState) {
     state.process_repo.update(&process).await.unwrap();
 
     // Verify failure persisted
-    let found = state.process_repo.get_by_id(&process_id).await.unwrap().unwrap();
+    let found = state
+        .process_repo
+        .get_by_id(&process_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(found.progress.status, ResearchProcessStatus::Failed);
     assert_eq!(
         found.progress.error_message,
@@ -374,23 +428,47 @@ async fn test_query_by_status(state: &AppState) {
     );
 
     // Create pending
-    state.process_repo.create(pending_process.clone()).await.unwrap();
+    state
+        .process_repo
+        .create(pending_process.clone())
+        .await
+        .unwrap();
 
     // Create and start running
-    state.process_repo.create(running_process.clone()).await.unwrap();
+    state
+        .process_repo
+        .create(running_process.clone())
+        .await
+        .unwrap();
     running_process.start();
     state.process_repo.update(&running_process).await.unwrap();
 
     // Create, start, and complete
-    state.process_repo.create(completed_process.clone()).await.unwrap();
+    state
+        .process_repo
+        .create(completed_process.clone())
+        .await
+        .unwrap();
     completed_process.start();
     completed_process.complete();
     state.process_repo.update(&completed_process).await.unwrap();
 
     // Query by status
-    let pending = state.process_repo.get_by_status(ResearchProcessStatus::Pending).await.unwrap();
-    let running = state.process_repo.get_by_status(ResearchProcessStatus::Running).await.unwrap();
-    let completed = state.process_repo.get_by_status(ResearchProcessStatus::Completed).await.unwrap();
+    let pending = state
+        .process_repo
+        .get_by_status(ResearchProcessStatus::Pending)
+        .await
+        .unwrap();
+    let running = state
+        .process_repo
+        .get_by_status(ResearchProcessStatus::Running)
+        .await
+        .unwrap();
+    let completed = state
+        .process_repo
+        .get_by_status(ResearchProcessStatus::Completed)
+        .await
+        .unwrap();
 
     assert!(pending.iter().any(|p| p.id == pending_process.id));
     assert!(running.iter().any(|p| p.id == running_process.id));
@@ -413,10 +491,7 @@ async fn test_get_all_ordered(state: &AppState) {
     assert!(all.len() >= 3);
 
     // Find our processes in the list
-    let our_processes: Vec<_> = all
-        .iter()
-        .filter(|p| p.name.contains("Research"))
-        .collect();
+    let our_processes: Vec<_> = all.iter().filter(|p| p.name.contains("Research")).collect();
     assert!(our_processes.len() >= 3);
 }
 
@@ -478,7 +553,12 @@ async fn test_custom_depth_research(state: &AppState) {
     state.process_repo.create(process.clone()).await.unwrap();
 
     // Verify custom depth preserved
-    let found = state.process_repo.get_by_id(&process_id).await.unwrap().unwrap();
+    let found = state
+        .process_repo
+        .get_by_id(&process_id)
+        .await
+        .unwrap()
+        .unwrap();
     match &found.depth {
         ResearchDepth::Custom(depth) => {
             assert_eq!(depth.max_iterations, 25);
@@ -497,18 +577,31 @@ async fn test_output_configuration(state: &AppState) {
         .with_artifact_type(ArtifactType::Findings)
         .with_artifact_type(ArtifactType::Recommendations);
 
-    let process = ResearchProcess::new("Output Test", brief, "output-agent")
-        .with_output(output);
+    let process = ResearchProcess::new("Output Test", brief, "output-agent").with_output(output);
 
     let process_id = process.id.clone();
     state.process_repo.create(process).await.unwrap();
 
-    let found = state.process_repo.get_by_id(&process_id).await.unwrap().unwrap();
+    let found = state
+        .process_repo
+        .get_by_id(&process_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(found.output.target_bucket, "research-outputs");
     assert_eq!(found.output.artifact_types.len(), 3);
-    assert!(found.output.artifact_types.contains(&ArtifactType::ResearchDocument));
-    assert!(found.output.artifact_types.contains(&ArtifactType::Findings));
-    assert!(found.output.artifact_types.contains(&ArtifactType::Recommendations));
+    assert!(found
+        .output
+        .artifact_types
+        .contains(&ArtifactType::ResearchDocument));
+    assert!(found
+        .output
+        .artifact_types
+        .contains(&ArtifactType::Findings));
+    assert!(found
+        .output
+        .artifact_types
+        .contains(&ArtifactType::Recommendations));
 }
 
 // ============================================================================

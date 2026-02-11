@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::application::AppState;
-use crate::domain::entities::{InternalStatus, WorkflowColumn, WorkflowDefaults, WorkflowId, WorkflowSchema, ColumnBehavior};
+use crate::domain::entities::{
+    ColumnBehavior, InternalStatus, WorkflowColumn, WorkflowDefaults, WorkflowId, WorkflowSchema,
+};
 
 /// Input for creating a new column
 #[derive(Debug, Deserialize)]
@@ -22,7 +24,9 @@ pub struct WorkflowColumnInput {
 
 impl WorkflowColumnInput {
     fn to_column(&self) -> Result<WorkflowColumn, String> {
-        let maps_to: InternalStatus = self.maps_to.parse()
+        let maps_to: InternalStatus = self
+            .maps_to
+            .parse()
             .map_err(|_| format!("Invalid internal status: {}", self.maps_to))?;
 
         let mut column = WorkflowColumn::new(&self.id, &self.name, maps_to);
@@ -35,7 +39,8 @@ impl WorkflowColumnInput {
         }
 
         // Add behavior if any behavior options are set
-        if self.skip_review.is_some() || self.auto_advance.is_some() || self.agent_profile.is_some() {
+        if self.skip_review.is_some() || self.auto_advance.is_some() || self.agent_profile.is_some()
+        {
             let mut behavior = ColumnBehavior::new();
             if let Some(skip) = self.skip_review {
                 behavior = behavior.with_skip_review(skip);
@@ -167,7 +172,11 @@ impl From<WorkflowSchema> for WorkflowResponse {
             id: workflow.id.as_str().to_string(),
             name: workflow.name,
             description: workflow.description,
-            columns: workflow.columns.iter().map(WorkflowColumnResponse::from).collect(),
+            columns: workflow
+                .columns
+                .iter()
+                .map(WorkflowColumnResponse::from)
+                .collect(),
             is_default: workflow.is_default,
             worker_profile: workflow.defaults.worker_profile,
             reviewer_profile: workflow.defaults.reviewer_profile,
@@ -208,10 +217,8 @@ pub async fn create_workflow(
     state: State<'_, AppState>,
 ) -> Result<WorkflowResponse, String> {
     // Parse columns
-    let columns: Result<Vec<WorkflowColumn>, String> = input.columns
-        .iter()
-        .map(|c| c.to_column())
-        .collect();
+    let columns: Result<Vec<WorkflowColumn>, String> =
+        input.columns.iter().map(|c| c.to_column()).collect();
     let columns = columns?;
 
     let mut workflow = WorkflowSchema::new(&input.name, columns);
@@ -263,10 +270,8 @@ pub async fn update_workflow(
         workflow.description = Some(description);
     }
     if let Some(columns_input) = input.columns {
-        let columns: Result<Vec<WorkflowColumn>, String> = columns_input
-            .iter()
-            .map(|c| c.to_column())
-            .collect();
+        let columns: Result<Vec<WorkflowColumn>, String> =
+            columns_input.iter().map(|c| c.to_column()).collect();
         workflow.columns = columns?;
     }
     if let Some(is_default) = input.is_default {
@@ -378,11 +383,19 @@ pub async fn get_active_workflow_columns(
         .map_err(|e| e.to_string())?;
 
     match default_workflow {
-        Some(workflow) => Ok(workflow.columns.iter().map(WorkflowColumnResponse::from).collect()),
+        Some(workflow) => Ok(workflow
+            .columns
+            .iter()
+            .map(WorkflowColumnResponse::from)
+            .collect()),
         None => {
             // Return the RalphX default columns if no workflow is set
             let default = WorkflowSchema::default_ralphx();
-            Ok(default.columns.iter().map(WorkflowColumnResponse::from).collect())
+            Ok(default
+                .columns
+                .iter()
+                .map(WorkflowColumnResponse::from)
+                .collect())
         }
     }
 }
@@ -442,12 +455,22 @@ mod tests {
     async fn test_list_workflows() {
         let state = setup_test_state();
 
-        state.workflow_repo.create(
-            WorkflowSchema::new("WF 1", vec![WorkflowColumn::new("a", "A", InternalStatus::Backlog)])
-        ).await.unwrap();
-        state.workflow_repo.create(
-            WorkflowSchema::new("WF 2", vec![WorkflowColumn::new("b", "B", InternalStatus::Ready)])
-        ).await.unwrap();
+        state
+            .workflow_repo
+            .create(WorkflowSchema::new(
+                "WF 1",
+                vec![WorkflowColumn::new("a", "A", InternalStatus::Backlog)],
+            ))
+            .await
+            .unwrap();
+        state
+            .workflow_repo
+            .create(WorkflowSchema::new(
+                "WF 2",
+                vec![WorkflowColumn::new("b", "B", InternalStatus::Ready)],
+            ))
+            .await
+            .unwrap();
 
         let all = state.workflow_repo.get_all().await.unwrap();
         assert_eq!(all.len(), 2);
@@ -475,7 +498,10 @@ mod tests {
         let state = setup_test_state();
 
         let wf1 = WorkflowSchema::default_ralphx();
-        let wf2 = WorkflowSchema::new("Second", vec![WorkflowColumn::new("x", "X", InternalStatus::Backlog)]);
+        let wf2 = WorkflowSchema::new(
+            "Second",
+            vec![WorkflowColumn::new("x", "X", InternalStatus::Backlog)],
+        );
         let wf2_id = wf2.id.clone();
 
         state.workflow_repo.create(wf1).await.unwrap();
@@ -496,7 +522,8 @@ mod tests {
                 WorkflowColumn::new("col1", "Column 1", InternalStatus::Backlog)
                     .with_color("#ff0000"),
             ],
-        ).with_description("A test workflow");
+        )
+        .with_description("A test workflow");
 
         let response = WorkflowResponse::from(workflow);
 
@@ -508,7 +535,10 @@ mod tests {
         // Verify JSON serialization uses snake_case (Rust default)
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"name\":\"Response Test\""));
-        assert!(json.contains("\"is_default\""), "Expected snake_case field is_default");
+        assert!(
+            json.contains("\"is_default\""),
+            "Expected snake_case field is_default"
+        );
     }
 
     #[tokio::test]
@@ -576,7 +606,8 @@ mod tests {
                 WorkflowColumn::new("a", "A", InternalStatus::Backlog),
                 WorkflowColumn::new("b", "B", InternalStatus::Approved),
             ],
-        ).as_default();
+        )
+        .as_default();
         let _id = workflow.id.clone();
 
         state.workflow_repo.create(workflow).await.unwrap();
