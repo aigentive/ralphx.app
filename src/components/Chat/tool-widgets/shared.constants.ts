@@ -218,16 +218,13 @@ export function shortenPath(path: string, maxLength: number): string {
   // Keep first directory and last 2 segments
   const first = parts[0] || "";
   const last2 = parts.slice(-2).join("/");
-  const shortened = `${first}/.../.../${last2}`;
+  const shortened = `${first}/.../${last2}`;
 
-  // Remove duplicate .../ sequences
-  const cleaned = shortened.replace(/\/\.\.\.\/\.\.\.\//, "/.../");
-
-  if (cleaned.length <= maxLength) return cleaned;
+  if (shortened.length <= maxLength) return shortened;
 
   // Last resort: just show .../ + filename
   const filename = parts[parts.length - 1] || "";
-  return `.../.../${filename}`.replace(/\.\.\.\/\.\.\.\//, ".../");
+  return `.../${filename}`;
 }
 
 /**
@@ -279,7 +276,7 @@ export function parseSearchResult(result: unknown): {
     const colonIndex = line.indexOf(":");
     if (colonIndex > 0) {
       const pathPart = line.substring(0, colonIndex);
-      if (pathPart && pathPart.includes("/") || pathPart.includes(".")) {
+      if (pathPart && (pathPart.includes("/") || pathPart.includes("."))) {
         pathSet.add(normalizeDisplayPath(pathPart));
         continue;
       }
