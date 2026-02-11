@@ -123,7 +123,7 @@ fn collect_pids_in_worktree(path: &Path) -> Result<Vec<u32>, String> {
     #[cfg(unix)]
     {
         let output = std::process::Command::new("lsof")
-            .args(&["-t", "+D", path.to_str().unwrap_or("")])
+            .args(["-t", "+D", path.to_str().unwrap_or("")])
             .output()
             .map_err(|e| format!("lsof failure: {}", e))?;
 
