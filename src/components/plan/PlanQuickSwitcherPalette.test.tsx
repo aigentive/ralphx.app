@@ -11,10 +11,15 @@
  * - Auto-focus on open
  * - Empty state
  * - Loading state
+ * - Scroll behavior when navigating with keyboard
+ * - Focus ring visibility on highlighted items
+ * - Home/End key navigation
+ * - Edge cases (empty list, wrapping)
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { PlanQuickSwitcherPalette } from "./PlanQuickSwitcherPalette";
 import { usePlanStore, type PlanCandidate } from "@/stores/planStore";
 
@@ -448,6 +453,148 @@ describe("PlanQuickSwitcherPalette", () => {
       // ScrollArea should have max-h constraint
       const scrollArea = screen.getByText("Feature A").closest("[class*='max-h']");
       expect(scrollArea).toBeTruthy();
+    });
+  });
+
+  // ==========================================================================
+  // Keyboard Navigation Polish (scroll, focus ring, Home/End, edge cases)
+  // ==========================================================================
+
+  describe("scroll behavior", () => {
+    it("should scroll highlighted item into view when navigating down", async () => {
+      const user = userEvent.setup();
+      render(<PlanQuickSwitcherPalette {...defaultProps} />);
+
+      const input = screen.getByPlaceholderText(/Search plans/);
+      await user.click(input);
+
+      // Mock scrollIntoView
+      const scrollIntoViewMock = vi.fn();
+      Element.prototype.scrollIntoView = scrollIntoViewMock;
+
+      // Navigate down
+      await user.keyboard("{ArrowDown}");
+
+      await waitFor(() => {
+        expect(scrollIntoViewMock).toHaveBeenCalledWith({
+          block: "nearest",
+          behavior: "smooth",
+        });
+      });
+    });
+
+    it("should scroll highlighted item into view when navigating up", async () => {
+      const user = userEvent.setup();
+      render(<PlanQuickSwitcherPalette {...defaultProps} />);
+
+      const input = screen.getByPlaceholderText(/Search plans/);
+      await user.click(input);
+
+      const scrollIntoViewMock = vi.fn();
+      Element.prototype.scrollIntoView = scrollIntoViewMock;
+
+      // Navigate up (should wrap to last item)
+      await user.keyboard("{ArrowUp}");
+
+      await waitFor(() => {
+        expect(scrollIntoViewMock).toHaveBeenCalledWith({
+          block: "nearest",
+          behavior: "smooth",
+        });
+      });
+    });
+  });
+
+  describe("Home/End key navigation", () => {
+    it("should jump to first item when Home key is pressed", async () => {
+      const user = userEvent.setup();
+      render(<PlanQuickSwitcherPalette {...defaultProps} />);
+
+      const input = screen.getByPlaceholderText(/Search plans/);
+      await user.click(input);
+
+      // Navigate down a few times
+      await user.keyboard("{ArrowDown}");
+      await user.keyboard("{ArrowDown}");
+
+      // Press Home
+      await user.keyboard("{Home}");
+
+      // First item should be highlighted
+      const firstButton = screen.getByText("Feature A").closest("button");
+      expect(firstButton).toHaveClass("bg-white/10");
+    });
+
+    it("should jump to last item when End key is pressed", async () => {
+      const user = userEvent.setup();
+      render(<PlanQuickSwitcherPalette {...defaultProps} />);
+
+      const input = screen.getByPlaceholderText(/Search plans/);
+      await user.click(input);
+
+      // Press End
+      await user.keyboard("{End}");
+
+      // Last item should be highlighted
+      const lastButton = screen.getByText("Bug Fixes").closest("button");
+      expect(lastButton).toHaveClass("bg-white/10");
+    });
+  });
+
+  describe("empty list edge case", () => {
+    it("should handle empty list gracefully with navigation keys", async () => {
+      const user = userEvent.setup();
+
+      (usePlanStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector) =>
+        selector({ ...defaultStoreState, planCandidates: [] })
+      );
+
+      render(<PlanQuickSwitcherPalette {...defaultProps} />);
+
+      const input = screen.getByPlaceholderText(/Search plans/);
+      await user.click(input);
+
+      // Navigation keys should not throw errors
+      await user.keyboard("{ArrowDown}");
+      await user.keyboard("{ArrowUp}");
+      await user.keyboard("{Home}");
+      await user.keyboard("{End}");
+
+      expect(screen.getByText("No accepted plans found")).toBeInTheDocument();
+    });
+  });
+
+  describe("focus ring accessibility", () => {
+    it("should show focus ring on highlighted item", () => {
+      render(<PlanQuickSwitcherPalette {...defaultProps} />);
+      const input = screen.getByPlaceholderText(/Search plans/);
+
+      // Navigate down
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+
+      // Second item should have focus ring
+      const featureBButton = screen.getByText("Feature B").closest("button");
+      expect(featureBButton).toHaveClass("ring-2");
+      expect(featureBButton).toHaveClass("ring-[#ff6b35]");
+    });
+
+    it("should move focus ring when navigating", () => {
+      render(<PlanQuickSwitcherPalette {...defaultProps} />);
+      const input = screen.getByPlaceholderText(/Search plans/);
+
+      // First item should be highlighted initially
+      let highlightedButton = screen.getByText("Feature A").closest("button");
+      expect(highlightedButton).toHaveClass("ring-2");
+
+      // Navigate down
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+
+      // First item should no longer have ring
+      expect(highlightedButton).not.toHaveClass("ring-2");
+
+      // Second item should have ring
+      highlightedButton = screen.getByText("Feature B").closest("button");
+      expect(highlightedButton).toHaveClass("ring-2");
     });
   });
 });
