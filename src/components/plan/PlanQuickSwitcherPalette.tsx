@@ -170,6 +170,7 @@ export function PlanQuickSwitcherPalette({
     [filteredCandidates, highlightedIndex, onClose, handleSelect]
   );
 
+
   return (
     <AnimatePresence>
       {isOpen && (

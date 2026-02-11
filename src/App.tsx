@@ -649,6 +649,25 @@ function AppContent() {
     openPlanQuickSwitcher: handleOpenPlanQuickSwitcher,
   });
 
+  // Global click handler to close quick switcher when clicking outside
+  useEffect(() => {
+    if (!isPlanQuickSwitcherOpen) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      // Check if click is outside the quick switcher panel
+      const target = e.target as HTMLElement;
+      const quickSwitcherPanel = target.closest('[data-quick-switcher-panel]');
+
+      if (!quickSwitcherPanel) {
+        setIsPlanQuickSwitcherOpen(false);
+      }
+    };
+
+    // Use capture phase to handle clicks before they bubble
+    document.addEventListener('click', handleClickOutside, true);
+    return () => document.removeEventListener('click', handleClickOutside, true);
+  }, [isPlanQuickSwitcherOpen]);
+
   // Test page routing - return early if on a test page
   if (testPage) {
     return testPage;
