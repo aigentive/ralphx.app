@@ -14,6 +14,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { InfoTooltip } from "./InfoTooltip";
 
 interface ExecutionControlBarProps {
   /** Number of currently running tasks */
@@ -22,6 +23,8 @@ interface ExecutionControlBarProps {
   maxConcurrent: number;
   /** Number of queued (planned) tasks */
   queuedCount: number;
+  /** Number of tasks in the merge pipeline */
+  mergingCount?: number;
   /** Whether execution is paused */
   isPaused: boolean;
   /** Whether a control action is in progress */
@@ -62,6 +65,7 @@ export function ExecutionControlBar({
   runningCount,
   maxConcurrent,
   queuedCount,
+  mergingCount = 0,
   isPaused,
   isLoading = false,
   currentTaskName,
@@ -107,7 +111,7 @@ export function ExecutionControlBar({
         {/* Status Section (Left) */}
         <div
           className="flex items-center gap-4"
-          aria-label={`${runningCount} tasks running out of ${maxConcurrent}, ${queuedCount} queued`}
+          aria-label={`${runningCount} tasks running out of ${maxConcurrent}, ${queuedCount} queued, ${mergingCount} merging`}
         >
           {/* Animated Status Indicator */}
           <div
@@ -120,25 +124,112 @@ export function ExecutionControlBar({
           />
 
           {/* Running Count */}
-          <span
-            data-testid="running-count"
-            className="text-[13px] font-medium"
-            style={{ color: "hsl(220 10% 90%)" }}
-          >
-            Running: {runningCount}/{maxConcurrent}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span
+              data-testid="running-count"
+              className="text-[13px] font-medium"
+              style={{ color: "hsl(220 10% 90%)" }}
+            >
+              Running: {runningCount}/{maxConcurrent}
+            </span>
+            <InfoTooltip
+              testId="running-info-tooltip"
+              content={
+                <div className="space-y-2">
+                  <div>
+                    <strong className="block mb-1" style={{ color: "hsl(220 10% 95%)" }}>
+                      Concurrent Execution
+                    </strong>
+                    <p style={{ color: "hsl(220 10% 75%)" }}>
+                      Tasks running in parallel. Currently limited to{" "}
+                      <strong>{maxConcurrent}</strong> per project, 20 globally.
+                    </p>
+                  </div>
+                  <div>
+                    <p style={{ color: "hsl(220 10% 75%)" }}>
+                      Includes: executing, reviewing, re-executing, QA, and merging agents.
+                    </p>
+                  </div>
+                  <div className="pt-1 border-t" style={{ borderColor: "hsla(220 20% 100% / 0.08)" }}>
+                    <p className="text-xs" style={{ color: "hsl(220 10% 60%)" }}>
+                      Change limits → Settings
+                    </p>
+                  </div>
+                </div>
+              }
+            />
+          </div>
 
           {/* Separator */}
           <span style={{ color: "hsl(220 10% 45%)" }}>•</span>
 
           {/* Queued Count */}
-          <span
-            data-testid="queued-count"
-            className="text-[13px]"
-            style={{ color: "hsl(220 10% 65%)" }}
-          >
-            Queued: {queuedCount}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span
+              data-testid="queued-count"
+              className="text-[13px]"
+              style={{ color: "hsl(220 10% 65%)" }}
+            >
+              Queued: {queuedCount}
+            </span>
+            <InfoTooltip
+              testId="queued-info-tooltip"
+              content={
+                <div className="space-y-2">
+                  <div>
+                    <strong className="block mb-1" style={{ color: "hsl(220 10% 95%)" }}>
+                      Task Queue
+                    </strong>
+                    <p style={{ color: "hsl(220 10% 75%)" }}>
+                      Tasks in "ready" status waiting for an open execution slot.
+                      Processed by priority then age (oldest first).
+                    </p>
+                  </div>
+                  <div>
+                    <p style={{ color: "hsl(220 10% 75%)" }}>
+                      Blocked tasks are NOT counted here.
+                    </p>
+                  </div>
+                </div>
+              }
+            />
+          </div>
+
+          {/* Separator */}
+          <span style={{ color: "hsl(220 10% 45%)" }}>•</span>
+
+          {/* Merging Count */}
+          <div className="flex items-center gap-1.5">
+            <span
+              data-testid="merging-count"
+              className="text-[13px]"
+              style={{ color: "hsl(220 10% 65%)" }}
+            >
+              Merging: {mergingCount}
+            </span>
+            <InfoTooltip
+              testId="merging-info-tooltip"
+              content={
+                <div className="space-y-2">
+                  <div>
+                    <strong className="block mb-1" style={{ color: "hsl(220 10% 95%)" }}>
+                      Merge Pipeline
+                    </strong>
+                    <p style={{ color: "hsl(220 10% 75%)" }}>
+                      Two-phase: fast programmatic merge first, then AI agent for conflicts.
+                      Merges run one at a time per target branch to avoid concurrent git conflicts.
+                    </p>
+                  </div>
+                  <div>
+                    <p style={{ color: "hsl(220 10% 75%)" }}>
+                      Merges to different branches run in parallel.
+                      Deferred merges auto-retry when the current merge completes.
+                    </p>
+                  </div>
+                </div>
+              }
+            />
+          </div>
         </div>
 
         {/* Progress Section (Center) - Conditional */}
