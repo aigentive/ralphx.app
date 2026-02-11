@@ -114,7 +114,10 @@ mod tests {
             global_max_concurrent: 100,
         };
         let validated = settings.validate();
-        assert_eq!(validated.global_max_concurrent, GlobalExecutionSettings::MAX_ALLOWED);
+        assert_eq!(
+            validated.global_max_concurrent,
+            GlobalExecutionSettings::MAX_ALLOWED
+        );
     }
 
     #[test]

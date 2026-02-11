@@ -110,10 +110,7 @@ impl QuestionRepository for SqliteQuestionRepository {
         Ok(results)
     }
 
-    async fn get_by_request_id(
-        &self,
-        request_id: &str,
-    ) -> AppResult<Option<PendingQuestionInfo>> {
+    async fn get_by_request_id(&self, request_id: &str) -> AppResult<Option<PendingQuestionInfo>> {
         let conn = self.conn.lock().await;
         let result = conn.query_row(
             "SELECT request_id, session_id, question, header, options, multi_select
@@ -353,7 +350,8 @@ mod tests {
         assert_eq!(repo.get_pending().await.unwrap().len(), 2);
 
         // Simulate startup: create QuestionState with the repo, call expire
-        let state = QuestionState::with_repo(repo.clone() as Arc<dyn crate::domain::repositories::question_repository::QuestionRepository>);
+        let state = QuestionState::with_repo(repo.clone()
+            as Arc<dyn crate::domain::repositories::question_repository::QuestionRepository>);
         state.expire_stale_on_startup().await;
 
         // All pending should be expired

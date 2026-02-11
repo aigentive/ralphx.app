@@ -6,11 +6,11 @@ use axum::{
 use tauri::Emitter;
 
 use super::*;
-use crate::application::{TaskTransitionService, TaskSchedulerService};
-use crate::domain::state_machine::services::TaskScheduler;
+use crate::application::{TaskSchedulerService, TaskTransitionService};
 use crate::domain::entities::{
     InternalStatus, Review, ReviewIssue, ReviewNote, ReviewOutcome, ReviewerType, TaskId,
 };
+use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::tools::complete_review::ReviewToolOutcome;
 use std::sync::Arc;
 
@@ -32,7 +32,10 @@ pub async fn complete_review(
     if task.internal_status != InternalStatus::Reviewing {
         return Err((
             StatusCode::BAD_REQUEST,
-            format!("Task not in reviewing state. Current state: {}", task.internal_status.as_str()),
+            format!(
+                "Task not in reviewing state. Current state: {}",
+                task.internal_status.as_str()
+            ),
         ));
     }
 
@@ -44,7 +47,10 @@ pub async fn complete_review(
         _ => {
             return Err((
                 StatusCode::BAD_REQUEST,
-                format!("Invalid decision: '{}'. Expected 'approved', 'needs_changes', or 'escalate'", req.decision),
+                format!(
+                    "Invalid decision: '{}'. Expected 'approved', 'needs_changes', or 'escalate'",
+                    req.decision
+                ),
             ))
         }
     };
@@ -142,20 +148,23 @@ pub async fn complete_review(
 
     // 6. Trigger state transition via TaskTransitionService
     // Create scheduler for auto-scheduling next Ready task when this one exits Reviewing
-    let scheduler_concrete = Arc::new(TaskSchedulerService::new(
-        Arc::clone(&state.execution_state),
-        Arc::clone(&state.app_state.project_repo),
-        Arc::clone(&state.app_state.task_repo),
-        Arc::clone(&state.app_state.task_dependency_repo),
-        Arc::clone(&state.app_state.chat_message_repo),
-        Arc::clone(&state.app_state.chat_conversation_repo),
-        Arc::clone(&state.app_state.agent_run_repo),
-        Arc::clone(&state.app_state.ideation_session_repo),
-        Arc::clone(&state.app_state.activity_event_repo),
-        Arc::clone(&state.app_state.message_queue),
-        Arc::clone(&state.app_state.running_agent_registry),
-        state.app_state.app_handle.as_ref().cloned(),
-    ).with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo)));
+    let scheduler_concrete = Arc::new(
+        TaskSchedulerService::new(
+            Arc::clone(&state.execution_state),
+            Arc::clone(&state.app_state.project_repo),
+            Arc::clone(&state.app_state.task_repo),
+            Arc::clone(&state.app_state.task_dependency_repo),
+            Arc::clone(&state.app_state.chat_message_repo),
+            Arc::clone(&state.app_state.chat_conversation_repo),
+            Arc::clone(&state.app_state.agent_run_repo),
+            Arc::clone(&state.app_state.ideation_session_repo),
+            Arc::clone(&state.app_state.activity_event_repo),
+            Arc::clone(&state.app_state.message_queue),
+            Arc::clone(&state.app_state.running_agent_registry),
+            state.app_state.app_handle.as_ref().cloned(),
+        )
+        .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo)),
+    );
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
@@ -220,16 +229,22 @@ pub async fn complete_review(
 
     // 7. Emit events
     if let Some(app_handle) = &state.app_state.app_handle {
-        let _ = app_handle.emit("review:completed", serde_json::json!({
-            "task_id": task_id.as_str(),
-            "decision": req.decision,
-            "new_status": new_status.as_str(),
-        }));
-        let _ = app_handle.emit("task:status_changed", serde_json::json!({
-            "task_id": task_id.as_str(),
-            "old_status": task.internal_status.as_str(),
-            "new_status": new_status.as_str(),
-        }));
+        let _ = app_handle.emit(
+            "review:completed",
+            serde_json::json!({
+                "task_id": task_id.as_str(),
+                "decision": req.decision,
+                "new_status": new_status.as_str(),
+            }),
+        );
+        let _ = app_handle.emit(
+            "task:status_changed",
+            serde_json::json!({
+                "task_id": task_id.as_str(),
+                "old_status": task.internal_status.as_str(),
+                "new_status": new_status.as_str(),
+            }),
+        );
     }
 
     // 8. Return response
@@ -343,7 +358,8 @@ pub async fn approve_task(
         task_id.clone(),
         ReviewerType::Human,
         ReviewOutcome::Approved,
-        req.comment.unwrap_or_else(|| "Approved by user".to_string()),
+        req.comment
+            .unwrap_or_else(|| "Approved by user".to_string()),
     );
     state
         .app_state
@@ -376,14 +392,20 @@ pub async fn approve_task(
 
     // 4. Emit events
     if let Some(app_handle) = &state.app_state.app_handle {
-        let _ = app_handle.emit("review:human_approved", serde_json::json!({
-            "task_id": task_id.as_str(),
-        }));
-        let _ = app_handle.emit("task:status_changed", serde_json::json!({
-            "task_id": task_id.as_str(),
-            "old_status": task.internal_status.as_str(),
-            "new_status": "approved",
-        }));
+        let _ = app_handle.emit(
+            "review:human_approved",
+            serde_json::json!({
+                "task_id": task_id.as_str(),
+            }),
+        );
+        let _ = app_handle.emit(
+            "task:status_changed",
+            serde_json::json!({
+                "task_id": task_id.as_str(),
+                "old_status": task.internal_status.as_str(),
+                "new_status": "approved",
+            }),
+        );
     }
 
     Ok(Json(CompleteReviewResponse {
@@ -462,15 +484,21 @@ pub async fn request_task_changes(
 
     // 4. Emit events
     if let Some(app_handle) = &state.app_state.app_handle {
-        let _ = app_handle.emit("review:human_changes_requested", serde_json::json!({
-            "task_id": task_id.as_str(),
-            "feedback": req.feedback,
-        }));
-        let _ = app_handle.emit("task:status_changed", serde_json::json!({
-            "task_id": task_id.as_str(),
-            "old_status": task.internal_status.as_str(),
-            "new_status": "revision_needed",
-        }));
+        let _ = app_handle.emit(
+            "review:human_changes_requested",
+            serde_json::json!({
+                "task_id": task_id.as_str(),
+                "feedback": req.feedback,
+            }),
+        );
+        let _ = app_handle.emit(
+            "task:status_changed",
+            serde_json::json!({
+                "task_id": task_id.as_str(),
+                "old_status": task.internal_status.as_str(),
+                "new_status": "revision_needed",
+            }),
+        );
     }
 
     Ok(Json(CompleteReviewResponse {

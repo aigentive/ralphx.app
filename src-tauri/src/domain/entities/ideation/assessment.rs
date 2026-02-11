@@ -2,9 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::types::{Complexity, Priority};
 use crate::domain::entities::TaskProposalId;
-use super::types::{Priority, Complexity};
-
 
 // ============================================================================
 // PriorityAssessment and detailed factor types
@@ -205,14 +204,14 @@ impl BusinessValueFactor {
             }
         }
         if !detected.is_empty() {
-            return Self::new(
-                5,
-                detected,
-                "Contains low priority keywords".to_string(),
-            );
+            return Self::new(5, detected, "Contains low priority keywords".to_string());
         }
 
-        Self::new(10, vec![], "No business value keywords detected".to_string())
+        Self::new(
+            10,
+            vec![],
+            "No business value keywords detected".to_string(),
+        )
     }
 }
 
@@ -360,10 +359,7 @@ pub struct PriorityAssessment {
 
 impl PriorityAssessment {
     /// Create a new priority assessment
-    pub fn new(
-        proposal_id: TaskProposalId,
-        factors: PriorityAssessmentFactors,
-    ) -> Self {
+    pub fn new(proposal_id: TaskProposalId, factors: PriorityAssessmentFactors) -> Self {
         let priority_score = factors.total_score();
         let suggested_priority = Self::score_to_priority(priority_score);
         let priority_reason = Self::generate_reason(&factors, priority_score);
@@ -423,4 +419,3 @@ impl PriorityAssessment {
         Self::new(proposal_id, PriorityAssessmentFactors::default())
     }
 }
-

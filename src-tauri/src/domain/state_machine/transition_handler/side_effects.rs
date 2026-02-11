@@ -357,6 +357,43 @@ pub(crate) fn clear_merge_deferred_metadata(task: &mut Task) {
     }
 }
 
+/// Set the `trigger_origin` field in a task's metadata.
+///
+/// Valid origins: "scheduler", "revision", "recovery", "retry", "qa".
+/// Mutates the task in-place, creating metadata if it doesn't exist.
+pub(crate) fn set_trigger_origin(task: &mut Task, origin: &str) {
+    let mut meta = parse_metadata(task).unwrap_or_else(|| serde_json::json!({}));
+    if let Some(obj) = meta.as_object_mut() {
+        obj.insert("trigger_origin".to_string(), serde_json::json!(origin));
+    }
+    task.metadata = Some(meta.to_string());
+}
+
+/// Get the `trigger_origin` field from a task's metadata.
+///
+/// Returns the origin string if present, otherwise `None`.
+pub(crate) fn get_trigger_origin(task: &Task) -> Option<String> {
+    parse_metadata(task).and_then(|v| v.get("trigger_origin")?.as_str().map(String::from))
+}
+
+/// Clear the `trigger_origin` field from a task's metadata.
+///
+/// Mutates the task in-place. If the metadata becomes an empty object after removal,
+/// clears metadata entirely.
+pub(crate) fn clear_trigger_origin(task: &mut Task) {
+    let Some(mut meta) = parse_metadata(task) else {
+        return;
+    };
+    if let Some(obj) = meta.as_object_mut() {
+        obj.remove("trigger_origin");
+        if obj.is_empty() {
+            task.metadata = None;
+        } else {
+            task.metadata = Some(meta.to_string());
+        }
+    }
+}
+
 /// Resolve the base branch for a task's working branch.
 ///
 /// If the task belongs to a plan with an active feature branch, returns the feature
@@ -427,11 +464,11 @@ pub async fn resolve_merge_branches(
     // Check if this task IS the merge task for a plan branch
     if let Ok(Some(pb)) = plan_branch_repo.get_by_merge_task_id(&task.id).await {
         if pb.status == PlanBranchStatus::Active {
-            tracing::info!(
+            tracing::debug!(
                 task_id = task.id.as_str(),
                 feature_branch = %pb.branch_name,
                 base_branch = %base_branch,
-                "Merge task: merging feature branch into base"
+                "Resolved merge branches for merge task (feature -> base)"
             );
             return (pb.branch_name, base_branch);
         }
@@ -441,11 +478,11 @@ pub async fn resolve_merge_branches(
     if let Some(ref session_id) = task.ideation_session_id {
         if let Ok(Some(pb)) = plan_branch_repo.get_by_session_id(session_id).await {
             if pb.status == PlanBranchStatus::Active {
-                tracing::info!(
+                tracing::debug!(
                     task_id = task.id.as_str(),
                     task_branch = %task_branch,
                     feature_branch = %pb.branch_name,
-                    "Plan task: merging task branch into feature branch"
+                    "Resolved merge branches for plan task (task -> feature)"
                 );
                 return (task_branch, pb.branch_name);
             }
@@ -1198,6 +1235,21 @@ impl<'a> super::TransitionHandler<'a> {
                     .await;
             }
             State::QaRefining => {
+                // Set trigger_origin="qa" for QA cycle
+                if let Some(ref task_repo) = self.machine.context.services.task_repo {
+                    let task_id = TaskId::from_string(self.machine.context.task_id.clone());
+                    if let Ok(Some(mut task)) = task_repo.get_by_id(&task_id).await {
+                        set_trigger_origin(&mut task, "qa");
+                        if let Err(e) = task_repo.update(&task).await {
+                            tracing::error!(
+                                task_id = %self.machine.context.task_id,
+                                error = %e,
+                                "Failed to set trigger_origin=qa in metadata"
+                            );
+                        }
+                    }
+                }
+
                 // Wait for QA prep if not complete, then spawn QA refiner
                 if !self.machine.context.qa_prep_complete {
                     self.machine
@@ -1215,6 +1267,21 @@ impl<'a> super::TransitionHandler<'a> {
                     .await;
             }
             State::QaTesting => {
+                // Set trigger_origin="qa" for QA cycle
+                if let Some(ref task_repo) = self.machine.context.services.task_repo {
+                    let task_id = TaskId::from_string(self.machine.context.task_id.clone());
+                    if let Ok(Some(mut task)) = task_repo.get_by_id(&task_id).await {
+                        set_trigger_origin(&mut task, "qa");
+                        if let Err(e) = task_repo.update(&task).await {
+                            tracing::error!(
+                                task_id = %self.machine.context.task_id,
+                                error = %e,
+                                "Failed to set trigger_origin=qa in metadata"
+                            );
+                        }
+                    }
+                }
+
                 // Spawn QA tester agent
                 self.machine
                     .context
@@ -3114,13 +3181,19 @@ impl<'a> super::TransitionHandler<'a> {
                         );
 
                         // Append attempt_failed event
-                        let mut recovery = MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
-                            .unwrap_or(None)
-                            .unwrap_or_else(MergeRecoveryMetadata::new);
+                        let mut recovery =
+                            MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+                                .unwrap_or(None)
+                                .unwrap_or_else(MergeRecoveryMetadata::new);
 
-                        let attempt_count = recovery.events.iter()
-                            .filter(|ev| matches!(ev.kind, MergeRecoveryEventKind::AutoRetryTriggered))
-                            .count() as u32 + 1;
+                        let attempt_count = recovery
+                            .events
+                            .iter()
+                            .filter(|ev| {
+                                matches!(ev.kind, MergeRecoveryEventKind::AutoRetryTriggered)
+                            })
+                            .count() as u32
+                            + 1;
 
                         let failed_event = MergeRecoveryEvent::new(
                             MergeRecoveryEventKind::AttemptFailed,
@@ -3138,11 +3211,22 @@ impl<'a> super::TransitionHandler<'a> {
                         match recovery.update_task_metadata(task.metadata.as_deref()) {
                             Ok(updated_json) => {
                                 // Also preserve legacy error metadata
-                                if let Ok(mut meta) = serde_json::from_str::<serde_json::Value>(&updated_json) {
+                                if let Ok(mut meta) =
+                                    serde_json::from_str::<serde_json::Value>(&updated_json)
+                                {
                                     if let Some(obj) = meta.as_object_mut() {
-                                        obj.insert("error".to_string(), serde_json::json!(e.to_string()));
-                                        obj.insert("source_branch".to_string(), serde_json::json!(source_branch));
-                                        obj.insert("target_branch".to_string(), serde_json::json!(target_branch));
+                                        obj.insert(
+                                            "error".to_string(),
+                                            serde_json::json!(e.to_string()),
+                                        );
+                                        obj.insert(
+                                            "source_branch".to_string(),
+                                            serde_json::json!(source_branch),
+                                        );
+                                        obj.insert(
+                                            "target_branch".to_string(),
+                                            serde_json::json!(target_branch),
+                                        );
                                     }
                                     task.metadata = Some(meta.to_string());
                                 } else {
@@ -4245,6 +4329,83 @@ mod tests {
     fn clear_merge_deferred_noop_when_no_metadata() {
         let mut task = make_task(None, None);
         clear_merge_deferred_metadata(&mut task);
+        assert!(task.metadata.is_none());
+    }
+
+    // ==================
+    // trigger_origin helpers tests
+    // ==================
+
+    #[test]
+    fn set_trigger_origin_creates_metadata_when_none() {
+        let mut task = make_task(None, None);
+        set_trigger_origin(&mut task, "scheduler");
+        let meta = parse_metadata(&task).unwrap();
+        assert_eq!(meta["trigger_origin"], "scheduler");
+    }
+
+    #[test]
+    fn set_trigger_origin_preserves_existing_metadata() {
+        let mut task = make_task(None, None);
+        task.metadata = Some(r#"{"other": "value"}"#.to_string());
+        set_trigger_origin(&mut task, "revision");
+        let meta = parse_metadata(&task).unwrap();
+        assert_eq!(meta["trigger_origin"], "revision");
+        assert_eq!(meta["other"], "value");
+    }
+
+    #[test]
+    fn get_trigger_origin_returns_value_when_set() {
+        let mut task = make_task(None, None);
+        task.metadata = Some(r#"{"trigger_origin": "recovery"}"#.to_string());
+        assert_eq!(get_trigger_origin(&task), Some("recovery".to_string()));
+    }
+
+    #[test]
+    fn get_trigger_origin_returns_none_when_not_set() {
+        let task = make_task(None, None);
+        assert!(get_trigger_origin(&task).is_none());
+    }
+
+    #[test]
+    fn get_trigger_origin_returns_none_when_metadata_has_no_origin() {
+        let mut task = make_task(None, None);
+        task.metadata = Some(r#"{"other": "value"}"#.to_string());
+        assert!(get_trigger_origin(&task).is_none());
+    }
+
+    #[test]
+    fn clear_trigger_origin_removes_field_from_metadata() {
+        let mut task = make_task(None, None);
+        task.metadata = Some(
+            serde_json::json!({
+                "trigger_origin": "qa",
+                "other": "keep"
+            })
+            .to_string(),
+        );
+
+        clear_trigger_origin(&mut task);
+
+        let meta = parse_metadata(&task).unwrap();
+        assert!(meta.get("trigger_origin").is_none());
+        assert_eq!(meta["other"], "keep");
+    }
+
+    #[test]
+    fn clear_trigger_origin_clears_metadata_when_last_field() {
+        let mut task = make_task(None, None);
+        task.metadata = Some(r#"{"trigger_origin": "retry"}"#.to_string());
+
+        clear_trigger_origin(&mut task);
+
+        assert!(task.metadata.is_none());
+    }
+
+    #[test]
+    fn clear_trigger_origin_noop_when_no_metadata() {
+        let mut task = make_task(None, None);
+        clear_trigger_origin(&mut task);
         assert!(task.metadata.is_none());
     }
 

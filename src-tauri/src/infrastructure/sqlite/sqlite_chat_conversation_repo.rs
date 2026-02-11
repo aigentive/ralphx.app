@@ -137,12 +137,18 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
 
                 Ok(ChatConversation {
                     id: ChatConversationId::from_string(row.get::<_, String>("id")?),
-                    context_type: context_type_str.parse().unwrap_or(ChatContextType::Ideation),
+                    context_type: context_type_str
+                        .parse()
+                        .unwrap_or(ChatContextType::Ideation),
                     context_id: row.get("context_id")?,
                     claude_session_id: row.get("claude_session_id")?,
                     title: row.get("title")?,
                     message_count: row.get("message_count")?,
-                    last_message_at: last_message_at_str.and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc))),
+                    last_message_at: last_message_at_str.and_then(|s| {
+                        chrono::DateTime::parse_from_rfc3339(&s)
+                            .ok()
+                            .map(|dt| dt.with_timezone(&Utc))
+                    }),
                     created_at,
                     updated_at,
                 })
@@ -256,8 +262,11 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
     async fn delete(&self, id: &ChatConversationId) -> AppResult<()> {
         let conn = self.conn.lock().await;
 
-        conn.execute("DELETE FROM chat_conversations WHERE id = ?1", [id.as_str()])
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        conn.execute(
+            "DELETE FROM chat_conversations WHERE id = ?1",
+            [id.as_str()],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
 
         Ok(())
     }

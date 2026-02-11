@@ -15,6 +15,7 @@ import { chatApi, stopAgent } from "@/api/chat";
 import { recoverTaskExecution } from "@/api/recovery";
 import { chatKeys } from "@/hooks/useChat";
 import { ideationApi } from "@/api/ideation";
+import { logger } from "@/lib/logger";
 import type { ContextType } from "@/types/chat-conversation";
 
 interface UseIntegratedChatHandlersProps {
@@ -214,20 +215,24 @@ export function useIntegratedChatHandlers({
     [deleteQueuedMessage, queueMessage, getContextForMode, generateQueuedMessageId, storeContextKey]
   );
 
-  // Stop the running agent
+  // Stop the running agent — always cancels run first, then recovers for execution mode
   const handleStopAgent = useCallback(async () => {
     const { contextType, contextId } = getContextForMode();
 
+    // Always attempt immediate run cancellation first
     try {
-      // Always call stopAgent first to cancel the active run
       await stopAgent(contextType, contextId);
+    } catch (err) {
+      logger.warn("[chat] Failed to stop agent", { contextType, contextId, error: err });
+    }
 
-      // For execution mode, run recovery after stopping to reconcile task status
-      if (isExecutionMode && selectedTaskId) {
+    // For execution mode, also run recovery so task status reconciles
+    if (isExecutionMode && selectedTaskId) {
+      try {
         await recoverTaskExecution(selectedTaskId);
+      } catch (err) {
+        logger.warn("[chat] Failed to recover task execution after stop", { taskId: selectedTaskId, error: err });
       }
-    } catch {
-      // Silently ignore - agent stop is fire-and-forget
     }
   }, [getContextForMode, isExecutionMode, selectedTaskId]);
 

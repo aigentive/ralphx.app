@@ -166,6 +166,24 @@ export const mockTasksApi = {
     return { ...task, archivedAt: null };
   },
 
+  pause: async (taskId: string): Promise<Task> => {
+    const store = getStore();
+    const task = store.tasks.get(taskId);
+    if (!task) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+    return { ...task, internalStatus: "paused" as InternalStatus };
+  },
+
+  stop: async (taskId: string): Promise<Task> => {
+    const store = getStore();
+    const task = store.tasks.get(taskId);
+    if (!task) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+    return { ...task, internalStatus: "stopped" as InternalStatus };
+  },
+
   permanentlyDelete: async (_taskId: string): Promise<void> => {
     // Read-only mock: no-op
   },

@@ -112,10 +112,7 @@ fn artifact_flow_event_display() {
 
 // ===== ArtifactFlowFilter Tests =====
 
-fn create_test_artifact(
-    artifact_type: ArtifactType,
-    bucket_id: Option<&str>,
-) -> Artifact {
+fn create_test_artifact(artifact_type: ArtifactType, bucket_id: Option<&str>) -> Artifact {
     use crate::domain::entities::artifact::ArtifactBucketId;
     Artifact {
         id: ArtifactId::from_string("test-artifact"),
@@ -138,8 +135,8 @@ fn artifact_flow_filter_empty_matches_all() {
 
 #[test]
 fn artifact_flow_filter_artifact_types_matches() {
-    let filter =
-        ArtifactFlowFilter::new().with_artifact_types(vec![ArtifactType::Prd, ArtifactType::DesignDoc]);
+    let filter = ArtifactFlowFilter::new()
+        .with_artifact_types(vec![ArtifactType::Prd, ArtifactType::DesignDoc]);
     let prd = create_test_artifact(ArtifactType::Prd, None);
     let design = create_test_artifact(ArtifactType::DesignDoc, None);
     let code = create_test_artifact(ArtifactType::CodeChange, None);
@@ -299,7 +296,8 @@ fn artifact_flow_step_deserializes_copy() {
 
 #[test]
 fn artifact_flow_step_deserializes_spawn_process() {
-    let json = r#"{"type":"spawn_process","process_type":"research","agent_profile":"deep-researcher"}"#;
+    let json =
+        r#"{"type":"spawn_process","process_type":"research","agent_profile":"deep-researcher"}"#;
     let step: ArtifactFlowStep = serde_json::from_str(json).unwrap();
     assert!(step.is_spawn_process());
     if let ArtifactFlowStep::SpawnProcess {
@@ -318,8 +316,7 @@ fn artifact_flow_step_deserializes_spawn_process() {
 
 #[test]
 fn artifact_flow_new_creates_correctly() {
-    let flow =
-        ArtifactFlow::new("Test Flow", ArtifactFlowTrigger::on_artifact_created());
+    let flow = ArtifactFlow::new("Test Flow", ArtifactFlowTrigger::on_artifact_created());
     assert_eq!(flow.name, "Test Flow");
     assert!(flow.is_active);
     assert!(flow.steps.is_empty());
@@ -328,26 +325,26 @@ fn artifact_flow_new_creates_correctly() {
 #[test]
 fn artifact_flow_with_step() {
     use crate::domain::entities::artifact::ArtifactBucketId;
-    let flow = ArtifactFlow::new("Test", ArtifactFlowTrigger::on_artifact_created())
-        .with_step(ArtifactFlowStep::copy(ArtifactBucketId::from_string("target")));
+    let flow = ArtifactFlow::new("Test", ArtifactFlowTrigger::on_artifact_created()).with_step(
+        ArtifactFlowStep::copy(ArtifactBucketId::from_string("target")),
+    );
     assert_eq!(flow.steps.len(), 1);
 }
 
 #[test]
 fn artifact_flow_with_steps() {
     use crate::domain::entities::artifact::ArtifactBucketId;
-    let flow = ArtifactFlow::new("Test", ArtifactFlowTrigger::on_artifact_created())
-        .with_steps([
-            ArtifactFlowStep::copy(ArtifactBucketId::from_string("target")),
-            ArtifactFlowStep::spawn_process("task_decomposition", "orchestrator"),
-        ]);
+    let flow = ArtifactFlow::new("Test", ArtifactFlowTrigger::on_artifact_created()).with_steps([
+        ArtifactFlowStep::copy(ArtifactBucketId::from_string("target")),
+        ArtifactFlowStep::spawn_process("task_decomposition", "orchestrator"),
+    ]);
     assert_eq!(flow.steps.len(), 2);
 }
 
 #[test]
 fn artifact_flow_set_active() {
-    let flow = ArtifactFlow::new("Test", ArtifactFlowTrigger::on_artifact_created())
-        .set_active(false);
+    let flow =
+        ArtifactFlow::new("Test", ArtifactFlowTrigger::on_artifact_created()).set_active(false);
     assert!(!flow.is_active);
 }
 
@@ -367,8 +364,8 @@ fn artifact_flow_should_trigger_when_active_and_matches() {
 
 #[test]
 fn artifact_flow_should_not_trigger_when_inactive() {
-    let flow = ArtifactFlow::new("Test", ArtifactFlowTrigger::on_artifact_created())
-        .set_active(false);
+    let flow =
+        ArtifactFlow::new("Test", ArtifactFlowTrigger::on_artifact_created()).set_active(false);
     let artifact = create_test_artifact(ArtifactType::Prd, None);
     assert!(!flow.should_trigger(ArtifactFlowEvent::ArtifactCreated, &artifact));
 }
@@ -381,7 +378,9 @@ fn artifact_flow_serializes_roundtrip() {
         ArtifactFlowTrigger::on_artifact_created()
             .with_filter(ArtifactFlowFilter::new().with_artifact_types(vec![ArtifactType::Prd])),
     )
-    .with_step(ArtifactFlowStep::copy(ArtifactBucketId::from_string("target")));
+    .with_step(ArtifactFlowStep::copy(ArtifactBucketId::from_string(
+        "target",
+    )));
     let json = serde_json::to_string(&flow).unwrap();
     let parsed: ArtifactFlow = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed.name, flow.name);
@@ -471,8 +470,9 @@ fn artifact_flow_engine_evaluate_triggers_matches_event() {
     use crate::domain::entities::artifact::ArtifactBucketId;
     let mut engine = ArtifactFlowEngine::new();
     engine.register_flow(
-        ArtifactFlow::new("Artifact Flow", ArtifactFlowTrigger::on_artifact_created())
-            .with_step(ArtifactFlowStep::copy(ArtifactBucketId::from_string("target"))),
+        ArtifactFlow::new("Artifact Flow", ArtifactFlowTrigger::on_artifact_created()).with_step(
+            ArtifactFlowStep::copy(ArtifactBucketId::from_string("target")),
+        ),
     );
     engine.register_flow(
         ArtifactFlow::new("Task Flow", ArtifactFlowTrigger::on_task_completed())
@@ -495,10 +495,13 @@ fn artifact_flow_engine_evaluate_triggers_with_filter() {
     engine.register_flow(
         ArtifactFlow::new(
             "PRD Flow",
-            ArtifactFlowTrigger::on_artifact_created()
-                .with_filter(ArtifactFlowFilter::new().with_artifact_types(vec![ArtifactType::Prd])),
+            ArtifactFlowTrigger::on_artifact_created().with_filter(
+                ArtifactFlowFilter::new().with_artifact_types(vec![ArtifactType::Prd]),
+            ),
         )
-        .with_step(ArtifactFlowStep::copy(ArtifactBucketId::from_string("prd-library"))),
+        .with_step(ArtifactFlowStep::copy(ArtifactBucketId::from_string(
+            "prd-library",
+        ))),
     );
 
     let prd = create_test_artifact(ArtifactType::Prd, None);
@@ -515,8 +518,7 @@ fn artifact_flow_engine_evaluate_triggers_with_filter() {
 fn artifact_flow_engine_evaluate_triggers_inactive_flow_ignored() {
     let mut engine = ArtifactFlowEngine::new();
     engine.register_flow(
-        ArtifactFlow::new("Inactive", ArtifactFlowTrigger::on_artifact_created())
-            .set_active(false),
+        ArtifactFlow::new("Inactive", ArtifactFlowTrigger::on_artifact_created()).set_active(false),
     );
 
     let artifact = create_test_artifact(ArtifactType::Prd, None);
@@ -560,8 +562,9 @@ fn artifact_flow_engine_on_process_completed() {
     use crate::domain::entities::artifact::ArtifactBucketId;
     let mut engine = ArtifactFlowEngine::new();
     engine.register_flow(
-        ArtifactFlow::new("Process Flow", ArtifactFlowTrigger::on_process_completed())
-            .with_step(ArtifactFlowStep::copy(ArtifactBucketId::from_string("archive"))),
+        ArtifactFlow::new("Process Flow", ArtifactFlowTrigger::on_process_completed()).with_step(
+            ArtifactFlowStep::copy(ArtifactBucketId::from_string("archive")),
+        ),
     );
 
     let evals = engine.on_process_completed("process-1", None);
@@ -583,7 +586,10 @@ fn create_research_to_dev_flow_has_correct_structure() {
         filter.artifact_types.as_ref().unwrap()[0],
         ArtifactType::Recommendations
     );
-    assert_eq!(filter.source_bucket.as_ref().unwrap().as_str(), "research-outputs");
+    assert_eq!(
+        filter.source_bucket.as_ref().unwrap().as_str(),
+        "research-outputs"
+    );
 
     assert_eq!(flow.steps.len(), 2);
     assert!(flow.steps[0].is_copy());
@@ -673,8 +679,9 @@ fn artifact_flow_engine_artifact_updated_does_not_trigger_created_flows() {
     use crate::domain::entities::artifact::ArtifactBucketId;
     let mut engine = ArtifactFlowEngine::new();
     engine.register_flow(
-        ArtifactFlow::new("Create Flow", ArtifactFlowTrigger::on_artifact_created())
-            .with_step(ArtifactFlowStep::copy(ArtifactBucketId::from_string("target"))),
+        ArtifactFlow::new("Create Flow", ArtifactFlowTrigger::on_artifact_created()).with_step(
+            ArtifactFlowStep::copy(ArtifactBucketId::from_string("target")),
+        ),
     );
 
     let artifact = create_test_artifact(ArtifactType::Specification, None);
@@ -748,7 +755,10 @@ fn create_plan_updated_sync_flow_has_correct_structure() {
         filter.artifact_types.as_ref().unwrap()[0],
         ArtifactType::Specification
     );
-    assert_eq!(filter.source_bucket.as_ref().unwrap().as_str(), "prd-library");
+    assert_eq!(
+        filter.source_bucket.as_ref().unwrap().as_str(),
+        "prd-library"
+    );
 
     assert_eq!(flow.steps.len(), 2);
     assert!(flow.steps[0].is_find_linked_proposals());

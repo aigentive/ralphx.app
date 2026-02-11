@@ -156,5 +156,7 @@ pub fn create_plan_updated_sync_flow() -> ArtifactFlow {
         ),
     )
     .with_step(ArtifactFlowStep::find_linked_proposals())
-    .with_step(ArtifactFlowStep::emit_event("plan:proposals_may_need_update"))
+    .with_step(ArtifactFlowStep::emit_event(
+        "plan:proposals_may_need_update",
+    ))
 }

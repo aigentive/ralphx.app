@@ -73,9 +73,7 @@ pub async fn seed_visual_audit_data(
 
 /// Clear all test data
 #[tauri::command]
-pub async fn clear_test_data(
-    state: State<'_, AppState>,
-) -> Result<String, String> {
+pub async fn clear_test_data(state: State<'_, AppState>) -> Result<String, String> {
     // Get all projects
     let projects = state
         .project_repo
@@ -93,11 +91,19 @@ pub async fn clear_test_data(
             .map_err(|e| e.to_string())?;
 
         for task in tasks {
-            state.task_repo.delete(&task.id).await.map_err(|e| e.to_string())?;
+            state
+                .task_repo
+                .delete(&task.id)
+                .await
+                .map_err(|e| e.to_string())?;
         }
 
         // Delete the project
-        state.project_repo.delete(&project.id).await.map_err(|e| e.to_string())?;
+        state
+            .project_repo
+            .delete(&project.id)
+            .await
+            .map_err(|e| e.to_string())?;
         deleted += 1;
     }
 
@@ -137,7 +143,8 @@ async fn seed_kanban(state: State<'_, AppState>) -> Result<SeedDataResponse, Str
         "feature",
         0,
         InternalStatus::Backlog,
-    ).await?;
+    )
+    .await?;
 
     // Ready tasks (To Do column)
     tasks_created += create_task(
@@ -148,7 +155,8 @@ async fn seed_kanban(state: State<'_, AppState>) -> Result<SeedDataResponse, Str
         "feature",
         10,
         InternalStatus::Ready,
-    ).await?;
+    )
+    .await?;
 
     tasks_created += create_task(
         &state,
@@ -158,7 +166,8 @@ async fn seed_kanban(state: State<'_, AppState>) -> Result<SeedDataResponse, Str
         "bug",
         20,
         InternalStatus::Ready,
-    ).await?;
+    )
+    .await?;
 
     // Executing task (In Progress)
     let mut executing_task = Task::new_with_category(
@@ -170,7 +179,11 @@ async fn seed_kanban(state: State<'_, AppState>) -> Result<SeedDataResponse, Str
     executing_task.priority = 15;
     executing_task.internal_status = InternalStatus::Executing;
     executing_task.started_at = Some(chrono::Utc::now());
-    state.task_repo.create(executing_task).await.map_err(|e| e.to_string())?;
+    state
+        .task_repo
+        .create(executing_task)
+        .await
+        .map_err(|e| e.to_string())?;
     tasks_created += 1;
 
     // Completed task (Done)
@@ -183,7 +196,11 @@ async fn seed_kanban(state: State<'_, AppState>) -> Result<SeedDataResponse, Str
     completed_task.priority = 5;
     completed_task.internal_status = InternalStatus::Approved;
     completed_task.completed_at = Some(chrono::Utc::now());
-    state.task_repo.create(completed_task).await.map_err(|e| e.to_string())?;
+    state
+        .task_repo
+        .create(completed_task)
+        .await
+        .map_err(|e| e.to_string())?;
     tasks_created += 1;
 
     Ok(SeedDataResponse {
@@ -221,10 +238,7 @@ async fn seed_full(state: State<'_, AppState>) -> Result<SeedDataResponse, Strin
 // Helper Functions
 // ============================================================================
 
-async fn create_test_project(
-    state: &State<'_, AppState>,
-    name: &str,
-) -> Result<Project, String> {
+async fn create_test_project(state: &State<'_, AppState>, name: &str) -> Result<Project, String> {
     let project = Project::new(
         name.to_string(),
         std::env::current_dir()
@@ -248,15 +262,16 @@ async fn create_task(
     priority: i32,
     status: InternalStatus,
 ) -> Result<usize, String> {
-    let mut task = Task::new_with_category(
-        project_id.clone(),
-        title.to_string(),
-        category.to_string(),
-    );
+    let mut task =
+        Task::new_with_category(project_id.clone(), title.to_string(), category.to_string());
     task.description = Some(description.to_string());
     task.priority = priority;
     task.internal_status = status;
-    state.task_repo.create(task).await.map_err(|e| e.to_string())?;
+    state
+        .task_repo
+        .create(task)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(1)
 }
 

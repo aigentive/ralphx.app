@@ -95,10 +95,9 @@ mod tests {
     use crate::domain::entities::{ArtifactBucketId, ArtifactFlowStep, ArtifactFlowTrigger};
 
     fn create_test_flow() -> ArtifactFlow {
-        ArtifactFlow::new("Test Flow", ArtifactFlowTrigger::on_artifact_created())
-            .with_step(ArtifactFlowStep::copy(ArtifactBucketId::from_string(
-                "test-bucket",
-            )))
+        ArtifactFlow::new("Test Flow", ArtifactFlowTrigger::on_artifact_created()).with_step(
+            ArtifactFlowStep::copy(ArtifactBucketId::from_string("test-bucket")),
+        )
     }
 
     #[tokio::test]

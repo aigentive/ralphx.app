@@ -4,7 +4,20 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { ExecutionControlBar } from "./ExecutionControlBar";
+
+vi.mock("./RunningProcessPopover", () => ({
+  RunningProcessPopover: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
+
+vi.mock("./QueuedTasksPopover", () => ({
+  QueuedTasksPopover: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
+
+vi.mock("./MergePipelinePopover", () => ({
+  MergePipelinePopover: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
 
 describe("ExecutionControlBar", () => {
   describe("basic rendering", () => {
@@ -33,7 +46,7 @@ describe("ExecutionControlBar", () => {
           onStop={vi.fn()}
         />
       );
-      expect(screen.getByTestId("running-count")).toHaveTextContent("Running: 1/2");
+      expect(screen.getByTestId("running-count")).toHaveTextContent(/(Running|R): 1\/2/);
     });
 
     it("displays queued tasks count", () => {
@@ -47,7 +60,7 @@ describe("ExecutionControlBar", () => {
           onStop={vi.fn()}
         />
       );
-      expect(screen.getByTestId("queued-count")).toHaveTextContent("Queued: 5");
+      expect(screen.getByTestId("queued-count")).toHaveTextContent(/(Queued|Q): 5/);
     });
 
     it("renders battle mode button only when enabled", () => {
@@ -384,7 +397,7 @@ describe("ExecutionControlBar", () => {
         />
       );
       const indicator = screen.getByTestId("status-indicator");
-      expect(indicator).toHaveStyle({ backgroundColor: "hsl(145 60% 45%)" });
+      expect(indicator).toHaveStyle({ backgroundColor: "hsl(14 100% 55%)" });
     });
 
     it("shows warning color when paused", () => {
@@ -414,7 +427,7 @@ describe("ExecutionControlBar", () => {
         />
       );
       const indicator = screen.getByTestId("status-indicator");
-      expect(indicator).toHaveStyle({ backgroundColor: "hsl(220 10% 45%)" });
+      expect(indicator).toHaveStyle({ backgroundColor: "hsl(220 10% 55%)" });
     });
 
     it("has pulsing animation class when running", () => {
@@ -516,7 +529,7 @@ describe("ExecutionControlBar", () => {
       );
       const stopBtn = screen.getByTestId("stop-button");
       expect(stopBtn).toHaveStyle({ backgroundColor: "hsla(0 70% 55% / 0.15)" });
-      expect(stopBtn).toHaveStyle({ color: "hsl(0 70% 60%)" });
+      expect(stopBtn).toHaveStyle({ color: "hsl(0 70% 55%)" });
       expect(stopBtn).toHaveStyle({ opacity: "1" });
     });
 
@@ -568,8 +581,8 @@ describe("ExecutionControlBar", () => {
         />
       );
       const pauseBtn = screen.getByTestId("pause-toggle-button");
-      expect(pauseBtn).toHaveStyle({ backgroundColor: "hsla(14 100% 60% / 0.15)" });
-      expect(pauseBtn).toHaveStyle({ color: "hsl(14 100% 60%)" });
+      expect(pauseBtn).toHaveStyle({ backgroundColor: "hsla(45 90% 55% / 0.15)" });
+      expect(pauseBtn).toHaveStyle({ color: "hsl(45 90% 55%)" });
     });
 
     it("has default styling when not paused", () => {

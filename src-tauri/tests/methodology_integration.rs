@@ -36,8 +36,9 @@ fn create_sqlite_state() -> AppState {
     let shared_conn = Arc::new(Mutex::new(conn));
 
     let mut state = AppState::new_test();
-    state.methodology_repo =
-        Arc::new(SqliteMethodologyRepository::from_shared(Arc::clone(&shared_conn)));
+    state.methodology_repo = Arc::new(SqliteMethodologyRepository::from_shared(Arc::clone(
+        &shared_conn,
+    )));
     state.workflow_repo = Arc::new(SqliteWorkflowRepository::from_shared(shared_conn));
     state
 }
@@ -173,7 +174,10 @@ async fn test_verify_bmad_workflow_columns(state: &AppState) {
     assert_eq!(active.workflow.columns[0].maps_to, InternalStatus::Backlog);
 
     assert_eq!(active.workflow.columns[1].id, "research");
-    assert_eq!(active.workflow.columns[1].maps_to, InternalStatus::Executing);
+    assert_eq!(
+        active.workflow.columns[1].maps_to,
+        InternalStatus::Executing
+    );
 
     assert_eq!(active.workflow.columns[3].id, "prd-review");
     assert_eq!(
@@ -198,9 +202,13 @@ async fn test_verify_bmad_agent_profiles(state: &AppState) {
     assert_eq!(active.agent_profiles.len(), 8);
     assert!(active.agent_profiles.contains(&"bmad-analyst".to_string()));
     assert!(active.agent_profiles.contains(&"bmad-pm".to_string()));
-    assert!(active.agent_profiles.contains(&"bmad-architect".to_string()));
+    assert!(active
+        .agent_profiles
+        .contains(&"bmad-architect".to_string()));
     assert!(active.agent_profiles.contains(&"bmad-ux".to_string()));
-    assert!(active.agent_profiles.contains(&"bmad-developer".to_string()));
+    assert!(active
+        .agent_profiles
+        .contains(&"bmad-developer".to_string()));
     assert!(active
         .agent_profiles
         .contains(&"bmad-scrum-master".to_string()));

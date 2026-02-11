@@ -30,7 +30,11 @@ impl ToolCallInfo {
         }
     }
 
-    pub fn failed(tool_name: impl Into<String>, arguments: impl Into<String>, error: impl Into<String>) -> Self {
+    pub fn failed(
+        tool_name: impl Into<String>,
+        arguments: impl Into<String>,
+        error: impl Into<String>,
+    ) -> Self {
         Self {
             tool_name: tool_name.into(),
             arguments: arguments.into(),
@@ -131,20 +135,11 @@ pub enum SupervisorEvent {
         timestamp: DateTime<Utc>,
     },
     /// A tool was called
-    ToolCall {
-        task_id: String,
-        info: ToolCallInfo,
-    },
+    ToolCall { task_id: String, info: ToolCallInfo },
     /// An error occurred
-    Error {
-        task_id: String,
-        info: ErrorInfo,
-    },
+    Error { task_id: String, info: ErrorInfo },
     /// Progress tick (periodic check)
-    ProgressTick {
-        task_id: String,
-        info: ProgressInfo,
-    },
+    ProgressTick { task_id: String, info: ProgressInfo },
     /// Token usage threshold exceeded
     TokenThreshold {
         task_id: String,
@@ -206,7 +201,11 @@ impl SupervisorEvent {
     }
 
     /// Create a TimeThreshold event
-    pub fn time_threshold(task_id: impl Into<String>, elapsed_minutes: u32, threshold_minutes: u32) -> Self {
+    pub fn time_threshold(
+        task_id: impl Into<String>,
+        elapsed_minutes: u32,
+        threshold_minutes: u32,
+    ) -> Self {
         Self::TimeThreshold {
             task_id: task_id.into(),
             elapsed_minutes,
@@ -367,7 +366,8 @@ mod tests {
             "agent_role": "worker",
             "timestamp": "2026-01-24T10:00:00Z"
         }"#;
-        let event: SupervisorEvent = serde_json::from_str(json).expect("Failed to deserialize SupervisorEvent");
+        let event: SupervisorEvent =
+            serde_json::from_str(json).expect("Failed to deserialize SupervisorEvent");
         assert_eq!(event.task_id(), "task-123");
     }
 
@@ -375,7 +375,8 @@ mod tests {
     fn test_supervisor_event_roundtrip() {
         let original = SupervisorEvent::token_threshold("task-456", 75000, 50000);
         let json = serde_json::to_string(&original).expect("Failed to serialize SupervisorEvent");
-        let restored: SupervisorEvent = serde_json::from_str(&json).expect("Failed to deserialize SupervisorEvent");
+        let restored: SupervisorEvent =
+            serde_json::from_str(&json).expect("Failed to deserialize SupervisorEvent");
         assert_eq!(original.task_id(), restored.task_id());
     }
 }

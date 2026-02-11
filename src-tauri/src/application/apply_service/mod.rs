@@ -9,9 +9,9 @@
 // - Optionally marking the session as "converted"
 
 mod helpers;
-mod types;
 #[cfg(test)]
 mod tests;
+mod types;
 
 pub use types::{ApplyProposalsOptions, ApplyProposalsResult, SelectionValidation, TargetColumn};
 
@@ -87,7 +87,10 @@ where
         }
 
         // Get all dependencies for the session
-        let all_deps = self.proposal_dep_repo.get_all_for_session(session_id).await?;
+        let all_deps = self
+            .proposal_dep_repo
+            .get_all_for_session(session_id)
+            .await?;
 
         // Build a set of selected proposal IDs for quick lookup
         let selected_set: HashSet<_> = proposal_ids.iter().map(|id| id.to_string()).collect();
@@ -111,7 +114,11 @@ where
         // Detect cycles using DFS
         let cycles = helpers::detect_cycles(&selected_set, &adj);
 
-        Ok(helpers::build_validation_result(cycles, &all_deps, &selected_set))
+        Ok(helpers::build_validation_result(
+            cycles,
+            &all_deps,
+            &selected_set,
+        ))
     }
 
     /// Apply selected proposals to the Kanban board, creating real tasks
@@ -169,7 +176,8 @@ where
         let target_status = options.target_column.to_status();
 
         for proposal in proposals_map.values() {
-            let task = helpers::create_task_from_proposal(proposal, &session.project_id, target_status);
+            let task =
+                helpers::create_task_from_proposal(proposal, &session.project_id, target_status);
             let created_task = self.task_repo.create(task).await?;
 
             // Import steps from proposal if they exist
@@ -209,7 +217,10 @@ where
         // Create task dependencies if requested
         let mut dependencies_created = 0;
         if options.preserve_dependencies {
-            let all_deps = self.proposal_dep_repo.get_all_for_session(session_id).await?;
+            let all_deps = self
+                .proposal_dep_repo
+                .get_all_for_session(session_id)
+                .await?;
 
             for (from_proposal, to_proposal, _reason) in all_deps {
                 // Only create dependency if both proposals were converted
@@ -233,7 +244,8 @@ where
                     let blocker_names: Vec<String> = blockers
                         .iter()
                         .filter_map(|blocker_id| {
-                            created_tasks.iter()
+                            created_tasks
+                                .iter()
                                 .find(|t| t.id == *blocker_id)
                                 .map(|t| t.title.clone())
                         })
@@ -242,7 +254,8 @@ where
                     // Update task to Blocked status with reason
                     let mut blocked_task = task.clone();
                     blocked_task.internal_status = crate::domain::entities::InternalStatus::Blocked;
-                    blocked_task.blocked_reason = Some(format!("Waiting for: {}", blocker_names.join(", ")));
+                    blocked_task.blocked_reason =
+                        Some(format!("Waiting for: {}", blocker_names.join(", ")));
                     blocked_task.touch();
                     self.task_repo.update(&blocked_task).await?;
                 }

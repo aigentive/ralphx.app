@@ -35,10 +35,8 @@ impl MemoryTaskQARepository {
 
     /// Create with pre-populated records (for tests)
     pub fn with_records(records: Vec<TaskQA>) -> Self {
-        let map: HashMap<TaskQAId, TaskQA> = records
-            .into_iter()
-            .map(|r| (r.id.clone(), r))
-            .collect();
+        let map: HashMap<TaskQAId, TaskQA> =
+            records.into_iter().map(|r| (r.id.clone(), r)).collect();
         Self {
             records: Arc::new(RwLock::new(map)),
         }
@@ -191,12 +189,17 @@ mod tests {
         let qa_id = task_qa.id.clone();
         repo.create(&task_qa).await.unwrap();
 
-        let criteria = AcceptanceCriteria::from_criteria(vec![
-            AcceptanceCriterion::visual("AC1", "Test visual"),
-        ]);
-        let steps = QATestSteps::from_steps(vec![
-            QATestStep::new("QA1", "AC1", "Test step", vec![], "Expected"),
-        ]);
+        let criteria = AcceptanceCriteria::from_criteria(vec![AcceptanceCriterion::visual(
+            "AC1",
+            "Test visual",
+        )]);
+        let steps = QATestSteps::from_steps(vec![QATestStep::new(
+            "QA1",
+            "AC1",
+            "Test step",
+            vec![],
+            "Expected",
+        )]);
 
         repo.update_prep(&qa_id, "agent-1", &criteria, &steps)
             .await
@@ -216,9 +219,13 @@ mod tests {
         let qa_id = task_qa.id.clone();
         repo.create(&task_qa).await.unwrap();
 
-        let refined_steps = QATestSteps::from_steps(vec![
-            QATestStep::new("QA1", "AC1", "Refined step", vec![], "Expected"),
-        ]);
+        let refined_steps = QATestSteps::from_steps(vec![QATestStep::new(
+            "QA1",
+            "AC1",
+            "Refined step",
+            vec![],
+            "Expected",
+        )]);
 
         repo.update_refinement(&qa_id, "agent-2", "Added button", &refined_steps)
             .await
@@ -266,12 +273,15 @@ mod tests {
         repo.create(&task_qa2).await.unwrap();
 
         // Complete prep for first one
-        let criteria = AcceptanceCriteria::from_criteria(vec![
-            AcceptanceCriterion::visual("AC1", "Test"),
-        ]);
-        let steps = QATestSteps::from_steps(vec![
-            QATestStep::new("QA1", "AC1", "Step", vec![], "Expected"),
-        ]);
+        let criteria =
+            AcceptanceCriteria::from_criteria(vec![AcceptanceCriterion::visual("AC1", "Test")]);
+        let steps = QATestSteps::from_steps(vec![QATestStep::new(
+            "QA1",
+            "AC1",
+            "Step",
+            vec![],
+            "Expected",
+        )]);
         repo.update_prep(&qa_id1, "agent-1", &criteria, &steps)
             .await
             .unwrap();

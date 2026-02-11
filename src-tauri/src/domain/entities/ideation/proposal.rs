@@ -4,8 +4,8 @@ use chrono::{DateTime, Utc};
 use rusqlite::Row;
 use serde::{Deserialize, Serialize};
 
-use crate::domain::entities::{ArtifactId, IdeationSessionId, TaskId, TaskProposalId};
 use super::types::*;
+use crate::domain::entities::{ArtifactId, IdeationSessionId, TaskId, TaskProposalId};
 
 /// A task proposal generated during an ideation session
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -152,8 +152,8 @@ impl TaskProposal {
     /// Deserialize a TaskProposal from a SQLite row
     pub fn from_row(row: &Row) -> rusqlite::Result<Self> {
         let priority_factors_json: Option<String> = row.get("priority_factors")?;
-        let priority_factors = priority_factors_json
-            .and_then(|json| serde_json::from_str(&json).ok());
+        let priority_factors =
+            priority_factors_json.and_then(|json| serde_json::from_str(&json).ok());
 
         Ok(Self {
             id: TaskProposalId::from_string(row.get::<_, String>("id")?),

@@ -191,7 +191,10 @@ fn test_v6_review_issues_has_all_indexes() {
 
     assert!(helpers::index_exists(&conn, "idx_review_issues_task_id"));
     assert!(helpers::index_exists(&conn, "idx_review_issues_status"));
-    assert!(helpers::index_exists(&conn, "idx_review_issues_review_note"));
+    assert!(helpers::index_exists(
+        &conn,
+        "idx_review_issues_review_note"
+    ));
 }
 
 #[test]

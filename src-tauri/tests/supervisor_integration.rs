@@ -5,7 +5,9 @@ use std::sync::Arc;
 
 use ralphx_lib::application::{SupervisorConfig, SupervisorService};
 use ralphx_lib::domain::state_machine::AgentSpawner;
-use ralphx_lib::domain::supervisor::{ProgressInfo, SupervisorAction, SupervisorEvent, ToolCallInfo};
+use ralphx_lib::domain::supervisor::{
+    ProgressInfo, SupervisorAction, SupervisorEvent, ToolCallInfo,
+};
 use ralphx_lib::infrastructure::agents::AgenticClientSpawner;
 use ralphx_lib::infrastructure::supervisor::EventBus;
 use ralphx_lib::infrastructure::MockAgenticClient;
@@ -71,7 +73,10 @@ async fn test_supervisor_detects_infinite_loop() {
 
     // Verify task state reflects the action
     let state = service.get_task_state("task-123").await.unwrap();
-    assert!(!state.actions_taken.is_empty(), "Task should have recorded actions");
+    assert!(
+        !state.actions_taken.is_empty(),
+        "Task should have recorded actions"
+    );
 }
 
 #[tokio::test]
@@ -167,7 +172,10 @@ async fn test_supervisor_detects_stuck_agent() {
 
     // Verify stuck count in state
     let state = service.get_task_state("stuck-task").await.unwrap();
-    assert!(state.stuck_count > 0, "Stuck count should be greater than 0");
+    assert!(
+        state.stuck_count > 0,
+        "Stuck count should be greater than 0"
+    );
 }
 
 #[tokio::test]
@@ -215,7 +223,8 @@ async fn test_end_to_end_agent_spawning_with_supervisor() {
     // Set up components
     let event_bus = EventBus::new();
     let mock_client = Arc::new(MockAgenticClient::new());
-    let spawner = AgenticClientSpawner::new(mock_client.clone()).with_event_bus(Arc::new(event_bus.clone()));
+    let spawner =
+        AgenticClientSpawner::new(mock_client.clone()).with_event_bus(Arc::new(event_bus.clone()));
 
     let service = SupervisorService::new(event_bus.clone());
 
@@ -238,7 +247,8 @@ async fn test_end_to_end_agent_spawning_with_supervisor() {
     assert!(state.is_some(), "Task should be monitored after TaskStart");
 
     // Simulate tool calls and verify monitoring
-    let tool_call = SupervisorEvent::tool_call("task-123", ToolCallInfo::new("Read", "src/main.rs"));
+    let tool_call =
+        SupervisorEvent::tool_call("task-123", ToolCallInfo::new("Read", "src/main.rs"));
     service.process_event(tool_call).await;
 
     let state = service.get_task_state("task-123").await.unwrap();
@@ -261,11 +271,8 @@ async fn test_spawner_emits_events_to_event_bus() {
 
     // Check if we received a TaskStart event
     // Give a small timeout since events are async
-    let result = tokio::time::timeout(
-        std::time::Duration::from_millis(100),
-        subscriber.recv(),
-    )
-    .await;
+    let result =
+        tokio::time::timeout(std::time::Duration::from_millis(100), subscriber.recv()).await;
 
     // The spawner should emit a TaskStart event
     if let Ok(Ok(event)) = result {
@@ -313,8 +320,14 @@ async fn test_multiple_agents_monitored_independently() {
     let state_a = service.get_task_state("task-A").await.unwrap();
     let state_b = service.get_task_state("task-B").await.unwrap();
 
-    assert!(!state_a.actions_taken.is_empty(), "Task-A should have actions");
-    assert!(state_b.actions_taken.is_empty(), "Task-B should have no actions");
+    assert!(
+        !state_a.actions_taken.is_empty(),
+        "Task-A should have actions"
+    );
+    assert!(
+        state_b.actions_taken.is_empty(),
+        "Task-B should have no actions"
+    );
 }
 
 #[tokio::test]
@@ -348,7 +361,10 @@ async fn test_supervisor_pause_and_resume_flow() {
     // Should now be able to process events again
     let event = SupervisorEvent::tool_call("pause-task", ToolCallInfo::new("Read", "file.rs"));
     let action = service.process_event(event).await;
-    assert!(action.is_none(), "Resumed task should process events normally");
+    assert!(
+        action.is_none(),
+        "Resumed task should process events normally"
+    );
 }
 
 #[tokio::test]

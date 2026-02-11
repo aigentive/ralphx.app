@@ -292,11 +292,26 @@ mod tests {
 
     #[test]
     fn test_context_type_parsing() {
-        assert_eq!("ideation".parse::<ChatContextType>().unwrap(), ChatContextType::Ideation);
-        assert_eq!("task".parse::<ChatContextType>().unwrap(), ChatContextType::Task);
-        assert_eq!("project".parse::<ChatContextType>().unwrap(), ChatContextType::Project);
-        assert_eq!("task_execution".parse::<ChatContextType>().unwrap(), ChatContextType::TaskExecution);
-        assert_eq!("review".parse::<ChatContextType>().unwrap(), ChatContextType::Review);
+        assert_eq!(
+            "ideation".parse::<ChatContextType>().unwrap(),
+            ChatContextType::Ideation
+        );
+        assert_eq!(
+            "task".parse::<ChatContextType>().unwrap(),
+            ChatContextType::Task
+        );
+        assert_eq!(
+            "project".parse::<ChatContextType>().unwrap(),
+            ChatContextType::Project
+        );
+        assert_eq!(
+            "task_execution".parse::<ChatContextType>().unwrap(),
+            ChatContextType::TaskExecution
+        );
+        assert_eq!(
+            "review".parse::<ChatContextType>().unwrap(),
+            ChatContextType::Review
+        );
         assert!("invalid".parse::<ChatContextType>().is_err());
     }
 
@@ -320,7 +335,10 @@ mod tests {
 
         conv.set_claude_session_id("550e8400-e29b-41d4-a716-446655440000");
         assert!(conv.has_claude_session());
-        assert_eq!(conv.claude_session_id, Some("550e8400-e29b-41d4-a716-446655440000".to_string()));
+        assert_eq!(
+            conv.claude_session_id,
+            Some("550e8400-e29b-41d4-a716-446655440000".to_string())
+        );
     }
 
     #[test]

@@ -7,7 +7,9 @@ use std::sync::RwLock;
 use async_trait::async_trait;
 use chrono::Utc;
 
-use crate::domain::entities::{IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId};
+use crate::domain::entities::{
+    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId,
+};
 use crate::domain::repositories::IdeationSessionRepository;
 use crate::error::AppResult;
 
@@ -90,9 +92,14 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
         Ok(())
     }
 
-    async fn update_plan_artifact_id(&self, id: &IdeationSessionId, plan_artifact_id: Option<String>) -> AppResult<()> {
+    async fn update_plan_artifact_id(
+        &self,
+        id: &IdeationSessionId,
+        plan_artifact_id: Option<String>,
+    ) -> AppResult<()> {
         if let Some(session) = self.sessions.write().unwrap().get_mut(&id.to_string()) {
-            session.plan_artifact_id = plan_artifact_id.map(crate::domain::entities::ArtifactId::from_string);
+            session.plan_artifact_id =
+                plan_artifact_id.map(crate::domain::entities::ArtifactId::from_string);
             session.updated_at = Utc::now();
         }
         Ok(())
@@ -103,7 +110,10 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
         Ok(())
     }
 
-    async fn get_active_by_project(&self, project_id: &ProjectId) -> AppResult<Vec<IdeationSession>> {
+    async fn get_active_by_project(
+        &self,
+        project_id: &ProjectId,
+    ) -> AppResult<Vec<IdeationSession>> {
         let mut sessions: Vec<_> = self
             .sessions
             .read()

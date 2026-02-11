@@ -39,7 +39,10 @@ fn test_v19_columns_default_to_null() {
         )
         .unwrap();
 
-    assert!(detected.is_none(), "detected_analysis should default to NULL");
+    assert!(
+        detected.is_none(),
+        "detected_analysis should default to NULL"
+    );
     assert!(custom.is_none(), "custom_analysis should default to NULL");
     assert!(analyzed_at.is_none(), "analyzed_at should default to NULL");
 }

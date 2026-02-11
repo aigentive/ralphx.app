@@ -73,7 +73,10 @@ impl PlanBranchRepository for SqlitePlanBranchRepository {
         }
     }
 
-    async fn get_by_session_id(&self, session_id: &IdeationSessionId) -> AppResult<Option<PlanBranch>> {
+    async fn get_by_session_id(
+        &self,
+        session_id: &IdeationSessionId,
+    ) -> AppResult<Option<PlanBranch>> {
         let conn = self.conn.lock().await;
         let mut stmt = conn
             .prepare("SELECT * FROM plan_branches WHERE session_id = ?1")
@@ -130,24 +133,19 @@ impl PlanBranchRepository for SqlitePlanBranchRepository {
         Ok(branches)
     }
 
-    async fn update_status(
-        &self,
-        id: &PlanBranchId,
-        status: PlanBranchStatus,
-    ) -> AppResult<()> {
+    async fn update_status(&self, id: &PlanBranchId, status: PlanBranchStatus) -> AppResult<()> {
         let conn = self.conn.lock().await;
         let rows = conn
             .execute(
                 "UPDATE plan_branches SET status = ?1 WHERE id = ?2",
                 rusqlite::params![status.to_db_string(), id.as_str()],
             )
-            .map_err(|e| AppError::Database(format!("Failed to update plan branch status: {}", e)))?;
+            .map_err(|e| {
+                AppError::Database(format!("Failed to update plan branch status: {}", e))
+            })?;
 
         if rows == 0 {
-            return Err(AppError::NotFound(format!(
-                "Plan branch not found: {}",
-                id
-            )));
+            return Err(AppError::NotFound(format!("Plan branch not found: {}", id)));
         }
         Ok(())
     }
@@ -159,15 +157,10 @@ impl PlanBranchRepository for SqlitePlanBranchRepository {
                 "UPDATE plan_branches SET merge_task_id = ?1 WHERE id = ?2",
                 rusqlite::params![task_id.as_str(), id.as_str()],
             )
-            .map_err(|e| {
-                AppError::Database(format!("Failed to set merge task id: {}", e))
-            })?;
+            .map_err(|e| AppError::Database(format!("Failed to set merge task id: {}", e)))?;
 
         if rows == 0 {
-            return Err(AppError::NotFound(format!(
-                "Plan branch not found: {}",
-                id
-            )));
+            return Err(AppError::NotFound(format!("Plan branch not found: {}", id)));
         }
         Ok(())
     }
@@ -182,10 +175,7 @@ impl PlanBranchRepository for SqlitePlanBranchRepository {
             .map_err(|e| AppError::Database(format!("Failed to set plan branch merged: {}", e)))?;
 
         if rows == 0 {
-            return Err(AppError::NotFound(format!(
-                "Plan branch not found: {}",
-                id
-            )));
+            return Err(AppError::NotFound(format!("Plan branch not found: {}", id)));
         }
         Ok(())
     }
@@ -253,11 +243,7 @@ mod tests {
 
         repo.create(branch).await.unwrap();
 
-        let retrieved = repo
-            .get_by_session_id(&session_id)
-            .await
-            .unwrap()
-            .unwrap();
+        let retrieved = repo.get_by_session_id(&session_id).await.unwrap().unwrap();
         assert_eq!(retrieved.session_id, session_id);
         assert_eq!(retrieved.branch_name, "ralphx/test-project/plan-abc123");
         assert_eq!(retrieved.status, PlanBranchStatus::Active);

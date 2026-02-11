@@ -244,7 +244,9 @@ impl From<ReviewIssueDomain> for ReviewIssueResponse {
             status: issue.status.to_db_string().to_string(),
             resolution_notes: issue.resolution_notes,
             addressed_in_attempt: issue.addressed_in_attempt,
-            verified_by_review_id: issue.verified_by_review_id.map(|id| id.as_str().to_string()),
+            verified_by_review_id: issue
+                .verified_by_review_id
+                .map(|id| id.as_str().to_string()),
             created_at: issue.created_at.to_rfc3339(),
             updated_at: issue.updated_at.to_rfc3339(),
         }

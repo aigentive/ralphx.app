@@ -228,13 +228,26 @@ impl TaskRepository for SqliteTaskRepository {
                 let (conversation_id, agent_run_id) = metadata_json
                     .and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok())
                     .map(|v| {
-                        let conv_id = v.get("conversation_id").and_then(|v| v.as_str()).map(String::from);
-                        let run_id = v.get("agent_run_id").and_then(|v| v.as_str()).map(String::from);
+                        let conv_id = v
+                            .get("conversation_id")
+                            .and_then(|v| v.as_str())
+                            .map(String::from);
+                        let run_id = v
+                            .get("agent_run_id")
+                            .and_then(|v| v.as_str())
+                            .map(String::from);
                         (conv_id, run_id)
                     })
                     .unwrap_or((None, None));
 
-                Ok(StatusTransition::with_metadata(from, to, trigger, timestamp, conversation_id, agent_run_id))
+                Ok(StatusTransition::with_metadata(
+                    from,
+                    to,
+                    trigger,
+                    timestamp,
+                    conversation_id,
+                    agent_run_id,
+                ))
             })
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
@@ -434,18 +447,25 @@ impl TaskRepository for SqliteTaskRepository {
         }
     }
 
-    async fn get_archived_count(&self, project_id: &ProjectId, ideation_session_id: Option<&str>) -> AppResult<u32> {
+    async fn get_archived_count(
+        &self,
+        project_id: &ProjectId,
+        ideation_session_id: Option<&str>,
+    ) -> AppResult<u32> {
         let conn = self.conn.lock().await;
 
-        let (query, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = if let Some(sid) = ideation_session_id {
+        let (query, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = if let Some(sid) =
+            ideation_session_id
+        {
             (
                 "SELECT COUNT(*) FROM tasks WHERE project_id = ?1 AND archived_at IS NOT NULL AND ideation_session_id = ?2".to_string(),
                 vec![Box::new(project_id.as_str().to_string()), Box::new(sid.to_string())]
             )
         } else {
             (
-                "SELECT COUNT(*) FROM tasks WHERE project_id = ?1 AND archived_at IS NOT NULL".to_string(),
-                vec![Box::new(project_id.as_str().to_string())]
+                "SELECT COUNT(*) FROM tasks WHERE project_id = ?1 AND archived_at IS NOT NULL"
+                    .to_string(),
+                vec![Box::new(project_id.as_str().to_string())],
             )
         };
 
@@ -471,7 +491,11 @@ impl TaskRepository for SqliteTaskRepository {
 
         let status_count = statuses.as_ref().map_or(0, |s| s.len());
         let has_session_filter = ideation_session_id.is_some();
-        let query = query_builder::build_paginated_query(status_count, include_archived, has_session_filter);
+        let query = query_builder::build_paginated_query(
+            status_count,
+            include_archived,
+            has_session_filter,
+        );
 
         let mut stmt = conn
             .prepare(&query)
@@ -571,7 +595,9 @@ impl TaskRepository for SqliteTaskRepository {
     async fn get_oldest_ready_task(&self) -> AppResult<Option<Task>> {
         let conn = self.conn.lock().await;
 
-        let result = conn.query_row(queries::GET_OLDEST_READY_TASK, [], |row| Task::from_row(row));
+        let result = conn.query_row(queries::GET_OLDEST_READY_TASK, [], |row| {
+            Task::from_row(row)
+        });
 
         match result {
             Ok(task) => Ok(Some(task)),
@@ -639,7 +665,8 @@ impl TaskRepository for SqliteTaskRepository {
 
         let params_ref: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
-        let result: rusqlite::Result<i32> = conn.query_row(&query, params_ref.as_slice(), |row| row.get(0));
+        let result: rusqlite::Result<i32> =
+            conn.query_row(&query, params_ref.as_slice(), |row| row.get(0));
 
         match result {
             Ok(_) => Ok(true),
@@ -648,7 +675,6 @@ impl TaskRepository for SqliteTaskRepository {
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests;

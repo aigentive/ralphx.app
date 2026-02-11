@@ -76,8 +76,9 @@ pub(super) fn update_latest_state_history_metadata_sync(
 
     // Update the most recent state history entry for this task
     // We use a subquery to find the id of the latest entry
-    let rows_affected = conn.execute(
-        "UPDATE task_state_history
+    let rows_affected = conn
+        .execute(
+            "UPDATE task_state_history
          SET metadata = ?2
          WHERE id = (
              SELECT id FROM task_state_history
@@ -85,9 +86,9 @@ pub(super) fn update_latest_state_history_metadata_sync(
              ORDER BY created_at DESC
              LIMIT 1
          )",
-        rusqlite::params![task_id.as_str(), metadata_json],
-    )
-    .map_err(|e| AppError::Database(e.to_string()))?;
+            rusqlite::params![task_id.as_str(), metadata_json],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
 
     if rows_affected == 0 {
         return Err(AppError::Database(format!(

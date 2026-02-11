@@ -1,9 +1,9 @@
 // Pattern detection for supervisor
 // Detects infinite loops, stuck agents, and poor task definitions
 
-use std::collections::VecDeque;
-use serde::{Deserialize, Serialize};
 use super::events::ToolCallInfo;
+use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 
 /// Types of patterns that can be detected
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -44,7 +44,12 @@ pub struct DetectionResult {
 }
 
 impl DetectionResult {
-    pub fn new(pattern: Pattern, confidence: u8, description: impl Into<String>, occurrences: usize) -> Self {
+    pub fn new(
+        pattern: Pattern,
+        confidence: u8,
+        description: impl Into<String>,
+        occurrences: usize,
+    ) -> Self {
         Self {
             pattern,
             confidence: confidence.min(100),
@@ -135,7 +140,12 @@ impl ToolCallWindow {
         let mut max_call: Option<&ToolCallInfo> = None;
 
         for (i, call) in self.calls.iter().enumerate() {
-            let count = self.calls.iter().skip(i).filter(|c| call.is_similar_to(c)).count();
+            let count = self
+                .calls
+                .iter()
+                .skip(i)
+                .filter(|c| call.is_similar_to(c))
+                .count();
             if count > max_count {
                 max_count = count;
                 max_call = Some(call);
@@ -144,14 +154,21 @@ impl ToolCallWindow {
 
         if max_count >= self.loop_threshold {
             if let Some(call) = max_call {
-                let confidence = if max_count > self.loop_threshold + 1 { 95 }
-                               else if max_count > self.loop_threshold { 85 }
-                               else { 75 };
+                let confidence = if max_count > self.loop_threshold + 1 {
+                    95
+                } else if max_count > self.loop_threshold {
+                    85
+                } else {
+                    75
+                };
 
                 Some(DetectionResult::new(
                     Pattern::InfiniteLoop,
                     confidence,
-                    format!("Tool '{}' called {} times with similar arguments", call.tool_name, max_count),
+                    format!(
+                        "Tool '{}' called {} times with similar arguments",
+                        call.tool_name, max_count
+                    ),
                     max_count,
                 ))
             } else {
@@ -166,14 +183,21 @@ impl ToolCallWindow {
     /// Returns Some if no progress for threshold minutes
     pub fn detect_stuck(&self, no_progress_threshold: usize) -> Option<DetectionResult> {
         if self.no_progress_count >= no_progress_threshold {
-            let confidence = if self.no_progress_count > no_progress_threshold + 2 { 95 }
-                           else if self.no_progress_count > no_progress_threshold { 80 }
-                           else { 70 };
+            let confidence = if self.no_progress_count > no_progress_threshold + 2 {
+                95
+            } else if self.no_progress_count > no_progress_threshold {
+                80
+            } else {
+                70
+            };
 
             Some(DetectionResult::new(
                 Pattern::Stuck,
                 confidence,
-                format!("No progress for {} consecutive checks", self.no_progress_count),
+                format!(
+                    "No progress for {} consecutive checks",
+                    self.no_progress_count
+                ),
                 self.no_progress_count,
             ))
         } else {
@@ -196,7 +220,8 @@ impl ToolCallWindow {
 
         for call in &failed_calls {
             if let Some(ref error) = call.error {
-                let count = failed_calls.iter()
+                let count = failed_calls
+                    .iter()
                     .filter(|c| c.error.as_deref() == Some(error.as_str()))
                     .count();
                 if count > max_count {
@@ -207,11 +232,21 @@ impl ToolCallWindow {
         }
 
         if max_count >= 2 {
-            let confidence = if max_count >= 4 { 90 } else if max_count >= 3 { 80 } else { 70 };
+            let confidence = if max_count >= 4 {
+                90
+            } else if max_count >= 3 {
+                80
+            } else {
+                70
+            };
             Some(DetectionResult::new(
                 Pattern::RepeatingError,
                 confidence,
-                format!("Error '{}' occurred {} times", max_error.unwrap_or("unknown"), max_count),
+                format!(
+                    "Error '{}' occurred {} times",
+                    max_error.unwrap_or("unknown"),
+                    max_count
+                ),
                 max_count,
             ))
         } else {
@@ -240,11 +275,20 @@ impl ToolCallWindow {
 /// Detect poor task definition based on agent behavior
 pub fn detect_poor_task_definition(clarification_requests: usize) -> Option<DetectionResult> {
     if clarification_requests >= 3 {
-        let confidence = if clarification_requests >= 5 { 90 } else if clarification_requests >= 4 { 80 } else { 70 };
+        let confidence = if clarification_requests >= 5 {
+            90
+        } else if clarification_requests >= 4 {
+            80
+        } else {
+            70
+        };
         Some(DetectionResult::new(
             Pattern::PoorTaskDefinition,
             confidence,
-            format!("Agent requested clarification {} times", clarification_requests),
+            format!(
+                "Agent requested clarification {} times",
+                clarification_requests
+            ),
             clarification_requests,
         ))
     } else {
@@ -426,8 +470,8 @@ mod tests {
     #[test]
     fn test_detection_result_serialize() {
         let result = DetectionResult::new(Pattern::Stuck, 80, "Test", 5);
-        let json = serde_json::to_string(&result)
-            .expect("DetectionResult serialization should not fail");
+        let json =
+            serde_json::to_string(&result).expect("DetectionResult serialization should not fail");
         assert!(json.contains("\"pattern\":\"stuck\""));
         assert!(json.contains("\"confidence\":80"));
     }

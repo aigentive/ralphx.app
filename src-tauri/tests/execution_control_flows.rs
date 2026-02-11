@@ -158,7 +158,10 @@ fn test_blocked_task_cannot_be_scheduled() {
     // Attempting to schedule should fail (can't go from Blocked to Ready via Schedule)
     // The only valid transition from Blocked is BlockersResolved or Cancel
     let result = repo.process_event(&task_id, &TaskEvent::Schedule);
-    assert!(result.is_err(), "Should not be able to schedule a Blocked task");
+    assert!(
+        result.is_err(),
+        "Should not be able to schedule a Blocked task"
+    );
 }
 
 /// Test: Blocked task can be cancelled
@@ -198,7 +201,8 @@ fn test_multiple_ask_user_questions() {
     assert_eq!(repo.load_state(&task_id).unwrap(), State::Blocked);
 
     // Answer first question
-    repo.process_event(&task_id, &TaskEvent::BlockersResolved).unwrap();
+    repo.process_event(&task_id, &TaskEvent::BlockersResolved)
+        .unwrap();
     assert_eq!(repo.load_state(&task_id).unwrap(), State::Ready);
 
     // Resume execution
@@ -215,7 +219,8 @@ fn test_multiple_ask_user_questions() {
     assert_eq!(repo.load_state(&task_id).unwrap(), State::Blocked);
 
     // Answer second question
-    repo.process_event(&task_id, &TaskEvent::BlockersResolved).unwrap();
+    repo.process_event(&task_id, &TaskEvent::BlockersResolved)
+        .unwrap();
     assert_eq!(repo.load_state(&task_id).unwrap(), State::Ready);
 }
 
@@ -392,7 +397,8 @@ fn test_complete_lifecycle_with_question() {
     assert_eq!(repo.load_state(&task_id).unwrap(), State::ReviewPassed);
 
     // ReviewPassed -> Approved (human approval)
-    repo.process_event(&task_id, &TaskEvent::HumanApprove).unwrap();
+    repo.process_event(&task_id, &TaskEvent::HumanApprove)
+        .unwrap();
     assert_eq!(repo.load_state(&task_id).unwrap(), State::Approved);
 }
 

@@ -25,8 +25,8 @@ fn parse_datetime(s: &str) -> DateTime<Utc> {
 }
 
 use crate::domain::entities::{
-    AgentRun, AgentRunId, AgentRunStatus, ChatContextType, ChatConversation,
-    ChatConversationId, InterruptedConversation,
+    AgentRun, AgentRunId, AgentRunStatus, ChatContextType, ChatConversation, ChatConversationId,
+    InterruptedConversation,
 };
 use crate::domain::repositories::AgentRunRepository;
 use crate::error::{AppError, AppResult};
@@ -86,7 +86,9 @@ impl AgentRunRepository for SqliteAgentRunRepository {
 
                 Ok(AgentRun {
                     id: AgentRunId::from_string(row.get::<_, String>("id")?),
-                    conversation_id: ChatConversationId::from_string(row.get::<_, String>("conversation_id")?),
+                    conversation_id: ChatConversationId::from_string(
+                        row.get::<_, String>("conversation_id")?,
+                    ),
                     status: status_str.parse().unwrap_or(AgentRunStatus::Failed),
                     started_at: parse_datetime(&started_at_str),
                     completed_at: completed_at_str.map(|s| parse_datetime(&s)),
@@ -119,7 +121,9 @@ impl AgentRunRepository for SqliteAgentRunRepository {
 
                 Ok(AgentRun {
                     id: AgentRunId::from_string(row.get::<_, String>("id")?),
-                    conversation_id: ChatConversationId::from_string(row.get::<_, String>("conversation_id")?),
+                    conversation_id: ChatConversationId::from_string(
+                        row.get::<_, String>("conversation_id")?,
+                    ),
                     status: status_str.parse().unwrap_or(AgentRunStatus::Failed),
                     started_at: parse_datetime(&started_at_str),
                     completed_at: completed_at_str.map(|s| parse_datetime(&s)),
@@ -189,7 +193,9 @@ impl AgentRunRepository for SqliteAgentRunRepository {
 
                 Ok(AgentRun {
                     id: AgentRunId::from_string(row.get::<_, String>("id")?),
-                    conversation_id: ChatConversationId::from_string(row.get::<_, String>("conversation_id")?),
+                    conversation_id: ChatConversationId::from_string(
+                        row.get::<_, String>("conversation_id")?,
+                    ),
                     status: status_str.parse().unwrap_or(AgentRunStatus::Failed),
                     started_at: parse_datetime(&started_at_str),
                     completed_at: completed_at_str.map(|s| parse_datetime(&s)),
@@ -263,8 +269,11 @@ impl AgentRunRepository for SqliteAgentRunRepository {
     async fn delete_by_conversation(&self, conversation_id: &ChatConversationId) -> AppResult<()> {
         let conn = self.conn.lock().await;
 
-        conn.execute("DELETE FROM agent_runs WHERE conversation_id = ?1", [conversation_id.as_str()])
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        conn.execute(
+            "DELETE FROM agent_runs WHERE conversation_id = ?1",
+            [conversation_id.as_str()],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
 
         Ok(())
     }
@@ -419,7 +428,10 @@ mod tests {
         // Create a conversation with claude_session_id
         let mut conversation = ChatConversation::new_ideation(IdeationSessionId::new());
         conversation.claude_session_id = Some("test-session-id".to_string());
-        conversation_repo.create(conversation.clone()).await.unwrap();
+        conversation_repo
+            .create(conversation.clone())
+            .await
+            .unwrap();
 
         // Create an agent run that gets orphaned
         let mut run = AgentRun::new(conversation.id);
@@ -430,7 +442,10 @@ mod tests {
         agent_run_repo.create(run).await.unwrap();
 
         // Get interrupted conversations
-        let result = agent_run_repo.get_interrupted_conversations().await.unwrap();
+        let result = agent_run_repo
+            .get_interrupted_conversations()
+            .await
+            .unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].conversation.id, conversation.id);
         assert_eq!(result[0].last_run.id, run_id);
@@ -454,7 +469,10 @@ mod tests {
         // Create a conversation WITHOUT claude_session_id
         let conversation = ChatConversation::new_ideation(IdeationSessionId::new());
         // Note: claude_session_id is None by default
-        conversation_repo.create(conversation.clone()).await.unwrap();
+        conversation_repo
+            .create(conversation.clone())
+            .await
+            .unwrap();
 
         // Create an orphaned agent run
         let mut run = AgentRun::new(conversation.id);
@@ -464,7 +482,10 @@ mod tests {
         agent_run_repo.create(run).await.unwrap();
 
         // Should return empty because conversation has no claude_session_id
-        let result = agent_run_repo.get_interrupted_conversations().await.unwrap();
+        let result = agent_run_repo
+            .get_interrupted_conversations()
+            .await
+            .unwrap();
         assert!(result.is_empty());
     }
 
@@ -481,7 +502,10 @@ mod tests {
         // Create a conversation with claude_session_id
         let mut conversation = ChatConversation::new_ideation(IdeationSessionId::new());
         conversation.claude_session_id = Some("test-session-id".to_string());
-        conversation_repo.create(conversation.clone()).await.unwrap();
+        conversation_repo
+            .create(conversation.clone())
+            .await
+            .unwrap();
 
         // Create a COMPLETED agent run (not orphaned)
         let mut run = AgentRun::new(conversation.id);
@@ -490,7 +514,10 @@ mod tests {
         agent_run_repo.create(run).await.unwrap();
 
         // Should return empty because run is completed, not orphaned
-        let result = agent_run_repo.get_interrupted_conversations().await.unwrap();
+        let result = agent_run_repo
+            .get_interrupted_conversations()
+            .await
+            .unwrap();
         assert!(result.is_empty());
     }
 
@@ -507,7 +534,10 @@ mod tests {
         // Create a conversation with claude_session_id
         let mut conversation = ChatConversation::new_ideation(IdeationSessionId::new());
         conversation.claude_session_id = Some("test-session-id".to_string());
-        conversation_repo.create(conversation.clone()).await.unwrap();
+        conversation_repo
+            .create(conversation.clone())
+            .await
+            .unwrap();
 
         // Create a cancelled run with DIFFERENT error message
         let mut run = AgentRun::new(conversation.id);
@@ -517,7 +547,10 @@ mod tests {
         agent_run_repo.create(run).await.unwrap();
 
         // Should return empty because error message doesn't match
-        let result = agent_run_repo.get_interrupted_conversations().await.unwrap();
+        let result = agent_run_repo
+            .get_interrupted_conversations()
+            .await
+            .unwrap();
         assert!(result.is_empty());
     }
 
@@ -534,7 +567,10 @@ mod tests {
         // Create a conversation with claude_session_id
         let mut conversation = ChatConversation::new_ideation(IdeationSessionId::new());
         conversation.claude_session_id = Some("test-session-id".to_string());
-        conversation_repo.create(conversation.clone()).await.unwrap();
+        conversation_repo
+            .create(conversation.clone())
+            .await
+            .unwrap();
 
         // Create an OLD orphaned run
         let mut old_run = AgentRun::new(conversation.id);
@@ -552,7 +588,10 @@ mod tests {
         agent_run_repo.create(new_run).await.unwrap();
 
         // Should return empty because the LATEST run is completed, not orphaned
-        let result = agent_run_repo.get_interrupted_conversations().await.unwrap();
+        let result = agent_run_repo
+            .get_interrupted_conversations()
+            .await
+            .unwrap();
         assert!(result.is_empty());
     }
 }

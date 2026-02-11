@@ -101,24 +101,21 @@ mod tests {
     #[test]
     fn test_database_error_serialization() {
         let err = AppError::Database("db failure".to_string());
-        let json = serde_json::to_string(&err)
-            .expect("Failed to serialize Database error");
+        let json = serde_json::to_string(&err).expect("Failed to serialize Database error");
         assert_eq!(json, "\"Database error: db failure\"");
     }
 
     #[test]
     fn test_task_not_found_error_serialization() {
         let err = AppError::TaskNotFound("abc-123".to_string());
-        let json = serde_json::to_string(&err)
-            .expect("Failed to serialize TaskNotFound error");
+        let json = serde_json::to_string(&err).expect("Failed to serialize TaskNotFound error");
         assert_eq!(json, "\"Task not found: abc-123\"");
     }
 
     #[test]
     fn test_project_not_found_error_serialization() {
         let err = AppError::ProjectNotFound("proj-789".to_string());
-        let json = serde_json::to_string(&err)
-            .expect("Failed to serialize ProjectNotFound error");
+        let json = serde_json::to_string(&err).expect("Failed to serialize ProjectNotFound error");
         assert_eq!(json, "\"Project not found: proj-789\"");
     }
 
@@ -128,16 +125,15 @@ mod tests {
             from: "ready".to_string(),
             to: "cancelled".to_string(),
         };
-        let json = serde_json::to_string(&err)
-            .expect("Failed to serialize InvalidTransition error");
+        let json =
+            serde_json::to_string(&err).expect("Failed to serialize InvalidTransition error");
         assert_eq!(json, "\"Invalid status transition: ready → cancelled\"");
     }
 
     #[test]
     fn test_validation_error_serialization() {
         let err = AppError::Validation("invalid input".to_string());
-        let json = serde_json::to_string(&err)
-            .expect("Failed to serialize Validation error");
+        let json = serde_json::to_string(&err).expect("Failed to serialize Validation error");
         assert_eq!(json, "\"Validation error: invalid input\"");
     }
 

@@ -8,7 +8,7 @@ use rusqlite::Row;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
-use super::{ReviewNoteId, TaskId, TaskStepId, ReviewIssueId};
+use super::{ReviewIssueId, ReviewNoteId, TaskId, TaskStepId};
 
 /// Status of a review issue in its lifecycle
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -34,7 +34,10 @@ impl IssueStatus {
 
     /// Returns true if this issue is considered resolved (verified or wontfix)
     pub fn is_resolved(&self) -> bool {
-        matches!(self, IssueStatus::Verified | IssueStatus::WontFix | IssueStatus::Addressed)
+        matches!(
+            self,
+            IssueStatus::Verified | IssueStatus::WontFix | IssueStatus::Addressed
+        )
     }
 
     /// Converts status to database string representation
@@ -409,23 +412,60 @@ impl ReviewIssue {
         let created_at_str: String = row.get(16)?;
         let updated_at_str: String = row.get(17)?;
 
-        let severity = IssueSeverity::from_db_string(&severity_str)
-            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(7, rusqlite::types::Type::Text, Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))))?;
+        let severity = IssueSeverity::from_db_string(&severity_str).map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(
+                7,
+                rusqlite::types::Type::Text,
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    e.to_string(),
+                )),
+            )
+        })?;
 
         let category = category_str
             .map(|s| IssueCategory::from_db_string(&s))
             .transpose()
-            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(8, rusqlite::types::Type::Text, Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))))?;
+            .map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    8,
+                    rusqlite::types::Type::Text,
+                    Box::new(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        e.to_string(),
+                    )),
+                )
+            })?;
 
-        let status = IssueStatus::from_db_string(&status_str)
-            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(12, rusqlite::types::Type::Text, Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))))?;
+        let status = IssueStatus::from_db_string(&status_str).map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(
+                12,
+                rusqlite::types::Type::Text,
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    e.to_string(),
+                )),
+            )
+        })?;
 
         let created_at = DateTime::parse_from_rfc3339(&created_at_str)
-            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(16, rusqlite::types::Type::Text, Box::new(e)))?
+            .map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    16,
+                    rusqlite::types::Type::Text,
+                    Box::new(e),
+                )
+            })?
             .with_timezone(&Utc);
 
         let updated_at = DateTime::parse_from_rfc3339(&updated_at_str)
-            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(17, rusqlite::types::Type::Text, Box::new(e)))?
+            .map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    17,
+                    rusqlite::types::Type::Text,
+                    Box::new(e),
+                )
+            })?
             .with_timezone(&Utc);
 
         Ok(Self {
@@ -495,11 +535,26 @@ impl IssueProgressSummary {
     /// Calculate progress summary from a list of issues
     pub fn from_issues(task_id: &TaskId, issues: &[ReviewIssue]) -> Self {
         let total = issues.len() as u32;
-        let open = issues.iter().filter(|i| i.status == IssueStatus::Open).count() as u32;
-        let in_progress = issues.iter().filter(|i| i.status == IssueStatus::InProgress).count() as u32;
-        let addressed = issues.iter().filter(|i| i.status == IssueStatus::Addressed).count() as u32;
-        let verified = issues.iter().filter(|i| i.status == IssueStatus::Verified).count() as u32;
-        let wontfix = issues.iter().filter(|i| i.status == IssueStatus::WontFix).count() as u32;
+        let open = issues
+            .iter()
+            .filter(|i| i.status == IssueStatus::Open)
+            .count() as u32;
+        let in_progress = issues
+            .iter()
+            .filter(|i| i.status == IssueStatus::InProgress)
+            .count() as u32;
+        let addressed = issues
+            .iter()
+            .filter(|i| i.status == IssueStatus::Addressed)
+            .count() as u32;
+        let verified = issues
+            .iter()
+            .filter(|i| i.status == IssueStatus::Verified)
+            .count() as u32;
+        let wontfix = issues
+            .iter()
+            .filter(|i| i.status == IssueStatus::WontFix)
+            .count() as u32;
 
         let resolved = addressed + verified + wontfix;
         let percent_resolved = if total > 0 {
@@ -573,11 +628,26 @@ mod tests {
 
     #[test]
     fn issue_status_from_db_string() {
-        assert_eq!(IssueStatus::from_db_string("open").unwrap(), IssueStatus::Open);
-        assert_eq!(IssueStatus::from_db_string("in_progress").unwrap(), IssueStatus::InProgress);
-        assert_eq!(IssueStatus::from_db_string("addressed").unwrap(), IssueStatus::Addressed);
-        assert_eq!(IssueStatus::from_db_string("verified").unwrap(), IssueStatus::Verified);
-        assert_eq!(IssueStatus::from_db_string("wontfix").unwrap(), IssueStatus::WontFix);
+        assert_eq!(
+            IssueStatus::from_db_string("open").unwrap(),
+            IssueStatus::Open
+        );
+        assert_eq!(
+            IssueStatus::from_db_string("in_progress").unwrap(),
+            IssueStatus::InProgress
+        );
+        assert_eq!(
+            IssueStatus::from_db_string("addressed").unwrap(),
+            IssueStatus::Addressed
+        );
+        assert_eq!(
+            IssueStatus::from_db_string("verified").unwrap(),
+            IssueStatus::Verified
+        );
+        assert_eq!(
+            IssueStatus::from_db_string("wontfix").unwrap(),
+            IssueStatus::WontFix
+        );
         assert!(IssueStatus::from_db_string("invalid").is_err());
     }
 
@@ -620,10 +690,22 @@ mod tests {
 
     #[test]
     fn issue_severity_from_db_string() {
-        assert_eq!(IssueSeverity::from_db_string("critical").unwrap(), IssueSeverity::Critical);
-        assert_eq!(IssueSeverity::from_db_string("major").unwrap(), IssueSeverity::Major);
-        assert_eq!(IssueSeverity::from_db_string("minor").unwrap(), IssueSeverity::Minor);
-        assert_eq!(IssueSeverity::from_db_string("suggestion").unwrap(), IssueSeverity::Suggestion);
+        assert_eq!(
+            IssueSeverity::from_db_string("critical").unwrap(),
+            IssueSeverity::Critical
+        );
+        assert_eq!(
+            IssueSeverity::from_db_string("major").unwrap(),
+            IssueSeverity::Major
+        );
+        assert_eq!(
+            IssueSeverity::from_db_string("minor").unwrap(),
+            IssueSeverity::Minor
+        );
+        assert_eq!(
+            IssueSeverity::from_db_string("suggestion").unwrap(),
+            IssueSeverity::Suggestion
+        );
         assert!(IssueSeverity::from_db_string("invalid").is_err());
     }
 
@@ -655,10 +737,22 @@ mod tests {
 
     #[test]
     fn issue_category_from_db_string() {
-        assert_eq!(IssueCategory::from_db_string("bug").unwrap(), IssueCategory::Bug);
-        assert_eq!(IssueCategory::from_db_string("missing").unwrap(), IssueCategory::Missing);
-        assert_eq!(IssueCategory::from_db_string("quality").unwrap(), IssueCategory::Quality);
-        assert_eq!(IssueCategory::from_db_string("design").unwrap(), IssueCategory::Design);
+        assert_eq!(
+            IssueCategory::from_db_string("bug").unwrap(),
+            IssueCategory::Bug
+        );
+        assert_eq!(
+            IssueCategory::from_db_string("missing").unwrap(),
+            IssueCategory::Missing
+        );
+        assert_eq!(
+            IssueCategory::from_db_string("quality").unwrap(),
+            IssueCategory::Quality
+        );
+        assert_eq!(
+            IssueCategory::from_db_string("design").unwrap(),
+            IssueCategory::Design
+        );
         assert!(IssueCategory::from_db_string("invalid").is_err());
     }
 
@@ -774,7 +868,11 @@ mod tests {
         issue.reopen(Some("Not actually fixed".to_string()));
 
         assert_eq!(issue.status, IssueStatus::Open);
-        assert!(issue.resolution_notes.as_ref().unwrap().contains("Reopened"));
+        assert!(issue
+            .resolution_notes
+            .as_ref()
+            .unwrap()
+            .contains("Reopened"));
         assert!(issue.verified_by_review_id.is_none());
     }
 
@@ -785,7 +883,10 @@ mod tests {
         issue.wont_fix("Not in scope for this task".to_string());
 
         assert_eq!(issue.status, IssueStatus::WontFix);
-        assert_eq!(issue.resolution_notes, Some("Not in scope for this task".to_string()));
+        assert_eq!(
+            issue.resolution_notes,
+            Some("Not in scope for this task".to_string())
+        );
         assert!(issue.is_terminal());
     }
 
@@ -828,10 +929,30 @@ mod tests {
         let review_id = ReviewNoteId::from_string("rn-1");
 
         let mut issues = vec![
-            ReviewIssue::new(review_id.clone(), task_id.clone(), "Issue 1".to_string(), IssueSeverity::Critical),
-            ReviewIssue::new(review_id.clone(), task_id.clone(), "Issue 2".to_string(), IssueSeverity::Major),
-            ReviewIssue::new(review_id.clone(), task_id.clone(), "Issue 3".to_string(), IssueSeverity::Minor),
-            ReviewIssue::new(review_id.clone(), task_id.clone(), "Issue 4".to_string(), IssueSeverity::Suggestion),
+            ReviewIssue::new(
+                review_id.clone(),
+                task_id.clone(),
+                "Issue 1".to_string(),
+                IssueSeverity::Critical,
+            ),
+            ReviewIssue::new(
+                review_id.clone(),
+                task_id.clone(),
+                "Issue 2".to_string(),
+                IssueSeverity::Major,
+            ),
+            ReviewIssue::new(
+                review_id.clone(),
+                task_id.clone(),
+                "Issue 3".to_string(),
+                IssueSeverity::Minor,
+            ),
+            ReviewIssue::new(
+                review_id.clone(),
+                task_id.clone(),
+                "Issue 4".to_string(),
+                IssueSeverity::Suggestion,
+            ),
         ];
 
         issues[0].status = IssueStatus::Open;
@@ -856,9 +977,24 @@ mod tests {
         let review_id = ReviewNoteId::from_string("rn-1");
 
         let mut issues = vec![
-            ReviewIssue::new(review_id.clone(), task_id.clone(), "Critical 1".to_string(), IssueSeverity::Critical),
-            ReviewIssue::new(review_id.clone(), task_id.clone(), "Critical 2".to_string(), IssueSeverity::Critical),
-            ReviewIssue::new(review_id.clone(), task_id.clone(), "Major 1".to_string(), IssueSeverity::Major),
+            ReviewIssue::new(
+                review_id.clone(),
+                task_id.clone(),
+                "Critical 1".to_string(),
+                IssueSeverity::Critical,
+            ),
+            ReviewIssue::new(
+                review_id.clone(),
+                task_id.clone(),
+                "Critical 2".to_string(),
+                IssueSeverity::Critical,
+            ),
+            ReviewIssue::new(
+                review_id.clone(),
+                task_id.clone(),
+                "Major 1".to_string(),
+                IssueSeverity::Major,
+            ),
         ];
 
         issues[0].status = IssueStatus::Open;

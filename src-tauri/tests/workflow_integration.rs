@@ -44,8 +44,7 @@ fn create_custom_5_column_workflow() -> WorkflowSchema {
     WorkflowSchema::new(
         "Custom 5-Column Workflow",
         vec![
-            WorkflowColumn::new("ideas", "Ideas", InternalStatus::Backlog)
-                .with_color("#8B5CF6"),
+            WorkflowColumn::new("ideas", "Ideas", InternalStatus::Backlog).with_color("#8B5CF6"),
             WorkflowColumn::new("selected", "Selected", InternalStatus::Ready)
                 .with_color("#3B82F6"),
             WorkflowColumn::new("in_dev", "In Development", InternalStatus::Executing)
@@ -75,7 +74,10 @@ async fn test_create_custom_workflow(state: &AppState) {
     // Verify workflow was created with correct attributes
     assert_eq!(created.name, "Custom 5-Column Workflow");
     assert_eq!(created.columns.len(), 5);
-    assert_eq!(created.description, Some("A custom 5-column development workflow".to_string()));
+    assert_eq!(
+        created.description,
+        Some("A custom 5-column development workflow".to_string())
+    );
     assert!(!created.is_default);
 
     // Verify we can retrieve it
@@ -102,7 +104,11 @@ async fn test_create_custom_workflow(state: &AppState) {
 async fn test_set_default_workflow(state: &AppState) {
     // Create the default RalphX workflow first
     let default_workflow = WorkflowSchema::default_ralphx();
-    state.workflow_repo.create(default_workflow.clone()).await.unwrap();
+    state
+        .workflow_repo
+        .create(default_workflow.clone())
+        .await
+        .unwrap();
 
     // Create our custom workflow
     let custom = create_custom_5_column_workflow();
@@ -125,7 +131,11 @@ async fn test_set_default_workflow(state: &AppState) {
     assert!(new_default.is_default);
 
     // Verify old default is no longer default
-    let old_default = state.workflow_repo.get_by_id(&default_workflow.id).await.unwrap();
+    let old_default = state
+        .workflow_repo
+        .get_by_id(&default_workflow.id)
+        .await
+        .unwrap();
     assert!(old_default.is_some());
     assert!(!old_default.unwrap().is_default);
 }
@@ -149,21 +159,30 @@ async fn test_get_columns_for_workflow(state: &AppState) {
     // Verify columns can be used for TaskBoard rendering
     // (simulating what TaskBoardWithHeader does)
     let column_ids: Vec<&str> = default.columns.iter().map(|c| c.id.as_str()).collect();
-    assert_eq!(column_ids, vec!["ideas", "selected", "in_dev", "testing", "shipped"]);
+    assert_eq!(
+        column_ids,
+        vec!["ideas", "selected", "in_dev", "testing", "shipped"]
+    );
 
     // Verify column names for display
     let column_names: Vec<&str> = default.columns.iter().map(|c| c.name.as_str()).collect();
-    assert_eq!(column_names, vec!["Ideas", "Selected", "In Development", "Testing", "Shipped"]);
+    assert_eq!(
+        column_names,
+        vec!["Ideas", "Selected", "In Development", "Testing", "Shipped"]
+    );
 
     // Verify internal status mappings (used for side effects)
     let column_statuses: Vec<InternalStatus> = default.columns.iter().map(|c| c.maps_to).collect();
-    assert_eq!(column_statuses, vec![
-        InternalStatus::Backlog,
-        InternalStatus::Ready,
-        InternalStatus::Executing,
-        InternalStatus::PendingReview,
-        InternalStatus::Approved,
-    ]);
+    assert_eq!(
+        column_statuses,
+        vec![
+            InternalStatus::Backlog,
+            InternalStatus::Ready,
+            InternalStatus::Executing,
+            InternalStatus::PendingReview,
+            InternalStatus::Approved,
+        ]
+    );
 }
 
 /// Test 4: Delete workflow and verify fallback to default
@@ -229,12 +248,17 @@ async fn test_workflow_crud_cycle(state: &AppState) {
     workflow.name = "Updated Workflow Name".to_string();
     workflow.columns.push(
         WorkflowColumn::new("cancelled", "Cancelled", InternalStatus::Cancelled)
-            .with_color("#6B7280")
+            .with_color("#6B7280"),
     );
     state.workflow_repo.update(&workflow).await.unwrap();
 
     // Verify update
-    let updated = state.workflow_repo.get_by_id(&workflow_id).await.unwrap().unwrap();
+    let updated = state
+        .workflow_repo
+        .get_by_id(&workflow_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(updated.name, "Updated Workflow Name");
     assert_eq!(updated.columns.len(), 6);
     assert_eq!(updated.columns[5].id, "cancelled");
@@ -269,7 +293,10 @@ async fn test_multiple_workflows(state: &AppState) {
     let jira_found = all.iter().find(|w| w.name == "Jira Compatible").unwrap();
     assert_eq!(jira_found.columns.len(), 5);
 
-    let custom_found = all.iter().find(|w| w.name == "Custom 5-Column Workflow").unwrap();
+    let custom_found = all
+        .iter()
+        .find(|w| w.name == "Custom 5-Column Workflow")
+        .unwrap();
     assert_eq!(custom_found.columns.len(), 5);
 }
 
@@ -279,13 +306,12 @@ async fn test_column_behavior_preservation(state: &AppState) {
         "Behavior Test Workflow",
         vec![
             WorkflowColumn::new("backlog", "Backlog", InternalStatus::Backlog),
-            WorkflowColumn::new("fast", "Fast Track", InternalStatus::Executing)
-                .with_behavior(
-                    ColumnBehavior::new()
-                        .with_skip_review(true)
-                        .with_auto_advance(true)
-                        .with_agent_profile("speed-worker")
-                ),
+            WorkflowColumn::new("fast", "Fast Track", InternalStatus::Executing).with_behavior(
+                ColumnBehavior::new()
+                    .with_skip_review(true)
+                    .with_auto_advance(true)
+                    .with_agent_profile("speed-worker"),
+            ),
             WorkflowColumn::new("done", "Done", InternalStatus::Approved),
         ],
     );

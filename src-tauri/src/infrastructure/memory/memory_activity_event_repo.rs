@@ -161,11 +161,8 @@ impl ActivityEventRepository for MemoryActivityEventRepository {
 
         // Take limit + 1 to detect has_more
         let has_more = filtered.len() > limit as usize;
-        let result_events: Vec<ActivityEvent> = filtered
-            .into_iter()
-            .take(limit as usize)
-            .cloned()
-            .collect();
+        let result_events: Vec<ActivityEvent> =
+            filtered.into_iter().take(limit as usize).cloned().collect();
 
         let next_cursor = if has_more {
             result_events.last().map(Self::format_cursor)
@@ -224,11 +221,8 @@ impl ActivityEventRepository for MemoryActivityEventRepository {
 
         // Take limit + 1 to detect has_more
         let has_more = filtered.len() > limit as usize;
-        let result_events: Vec<ActivityEvent> = filtered
-            .into_iter()
-            .take(limit as usize)
-            .cloned()
-            .collect();
+        let result_events: Vec<ActivityEvent> =
+            filtered.into_iter().take(limit as usize).cloned().collect();
 
         let next_cursor = if has_more {
             result_events.last().map(Self::format_cursor)
@@ -325,11 +319,8 @@ impl ActivityEventRepository for MemoryActivityEventRepository {
 
         // Take limit + 1 to detect has_more
         let has_more = filtered.len() > limit as usize;
-        let result_events: Vec<ActivityEvent> = filtered
-            .into_iter()
-            .take(limit as usize)
-            .cloned()
-            .collect();
+        let result_events: Vec<ActivityEvent> =
+            filtered.into_iter().take(limit as usize).cloned().collect();
 
         let next_cursor = if has_more {
             result_events.last().map(Self::format_cursor)
@@ -418,10 +409,7 @@ mod tests {
         }
 
         // First page
-        let page1 = repo
-            .list_by_task_id(&task_id, None, 3, None)
-            .await
-            .unwrap();
+        let page1 = repo.list_by_task_id(&task_id, None, 3, None).await.unwrap();
         assert_eq!(page1.events.len(), 3);
         assert!(page1.has_more);
         assert!(page1.cursor.is_some());
@@ -471,8 +459,7 @@ mod tests {
         .await
         .unwrap();
 
-        let filter =
-            ActivityEventFilter::new().with_event_types(vec![ActivityEventType::Thinking]);
+        let filter = ActivityEventFilter::new().with_event_types(vec![ActivityEventType::Thinking]);
         let page = repo
             .list_by_task_id(&task_id, None, 50, Some(&filter))
             .await
@@ -583,8 +570,7 @@ mod tests {
         .await
         .unwrap();
 
-        let filter =
-            ActivityEventFilter::new().with_event_types(vec![ActivityEventType::Thinking]);
+        let filter = ActivityEventFilter::new().with_event_types(vec![ActivityEventType::Thinking]);
         let count = repo
             .count_by_task_id(&task_id, Some(&filter))
             .await

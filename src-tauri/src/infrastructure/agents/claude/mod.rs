@@ -7,16 +7,16 @@ mod claude_code_client;
 mod stream_processor;
 
 pub use agent_config::{
-    agent_configs, claude_runtime_config, get_agent_config, get_allowed_tools, get_preapproved_tools, AgentConfig,
+    agent_configs, claude_runtime_config, get_agent_config, get_allowed_tools,
+    get_preapproved_tools, AgentConfig,
 };
 pub use claude_code_client::ClaudeCodeClient;
 pub use claude_code_client::{StreamEvent as ClientStreamEvent, StreamingSpawnResult};
 
 // Re-export stream processor types for use by services
 pub use stream_processor::{
-    StreamProcessor, StreamMessage, StreamEvent, StreamResult, ParsedLine,
-    ToolCall, ContentBlock, ContentDelta, ContentBlockItem,
-    AssistantMessage, AssistantContent, DiffContext,
+    AssistantContent, AssistantMessage, ContentBlock, ContentBlockItem, ContentDelta, DiffContext,
+    ParsedLine, StreamEvent, StreamMessage, StreamProcessor, StreamResult, ToolCall,
 };
 
 use std::path::{Path, PathBuf};
@@ -107,7 +107,10 @@ pub fn build_base_cli_command(
     cmd.arg("--disable-slash-commands");
 
     // Plugin directory for agent/skill discovery
-    cmd.args(["--plugin-dir", plugin_dir.to_str().unwrap_or("./ralphx-plugin")]);
+    cmd.args([
+        "--plugin-dir",
+        plugin_dir.to_str().unwrap_or("./ralphx-plugin"),
+    ]);
 
     // Output format for streaming JSON
     cmd.args(["--output-format", "stream-json"]);
@@ -140,7 +143,11 @@ pub fn build_base_cli_command(
     // Always enforce strict MCP isolation from user/global servers.
     if let Some(agent) = agent_type {
         if let Some(temp_path) = create_mcp_config(plugin_dir, agent) {
-            cmd.args(["--mcp-config", temp_path.to_str().unwrap_or(""), "--strict-mcp-config"]);
+            cmd.args([
+                "--mcp-config",
+                temp_path.to_str().unwrap_or(""),
+                "--strict-mcp-config",
+            ]);
             tracing::debug!(
                 path = %temp_path.display(),
                 agent_type = agent,
@@ -167,7 +174,9 @@ fn resolve_agent_system_prompt_path(plugin_dir: &Path, agent_name: &str) -> Opti
         })
         .filter(|p| p.exists());
     let direct = agents_dir.join(format!("{short}.md"));
-    let fallback = short.strip_prefix("ralphx-").map(|s| agents_dir.join(format!("{s}.md")));
+    let fallback = short
+        .strip_prefix("ralphx-")
+        .map(|s| agents_dir.join(format!("{s}.md")));
 
     configured
         .or_else(|| if direct.exists() { Some(direct) } else { None })
@@ -441,20 +450,37 @@ fn add_prompt_args(
             if runtime.use_append_system_prompt_file {
                 if let Some(path_str) = prompt_path.to_str() {
                     cmd.args(["--append-system-prompt-file", path_str]);
-                    tracing::debug!(agent = agent_name, path = path_str, "Injected agent prompt via --append-system-prompt-file");
-                } else if let Some(system_prompt) = load_agent_system_prompt(plugin_dir, agent_name) {
+                    tracing::debug!(
+                        agent = agent_name,
+                        path = path_str,
+                        "Injected agent prompt via --append-system-prompt-file"
+                    );
+                } else if let Some(system_prompt) = load_agent_system_prompt(plugin_dir, agent_name)
+                {
                     cmd.args(["--append-system-prompt", &system_prompt]);
-                    tracing::debug!(agent = agent_name, "Injected agent prompt via --append-system-prompt");
+                    tracing::debug!(
+                        agent = agent_name,
+                        "Injected agent prompt via --append-system-prompt"
+                    );
                 }
             } else if let Some(system_prompt) = load_agent_system_prompt(plugin_dir, agent_name) {
                 cmd.args(["--append-system-prompt", &system_prompt]);
-                tracing::debug!(agent = agent_name, "Injected agent prompt via --append-system-prompt");
+                tracing::debug!(
+                    agent = agent_name,
+                    "Injected agent prompt via --append-system-prompt"
+                );
             } else {
-                tracing::warn!(agent = agent_name, "Failed to load prompt content; falling back to native --agent");
+                tracing::warn!(
+                    agent = agent_name,
+                    "Failed to load prompt content; falling back to native --agent"
+                );
                 cmd.args(["--agent", agent_name]);
             }
         } else {
-            tracing::warn!(agent = agent_name, "Agent prompt not found in plugin; falling back to native --agent");
+            tracing::warn!(
+                agent = agent_name,
+                "Agent prompt not found in plugin; falling back to native --agent"
+            );
             cmd.args(["--agent", agent_name]);
         }
 
@@ -464,7 +490,15 @@ fn add_prompt_args(
         if let Some(allowed_tools) = get_allowed_tools(agent_name) {
             // Pass --tools even if empty (restricts to MCP-only)
             cmd.args(["--tools", &allowed_tools]);
-            tracing::debug!(agent = agent_name, tools = if allowed_tools.is_empty() { "(MCP only)" } else { allowed_tools.as_str() }, "Agent restricted to CLI tools");
+            tracing::debug!(
+                agent = agent_name,
+                tools = if allowed_tools.is_empty() {
+                    "(MCP only)"
+                } else {
+                    allowed_tools.as_str()
+                },
+                "Agent restricted to CLI tools"
+            );
         }
 
         // Pre-approve tools to bypass permission prompts (MCP + CLI permissions)
@@ -573,7 +607,14 @@ pub async fn register_mcp_server(cli_path: &Path, plugin_dir: &Path) -> Result<(
 
     // Register the MCP server with user scope
     let add_result = std::process::Command::new(cli_path)
-        .args(["mcp", "add-json", "-s", "user", &mcp_server_name, &config_json])
+        .args([
+            "mcp",
+            "add-json",
+            "-s",
+            "user",
+            &mcp_server_name,
+            &config_json,
+        ])
         .output()
         .map_err(|e| format!("Failed to run claude mcp add-json: {}", e))?;
 
@@ -623,9 +664,7 @@ pub fn find_claude_cli() -> Option<PathBuf> {
 /// Find the plugin directory relative to the app
 pub fn find_plugin_dir() -> Option<PathBuf> {
     // In development, it's relative to the current working directory
-    let dev_path = std::env::current_dir()
-        .ok()?
-        .join("ralphx-plugin");
+    let dev_path = std::env::current_dir().ok()?.join("ralphx-plugin");
 
     if dev_path.exists() {
         return Some(dev_path);
