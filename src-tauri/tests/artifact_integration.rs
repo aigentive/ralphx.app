@@ -66,7 +66,6 @@ fn create_prd_library_bucket() -> ArtifactBucket {
 
 /// Helper to ensure a bucket exists (idempotent — skips if already seeded by migration)
 async fn ensure_bucket(state: &AppState, bucket: ArtifactBucket) {
-    use ralphx_lib::domain::repositories::ArtifactBucketRepository;
     if !state.artifact_bucket_repo.exists(&bucket.id).await.unwrap() {
         state.artifact_bucket_repo.create(bucket).await.unwrap();
     }
