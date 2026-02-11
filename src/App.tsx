@@ -618,25 +618,6 @@ function AppContent() {
     setCurrentView(view);
   }, [setSelectedTaskId, setCurrentView]);
 
-  // Global click handler to close quick switcher when clicking outside
-  useEffect(() => {
-    if (!quickSwitcherOpen) return;
-
-    const handleClickOutside = (e: MouseEvent) => {
-      // Check if click is outside the quick switcher panel
-      const target = e.target as HTMLElement;
-      const quickSwitcherPanel = target.closest('[data-quick-switcher-panel]');
-
-      if (!quickSwitcherPanel) {
-        setQuickSwitcherOpen(false);
-      }
-    };
-
-    // Use capture phase to handle clicks before they bubble
-    document.addEventListener('click', handleClickOutside, true);
-    return () => document.removeEventListener('click', handleClickOutside, true);
-  }, [quickSwitcherOpen, setQuickSwitcherOpen]);
-
   // Keyboard shortcuts for view switching, chat toggle, reviews toggle, and project creation
   const handleToggleGraphRightPanel = useCallback(() => {
     if (isNavCompact) {
@@ -659,6 +640,25 @@ function AppContent() {
     closeWelcomeOverlay,
     welcomeOverlayReturnView,
   });
+
+  // Global click handler to close quick switcher when clicking outside
+  useEffect(() => {
+    if (!quickSwitcherOpen) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      // Check if click is outside the quick switcher panel
+      const target = e.target as HTMLElement;
+      const quickSwitcherPanel = target.closest('[data-quick-switcher-panel]');
+
+      if (!quickSwitcherPanel) {
+        setQuickSwitcherOpen(false);
+      }
+    };
+
+    // Use capture phase to handle clicks before they bubble
+    document.addEventListener('click', handleClickOutside, true);
+    return () => document.removeEventListener('click', handleClickOutside, true);
+  }, [quickSwitcherOpen, setQuickSwitcherOpen]);
 
   // Test page routing - return early if on a test page
   if (testPage) {
