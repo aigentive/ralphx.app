@@ -429,10 +429,7 @@ fn add_prompt_args(
     // `--agent` + `-p "<text>"` on some Claude Code versions.
     // Set RALPHX_CLAUDE_PROMPT_MODE=arg to force direct -p arg mode.
     let use_stdin = if agent.is_some() {
-        match std::env::var("RALPHX_CLAUDE_PROMPT_MODE") {
-            Ok(mode) if mode.eq_ignore_ascii_case("arg") => false,
-            _ => true,
-        }
+        !matches!(std::env::var("RALPHX_CLAUDE_PROMPT_MODE"), Ok(mode) if mode.eq_ignore_ascii_case("arg"))
     } else {
         false
     };
