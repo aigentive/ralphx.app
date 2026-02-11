@@ -1979,42 +1979,70 @@ impl<'a> super::TransitionHandler<'a> {
                         }
                     }
                     Err(e) => {
-                        tracing::error!(
-                            task_id = task_id_str,
-                            error = %e,
-                            source_branch = %source_branch,
-                            target_branch = %target_branch,
-                            "Merge in-repo failed, transitioning to MergeIncomplete"
-                        );
+                        // Classify error: deferrable (branch lock) vs terminal (true failure)
+                        if GitService::is_branch_lock_error(&e) {
+                            tracing::warn!(
+                                task_id = task_id_str,
+                                error = %e,
+                                source_branch = %source_branch,
+                                target_branch = %target_branch,
+                                "Merge in-repo failed due to branch lock (deferrable), staying in PendingMerge"
+                            );
 
-                        task.metadata = Some(serde_json::json!({
-                            "error": e.to_string(),
-                            "source_branch": source_branch,
-                            "target_branch": target_branch,
-                        }).to_string());
-                        task.internal_status = InternalStatus::MergeIncomplete;
-                        task.touch();
+                            // Set merge_deferred metadata and stay in pending_merge
+                            task.metadata = Some(serde_json::json!({
+                                "merge_deferred": true,
+                                "error": e.to_string(),
+                                "source_branch": source_branch,
+                                "target_branch": target_branch,
+                                "reason": "branch_lock",
+                            }).to_string());
+                            task.touch();
 
-                        if let Err(e) = task_repo.update(&task).await {
-                            tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
-                            return;
+                            if let Err(e) = task_repo.update(&task).await {
+                                tracing::error!(error = %e, "Failed to update task with merge_deferred metadata");
+                            }
+
+                            // Task remains in pending_merge, will be retried when blocker exits
+                        } else {
+                            // Non-deferrable error: transition to merge_incomplete
+                            tracing::error!(
+                                task_id = task_id_str,
+                                error = %e,
+                                source_branch = %source_branch,
+                                target_branch = %target_branch,
+                                "Merge in-repo failed, transitioning to MergeIncomplete"
+                            );
+
+                            task.metadata = Some(serde_json::json!({
+                                "error": e.to_string(),
+                                "source_branch": source_branch,
+                                "target_branch": target_branch,
+                            }).to_string());
+                            task.internal_status = InternalStatus::MergeIncomplete;
+                            task.touch();
+
+                            if let Err(e) = task_repo.update(&task).await {
+                                tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
+                                return;
+                            }
+
+                            if let Err(e) = task_repo.persist_status_change(
+                                &task_id,
+                                InternalStatus::PendingMerge,
+                                InternalStatus::MergeIncomplete,
+                                "merge_incomplete",
+                            ).await {
+                                tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
+                            }
+
+                            self.machine
+                                .context
+                                .services
+                                .event_emitter
+                                .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                                .await;
                         }
-
-                        if let Err(e) = task_repo.persist_status_change(
-                            &task_id,
-                            InternalStatus::PendingMerge,
-                            InternalStatus::MergeIncomplete,
-                            "merge_incomplete",
-                        ).await {
-                            tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
-                        }
-
-                        self.machine
-                            .context
-                            .services
-                            .event_emitter
-                            .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
-                            .await;
                     }
                 }
             } else {
@@ -2184,47 +2212,80 @@ impl<'a> super::TransitionHandler<'a> {
                         }
                     }
                     Err(e) => {
-                        tracing::error!(
-                            task_id = task_id_str,
-                            error = %e,
-                            merge_worktree_path = %merge_wt_path_str,
-                            source_branch = %source_branch,
-                            target_branch = %target_branch,
-                            "Merge in worktree failed, transitioning to MergeIncomplete"
-                        );
+                        // Classify error: deferrable (branch lock) vs terminal (true failure)
+                        if GitService::is_branch_lock_error(&e) {
+                            tracing::warn!(
+                                task_id = task_id_str,
+                                error = %e,
+                                merge_worktree_path = %merge_wt_path_str,
+                                source_branch = %source_branch,
+                                target_branch = %target_branch,
+                                "Merge in worktree failed due to branch lock (deferrable), staying in PendingMerge"
+                            );
 
-                        if merge_wt_path.exists() {
-                            let _ = GitService::delete_worktree(repo_path, &merge_wt_path);
+                            if merge_wt_path.exists() {
+                                let _ = GitService::delete_worktree(repo_path, &merge_wt_path);
+                            }
+
+                            // Set merge_deferred metadata and stay in pending_merge
+                            task.metadata = Some(serde_json::json!({
+                                "merge_deferred": true,
+                                "error": e.to_string(),
+                                "source_branch": source_branch,
+                                "target_branch": target_branch,
+                                "reason": "branch_lock",
+                            }).to_string());
+                            task.touch();
+
+                            if let Err(e) = task_repo.update(&task).await {
+                                tracing::error!(error = %e, "Failed to update task with merge_deferred metadata");
+                            }
+
+                            // Task remains in pending_merge, will be retried when blocker exits
+                        } else {
+                            // Non-deferrable error: transition to merge_incomplete
+                            tracing::error!(
+                                task_id = task_id_str,
+                                error = %e,
+                                merge_worktree_path = %merge_wt_path_str,
+                                source_branch = %source_branch,
+                                target_branch = %target_branch,
+                                "Merge in worktree failed, transitioning to MergeIncomplete"
+                            );
+
+                            if merge_wt_path.exists() {
+                                let _ = GitService::delete_worktree(repo_path, &merge_wt_path);
+                            }
+
+                            task.metadata = Some(serde_json::json!({
+                                "error": e.to_string(),
+                                "source_branch": source_branch,
+                                "target_branch": target_branch,
+                            }).to_string());
+                            task.internal_status = InternalStatus::MergeIncomplete;
+                            task.touch();
+
+                            if let Err(e) = task_repo.update(&task).await {
+                                tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
+                                return;
+                            }
+
+                            if let Err(e) = task_repo.persist_status_change(
+                                &task_id,
+                                InternalStatus::PendingMerge,
+                                InternalStatus::MergeIncomplete,
+                                "merge_incomplete",
+                            ).await {
+                                tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
+                            }
+
+                            self.machine
+                                .context
+                                .services
+                                .event_emitter
+                                .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                                .await;
                         }
-
-                        task.metadata = Some(serde_json::json!({
-                            "error": e.to_string(),
-                            "source_branch": source_branch,
-                            "target_branch": target_branch,
-                        }).to_string());
-                        task.internal_status = InternalStatus::MergeIncomplete;
-                        task.touch();
-
-                        if let Err(e) = task_repo.update(&task).await {
-                            tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
-                            return;
-                        }
-
-                        if let Err(e) = task_repo.persist_status_change(
-                            &task_id,
-                            InternalStatus::PendingMerge,
-                            InternalStatus::MergeIncomplete,
-                            "merge_incomplete",
-                        ).await {
-                            tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
-                        }
-
-                        self.machine
-                            .context
-                            .services
-                            .event_emitter
-                            .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
-                            .await;
                     }
                 }
             }
@@ -2364,43 +2425,72 @@ impl<'a> super::TransitionHandler<'a> {
                     }
                 }
                 Err(e) => {
-                    tracing::error!(
-                        task_id = task_id_str,
-                        error = %e,
-                        source_branch = %source_branch,
-                        target_branch = %target_branch,
-                        repo_path = %repo_path.display(),
-                        "Programmatic merge failed due to error, transitioning to MergeIncomplete"
-                    );
+                    // Classify error: deferrable (branch lock) vs terminal (true failure)
+                    if GitService::is_branch_lock_error(&e) {
+                        tracing::warn!(
+                            task_id = task_id_str,
+                            error = %e,
+                            source_branch = %source_branch,
+                            target_branch = %target_branch,
+                            repo_path = %repo_path.display(),
+                            "Programmatic merge failed due to branch lock (deferrable), staying in PendingMerge"
+                        );
 
-                    task.metadata = Some(serde_json::json!({
-                        "error": e.to_string(),
-                        "source_branch": source_branch,
-                        "target_branch": target_branch,
-                    }).to_string());
-                    task.internal_status = InternalStatus::MergeIncomplete;
-                    task.touch();
+                        // Set merge_deferred metadata and stay in pending_merge
+                        task.metadata = Some(serde_json::json!({
+                            "merge_deferred": true,
+                            "error": e.to_string(),
+                            "source_branch": source_branch,
+                            "target_branch": target_branch,
+                            "reason": "branch_lock",
+                        }).to_string());
+                        task.touch();
 
-                    if let Err(e) = task_repo.update(&task).await {
-                        tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
-                        return;
+                        if let Err(e) = task_repo.update(&task).await {
+                            tracing::error!(error = %e, "Failed to update task with merge_deferred metadata");
+                        }
+
+                        // Task remains in pending_merge, will be retried when blocker exits
+                    } else {
+                        // Non-deferrable error: transition to merge_incomplete
+                        tracing::error!(
+                            task_id = task_id_str,
+                            error = %e,
+                            source_branch = %source_branch,
+                            target_branch = %target_branch,
+                            repo_path = %repo_path.display(),
+                            "Programmatic merge failed due to error, transitioning to MergeIncomplete"
+                        );
+
+                        task.metadata = Some(serde_json::json!({
+                            "error": e.to_string(),
+                            "source_branch": source_branch,
+                            "target_branch": target_branch,
+                        }).to_string());
+                        task.internal_status = InternalStatus::MergeIncomplete;
+                        task.touch();
+
+                        if let Err(e) = task_repo.update(&task).await {
+                            tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
+                            return;
+                        }
+
+                        if let Err(e) = task_repo.persist_status_change(
+                            &task_id,
+                            InternalStatus::PendingMerge,
+                            InternalStatus::MergeIncomplete,
+                            "merge_incomplete",
+                        ).await {
+                            tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
+                        }
+
+                        self.machine
+                            .context
+                            .services
+                            .event_emitter
+                            .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                            .await;
                     }
-
-                    if let Err(e) = task_repo.persist_status_change(
-                        &task_id,
-                        InternalStatus::PendingMerge,
-                        InternalStatus::MergeIncomplete,
-                        "merge_incomplete",
-                    ).await {
-                        tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
-                    }
-
-                    self.machine
-                        .context
-                        .services
-                        .event_emitter
-                        .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
-                        .await;
                 }
             }
         }

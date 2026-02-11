@@ -1169,6 +1169,27 @@ impl GitService {
         )))
     }
 
+    /// Classify a git merge error to determine if it's deferrable (branch/worktree contention)
+    /// or terminal (true merge failure).
+    ///
+    /// Branch lock errors are deferrable and should keep the task in `pending_merge` for retry.
+    /// Other errors are terminal and should transition to `merge_incomplete`.
+    ///
+    /// # Arguments
+    /// * `error` - The error to classify
+    ///
+    /// # Returns
+    /// `true` if the error is a deferrable branch lock error, `false` otherwise
+    pub fn is_branch_lock_error(error: &AppError) -> bool {
+        let error_msg = error.to_string().to_lowercase();
+
+        // Match git error signatures for branch lock patterns
+        error_msg.contains("already used by worktree")
+            || error_msg.contains("already checked out")
+            || error_msg.contains("is already checked out at")
+            || (error_msg.contains("fatal") && error_msg.contains("branch") && error_msg.contains("checked out"))
+    }
+
     /// Reset the current branch to a specific commit (hard reset)
     ///
     /// Used to revert a merge commit when post-merge validation fails.
@@ -3187,5 +3208,72 @@ prunable gitdir file points to non-existent location
         // Prunable flag is ignored (we just parse path/head/branch)
         assert_eq!(result[1].path, "/tmp/stale-wt");
         assert_eq!(result[1].branch.as_deref(), Some("old-branch"));
+    }
+
+    // =========================================================================
+    // Branch Lock Error Classification Tests
+    // =========================================================================
+
+    #[test]
+    fn test_is_branch_lock_error_already_used_by_worktree() {
+        let error = AppError::GitOperation(
+            "Failed to create worktree at '/tmp/merge-wt' for branch 'main': \
+            fatal: 'main' is already used by worktree at '/home/user/project'".to_string()
+        );
+        assert!(GitService::is_branch_lock_error(&error));
+    }
+
+    #[test]
+    fn test_is_branch_lock_error_already_checked_out() {
+        let error = AppError::GitOperation(
+            "fatal: branch 'feature/foo' already checked out at '/tmp/worktree'".to_string()
+        );
+        assert!(GitService::is_branch_lock_error(&error));
+    }
+
+    #[test]
+    fn test_is_branch_lock_error_is_already_checked_out_at() {
+        let error = AppError::GitOperation(
+            "fatal: 'main' is already checked out at '/home/user/ralphx'".to_string()
+        );
+        assert!(GitService::is_branch_lock_error(&error));
+    }
+
+    #[test]
+    fn test_is_branch_lock_error_fatal_branch_checked_out() {
+        let error = AppError::GitOperation(
+            "fatal: branch is checked out in another worktree".to_string()
+        );
+        assert!(GitService::is_branch_lock_error(&error));
+    }
+
+    #[test]
+    fn test_is_branch_lock_error_case_insensitive() {
+        let error = AppError::GitOperation(
+            "FATAL: 'main' IS ALREADY USED BY WORKTREE at '/path'".to_string()
+        );
+        assert!(GitService::is_branch_lock_error(&error));
+    }
+
+    #[test]
+    fn test_is_branch_lock_error_merge_conflict_not_deferrable() {
+        let error = AppError::GitOperation(
+            "CONFLICT (content): Merge conflict in src/main.rs".to_string()
+        );
+        assert!(!GitService::is_branch_lock_error(&error));
+    }
+
+    #[test]
+    fn test_is_branch_lock_error_generic_git_error_not_deferrable() {
+        let error = AppError::GitOperation(
+            "fatal: not a git repository".to_string()
+        );
+        assert!(!GitService::is_branch_lock_error(&error));
+    }
+
+    #[test]
+    fn test_is_branch_lock_error_non_git_error_not_deferrable() {
+        let error = AppError::Database("connection failed".to_string());
+        assert!(!GitService::is_branch_lock_error(&error));
     }
 }
