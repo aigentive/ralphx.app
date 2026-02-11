@@ -1094,3 +1094,137 @@ use super::*;
         let should_emit = old_status == InternalStatus::Ready || new_status == InternalStatus::Ready;
         assert!(!should_emit);
     }
+
+    // ========================================
+    // Session Filtering Tests
+    // ========================================
+
+    #[tokio::test]
+    async fn test_list_tasks_filters_by_session_id() {
+        use crate::domain::entities::IdeationSessionId;
+
+        let state = setup_test_state().await;
+        let project_id = ProjectId::from_string("test-project".to_string());
+        let session1 = IdeationSessionId::new();
+        let session2 = IdeationSessionId::new();
+
+        // Create tasks with different session IDs
+        let mut task1 = Task::new(project_id.clone(), "Task Session 1".to_string());
+        task1.ideation_session_id = Some(session1.clone());
+        state.task_repo.create(task1).await.unwrap();
+
+        let mut task2 = Task::new(project_id.clone(), "Task Session 2".to_string());
+        task2.ideation_session_id = Some(session2.clone());
+        state.task_repo.create(task2).await.unwrap();
+
+        let mut task3 = Task::new(project_id.clone(), "Task No Session".to_string());
+        task3.ideation_session_id = None;
+        state.task_repo.create(task3).await.unwrap();
+
+        // Test unfiltered query
+        let all_tasks = state.task_repo.get_by_project(&project_id).await.unwrap();
+        assert_eq!(all_tasks.len(), 3);
+
+        // Test filtered query for session1
+        let session1_tasks: Vec<_> = all_tasks
+            .iter()
+            .filter(|t| {
+                t.ideation_session_id
+                    .as_ref()
+                    .is_some_and(|id| id == &session1)
+            })
+            .collect();
+        assert_eq!(session1_tasks.len(), 1);
+        assert_eq!(session1_tasks[0].title, "Task Session 1");
+
+        // Test filtered query for session2
+        let session2_tasks: Vec<_> = all_tasks
+            .iter()
+            .filter(|t| {
+                t.ideation_session_id
+                    .as_ref()
+                    .is_some_and(|id| id == &session2)
+            })
+            .collect();
+        assert_eq!(session2_tasks.len(), 1);
+        assert_eq!(session2_tasks[0].title, "Task Session 2");
+    }
+
+    #[tokio::test]
+    async fn test_search_tasks_filters_by_session_id() {
+        use crate::domain::entities::IdeationSessionId;
+
+        let state = setup_test_state().await;
+        let project_id = ProjectId::from_string("test-project".to_string());
+        let session1 = IdeationSessionId::new();
+
+        // Create tasks with search keyword
+        let mut task1 = Task::new(project_id.clone(), "Auth Feature".to_string());
+        task1.ideation_session_id = Some(session1.clone());
+        state.task_repo.create(task1).await.unwrap();
+
+        let mut task2 = Task::new(project_id.clone(), "Auth Bug Fix".to_string());
+        task2.ideation_session_id = None;
+        state.task_repo.create(task2).await.unwrap();
+
+        // Search without filter - should find both
+        let all_results = state
+            .task_repo
+            .search(&project_id, "Auth", false)
+            .await
+            .unwrap();
+        assert_eq!(all_results.len(), 2);
+
+        // Search with session filter
+        let filtered_results: Vec<_> = all_results
+            .into_iter()
+            .filter(|t| {
+                t.ideation_session_id
+                    .as_ref()
+                    .is_some_and(|id| id == &session1)
+            })
+            .collect();
+        assert_eq!(filtered_results.len(), 1);
+        assert_eq!(filtered_results[0].title, "Auth Feature");
+    }
+
+    #[tokio::test]
+    async fn test_get_archived_count_filters_by_session_id() {
+        use crate::domain::entities::IdeationSessionId;
+
+        let state = setup_test_state().await;
+        let project_id = ProjectId::from_string("test-project".to_string());
+        let session1 = IdeationSessionId::new();
+
+        // Create and archive tasks
+        let mut task1 = Task::new(project_id.clone(), "Task 1".to_string());
+        task1.ideation_session_id = Some(session1.clone());
+        let created1 = state.task_repo.create(task1).await.unwrap();
+        state.task_repo.archive(&created1.id).await.unwrap();
+
+        let mut task2 = Task::new(project_id.clone(), "Task 2".to_string());
+        task2.ideation_session_id = None;
+        let created2 = state.task_repo.create(task2).await.unwrap();
+        state.task_repo.archive(&created2.id).await.unwrap();
+
+        // Count all archived - should be 2
+        let total_archived = state.task_repo.get_archived_count(&project_id).await.unwrap();
+        assert_eq!(total_archived, 2);
+
+        // Count with session filter
+        let all_tasks = state
+            .task_repo
+            .get_by_project_filtered(&project_id, true)
+            .await
+            .unwrap();
+        let session_archived = all_tasks
+            .into_iter()
+            .filter(|t| {
+                t.archived_at.is_some()
+                    && t.ideation_session_id
+                        .as_ref()
+                        .is_some_and(|id| id == &session1)
+            })
+            .count();
+        assert_eq!(session_archived, 1);
+    }
