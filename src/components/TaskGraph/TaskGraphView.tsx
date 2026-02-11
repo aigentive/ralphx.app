@@ -70,6 +70,7 @@ import { Filter, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { buildTierGroups, UNGROUPED_PLAN_ID } from "./groups/tierGroupUtils";
 import type { GroupInfo } from "@/lib/task-actions";
+import { BattleModeOverlay } from "./battle/BattleModeOverlay";
 
 // ============================================================================
 // Types
@@ -296,6 +297,9 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
   const graphRightPanelUserOpen = useUiStore((s) => s.graphRightPanelUserOpen);
   const graphRightPanelCompactOpen = useUiStore((s) => s.graphRightPanelCompactOpen);
+  const battleModeActive = useUiStore((s) => s.battleModeActive);
+  const exitBattleMode = useUiStore((s) => s.exitBattleMode);
+  const executionStatus = useUiStore((s) => s.executionStatus);
   const { isNavCompact } = useNavCompactBreakpoint();
   const queryClient = useQueryClient();
   const deleteSessionMutation = useDeleteIdeationSession();
@@ -1320,7 +1324,9 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   const graphRightPanelVisible = isNavCompact
     ? graphRightPanelCompactOpen
     : graphRightPanelUserOpen;
-  const rightPanelMode = !graphRightPanelVisible
+  const rightPanelMode = battleModeActive
+    ? "hidden"
+    : !graphRightPanelVisible
     ? "hidden"
     : isNavCompact
       ? "overlay"
@@ -1473,6 +1479,14 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
             </div>
           </ReactFlow>
         )}
+
+        <BattleModeOverlay
+          active={battleModeActive}
+          tasks={graphData.nodes}
+          runningCount={executionStatus.runningCount}
+          queuedCount={executionStatus.queuedCount}
+          onExit={exitBattleMode}
+        />
       </div>
     </GraphSplitLayout>
     </>
