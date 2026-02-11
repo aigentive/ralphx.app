@@ -14,6 +14,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { extractErrorMessage } from "@/lib/errors";
 import { Button } from "@/components/ui/button";
 import {
   SectionTitle,
@@ -167,7 +168,7 @@ export function MergeConflictTaskDetail({ task, isHistorical = false }: MergeCon
         queryKey: taskKeys.list(task.projectId),
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to mark conflicts as resolved");
+      setError(extractErrorMessage(err, "Failed to mark conflicts as resolved"));
     } finally {
       setIsProcessing(false);
     }
@@ -182,7 +183,7 @@ export function MergeConflictTaskDetail({ task, isHistorical = false }: MergeCon
         queryKey: taskKeys.list(task.projectId),
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to retry merge");
+      setError(extractErrorMessage(err, "Failed to retry merge"));
     } finally {
       setIsProcessing(false);
     }
