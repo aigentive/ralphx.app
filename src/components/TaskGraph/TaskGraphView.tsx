@@ -290,6 +290,11 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   // Get active plan for this project
   const activePlanId = usePlanStore((s) => s.activePlanByProject[projectId] ?? null);
 
+  // Load active plan from backend on mount or project change
+  useEffect(() => {
+    usePlanStore.getState().loadActivePlan(projectId);
+  }, [projectId]);
+
   const { data: graphData, isLoading, error } = useTaskGraph(projectId, filters.showArchived, activePlanId);
   const {
     fitNodeInView,
