@@ -935,6 +935,7 @@ function AppContent() {
                   projectId={currentProjectId}
                   footer={
                     <ExecutionControlBar
+                      projectId={currentProjectId}
                       runningCount={executionStatus.runningCount}
                       maxConcurrent={executionStatus.maxConcurrent}
                       queuedCount={executionStatus.queuedCount}
@@ -961,6 +962,7 @@ function AppContent() {
                   projectId={currentProjectId}
                   footer={
                     <ExecutionControlBar
+                      projectId={currentProjectId}
                       runningCount={executionStatus.runningCount}
                       maxConcurrent={executionStatus.maxConcurrent}
                       queuedCount={executionStatus.queuedCount}

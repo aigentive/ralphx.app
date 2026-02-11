@@ -24,8 +24,11 @@ import { RunningProcessPopover } from "./RunningProcessPopover";
 import type { RunningProcess } from "@/api/running-processes";
 import { MergePipelinePopover } from "./MergePipelinePopover";
 import type { MergePipelineResponse } from "@/api/merge-pipeline";
+import { QueuedTasksPopover } from "./QueuedTasksPopover";
 
 interface ExecutionControlBarProps {
+  /** The project ID */
+  projectId: string;
   /** Number of currently running tasks */
   runningCount: number;
   /** Maximum concurrent tasks allowed */
@@ -83,6 +86,7 @@ function getStatusState(running: number, paused: boolean): "running" | "paused" 
 }
 
 export function ExecutionControlBar({
+  projectId,
   runningCount,
   maxConcurrent,
   queuedCount,
@@ -199,14 +203,19 @@ export function ExecutionControlBar({
           {/* Separator */}
           <span style={{ color: "hsl(220 10% 45%)" }}>•</span>
 
-          {/* Queued Count */}
-          <span
-            data-testid="queued-count"
-            className="text-[13px]"
-            style={{ color: "hsl(220 10% 65%)" }}
+          {/* Queued Count (Clickable Popover) */}
+          <QueuedTasksPopover
+            projectId={projectId}
+            queuedCount={queuedCount}
           >
-            {queuedLabel}{queuedCount}
-          </span>
+            <button
+              data-testid="queued-count"
+              className="text-[13px] cursor-pointer hover:underline transition-all"
+              style={{ color: "hsl(220 10% 65%)" }}
+            >
+              {queuedLabel}{queuedCount}
+            </button>
+          </QueuedTasksPopover>
 
           {/* Separator */}
           <span style={{ color: "hsl(220 10% 45%)" }}>•</span>
