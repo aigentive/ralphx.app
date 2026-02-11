@@ -4,6 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Emitter};
 
@@ -548,6 +549,72 @@ fn truncate_output(s: &str, max_len: usize) -> String {
     }
 }
 
+const DEFAULT_MERGE_VALIDATION_TIMEOUT_SECS: u64 = 30 * 60;
+
+fn merge_validation_timeout() -> Duration {
+    let secs = std::env::var("RALPHX_MERGE_VALIDATION_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|v| *v > 0)
+        .unwrap_or(DEFAULT_MERGE_VALIDATION_TIMEOUT_SECS);
+    Duration::from_secs(secs)
+}
+
+struct ShellCommandResult {
+    exit_code: Option<i32>,
+    stdout: String,
+    stderr: String,
+    timed_out: bool,
+}
+
+fn run_shell_command_with_timeout(
+    command: &str,
+    cwd: &Path,
+    timeout: Duration,
+) -> Result<ShellCommandResult, std::io::Error> {
+    let mut child = Command::new("sh")
+        .arg("-c")
+        .arg(command)
+        .current_dir(cwd)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()?;
+
+    let start = Instant::now();
+
+    loop {
+        if child.try_wait()?.is_some() {
+            let output = child.wait_with_output()?;
+            return Ok(ShellCommandResult {
+                exit_code: output.status.code(),
+                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+                stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+                timed_out: false,
+            });
+        }
+
+        if start.elapsed() >= timeout {
+            let _ = child.kill();
+            let output = child.wait_with_output()?;
+            let timeout_msg = format!("Command timed out after {}s", timeout.as_secs());
+            let stderr_raw = String::from_utf8_lossy(&output.stderr).to_string();
+            let stderr = if stderr_raw.is_empty() {
+                timeout_msg
+            } else {
+                format!("{}\n{}", timeout_msg, stderr_raw)
+            };
+            return Ok(ShellCommandResult {
+                exit_code: output.status.code(),
+                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+                stderr,
+                timed_out: true,
+            });
+        }
+
+        std::thread::sleep(Duration::from_millis(200));
+    }
+}
+
 /// Load effective analysis, resolve template vars, and run all validate commands.
 ///
 /// Returns `None` if no analysis entries exist (backward compatible — skip validation).
@@ -584,6 +651,7 @@ pub(crate) fn run_validation_commands(
     if entries.is_empty() {
         return None;
     }
+    let command_timeout = merge_validation_timeout();
 
     // Collect all validate commands with their resolved paths
     let project_root = &project.working_directory;
@@ -631,25 +699,22 @@ pub(crate) fn run_validation_commands(
             );
 
             let start = std::time::Instant::now();
-            match Command::new("sh")
-                .arg("-c")
-                .arg(&resolved_cmd)
-                .current_dir(&cmd_cwd)
-                .output()
-            {
-                Ok(output) => {
+            match run_shell_command_with_timeout(&resolved_cmd, &cmd_cwd, command_timeout) {
+                Ok(result) => {
                     let duration_ms = start.elapsed().as_millis() as u64;
-                    let stdout_raw = String::from_utf8_lossy(&output.stdout).to_string();
-                    let stderr_raw = String::from_utf8_lossy(&output.stderr).to_string();
-                    let status = if output.status.success() {
+                    let stdout_raw = result.stdout;
+                    let stderr_raw = result.stderr;
+                    let status = if !result.timed_out && result.exit_code == Some(0) {
                         "success"
                     } else {
                         "failed"
                     };
 
-                    if !output.status.success() {
+                    if status == "failed" {
                         tracing::warn!(
                             command = %resolved_cmd,
+                            timeout_secs = command_timeout.as_secs(),
+                            timed_out = result.timed_out,
                             stderr = %stderr_raw,
                             "Worktree setup command failed (non-fatal)"
                         );
@@ -661,7 +726,7 @@ pub(crate) fn run_validation_commands(
                         path: resolved_path.clone(),
                         label: entry.label.clone(),
                         status: status.to_string(),
-                        exit_code: output.status.code(),
+                        exit_code: result.exit_code,
                         stdout: truncate_output(&stdout_raw, 2000),
                         stderr: truncate_output(&stderr_raw, 2000),
                         duration_ms,
@@ -817,29 +882,26 @@ pub(crate) fn run_validation_commands(
             );
 
             let start = std::time::Instant::now();
-            let result = Command::new("sh")
-                .arg("-c")
-                .arg(&resolved_cmd)
-                .current_dir(&cmd_cwd)
-                .output();
-
-            match result {
-                Ok(output) => {
+            match run_shell_command_with_timeout(&resolved_cmd, &cmd_cwd, command_timeout) {
+                Ok(result) => {
                     let duration_ms = start.elapsed().as_millis() as u64;
-                    let stderr_raw = String::from_utf8_lossy(&output.stderr).to_string();
-                    let stdout_raw = String::from_utf8_lossy(&output.stdout).to_string();
+                    let stderr_raw = result.stderr;
+                    let stdout_raw = result.stdout;
+                    let succeeded = !result.timed_out && result.exit_code == Some(0);
 
-                    if !output.status.success() {
+                    if !succeeded {
                         tracing::warn!(
                             command = %resolved_cmd,
-                            exit_code = ?output.status.code(),
+                            timeout_secs = command_timeout.as_secs(),
+                            timed_out = result.timed_out,
+                            exit_code = ?result.exit_code,
                             stderr = %stderr_raw,
                             "Post-merge validation command failed"
                         );
                         failures.push(ValidationFailure {
                             command: resolved_cmd.clone(),
                             path: resolved_path.clone(),
-                            exit_code: output.status.code(),
+                            exit_code: result.exit_code,
                             stderr: format!(
                                 "{}{}",
                                 if stderr_raw.is_empty() {
@@ -858,7 +920,7 @@ pub(crate) fn run_validation_commands(
                         tracing::info!(command = %resolved_cmd, "Post-merge validation command passed");
                     }
 
-                    let status = if output.status.success() {
+                    let status = if succeeded {
                         "success"
                     } else {
                         "failed"
@@ -869,7 +931,7 @@ pub(crate) fn run_validation_commands(
                         path: resolved_path.clone(),
                         label: entry.label.clone(),
                         status: status.to_string(),
-                        exit_code: output.status.code(),
+                        exit_code: result.exit_code,
                         stdout: truncate_output(&stdout_raw, 2000),
                         stderr: truncate_output(&stderr_raw, 2000),
                         duration_ms,
