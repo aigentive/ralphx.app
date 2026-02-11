@@ -155,6 +155,23 @@ describe("useAgentEvents", () => {
       const state = useChatStore.getState();
       expect(state.isAgentRunning["merge:task-123"]).toBe(true);
     });
+
+    it("sets running state for ideation context", () => {
+      const wrapper = createWrapper();
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:run_started", {
+          run_id: "run-1",
+          context_type: "ideation",
+          context_id: "session-789",
+          conversation_id: "conv-1",
+        });
+      });
+
+      const state = useChatStore.getState();
+      expect(state.isAgentRunning["session:session-789"]).toBe(true);
+    });
   });
 
   describe("agent:run_completed", () => {
@@ -224,6 +241,48 @@ describe("useAgentEvents", () => {
 
       expect(useChatStore.getState().isAgentRunning["review:task-123"]).toBeUndefined();
     });
+
+    it("clears running state for ideation on stop/completion", () => {
+      const wrapper = createWrapper();
+
+      act(() => {
+        useChatStore.getState().setAgentRunning("session:session-789", true);
+      });
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:run_completed", {
+          context_type: "ideation",
+          context_id: "session-789",
+          conversation_id: "conv-1",
+          status: "completed",
+        });
+      });
+
+      expect(useChatStore.getState().isAgentRunning["session:session-789"]).toBeUndefined();
+    });
+
+    it("clears running state for merge on stop/completion", () => {
+      const wrapper = createWrapper();
+
+      act(() => {
+        useChatStore.getState().setAgentRunning("merge:task-123", true);
+      });
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:run_completed", {
+          context_type: "merge",
+          context_id: "task-123",
+          conversation_id: "conv-1",
+          status: "completed",
+        });
+      });
+
+      expect(useChatStore.getState().isAgentRunning["merge:task-123"]).toBeUndefined();
+    });
   });
 
   describe("agent:error", () => {
@@ -246,6 +305,90 @@ describe("useAgentEvents", () => {
       });
 
       expect(useChatStore.getState().isAgentRunning["task:task-123"]).toBeUndefined();
+    });
+
+    it("clears running state for task_execution on error", () => {
+      const wrapper = createWrapper();
+
+      act(() => {
+        useChatStore.getState().setAgentRunning("task_execution:task-123", true);
+      });
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:error", {
+          context_type: "task_execution",
+          context_id: "task-123",
+          conversation_id: "conv-1",
+          error: "Agent crashed",
+        });
+      });
+
+      expect(useChatStore.getState().isAgentRunning["task_execution:task-123"]).toBeUndefined();
+    });
+
+    it("clears running state for ideation on error", () => {
+      const wrapper = createWrapper();
+
+      act(() => {
+        useChatStore.getState().setAgentRunning("session:session-789", true);
+      });
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:error", {
+          context_type: "ideation",
+          context_id: "session-789",
+          conversation_id: "conv-1",
+          error: "Session error",
+        });
+      });
+
+      expect(useChatStore.getState().isAgentRunning["session:session-789"]).toBeUndefined();
+    });
+
+    it("clears running state for review on error", () => {
+      const wrapper = createWrapper();
+
+      act(() => {
+        useChatStore.getState().setAgentRunning("review:task-123", true);
+      });
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:error", {
+          context_type: "review",
+          context_id: "task-123",
+          conversation_id: "conv-1",
+          error: "Review failed",
+        });
+      });
+
+      expect(useChatStore.getState().isAgentRunning["review:task-123"]).toBeUndefined();
+    });
+
+    it("clears running state for merge on error", () => {
+      const wrapper = createWrapper();
+
+      act(() => {
+        useChatStore.getState().setAgentRunning("merge:task-123", true);
+      });
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:error", {
+          context_type: "merge",
+          context_id: "task-123",
+          conversation_id: "conv-1",
+          error: "Merge conflict",
+        });
+      });
+
+      expect(useChatStore.getState().isAgentRunning["merge:task-123"]).toBeUndefined();
     });
   });
 
