@@ -887,3 +887,115 @@ fn build_task_stopper(
 
     Arc::new(TransitionTaskStopper { transition_service })
 }
+
+/// Pause a specific task
+/// Transitions the task to Paused state, which can be resumed later
+#[tauri::command]
+pub async fn pause_task(
+    task_id: String,
+    state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
+) -> Result<TaskResponse, String> {
+    use crate::application::TaskTransitionService;
+
+    let task_id = TaskId::from_string(task_id);
+
+    // Verify task exists
+    let _ = state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Task not found: {}", task_id.as_str()))?;
+
+    // Build transition service
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.task_dependency_repo),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.chat_message_repo),
+        Arc::clone(&state.chat_conversation_repo),
+        Arc::clone(&state.agent_run_repo),
+        Arc::clone(&state.ideation_session_repo),
+        Arc::clone(&state.activity_event_repo),
+        Arc::clone(&state.message_queue),
+        Arc::clone(&state.running_agent_registry),
+        Arc::clone(&execution_state),
+        state.app_handle.clone(),
+    )
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
+
+    // Transition to Paused
+    let updated_task = transition_service
+        .transition_task(&task_id, InternalStatus::Paused)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Emit lifecycle event
+    if let Some(ref app) = state.app_handle {
+        emit_task_lifecycle_event(
+            app,
+            "task:paused",
+            updated_task.id.as_str(),
+            updated_task.project_id.as_str(),
+        );
+    }
+
+    Ok(TaskResponse::from(updated_task))
+}
+
+/// Stop a specific task
+/// Transitions the task to Stopped state (terminal, requires manual restart)
+#[tauri::command]
+pub async fn stop_task(
+    task_id: String,
+    state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
+) -> Result<TaskResponse, String> {
+    use crate::application::TaskTransitionService;
+
+    let task_id = TaskId::from_string(task_id);
+
+    // Verify task exists
+    let _ = state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Task not found: {}", task_id.as_str()))?;
+
+    // Build transition service
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.task_dependency_repo),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.chat_message_repo),
+        Arc::clone(&state.chat_conversation_repo),
+        Arc::clone(&state.agent_run_repo),
+        Arc::clone(&state.ideation_session_repo),
+        Arc::clone(&state.activity_event_repo),
+        Arc::clone(&state.message_queue),
+        Arc::clone(&state.running_agent_registry),
+        Arc::clone(&execution_state),
+        state.app_handle.clone(),
+    )
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
+
+    // Transition to Stopped
+    let updated_task = transition_service
+        .transition_task(&task_id, InternalStatus::Stopped)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Emit lifecycle event
+    if let Some(ref app) = state.app_handle {
+        emit_task_lifecycle_event(
+            app,
+            "task:stopped",
+            updated_task.id.as_str(),
+            updated_task.project_id.as_str(),
+        );
+    }
+
+    Ok(TaskResponse::from(updated_task))
+}
