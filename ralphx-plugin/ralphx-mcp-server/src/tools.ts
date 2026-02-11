@@ -23,6 +23,8 @@ import {
   SUPERVISOR,
   QA_PREP,
   QA_TESTER,
+  ORCHESTRATOR,
+  DEEP_RESEARCHER,
   MEMORY_MAINTAINER,
   MEMORY_CAPTURE,
 } from "./agentNames.js";
@@ -772,9 +774,28 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "link_proposals_to_plan",
     "get_session_plan",
     "ask_user_question",
+    // memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
   ],
-  [CHAT_TASK]: ["update_task", "add_task_note", "get_task_details"],
-  [CHAT_PROJECT]: ["suggest_task", "list_tasks"],
+  [CHAT_TASK]: [
+    "update_task",
+    "add_task_note",
+    "get_task_details",
+    // memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
+  ],
+  [CHAT_PROJECT]: [
+    "suggest_task",
+    "list_tasks",
+    // memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
+  ],
   [REVIEWER]: [
     // specific review tools
     "complete_review",
@@ -792,6 +813,10 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "search_project_artifacts",
     "get_review_notes",
     "get_task_steps",
+    // memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
   ],
   // Post-review chat agent - helps user discuss review findings and take action
   [REVIEW_CHAT]: [
@@ -807,6 +832,10 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "search_project_artifacts",
     "get_review_notes",
     "get_task_steps",
+    // memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
   ],
   // Historical review discussion agent - read-only, no mutation tools (approved tasks)
   [REVIEW_HISTORY]: [
@@ -820,6 +849,10 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_artifact_version",
     "get_related_artifacts",
     "search_project_artifacts",
+    // memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
   ],
   [WORKER]: [
     // step management tools
@@ -843,6 +876,10 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "search_project_artifacts",
     "get_review_notes",
     "get_task_steps",
+    // memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
   ],
   // Session naming agent - generates titles for IDA sessions
   [SESSION_NAMER]: ["update_session_title"],
@@ -859,6 +896,24 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_project_analysis",
     // common context tools
     "get_task_context",
+    // memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
+  ],
+  // Orchestrator agent - plans and coordinates complex tasks
+  [ORCHESTRATOR]: [
+    // memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
+  ],
+  // Deep researcher agent - conducts thorough research and analysis
+  [DEEP_RESEARCHER]: [
+    // memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
   ],
   // Project analyzer agent - detects build/validation commands
   [PROJECT_ANALYZER]: [
