@@ -334,3 +334,29 @@ export const MergeValidationStepEventSchema = z.object({
 });
 
 export type MergeValidationStepEvent = z.infer<typeof MergeValidationStepEventSchema>;
+
+// ============================================================================
+// Merge Progress Events (high-level phases)
+// ============================================================================
+
+/**
+ * Schema for high-level merge progress events
+ * Emitted during merge/validation to provide user-friendly phase-level updates
+ */
+export const MergeProgressEventSchema = z.object({
+  task_id: z.string(),
+  phase: z.enum([
+    "worktree_setup",
+    "programmatic_merge",
+    "typecheck",
+    "lint",
+    "clippy",
+    "test",
+    "finalize",
+  ]),
+  status: z.enum(["started", "passed", "failed"]),
+  message: z.string(),
+  timestamp: z.string(),
+});
+
+export type MergeProgressEvent = z.infer<typeof MergeProgressEventSchema>;
