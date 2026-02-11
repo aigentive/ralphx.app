@@ -70,7 +70,7 @@ import { Filter, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { buildTierGroups, UNGROUPED_PLAN_ID } from "./groups/tierGroupUtils";
 import type { GroupInfo } from "@/lib/task-actions";
-import { BattleModeOverlay } from "./battle/BattleModeOverlay";
+import { BattleModeV2Overlay } from "./battle-v2/BattleModeV2Overlay";
 
 // ============================================================================
 // Types
@@ -1480,7 +1480,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
           </ReactFlow>
         )}
 
-        <BattleModeOverlay
+        <BattleModeV2Overlay
           active={battleModeActive}
           tasks={graphData.nodes}
           runningCount={executionStatus.runningCount}
