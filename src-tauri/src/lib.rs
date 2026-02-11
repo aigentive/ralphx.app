@@ -620,7 +620,8 @@ pub fn run() {
             // Plan commands (Active plan management)
             commands::plan_commands::get_active_plan,
             commands::plan_commands::set_active_plan,
-            commands::plan_commands::clear_active_plan
+            commands::plan_commands::clear_active_plan,
+            commands::plan_commands::list_plan_selector_candidates
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

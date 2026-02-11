@@ -61,6 +61,8 @@ const commandHandlers: Record<
       args.source as Parameters<typeof mockPlanApi.setActivePlan>[2]
     ),
   clear_active_plan: async (args) => mockPlanApi.clearActivePlan(args.projectId as string),
+  list_plan_selector_candidates: async (args) =>
+    mockPlanApi.listCandidates(args.projectId as string, args.query as string | undefined),
 
   // Task commands
   list_tasks: async (args) => {

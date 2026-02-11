@@ -27,6 +27,22 @@ interface PlanQuickSwitcherPaletteProps {
   projectId: string;
   isOpen: boolean;
   onClose: () => void;
+  /** Optional CSS selector used to anchor horizontal centering to a specific container */
+  anchorSelector?: string;
+}
+
+function formatIncompleteSummary(incomplete: number, total: number): string {
+  if (total <= 0) return "No tasks yet";
+  if (incomplete <= 0) {
+    return total === 1 ? "1 task complete" : `${total} tasks complete`;
+  }
+  return `${incomplete} of ${total} incomplete`;
+}
+
+function getCompletionPercent(incomplete: number, total: number): number {
+  if (total <= 0) return 0;
+  const completed = Math.max(0, total - Math.max(0, incomplete));
+  return Math.round((completed / total) * 100);
 }
 
 // ============================================================================
@@ -37,9 +53,11 @@ export function PlanQuickSwitcherPalette({
   projectId,
   isOpen,
   onClose,
+  anchorSelector,
 }: PlanQuickSwitcherPaletteProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [anchorCenterX, setAnchorCenterX] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const highlightedItemRef = useRef<HTMLButtonElement>(null);
@@ -88,13 +106,56 @@ export function PlanQuickSwitcherPalette({
 
   // Scroll highlighted item into view
   useEffect(() => {
-    if (highlightedItemRef.current) {
+    if (
+      highlightedItemRef.current &&
+      typeof highlightedItemRef.current.scrollIntoView === "function"
+    ) {
       highlightedItemRef.current.scrollIntoView({
         block: "nearest",
         behavior: "smooth",
       });
     }
   }, [highlightedIndex]);
+
+  // Center to the requested anchor container (e.g., split-layout left pane).
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const updateAnchorCenter = () => {
+      if (!anchorSelector) {
+        setAnchorCenterX(null);
+        return;
+      }
+      const anchor = document.querySelector(anchorSelector);
+      if (anchor instanceof HTMLElement) {
+        const rect = anchor.getBoundingClientRect();
+        setAnchorCenterX(rect.left + rect.width / 2);
+      } else {
+        setAnchorCenterX(null);
+      }
+    };
+
+    updateAnchorCenter();
+
+    const anchor = anchorSelector ? document.querySelector(anchorSelector) : null;
+    const resizeObserver =
+      anchor instanceof HTMLElement && typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => updateAnchorCenter())
+        : null;
+
+    if (anchor instanceof HTMLElement && resizeObserver) {
+      resizeObserver.observe(anchor);
+    }
+
+    window.addEventListener("resize", updateAnchorCenter);
+    window.addEventListener("scroll", updateAnchorCenter, true);
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", updateAnchorCenter);
+      window.removeEventListener("scroll", updateAnchorCenter, true);
+    };
+  }, [isOpen, anchorSelector]);
 
   // Click outside to close
   useEffect(() => {
@@ -141,11 +202,19 @@ export function PlanQuickSwitcherPalette({
       switch (e.key) {
         case "ArrowDown":
           e.preventDefault();
-          setHighlightedIndex((i) => (i + 1) % candidateCount);
+          if (e.shiftKey) {
+            setHighlightedIndex(candidateCount - 1);
+          } else {
+            setHighlightedIndex((i) => Math.min(i + 1, candidateCount - 1));
+          }
           break;
         case "ArrowUp":
           e.preventDefault();
-          setHighlightedIndex((i) => (i - 1 + candidateCount) % candidateCount);
+          if (e.shiftKey) {
+            setHighlightedIndex(0);
+          } else {
+            setHighlightedIndex((i) => Math.max(i - 1, 0));
+          }
           break;
         case "Home":
           e.preventDefault();
@@ -198,15 +267,30 @@ export function PlanQuickSwitcherPalette({
               transition: { duration: 0.1 },
             },
           }}
-          className="fixed top-20 left-1/2 -translate-x-1/2 z-50 w-[600px]"
+          className="fixed top-20 left-1/2 -translate-x-1/2 z-50 w-[420px]"
           ref={containerRef}
+          data-quick-switcher-panel
+          style={{
+            left: anchorCenterX !== null ? `${anchorCenterX}px` : undefined,
+          }}
         >
           <div
-            className="rounded-lg border border-white/10 bg-gray-900/90 backdrop-blur-xl shadow-2xl"
+            className="text-popover-foreground"
             onClick={(e) => e.stopPropagation()}
+            style={{
+              borderRadius: "10px",
+              background: "hsla(220 10% 10% / 0.92)",
+              backdropFilter: "blur(20px) saturate(180%)",
+              WebkitBackdropFilter: "blur(20px) saturate(180%)",
+              border: "1px solid hsla(220 20% 100% / 0.08)",
+              boxShadow: "0 4px 16px hsla(220 20% 0% / 0.4), 0 12px 32px hsla(220 20% 0% / 0.3)",
+            }}
           >
             {/* Search input */}
-            <div className="border-b border-white/10 p-4">
+            <div
+              className="p-3"
+              style={{ borderBottom: "1px solid hsla(220 20% 100% / 0.08)" }}
+            >
               <input
                 ref={inputRef}
                 type="text"
@@ -215,31 +299,35 @@ export function PlanQuickSwitcherPalette({
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
                 className={cn(
-                  "w-full bg-transparent border-0 text-white placeholder:text-gray-400",
+                  "w-full bg-transparent border-0 text-sm placeholder:text-muted-foreground",
                   "outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none",
                   "transition-colors"
                 )}
-                style={{ boxShadow: "none", outline: "none" }}
+                style={{
+                  color: "hsl(220 10% 90%)",
+                  boxShadow: "none",
+                  outline: "none",
+                }}
               />
             </div>
 
             {/* Results list */}
             {error ? (
-              <div className="p-8 flex flex-col items-center justify-center gap-3 text-gray-400">
-                <AlertCircle className="h-5 w-5 text-red-400" />
+              <div className="p-8 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+                <AlertCircle className="h-5 w-5 text-destructive" />
                 <p className="text-center">{error}</p>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleRetry}
-                  className="gap-2 bg-white/5 border-white/10 text-white hover:bg-white/10"
+                  className="gap-2"
                 >
                   <RefreshCw className="h-4 w-4" />
                   Retry
                 </Button>
               </div>
             ) : isLoading ? (
-              <div className="p-8 flex flex-col items-center justify-center gap-2 text-gray-400 transition-colors">
+              <div className="p-8 flex flex-col items-center justify-center gap-2 text-muted-foreground transition-colors">
                 <Loader2 className="h-5 w-5 animate-spin" />
                 <p>Loading plans...</p>
               </div>
@@ -248,6 +336,12 @@ export function PlanQuickSwitcherPalette({
                 {filteredCandidates.map((plan, index) => {
                   const isActive = activePlanId === plan.sessionId;
                   const isHighlighted = highlightedIndex === index;
+                  const completionPercent = getCompletionPercent(
+                    plan.taskStats.incomplete,
+                    plan.taskStats.total
+                  );
+                  const showProgressBar =
+                    plan.taskStats.total > 0 && plan.taskStats.incomplete > 0;
 
                   return (
                     <button
@@ -256,30 +350,70 @@ export function PlanQuickSwitcherPalette({
                       onClick={() => handleSelect(plan.sessionId)}
                       onMouseEnter={() => setHighlightedIndex(index)}
                       className={cn(
-                        "w-full text-left px-4 py-3 flex items-center justify-between",
-                        "hover:bg-white/5 hover:scale-[1.01] transition-all origin-center",
-                        isHighlighted && "bg-white/10 ring-2 ring-[#ff6b35] ring-opacity-50",
-                        isActive && "border-l-2 border-[#ff6b35]"
+                        "w-full text-left px-3 py-2 rounded-lg flex items-center justify-between",
+                        "transition-all duration-150 origin-center",
+                        "hover:scale-[1.01]",
+                        "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                        isHighlighted && "bg-accent",
+                        isActive && "bg-accent/50"
                       )}
+                      style={{
+                        background:
+                          isHighlighted
+                            ? "hsla(14 100% 60% / 0.16)"
+                            : isActive
+                              ? "hsla(14 100% 60% / 0.1)"
+                              : "transparent",
+                        border: isHighlighted
+                          ? "1px solid hsla(14 100% 60% / 0.35)"
+                          : "1px solid transparent",
+                      }}
                     >
-                      <div className="flex-1">
-                        <div className="font-medium text-white">
+                      <div className="flex-1 min-w-0">
+                        <div
+                          className="text-[13px] font-medium leading-tight"
+                          style={{ color: isHighlighted ? "hsl(14 100% 66%)" : "hsl(220 10% 90%)" }}
+                        >
                           {plan.title || "Untitled Plan"}
                         </div>
-                        <div className="text-sm text-gray-400">
-                          {plan.taskStats.incomplete}/{plan.taskStats.total} incomplete
+                        <div className="text-xs leading-tight mt-0.5" style={{ color: "hsl(220 10% 62%)" }}>
+                          {formatIncompleteSummary(plan.taskStats.incomplete, plan.taskStats.total)}
                           {plan.taskStats.activeNow > 0 && " • Active work"}
                         </div>
                       </div>
 
-                      {isActive && <Check className="h-4 w-4 text-[#ff6b35]" />}
+                      <div className="flex items-center gap-2 ml-3 shrink-0">
+                        {showProgressBar && (
+                          <div className="flex items-center gap-1.5" aria-hidden="true">
+                            <div
+                              className="w-14 h-1 rounded-full overflow-hidden"
+                              style={{ backgroundColor: "hsla(220 10% 100% / 0.1)" }}
+                            >
+                              <div
+                                className="h-full rounded-full transition-all duration-300"
+                                style={{
+                                  width: `${completionPercent}%`,
+                                  backgroundColor: "hsla(14 100% 60% / 0.7)",
+                                }}
+                              />
+                            </div>
+                            <span
+                              className="text-[10px] tabular-nums"
+                              style={{ color: "hsl(220 10% 48%)" }}
+                            >
+                              {completionPercent}%
+                            </span>
+                          </div>
+                        )}
+                        {isActive && <Check className="h-4 w-4" style={{ color: "hsl(14 100% 62%)" }} />}
+                      </div>
                     </button>
                   );
                 })}
               </ScrollArea>
             ) : (
               /* Empty state */
-              <div className="p-8 text-center text-gray-400 transition-colors">
+              <div className="p-8 text-center text-muted-foreground transition-colors">
                 <FileText className="h-8 w-8 mx-auto mb-2 opacity-50 transition-opacity" />
                 <p>No accepted plans found</p>
               </div>

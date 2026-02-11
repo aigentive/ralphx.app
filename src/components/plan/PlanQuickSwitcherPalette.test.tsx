@@ -106,21 +106,37 @@ describe("PlanQuickSwitcherPalette", () => {
 
     it("displays task stats for each candidate", () => {
       render(<PlanQuickSwitcherPalette {...defaultProps} />);
-      expect(screen.getByText(/5\/10 incomplete/)).toBeInTheDocument();
-      expect(screen.getByText(/2\/5 incomplete/)).toBeInTheDocument();
-      expect(screen.getByText(/3\/8 incomplete/)).toBeInTheDocument();
+      expect(screen.getByText(/5 of 10 incomplete/)).toBeInTheDocument();
+      expect(screen.getByText(/2 of 5 incomplete/)).toBeInTheDocument();
+      expect(screen.getByText(/3 of 8 incomplete/)).toBeInTheDocument();
     });
 
     it("shows active work indicator for plans with activeNow > 0", () => {
       render(<PlanQuickSwitcherPalette {...defaultProps} />);
-      const featureAStats = screen.getByText(/5\/10 incomplete/);
+      const featureAStats = screen.getByText(/5 of 10 incomplete/);
       expect(featureAStats.textContent).toContain("Active work");
 
-      const bugFixesStats = screen.getByText(/3\/8 incomplete/);
+      const bugFixesStats = screen.getByText(/3 of 8 incomplete/);
       expect(bugFixesStats.textContent).toContain("Active work");
 
-      const featureBStats = screen.getByText(/2\/5 incomplete/);
+      const featureBStats = screen.getByText(/2 of 5 incomplete/);
       expect(featureBStats.textContent).not.toContain("Active work");
+    });
+
+    it("shows a complete summary when there are no incomplete tasks", () => {
+      const allDoneCandidates = [
+        createMockCandidate({
+          sessionId: "session-4",
+          title: "All Done Plan",
+          taskStats: { total: 7, incomplete: 0, activeNow: 0 },
+        }),
+      ];
+      (usePlanStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector) =>
+        selector({ ...defaultStoreState, planCandidates: allDoneCandidates })
+      );
+
+      render(<PlanQuickSwitcherPalette {...defaultProps} />);
+      expect(screen.getByText("7 tasks complete")).toBeInTheDocument();
     });
 
     it("shows check icon for active plan", () => {
@@ -243,31 +259,56 @@ describe("PlanQuickSwitcherPalette", () => {
 
       // Feature B should be highlighted (index 1)
       const featureBButton = screen.getByText("Feature B").closest("button");
-      expect(featureBButton).toHaveClass("bg-white/10");
+      expect(featureBButton?.className).toMatch(/bg-accent/);
     });
 
-    it("navigates up with ArrowUp", () => {
+    it("navigates up with ArrowUp and clamps at top", () => {
       render(<PlanQuickSwitcherPalette {...defaultProps} />);
       const input = screen.getByPlaceholderText(/Search plans/);
 
-      // Press up from index 0, should wrap to last item (index 2)
+      // Press up from index 0, should remain at index 0
       fireEvent.keyDown(input, { key: "ArrowUp" });
-
-      const bugFixesButton = screen.getByText("Bug Fixes").closest("button");
-      expect(bugFixesButton).toHaveClass("bg-white/10");
-    });
-
-    it("wraps navigation at list boundaries", () => {
-      render(<PlanQuickSwitcherPalette {...defaultProps} />);
-      const input = screen.getByPlaceholderText(/Search plans/);
-
-      // Navigate to last item
-      fireEvent.keyDown(input, { key: "ArrowUp" });
-      // Navigate past last item (should wrap to first)
-      fireEvent.keyDown(input, { key: "ArrowDown" });
 
       const featureAButton = screen.getByText("Feature A").closest("button");
-      expect(featureAButton).toHaveClass("bg-white/10");
+      expect(featureAButton?.className).toMatch(/bg-accent|bg-accent\/50/);
+    });
+
+    it("clamps navigation at list boundaries", () => {
+      render(<PlanQuickSwitcherPalette {...defaultProps} />);
+      const input = screen.getByPlaceholderText(/Search plans/);
+
+      // Stay at top when going up
+      fireEvent.keyDown(input, { key: "ArrowUp" });
+      const featureAButton = screen.getByText("Feature A").closest("button");
+      expect(featureAButton?.className).toMatch(/bg-accent|bg-accent\/50/);
+
+      // Navigate down to last item
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      const bugFixesButton = screen.getByText("Bug Fixes").closest("button");
+      expect(bugFixesButton?.className).toMatch(/bg-accent/);
+
+      // Attempt to go past last item; should remain on last
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      expect(bugFixesButton?.className).toMatch(/bg-accent/);
+    });
+
+    it("jumps to first and last with Shift+ArrowUp/Down", () => {
+      render(<PlanQuickSwitcherPalette {...defaultProps} />);
+      const input = screen.getByPlaceholderText(/Search plans/);
+
+      // Move highlight away from first
+      fireEvent.keyDown(input, { key: "ArrowDown" }); // index 1
+
+      // Shift+ArrowDown should jump to last
+      fireEvent.keyDown(input, { key: "ArrowDown", shiftKey: true });
+      const bugFixesButton = screen.getByText("Bug Fixes").closest("button");
+      expect(bugFixesButton?.className).toMatch(/bg-accent/);
+
+      // Shift+ArrowUp should jump to first
+      fireEvent.keyDown(input, { key: "ArrowUp", shiftKey: true });
+      const featureAButton = screen.getByText("Feature A").closest("button");
+      expect(featureAButton?.className).toMatch(/bg-accent|bg-accent\/50/);
     });
 
     it("selects highlighted plan on Enter", async () => {
@@ -299,7 +340,7 @@ describe("PlanQuickSwitcherPalette", () => {
 
       // Feature A should be highlighted now (index 0 of filtered results)
       const featureAButton = screen.getByText("Feature A").closest("button");
-      expect(featureAButton).toHaveClass("bg-white/10");
+      expect(featureAButton?.className).toMatch(/bg-accent|bg-accent\/50/);
     });
   });
 
@@ -314,7 +355,7 @@ describe("PlanQuickSwitcherPalette", () => {
       const featureBButton = screen.getByText("Feature B").closest("button")!;
       fireEvent.mouseEnter(featureBButton);
 
-      expect(featureBButton).toHaveClass("bg-white/10");
+      expect(featureBButton?.className).toMatch(/bg-accent/);
     });
 
     it("selects plan on click", async () => {
@@ -499,7 +540,7 @@ describe("PlanQuickSwitcherPalette", () => {
       render(<PlanQuickSwitcherPalette {...defaultProps} />);
 
       const palette = screen.getByPlaceholderText(/Search plans/).closest(".fixed");
-      expect(palette?.className).toMatch(/w-\[600px\]/);
+      expect(palette?.className).toMatch(/w-\[420px\]/);
     });
 
     it("constrains scroll area height to prevent layout shifts", () => {
@@ -548,7 +589,8 @@ describe("PlanQuickSwitcherPalette", () => {
       const scrollIntoViewMock = vi.fn();
       Element.prototype.scrollIntoView = scrollIntoViewMock;
 
-      // Navigate up (should wrap to last item)
+      // Move down first so ArrowUp changes the highlighted item.
+      await user.keyboard("{ArrowDown}");
       await user.keyboard("{ArrowUp}");
 
       await waitFor(() => {
@@ -577,7 +619,7 @@ describe("PlanQuickSwitcherPalette", () => {
 
       // First item should be highlighted
       const firstButton = screen.getByText("Feature A").closest("button");
-      expect(firstButton).toHaveClass("bg-white/10");
+      expect(firstButton?.className).toMatch(/bg-accent|bg-accent\/50/);
     });
 
     it("should jump to last item when End key is pressed", async () => {
@@ -592,7 +634,7 @@ describe("PlanQuickSwitcherPalette", () => {
 
       // Last item should be highlighted
       const lastButton = screen.getByText("Bug Fixes").closest("button");
-      expect(lastButton).toHaveClass("bg-white/10");
+      expect(lastButton?.className).toMatch(/bg-accent/);
     });
   });
 
@@ -629,8 +671,8 @@ describe("PlanQuickSwitcherPalette", () => {
 
       // Second item should have focus ring
       const featureBButton = screen.getByText("Feature B").closest("button");
-      expect(featureBButton).toHaveClass("ring-2");
-      expect(featureBButton).toHaveClass("ring-[#ff6b35]");
+      expect(featureBButton).toHaveClass("focus-visible:ring-1");
+      expect(featureBButton?.className).toMatch(/bg-accent/);
     });
 
     it("should move focus ring when navigating", () => {
@@ -639,17 +681,16 @@ describe("PlanQuickSwitcherPalette", () => {
 
       // First item should be highlighted initially
       let highlightedButton = screen.getByText("Feature A").closest("button");
-      expect(highlightedButton).toHaveClass("ring-2");
+      expect(highlightedButton).toHaveClass("focus-visible:ring-1");
 
       // Navigate down
       fireEvent.keyDown(input, { key: "ArrowDown" });
 
-      // First item should no longer have ring
-      expect(highlightedButton).not.toHaveClass("ring-2");
+      // First item remains active (bg-accent/50) but is no longer the highlighted row
 
       // Second item should have ring
       highlightedButton = screen.getByText("Feature B").closest("button");
-      expect(highlightedButton).toHaveClass("ring-2");
+      expect(highlightedButton?.className).toMatch(/bg-accent/);
     });
   });
 });

@@ -45,7 +45,7 @@ export const GROUP_PADDING = 12;
 export const HEADER_HEIGHT = 48;
 
 /** Minimum group dimensions (expanded state — collapsed uses COLLAPSED_GROUP_WIDTH in groupBuilder) */
-export const MIN_GROUP_WIDTH = 560;
+export const MIN_GROUP_WIDTH = 320;
 export const MIN_GROUP_HEIGHT = 100;
 
 // ============================================================================
@@ -150,7 +150,9 @@ export function calculateGroupBoundingBoxes(
 export function expandBoundingBox(
   bbox: BoundingBox,
   padding: number = GROUP_PADDING,
-  headerHeight: number = HEADER_HEIGHT
+  headerHeight: number = HEADER_HEIGHT,
+  minWidth: number = MIN_GROUP_WIDTH,
+  minHeight: number = MIN_GROUP_HEIGHT
 ): BoundingBox {
   let minX = bbox.minX - padding;
   const minY = bbox.minY - padding - headerHeight;
@@ -158,7 +160,7 @@ export function expandBoundingBox(
   const maxY = bbox.maxY + padding;
 
   const naturalWidth = maxX - minX;
-  const width = Math.max(naturalWidth, MIN_GROUP_WIDTH);
+  const width = Math.max(naturalWidth, minWidth);
 
   // Center content horizontally if min width is enforced
   if (width > naturalWidth) {
@@ -173,7 +175,7 @@ export function expandBoundingBox(
     maxX,
     maxY,
     width,
-    height: Math.max(maxY - minY, MIN_GROUP_HEIGHT),
+    height: Math.max(maxY - minY, minHeight),
   };
 }
 

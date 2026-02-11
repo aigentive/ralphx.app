@@ -137,7 +137,7 @@ pub use plan_branch_commands::{
 };
 // Plan commands (Active plan management)
 pub use plan_commands::{
-    clear_active_plan, get_active_plan, set_active_plan,
+    clear_active_plan, get_active_plan, list_plan_selector_candidates, set_active_plan,
 };
 // Git commands (Phase 66 - Per-task branch isolation)
 pub use git_commands::{

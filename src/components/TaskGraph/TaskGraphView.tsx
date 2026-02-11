@@ -305,6 +305,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   const overlayCloseTimeoutRef = useRef<number | null>(null);
   const pendingTierAutoCenterRef = useRef<string | null>(null);
   const lastAutoCenteredPlanRef = useRef<string | null>(null);
+  const previousActivePlanIdRef = useRef<string | null>(activePlanId);
   const expandedPlanIdRef = useRef<string | null>(null);
   const initialFitDoneRef = useRef(false);
 
@@ -971,10 +972,38 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     handleMarkResolved,
   ]);
 
-  // Layout config with per-node mode lookup for mixed dimensions
-  const layoutConfig = useMemo(() => ({
-    nodeModeLookup,
-  }), [nodeModeLookup]);
+  // Layout config with per-node mode lookup for mixed dimensions.
+  // Tighten spacing automatically for dense graphs to avoid an over-wide canvas.
+  const layoutConfig = useMemo(() => {
+    const taskCount = filteredGraphData.nodes.length;
+
+    const tierCounts = new Map<number, number>();
+    for (const node of filteredGraphData.nodes) {
+      const current = tierCounts.get(node.tier) ?? 0;
+      tierCounts.set(node.tier, current + 1);
+    }
+    const maxTierBreadth = Math.max(0, ...tierCounts.values());
+
+    const groupedTaskIds = new Set(filteredGraphData.planGroups.flatMap((group) => group.taskIds));
+    const ungroupedCount = filteredGraphData.nodes.filter((node) => !groupedTaskIds.has(node.taskId)).length;
+    const maxPlanGroupSize = Math.max(
+      0,
+      ...filteredGraphData.planGroups.map((group) => group.taskIds.length),
+      ungroupedCount
+    );
+
+    const isDenseGraph =
+      taskCount >= 20 || maxTierBreadth >= 4 || maxPlanGroupSize >= 12 || hasAnyAutoCompact;
+    const isUltraDenseGraph = taskCount >= 55 || maxTierBreadth >= 8 || maxPlanGroupSize >= 24;
+
+    return {
+      nodeModeLookup,
+      nodesep: isUltraDenseGraph ? 16 : isDenseGraph ? 24 : 40,
+      ranksep: isUltraDenseGraph ? 42 : isDenseGraph ? 56 : 72,
+      marginx: isUltraDenseGraph ? 10 : isDenseGraph ? 16 : 24,
+      marginy: isUltraDenseGraph ? 14 : isDenseGraph ? 22 : 32,
+    };
+  }, [filteredGraphData.nodes, filteredGraphData.planGroups, hasAnyAutoCompact, nodeModeLookup]);
 
   // Plan deletion handler (Backspace on plan group or Delete button in settings)
   const handleDeletePlan = useCallback(
@@ -1122,6 +1151,29 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     onDeleteTask: handleDeleteTask,
     keyboardNavigationEnabled: !battleModeActive,
   });
+
+  const activePlanArtifactId = useMemo(
+    () =>
+      filteredGraphData.planGroups.find((group) => group.sessionId === activePlanId)?.planArtifactId ?? null,
+    [activePlanId, filteredGraphData.planGroups]
+  );
+
+  // Re-center when active plan switches in Graph using the same selection/focus API path
+  // used elsewhere (select -> focusSelectionInView), preserving center+zoom behavior.
+  useEffect(() => {
+    if (!activePlanId) {
+      previousActivePlanIdRef.current = null;
+      return;
+    }
+    if (!initialFitDoneRef.current || isLoading || !graphReady) return;
+    if (!activePlanArtifactId) return;
+    if (previousActivePlanIdRef.current === activePlanId) return;
+
+    previousActivePlanIdRef.current = activePlanId;
+    lastAutoCenteredPlanRef.current = null;
+    pendingTierAutoCenterRef.current = null;
+    select({ kind: "planGroup", id: activePlanArtifactId });
+  }, [activePlanArtifactId, activePlanId, graphReady, isLoading, select]);
 
   // Compute visible nodes and edges (controlled mode).
   // React Flow v12 StoreUpdater triggers setNodes() whenever the nodes array
@@ -1422,10 +1474,12 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
           isCompact={isNavCompact}
         />
 
-        {/* Plan selector control */}
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
-          <PlanSelectorInline projectId={projectId} source="graph_inline" />
-        </div>
+        {/* Plan selector control (only when a plan is active) */}
+        {activePlanId && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
+            <PlanSelectorInline projectId={projectId} source="graph_inline" />
+          </div>
+        )}
 
         {/* Show empty state when no plan is selected */}
         {!activePlanId ? (

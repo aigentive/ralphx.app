@@ -78,6 +78,28 @@ vi.mock("@/providers/EventProvider", () => ({
   }),
 }));
 
+// Mock plan store so TaskBoard has an active plan selected
+vi.mock("@/stores/planStore", () => ({
+  usePlanStore: (() => {
+    const state = {
+      activePlanByProject: { p1: "session-1" },
+      planCandidates: [],
+      isLoading: false,
+      error: null,
+      loadActivePlan: vi.fn(),
+      setActivePlan: vi.fn(),
+      clearActivePlan: vi.fn(),
+      loadCandidates: vi.fn(),
+    };
+    const usePlanStore = vi.fn((selector) =>
+      selector ? selector(state) : state
+    );
+    (usePlanStore as unknown as { getState: () => typeof state }).getState = () =>
+      state;
+    return usePlanStore;
+  })(),
+}));
+
 import { useInfiniteTasksQuery } from "@/hooks/useInfiniteTasksQuery";
 import { useWorkflows } from "@/hooks/useWorkflows";
 

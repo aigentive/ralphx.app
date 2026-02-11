@@ -103,6 +103,7 @@ describe("useTaskSearch", () => {
         "project-1",
         "auth",
         false,
+        undefined,
       ]);
 
       const paramsWithArchived = {
@@ -116,6 +117,7 @@ describe("useTaskSearch", () => {
         "project-1",
         "auth",
         true,
+        undefined,
       ]);
     });
   });
@@ -139,7 +141,8 @@ describe("useTaskSearch", () => {
       expect(api.tasks.search).toHaveBeenCalledWith(
         "project-1",
         "auth",
-        false
+        false,
+        undefined
       );
       expect(result.current.data).toEqual([mockTask1, mockTask2]);
     });
@@ -193,7 +196,7 @@ describe("useTaskSearch", () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-      expect(api.tasks.search).toHaveBeenCalledWith("project-1", "ab", false);
+      expect(api.tasks.search).toHaveBeenCalledWith("project-1", "ab", false, undefined);
       expect(result.current.data).toEqual([mockTask1]);
     });
 
@@ -215,7 +218,7 @@ describe("useTaskSearch", () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-      expect(api.tasks.search).toHaveBeenCalledWith("project-1", "auth", true);
+      expect(api.tasks.search).toHaveBeenCalledWith("project-1", "auth", true, undefined);
       expect(result.current.data).toEqual([mockTask1, mockArchivedTask]);
     });
 
@@ -237,7 +240,8 @@ describe("useTaskSearch", () => {
       expect(api.tasks.search).toHaveBeenCalledWith(
         "project-1",
         "nonexistent",
-        false
+        false,
+        undefined
       );
       expect(result.current.data).toEqual([]);
     });
@@ -305,7 +309,8 @@ describe("useTaskSearch", () => {
       expect(api.tasks.search).toHaveBeenCalledWith(
         "project-1",
         "dashboard",
-        false
+        false,
+        undefined
       );
       expect(result.current.data).toEqual([mockTask2]);
     });
@@ -357,7 +362,8 @@ describe("useTaskSearch", () => {
       expect(api.tasks.search).toHaveBeenCalledWith(
         "project-1",
         "AUTH",
-        false
+        false,
+        undefined
       );
       expect(result.current.data).toEqual([mockTask1, mockTask2]);
     });

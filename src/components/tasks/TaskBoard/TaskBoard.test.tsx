@@ -35,8 +35,8 @@ vi.mock("@/lib/tauri", () => ({
 
 // Mock planStore
 vi.mock("@/stores/planStore", () => ({
-  usePlanStore: vi.fn((selector) => {
-    const mockState = {
+  usePlanStore: (() => {
+    const state = {
       activePlanByProject: { "p1": "session-1" },
       planCandidates: [],
       isLoading: false,
@@ -46,8 +46,13 @@ vi.mock("@/stores/planStore", () => ({
       clearActivePlan: vi.fn(),
       loadCandidates: vi.fn(),
     };
-    return selector ? selector(mockState) : mockState;
-  }),
+    const usePlanStore = vi.fn((selector) =>
+      selector ? selector(state) : state
+    );
+    (usePlanStore as unknown as { getState: () => typeof state }).getState = () =>
+      state;
+    return usePlanStore;
+  })(),
 }));
 
 // Mock workflows API

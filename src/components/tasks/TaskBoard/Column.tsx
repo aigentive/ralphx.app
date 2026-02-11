@@ -90,6 +90,13 @@ function TaskSkeleton() {
   );
 }
 
+function isCompletedDoneGroup(group: StateGroup): boolean {
+  return (
+    group.id === "completed" ||
+    group.statuses.some((status) => status === "approved" || status === "merged")
+  );
+}
+
 export function Column({ column, projectId, showArchived, showMergeTasks, isOver, isInvalid, onTaskSelect, hiddenTaskId, searchTasks, matchCount, groups, isLast = false, ideationSessionId }: ColumnProps) {
   const { setNodeRef } = useDroppable({ id: column.id });
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -187,6 +194,30 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
 
     return grouped;
   }, [groups, tasks]);
+
+  // UX guard:
+  // If Done has only completed tasks visible, force that subgroup open even if it was persisted collapsed.
+  useEffect(() => {
+    if (!groups || !tasksByGroup || column.mapsTo !== "approved") return;
+
+    const nonEmptyGroups = groups.filter((group) => {
+      const groupTasks = tasksByGroup.get(group.id) || [];
+      return groupTasks.length > 0;
+    });
+
+    if (nonEmptyGroups.length !== 1) return;
+
+    const onlyVisibleGroup = nonEmptyGroups[0];
+    if (!onlyVisibleGroup || !isCompletedDoneGroup(onlyVisibleGroup)) return;
+
+    setCollapsedGroups((prev) => {
+      if (!prev.has(onlyVisibleGroup.id)) return prev;
+      const next = new Set(prev);
+      next.delete(onlyVisibleGroup.id);
+      saveCollapsedGroups(column.id, next);
+      return next;
+    });
+  }, [groups, tasksByGroup, column.mapsTo, column.id]);
 
   // Infinite scroll with IntersectionObserver
   useEffect(() => {

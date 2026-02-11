@@ -8,7 +8,7 @@
  * - Premium Apple-grade typography and spacing
  */
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -28,7 +28,7 @@ import { TaskCard } from "./TaskCard";
 import { useUiStore } from "@/stores/uiStore";
 import { usePlanStore } from "@/stores/planStore";
 import { Toggle } from "@/components/ui/toggle";
-import { Archive, GitMerge, FileText } from "lucide-react";
+import { Archive, GitMerge, FileText, Sparkles } from "lucide-react";
 import { api } from "@/lib/tauri";
 import { useTaskSearch } from "@/hooks/useTaskSearch";
 import { TaskSearchBar } from "../TaskSearchBar";
@@ -82,6 +82,23 @@ export function TaskBoard({ projectId, ideationSessionId: ideationSessionIdProp 
   const setShowMergeTasks = useUiStore((s) => s.setShowMergeTasks);
   const boardSearchQuery = useUiStore((s) => s.boardSearchQuery);
   const setBoardSearchQuery = useUiStore((s) => s.setBoardSearchQuery);
+  const kanbanChatVisible = useUiStore((s) => s.chatVisibleByView.kanban);
+  const setChatVisible = useUiStore((s) => s.setChatVisible);
+  const previousActivePlanRef = useRef<string | null>(activePlanId);
+
+  // Auto-open Kanban chat when switching to a different active plan.
+  useEffect(() => {
+    const previousActivePlanId = previousActivePlanRef.current;
+    const activePlanChanged =
+      activePlanId !== null &&
+      activePlanId !== previousActivePlanId;
+
+    if (activePlanChanged && !kanbanChatVisible) {
+      setChatVisible("kanban", true);
+    }
+
+    previousActivePlanRef.current = activePlanId;
+  }, [activePlanId, kanbanChatVisible, setChatVisible]);
 
   // Fetch archived count to show/hide the toggle
   const { data: archivedCount = 0 } = useQuery({
@@ -403,8 +420,10 @@ export function TaskBoard({ projectId, ideationSessionId: ideationSessionIdProp 
               </div>
             )}
 
-            {/* Plan Selector - compact mode */}
-            <PlanSelectorInline projectId={projectId} compact source="kanban_inline" />
+            {/* Plan Selector - compact mode (only when a plan is already selected) */}
+            {activePlanId && (
+              <PlanSelectorInline projectId={projectId} compact source="kanban_inline" />
+            )}
 
             {/* Show Archived toggle - simple Tahoe style */}
             {archivedCount > 0 && (
@@ -467,7 +486,36 @@ export function TaskBoard({ projectId, ideationSessionId: ideationSessionIdProp 
           {showNoPlanState ? (
             <div className="flex-1 flex items-center justify-center">
               <div className="flex flex-col items-center justify-center py-24 max-w-md text-center">
-                <FileText className="h-16 w-16 text-gray-400 mb-4" />
+                <div className="relative mb-5 h-24 w-32">
+                  <div
+                    className="absolute left-2 top-5 h-14 w-20 rounded-xl"
+                    style={{
+                      background: "hsla(220 10% 100% / 0.03)",
+                      border: "1px solid hsla(220 10% 100% / 0.08)",
+                    }}
+                  />
+                  <div
+                    className="absolute right-2 top-5 h-14 w-20 rounded-xl"
+                    style={{
+                      background: "hsla(220 10% 100% / 0.03)",
+                      border: "1px solid hsla(220 10% 100% / 0.08)",
+                    }}
+                  />
+                  <div
+                    className="absolute left-1/2 top-1 -translate-x-1/2 h-20 w-24 rounded-2xl flex items-center justify-center"
+                    style={{
+                      background:
+                        "linear-gradient(160deg, hsla(14 100% 60% / 0.18), hsla(45 93% 50% / 0.1))",
+                      border: "1px solid hsla(14 100% 60% / 0.3)",
+                      boxShadow: "0 12px 30px hsla(14 100% 60% / 0.18)",
+                    }}
+                  >
+                    <FileText className="h-8 w-8" style={{ color: "hsl(14 100% 62%)" }} />
+                  </div>
+                  <div className="absolute right-1 top-0">
+                    <Sparkles className="h-4 w-4" style={{ color: "hsl(45 93% 60%)" }} />
+                  </div>
+                </div>
                 <h3 className="text-xl font-medium mb-2">No plan selected</h3>
                 <p className="text-gray-400 mb-6">
                   Select a plan to view work on the Kanban board.
