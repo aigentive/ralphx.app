@@ -1,6 +1,7 @@
 // In-memory repository implementations for testing
 // These implementations use HashMap/RwLock for thread-safe in-memory storage
 
+pub mod memory_active_plan_repo;
 pub mod memory_activity_event_repo;
 pub mod memory_app_state_repo;
 pub mod memory_agent_profile_repo;
@@ -31,6 +32,7 @@ pub mod memory_task_step_repo;
 pub mod memory_workflow_repo;
 
 // Re-exports for convenience
+pub use memory_active_plan_repo::MemoryActivePlanRepository;
 pub use memory_activity_event_repo::MemoryActivityEventRepository;
 pub use memory_app_state_repo::MemoryAppStateRepository;
 pub use memory_agent_profile_repo::MemoryAgentProfileRepository;
