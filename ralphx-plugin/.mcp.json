@@ -2,7 +2,7 @@
   "mcpServers": {
     "ralphx": {
       "args": [
-        "/Users/lazabogdan/Code/ralphx/ralphx-plugin/ralphx-mcp-server/build/index.js",
+        "/Users/admin/Documents/Github/ralphx/ralphx-plugin/ralphx-mcp-server/build/index.js",
         "--agent-type",
         "ralphx-worker"
       ],
