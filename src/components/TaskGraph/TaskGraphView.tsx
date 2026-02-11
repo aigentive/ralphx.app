@@ -112,8 +112,7 @@ function applyGraphFilters(
   filters: GraphFilters
 ): { nodes: TaskGraphNode[]; edges: TaskGraphEdge[]; planGroups: PlanGroupInfo[] } {
   // Short-circuit: if no client-side filters are active, return original references
-  const noFilters = filters.statuses.length === 0
-    && filters.planIds.length === 0;
+  const noFilters = filters.statuses.length === 0;
   if (noFilters) {
     return { nodes, edges, planGroups };
   }
@@ -125,21 +124,6 @@ function applyGraphFilters(
     // Check status filter (empty = show all)
     if (filters.statuses.length > 0 && !filters.statuses.includes(status)) {
       return false;
-    }
-
-    // Check plan filter (empty = show all)
-    // Use plan group's authoritative taskIds list instead of node.planArtifactId
-    // This handles cases where session.plan_artifact_id differs from proposal.plan_artifact_id
-    if (filters.planIds.length > 0) {
-      const selectedPlanTaskIds = new Set(
-        planGroups
-          .filter((g) => filters.planIds.includes(g.planArtifactId))
-          .flatMap((g) => g.taskIds)
-      );
-
-      if (!selectedPlanTaskIds.has(node.taskId)) {
-        return false;
-      }
     }
 
     return true;
@@ -1397,8 +1381,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
 
   // Check if client-side filters might hide tasks (showArchived is a backend filter, not counted here)
   const hasActiveFilters =
-    filters.statuses.length > 0 ||
-    filters.planIds.length > 0;
+    filters.statuses.length > 0;
 
   return (
     <>
@@ -1436,7 +1419,6 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
           isAutoCompact={hasAnyAutoCompact && nodeModeOverride !== "compact"}
           grouping={grouping}
           onGroupingChange={setGrouping}
-          planGroups={graphData?.planGroups ?? []}
           isCompact={isNavCompact}
         />
 

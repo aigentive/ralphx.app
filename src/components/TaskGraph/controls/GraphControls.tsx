@@ -15,7 +15,6 @@ import { memo, useState, useCallback } from "react";
 import {
   Filter,
   ChevronDown,
-  LayoutGrid,
   ArrowDownFromLine,
   ArrowRightFromLine,
   Layers,
@@ -38,7 +37,6 @@ import {
   getNodeStyle,
   type StatusCategory,
 } from "../nodes/nodeStyles";
-import type { PlanGroupInfo } from "@/api/task-graph.types";
 import type { InternalStatus } from "@/types/status";
 
 // ============================================================================
@@ -56,8 +54,6 @@ export type GroupingState = {
 export interface GraphFilters {
   /** Selected status values (empty = show all) */
   statuses: InternalStatus[];
-  /** Selected plan artifact IDs (empty = show all) */
-  planIds: string[];
   /** Whether to include archived tasks (fetched from backend) */
   showArchived: boolean;
 }
@@ -83,8 +79,6 @@ export interface GraphControlsProps {
   onNodeModeChange: (mode: NodeMode) => void;
   /** Whether any group has auto-compact active (8+ tasks in group) */
   isAutoCompact: boolean;
-  /** Available plan groups for filtering */
-  planGroups: PlanGroupInfo[];
   /** Additional className for the container */
   className?: string;
 }
@@ -262,88 +256,6 @@ const StatusFilterContent = memo(function StatusFilterContent({
   );
 });
 
-interface PlanFilterContentProps {
-  filters: GraphFilters;
-  onFiltersChange: (filters: GraphFilters) => void;
-  planGroups: PlanGroupInfo[];
-}
-
-const PlanFilterContent = memo(function PlanFilterContent({
-  filters,
-  onFiltersChange,
-  planGroups,
-}: PlanFilterContentProps) {
-  const handlePlanToggle = useCallback(
-    (planId: string) => {
-      const newPlanIds = filters.planIds.includes(planId)
-        ? filters.planIds.filter((id) => id !== planId)
-        : [...filters.planIds, planId];
-      onFiltersChange({ ...filters, planIds: newPlanIds });
-    },
-    [filters, onFiltersChange]
-  );
-
-  const handleClearAll = useCallback(() => {
-    onFiltersChange({ ...filters, planIds: [] });
-  }, [filters, onFiltersChange]);
-
-  if (planGroups.length === 0) {
-    return (
-      <div className="py-4 text-center">
-        <p className="text-xs text-[hsl(220_10%_50%)]">No plans available</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      {/* Clear all button */}
-      {filters.planIds.length > 0 && (
-        <div className="flex justify-end">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleClearAll}
-            className="h-6 px-2 text-xs text-[hsl(220_10%_60%)] hover:text-[hsl(220_10%_80%)]"
-          >
-            <X className="w-3 h-3 mr-1" />
-            Clear all
-          </Button>
-        </div>
-      )}
-
-      {/* Plan items */}
-      <div className="space-y-1 max-h-[200px] overflow-y-auto">
-        {planGroups.map((plan) => {
-          const isSelected = filters.planIds.includes(plan.planArtifactId);
-          const taskCount = plan.taskIds.length;
-          const completedCount = plan.statusSummary.completed;
-
-          return (
-            <label
-              key={plan.planArtifactId}
-              className="flex items-center gap-2 py-1.5 px-2 cursor-pointer hover:bg-[hsl(220_10%_15%)] rounded transition-colors"
-            >
-              <Checkbox
-                checked={isSelected}
-                onCheckedChange={() => handlePlanToggle(plan.planArtifactId)}
-                className="h-3.5 w-3.5"
-              />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-[hsl(220_10%_80%)] truncate">
-                  {plan.sessionTitle ?? "Unnamed Plan"}
-                </p>
-                <p className="text-[10px] text-[hsl(220_10%_50%)]">
-                  {completedCount}/{taskCount} tasks
-                </p>
-              </div>
-            </label>
-          );
-        })}
-      </div>
-    </div>
-  );
-});
 
 interface GroupingDropdownProps {
   grouping: GroupingState;
@@ -438,14 +350,11 @@ function GraphControlsComponent({
   nodeMode,
   onNodeModeChange,
   isAutoCompact,
-  planGroups,
   className = "",
 }: GraphControlsProps) {
   const [statusFilterOpen, setStatusFilterOpen] = useState(false);
-  const [planFilterOpen, setPlanFilterOpen] = useState(false);
 
   const activeStatusCount = filters.statuses.length;
-  const activePlanCount = filters.planIds.length;
 
   const handleLayoutToggle = useCallback(() => {
     onLayoutDirectionChange(layoutDirection === "TB" ? "LR" : "TB");
@@ -493,41 +402,6 @@ function GraphControlsComponent({
           <StatusFilterContent filters={filters} onFiltersChange={onFiltersChange} />
         </PopoverContent>
       </Popover>
-
-      {/* Plan Filter */}
-      {planGroups.length > 0 && (
-        <Popover open={planFilterOpen} onOpenChange={setPlanFilterOpen}>
-          <PopoverTrigger asChild>
-            <button
-              className={cn(
-                "flex items-center gap-1.5 px-2 py-1.5 rounded text-xs transition-colors",
-                "bg-[hsl(220_10%_12%)] border border-[hsl(220_10%_25%)]",
-                "hover:bg-[hsl(220_10%_15%)] hover:border-[hsl(220_10%_30%)]",
-                activePlanCount > 0 && "border-[hsl(14_100%_55%)]"
-              )}
-            >
-              <LayoutGrid className="w-3.5 h-3.5 text-[hsl(220_10%_50%)]" />
-              <span className="text-[hsl(220_10%_70%)]">
-                Plans
-                {activePlanCount > 0 && (
-                  <span className="ml-1 text-[hsl(14_100%_55%)]">({activePlanCount})</span>
-                )}
-              </span>
-              <ChevronDown className="w-3 h-3 text-[hsl(220_10%_50%)]" />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent
-            className="w-56 p-3 bg-[hsl(220_10%_10%)] border-[hsl(220_10%_25%)]"
-            align="start"
-          >
-            <PlanFilterContent
-              filters={filters}
-              onFiltersChange={onFiltersChange}
-              planGroups={planGroups}
-            />
-          </PopoverContent>
-        </Popover>
-      )}
 
       {/* Separator */}
       <div className="h-5 w-px bg-[hsl(220_10%_25%)]" />
@@ -600,7 +474,6 @@ export const GraphControls = memo(GraphControlsComponent);
  */
 export const DEFAULT_GRAPH_FILTERS: GraphFilters = {
   statuses: [],
-  planIds: [],
   showArchived: false,
 };
 
