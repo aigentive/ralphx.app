@@ -1148,6 +1148,7 @@ fn take_skip_validation_flag(task: &mut Task) -> bool {
 
 /// Format validation warnings as a JSON metadata string for Warn mode.
 /// Stores the log but allows merge to proceed.
+#[allow(dead_code)] // TEMP: validation temporarily disabled
 fn format_validation_warn_metadata(
     log: &[ValidationLogEntry],
     source_branch: &str,
@@ -1169,6 +1170,7 @@ fn format_validation_warn_metadata(
 ///
 /// Note: Caching is effective in worktree mode. In local mode, rebase rewrites the source
 /// branch SHA on each retry, so cache hits are rare.
+#[allow(dead_code)] // TEMP: validation temporarily disabled
 fn extract_cached_validation(task: &Task, current_sha: &str) -> Option<Vec<ValidationLogEntry>> {
     let meta_str = task.metadata.as_ref()?;
     let val: serde_json::Value = serde_json::from_str(meta_str).ok()?;
@@ -1904,6 +1906,7 @@ impl<'a> super::TransitionHandler<'a> {
                 .event_emitter
                 .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
                 .await;
+            self.trigger_deferred_merge_retry("pending_merge_to_merge_incomplete");
 
             return;
         }
@@ -2374,6 +2377,7 @@ impl<'a> super::TransitionHandler<'a> {
                                     "merge_incomplete",
                                 )
                                 .await;
+                            self.trigger_deferred_merge_retry("complete_merge_internal_failed_in_repo");
                         } else {
                             self.post_merge_cleanup(
                                 task_id_str,
@@ -2629,6 +2633,7 @@ impl<'a> super::TransitionHandler<'a> {
                                     "merge_incomplete",
                                 )
                                 .await;
+                            self.trigger_deferred_merge_retry("merge_failed_in_repo_non_deferrable");
                         }
                     }
                 }
@@ -2735,6 +2740,7 @@ impl<'a> super::TransitionHandler<'a> {
                                     "merge_incomplete",
                                 )
                                 .await;
+                            self.trigger_deferred_merge_retry("complete_merge_internal_failed_worktree");
                         } else {
                             self.post_merge_cleanup(
                                 task_id_str,
@@ -2997,6 +3003,7 @@ impl<'a> super::TransitionHandler<'a> {
                                     "merge_incomplete",
                                 )
                                 .await;
+                            self.trigger_deferred_merge_retry("merge_failed_worktree_non_deferrable");
                         }
                     }
                 }
@@ -3076,6 +3083,7 @@ impl<'a> super::TransitionHandler<'a> {
                             .event_emitter
                             .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
                             .await;
+                        self.trigger_deferred_merge_retry("complete_merge_internal_failed_local");
                     } else {
                         self.post_merge_cleanup(task_id_str, &task_id, repo_path, plan_branch_repo)
                             .await;
@@ -3318,6 +3326,7 @@ impl<'a> super::TransitionHandler<'a> {
                             .event_emitter
                             .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
                             .await;
+                        self.trigger_deferred_merge_retry("merge_failed_local_non_deferrable");
                     }
                 }
             }
@@ -3406,6 +3415,27 @@ impl<'a> super::TransitionHandler<'a> {
         }
     }
 
+    /// Trigger retry for deferred merges in the same project.
+    ///
+    /// This is needed for direct PendingMerge -> MergeIncomplete fallbacks that don't
+    /// pass through a formal state-machine on_exit path.
+    fn trigger_deferred_merge_retry(&self, reason: &'static str) {
+        if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
+            let scheduler = Arc::clone(scheduler);
+            let project_id = self.machine.context.project_id.clone();
+            tracing::info!(
+                task_id = %self.machine.context.task_id,
+                project_id = %project_id,
+                reason = reason,
+                "Triggering deferred merge retry"
+            );
+            tokio::spawn(async move {
+                tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
+                scheduler.try_retry_deferred_merges(&project_id).await;
+            });
+        }
+    }
+
     /// Handle post-merge validation failure: revert the merge commit, then transition
     /// to MergeIncomplete with error metadata.
     ///
@@ -3422,6 +3452,7 @@ impl<'a> super::TransitionHandler<'a> {
     /// * `merge_path` - Path where the merge happened (for git reset)
     /// * `mode_label` - Label for log messages (e.g., "in-repo", "worktree", "local")
     /// * `validation_mode` - Current validation mode (AutoFix spawns agent, Block reverts)
+    #[allow(dead_code)] // TEMP: validation temporarily disabled
     async fn handle_validation_failure(
         &self,
         task: &mut Task,
