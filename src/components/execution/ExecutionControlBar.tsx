@@ -11,7 +11,7 @@
  */
 
 import { Pause, Play, Square, Loader2, Swords } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -112,6 +112,7 @@ export function ExecutionControlBar({
   const statusState = getStatusState(runningCount, isPaused);
   const isRunning = runningCount > 0 && !isPaused;
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
+  const statusDotRef = useRef<HTMLDivElement>(null);
 
   // Responsive breakpoint tracking
   const [breakpoint, setBreakpoint] = useState<"wide" | "medium" | "narrow">("wide");
@@ -171,8 +172,9 @@ export function ExecutionControlBar({
           className="flex items-center gap-4"
           aria-label={`${runningCount} tasks running out of ${maxConcurrent}, ${queuedCount} queued, ${mergingCount} merging`}
         >
-          {/* Animated Status Indicator */}
+          {/* Animated Status Indicator (anchor for all popovers) */}
           <div
+            ref={statusDotRef}
             data-testid="status-indicator"
             className={cn(
               "w-2 h-2 rounded-full transition-colors duration-200",
@@ -191,6 +193,7 @@ export function ExecutionControlBar({
               onPauseProcess={onPauseProcess}
               onStopProcess={onStopProcess}
               onOpenSettings={onOpenSettings}
+              anchorRef={statusDotRef}
             >
               <button
                 data-testid="running-count"
@@ -237,6 +240,7 @@ export function ExecutionControlBar({
             <QueuedTasksPopover
               projectId={projectId}
               queuedCount={queuedCount}
+              anchorRef={statusDotRef}
             >
               <button
                 data-testid="queued-count"
@@ -280,6 +284,7 @@ export function ExecutionControlBar({
               active={mergePipelineData.active}
               waiting={mergePipelineData.waiting}
               needsAttention={mergePipelineData.needsAttention}
+              anchorRef={statusDotRef}
             >
               <button
                 data-testid="merging-count"

@@ -1,13 +1,12 @@
 /**
- * QueuedTasksPopover - Shows tasks waiting in the ready queue
+ * QueuedTasksPopover - Compact queued tasks list
  *
- * Displays ordered list of tasks in "ready" status waiting for execution slots.
- * Tasks are ordered by scheduling priority (priority score desc, then created_at asc).
+ * Dense row-based layout showing tasks waiting for execution slots.
  */
 
-import { Info } from "lucide-react";
 import {
   Popover,
+  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
@@ -21,44 +20,44 @@ interface QueuedTasksPopoverProps {
   queuedCount: number;
   /** Children to use as trigger (e.g., "Queued: 5" text) */
   children: React.ReactNode;
+  /** Optional anchor ref for popover positioning (aligns to status indicator) */
+  anchorRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 export function QueuedTasksPopover({
   projectId,
   queuedCount,
   children,
+  anchorRef,
 }: QueuedTasksPopoverProps) {
   const { data: queuedTasks, isLoading } = useQueuedTasks(projectId);
 
   return (
     <Popover>
+      {anchorRef && <PopoverAnchor virtualRef={anchorRef as React.RefObject<HTMLDivElement>} />}
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent
         side="top"
         align="start"
         className="w-[400px] p-0"
         style={{
-          background: "hsla(220 10% 10% / 0.95)",
-          backdropFilter: "blur(20px) saturate(180%)",
-          WebkitBackdropFilter: "blur(20px) saturate(180%)",
+          backgroundColor: "hsl(220 10% 11%)",
           border: "1px solid hsla(220 20% 100% / 0.08)",
           borderRadius: "10px",
-          boxShadow: `
-            0 4px 16px hsla(220 20% 0% / 0.4),
-            0 12px 32px hsla(220 20% 0% / 0.3)
-          `,
+          boxShadow:
+            "0 4px 16px hsla(220 20% 0% / 0.4), 0 12px 32px hsla(220 20% 0% / 0.3)",
         }}
       >
         {/* Header */}
         <div
-          className="px-4 py-3 border-b"
+          className="flex items-center justify-between px-3 py-2.5"
           style={{
-            borderColor: "hsl(220 10% 18%)",
+            borderBottom: "1px solid hsla(220 20% 100% / 0.06)",
           }}
         >
           <h3
-            className="text-sm font-semibold"
-            style={{ color: "hsl(220 10% 90%)" }}
+            className="text-xs font-semibold"
+            style={{ color: "hsl(220 10% 80%)" }}
           >
             Queued Tasks ({queuedCount})
           </h3>
@@ -66,24 +65,23 @@ export function QueuedTasksPopover({
 
         {/* Task List */}
         <div
-          className="max-h-[400px] overflow-y-auto px-2 py-2"
+          className="max-h-[320px] overflow-y-auto p-1.5"
           style={{
-            /* Custom scrollbar for macOS Tahoe theme */
             scrollbarWidth: "thin",
-            scrollbarColor: "hsl(220 10% 25%) transparent",
+            scrollbarColor: "hsla(220 10% 100% / 0.1) transparent",
           }}
         >
           {isLoading ? (
             <div
-              className="text-sm text-center py-6"
-              style={{ color: "hsl(220 10% 55%)" }}
+              className="py-6 text-center text-xs"
+              style={{ color: "hsl(220 10% 42%)" }}
             >
               Loading...
             </div>
           ) : !queuedTasks || queuedTasks.length === 0 ? (
             <div
-              className="text-sm text-center py-6"
-              style={{ color: "hsl(220 10% 55%)" }}
+              className="py-6 text-center text-xs"
+              style={{ color: "hsl(220 10% 42%)" }}
             >
               No tasks queued
             </div>
@@ -98,27 +96,15 @@ export function QueuedTasksPopover({
           )}
         </div>
 
-        {/* Info Footer */}
+        {/* Footer */}
         <div
-          className="px-4 py-3 border-t"
+          className="px-3 py-2 text-[11px]"
           style={{
-            borderColor: "hsl(220 10% 18%)",
-            backgroundColor: "hsl(220 10% 8%)",
+            borderTop: "1px solid hsla(220 20% 100% / 0.06)",
+            color: "hsl(220 10% 42%)",
           }}
         >
-          <div className="flex items-start gap-2">
-            <Info
-              className="w-4 h-4 shrink-0 mt-0.5"
-              style={{ color: "hsl(220 10% 45%)" }}
-            />
-            <p
-              className="text-xs leading-relaxed"
-              style={{ color: "hsl(220 10% 55%)" }}
-            >
-              Queued tasks are in "ready" status waiting for an execution slot.
-              Tasks run in priority order, oldest first within same priority.
-            </p>
-          </div>
+          Ready tasks queued by priority, oldest first within same priority.
         </div>
       </PopoverContent>
     </Popover>

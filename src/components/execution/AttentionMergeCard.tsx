@@ -1,12 +1,11 @@
 /**
- * AttentionMergeCard - Shows a merge needing attention
+ * AttentionMergeCard - Compact row for merge needing attention
  *
- * Displays task title, error context (conflict files or git error),
- * with View Details and Retry action buttons.
+ * Single-line row: icon | title | error summary | action buttons
+ * Full details available via native tooltip on hover.
  */
 
 import { AlertTriangle, ExternalLink, RotateCw } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import type { MergePipelineTask } from "@/api/merge-pipeline";
 import { useCallback } from "react";
 
@@ -25,71 +24,50 @@ export function AttentionMergeCard({ task, onViewDetails, onRetry }: AttentionMe
     onRetry(task.taskId);
   }, [onRetry, task.taskId]);
 
-  // Determine error context
   const errorContext = task.conflictFiles && task.conflictFiles.length > 0
-    ? `${task.conflictFiles.length} conflicted files • Agent couldn't fix`
+    ? `${task.conflictFiles.length} conflicted files`
     : task.errorContext || "Git error occurred";
+
+  const tooltipDetail = `${task.internalStatus} → ${task.targetBranch}\n${errorContext}`;
 
   return (
     <div
-      className="p-3 rounded-lg"
-      style={{
-        backgroundColor: "hsla(0 70% 55% / 0.1)",
-        border: "1px solid hsla(0 70% 55% / 0.2)",
-      }}
+      className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-white/[0.04] transition-colors"
+      title={tooltipDetail}
     >
-      {/* Header with title */}
-      <div className="flex items-start gap-2 mb-2">
-        <AlertTriangle
-          className="w-4 h-4 shrink-0 mt-0.5"
-          style={{ color: "hsl(0 70% 60%)" }}
-        />
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium truncate" style={{ color: "hsl(220 10% 90%)" }}>
-            {task.title}
-          </div>
-        </div>
-      </div>
-
-      {/* Details */}
-      <div className="space-y-2 text-xs">
-        <div style={{ color: "hsl(220 10% 65%)" }}>
-          <div className="flex items-center gap-1 mb-1">
-            <span>{task.internalStatus} →</span>
-            <span className="font-mono">{task.targetBranch}</span>
-          </div>
-          <div>┈ {errorContext}</div>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex items-center gap-2 pt-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleViewDetails}
-            className="h-7 px-2 text-xs gap-1"
-            style={{
-              backgroundColor: "hsl(220 10% 18%)",
-              color: "hsl(220 10% 90%)",
-            }}
-          >
-            View Details
-            <ExternalLink className="w-3 h-3" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleRetry}
-            className="h-7 px-2 text-xs gap-1"
-            style={{
-              backgroundColor: "hsla(14 100% 60% / 0.15)",
-              color: "hsl(14 100% 60%)",
-            }}
-          >
-            Retry
-            <RotateCw className="w-3 h-3" />
-          </Button>
-        </div>
+      <AlertTriangle
+        className="w-3.5 h-3.5 shrink-0"
+        style={{ color: "hsl(14 100% 60%)" }}
+      />
+      <span
+        className="flex-1 text-xs font-medium truncate min-w-0"
+        style={{ color: "hsl(220 10% 88%)" }}
+      >
+        {task.title}
+      </span>
+      <span
+        className="text-[11px] shrink-0 max-w-[120px] truncate"
+        style={{ color: "hsl(220 10% 50%)" }}
+      >
+        {errorContext}
+      </span>
+      <div className="flex items-center shrink-0 ml-0.5">
+        <button
+          onClick={handleViewDetails}
+          className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.08] transition-colors"
+          style={{ color: "hsl(220 10% 55%)" }}
+          title="View details"
+        >
+          <ExternalLink className="w-3 h-3" />
+        </button>
+        <button
+          onClick={handleRetry}
+          className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.08] transition-colors"
+          style={{ color: "hsl(14 100% 60%)" }}
+          title="Retry merge"
+        >
+          <RotateCw className="w-3 h-3" />
+        </button>
       </div>
     </div>
   );

@@ -567,6 +567,46 @@ describe("useReviewEvents", () => {
     });
   });
 
+  it("should parse wrapped string payloads from backend emit_with_payload", async () => {
+    renderHook(() => useReviewEvents(), { wrapper: createWrapper() });
+
+    const wrappedEvent = {
+      taskId: TASK_UUID,
+      payload: JSON.stringify({
+        type: "started",
+        reviewId: "review-123",
+      }),
+      timestamp: "2026-02-11T10:00:00Z",
+    };
+
+    await act(async () => {
+      eventCallbacks["review:update"]?.({ payload: wrappedEvent });
+    });
+
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["reviews", "pending"],
+    });
+  });
+
+  it("should ignore disabled review:update payload without logging errors", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    renderHook(() => useReviewEvents(), { wrapper: createWrapper() });
+
+    const wrappedDisabledEvent = {
+      taskId: TASK_UUID,
+      payload: JSON.stringify({ type: "disabled" }),
+      timestamp: "2026-02-11T10:00:00Z",
+    };
+
+    await act(async () => {
+      eventCallbacks["review:update"]?.({ payload: wrappedDisabledEvent });
+    });
+
+    expect(mockInvalidateQueries).not.toHaveBeenCalled();
+    expect(consoleSpy).not.toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
+
   it("should invalidate task reviews query on review:completed event", async () => {
     renderHook(() => useReviewEvents(), { wrapper: createWrapper() });
 

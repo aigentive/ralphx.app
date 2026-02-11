@@ -1,14 +1,15 @@
 /**
- * MergePipelinePopover - Shows merge pipeline status with three sections
+ * MergePipelinePopover - Compact merge pipeline status
  *
- * Displays active merges, waiting merges, and merges needing attention.
- * Each section is collapsible and shows relevant task cards.
+ * Dense row-based layout inspired by macOS Finder list view.
+ * Empty sections are hidden. Collapsible section headers.
  */
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import {
   Popover,
+  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
@@ -18,6 +19,7 @@ import { WaitingMergeCard } from "./WaitingMergeCard";
 import { AttentionMergeCard } from "./AttentionMergeCard";
 import { api } from "@/lib/tauri";
 import { useUiStore } from "@/stores/uiStore";
+import { cn } from "@/lib/utils";
 
 interface MergePipelinePopoverProps {
   /** Tasks currently being merged */
@@ -28,58 +30,44 @@ interface MergePipelinePopoverProps {
   needsAttention: MergePipelineTask[];
   /** Trigger element (e.g., merge count button) */
   children: React.ReactNode;
+  /** Optional anchor ref for popover positioning (aligns to status indicator) */
+  anchorRef?: React.RefObject<HTMLDivElement | null>;
 }
 
-interface CollapsibleSectionProps {
+interface SectionHeaderProps {
   title: string;
   count: number;
   isOpen: boolean;
   onToggle: () => void;
   highlight?: boolean;
-  children: React.ReactNode;
 }
 
-/**
- * Collapsible section header with expand/collapse
- */
-function CollapsibleSection({
-  title,
-  count,
-  isOpen,
-  onToggle,
-  highlight = false,
-  children,
-}: CollapsibleSectionProps) {
+function SectionHeader({ title, count, isOpen, onToggle, highlight = false }: SectionHeaderProps) {
   return (
-    <div className="mb-3 last:mb-0">
-      {/* Header */}
-      <button
-        onClick={onToggle}
-        className="flex items-center justify-between w-full px-3 py-2 rounded-lg transition-colors"
-        style={{
-          backgroundColor: highlight ? "hsla(45 90% 55% / 0.1)" : "transparent",
-          border: highlight ? "1px solid hsla(45 90% 55% / 0.2)" : "1px solid transparent",
-        }}
+    <button
+      onClick={onToggle}
+      className="flex items-center gap-1.5 w-full px-2 py-1 rounded hover:bg-white/[0.03] transition-colors"
+    >
+      <ChevronRight
+        className={cn(
+          "w-3 h-3 transition-transform duration-150",
+          isOpen && "rotate-90"
+        )}
+        style={{ color: "hsl(220 10% 40%)" }}
+      />
+      <span
+        className="text-[10px] font-semibold uppercase tracking-wider"
+        style={{ color: highlight ? "hsl(14 100% 60%)" : "hsl(220 10% 50%)" }}
       >
-        <div className="flex items-center gap-2">
-          {isOpen ? (
-            <ChevronDown className="w-4 h-4" style={{ color: "hsl(220 10% 65%)" }} />
-          ) : (
-            <ChevronRight className="w-4 h-4" style={{ color: "hsl(220 10% 65%)" }} />
-          )}
-          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "hsl(220 10% 90%)" }}>
-            {title} ({count})
-          </span>
-        </div>
-      </button>
-
-      {/* Content */}
-      {isOpen && count > 0 && (
-        <div className="mt-2 space-y-2">
-          {children}
-        </div>
-      )}
-    </div>
+        {title}
+      </span>
+      <span
+        className="text-[10px] tabular-nums ml-auto"
+        style={{ color: "hsl(220 10% 40%)" }}
+      >
+        {count}
+      </span>
+    </button>
   );
 }
 
@@ -88,10 +76,13 @@ export function MergePipelinePopover({
   waiting,
   needsAttention,
   children,
+  anchorRef,
 }: MergePipelinePopoverProps) {
-  const [activeOpen, setActiveOpen] = useState(true);
-  const [waitingOpen, setWaitingOpen] = useState(true);
-  const [attentionOpen, setAttentionOpen] = useState(true);
+  const [sections, setSections] = useState({
+    active: true,
+    waiting: true,
+    attention: true,
+  });
 
   const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
 
@@ -109,92 +100,138 @@ export function MergePipelinePopover({
 
   const handleRetryMerge = async (taskId: string) => {
     try {
-      // Move back to pending_merge to re-trigger the merge pipeline
       await api.tasks.move(taskId, "pending_merge");
     } catch (error) {
       console.error("Failed to retry merge:", error);
     }
   };
 
+  const toggleSection = (key: "active" | "waiting" | "attention") => {
+    setSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const total = active.length + waiting.length + needsAttention.length;
+
   return (
     <Popover>
+      {anchorRef && <PopoverAnchor virtualRef={anchorRef as React.RefObject<HTMLDivElement>} />}
       <PopoverTrigger asChild>
         {children}
       </PopoverTrigger>
       <PopoverContent
         side="top"
         align="start"
-        className="w-[480px] p-4"
+        className="w-[420px] p-3"
         style={{
-          backgroundColor: "hsl(220 10% 12%)",
-          border: "1px solid hsla(220 20% 100% / 0.1)",
-          borderRadius: "12px",
-          boxShadow: "0 8px 24px hsla(220 20% 0% / 0.5)",
+          backgroundColor: "hsl(220 10% 11%)",
+          border: "1px solid hsla(220 20% 100% / 0.08)",
+          borderRadius: "10px",
+          boxShadow:
+            "0 4px 16px hsla(220 20% 0% / 0.4), 0 12px 32px hsla(220 20% 0% / 0.3)",
         }}
       >
         {/* Header */}
-        <div className="mb-4">
-          <h3 className="text-sm font-semibold" style={{ color: "hsl(220 10% 90%)" }}>
+        <div className="flex items-center justify-between mb-1.5 px-2">
+          <h3
+            className="text-xs font-semibold"
+            style={{ color: "hsl(220 10% 80%)" }}
+          >
             Merge Pipeline
           </h3>
+          <span
+            className="text-[11px] tabular-nums"
+            style={{ color: "hsl(220 10% 42%)" }}
+          >
+            {total} total
+          </span>
         </div>
 
-        {/* Sections */}
-        <div className="space-y-1">
-          {/* Active */}
-          <CollapsibleSection
-            title="Active"
-            count={active.length}
-            isOpen={activeOpen}
-            onToggle={() => setActiveOpen(!activeOpen)}
-          >
-            {active.map((task) => (
-              <ActiveMergeCard key={task.taskId} task={task} onStop={handleStopMerge} />
-            ))}
-          </CollapsibleSection>
-
-          {/* Waiting */}
-          <CollapsibleSection
-            title="Waiting"
-            count={waiting.length}
-            isOpen={waitingOpen}
-            onToggle={() => setWaitingOpen(!waitingOpen)}
-          >
-            {waiting.map((task) => (
-              <WaitingMergeCard key={task.taskId} task={task} />
-            ))}
-          </CollapsibleSection>
-
-          {/* Needs Attention */}
-          <CollapsibleSection
-            title="Needs Attention"
-            count={needsAttention.length}
-            isOpen={attentionOpen}
-            onToggle={() => setAttentionOpen(!attentionOpen)}
-            highlight={needsAttention.length > 0}
-          >
-            {needsAttention.map((task) => (
-              <AttentionMergeCard
-                key={task.taskId}
-                task={task}
-                onViewDetails={handleViewDetails}
-                onRetry={handleRetryMerge}
-              />
-            ))}
-          </CollapsibleSection>
-        </div>
-
-        {/* Info Footer */}
+        {/* Scrollable content */}
         <div
-          className="mt-4 pt-4 text-xs leading-relaxed"
+          className="max-h-[320px] overflow-y-auto -mx-1 px-1"
           style={{
-            borderTop: "1px solid hsla(220 20% 100% / 0.1)",
-            color: "hsl(220 10% 65%)",
+            scrollbarWidth: "thin",
+            scrollbarColor: "hsla(220 10% 100% / 0.1) transparent",
           }}
         >
-          ⓘ Two-phase merge: fast programmatic merge first, then AI agent for conflicts.
-          Merges run one at a time per target branch to avoid concurrent git conflicts.
-          Deferred merges auto-retry when the active merge completes.
+          {/* Active */}
+          {active.length > 0 && (
+            <div className="mb-0.5">
+              <SectionHeader
+                title="Active"
+                count={active.length}
+                isOpen={sections.active}
+                onToggle={() => toggleSection("active")}
+              />
+              {sections.active &&
+                active.map((task) => (
+                  <ActiveMergeCard
+                    key={task.taskId}
+                    task={task}
+                    onStop={handleStopMerge}
+                  />
+                ))}
+            </div>
+          )}
+
+          {/* Waiting */}
+          {waiting.length > 0 && (
+            <div className="mb-0.5">
+              <SectionHeader
+                title="Waiting"
+                count={waiting.length}
+                isOpen={sections.waiting}
+                onToggle={() => toggleSection("waiting")}
+              />
+              {sections.waiting &&
+                waiting.map((task) => (
+                  <WaitingMergeCard key={task.taskId} task={task} />
+                ))}
+            </div>
+          )}
+
+          {/* Needs Attention */}
+          {needsAttention.length > 0 && (
+            <div className="mb-0.5">
+              <SectionHeader
+                title="Needs Attention"
+                count={needsAttention.length}
+                isOpen={sections.attention}
+                onToggle={() => toggleSection("attention")}
+                highlight
+              />
+              {sections.attention &&
+                needsAttention.map((task) => (
+                  <AttentionMergeCard
+                    key={task.taskId}
+                    task={task}
+                    onViewDetails={handleViewDetails}
+                    onRetry={handleRetryMerge}
+                  />
+                ))}
+            </div>
+          )}
+
+          {/* Empty state */}
+          {total === 0 && (
+            <div
+              className="py-6 text-center text-xs"
+              style={{ color: "hsl(220 10% 42%)" }}
+            >
+              No merge tasks
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div
+          className="mt-2 pt-2 px-2 text-[11px]"
+          style={{
+            borderTop: "1px solid hsla(220 20% 100% / 0.06)",
+            color: "hsl(220 10% 42%)",
+          }}
+        >
+          Two-phase merge: programmatic first, then AI agent. One per branch.
         </div>
       </PopoverContent>
     </Popover>
