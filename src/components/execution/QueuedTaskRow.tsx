@@ -1,11 +1,7 @@
 /**
- * QueuedTaskRow - Single row in QueuedTasksPopover showing task queue position
+ * QueuedTaskRow - Compact single-line row for queued task
  *
- * Displays:
- * - Position number in queue
- * - Task title
- * - Plan association (plan title or "Standalone")
- * - Priority badge
+ * Layout: position | title | plan name | priority badge
  */
 
 import { PriorityBadge } from "@/components/Ideation/PriorityBadge";
@@ -25,38 +21,27 @@ export function QueuedTaskRow({ position, task }: QueuedTaskRowProps) {
   return (
     <div
       data-testid="queued-task-row"
-      className="flex items-start gap-3 py-2.5 px-3 rounded-md transition-colors hover:bg-[hsl(220_10%_15%)]"
+      className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-white/[0.04] transition-colors"
     >
-      {/* Position Number */}
       <span
-        className="text-sm font-medium shrink-0 mt-0.5"
+        className="text-[11px] tabular-nums shrink-0 w-4 text-right"
+        style={{ color: "hsl(220 10% 40%)" }}
+      >
+        {position}
+      </span>
+      <span
+        className="flex-1 text-xs font-medium truncate min-w-0"
+        style={{ color: "hsl(220 10% 88%)" }}
+      >
+        {task.title}
+      </span>
+      <span
+        className="text-[11px] shrink-0 max-w-[100px] truncate"
         style={{ color: "hsl(220 10% 45%)" }}
       >
-        {position}.
+        {task.planTitle}
       </span>
-
-      {/* Task Info */}
-      <div className="flex-1 min-w-0">
-        {/* Task Title */}
-        <div
-          className="text-sm font-medium truncate"
-          style={{ color: "hsl(220 10% 90%)" }}
-        >
-          {task.title}
-        </div>
-
-        {/* Plan Association & Priority */}
-        <div className="flex items-center gap-2 mt-1">
-          <span
-            className="text-xs"
-            style={{ color: "hsl(220 10% 55%)" }}
-          >
-            {task.planTitle}
-          </span>
-          <span style={{ color: "hsl(220 10% 35%)" }}>•</span>
-          <PriorityBadge priority={priority} size="compact" />
-        </div>
-      </div>
+      <PriorityBadge priority={priority} size="compact" />
     </div>
   );
 }

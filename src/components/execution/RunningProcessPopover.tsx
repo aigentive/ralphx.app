@@ -1,12 +1,13 @@
 /**
- * RunningProcessPopover - Displays all currently running processes
+ * RunningProcessPopover - Compact running processes list
  *
- * Shows a scrollable list of ProcessCard components with a header
- * for concurrency control and an info footer explaining the system.
+ * Dense row-based layout matching macOS Activity Monitor style.
+ * Each process is a two-line compact row.
  */
 
 import {
   Popover,
+  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
@@ -32,6 +33,8 @@ interface RunningProcessPopoverProps {
   onOpenSettings: () => void;
   /** Children (trigger element) */
   children: React.ReactNode;
+  /** Optional anchor ref for popover positioning (aligns to status indicator) */
+  anchorRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 export function RunningProcessPopover({
@@ -43,9 +46,11 @@ export function RunningProcessPopover({
   onStopProcess,
   onOpenSettings,
   children,
+  anchorRef,
 }: RunningProcessPopoverProps) {
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
+      {anchorRef && <PopoverAnchor virtualRef={anchorRef as React.RefObject<HTMLDivElement>} />}
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent
         data-testid="running-process-popover"
@@ -53,25 +58,23 @@ export function RunningProcessPopover({
         side="top"
         className="w-[420px] p-0 border-0"
         style={{
-          backgroundColor: "hsl(220 10% 10%)",
-          border: "1px solid hsla(220 20% 100% / 0.12)",
-          borderRadius: "12px",
-          boxShadow: `
-            0 4px 16px hsla(220 20% 0% / 0.4),
-            0 12px 32px hsla(220 20% 0% / 0.3)
-          `,
+          backgroundColor: "hsl(220 10% 11%)",
+          border: "1px solid hsla(220 20% 100% / 0.08)",
+          borderRadius: "10px",
+          boxShadow:
+            "0 4px 16px hsla(220 20% 0% / 0.4), 0 12px 32px hsla(220 20% 0% / 0.3)",
         }}
       >
-        {/* Header: Title + Concurrency Control */}
+        {/* Header */}
         <div
-          className="flex items-center justify-between px-4 py-3"
+          className="flex items-center justify-between px-3 py-2.5"
           style={{
-            borderBottom: "1px solid hsla(220 20% 100% / 0.08)",
+            borderBottom: "1px solid hsla(220 20% 100% / 0.06)",
           }}
         >
           <h3
-            className="text-[13px] font-semibold"
-            style={{ color: "hsl(220 10% 90%)" }}
+            className="text-xs font-semibold"
+            style={{ color: "hsl(220 10% 80%)" }}
           >
             Running Processes ({processes.length}/{maxConcurrent})
           </h3>
@@ -80,30 +83,28 @@ export function RunningProcessPopover({
             data-testid="open-settings-button"
             onClick={onOpenSettings}
             className={cn(
-              "flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium",
-              "transition-all duration-150 hover:bg-white/5 active:scale-[0.96]"
+              "flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px]",
+              "transition-colors hover:bg-white/[0.05]"
             )}
-            style={{
-              color: "hsl(220 10% 65%)",
-            }}
+            style={{ color: "hsl(220 10% 50%)" }}
           >
-            <Settings className="w-3.5 h-3.5" />
+            <Settings className="w-3 h-3" />
             Max: {maxConcurrent}
           </button>
         </div>
 
-        {/* Process List (Scrollable) */}
+        {/* Process List */}
         <div
-          className="max-h-[400px] overflow-y-auto p-3 space-y-2"
+          className="max-h-[320px] overflow-y-auto p-1.5"
           style={{
             scrollbarWidth: "thin",
-            scrollbarColor: "hsl(220 10% 30%) transparent",
+            scrollbarColor: "hsla(220 10% 100% / 0.1) transparent",
           }}
         >
           {processes.length === 0 ? (
             <div
-              className="py-8 text-center text-[13px]"
-              style={{ color: "hsl(220 10% 55%)" }}
+              className="py-6 text-center text-xs"
+              style={{ color: "hsl(220 10% 42%)" }}
             >
               No running processes
             </div>
@@ -119,21 +120,20 @@ export function RunningProcessPopover({
           )}
         </div>
 
-        {/* Info Footer */}
+        {/* Footer */}
         <div
-          className="px-4 py-3 text-[11px] leading-relaxed"
+          className="flex items-center justify-between px-3 py-2 text-[11px]"
           style={{
-            borderTop: "1px solid hsla(220 20% 100% / 0.08)",
-            color: "hsl(220 10% 55%)",
+            borderTop: "1px solid hsla(220 20% 100% / 0.06)",
+            color: "hsl(220 10% 42%)",
           }}
         >
-          <p className="mb-1">
-            <span style={{ color: "hsl(220 10% 65%)" }}>ℹ</span> The
-            concurrency system runs up to {maxConcurrent} tasks in parallel.
-          </p>
+          <span>
+            Concurrency runs up to {maxConcurrent} tasks in parallel.
+          </span>
           <button
             onClick={onOpenSettings}
-            className="text-[11px] underline hover:no-underline transition-all"
+            className="hover:underline transition-colors shrink-0 ml-2"
             style={{ color: "hsl(14 100% 60%)" }}
           >
             Open Settings
