@@ -26,12 +26,14 @@ import { TaskBoardSkeleton } from "./TaskBoardSkeleton";
 import { Column } from "./Column";
 import { TaskCard } from "./TaskCard";
 import { useUiStore } from "@/stores/uiStore";
+import { usePlanStore } from "@/stores/planStore";
 import { Toggle } from "@/components/ui/toggle";
-import { Archive, GitMerge } from "lucide-react";
+import { Archive, GitMerge, FileText } from "lucide-react";
 import { api } from "@/lib/tauri";
 import { useTaskSearch } from "@/hooks/useTaskSearch";
 import { TaskSearchBar } from "../TaskSearchBar";
 import { EmptySearchState } from "../EmptySearchState";
+import { PlanSelectorInline } from "@/components/plan/PlanSelectorInline";
 import { infiniteTaskKeys } from "@/hooks/useInfiniteTasksQuery";
 import { defaultWorkflow, type WorkflowColumn } from "@/types/workflow";
 import type { Task, TaskListResponse, InternalStatus } from "@/types/task";
@@ -69,6 +71,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
   const setShowMergeTasks = useUiStore((s) => s.setShowMergeTasks);
   const boardSearchQuery = useUiStore((s) => s.boardSearchQuery);
   const setBoardSearchQuery = useUiStore((s) => s.setBoardSearchQuery);
+  const activePlanId = usePlanStore((s) => s.activePlanByProject[projectId] ?? null);
 
   // Fetch archived count to show/hide the toggle
   const { data: archivedCount = 0 } = useQuery({
@@ -355,6 +358,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
   // Check if we should show empty state
   const hasSearchResults = searchResults.length > 0;
   const showEmptyState = isSearchActive && !hasSearchResults && !isSearchLoading;
+  const showNoPlanState = !activePlanId;
 
   return (
     <DndContext
@@ -384,6 +388,9 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
                 />
               </div>
             )}
+
+            {/* Plan Selector - compact mode */}
+            <PlanSelectorInline projectId={projectId} compact source="kanban_inline" />
 
             {/* Show Archived toggle - simple Tahoe style */}
             {archivedCount > 0 && (
@@ -442,8 +449,23 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
             WebkitOverflowScrolling: "touch",
           }}
         >
-          {/* Show empty search state when search has no results */}
-          {showEmptyState ? (
+          {/* Show no plan state when no active plan is selected */}
+          {showNoPlanState ? (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="flex flex-col items-center justify-center py-24 max-w-md text-center">
+                <FileText className="h-16 w-16 text-gray-400 mb-4" />
+                <h3 className="text-xl font-medium mb-2">No plan selected</h3>
+                <p className="text-gray-400 mb-6">
+                  Select a plan to view work on the Kanban board.
+                </p>
+                <div className="space-y-2">
+                  <PlanSelectorInline projectId={projectId} source="kanban_inline" />
+                  <p className="text-sm text-gray-500">or press Cmd+Shift+P</p>
+                </div>
+              </div>
+            </div>
+          ) : /* Show empty search state when search has no results */
+          showEmptyState ? (
             <div className="flex-1 flex items-center justify-center">
               <EmptySearchState
                 searchQuery={boardSearchQuery || ''}
