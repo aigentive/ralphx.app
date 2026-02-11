@@ -109,6 +109,7 @@ export const tasksApi = {
    * @param params.offset Optional pagination offset (default 0)
    * @param params.limit Optional pagination limit (default 20)
    * @param params.includeArchived Optional flag to include archived tasks (default false)
+   * @param params.ideationSessionId Optional ideation session ID to filter tasks by plan
    * @returns Paginated task list response
    */
   list: (params: {
@@ -117,6 +118,7 @@ export const tasksApi = {
     offset?: number;
     limit?: number;
     includeArchived?: boolean;
+    ideationSessionId?: string;
   }): Promise<TaskListResponse> =>
     typedInvokeWithTransform("list_tasks", params, TaskListResponseSchema, transformTaskListResponse),
 
@@ -125,12 +127,13 @@ export const tasksApi = {
    * @param projectId The project ID
    * @param query The search query (searches title and description)
    * @param includeArchived Optional flag to include archived tasks (default false)
+   * @param ideationSessionId Optional ideation session ID to filter tasks by plan
    * @returns Array of matching tasks
    */
-  search: (projectId: string, query: string, includeArchived?: boolean): Promise<Task[]> =>
+  search: (projectId: string, query: string, includeArchived?: boolean, ideationSessionId?: string | null): Promise<Task[]> =>
     typedInvokeWithTransform(
       "search_tasks",
-      { projectId, query, includeArchived },
+      { projectId, query, includeArchived, ideationSessionId },
       TaskListSchema,
       (tasks) => tasks.map(transformTask)
     ),
@@ -197,10 +200,11 @@ export const tasksApi = {
   /**
    * Get count of archived tasks for a project
    * @param projectId The project ID
+   * @param ideationSessionId Optional ideation session ID to filter tasks by plan
    * @returns Count of archived tasks
    */
-  getArchivedCount: (projectId: string) =>
-    typedInvoke("get_archived_count", { projectId }, z.number()),
+  getArchivedCount: (projectId: string, ideationSessionId?: string | null) =>
+    typedInvoke("get_archived_count", { projectId, ideationSessionId }, z.number()),
 
   /**
    * Get valid status transitions for a task
