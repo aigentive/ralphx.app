@@ -6,6 +6,7 @@ use super::events::TaskEvent;
 use super::machine::{Response, State, TaskStateMachine};
 use crate::application::GitService;
 use crate::domain::entities::{GitMode, ProjectId, TaskId};
+use std::sync::Arc;
 
 mod side_effects;
 #[cfg(test)]
@@ -158,6 +159,29 @@ impl<'a> TransitionHandler<'a> {
                     .event_emitter
                     .emit("review:state_exited", &self.machine.context.task_id)
                     .await;
+            }
+            State::PendingMerge | State::Merging => {
+                // Retry deferred merges whenever a task exits merge workflow
+                // This ensures deferred tasks resume promptly regardless of how
+                // the blocker ended (merged, merge_incomplete, etc.)
+                if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
+                    let scheduler = Arc::clone(scheduler);
+                    let project_id = self.machine.context.project_id.clone();
+                    let from_state = format!("{:?}", from);
+                    let to_state = format!("{:?}", _to);
+
+                    tracing::info!(
+                        task_id = %self.machine.context.task_id,
+                        from = %from_state,
+                        to = %to_state,
+                        "Task exiting merge workflow, triggering deferred merge retry"
+                    );
+
+                    tokio::spawn(async move {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
+                        scheduler.try_retry_deferred_merges(&project_id).await;
+                    });
+                }
             }
             _ => {}
         }
