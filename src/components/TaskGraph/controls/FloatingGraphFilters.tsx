@@ -15,7 +15,6 @@ import { memo, useState, useCallback } from "react";
 import {
   Filter,
   ChevronDown,
-  LayoutGrid,
   ArrowDownFromLine,
   ArrowRightFromLine,
   Layers,
@@ -44,7 +43,6 @@ import {
   getNodeStyle,
   type StatusCategory,
 } from "../nodes/nodeStyles";
-import type { PlanGroupInfo } from "@/api/task-graph.types";
 import type { InternalStatus } from "@/types/status";
 import type {
   GraphFilters,
@@ -76,8 +74,6 @@ export interface FloatingGraphFiltersProps {
   grouping: GroupingState;
   /** Callback when grouping changes */
   onGroupingChange: (grouping: GroupingState) => void;
-  /** Available plan groups for filtering */
-  planGroups: PlanGroupInfo[];
   /** Whether toolbar should be icon-only */
   isCompact: boolean;
 }
@@ -280,86 +276,6 @@ const StatusFilterContent = memo(function StatusFilterContent({
   );
 });
 
-interface PlanFilterContentProps {
-  filters: GraphFilters;
-  onFiltersChange: (filters: GraphFilters) => void;
-  planGroups: PlanGroupInfo[];
-}
-
-const PlanFilterContent = memo(function PlanFilterContent({
-  filters,
-  onFiltersChange,
-  planGroups,
-}: PlanFilterContentProps) {
-  const handlePlanToggle = useCallback(
-    (planId: string) => {
-      const newPlanIds = filters.planIds.includes(planId)
-        ? filters.planIds.filter((id) => id !== planId)
-        : [...filters.planIds, planId];
-      onFiltersChange({ ...filters, planIds: newPlanIds });
-    },
-    [filters, onFiltersChange]
-  );
-
-  const handleClearAll = useCallback(() => {
-    onFiltersChange({ ...filters, planIds: [] });
-  }, [filters, onFiltersChange]);
-
-  if (planGroups.length === 0) {
-    return (
-      <div className="py-4 text-center">
-        <p className="text-xs text-[hsl(220_10%_50%)]">No plans available</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      {filters.planIds.length > 0 && (
-        <div className="flex justify-end">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleClearAll}
-            className="h-6 px-2 text-xs text-[hsl(220_10%_60%)] hover:text-[hsl(220_10%_80%)]"
-          >
-            <X className="w-3 h-3 mr-1" />
-            Clear all
-          </Button>
-        </div>
-      )}
-
-      <div className="space-y-1 max-h-[200px] overflow-y-auto">
-        {planGroups.map((plan) => {
-          const isSelected = filters.planIds.includes(plan.planArtifactId);
-          const taskCount = plan.taskIds.length;
-          const completedCount = plan.statusSummary.completed;
-
-          return (
-            <label
-              key={plan.planArtifactId}
-              className="flex items-center gap-2 py-1.5 px-2 cursor-pointer hover:bg-[hsl(220_10%_15%)] rounded transition-colors"
-            >
-              <Checkbox
-                checked={isSelected}
-                onCheckedChange={() => handlePlanToggle(plan.planArtifactId)}
-                className="h-3.5 w-3.5"
-              />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-[hsl(220_10%_80%)] truncate">
-                  {plan.sessionTitle ?? "Unnamed Plan"}
-                </p>
-                <p className="text-[10px] text-[hsl(220_10%_50%)]">
-                  {completedCount}/{taskCount} tasks
-                </p>
-              </div>
-            </label>
-          );
-        })}
-      </div>
-    </div>
-  );
-});
 
 // ============================================================================
 // Filter Button Component
@@ -476,15 +392,12 @@ function FloatingGraphFiltersComponent({
   isAutoCompact,
   grouping,
   onGroupingChange,
-  planGroups,
   isCompact,
 }: FloatingGraphFiltersProps) {
   const [statusFilterOpen, setStatusFilterOpen] = useState(false);
-  const [planFilterOpen, setPlanFilterOpen] = useState(false);
   const [groupingOpen, setGroupingOpen] = useState(false);
 
   const activeStatusCount = filters.statuses.length;
-  const activePlanCount = filters.planIds.length;
 
   const handleLayoutToggle = useCallback(() => {
     onLayoutDirectionChange(layoutDirection === "TB" ? "LR" : "TB");
@@ -529,25 +442,6 @@ function FloatingGraphFiltersComponent({
               onFiltersChange={onFiltersChange}
             />
           </FilterButton>
-
-          {/* Plan Filter */}
-          {planGroups.length > 0 && (
-            <FilterButton
-              icon={<LayoutGrid className="w-3.5 h-3.5" />}
-              label="Plans"
-              activeCount={activePlanCount}
-              isPopover
-              open={planFilterOpen}
-              onOpenChange={setPlanFilterOpen}
-              isCompact={isCompact}
-            >
-              <PlanFilterContent
-                filters={filters}
-                onFiltersChange={onFiltersChange}
-                planGroups={planGroups}
-              />
-            </FilterButton>
-          )}
 
           {/* Separator */}
           <div
