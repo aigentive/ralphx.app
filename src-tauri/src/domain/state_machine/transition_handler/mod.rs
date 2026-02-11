@@ -24,6 +24,12 @@ pub(crate) use side_effects::run_validation_commands;
 pub(crate) use side_effects::has_merge_deferred_metadata;
 pub(crate) use side_effects::clear_merge_deferred_metadata;
 
+// Re-export trigger origin metadata helpers for execution tracking
+pub(crate) use side_effects::set_trigger_origin;
+pub(crate) use side_effects::get_trigger_origin;
+pub(crate) use side_effects::clear_trigger_origin;
+pub(crate) use side_effects::parse_metadata;
+
 /// Result of handling a transition
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransitionResult {
@@ -135,6 +141,22 @@ impl<'a> TransitionHandler<'a> {
 
                     // Try to schedule next Ready task now that a slot is free
                     self.try_schedule_ready_tasks().await;
+                }
+
+                // Clear trigger_origin when exiting agent-active states
+                use crate::domain::state_machine::transition_handler::clear_trigger_origin;
+                if let Some(ref task_repo) = self.machine.context.services.task_repo {
+                    let task_id = TaskId::from_string(self.machine.context.task_id.clone());
+                    if let Ok(Some(mut task)) = task_repo.get_by_id(&task_id).await {
+                        clear_trigger_origin(&mut task);
+                        if let Err(e) = task_repo.update(&task).await {
+                            tracing::error!(
+                                task_id = %self.machine.context.task_id,
+                                error = %e,
+                                "Failed to clear trigger_origin in metadata on state exit"
+                            );
+                        }
+                    }
                 }
             }
             _ => {}

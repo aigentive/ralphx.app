@@ -519,6 +519,9 @@ pub fn run() {
             commands::execution_commands::get_active_project,
             commands::execution_commands::get_global_execution_settings,
             commands::execution_commands::update_global_execution_settings,
+            commands::execution_commands::get_running_processes,
+            // Merge pipeline commands
+            commands::merge_pipeline_commands::get_merge_pipeline,
             // Ideation session commands
             commands::ideation_commands::create_ideation_session,
             commands::ideation_commands::get_ideation_session,
