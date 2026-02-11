@@ -192,11 +192,11 @@ export function PlanSelectorInline({
 
           {/* Candidate List */}
           {isLoading ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">
+            <div className="p-8 text-center text-sm text-muted-foreground transition-colors">
               Loading plans...
             </div>
           ) : filteredCandidates.length === 0 ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">
+            <div className="p-8 text-center text-sm text-muted-foreground transition-colors">
               No accepted plans found
             </div>
           ) : (
@@ -259,8 +259,8 @@ function PlanCandidateItem({
       onClick={onSelect}
       onMouseEnter={onMouseEnter}
       className={cn(
-        "w-full text-left px-3 py-2 rounded-md transition-colors",
-        "hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        "w-full text-left px-3 py-2 rounded-md transition-all origin-center",
+        "hover:bg-accent hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
         isHighlighted && "bg-accent",
         isActive && "bg-accent/50"
       )}

@@ -5,7 +5,7 @@
  * and pause/stop controls. Follows the design spec from specs/design/pages/execution-control-bar.md
  */
 
-import { Pause, Play, Square, Loader2 } from "lucide-react";
+import { Pause, Play, Square, Loader2, Swords } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -32,6 +32,12 @@ interface ExecutionControlBarProps {
   onPauseToggle: () => void;
   /** Called when stop button clicked */
   onStop: () => void;
+  /** Whether battle mode is active */
+  battleModeActive?: boolean;
+  /** Called when battle mode button clicked */
+  onBattleModeToggle?: () => void;
+  /** Whether to show battle mode button */
+  showBattleModeToggle?: boolean;
 }
 
 /**
@@ -61,6 +67,9 @@ export function ExecutionControlBar({
   currentTaskName,
   onPauseToggle,
   onStop,
+  battleModeActive = false,
+  onBattleModeToggle,
+  showBattleModeToggle = false,
 }: ExecutionControlBarProps) {
   const canStop = runningCount > 0 && !isLoading;
   const statusColor = getStatusColor(runningCount, isPaused);
@@ -153,6 +162,38 @@ export function ExecutionControlBar({
 
         {/* Control Section (Right) */}
         <div className="flex items-center gap-2">
+          {/* Battle Mode Button (Graph view only) */}
+          {showBattleModeToggle && onBattleModeToggle && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  data-testid="battle-mode-toggle-button"
+                  variant="ghost"
+                  size="default"
+                  onClick={onBattleModeToggle}
+                  aria-label={battleModeActive ? "Exit Battle Mode" : "Enter Battle Mode"}
+                  aria-pressed={battleModeActive}
+                  className="gap-2 h-9 px-4 transition-all duration-150 active:scale-[0.96] rounded-lg text-[13px]"
+                  style={{
+                    backgroundColor: battleModeActive
+                      ? "hsla(14 100% 60% / 0.2)"
+                      : "hsl(220 10% 18%)",
+                    color: battleModeActive ? "hsl(14 100% 60%)" : "hsl(220 10% 90%)",
+                    border: "none",
+                  }}
+                >
+                  <Swords className="w-4 h-4" />
+                  <span className="hidden sm:inline">
+                    Battle Mode
+                  </span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                <p>{battleModeActive ? "Return to graph mode" : "Launch battle mode overlay"}</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+
           {/* Pause/Resume Button */}
           <Tooltip>
             <TooltipTrigger asChild>

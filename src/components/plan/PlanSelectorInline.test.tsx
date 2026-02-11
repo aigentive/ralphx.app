@@ -734,4 +734,136 @@ describe("PlanSelectorInline", () => {
       });
     });
   });
+
+  // ==========================================================================
+  // Animation & Performance
+  // ==========================================================================
+
+  describe("animations", () => {
+    it("applies transition classes to candidate items", async () => {
+      const user = userEvent.setup();
+      const candidates = [
+        createTestCandidate({ sessionId: "s1", title: "Plan 1" }),
+      ];
+
+      (usePlanStore as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+        (selector: (state: typeof defaultStoreState) => unknown) =>
+          selector({
+            ...defaultStoreState,
+            planCandidates: candidates,
+          })
+      );
+
+      render(
+        <PlanSelectorInline
+          projectId="project-1"
+          source="kanban_inline"
+        />
+      );
+
+      await user.click(screen.getByRole("button"));
+      const candidateButton = await screen.findByText("Plan 1");
+      const button = candidateButton.closest("button")!;
+
+      expect(button).toHaveClass("transition-all", "origin-center");
+    });
+
+    it("applies hover scale class to candidate items", async () => {
+      const user = userEvent.setup();
+      const candidates = [
+        createTestCandidate({ sessionId: "s1", title: "Plan 1" }),
+      ];
+
+      (usePlanStore as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+        (selector: (state: typeof defaultStoreState) => unknown) =>
+          selector({
+            ...defaultStoreState,
+            planCandidates: candidates,
+          })
+      );
+
+      render(
+        <PlanSelectorInline
+          projectId="project-1"
+          source="kanban_inline"
+        />
+      );
+
+      await user.click(screen.getByRole("button"));
+      const candidateButton = await screen.findByText("Plan 1");
+      const button = candidateButton.closest("button")!;
+
+      expect(button.className).toMatch(/hover:scale-\[1\.01\]/);
+    });
+
+    it("applies transition-colors to loading state", async () => {
+      const user = userEvent.setup();
+
+      (usePlanStore as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+        (selector: (state: typeof defaultStoreState) => unknown) =>
+          selector({ ...defaultStoreState, isLoading: true })
+      );
+
+      render(
+        <PlanSelectorInline
+          projectId="project-1"
+          source="kanban_inline"
+        />
+      );
+
+      await user.click(screen.getByRole("button"));
+      const loadingDiv = await screen.findByText("Loading plans...");
+
+      expect(loadingDiv.closest("div")).toHaveClass("transition-colors");
+    });
+
+    it("applies transition-colors to empty state", async () => {
+      const user = userEvent.setup();
+
+      (usePlanStore as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+        (selector: (state: typeof defaultStoreState) => unknown) =>
+          selector({ ...defaultStoreState, planCandidates: [] })
+      );
+
+      render(
+        <PlanSelectorInline
+          projectId="project-1"
+          source="kanban_inline"
+        />
+      );
+
+      await user.click(screen.getByRole("button"));
+      const emptyDiv = await screen.findByText("No accepted plans found");
+
+      expect(emptyDiv.closest("div")).toHaveClass("transition-colors");
+    });
+
+    it("constrains scroll area height to prevent layout shifts", async () => {
+      const user = userEvent.setup();
+      const candidates = Array.from({ length: 20 }, (_, i) =>
+        createTestCandidate({ sessionId: `s${i}`, title: `Plan ${i}` })
+      );
+
+      (usePlanStore as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+        (selector: (state: typeof defaultStoreState) => unknown) =>
+          selector({
+            ...defaultStoreState,
+            planCandidates: candidates,
+          })
+      );
+
+      render(
+        <PlanSelectorInline
+          projectId="project-1"
+          source="kanban_inline"
+        />
+      );
+
+      await user.click(screen.getByRole("button"));
+
+      // ScrollArea should have max-h constraint (max-h-64)
+      const scrollArea = screen.getByText("Plan 0").closest("[class*='max-h']");
+      expect(scrollArea).toBeTruthy();
+    });
+  });
 });

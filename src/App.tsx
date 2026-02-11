@@ -126,6 +126,9 @@ function AppContent() {
   const toggleGraphRightPanelCompactOpen = useUiStore(
     (s) => s.toggleGraphRightPanelCompactOpen
   );
+  const battleModeActive = useUiStore((s) => s.battleModeActive);
+  const enterBattleMode = useUiStore((s) => s.enterBattleMode);
+  const exitBattleMode = useUiStore((s) => s.exitBattleMode);
   const { isNavCompact } = useNavCompactBreakpoint();
   // Welcome screen overlay state
   const showWelcomeOverlay = useUiStore((s) => s.showWelcomeOverlay);
@@ -419,6 +422,20 @@ function AppContent() {
       setIsExecutionLoading(false);
     }
   };
+
+  const handleBattleModeToggle = useCallback(() => {
+    if (battleModeActive) {
+      exitBattleMode();
+      return;
+    }
+    enterBattleMode();
+  }, [battleModeActive, enterBattleMode, exitBattleMode]);
+
+  useEffect(() => {
+    if (currentView !== "graph" && battleModeActive) {
+      exitBattleMode();
+    }
+  }, [battleModeActive, currentView, exitBattleMode]);
 
   // Ideation handlers
   const handleNewSession = useCallback(async () => {
@@ -795,6 +812,7 @@ function AppContent() {
                     variant="ghost"
                     size="sm"
                     onClick={handleToggleGraphRightPanel}
+                    disabled={battleModeActive}
                     className="h-8 w-8 p-0 transition-all duration-150 active:scale-[0.98]"
                     style={{
                       background: (isNavCompact ? graphRightPanelCompactOpen : graphRightPanelUserOpen)
@@ -806,6 +824,7 @@ function AppContent() {
                       color: (isNavCompact ? graphRightPanelCompactOpen : graphRightPanelUserOpen)
                         ? "#ff6b35"
                         : "rgba(255,255,255,0.5)",
+                      opacity: battleModeActive ? 0.45 : 1,
                     }}
                     data-testid="graph-panel-toggle"
                   >
@@ -813,7 +832,9 @@ function AppContent() {
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="text-xs">
-                  Toggle Graph Panel <kbd className="ml-1 opacity-70">⌘L</kbd>
+                  {battleModeActive
+                    ? "Disabled during Battle Mode"
+                    : <>Toggle Graph Panel <kbd className="ml-1 opacity-70">⌘L</kbd></>}
                 </TooltipContent>
               </Tooltip>
             )}
@@ -849,6 +870,7 @@ function AppContent() {
                       isLoading={isExecutionLoading}
                       onPauseToggle={handlePauseToggle}
                       onStop={handleStop}
+                      showBattleModeToggle={false}
                     />
                   }
                 >
@@ -867,6 +889,9 @@ function AppContent() {
                       isLoading={isExecutionLoading}
                       onPauseToggle={handlePauseToggle}
                       onStop={handleStop}
+                      battleModeActive={battleModeActive}
+                      onBattleModeToggle={handleBattleModeToggle}
+                      showBattleModeToggle
                     />
                   }
                 />

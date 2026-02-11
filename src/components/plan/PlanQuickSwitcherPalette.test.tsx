@@ -379,4 +379,75 @@ describe("PlanQuickSwitcherPalette", () => {
       expect(mockOnClose).not.toHaveBeenCalled();
     });
   });
+
+  // ==========================================================================
+  // Animation & Performance
+  // ==========================================================================
+
+  describe("animations", () => {
+    it("applies correct initial animation properties", () => {
+      render(<PlanQuickSwitcherPalette {...defaultProps} />);
+
+      const palette = screen.getByPlaceholderText(/Search plans/).closest(".fixed");
+      expect(palette).toHaveClass("fixed", "top-20", "left-1/2", "-translate-x-1/2", "z-50");
+    });
+
+    it("applies transition classes to candidate items", () => {
+      render(<PlanQuickSwitcherPalette {...defaultProps} />);
+
+      const featureAButton = screen.getByText("Feature A").closest("button")!;
+      expect(featureAButton).toHaveClass("transition-all", "origin-center");
+    });
+
+    it("applies hover scale class to candidate items", () => {
+      render(<PlanQuickSwitcherPalette {...defaultProps} />);
+
+      const featureAButton = screen.getByText("Feature A").closest("button")!;
+      expect(featureAButton.className).toMatch(/hover:scale-\[1\.01\]/);
+    });
+
+    it("applies transition-colors to search input", () => {
+      render(<PlanQuickSwitcherPalette {...defaultProps} />);
+
+      const input = screen.getByPlaceholderText(/Search plans/);
+      expect(input).toHaveClass("transition-colors");
+    });
+
+    it("applies transition-colors to loading state", () => {
+      (usePlanStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector) =>
+        selector({ ...defaultStoreState, isLoading: true })
+      );
+
+      render(<PlanQuickSwitcherPalette {...defaultProps} />);
+
+      const loadingDiv = screen.getByText("Loading plans...").closest("div")!;
+      expect(loadingDiv).toHaveClass("transition-colors");
+    });
+
+    it("applies transition-colors to empty state", () => {
+      (usePlanStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector) =>
+        selector({ ...defaultStoreState, planCandidates: [] })
+      );
+
+      render(<PlanQuickSwitcherPalette {...defaultProps} />);
+
+      const emptyDiv = screen.getByText("No accepted plans found").closest("div")!;
+      expect(emptyDiv).toHaveClass("transition-colors");
+    });
+
+    it("uses fixed width to prevent layout shifts", () => {
+      render(<PlanQuickSwitcherPalette {...defaultProps} />);
+
+      const palette = screen.getByPlaceholderText(/Search plans/).closest(".fixed");
+      expect(palette?.className).toMatch(/w-\[600px\]/);
+    });
+
+    it("constrains scroll area height to prevent layout shifts", () => {
+      render(<PlanQuickSwitcherPalette {...defaultProps} />);
+
+      // ScrollArea should have max-h constraint
+      const scrollArea = screen.getByText("Feature A").closest("[class*='max-h']");
+      expect(scrollArea).toBeTruthy();
+    });
+  });
 });

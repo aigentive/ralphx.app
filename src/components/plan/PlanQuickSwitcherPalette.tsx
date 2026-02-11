@@ -143,10 +143,29 @@ export function PlanQuickSwitcherPalette({
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -20 }}
-          transition={{ duration: 0.15 }}
+          initial="hidden"
+          animate="visible"
+          exit="exit"
+          variants={{
+            hidden: { opacity: 0, y: -20 },
+            visible: {
+              opacity: 1,
+              y: 0,
+              transition: {
+                opacity: { duration: 0.15 },
+                y: {
+                  type: "spring",
+                  stiffness: 400,
+                  damping: 30,
+                },
+              },
+            },
+            exit: {
+              opacity: 0,
+              y: -20,
+              transition: { duration: 0.1 },
+            },
+          }}
           className="fixed top-20 left-1/2 -translate-x-1/2 z-50 w-[600px]"
           ref={containerRef}
         >
@@ -165,7 +184,8 @@ export function PlanQuickSwitcherPalette({
                 onKeyDown={handleKeyDown}
                 className={cn(
                   "w-full bg-transparent border-0 text-white placeholder:text-gray-400",
-                  "outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none"
+                  "outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none",
+                  "transition-colors"
                 )}
                 style={{ boxShadow: "none", outline: "none" }}
               />
@@ -173,7 +193,7 @@ export function PlanQuickSwitcherPalette({
 
             {/* Results list */}
             {isLoading ? (
-              <div className="p-8 text-center text-gray-400">
+              <div className="p-8 text-center text-gray-400 transition-colors">
                 <p>Loading plans...</p>
               </div>
             ) : filteredCandidates.length > 0 ? (
@@ -189,7 +209,7 @@ export function PlanQuickSwitcherPalette({
                       onMouseEnter={() => setHighlightedIndex(index)}
                       className={cn(
                         "w-full text-left px-4 py-3 flex items-center justify-between",
-                        "hover:bg-white/5 transition-colors",
+                        "hover:bg-white/5 hover:scale-[1.01] transition-all origin-center",
                         isHighlighted && "bg-white/10",
                         isActive && "border-l-2 border-[#ff6b35]"
                       )}
@@ -211,8 +231,8 @@ export function PlanQuickSwitcherPalette({
               </ScrollArea>
             ) : (
               /* Empty state */
-              <div className="p-8 text-center text-gray-400">
-                <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <div className="p-8 text-center text-gray-400 transition-colors">
+                <FileText className="h-8 w-8 mx-auto mb-2 opacity-50 transition-opacity" />
                 <p>No accepted plans found</p>
               </div>
             )}
