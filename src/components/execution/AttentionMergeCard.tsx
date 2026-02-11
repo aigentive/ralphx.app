@@ -8,6 +8,7 @@
 import { AlertTriangle, ExternalLink, RotateCw } from "lucide-react";
 import type { MergePipelineTask } from "@/api/merge-pipeline";
 import { useCallback } from "react";
+import { getStatusIconConfig } from "@/types/status-icons";
 
 interface AttentionMergeCardProps {
   task: MergePipelineTask;
@@ -16,6 +17,8 @@ interface AttentionMergeCardProps {
 }
 
 export function AttentionMergeCard({ task, onViewDetails, onRetry }: AttentionMergeCardProps) {
+  const attentionStyle = getStatusIconConfig(task.internalStatus);
+  const retryStyle = getStatusIconConfig("pending_merge");
   const handleViewDetails = useCallback(() => {
     onViewDetails(task.taskId);
   }, [onViewDetails, task.taskId]);
@@ -37,7 +40,7 @@ export function AttentionMergeCard({ task, onViewDetails, onRetry }: AttentionMe
     >
       <AlertTriangle
         className="w-3.5 h-3.5 shrink-0"
-        style={{ color: "hsl(14 100% 60%)" }}
+        style={{ color: attentionStyle.color }}
       />
       <span
         className="flex-1 text-xs font-medium truncate min-w-0"
@@ -63,7 +66,7 @@ export function AttentionMergeCard({ task, onViewDetails, onRetry }: AttentionMe
         <button
           onClick={handleRetry}
           className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.08] transition-colors"
-          style={{ color: "hsl(14 100% 60%)" }}
+          style={{ color: retryStyle.color }}
           title="Retry merge"
         >
           <RotateCw className="w-3 h-3" />

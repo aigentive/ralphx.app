@@ -8,6 +8,7 @@
 import { Pause, Square, Loader2 } from "lucide-react";
 import type { RunningProcess } from "@/api/running-processes";
 import { useEffect, useState } from "react";
+import { getStatusIconConfig } from "@/types/status-icons";
 
 interface ProcessCardProps {
   /** The running process data */
@@ -28,49 +29,54 @@ function getStatusBadgeStyle(status: string): {
   bgColor: string;
   label: string;
 } {
+  const statusConfig = getStatusIconConfig(status);
   const statusLower = status.toLowerCase();
+  const hslMatch = statusConfig.color.match(/^hsl\((.+)\)$/);
+  const bgColor = hslMatch
+    ? `hsla(${hslMatch[1]} / ${statusConfig.bgOpacity})`
+    : statusConfig.color;
 
   switch (statusLower) {
     case "executing":
       return {
-        color: "hsl(145 60% 45%)",
-        bgColor: "hsla(145 60% 45% / 0.15)",
+        color: statusConfig.color,
+        bgColor,
         label: "Executing",
       };
     case "re_executing":
       return {
-        color: "hsl(25 90% 55%)",
-        bgColor: "hsla(25 90% 55% / 0.15)",
+        color: statusConfig.color,
+        bgColor,
         label: "Re-executing",
       };
     case "reviewing":
       return {
-        color: "hsl(210 90% 60%)",
-        bgColor: "hsla(210 90% 60% / 0.15)",
+        color: statusConfig.color,
+        bgColor,
         label: "Reviewing",
       };
     case "qa_refining":
       return {
-        color: "hsl(270 60% 60%)",
-        bgColor: "hsla(270 60% 60% / 0.15)",
+        color: statusConfig.color,
+        bgColor,
         label: "QA Refining",
       };
     case "qa_testing":
       return {
-        color: "hsl(270 60% 60%)",
-        bgColor: "hsla(270 60% 60% / 0.15)",
+        color: statusConfig.color,
+        bgColor,
         label: "QA Testing",
       };
     case "merging":
       return {
-        color: "hsl(180 60% 50%)",
-        bgColor: "hsla(180 60% 50% / 0.15)",
+        color: statusConfig.color,
+        bgColor,
         label: "Merging",
       };
     default:
       return {
-        color: "hsl(220 10% 65%)",
-        bgColor: "hsla(220 10% 65% / 0.15)",
+        color: statusConfig.color,
+        bgColor,
         label: status,
       };
   }

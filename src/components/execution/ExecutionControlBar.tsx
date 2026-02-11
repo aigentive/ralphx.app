@@ -11,7 +11,7 @@
  */
 
 import { Pause, Play, Square, Loader2, Swords } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -26,6 +26,7 @@ import { MergePipelinePopover } from "./MergePipelinePopover";
 import type { MergePipelineResponse } from "@/api/merge-pipeline";
 import { QueuedTasksPopover } from "./QueuedTasksPopover";
 import { InfoTooltip } from "./InfoTooltip";
+import { getStatusIconConfig } from "@/types/status-icons";
 
 interface ExecutionControlBarProps {
   /** The project ID */
@@ -71,10 +72,21 @@ interface ExecutionControlBarProps {
 /**
  * Get status indicator color based on execution state
  */
+const STATUS_COLORS = {
+  running: getStatusIconConfig("executing").color,
+  paused: getStatusIconConfig("paused").color,
+  idle: getStatusIconConfig("backlog").color,
+  ready: getStatusIconConfig("ready").color,
+  pendingMerge: getStatusIconConfig("pending_merge").color,
+  mergeAttention: getStatusIconConfig("merge_incomplete").color,
+  stop: getStatusIconConfig("stopped").color,
+} as const;
+const POPOVER_ALIGN_TO_SEPARATOR_DOT = -20;
+
 function getStatusColor(running: number, paused: boolean): string {
-  if (paused) return "hsl(45 90% 55%)"; /* warning */
-  if (running > 0) return "hsl(145 60% 45%)"; /* success */
-  return "hsl(220 10% 45%)"; /* muted */
+  if (paused) return STATUS_COLORS.paused;
+  if (running > 0) return STATUS_COLORS.running;
+  return STATUS_COLORS.idle;
 }
 
 /**
@@ -112,7 +124,6 @@ export function ExecutionControlBar({
   const statusState = getStatusState(runningCount, isPaused);
   const isRunning = runningCount > 0 && !isPaused;
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
-  const statusDotRef = useRef<HTMLDivElement>(null);
 
   // Responsive breakpoint tracking
   const [breakpoint, setBreakpoint] = useState<"wide" | "medium" | "narrow">("wide");
@@ -174,7 +185,6 @@ export function ExecutionControlBar({
         >
           {/* Animated Status Indicator (anchor for all popovers) */}
           <div
-            ref={statusDotRef}
             data-testid="status-indicator"
             className={cn(
               "w-2 h-2 rounded-full transition-colors duration-200",
@@ -193,12 +203,12 @@ export function ExecutionControlBar({
               onPauseProcess={onPauseProcess}
               onStopProcess={onStopProcess}
               onOpenSettings={onOpenSettings}
-              anchorRef={statusDotRef}
+              alignOffset={POPOVER_ALIGN_TO_SEPARATOR_DOT}
             >
               <button
                 data-testid="running-count"
                 className="text-[13px] font-medium cursor-pointer hover:opacity-80 transition-opacity"
-                style={{ color: "hsl(220 10% 90%)" }}
+                style={{ color: runningCount > 0 ? STATUS_COLORS.running : "hsl(220 10% 90%)" }}
                 onClick={() => setIsPopoverOpen(!isPopoverOpen)}
               >
                 {runningLabel}{runningCount}/{maxConcurrent}
@@ -240,12 +250,12 @@ export function ExecutionControlBar({
             <QueuedTasksPopover
               projectId={projectId}
               queuedCount={queuedCount}
-              anchorRef={statusDotRef}
+              alignOffset={POPOVER_ALIGN_TO_SEPARATOR_DOT}
             >
               <button
                 data-testid="queued-count"
                 className="text-[13px] cursor-pointer hover:underline transition-all"
-                style={{ color: "hsl(220 10% 65%)" }}
+                style={{ color: queuedCount > 0 ? STATUS_COLORS.ready : "hsl(220 10% 65%)" }}
                 aria-label="View queued tasks"
                 aria-haspopup="dialog"
               >
@@ -284,19 +294,19 @@ export function ExecutionControlBar({
               active={mergePipelineData.active}
               waiting={mergePipelineData.waiting}
               needsAttention={mergePipelineData.needsAttention}
-              anchorRef={statusDotRef}
+              alignOffset={POPOVER_ALIGN_TO_SEPARATOR_DOT}
             >
               <button
                 data-testid="merging-count"
                 className="flex items-center gap-1.5 text-[13px] cursor-pointer hover:opacity-80 transition-opacity"
-                style={{ color: "hsl(220 10% 65%)" }}
+                style={{ color: mergingCount > 0 ? STATUS_COLORS.pendingMerge : "hsl(220 10% 65%)" }}
               >
                 {mergingLabel}{mergingCount}
                 {hasAttentionMerges && (
                   <span
                     data-testid="merge-attention-indicator"
                     className="text-sm"
-                    style={{ color: "hsl(45 90% 55%)" }}
+                    style={{ color: STATUS_COLORS.mergeAttention }}
                     title="Some merges need attention"
                   >
                     ⚠
@@ -315,7 +325,7 @@ export function ExecutionControlBar({
                 <span
                   data-testid="merge-attention-indicator"
                   className="text-sm"
-                  style={{ color: "hsl(45 90% 55%)" }}
+                  style={{ color: STATUS_COLORS.mergeAttention }}
                   title="Some merges need attention"
                 >
                   ⚠
@@ -333,7 +343,7 @@ export function ExecutionControlBar({
           >
             <Loader2
               className="w-4 h-4 animate-spin shrink-0"
-              style={{ color: "hsl(14 100% 60%)" }}
+              style={{ color: STATUS_COLORS.running }}
             />
             <span
               className="text-[13px] truncate"
@@ -360,9 +370,9 @@ export function ExecutionControlBar({
                   className="gap-2 h-9 px-4 transition-all duration-150 active:scale-[0.96] rounded-lg text-[13px]"
                   style={{
                     backgroundColor: battleModeActive
-                      ? "hsla(14 100% 60% / 0.2)"
+                      ? "hsla(14 100% 55% / 0.2)"
                       : "hsl(220 10% 18%)",
-                    color: battleModeActive ? "hsl(14 100% 60%)" : "hsl(220 10% 90%)",
+                    color: battleModeActive ? STATUS_COLORS.running : "hsl(220 10% 90%)",
                     border: "none",
                   }}
                 >
@@ -392,8 +402,8 @@ export function ExecutionControlBar({
                 className="gap-2 h-9 px-4 transition-all duration-150 active:scale-[0.96] rounded-lg text-[13px]"
                 style={{
                   /* macOS Tahoe: flat button styling */
-                  backgroundColor: isPaused ? "hsla(14 100% 60% / 0.15)" : "hsl(220 10% 18%)",
-                  color: isPaused ? "hsl(14 100% 60%)" : "hsl(220 10% 90%)",
+                  backgroundColor: isPaused ? "hsla(45 90% 55% / 0.15)" : "hsl(220 10% 18%)",
+                  color: isPaused ? STATUS_COLORS.paused : "hsl(220 10% 90%)",
                   border: "none",
                 }}
               >
@@ -433,7 +443,7 @@ export function ExecutionControlBar({
                 style={{
                   /* macOS Tahoe: flat button styling */
                   backgroundColor: canStop ? "hsla(0 70% 55% / 0.15)" : "hsl(220 10% 18%)",
-                  color: canStop ? "hsl(0 70% 60%)" : "hsl(220 10% 45%)",
+                  color: canStop ? STATUS_COLORS.stop : "hsl(220 10% 45%)",
                   border: "none",
                   opacity: canStop ? 1 : 0.5,
                 }}

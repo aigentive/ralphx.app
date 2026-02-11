@@ -7,12 +7,15 @@
 
 import { Clock } from "lucide-react";
 import type { MergePipelineTask } from "@/api/merge-pipeline";
+import { getStatusIconConfig } from "@/types/status-icons";
 
 interface WaitingMergeCardProps {
   task: MergePipelineTask;
 }
 
 export function WaitingMergeCard({ task }: WaitingMergeCardProps) {
+  const pendingMergeStyle = getStatusIconConfig("pending_merge");
+
   const deferredReason = task.isDeferred
     ? task.blockingBranch
       ? `Waiting for ${task.blockingBranch} to merge`
@@ -28,7 +31,7 @@ export function WaitingMergeCard({ task }: WaitingMergeCardProps) {
     >
       <Clock
         className="w-3.5 h-3.5 shrink-0"
-        style={{ color: "hsl(220 10% 42%)" }}
+        style={{ color: pendingMergeStyle.color }}
       />
       <span
         className="flex-1 text-xs font-medium truncate min-w-0"
