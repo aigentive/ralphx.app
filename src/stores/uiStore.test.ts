@@ -18,6 +18,10 @@ describe("uiStore", () => {
       answeredQuestions: {},
       selectedTaskId: null,
       graphSelection: null,
+      graphRightPanelUserOpen: true,
+      graphRightPanelCompactOpen: false,
+      battleModeActive: false,
+      battleModePanelRestoreState: null,
       executionStatus: {
         isPaused: false,
         runningCount: 0,
@@ -432,6 +436,42 @@ describe("uiStore", () => {
       useUiStore.getState().setSelectedTaskId("task-2");
       useUiStore.getState().setSelectedTaskId(null);
       expect(useUiStore.getState().graphSelection).toBeNull();
+    });
+  });
+
+  describe("battle mode", () => {
+    it("enters battle mode and hides graph panels", () => {
+      useUiStore.setState({
+        graphRightPanelUserOpen: true,
+        graphRightPanelCompactOpen: true,
+      });
+
+      useUiStore.getState().enterBattleMode();
+
+      const state = useUiStore.getState();
+      expect(state.battleModeActive).toBe(true);
+      expect(state.graphRightPanelUserOpen).toBe(false);
+      expect(state.graphRightPanelCompactOpen).toBe(false);
+      expect(state.battleModePanelRestoreState).toEqual({
+        userOpen: true,
+        compactOpen: true,
+      });
+    });
+
+    it("exits battle mode and restores previous panel state", () => {
+      useUiStore.setState({
+        graphRightPanelUserOpen: false,
+        graphRightPanelCompactOpen: true,
+      });
+
+      useUiStore.getState().enterBattleMode();
+      useUiStore.getState().exitBattleMode();
+
+      const state = useUiStore.getState();
+      expect(state.battleModeActive).toBe(false);
+      expect(state.graphRightPanelUserOpen).toBe(false);
+      expect(state.graphRightPanelCompactOpen).toBe(true);
+      expect(state.battleModePanelRestoreState).toBeNull();
     });
   });
 });

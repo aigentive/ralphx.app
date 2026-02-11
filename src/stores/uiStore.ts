@@ -156,6 +156,10 @@ interface UiState {
   graphRightPanelUserOpen: boolean;
   /** Compact-mode toggle for graph right panel visibility */
   graphRightPanelCompactOpen: boolean;
+  /** Whether Battle Mode is active in Graph view */
+  battleModeActive: boolean;
+  /** Snapshot of graph panel visibility before entering battle mode */
+  battleModePanelRestoreState: { userOpen: boolean; compactOpen: boolean } | null;
   /** History state for time-travel feature - shared between TaskDetailOverlay and IntegratedChatPanel */
   taskHistoryState: {
     status: InternalStatus;
@@ -254,6 +258,10 @@ interface UiActions {
   toggleGraphRightPanelCompactOpen: () => void;
   /** Set compact-mode graph right panel visibility */
   setGraphRightPanelCompactOpen: (open: boolean) => void;
+  /** Enter battle mode and capture graph panel visibility state */
+  enterBattleMode: () => void;
+  /** Exit battle mode and restore graph panel visibility state */
+  exitBattleMode: () => void;
   /** Set task history state for time-travel feature */
   setTaskHistoryState: (state: {
     status: InternalStatus;
@@ -314,6 +322,8 @@ export const useUiStore = create<UiState & UiActions>()(
     graphSelection: null,
     graphRightPanelUserOpen: true,
     graphRightPanelCompactOpen: false,
+    battleModeActive: false,
+    battleModePanelRestoreState: null,
     taskHistoryState: null,
     taskCreationContext: null,
     chatVisibleByView: loadChatVisibility(),
@@ -525,6 +535,29 @@ export const useUiStore = create<UiState & UiActions>()(
     setGraphRightPanelCompactOpen: (open) =>
       set((state) => {
         state.graphRightPanelCompactOpen = open;
+      }),
+
+    enterBattleMode: () =>
+      set((state) => {
+        if (state.battleModeActive) return;
+        state.battleModePanelRestoreState = {
+          userOpen: state.graphRightPanelUserOpen,
+          compactOpen: state.graphRightPanelCompactOpen,
+        };
+        state.battleModeActive = true;
+        state.graphRightPanelUserOpen = false;
+        state.graphRightPanelCompactOpen = false;
+      }),
+
+    exitBattleMode: () =>
+      set((state) => {
+        if (!state.battleModeActive) return;
+        state.battleModeActive = false;
+        if (state.battleModePanelRestoreState) {
+          state.graphRightPanelUserOpen = state.battleModePanelRestoreState.userOpen;
+          state.graphRightPanelCompactOpen = state.battleModePanelRestoreState.compactOpen;
+        }
+        state.battleModePanelRestoreState = null;
       }),
 
     setTaskHistoryState: (historyState) =>
