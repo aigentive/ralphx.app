@@ -23,6 +23,8 @@ import {
   SUPERVISOR,
   QA_PREP,
   QA_TESTER,
+  MEMORY_MAINTAINER,
+  MEMORY_CAPTURE,
 } from "./agentNames.js";
 
 /**
@@ -867,6 +869,28 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
   [SUPERVISOR]: [],
   [QA_PREP]: [],
   [QA_TESTER]: [],
+  // Memory agents - background memory maintenance and capture
+  [MEMORY_MAINTAINER]: [
+    // Write tools for memory maintenance
+    "upsert_memories",
+    "mark_memory_obsolete",
+    "refresh_memory_rule_index",
+    "ingest_rule_file",
+    "rebuild_archive_snapshots",
+    // Read tools for context
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
+  ],
+  [MEMORY_CAPTURE]: [
+    // Write tools for memory capture
+    "upsert_memories",
+    // Read tools for deduplication and context
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
+    "get_conversation_transcript",
+  ],
   // Debug mode: shows ALL tools (use RALPHX_AGENT_TYPE=debug)
   debug: ALL_TOOLS.map((t) => t.name),
 };
