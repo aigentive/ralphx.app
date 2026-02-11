@@ -2,8 +2,9 @@
  * Tests for useIntegratedChatHandlers hook
  *
  * Covers:
- * - Stop context resolution for all chat modes
- * - Stop sequencing (stopAgent then recoverTaskExecution)
+ * - Stop context resolution for all chat modes (ideation, review, merge, task, project, execution)
+ * - Stop sequencing (stopAgent first, then recoverTaskExecution for execution mode)
+ * - Graceful handling when stop fails or no agent is running
  * - Queue context resolution
  */
 
@@ -48,6 +49,7 @@ function createDefaultProps(overrides: Partial<Parameters<typeof useIntegratedCh
   return {
     isExecutionMode: false,
     isReviewMode: false,
+    isMergeMode: false,
     selectedTaskId: "task-123",
     projectId: "project-456",
     ideationSessionId: undefined as string | undefined,
@@ -91,7 +93,7 @@ describe("useIntegratedChatHandlers", () => {
         await result.current.handleStopAgent();
       });
 
-      expect(mockStopAgent).toHaveBeenCalledWith("task", "task-123");
+      expect(mockStopAgent).toHaveBeenCalledWith("review", "task-123");
     });
 
     it("stops with 'ideation' context in ideation mode", async () => {
@@ -137,7 +139,7 @@ describe("useIntegratedChatHandlers", () => {
       expect(mockStopAgent).toHaveBeenCalledWith("project", "project-456");
     });
 
-    it("in execution mode, calls recoverTaskExecution instead of stopAgent", async () => {
+    it("in execution mode, calls stopAgent first then recoverTaskExecution", async () => {
       const props = createDefaultProps({
         isExecutionMode: true,
         storeContextKey: "task_execution:task-123",
@@ -149,8 +151,9 @@ describe("useIntegratedChatHandlers", () => {
         await result.current.handleStopAgent();
       });
 
+      // Both should be called: stopAgent for immediate cancellation, then recovery
+      expect(mockStopAgent).toHaveBeenCalledWith("task_execution", "task-123");
       expect(mockRecoverTaskExecution).toHaveBeenCalledWith("task-123");
-      expect(mockStopAgent).not.toHaveBeenCalled();
     });
 
     it("execution mode stop does not throw on failure", async () => {
@@ -187,14 +190,11 @@ describe("useIntegratedChatHandlers", () => {
     });
   });
 
-  describe("handleStopAgent - context resolution does NOT include review/merge", () => {
-    it("review mode resolves to 'task' context (current bug behavior)", async () => {
-      // This test documents the current behavior where review mode
-      // falls back to 'task' context instead of 'review' context.
-      // The handleStopAgent does not check isReviewMode.
+  describe("handleStopAgent - merge and negative cases", () => {
+    it("stops with 'merge' context in merge mode", async () => {
       const props = createDefaultProps({
-        isReviewMode: true,
-        storeContextKey: "review:task-123",
+        isMergeMode: true,
+        storeContextKey: "merge:task-123",
       });
 
       const { result } = renderHook(() => useIntegratedChatHandlers(props), { wrapper });
@@ -203,9 +203,27 @@ describe("useIntegratedChatHandlers", () => {
         await result.current.handleStopAgent();
       });
 
-      // Current behavior: falls through to selectedTaskId → "task"
-      // Expected behavior after fix: should use "review"
+      expect(mockStopAgent).toHaveBeenCalledWith("merge", "task-123");
+      // Merge mode should NOT call recoverTaskExecution
+      expect(mockRecoverTaskExecution).not.toHaveBeenCalled();
+    });
+
+    it("handles stop gracefully when no agent is running (negative case)", async () => {
+      // stopAgent returns successfully even if no agent run is active
+      mockStopAgent.mockResolvedValueOnce(true);
+
+      const props = createDefaultProps();
+
+      const { result } = renderHook(() => useIntegratedChatHandlers(props), { wrapper });
+
+      // Should not throw even when there's no running agent
+      await act(async () => {
+        await result.current.handleStopAgent();
+      });
+
       expect(mockStopAgent).toHaveBeenCalledWith("task", "task-123");
+      // No recoverTaskExecution in non-execution mode
+      expect(mockRecoverTaskExecution).not.toHaveBeenCalled();
     });
   });
 
