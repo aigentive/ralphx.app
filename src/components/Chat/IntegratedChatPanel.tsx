@@ -370,7 +370,6 @@ export function IntegratedChatPanel({
   } = regularChatData;
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Recovery window: brief polling on startup for agent contexts
   useEffect(() => {
@@ -649,7 +648,6 @@ export function IntegratedChatPanel({
               streamingToolCalls={streamingToolCalls}
               streamingTasks={streamingTasks}
               streamingText={streamingText}
-              messagesEndRef={messagesEndRef}
               scrollToTimestamp={isHistoryMode ? taskHistoryState?.timestamp : null}
             />
           )}
