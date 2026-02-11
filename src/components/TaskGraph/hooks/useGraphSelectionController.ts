@@ -49,6 +49,8 @@ interface GraphSelectionControllerParams {
   onDeletePlanGroup?: (planArtifactId: string) => void;
   /** Called when Delete key is pressed on a selected task node (prompts delete) */
   onDeleteTask?: (taskId: string) => void;
+  /** Disable keyboard navigation/shortcuts (used while battle overlay is active) */
+  keyboardNavigationEnabled?: boolean;
 }
 
 /** Public controller surface returned to TaskGraphView. */
@@ -233,6 +235,7 @@ export function useGraphSelectionController({
   isLoading,
   onDeletePlanGroup,
   onDeleteTask,
+  keyboardNavigationEnabled = true,
 }: GraphSelectionControllerParams): GraphSelectionControllerResult {
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
@@ -560,6 +563,7 @@ export function useGraphSelectionController({
       preventDefault: () => void;
       nativeEvent?: KeyboardEvent;
     }) => {
+      if (!keyboardNavigationEnabled) return;
       if (hasHandledGraphKey(event)) return;
       const key = event.key;
       const lowerKey = key.toLowerCase();
@@ -925,6 +929,7 @@ export function useGraphSelectionController({
       tierGroupsById,
       tierGroupsByPlan,
       zoomBy,
+      keyboardNavigationEnabled,
     ]
   );
 
@@ -936,6 +941,7 @@ export function useGraphSelectionController({
   );
 
   useEffect(() => {
+    if (!keyboardNavigationEnabled) return;
     if (!reactFlowDomNode) return;
     reactFlowDomNode.setAttribute("tabindex", "0");
     const handleDomKeyDown = (event: KeyboardEvent) => {
@@ -946,9 +952,10 @@ export function useGraphSelectionController({
     return () => {
       reactFlowDomNode.removeEventListener("keydown", handleDomKeyDown, { capture: true });
     };
-  }, [handleKeyDownEvent, reactFlowDomNode]);
+  }, [handleKeyDownEvent, keyboardNavigationEnabled, reactFlowDomNode]);
 
   useEffect(() => {
+    if (!keyboardNavigationEnabled) return;
     if (!graphReady || isLoading || graphError) return;
     const container = containerRef.current;
     if (!container) return;
@@ -956,7 +963,7 @@ export function useGraphSelectionController({
     const active = document.activeElement;
     if (active && active !== document.body && active !== focusTarget) return;
     focusTarget.focus();
-  }, [graphError, graphReady, isLoading, reactFlowDomNode]);
+  }, [graphError, graphReady, isLoading, keyboardNavigationEnabled, reactFlowDomNode]);
 
   useEffect(() => {
     return () => {

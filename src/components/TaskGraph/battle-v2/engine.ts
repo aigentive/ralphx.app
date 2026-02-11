@@ -13,7 +13,7 @@ import type {
   BattleTaskState,
   BattleTaskSyncEvent,
 } from "./types";
-import { getBattleSpecForStatus, getThreatWeight, isActivelyWorkedStatus, mapStatusToBattleGroup } from "../battle/statusMapping";
+import { getBattleSpecForStatus, getThreatWeight, isActivelyWorkedStatus, mapStatusToBattleGroup } from "./statusMapping";
 
 const PLAYER_WIDTH = 34;
 const PLAYER_HEIGHT = 20;
