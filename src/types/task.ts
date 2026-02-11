@@ -195,3 +195,73 @@ export const StatusTransitionSchema = z.object({
   label: z.string(),
 });
 export type StatusTransition = z.infer<typeof StatusTransitionSchema>;
+
+/**
+ * Merge recovery event types
+ * These track the history of merge deferral and retry attempts
+ */
+export type MergeRecoveryEventKind =
+  | "deferred"
+  | "auto_retry_triggered"
+  | "attempt_started"
+  | "attempt_failed"
+  | "attempt_succeeded"
+  | "manual_retry";
+
+export type MergeRecoveryEventSource = "system" | "auto" | "user";
+
+export type MergeRecoveryReasonCode =
+  | "target_branch_busy"
+  | "git_error"
+  | "validation_failed"
+  | "unknown";
+
+export interface MergeRecoveryEvent {
+  /** ISO 8601 timestamp */
+  at: string;
+  /** Type of event */
+  kind: MergeRecoveryEventKind;
+  /** Source of the event (system/auto/user) */
+  source: MergeRecoveryEventSource;
+  /** Machine-readable reason code */
+  reason_code: MergeRecoveryReasonCode;
+  /** Human-readable summary */
+  message: string;
+  /** Target branch being merged into */
+  target_branch?: string;
+  /** Source branch being merged from */
+  source_branch?: string;
+  /** ID of task blocking this merge */
+  blocking_task_id?: string;
+  /** Attempt number for this retry */
+  attempt?: number;
+}
+
+export type MergeRecoveryLastState = "deferred" | "retrying" | "failed" | "succeeded";
+
+export interface MergeRecoveryState {
+  /** Schema version for future compatibility */
+  version: number;
+  /** Chronological list of recovery events (newest last) */
+  events: MergeRecoveryEvent[];
+  /** Current state of recovery */
+  last_state: MergeRecoveryLastState;
+}
+
+/**
+ * Extended metadata structure with merge recovery info
+ */
+export interface TaskMetadata {
+  /** Error message (legacy field) */
+  error?: string;
+  /** Source branch (legacy field) */
+  source_branch?: string;
+  /** Target branch (legacy field) */
+  target_branch?: string;
+  /** Diagnostic info (legacy field) */
+  diagnostic_info?: string;
+  /** Validation failures (legacy field) */
+  validation_failures?: unknown[];
+  /** Structured merge recovery timeline */
+  merge_recovery?: MergeRecoveryState;
+}
