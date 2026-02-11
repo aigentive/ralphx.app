@@ -64,9 +64,15 @@ pub async fn resolve_project_id(
 
 /// Resolve the project's working directory from a context
 ///
-/// For task-related contexts (Task, TaskExecution, Review):
-/// - Local mode: Always returns project.working_directory
-/// - Worktree mode: Returns task.worktree_path if available, else project.working_directory
+/// For task-related contexts:
+/// - Task/TaskExecution/Review:
+///   - Local mode: Always returns project.working_directory
+///   - Worktree mode: Returns task.worktree_path if available, else project.working_directory
+/// - Merge:
+///   - Local mode: Always returns project.working_directory
+///   - Worktree mode: Uses merge worktree (`.../merge-<task_id>`) when available; otherwise
+///     falls back to project.working_directory. This avoids using task worktrees for merge
+///     contexts and prevents merge-time CWD from leaking into review/re-execution.
 pub async fn resolve_working_directory(
     context_type: ChatContextType,
     context_id: &str,
@@ -85,7 +91,7 @@ pub async fn resolve_working_directory(
                 return PathBuf::from(&project.working_directory);
             }
         }
-        ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge => {
+        ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review => {
             // Task-related context: check git_mode for worktree support
             if let Ok(Some(task)) = task_repo
                 .get_by_id(&TaskId::from_string(context_id.to_string()))
@@ -102,6 +108,40 @@ pub async fn resolve_working_directory(
                         }
                     }
                     // Local mode or no worktree_path: use project's working directory
+                    return PathBuf::from(&project.working_directory);
+                }
+            }
+        }
+        ChatContextType::Merge => {
+            // Merge context has stricter CWD rules than regular task/review execution.
+            if let Ok(Some(task)) = task_repo
+                .get_by_id(&TaskId::from_string(context_id.to_string()))
+                .await
+            {
+                if let Ok(Some(project)) = project_repo.get_by_id(&task.project_id).await {
+                    if project.git_mode == GitMode::Worktree {
+                        let project_path = PathBuf::from(&project.working_directory);
+
+                        if let Some(worktree_path) = &task.worktree_path {
+                            let path = PathBuf::from(worktree_path);
+                            if path.exists() {
+                                let is_primary_repo = path == project_path;
+                                let is_merge_worktree = path
+                                    .file_name()
+                                    .and_then(|name| name.to_str())
+                                    .map(|name| name.starts_with("merge-"))
+                                    .unwrap_or(false);
+
+                                if is_primary_repo || is_merge_worktree {
+                                    return path;
+                                }
+                            }
+                        }
+
+                        // For merge contexts in worktree mode, never execute from a task worktree.
+                        return project_path;
+                    }
+
                     return PathBuf::from(&project.working_directory);
                 }
             }
