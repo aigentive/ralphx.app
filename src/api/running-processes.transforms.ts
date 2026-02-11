@@ -11,6 +11,7 @@ import type {
   RunningProcess,
   RunningProcessesResponse,
 } from "./running-processes.types";
+import { transformTaskStep } from "@/types/task-step";
 
 /**
  * Transform StepProgressSummarySchema (snake_case) → StepProgressSummary (camelCase)
@@ -26,8 +27,8 @@ export function transformStepProgressSummary(
     pending: raw.pending,
     skipped: raw.skipped,
     failed: raw.failed,
-    currentStep: raw.current_step,
-    nextStep: raw.next_step,
+    currentStep: raw.current_step ? transformTaskStep(raw.current_step) : null,
+    nextStep: raw.next_step ? transformTaskStep(raw.next_step) : null,
     percentComplete: raw.percent_complete,
   };
 }

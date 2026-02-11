@@ -230,7 +230,7 @@ export function ProcessCard({
         {/* Step Progress */}
         {process.stepProgress && (
           <span>
-            Step {process.stepProgress.inProgress > 0 ? process.stepProgress.completed + 1 : process.stepProgress.completed}/{process.stepProgress.total}
+            Step {process.stepProgress.currentStep ? process.stepProgress.currentStep.sortOrder + 1 : process.stepProgress.completed}/{process.stepProgress.total}
           </span>
         )}
 
