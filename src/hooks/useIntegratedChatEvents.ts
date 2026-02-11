@@ -229,12 +229,26 @@ export function useIntegratedChatEvents({
     );
 
     // Message created events - invalidate conversation for live updates
-    const handleMessageCreated = (payload: { conversation_id?: string; context_id?: string; context_type?: string }) => {
+    // Clear streaming state immediately for assistant messages to prevent duplicates
+    const handleMessageCreated = (payload: {
+      conversation_id?: string;
+      context_id?: string;
+      context_type?: string;
+      role?: string;
+    }) => {
       const conversationId = payload.conversation_id;
       if (!conversationId) {
         return;
       }
       if (conversationId === activeConversationId && (!contextId || payload.context_id === contextId)) {
+        // Clear streaming state immediately for assistant messages to prevent duplicate display
+        // User messages don't have streaming state, so role check ensures we only clear for assistant
+        if (payload.role === "assistant") {
+          setStreamingText("");
+          setStreamingToolCalls([]);
+          setStreamingTasks(new Map());
+        }
+
         queryClient.invalidateQueries({
           queryKey: chatKeys.conversation(conversationId),
         });
@@ -242,7 +256,12 @@ export function useIntegratedChatEvents({
     };
 
     unsubscribes.push(
-      bus.subscribe<{ conversation_id?: string; context_id?: string; context_type?: string }>(
+      bus.subscribe<{
+        conversation_id?: string;
+        context_id?: string;
+        context_type?: string;
+        role?: string;
+      }>(
         "agent:message_created",
         handleMessageCreated
       )
