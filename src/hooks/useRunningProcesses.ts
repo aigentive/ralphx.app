@@ -18,7 +18,8 @@ import type { Unsubscribe } from "@/lib/event-bus";
  */
 export const runningProcessesKeys = {
   all: ["running-processes"] as const,
-  list: () => [...runningProcessesKeys.all, "list"] as const,
+  list: (projectId?: string) =>
+    [...runningProcessesKeys.all, "list", projectId ?? "all"] as const,
 };
 
 /**
@@ -39,14 +40,14 @@ export const runningProcessesKeys = {
  * );
  * ```
  */
-export function useRunningProcesses() {
+export function useRunningProcesses(projectId?: string) {
   const queryClient = useQueryClient();
   const bus = useEventBus();
 
   const query = useQuery<RunningProcessesResponse, Error>({
-    queryKey: runningProcessesKeys.list(),
+    queryKey: runningProcessesKeys.list(projectId),
     queryFn: async () => {
-      return await runningProcessesApi.getRunningProcesses();
+      return await runningProcessesApi.getRunningProcesses(projectId);
     },
     // Fallback poll every 10s (real-time updates come via events)
     refetchInterval: 10000,
@@ -61,28 +62,28 @@ export function useRunningProcesses() {
     // Refetch when any task status changes (task might enter or leave agent-active state)
     unsubscribes.push(
       bus.subscribe("task:status_changed", () => {
-        queryClient.invalidateQueries({ queryKey: runningProcessesKeys.list() });
+        queryClient.invalidateQueries({ queryKey: runningProcessesKeys.list(projectId) });
       })
     );
 
     // Refetch when execution status changes (tasks starting/stopping)
     unsubscribes.push(
       bus.subscribe("execution:status_changed", () => {
-        queryClient.invalidateQueries({ queryKey: runningProcessesKeys.list() });
+        queryClient.invalidateQueries({ queryKey: runningProcessesKeys.list(projectId) });
       })
     );
 
     // Refetch when step status changes (step progress updates)
     unsubscribes.push(
       bus.subscribe("step:status_changed", () => {
-        queryClient.invalidateQueries({ queryKey: runningProcessesKeys.list() });
+        queryClient.invalidateQueries({ queryKey: runningProcessesKeys.list(projectId) });
       })
     );
 
     return () => {
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [bus, queryClient]);
+  }, [bus, projectId, queryClient]);
 
   return query;
 }

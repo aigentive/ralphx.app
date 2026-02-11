@@ -40,19 +40,20 @@ pub async fn complete_review(
     }
 
     // 2. Parse and map decision to ReviewToolOutcome
-    let outcome =
-        match req.decision.as_str() {
-            "approved" => ReviewToolOutcome::Approved,
-            "needs_changes" => ReviewToolOutcome::NeedsChanges,
-            "escalate" => ReviewToolOutcome::Escalate,
-            _ => return Err((
+    let outcome = match req.decision.as_str() {
+        "approved" => ReviewToolOutcome::Approved,
+        "needs_changes" => ReviewToolOutcome::NeedsChanges,
+        "escalate" => ReviewToolOutcome::Escalate,
+        _ => {
+            return Err((
                 StatusCode::BAD_REQUEST,
                 format!(
                     "Invalid decision: '{}'. Expected 'approved', 'needs_changes', or 'escalate'",
                     req.decision
                 ),
-            )),
-        };
+            ))
+        }
+    };
 
     // 3. Get feedback - stored separately from issues now
     let feedback = req.feedback.clone();

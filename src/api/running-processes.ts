@@ -51,13 +51,14 @@ async function typedInvokeWithTransform<TRaw, TResult>(
  */
 export const runningProcessesApi = {
   /**
-   * Get all currently running processes (tasks in agent-active states)
+   * Get currently running processes (tasks in agent-active states).
+   * If projectId is provided, results are scoped to that project.
    * @returns List of running processes with enriched data
    */
-  getRunningProcesses: (): Promise<RunningProcessesResponse> =>
+  getRunningProcesses: (projectId?: string): Promise<RunningProcessesResponse> =>
     typedInvokeWithTransform(
       "get_running_processes",
-      {},
+      { projectId: projectId ?? null },
       RunningProcessesResponseSchema,
       transformRunningProcessesResponse
     ),

@@ -464,11 +464,11 @@ pub async fn resolve_merge_branches(
     // Check if this task IS the merge task for a plan branch
     if let Ok(Some(pb)) = plan_branch_repo.get_by_merge_task_id(&task.id).await {
         if pb.status == PlanBranchStatus::Active {
-            tracing::info!(
+            tracing::debug!(
                 task_id = task.id.as_str(),
                 feature_branch = %pb.branch_name,
                 base_branch = %base_branch,
-                "Merge task: merging feature branch into base"
+                "Resolved merge branches for merge task (feature -> base)"
             );
             return (pb.branch_name, base_branch);
         }
@@ -478,11 +478,11 @@ pub async fn resolve_merge_branches(
     if let Some(ref session_id) = task.ideation_session_id {
         if let Ok(Some(pb)) = plan_branch_repo.get_by_session_id(session_id).await {
             if pb.status == PlanBranchStatus::Active {
-                tracing::info!(
+                tracing::debug!(
                     task_id = task.id.as_str(),
                     task_branch = %task_branch,
                     feature_branch = %pb.branch_name,
-                    "Plan task: merging task branch into feature branch"
+                    "Resolved merge branches for plan task (task -> feature)"
                 );
                 return (task_branch, pb.branch_name);
             }

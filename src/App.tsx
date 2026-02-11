@@ -199,7 +199,7 @@ function AppContent() {
   const [executionSettings, setExecutionSettings] = useState<ProjectSettings | null>(null);
 
   // Running processes data for popover
-  const { data: runningProcessesData } = useRunningProcesses();
+  const { data: runningProcessesData } = useRunningProcesses(activeProjectId ?? undefined);
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
@@ -219,11 +219,11 @@ function AppContent() {
   // Real-time execution status updates via Tauri events
   useExecutionEvents();
   // Fetch initial execution status and poll every 30s as fallback
-  useExecutionStatus();
+  useExecutionStatus(activeProjectId ?? undefined);
   const { isApproving, isRequestingChanges } = useReviewMutations();
 
   // Merge pipeline data
-  const { data: mergePipelineData } = useMergePipeline();
+  const { data: mergePipelineData } = useMergePipeline(activeProjectId ?? undefined);
   const mergingCount = useMemo(() => {
     if (!mergePipelineData) return 0;
     return mergePipelineData.active.length + mergePipelineData.waiting.length + mergePipelineData.needsAttention.length;

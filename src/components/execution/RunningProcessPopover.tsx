@@ -18,6 +18,8 @@ import { cn } from "@/lib/utils";
 interface RunningProcessPopoverProps {
   /** List of currently running processes */
   processes: RunningProcess[];
+  /** Global running count from execution status (source of truth for capacity) */
+  runningCount?: number;
   /** Current max concurrent tasks */
   maxConcurrent: number;
   /** Whether popover is open (controlled) */
@@ -38,6 +40,7 @@ interface RunningProcessPopoverProps {
 
 export function RunningProcessPopover({
   processes,
+  runningCount,
   maxConcurrent,
   open,
   onOpenChange,
@@ -47,6 +50,8 @@ export function RunningProcessPopover({
   children,
   alignOffset = -24,
 }: RunningProcessPopoverProps) {
+  const effectiveRunningCount = runningCount ?? processes.length;
+
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
@@ -76,7 +81,7 @@ export function RunningProcessPopover({
             className="text-xs font-semibold"
             style={{ color: "hsl(220 10% 80%)" }}
           >
-            Running Processes ({processes.length}/{maxConcurrent})
+            Running Processes ({effectiveRunningCount}/{maxConcurrent})
           </h3>
 
           <button

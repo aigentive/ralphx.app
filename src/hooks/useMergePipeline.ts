@@ -10,16 +10,17 @@ import { mergePipelineApi } from "@/api/merge-pipeline";
  */
 export const mergePipelineKeys = {
   all: ["merge-pipeline"] as const,
-  pipeline: () => [...mergePipelineKeys.all, "list"] as const,
+  pipeline: (projectId?: string) =>
+    [...mergePipelineKeys.all, "list", projectId ?? "all"] as const,
 };
 
 /**
  * Hook to fetch the merge pipeline (active, waiting, needs attention)
  */
-export function useMergePipeline() {
+export function useMergePipeline(projectId?: string) {
   return useQuery({
-    queryKey: mergePipelineKeys.pipeline(),
-    queryFn: () => mergePipelineApi.getMergePipeline(),
+    queryKey: mergePipelineKeys.pipeline(projectId),
+    queryFn: () => mergePipelineApi.getMergePipeline(projectId),
     refetchInterval: 5000, // Poll every 5 seconds for real-time updates
   });
 }

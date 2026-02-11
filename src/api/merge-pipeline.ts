@@ -48,14 +48,15 @@ async function typedInvokeWithTransform<TRaw, TResult>(
  */
 export const mergePipelineApi = {
   /**
-   * Get the merge pipeline for all projects
+   * Get the merge pipeline.
+   * If projectId is provided, results are scoped to that project.
    * Returns tasks in merge-related states grouped into active, waiting, and needs_attention
    * @returns Merge pipeline with active merges, waiting merges, and tasks needing attention
    */
-  getMergePipeline: (): Promise<MergePipelineResponse> =>
+  getMergePipeline: (projectId?: string): Promise<MergePipelineResponse> =>
     typedInvokeWithTransform(
       "get_merge_pipeline",
-      {},
+      { projectId: projectId ?? null },
       MergePipelineResponseSchema,
       transformMergePipelineResponse
     ),
