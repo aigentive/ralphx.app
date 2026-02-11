@@ -8,6 +8,7 @@ pub mod artifact;
 pub mod artifact_flow;
 pub mod chat_conversation;
 pub mod ideation;
+pub mod merge_progress_event;
 pub mod methodology;
 pub mod plan_branch;
 pub mod plan_selection_stats;
@@ -76,6 +77,7 @@ pub use review_issue::{
 pub use status::{InternalStatus, ParseInternalStatusError};
 pub use task::Task;
 pub use task_context::{ArtifactSummary, TaskContext, TaskDependencySummary, TaskProposalSummary};
+pub use merge_progress_event::{MergePhase, MergePhaseStatus, MergeProgressEvent};
 pub use task_metadata::{
     MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
     MergeRecoverySource, MergeRecoveryState,
