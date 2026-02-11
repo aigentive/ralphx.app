@@ -8,6 +8,8 @@ use std::sync::Arc;
 use tauri::State;
 
 use crate::application::AppState;
+use crate::commands::execution_commands::ActiveProjectState;
+use crate::domain::entities::ProjectId;
 use crate::domain::entities::{InternalStatus, Task};
 use crate::domain::state_machine::transition_handler::{
     has_merge_deferred_metadata, resolve_merge_branches,
@@ -78,8 +80,15 @@ fn extract_merge_metadata(task: &Task) -> (Option<Vec<String>>, Option<String>) 
 /// - needs_attention: tasks with conflicts or errors (status = merge_conflict | merge_incomplete)
 #[tauri::command]
 pub async fn get_merge_pipeline(
+    project_id: Option<String>,
+    active_project_state: State<'_, Arc<ActiveProjectState>>,
     state: State<'_, AppState>,
 ) -> Result<MergePipelineResponse, String> {
+    let effective_project_id = match project_id {
+        Some(id) => Some(ProjectId::from_string(id)),
+        None => active_project_state.get().await,
+    };
+
     let mut active = Vec::new();
     let mut waiting = Vec::new();
     let mut needs_attention = Vec::new();
@@ -92,14 +101,25 @@ pub async fn get_merge_pipeline(
         InternalStatus::MergeIncomplete,
     ];
 
-    // Get all projects
-    let projects = state
-        .project_repo
-        .get_all()
-        .await
-        .map_err(|e| e.to_string())?;
+    let projects = if let Some(pid) = &effective_project_id {
+        match state
+            .project_repo
+            .get_by_id(pid)
+            .await
+            .map_err(|e| e.to_string())?
+        {
+            Some(project) => vec![project],
+            None => Vec::new(),
+        }
+    } else {
+        state
+            .project_repo
+            .get_all()
+            .await
+            .map_err(|e| e.to_string())?
+    };
 
-    for project in projects {
+    for project in &projects {
         let tasks = state
             .task_repo
             .get_by_project(&project.id)

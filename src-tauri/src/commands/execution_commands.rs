@@ -3,6 +3,7 @@
 // Phase 82: Project-scoped execution with optional project_id parameters
 
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime, State};
@@ -12,7 +13,10 @@ use crate::application::reconciliation::UserRecoveryAction;
 use crate::application::{
     AppState, ReconciliationRunner, TaskSchedulerService, TaskTransitionService,
 };
-use crate::domain::entities::{task_step::StepProgressSummary, InternalStatus, ProjectId};
+use crate::domain::entities::{
+    task_step::StepProgressSummary, AgentRunId, AgentRunStatus, ChatContextType, InternalStatus,
+    ProjectId, TaskId,
+};
 use crate::domain::execution::ExecutionSettings;
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::transition_handler::get_trigger_origin;
@@ -356,14 +360,45 @@ pub async fn get_execution_status(
         }
     }
 
-    // Use running agent registry as source of truth for active processes.
-    // This avoids inflated counts from stuck task statuses.
-    let registry_count = app_state.running_agent_registry.list_all().await.len() as u32;
+    // Runtime GC pass to prune stale rows on every status poll.
+    prune_stale_execution_registry_entries(&app_state).await;
 
-    // Sync in-memory count with registry so downstream logic stays consistent.
-    execution_state.set_running_count(registry_count);
+    let registry_entries = app_state.running_agent_registry.list_all().await;
 
-    let running_count = registry_count;
+    // Keep execution state synchronized to global execution contexts.
+    let global_running_count = registry_entries
+        .iter()
+        .filter(|(key, _)| is_execution_context_type(&key.context_type))
+        .count() as u32;
+    execution_state.set_running_count(global_running_count);
+
+    let mut running_count = 0u32;
+    for (key, _) in registry_entries {
+        let context_type = match ChatContextType::from_str(&key.context_type) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+
+        if !matches!(
+            context_type,
+            ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge
+        ) {
+            continue;
+        }
+
+        if let Some(pid) = &effective_project_id {
+            let task_id = TaskId::from_string(key.context_id);
+            let task = match app_state.task_repo.get_by_id(&task_id).await {
+                Ok(Some(task)) => task,
+                _ => continue,
+            };
+            if task.project_id != *pid {
+                continue;
+            }
+        }
+
+        running_count += 1;
+    }
 
     let max_concurrent = execution_state.max_concurrent();
     let global_max = execution_state.global_max_concurrent();
@@ -376,7 +411,7 @@ pub async fn get_execution_status(
         queued_count,
         can_start_task: !execution_state.is_paused()
             && running_count < max_concurrent
-            && running_count < global_max,
+            && global_running_count < global_max,
     })
 }
 
@@ -1248,87 +1283,220 @@ pub struct RunningProcessesResponse {
     pub processes: Vec<RunningProcess>,
 }
 
-/// Get all currently running processes (tasks in agent-active states)
+/// Get all currently running processes (tasks with active execution contexts)
 ///
-/// Returns tasks in AGENT_ACTIVE_STATUSES with enriched data:
+/// Returns tasks found in the running agent registry (task_execution/review/merge)
+/// with enriched data:
 /// - Step progress via StepProgressSummary::from_steps()
 /// - Elapsed time from task_state_history
 /// - Trigger origin from metadata
 /// - Branch name
 #[tauri::command]
 pub async fn get_running_processes(
+    project_id: Option<String>,
+    active_project_state: State<'_, Arc<ActiveProjectState>>,
     state: State<'_, AppState>,
 ) -> Result<RunningProcessesResponse, String> {
-    // Get all tasks in agent-active statuses across all projects
+    let effective_project_id = match project_id {
+        Some(id) => Some(ProjectId::from_string(id)),
+        None => active_project_state.get().await,
+    };
+
+    // Keep the registry clean so process rows reflect truly running agents.
+    prune_stale_execution_registry_entries(&state).await;
+
     let mut processes = Vec::new();
+    let mut seen_task_ids = std::collections::HashSet::new();
+    let registry_entries = state.running_agent_registry.list_all().await;
 
-    // Get all projects
-    let projects = state
-        .project_repo
-        .get_all()
-        .await
-        .map_err(|e| e.to_string())?;
+    for (key, _) in registry_entries {
+        if !is_execution_context_type(&key.context_type) {
+            continue;
+        }
 
-    for project in projects {
-        let tasks = state
-            .task_repo
-            .get_by_project(&project.id)
+        let context_type = match ChatContextType::from_str(&key.context_type) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+
+        let task_id = TaskId::from_string(key.context_id);
+        let task = match state.task_repo.get_by_id(&task_id).await {
+            Ok(Some(task)) => task,
+            _ => continue,
+        };
+
+        if let Some(pid) = &effective_project_id {
+            if task.project_id != *pid {
+                continue;
+            }
+        }
+
+        // Extra guard against races between status transitions and registry updates.
+        if !context_matches_running_status_for_gc(context_type, task.internal_status) {
+            continue;
+        }
+
+        let task_id_str = task.id.as_str().to_string();
+        if !seen_task_ids.insert(task_id_str.clone()) {
+            continue;
+        }
+
+        // Get step progress
+        let steps = state
+            .task_step_repo
+            .get_by_task(&task_id)
             .await
             .map_err(|e| e.to_string())?;
 
-        for task in tasks {
-            // Filter by agent-active statuses
-            if !AGENT_ACTIVE_STATUSES.contains(&task.internal_status) {
-                continue;
-            }
-            let task_id = task.id.clone();
+        let step_progress = if !steps.is_empty() {
+            Some(StepProgressSummary::from_steps(&task_id, &steps))
+        } else {
+            None
+        };
 
-            // Get step progress
-            let steps = state
-                .task_step_repo
-                .get_by_task(&task_id)
-                .await
-                .map_err(|e| e.to_string())?;
+        // Get elapsed time from status history
+        let history = state
+            .task_repo
+            .get_status_history(&task_id)
+            .await
+            .map_err(|e| e.to_string())?;
 
-            let step_progress = if !steps.is_empty() {
-                Some(StepProgressSummary::from_steps(&task_id, &steps))
-            } else {
-                None
-            };
-
-            // Get elapsed time from status history
-            let history = state
-                .task_repo
-                .get_status_history(&task_id)
-                .await
-                .map_err(|e| e.to_string())?;
-
-            let elapsed_seconds = history
-                .iter()
-                .rev()
-                .find(|t| t.to == task.internal_status)
-                .map(|transition| {
-                    let now = chrono::Utc::now();
-                    let elapsed = now.signed_duration_since(transition.timestamp);
-                    elapsed.num_seconds()
-                });
-
-            // Get trigger origin
-            let trigger_origin = get_trigger_origin(&task);
-
-            processes.push(RunningProcess {
-                task_id: task.id.as_str().to_string(),
-                title: task.title.clone(),
-                internal_status: task.internal_status.as_str().to_string(),
-                step_progress,
-                elapsed_seconds,
-                trigger_origin,
-                task_branch: task.task_branch.clone(),
+        let elapsed_seconds = history
+            .iter()
+            .rev()
+            .find(|t| t.to == task.internal_status)
+            .map(|transition| {
+                let now = chrono::Utc::now();
+                let elapsed = now.signed_duration_since(transition.timestamp);
+                elapsed.num_seconds()
             });
-        }
+
+        // Get trigger origin
+        let trigger_origin = get_trigger_origin(&task);
+
+        processes.push(RunningProcess {
+            task_id: task_id_str,
+            title: task.title.clone(),
+            internal_status: task.internal_status.as_str().to_string(),
+            step_progress,
+            elapsed_seconds,
+            trigger_origin,
+            task_branch: task.task_branch.clone(),
+        });
     }
 
     Ok(RunningProcessesResponse { processes })
+}
+
+fn is_execution_context_type(context_type: &str) -> bool {
+    matches!(context_type, "task_execution" | "review" | "merge")
+}
+
+fn process_is_alive_for_gc(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(true)
+    }
+
+    #[cfg(windows)]
+    {
+        std::process::Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"])
+            .output()
+            .map(|output| {
+                if !output.status.success() {
+                    return true;
+                }
+                let text = String::from_utf8_lossy(&output.stdout);
+                !text.to_ascii_lowercase().contains("no tasks are running")
+            })
+            .unwrap_or(true)
+    }
+}
+
+fn context_matches_running_status_for_gc(
+    context_type: ChatContextType,
+    status: InternalStatus,
+) -> bool {
+    match context_type {
+        ChatContextType::TaskExecution => {
+            status == InternalStatus::Executing || status == InternalStatus::ReExecuting
+        }
+        ChatContextType::Review => status == InternalStatus::Reviewing,
+        ChatContextType::Merge => status == InternalStatus::Merging,
+        ChatContextType::Task | ChatContextType::Ideation | ChatContextType::Project => false,
+    }
+}
+
+async fn prune_stale_execution_registry_entries(app_state: &AppState) {
+    let entries = app_state.running_agent_registry.list_all().await;
+    if entries.is_empty() {
+        return;
+    }
+
+    for (key, info) in entries {
+        if !is_execution_context_type(&key.context_type) {
+            continue;
+        }
+
+        let context_type = match ChatContextType::from_str(&key.context_type) {
+            Ok(context_type) => context_type,
+            Err(_) => continue,
+        };
+
+        let pid_alive = process_is_alive_for_gc(info.pid);
+        let run = match app_state
+            .agent_run_repo
+            .get_by_id(&AgentRunId::from_string(&info.agent_run_id))
+            .await
+        {
+            Ok(run) => run,
+            Err(_) => continue,
+        };
+
+        let mut stale = !pid_alive;
+        if !matches!(
+            run.as_ref().map(|r| r.status),
+            Some(AgentRunStatus::Running)
+        ) {
+            stale = true;
+        }
+
+        let task_id = TaskId::from_string(key.context_id.clone());
+        match app_state.task_repo.get_by_id(&task_id).await {
+            Ok(Some(task)) => {
+                if !context_matches_running_status_for_gc(context_type, task.internal_status) {
+                    stale = true;
+                }
+            }
+            Ok(None) | Err(_) => {
+                stale = true;
+            }
+        }
+
+        if !stale {
+            continue;
+        }
+
+        if pid_alive {
+            let _ = app_state.running_agent_registry.stop(&key).await;
+        } else {
+            let _ = app_state.running_agent_registry.unregister(&key).await;
+        }
+
+        if let Some(agent_run) = run {
+            if agent_run.status == AgentRunStatus::Running {
+                let _ = app_state
+                    .agent_run_repo
+                    .cancel(&AgentRunId::from_string(&info.agent_run_id))
+                    .await;
+            }
+        }
+    }
 }
 
 #[cfg(test)]

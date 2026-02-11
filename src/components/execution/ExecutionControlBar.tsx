@@ -197,6 +197,7 @@ export function ExecutionControlBar({
           <div className="flex items-center gap-1.5">
             <RunningProcessPopover
               processes={runningProcesses}
+              runningCount={runningCount}
               maxConcurrent={maxConcurrent}
               open={isPopoverOpen}
               onOpenChange={setIsPopoverOpen}
