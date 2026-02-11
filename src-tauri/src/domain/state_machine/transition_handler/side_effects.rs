@@ -936,11 +936,7 @@ pub(crate) fn run_validation_commands(
                         tracing::info!(command = %resolved_cmd, "Post-merge validation command passed");
                     }
 
-                    let status = if succeeded {
-                        "success"
-                    } else {
-                        "failed"
-                    };
+                    let status = if succeeded { "success" } else { "failed" };
                     let log_entry = ValidationLogEntry {
                         phase: "validate".to_string(),
                         command: resolved_cmd,
@@ -2241,69 +2237,22 @@ impl<'a> super::TransitionHandler<'a> {
                         );
 
                         // TEMP: skip post-merge validation globally (user requested).
-                        let _skip_validation = take_skip_validation_flag(&mut task);
-                        tracing::warn!(
-                            task_id = task_id_str,
-                            "Skipping post-merge validation (temporarily disabled)"
-                        );
-                        /*
-                        // Post-merge validation gate: check mode + skip flag
-                        let skip_validation = take_skip_validation_flag(&mut task);
-                        let validation_mode = &project.merge_validation_mode;
-                        if !skip_validation && *validation_mode != MergeValidationMode::Off {
-                            let source_sha =
-                                GitService::get_branch_sha(repo_path, &source_branch).ok();
-                            let cached_log = source_sha
-                                .as_deref()
-                                .and_then(|sha| extract_cached_validation(&task, sha));
-                            let app_handle_ref = self.machine.context.services.app_handle.as_ref();
-                            if let Some(validation) = run_validation_commands(
-                                &project,
-                                &task,
-                                repo_path,
+                        if !self
+                            .run_post_merge_validation(
+                                &mut task,
+                                &task_id,
                                 task_id_str,
-                                app_handle_ref,
-                                cached_log.as_deref(),
-                            ) {
-                                if !validation.all_passed {
-                                    if *validation_mode == MergeValidationMode::Warn {
-                                        tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode (in-repo), proceeding with merge");
-                                        task.metadata = Some(format_validation_warn_metadata(
-                                            &validation.log,
-                                            &source_branch,
-                                            &target_branch,
-                                        ));
-                                    } else {
-                                        self.handle_validation_failure(
-                                            &mut task,
-                                            &task_id,
-                                            task_id_str,
-                                            task_repo,
-                                            &validation.failures,
-                                            &validation.log,
-                                            &source_branch,
-                                            &target_branch,
-                                            repo_path,
-                                            "in-repo",
-                                            validation_mode,
-                                        )
-                                        .await;
-                                        return;
-                                    }
-                                } else {
-                                    task.metadata = Some(
-                                        serde_json::json!({
-                                            "validation_log": validation.log,
-                                            "validation_source_sha": source_sha,
-                                            "source_branch": source_branch,
-                                            "target_branch": target_branch,
-                                        })
-                                        .to_string(),
-                                    );
-                                }
-                            }
+                                task_repo,
+                                &project,
+                                &source_branch,
+                                &target_branch,
+                                repo_path,
+                                "in-repo",
+                            )
+                            .await
+                        {
+                            return;
                         }
-                        */
 
                         let app_handle = self.machine.context.services.app_handle.as_ref();
                         if let Err(e) = complete_merge_internal(
@@ -2348,7 +2297,9 @@ impl<'a> super::TransitionHandler<'a> {
                                     "merge_incomplete",
                                 )
                                 .await;
-                            self.trigger_deferred_merge_retry("complete_merge_internal_failed_in_repo");
+                            self.trigger_deferred_merge_retry(
+                                "complete_merge_internal_failed_in_repo",
+                            );
                         } else {
                             self.post_merge_cleanup(
                                 task_id_str,
@@ -2604,7 +2555,9 @@ impl<'a> super::TransitionHandler<'a> {
                                     "merge_incomplete",
                                 )
                                 .await;
-                            self.trigger_deferred_merge_retry("merge_failed_in_repo_non_deferrable");
+                            self.trigger_deferred_merge_retry(
+                                "merge_failed_in_repo_non_deferrable",
+                            );
                         }
                     }
                 }
@@ -2634,78 +2587,22 @@ impl<'a> super::TransitionHandler<'a> {
                             "Programmatic merge in worktree succeeded (fast path)"
                         );
 
-                        // TEMP: skip post-merge validation globally (user requested).
-                        let _skip_validation = take_skip_validation_flag(&mut task);
-                        tracing::warn!(
-                            task_id = task_id_str,
-                            "Skipping post-merge validation (temporarily disabled)"
-                        );
-                        /*
-                        // Post-merge validation gate: check mode + skip flag
-                        let skip_validation = take_skip_validation_flag(&mut task);
-                        let validation_mode = &project.merge_validation_mode;
-                        if !skip_validation && *validation_mode != MergeValidationMode::Off {
-                            let source_sha =
-                                GitService::get_branch_sha(repo_path, &source_branch).ok();
-                            let cached_log = source_sha
-                                .as_deref()
-                                .and_then(|sha| extract_cached_validation(&task, sha));
-                            let app_handle_ref = self.machine.context.services.app_handle.as_ref();
-                            if let Some(validation) = run_validation_commands(
-                                &project,
-                                &task,
-                                &merge_wt_path,
+                        if !self
+                            .run_post_merge_validation(
+                                &mut task,
+                                &task_id,
                                 task_id_str,
-                                app_handle_ref,
-                                cached_log.as_deref(),
-                            ) {
-                                if !validation.all_passed {
-                                    if *validation_mode == MergeValidationMode::Warn {
-                                        tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode (worktree), proceeding with merge");
-                                        task.metadata = Some(format_validation_warn_metadata(
-                                            &validation.log,
-                                            &source_branch,
-                                            &target_branch,
-                                        ));
-                                    } else {
-                                        // Block mode: reset in merge worktree, then delete it
-                                        // AutoFix mode: keep the worktree for the merger agent to fix in
-                                        self.handle_validation_failure(
-                                            &mut task,
-                                            &task_id,
-                                            task_id_str,
-                                            task_repo,
-                                            &validation.failures,
-                                            &validation.log,
-                                            &source_branch,
-                                            &target_branch,
-                                            &merge_wt_path,
-                                            "worktree",
-                                            validation_mode,
-                                        )
-                                        .await;
-                                        if *validation_mode != MergeValidationMode::AutoFix {
-                                            let _ = GitService::delete_worktree(
-                                                repo_path,
-                                                &merge_wt_path,
-                                            );
-                                        }
-                                        return;
-                                    }
-                                } else {
-                                    task.metadata = Some(
-                                        serde_json::json!({
-                                            "validation_log": validation.log,
-                                            "validation_source_sha": source_sha,
-                                            "source_branch": source_branch,
-                                            "target_branch": target_branch,
-                                        })
-                                        .to_string(),
-                                    );
-                                }
-                            }
+                                task_repo,
+                                &project,
+                                &source_branch,
+                                &target_branch,
+                                &merge_wt_path,
+                                "worktree",
+                            )
+                            .await
+                        {
+                            return;
                         }
-                        */
 
                         if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt_path) {
                             tracing::warn!(
@@ -2759,7 +2656,9 @@ impl<'a> super::TransitionHandler<'a> {
                                     "merge_incomplete",
                                 )
                                 .await;
-                            self.trigger_deferred_merge_retry("complete_merge_internal_failed_worktree");
+                            self.trigger_deferred_merge_retry(
+                                "complete_merge_internal_failed_worktree",
+                            );
                         } else {
                             self.post_merge_cleanup(
                                 task_id_str,
@@ -3022,7 +2921,9 @@ impl<'a> super::TransitionHandler<'a> {
                                     "merge_incomplete",
                                 )
                                 .await;
-                            self.trigger_deferred_merge_retry("merge_failed_worktree_non_deferrable");
+                            self.trigger_deferred_merge_retry(
+                                "merge_failed_worktree_non_deferrable",
+                            );
                         }
                     }
                 }
@@ -3039,69 +2940,22 @@ impl<'a> super::TransitionHandler<'a> {
                         "Programmatic merge succeeded (fast path)"
                     );
 
-                    // TEMP: skip post-merge validation globally (user requested).
-                    let _skip_validation = take_skip_validation_flag(&mut task);
-                    tracing::warn!(
-                        task_id = task_id_str,
-                        "Skipping post-merge validation (temporarily disabled)"
-                    );
-                    /*
-                    // Post-merge validation gate: check mode + skip flag
-                    let skip_validation = take_skip_validation_flag(&mut task);
-                    let validation_mode = &project.merge_validation_mode;
-                    if !skip_validation && *validation_mode != MergeValidationMode::Off {
-                        let source_sha = GitService::get_branch_sha(repo_path, &source_branch).ok();
-                        let cached_log = source_sha
-                            .as_deref()
-                            .and_then(|sha| extract_cached_validation(&task, sha));
-                        let app_handle_ref = self.machine.context.services.app_handle.as_ref();
-                        if let Some(validation) = run_validation_commands(
-                            &project,
-                            &task,
-                            repo_path,
+                    if !self
+                        .run_post_merge_validation(
+                            &mut task,
+                            &task_id,
                             task_id_str,
-                            app_handle_ref,
-                            cached_log.as_deref(),
-                        ) {
-                            if !validation.all_passed {
-                                if *validation_mode == MergeValidationMode::Warn {
-                                    tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode (local), proceeding with merge");
-                                    task.metadata = Some(format_validation_warn_metadata(
-                                        &validation.log,
-                                        &source_branch,
-                                        &target_branch,
-                                    ));
-                                } else {
-                                    self.handle_validation_failure(
-                                        &mut task,
-                                        &task_id,
-                                        task_id_str,
-                                        task_repo,
-                                        &validation.failures,
-                                        &validation.log,
-                                        &source_branch,
-                                        &target_branch,
-                                        repo_path,
-                                        "local",
-                                        validation_mode,
-                                    )
-                                    .await;
-                                    return;
-                                }
-                            } else {
-                                task.metadata = Some(
-                                    serde_json::json!({
-                                        "validation_log": validation.log,
-                                        "validation_source_sha": source_sha,
-                                        "source_branch": source_branch,
-                                        "target_branch": target_branch,
-                                    })
-                                    .to_string(),
-                                );
-                            }
-                        }
+                            task_repo,
+                            &project,
+                            &source_branch,
+                            &target_branch,
+                            repo_path,
+                            "local",
+                        )
+                        .await
+                    {
+                        return;
                     }
-                    */
 
                     let app_handle = self.machine.context.services.app_handle.as_ref();
                     if let Err(e) = complete_merge_internal(
@@ -3493,6 +3347,83 @@ impl<'a> super::TransitionHandler<'a> {
                 scheduler.try_retry_deferred_merges(&project_id).await;
             });
         }
+    }
+
+    async fn run_post_merge_validation(
+        &self,
+        task: &mut Task,
+        task_id: &TaskId,
+        task_id_str: &str,
+        task_repo: &Arc<dyn TaskRepository>,
+        project: &Project,
+        source_branch: &str,
+        target_branch: &str,
+        merge_path: &Path,
+        mode_label: &str,
+    ) -> bool {
+        let skip_validation = take_skip_validation_flag(task);
+        let validation_mode = &project.merge_validation_mode;
+        if skip_validation || *validation_mode == MergeValidationMode::Off {
+            return true;
+        }
+
+        let source_sha = GitService::get_branch_sha(merge_path, source_branch).ok();
+        let cached_log = source_sha
+            .as_deref()
+            .and_then(|sha| extract_cached_validation(task, sha));
+        let app_handle_ref = self.machine.context.services.app_handle.as_ref();
+
+        if let Some(validation) = run_validation_commands(
+            project,
+            task,
+            merge_path,
+            task_id_str,
+            app_handle_ref,
+            cached_log.as_deref(),
+        ) {
+            if !validation.all_passed {
+                if *validation_mode == MergeValidationMode::Warn {
+                    tracing::warn!(
+                        task_id = task_id_str,
+                        "Validation failed in Warn mode ({})",
+                        mode_label
+                    );
+                    task.metadata = Some(format_validation_warn_metadata(
+                        &validation.log,
+                        source_branch,
+                        target_branch,
+                    ));
+                } else {
+                    self.handle_validation_failure(
+                        task,
+                        task_id,
+                        task_id_str,
+                        task_repo,
+                        &validation.failures,
+                        &validation.log,
+                        source_branch,
+                        target_branch,
+                        merge_path,
+                        mode_label,
+                        validation_mode,
+                    )
+                    .await;
+                    return false;
+                }
+            } else {
+                task.metadata = Some(
+                    serde_json::json!({
+                        "validation_log": validation.log,
+                        "validation_source_sha": source_sha,
+                        "source_branch": source_branch,
+                        "target_branch": target_branch,
+                    })
+                    .to_string(),
+                );
+            }
+        }
+
+        true
     }
 
     /// Handle post-merge validation failure: revert the merge commit, then transition

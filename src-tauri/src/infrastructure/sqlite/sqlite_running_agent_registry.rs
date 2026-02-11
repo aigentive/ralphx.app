@@ -5,11 +5,12 @@
 
 use async_trait::async_trait;
 use rusqlite::Connection;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::domain::services::{
-    kill_process, RunningAgentInfo, RunningAgentKey, RunningAgentRegistry,
+    kill_process, kill_worktree_processes, RunningAgentInfo, RunningAgentKey, RunningAgentRegistry,
 };
 
 /// SQLite-backed implementation of RunningAgentRegistry.
@@ -32,12 +33,21 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
         pid: u32,
         conversation_id: String,
         agent_run_id: String,
+        worktree_path: Option<String>,
     ) {
         let conn = self.conn.lock().await;
         let started_at = chrono::Utc::now().to_rfc3339();
         let _ = conn.execute(
-            "INSERT OR REPLACE INTO running_agents (context_type, context_id, pid, conversation_id, agent_run_id, started_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            rusqlite::params![key.context_type, key.context_id, pid, conversation_id, agent_run_id, started_at],
+            "INSERT OR REPLACE INTO running_agents (context_type, context_id, pid, conversation_id, agent_run_id, started_at, worktree_path) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![
+                key.context_type,
+                key.context_id,
+                pid,
+                conversation_id,
+                agent_run_id,
+                started_at,
+                worktree_path
+            ],
         );
     }
 
@@ -47,13 +57,14 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
         // Read the row first
         let info = conn
             .query_row(
-                "SELECT pid, conversation_id, agent_run_id, started_at FROM running_agents WHERE context_type = ?1 AND context_id = ?2",
+                "SELECT pid, conversation_id, agent_run_id, started_at, worktree_path FROM running_agents WHERE context_type = ?1 AND context_id = ?2",
                 rusqlite::params![key.context_type, key.context_id],
                 |row| {
                     let pid: u32 = row.get(0)?;
                     let conversation_id: String = row.get(1)?;
                     let agent_run_id: String = row.get(2)?;
                     let started_at_str: String = row.get(3)?;
+                    let worktree_path: Option<String> = row.get(4)?;
                     let started_at = chrono::DateTime::parse_from_rfc3339(&started_at_str)
                         .map(|dt| dt.with_timezone(&chrono::Utc))
                         .unwrap_or_else(|_| chrono::Utc::now());
@@ -62,6 +73,7 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
                         conversation_id,
                         agent_run_id,
                         started_at,
+                        worktree_path,
                     })
                 },
             )
@@ -79,13 +91,14 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
     async fn get(&self, key: &RunningAgentKey) -> Option<RunningAgentInfo> {
         let conn = self.conn.lock().await;
         conn.query_row(
-            "SELECT pid, conversation_id, agent_run_id, started_at FROM running_agents WHERE context_type = ?1 AND context_id = ?2",
+            "SELECT pid, conversation_id, agent_run_id, started_at, worktree_path FROM running_agents WHERE context_type = ?1 AND context_id = ?2",
             rusqlite::params![key.context_type, key.context_id],
             |row| {
                 let pid: u32 = row.get(0)?;
                 let conversation_id: String = row.get(1)?;
                 let agent_run_id: String = row.get(2)?;
                 let started_at_str: String = row.get(3)?;
+                let worktree_path: Option<String> = row.get(4)?;
                 let started_at = chrono::DateTime::parse_from_rfc3339(&started_at_str)
                     .map(|dt| dt.with_timezone(&chrono::Utc))
                     .unwrap_or_else(|_| chrono::Utc::now());
@@ -94,6 +107,7 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
                     conversation_id,
                     agent_run_id,
                     started_at,
+                    worktree_path,
                 })
             },
         )
@@ -114,6 +128,12 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
         let info = self.unregister(key).await;
 
         if let Some(ref agent_info) = info {
+            if let Some(ref path) = agent_info.worktree_path {
+                let worktree = PathBuf::from(path);
+                if worktree.exists() {
+                    kill_worktree_processes(&worktree);
+                }
+            }
             kill_process(agent_info.pid);
         }
 
@@ -123,7 +143,7 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
     async fn list_all(&self) -> Vec<(RunningAgentKey, RunningAgentInfo)> {
         let conn = self.conn.lock().await;
         let mut stmt = match conn.prepare(
-            "SELECT context_type, context_id, pid, conversation_id, agent_run_id, started_at FROM running_agents",
+            "SELECT context_type, context_id, pid, conversation_id, agent_run_id, started_at, worktree_path FROM running_agents",
         ) {
             Ok(stmt) => stmt,
             Err(_) => return Vec::new(),
@@ -160,6 +180,10 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
                 Ok(v) => v,
                 Err(_) => continue,
             };
+            let worktree_path: Option<String> = match row.get(6) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
             let started_at = chrono::DateTime::parse_from_rfc3339(&started_at_str)
                 .map(|dt| dt.with_timezone(&chrono::Utc))
                 .unwrap_or_else(|_| chrono::Utc::now());
@@ -174,6 +198,7 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
                     conversation_id,
                     agent_run_id,
                     started_at,
+                    worktree_path,
                 },
             ));
         }
@@ -187,6 +212,12 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
 
         let mut stopped = Vec::new();
         for (key, info) in &entries {
+            if let Some(ref path) = info.worktree_path {
+                let worktree = PathBuf::from(path);
+                if worktree.exists() {
+                    kill_worktree_processes(&worktree);
+                }
+            }
             kill_process(info.pid);
             stopped.push(key.clone());
         }
@@ -222,6 +253,7 @@ mod tests {
                 12345,
                 "conv-abc".to_string(),
                 "run-xyz".to_string(),
+                Some("/tmp/worktree".to_string()),
             )
             .await;
 
@@ -240,7 +272,13 @@ mod tests {
         let key = RunningAgentKey::new("task", "task-456");
 
         registry
-            .register(key.clone(), 999, "conv-1".to_string(), "run-1".to_string())
+            .register(
+                key.clone(),
+                999,
+                "conv-1".to_string(),
+                "run-1".to_string(),
+                Some("/tmp/worktree".to_string()),
+            )
             .await;
 
         let info = registry.unregister(&key).await;
@@ -264,7 +302,13 @@ mod tests {
         assert!(!registry.is_running(&key).await);
 
         registry
-            .register(key.clone(), 111, "conv-x".to_string(), "run-x".to_string())
+            .register(
+                key.clone(),
+                111,
+                "conv-x".to_string(),
+                "run-x".to_string(),
+                Some("/tmp/worktree".to_string()),
+            )
             .await;
 
         assert!(registry.is_running(&key).await);
@@ -281,6 +325,7 @@ mod tests {
                 100,
                 "c1".to_string(),
                 "r1".to_string(),
+                Some("/tmp/k1".to_string()),
             )
             .await;
         registry
@@ -289,6 +334,7 @@ mod tests {
                 200,
                 "c2".to_string(),
                 "r2".to_string(),
+                Some("/tmp/k2".to_string()),
             )
             .await;
 
@@ -307,6 +353,7 @@ mod tests {
                 10001,
                 "c".to_string(),
                 "r".to_string(),
+                Some("/tmp/a".to_string()),
             )
             .await;
         registry
@@ -315,6 +362,7 @@ mod tests {
                 10002,
                 "c".to_string(),
                 "r".to_string(),
+                Some("/tmp/b".to_string()),
             )
             .await;
 
@@ -338,6 +386,7 @@ mod tests {
                 100,
                 "conv-old".to_string(),
                 "run-old".to_string(),
+                Some("/tmp/old".to_string()),
             )
             .await;
         registry
@@ -346,6 +395,7 @@ mod tests {
                 200,
                 "conv-new".to_string(),
                 "run-new".to_string(),
+                Some("/tmp/new".to_string()),
             )
             .await;
 

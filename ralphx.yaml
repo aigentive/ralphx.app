@@ -213,7 +213,7 @@ agents:
 
   - name: ralphx-reviewer
     system_prompt_file: ralphx-plugin/agents/reviewer.md
-    model: sonnet
+    model: opus
     tools: { extends: base_tools, include: [Task] }
     mcp_tools:
       [

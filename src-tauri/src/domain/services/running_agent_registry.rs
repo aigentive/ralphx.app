@@ -6,7 +6,8 @@
 // Trait-based design allows SQLite persistence (production) or in-memory (tests).
 
 use async_trait::async_trait;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -37,6 +38,8 @@ pub struct RunningAgentInfo {
     pub agent_run_id: String,
     /// When the agent was started
     pub started_at: chrono::DateTime<chrono::Utc>,
+    /// Optional worktree path used as the agent's working directory
+    pub worktree_path: Option<String>,
 }
 
 /// Trait for tracking running agent processes.
@@ -52,6 +55,7 @@ pub trait RunningAgentRegistry: Send + Sync {
         pid: u32,
         conversation_id: String,
         agent_run_id: String,
+        worktree_path: Option<String>,
     );
 
     /// Unregister a running agent (called when agent completes or is stopped)
@@ -112,6 +116,61 @@ pub fn kill_process(pid: u32) {
         let _ = std::process::Command::new("taskkill")
             .args(["/PID", &pid.to_string(), "/T", "/F"])
             .output();
+    }
+}
+
+fn collect_pids_in_worktree(path: &Path) -> Result<Vec<u32>, String> {
+    #[cfg(unix)]
+    {
+        let output = std::process::Command::new("lsof")
+            .args(&["-t", "+D", path.to_str().unwrap_or("")])
+            .output()
+            .map_err(|e| format!("lsof failure: {}", e))?;
+
+        if !output.status.success() {
+            return Err(format!(
+                "lsof exited with {}: {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+
+        let text = String::from_utf8_lossy(&output.stdout);
+        let mut pids = Vec::new();
+        for line in text.lines() {
+            if let Ok(pid) = line.trim().parse::<u32>() {
+                pids.push(pid);
+            }
+        }
+        Ok(pids)
+    }
+
+    #[cfg(not(unix))]
+    {
+        Ok(Vec::new())
+    }
+}
+
+pub fn kill_worktree_processes(path: &Path) {
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    match collect_pids_in_worktree(&canonical) {
+        Ok(pids) => {
+            for pid in pids.into_iter().collect::<HashSet<_>>() {
+                tracing::info!(
+                    pid,
+                    worktree = %canonical.display(),
+                    "Killing lingering process from worktree"
+                );
+                kill_process(pid);
+            }
+        }
+        Err(err) => {
+            tracing::debug!(
+                worktree = %canonical.display(),
+                error = %err,
+                "Could not enumerate processes under worktree"
+            );
+        }
     }
 }
 
@@ -189,12 +248,14 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
         pid: u32,
         conversation_id: String,
         agent_run_id: String,
+        worktree_path: Option<String>,
     ) {
         let info = RunningAgentInfo {
             pid,
             conversation_id,
             agent_run_id,
             started_at: chrono::Utc::now(),
+            worktree_path,
         };
         let mut agents = self.agents.lock().await;
         agents.insert(key, info);
@@ -261,6 +322,7 @@ mod tests {
                 12345,
                 "conv-abc".to_string(),
                 "run-xyz".to_string(),
+                None,
             )
             .await;
 
@@ -285,6 +347,7 @@ mod tests {
                 12345,
                 "conv-abc".to_string(),
                 "run-xyz".to_string(),
+                None,
             )
             .await;
 
@@ -302,6 +365,7 @@ mod tests {
                 12345,
                 "conv-abc".to_string(),
                 "run-xyz".to_string(),
+                None,
             )
             .await;
 
@@ -325,6 +389,7 @@ mod tests {
                 111,
                 "conv-1".to_string(),
                 "run-1".to_string(),
+                None,
             )
             .await;
 
@@ -334,6 +399,7 @@ mod tests {
                 222,
                 "conv-2".to_string(),
                 "run-2".to_string(),
+                None,
             )
             .await;
 

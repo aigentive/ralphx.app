@@ -542,6 +542,8 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         };
         tracing::debug!(pid = ?child.id(), "chat_service.send_message spawn ok");
 
+        let registry_worktree = working_directory.to_string_lossy().to_string();
+
         // 7b. Register the process in the running agent registry
         let child_pid = child.id();
         if let Some(pid) = child_pid {
@@ -552,6 +554,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                     pid,
                     conversation_id.as_str().to_string(),
                     agent_run_id.clone(),
+                    Some(registry_worktree.clone()),
                 )
                 .await;
         }
