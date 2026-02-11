@@ -68,7 +68,7 @@ import { useChatStore } from "@/stores/chatStore";
 import { taskGraphKeys } from "./hooks/useTaskGraph";
 import { api } from "@/lib/tauri";
 import { toast } from "sonner";
-import { Filter, Loader2, X } from "lucide-react";
+import { AlertCircle, Filter, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { buildTierGroups, UNGROUPED_PLAN_ID } from "./groups/tierGroupUtils";
 import type { GroupInfo } from "@/lib/task-actions";
