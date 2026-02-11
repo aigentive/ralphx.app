@@ -39,7 +39,8 @@ export interface UseTaskBoardResult {
 }
 
 export function useTaskBoard(
-  projectId: string
+  projectId: string,
+  ideationSessionId?: string | null
 ): UseTaskBoardResult {
   const queryClient = useQueryClient();
   const showArchived = useUiStore((s) => s.showArchived);
@@ -69,6 +70,7 @@ export function useTaskBoard(
               projectId,
               statuses: getColumnStatuses(col),
               includeArchived: showArchived,
+              ideationSessionId,
             }),
           })
         )
@@ -81,6 +83,7 @@ export function useTaskBoard(
           projectId,
           statuses: getColumnStatuses(col),
           includeArchived: showArchived,
+          ideationSessionId,
         });
         snapshots.set(col.id, queryClient.getQueryData(key));
       });
@@ -94,6 +97,7 @@ export function useTaskBoard(
           projectId,
           statuses: getColumnStatuses(col),
           includeArchived: showArchived,
+          ideationSessionId,
         });
         const data = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);
         if (data?.pages) {
@@ -116,6 +120,7 @@ export function useTaskBoard(
         projectId,
         statuses: getColumnStatuses(fromColumn),
         includeArchived: showArchived,
+        ideationSessionId,
       });
       queryClient.setQueryData<InfiniteData<TaskListResponse>>(
         fromKey,
@@ -138,6 +143,7 @@ export function useTaskBoard(
           projectId,
           statuses: getColumnStatuses(toColumn),
           includeArchived: showArchived,
+          ideationSessionId,
         });
         queryClient.setQueryData<InfiniteData<TaskListResponse>>(
           toKey,
@@ -212,6 +218,7 @@ export function useTaskBoard(
           projectId,
           statuses: getColumnStatuses(col),
           includeArchived: showArchived,
+          ideationSessionId,
         });
         const data = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);
         if (data?.pages) {
@@ -233,7 +240,7 @@ export function useTaskBoard(
         toStatus: targetColumn.mapsTo as InternalStatus,
       });
     },
-    [columns, projectId, showArchived, queryClient, moveMutation]
+    [columns, projectId, showArchived, ideationSessionId, queryClient, moveMutation]
   );
 
   return {
