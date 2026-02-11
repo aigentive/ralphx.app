@@ -12,9 +12,10 @@ use crate::application::{
     AppState, ReconciliationRunner, TaskSchedulerService, TaskTransitionService,
 };
 use crate::application::reconciliation::UserRecoveryAction;
-use crate::domain::entities::{InternalStatus, ProjectId};
+use crate::domain::entities::{InternalStatus, ProjectId, task_step::StepProgressSummary};
 use crate::domain::execution::ExecutionSettings;
 use crate::domain::state_machine::services::TaskScheduler;
+use crate::domain::state_machine::transition_handler::get_trigger_origin;
 
 /// Statuses where an agent is actively running.
 /// Tasks in these states need to be cancelled when stop is called,
@@ -1200,6 +1201,119 @@ pub async fn update_global_execution_settings(
     }
 
     Ok(GlobalExecutionSettingsResponse::from(updated))
+}
+
+// ========================================
+// Running Processes Query
+// ========================================
+
+/// A single running process with enriched data
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunningProcess {
+    /// Task ID
+    pub task_id: String,
+    /// Task title
+    pub title: String,
+    /// Current internal status
+    pub internal_status: String,
+    /// Step progress summary (if steps exist)
+    pub step_progress: Option<StepProgressSummary>,
+    /// Elapsed time in seconds since entering current status
+    pub elapsed_seconds: Option<i64>,
+    /// Trigger origin (scheduler, revision, recovery, retry, qa)
+    pub trigger_origin: Option<String>,
+    /// Task branch name
+    pub task_branch: Option<String>,
+}
+
+/// Response for get_running_processes
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunningProcessesResponse {
+    /// List of running processes
+    pub processes: Vec<RunningProcess>,
+}
+
+/// Get all currently running processes (tasks in agent-active states)
+///
+/// Returns tasks in AGENT_ACTIVE_STATUSES with enriched data:
+/// - Step progress via StepProgressSummary::from_steps()
+/// - Elapsed time from task_state_history
+/// - Trigger origin from metadata
+/// - Branch name
+#[tauri::command]
+pub async fn get_running_processes(
+    state: State<'_, AppState>,
+) -> Result<RunningProcessesResponse, String> {
+    // Get all tasks in agent-active statuses across all projects
+    let mut processes = Vec::new();
+
+    // Get all projects
+    let projects = state
+        .project_repo
+        .get_all()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    for project in projects {
+        let tasks = state
+            .task_repo
+            .get_by_project(&project.id)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        for task in tasks {
+            // Filter by agent-active statuses
+            if !AGENT_ACTIVE_STATUSES.contains(&task.internal_status) {
+                continue;
+            }
+            let task_id = task.id.clone();
+
+            // Get step progress
+            let steps = state
+                .task_step_repo
+                .get_by_task(&task_id)
+                .await
+                .map_err(|e| e.to_string())?;
+
+            let step_progress = if !steps.is_empty() {
+                Some(StepProgressSummary::from_steps(&task_id, &steps))
+            } else {
+                None
+            };
+
+            // Get elapsed time from status history
+            let history = state
+                .task_repo
+                .get_status_history(&task_id)
+                .await
+                .map_err(|e| e.to_string())?;
+
+            let elapsed_seconds = history
+                .iter()
+                .rev()
+                .find(|t| t.to == task.internal_status)
+                .map(|transition| {
+                    let now = chrono::Utc::now();
+                    let elapsed = now.signed_duration_since(transition.timestamp);
+                    elapsed.num_seconds()
+                });
+
+            // Get trigger origin
+            let trigger_origin = get_trigger_origin(&task);
+
+            processes.push(RunningProcess {
+                task_id: task.id.as_str().to_string(),
+                title: task.title.clone(),
+                internal_status: task.internal_status.as_str().to_string(),
+                step_progress,
+                elapsed_seconds,
+                trigger_origin,
+                task_branch: task.task_branch.clone(),
+            });
+        }
+    }
+
+    Ok(RunningProcessesResponse { processes })
 }
 
 #[cfg(test)]
