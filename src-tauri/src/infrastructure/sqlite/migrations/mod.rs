@@ -47,6 +47,8 @@ mod v18_task_metadata;
 mod v19_project_analysis;
 mod v20_merge_validation_mode;
 mod v21_questions_permissions;
+mod v22_project_active_plan;
+mod v23_plan_selection_stats;
 
 #[cfg(test)]
 mod tests;
@@ -90,9 +92,13 @@ mod v19_project_analysis_tests;
 mod v20_merge_validation_mode_tests;
 #[cfg(test)]
 mod v21_questions_permissions_tests;
+#[cfg(test)]
+mod v22_project_active_plan_tests;
+#[cfg(test)]
+mod v23_plan_selection_stats_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 21;
+pub const SCHEMA_VERSION: i32 = 23;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -211,6 +217,16 @@ const MIGRATIONS: &[Migration] = &[
         version: 21,
         name: "questions_permissions",
         migrate: v21_questions_permissions::migrate,
+    },
+    Migration {
+        version: 22,
+        name: "project_active_plan",
+        migrate: v22_project_active_plan::migrate,
+    },
+    Migration {
+        version: 23,
+        name: "plan_selection_stats",
+        migrate: v23_plan_selection_stats::migrate,
     },
 ];
 

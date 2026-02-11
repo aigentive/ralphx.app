@@ -1,6 +1,7 @@
 // Repository traits - domain layer abstractions for data persistence
 // These traits define the contract; implementations live in infrastructure layer
 
+pub mod active_plan_repository;
 pub mod activity_event_repository;
 pub mod agent_profile_repository;
 pub mod app_state_repository;
@@ -16,6 +17,7 @@ pub mod ideation_settings_repository;
 pub mod methodology_repo;
 pub mod permission_repository;
 pub mod plan_branch_repository;
+pub mod plan_selection_stats_repository;
 pub mod process_repo;
 pub mod project_repository;
 pub mod proposal_dependency_repository;
@@ -31,6 +33,7 @@ pub mod task_step_repository;
 pub mod workflow_repository;
 
 // Re-exports for convenience
+pub use active_plan_repository::ActivePlanRepository;
 pub use app_state_repository::AppStateRepository;
 pub use activity_event_repository::{
     ActivityEventFilter, ActivityEventPage, ActivityEventRepository,
@@ -50,6 +53,7 @@ pub use ideation_settings_repository::IdeationSettingsRepository;
 pub use methodology_repo::MethodologyRepository;
 pub use permission_repository::PermissionRepository;
 pub use plan_branch_repository::PlanBranchRepository;
+pub use plan_selection_stats_repository::PlanSelectionStatsRepository;
 pub use process_repo::ProcessRepository;
 pub use project_repository::ProjectRepository;
 pub use proposal_dependency_repository::ProposalDependencyRepository;

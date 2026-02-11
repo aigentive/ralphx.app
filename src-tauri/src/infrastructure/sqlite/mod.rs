@@ -3,6 +3,7 @@
 
 pub mod connection;
 pub mod migrations;
+pub mod sqlite_active_plan_repo;
 pub mod sqlite_activity_event_repo;
 pub mod sqlite_app_state_repo;
 pub mod sqlite_agent_profile_repo;
@@ -19,6 +20,7 @@ pub mod sqlite_ideation_session_repo;
 pub mod sqlite_ideation_settings_repo;
 pub mod sqlite_methodology_repo;
 pub mod sqlite_plan_branch_repo;
+pub mod sqlite_plan_selection_stats_repo;
 pub mod sqlite_process_repo;
 pub mod sqlite_project_repo;
 pub mod sqlite_proposal_dependency_repo;
@@ -39,6 +41,7 @@ pub mod state_machine_repository;
 // Re-export commonly used items
 pub use connection::{get_app_data_db_path, get_default_db_path, open_connection, open_memory_connection};
 pub use migrations::{run_migrations, SCHEMA_VERSION};
+pub use sqlite_active_plan_repo::SqliteActivePlanRepository;
 pub use sqlite_activity_event_repo::SqliteActivityEventRepository;
 pub use sqlite_app_state_repo::SqliteAppStateRepository;
 pub use sqlite_agent_profile_repo::SqliteAgentProfileRepository;
@@ -55,6 +58,7 @@ pub use sqlite_ideation_session_repo::SqliteIdeationSessionRepository;
 pub use sqlite_ideation_settings_repo::SqliteIdeationSettingsRepository;
 pub use sqlite_methodology_repo::SqliteMethodologyRepository;
 pub use sqlite_plan_branch_repo::SqlitePlanBranchRepository;
+pub use sqlite_plan_selection_stats_repo::SqlitePlanSelectionStatsRepository;
 pub use sqlite_process_repo::SqliteProcessRepository;
 pub use sqlite_project_repo::SqliteProjectRepository;
 pub use sqlite_proposal_dependency_repo::SqliteProposalDependencyRepository;

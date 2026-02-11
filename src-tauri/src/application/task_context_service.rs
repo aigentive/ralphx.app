@@ -427,7 +427,7 @@ mod tests {
             }
         }
 
-        async fn get_archived_count(&self, _project_id: &ProjectId) -> AppResult<u32> {
+        async fn get_archived_count(&self, _project_id: &ProjectId, _ideation_session_id: Option<&str>) -> AppResult<u32> {
             Ok(0)
         }
 
@@ -438,6 +438,7 @@ mod tests {
             _offset: u32,
             _limit: u32,
             _include_archived: bool,
+            _ideation_session_id: Option<&str>,
         ) -> AppResult<Vec<Task>> {
             if let Some(task) = &self.task {
                 Ok(vec![task.clone()])
@@ -446,7 +447,7 @@ mod tests {
             }
         }
 
-        async fn count_tasks(&self, _project_id: &ProjectId, _include_archived: bool) -> AppResult<u32> {
+        async fn count_tasks(&self, _project_id: &ProjectId, _include_archived: bool, _ideation_session_id: Option<&str>) -> AppResult<u32> {
             Ok(if self.task.is_some() { 1 } else { 0 })
         }
 

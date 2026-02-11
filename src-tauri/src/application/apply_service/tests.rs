@@ -554,7 +554,7 @@ use std::sync::{Arc, Mutex};
             }
         }
 
-        async fn get_archived_count(&self, project_id: &ProjectId) -> AppResult<u32> {
+        async fn get_archived_count(&self, project_id: &ProjectId, _ideation_session_id: Option<&str>) -> AppResult<u32> {
             Ok(self
                 .tasks
                 .lock()
@@ -571,6 +571,7 @@ use std::sync::{Arc, Mutex};
             _offset: u32,
             _limit: u32,
             _include_archived: bool,
+            _ideation_session_id: Option<&str>,
         ) -> AppResult<Vec<Task>> {
             // Simple mock implementation
             Ok(self
@@ -587,6 +588,7 @@ use std::sync::{Arc, Mutex};
             &self,
             project_id: &ProjectId,
             _include_archived: bool,
+            _ideation_session_id: Option<&str>,
         ) -> AppResult<u32> {
             Ok(self
                 .tasks
