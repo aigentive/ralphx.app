@@ -673,137 +673,137 @@ pub(crate) fn run_validation_commands(
     let mut log: Vec<ValidationLogEntry> = Vec::new();
 
     // Run worktree_setup commands first (symlinks, etc.) — non-fatal
-    for entry in &entries {
-        for cmd_str in &entry.worktree_setup {
-            let resolved_cmd = resolve(cmd_str);
-            let resolved_path = resolve(&entry.path);
-            let cmd_cwd = if resolved_path == "." {
-                merge_cwd.to_path_buf()
-            } else {
-                merge_cwd.join(&resolved_path)
-            };
+    // for entry in &entries {
+    //     for cmd_str in &entry.worktree_setup {
+    //         let resolved_cmd = resolve(cmd_str);
+    //         let resolved_path = resolve(&entry.path);
+    //         let cmd_cwd = if resolved_path == "." {
+    //             merge_cwd.to_path_buf()
+    //         } else {
+    //             merge_cwd.join(&resolved_path)
+    //         };
 
-            // Emit "running" event before execution
-            if let Some(handle) = app_handle {
-                let _ = handle.emit(
-                    "merge:validation_step",
-                    serde_json::json!({
-                        "task_id": task_id_str,
-                        "phase": "setup",
-                        "command": resolved_cmd,
-                        "path": resolved_path,
-                        "label": entry.label,
-                        "status": "running",
-                    }),
-                );
-            }
+    //         // Emit "running" event before execution
+    //         if let Some(handle) = app_handle {
+    //             let _ = handle.emit(
+    //                 "merge:validation_step",
+    //                 serde_json::json!({
+    //                     "task_id": task_id_str,
+    //                     "phase": "setup",
+    //                     "command": resolved_cmd,
+    //                     "path": resolved_path,
+    //                     "label": entry.label,
+    //                     "status": "running",
+    //                 }),
+    //             );
+    //         }
 
-            tracing::info!(
-                command = %resolved_cmd,
-                cwd = %cmd_cwd.display(),
-                "Running worktree setup command"
-            );
+    //         tracing::info!(
+    //             command = %resolved_cmd,
+    //             cwd = %cmd_cwd.display(),
+    //             "Running worktree setup command"
+    //         );
 
-            let start = std::time::Instant::now();
-            match run_shell_command_with_timeout(
-                &resolved_cmd,
-                &cmd_cwd,
-                command_timeout,
-                merge_cwd,
-            ) {
-                Ok(result) => {
-                    let duration_ms = start.elapsed().as_millis() as u64;
-                    let stdout_raw = result.stdout;
-                    let stderr_raw = result.stderr;
-                    let status = if !result.timed_out && result.exit_code == Some(0) {
-                        "success"
-                    } else {
-                        "failed"
-                    };
+    //         let start = std::time::Instant::now();
+    //         match run_shell_command_with_timeout(
+    //             &resolved_cmd,
+    //             &cmd_cwd,
+    //             command_timeout,
+    //             merge_cwd,
+    //         ) {
+    //             Ok(result) => {
+    //                 let duration_ms = start.elapsed().as_millis() as u64;
+    //                 let stdout_raw = result.stdout;
+    //                 let stderr_raw = result.stderr;
+    //                 let status = if !result.timed_out && result.exit_code == Some(0) {
+    //                     "success"
+    //                 } else {
+    //                     "failed"
+    //                 };
 
-                    if status == "failed" {
-                        tracing::warn!(
-                            command = %resolved_cmd,
-                            timeout_secs = command_timeout.as_secs(),
-                            timed_out = result.timed_out,
-                            stderr = %stderr_raw,
-                            "Worktree setup command failed (non-fatal)"
-                        );
-                    }
+    //                 if status == "failed" {
+    //                     tracing::warn!(
+    //                         command = %resolved_cmd,
+    //                         timeout_secs = command_timeout.as_secs(),
+    //                         timed_out = result.timed_out,
+    //                         stderr = %stderr_raw,
+    //                         "Worktree setup command failed (non-fatal)"
+    //                     );
+    //                 }
 
-                    let log_entry = ValidationLogEntry {
-                        phase: "setup".to_string(),
-                        command: resolved_cmd.clone(),
-                        path: resolved_path.clone(),
-                        label: entry.label.clone(),
-                        status: status.to_string(),
-                        exit_code: result.exit_code,
-                        stdout: truncate_output(&stdout_raw, 2000),
-                        stderr: truncate_output(&stderr_raw, 2000),
-                        duration_ms,
-                    };
+    //                 let log_entry = ValidationLogEntry {
+    //                     phase: "setup".to_string(),
+    //                     command: resolved_cmd.clone(),
+    //                     path: resolved_path.clone(),
+    //                     label: entry.label.clone(),
+    //                     status: status.to_string(),
+    //                     exit_code: result.exit_code,
+    //                     stdout: truncate_output(&stdout_raw, 2000),
+    //                     stderr: truncate_output(&stderr_raw, 2000),
+    //                     duration_ms,
+    //                 };
 
-                    if let Some(handle) = app_handle {
-                        let _ = handle.emit(
-                            "merge:validation_step",
-                            serde_json::json!({
-                                "task_id": task_id_str,
-                                "phase": log_entry.phase,
-                                "command": log_entry.command,
-                                "path": log_entry.path,
-                                "label": log_entry.label,
-                                "status": log_entry.status,
-                                "exit_code": log_entry.exit_code,
-                                "stdout": log_entry.stdout,
-                                "stderr": log_entry.stderr,
-                                "duration_ms": log_entry.duration_ms,
-                            }),
-                        );
-                    }
-                    log.push(log_entry);
-                }
-                Err(e) => {
-                    let duration_ms = start.elapsed().as_millis() as u64;
-                    tracing::warn!(
-                        command = %resolved_cmd,
-                        error = %e,
-                        "Worktree setup command failed (non-fatal)"
-                    );
+    //                 if let Some(handle) = app_handle {
+    //                     let _ = handle.emit(
+    //                         "merge:validation_step",
+    //                         serde_json::json!({
+    //                             "task_id": task_id_str,
+    //                             "phase": log_entry.phase,
+    //                             "command": log_entry.command,
+    //                             "path": log_entry.path,
+    //                             "label": log_entry.label,
+    //                             "status": log_entry.status,
+    //                             "exit_code": log_entry.exit_code,
+    //                             "stdout": log_entry.stdout,
+    //                             "stderr": log_entry.stderr,
+    //                             "duration_ms": log_entry.duration_ms,
+    //                         }),
+    //                     );
+    //                 }
+    //                 log.push(log_entry);
+    //             }
+    //             Err(e) => {
+    //                 let duration_ms = start.elapsed().as_millis() as u64;
+    //                 tracing::warn!(
+    //                     command = %resolved_cmd,
+    //                     error = %e,
+    //                     "Worktree setup command failed (non-fatal)"
+    //                 );
 
-                    let log_entry = ValidationLogEntry {
-                        phase: "setup".to_string(),
-                        command: resolved_cmd.clone(),
-                        path: resolved_path.clone(),
-                        label: entry.label.clone(),
-                        status: "failed".to_string(),
-                        exit_code: None,
-                        stdout: String::new(),
-                        stderr: truncate_output(&format!("Failed to execute: {}", e), 2000),
-                        duration_ms,
-                    };
+    //                 let log_entry = ValidationLogEntry {
+    //                     phase: "setup".to_string(),
+    //                     command: resolved_cmd.clone(),
+    //                     path: resolved_path.clone(),
+    //                     label: entry.label.clone(),
+    //                     status: "failed".to_string(),
+    //                     exit_code: None,
+    //                     stdout: String::new(),
+    //                     stderr: truncate_output(&format!("Failed to execute: {}", e), 2000),
+    //                     duration_ms,
+    //                 };
 
-                    if let Some(handle) = app_handle {
-                        let _ = handle.emit(
-                            "merge:validation_step",
-                            serde_json::json!({
-                                "task_id": task_id_str,
-                                "phase": log_entry.phase,
-                                "command": log_entry.command,
-                                "path": log_entry.path,
-                                "label": log_entry.label,
-                                "status": log_entry.status,
-                                "exit_code": log_entry.exit_code,
-                                "stdout": log_entry.stdout,
-                                "stderr": log_entry.stderr,
-                                "duration_ms": log_entry.duration_ms,
-                            }),
-                        );
-                    }
-                    log.push(log_entry);
-                }
-            }
-        }
-    }
+    //                 if let Some(handle) = app_handle {
+    //                     let _ = handle.emit(
+    //                         "merge:validation_step",
+    //                         serde_json::json!({
+    //                             "task_id": task_id_str,
+    //                             "phase": log_entry.phase,
+    //                             "command": log_entry.command,
+    //                             "path": log_entry.path,
+    //                             "label": log_entry.label,
+    //                             "status": log_entry.status,
+    //                             "exit_code": log_entry.exit_code,
+    //                             "stdout": log_entry.stdout,
+    //                             "stderr": log_entry.stderr,
+    //                             "duration_ms": log_entry.duration_ms,
+    //                         }),
+    //                     );
+    //                 }
+    //                 log.push(log_entry);
+    //             }
+    //         }
+    //     }
+    // }
 
     let mut failures = Vec::new();
     let mut ran_any = false;
