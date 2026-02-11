@@ -32,6 +32,7 @@ import type { Task, TaskMetadata, MergeRecoveryEvent } from "@/types/task";
 import { useQueryClient } from "@tanstack/react-query";
 import { taskKeys } from "@/hooks/useTasks";
 import { extractErrorMessage } from "@/lib/errors";
+import { useUiStore } from "@/stores/uiStore";
 
 interface MergeIncompleteTaskDetailProps {
   task: Task;
@@ -493,6 +494,7 @@ export function MergeIncompleteTaskDetail({
   isHistorical = false,
 }: MergeIncompleteTaskDetailProps) {
   const queryClient = useQueryClient();
+  const setHistoryState = useUiStore((state) => state.setTaskHistoryState);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -510,6 +512,18 @@ export function MergeIncompleteTaskDetail({
   const handleRetryMerge = useCallback(async () => {
     setIsProcessing(true);
     setError(null);
+
+    // Exit history mode to show live view
+    setHistoryState(null);
+
+    // Optimistically update task status to pending_merge
+    queryClient.setQueryData<Task[]>(
+      taskKeys.list(task.projectId),
+      (old) => old?.map((t) =>
+        t.id === task.id ? { ...t, internalStatus: "pending_merge" as const } : t
+      )
+    );
+
     try {
       await invoke("retry_merge", { taskId: task.id });
       await queryClient.invalidateQueries({
@@ -517,14 +531,30 @@ export function MergeIncompleteTaskDetail({
       });
     } catch (err) {
       setError(extractErrorMessage(err, "Failed to retry merge"));
+      // Rollback optimistic update on error
+      await queryClient.invalidateQueries({
+        queryKey: taskKeys.list(task.projectId),
+      });
     } finally {
       setIsProcessing(false);
     }
-  }, [task.id, task.projectId, queryClient]);
+  }, [task.id, task.projectId, queryClient, setHistoryState]);
 
   const handleRetrySkipValidation = useCallback(async () => {
     setIsProcessing(true);
     setError(null);
+
+    // Exit history mode to show live view
+    setHistoryState(null);
+
+    // Optimistically update task status to pending_merge
+    queryClient.setQueryData<Task[]>(
+      taskKeys.list(task.projectId),
+      (old) => old?.map((t) =>
+        t.id === task.id ? { ...t, internalStatus: "pending_merge" as const } : t
+      )
+    );
+
     try {
       await invoke("retry_merge", { taskId: task.id, skipValidation: true });
       await queryClient.invalidateQueries({
@@ -534,10 +564,14 @@ export function MergeIncompleteTaskDetail({
       setError(
         extractErrorMessage(err, "Failed to retry merge (skipping validation)"),
       );
+      // Rollback optimistic update on error
+      await queryClient.invalidateQueries({
+        queryKey: taskKeys.list(task.projectId),
+      });
     } finally {
       setIsProcessing(false);
     }
-  }, [task.id, task.projectId, queryClient]);
+  }, [task.id, task.projectId, queryClient, setHistoryState]);
 
   const handleMarkResolved = useCallback(async () => {
     setIsProcessing(true);

@@ -655,19 +655,9 @@ mod tests {
         let conn = setup_test_db();
         let repo = SqliteArtifactRepository::new(conn);
 
-        // First create a bucket (would normally be done via bucket repo)
-        {
-            let c = repo.conn.lock().await;
-            c.execute(
-                "INSERT INTO artifact_buckets (id, name, config_json, is_system)
-                 VALUES ('prd-library', 'PRD Library', '{}', 1)",
-                [],
-            )
-            .unwrap();
-        }
-
-        let artifact =
-            create_test_artifact().with_bucket(ArtifactBucketId::from_string("prd-library"));
+        // v24 migration seeds 'prd-library' bucket, so we can use it directly
+        let artifact = create_test_artifact()
+            .with_bucket(ArtifactBucketId::from_string("prd-library"));
 
         let result = repo.create(artifact.clone()).await;
         assert!(result.is_ok());
@@ -782,17 +772,7 @@ mod tests {
         let conn = setup_test_db();
         let repo = SqliteArtifactRepository::new(conn);
 
-        // Create bucket
-        {
-            let c = repo.conn.lock().await;
-            c.execute(
-                "INSERT INTO artifact_buckets (id, name, config_json, is_system)
-                 VALUES ('prd-library', 'PRD Library', '{}', 1)",
-                [],
-            )
-            .unwrap();
-        }
-
+        // v24 migration seeds 'prd-library' bucket
         let bucket_id = ArtifactBucketId::from_string("prd-library");
 
         // Create artifacts in bucket

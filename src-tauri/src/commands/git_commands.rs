@@ -267,6 +267,9 @@ pub async fn resolve_merge_conflict(
 ///
 /// Transitions task back to PendingMerge to trigger programmatic merge attempt.
 /// Used when user wants to retry after resolving issues.
+///
+/// This command returns immediately after scheduling the retry. The actual merge
+/// execution happens asynchronously in the background.
 #[tauri::command]
 pub async fn retry_merge(
     task_id: String,
@@ -284,6 +287,25 @@ pub async fn retry_merge(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Task not found: {}", task_id_parsed.as_str()))?;
 
+    // Check if merge retry is already in progress
+    let metadata_json = task
+        .metadata
+        .as_ref()
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    if metadata_json
+        .get("merge_retry_in_progress")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        tracing::info!(
+            task_id = task_id_parsed.as_str(),
+            "Merge retry already in progress, ignoring duplicate request"
+        );
+        return Ok(());
+    }
+
     // Validate task is in a mergeable retry state
     let valid_retry_states = [
         InternalStatus::MergeConflict,
@@ -297,31 +319,195 @@ pub async fn retry_merge(
         ));
     }
 
-    // If skip_validation requested, set metadata flag for attempt_programmatic_merge to check
+    // Set in-flight guard and optional skip_validation flag
+    let mut meta_obj = metadata_json
+        .as_object()
+        .cloned()
+        .unwrap_or_default();
+    meta_obj.insert("merge_retry_in_progress".to_string(), serde_json::json!(true));
+
     if skip_validation == Some(true) {
-        let metadata_json = task
-            .metadata
-            .as_ref()
-            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-            .unwrap_or_else(|| serde_json::json!({}));
-        let mut meta_obj = metadata_json.as_object().cloned().unwrap_or_default();
         meta_obj.insert("skip_validation".to_string(), serde_json::json!(true));
-        task.metadata = Some(serde_json::Value::Object(meta_obj).to_string());
-        state
-            .task_repo
-            .update(&task)
-            .await
-            .map_err(|e| e.to_string())?;
     }
 
-    // Create transition service and transition to PendingMerge
-    // This will trigger the programmatic merge attempt via on_enter(PendingMerge)
-    let transition_service = create_transition_service(&state, &execution_state);
-
-    transition_service
-        .transition_task(&task_id_parsed, InternalStatus::PendingMerge)
+    task.metadata = Some(serde_json::Value::Object(meta_obj).to_string());
+    state
+        .task_repo
+        .update(&task)
         .await
         .map_err(|e| e.to_string())?;
+
+    tracing::info!(
+        task_id = task_id_parsed.as_str(),
+        skip_validation = skip_validation.unwrap_or(false),
+        "Retry merge accepted, spawning background execution"
+    );
+
+    // Clone necessary repositories and state for background task
+    let task_repo = Arc::clone(&state.task_repo);
+    let task_dependency_repo = Arc::clone(&state.task_dependency_repo);
+    let project_repo = Arc::clone(&state.project_repo);
+    let chat_message_repo = Arc::clone(&state.chat_message_repo);
+    let chat_conversation_repo = Arc::clone(&state.chat_conversation_repo);
+    let agent_run_repo = Arc::clone(&state.agent_run_repo);
+    let ideation_session_repo = Arc::clone(&state.ideation_session_repo);
+    let activity_event_repo = Arc::clone(&state.activity_event_repo);
+    let message_queue = Arc::clone(&state.message_queue);
+    let running_agent_registry = Arc::clone(&state.running_agent_registry);
+    let plan_branch_repo = Arc::clone(&state.plan_branch_repo);
+    let execution_state_clone = Arc::clone(execution_state.inner());
+    let app_handle_opt = state.app_handle.clone();
+    let task_id_for_spawn = task_id_parsed.clone();
+
+    // Spawn background task for merge execution
+    tokio::spawn(async move {
+        execute_merge_retry_background(
+            task_id_for_spawn,
+            task_repo,
+            task_dependency_repo,
+            project_repo,
+            chat_message_repo,
+            chat_conversation_repo,
+            agent_run_repo,
+            ideation_session_repo,
+            activity_event_repo,
+            message_queue,
+            running_agent_registry,
+            plan_branch_repo,
+            execution_state_clone,
+            app_handle_opt,
+        )
+        .await;
+    });
+
+    Ok(())
+}
+
+/// Background execution of merge retry
+///
+/// This function runs the actual merge transition in the background.
+/// It ensures the in-flight guard is cleared on completion.
+#[allow(clippy::too_many_arguments)]
+async fn execute_merge_retry_background(
+    task_id: TaskId,
+    task_repo: Arc<dyn crate::domain::repositories::TaskRepository>,
+    task_dependency_repo: Arc<dyn crate::domain::repositories::TaskDependencyRepository>,
+    project_repo: Arc<dyn crate::domain::repositories::ProjectRepository>,
+    chat_message_repo: Arc<dyn crate::domain::repositories::ChatMessageRepository>,
+    chat_conversation_repo: Arc<dyn crate::domain::repositories::ChatConversationRepository>,
+    agent_run_repo: Arc<dyn crate::domain::repositories::AgentRunRepository>,
+    ideation_session_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository>,
+    activity_event_repo: Arc<dyn crate::domain::repositories::ActivityEventRepository>,
+    message_queue: Arc<crate::domain::services::MessageQueue>,
+    running_agent_registry: Arc<dyn crate::domain::services::RunningAgentRegistry>,
+    plan_branch_repo: Arc<dyn crate::domain::repositories::PlanBranchRepository>,
+    execution_state: Arc<ExecutionState>,
+    app_handle_opt: Option<tauri::AppHandle>,
+) {
+    tracing::info!(
+        task_id = task_id.as_str(),
+        "Background merge retry execution started"
+    );
+
+    // Create transition service with all necessary dependencies
+    let scheduler_concrete = Arc::new(TaskSchedulerService::new(
+        Arc::clone(&execution_state),
+        Arc::clone(&project_repo),
+        Arc::clone(&task_repo),
+        Arc::clone(&task_dependency_repo),
+        Arc::clone(&chat_message_repo),
+        Arc::clone(&chat_conversation_repo),
+        Arc::clone(&agent_run_repo),
+        Arc::clone(&ideation_session_repo),
+        Arc::clone(&activity_event_repo),
+        Arc::clone(&message_queue),
+        Arc::clone(&running_agent_registry),
+        app_handle_opt.clone(),
+    ).with_plan_branch_repo(Arc::clone(&plan_branch_repo)));
+    scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
+    let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
+
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&task_repo),
+        Arc::clone(&task_dependency_repo),
+        Arc::clone(&project_repo),
+        Arc::clone(&chat_message_repo),
+        Arc::clone(&chat_conversation_repo),
+        Arc::clone(&agent_run_repo),
+        Arc::clone(&ideation_session_repo),
+        Arc::clone(&activity_event_repo),
+        Arc::clone(&message_queue),
+        Arc::clone(&running_agent_registry),
+        Arc::clone(&execution_state),
+        app_handle_opt,
+    )
+    .with_task_scheduler(task_scheduler)
+    .with_plan_branch_repo(Arc::clone(&plan_branch_repo));
+
+    let result = transition_service
+        .transition_task(&task_id, InternalStatus::PendingMerge)
+        .await;
+
+    // Clear in-flight guard regardless of success/failure
+    if let Err(e) = clear_merge_retry_guard(&task_id, &task_repo).await {
+        tracing::warn!(
+            task_id = task_id.as_str(),
+            error = %e,
+            "Failed to clear merge retry guard after completion"
+        );
+    }
+
+    match result {
+        Ok(_) => {
+            tracing::info!(
+                task_id = task_id.as_str(),
+                "Background merge retry execution completed successfully"
+            );
+        }
+        Err(e) => {
+            tracing::error!(
+                task_id = task_id.as_str(),
+                error = %e,
+                "Background merge retry execution failed"
+            );
+        }
+    }
+}
+
+/// Clear the merge_retry_in_progress flag from task metadata
+async fn clear_merge_retry_guard(
+    task_id: &TaskId,
+    task_repo: &Arc<dyn crate::domain::repositories::TaskRepository>,
+) -> Result<(), String> {
+    let mut task = task_repo
+        .get_by_id(task_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Task not found: {}", task_id.as_str()))?;
+
+    let metadata_json = task
+        .metadata
+        .as_ref()
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    let mut meta_obj = metadata_json
+        .as_object()
+        .cloned()
+        .unwrap_or_default();
+
+    meta_obj.remove("merge_retry_in_progress");
+
+    task.metadata = Some(serde_json::Value::Object(meta_obj).to_string());
+    task_repo
+        .update(&task)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    tracing::debug!(
+        task_id = task_id.as_str(),
+        "Cleared merge retry in-flight guard"
+    );
 
     Ok(())
 }
