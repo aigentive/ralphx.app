@@ -5,18 +5,24 @@
 
 pub mod artifact_flow_service;
 pub mod artifact_service;
+pub mod bucket_classifier;
 pub mod message_queue;
 pub mod methodology_service;
 pub mod research_service;
+pub mod rule_parser;
+pub mod rule_ingestion_service;
 pub mod running_agent_registry;
 pub mod workflow_service;
 
 pub use artifact_flow_service::{ArtifactFlowService, FlowExecutionResult, StepExecutionResult};
 pub use artifact_service::ArtifactService;
+pub use bucket_classifier::BucketClassifier;
 // Unified message queue - keyed by (context_type, context_id)
 pub use message_queue::{MessageQueue, QueuedMessage, QueueKey};
 pub use methodology_service::{MethodologyActivationResult, MethodologyService};
 pub use research_service::ResearchService;
+pub use rule_parser::{MarkdownChunk, ParsedRuleFile, RuleFrontmatter, RuleParser};
+pub use rule_ingestion_service::{IngestionResult, RuleIngestionService};
 // Running agent registry for tracking and stopping agents
 pub use running_agent_registry::{
     kill_process, MemoryRunningAgentRegistry, RunningAgentInfo, RunningAgentKey,
