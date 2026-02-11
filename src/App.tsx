@@ -24,6 +24,7 @@ import { WelcomeScreen } from "@/components/WelcomeScreen";
 import { UpdateChecker } from "@/components/UpdateChecker";
 import { ProjectSelector } from "@/components/projects/ProjectSelector";
 import { ProjectCreationWizard } from "@/components/projects/ProjectCreationWizard";
+import { PlanQuickSwitcherPalette } from "@/components/plan/PlanQuickSwitcherPalette";
 import { useUiStore } from "@/stores/uiStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useIdeationStore, selectActiveSession } from "@/stores/ideationStore";
@@ -156,6 +157,9 @@ function AppContent() {
   const [isProjectWizardOpen, setIsProjectWizardOpen] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [projectCreationError, setProjectCreationError] = useState<string | null>(null);
+
+  // Plan quick switcher state
+  const [isPlanQuickSwitcherOpen, setIsPlanQuickSwitcherOpen] = useState(false);
 
   // Ideation state
   const activeSession = useIdeationStore(selectActiveSession);
@@ -626,6 +630,10 @@ function AppContent() {
     }
   }, [isNavCompact, toggleGraphRightPanelCompactOpen, toggleGraphRightPanelUserOpen]);
 
+  const handleOpenPlanQuickSwitcher = useCallback(() => {
+    setIsPlanQuickSwitcherOpen(true);
+  }, []);
+
   useAppKeyboardShortcuts({
     currentView,
     setCurrentView: handleViewChange,
@@ -638,7 +646,27 @@ function AppContent() {
     openWelcomeOverlay,
     closeWelcomeOverlay,
     welcomeOverlayReturnView,
+    openPlanQuickSwitcher: handleOpenPlanQuickSwitcher,
   });
+
+  // Global click handler to close quick switcher when clicking outside
+  useEffect(() => {
+    if (!isPlanQuickSwitcherOpen) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      // Check if click is outside the quick switcher panel
+      const target = e.target as HTMLElement;
+      const quickSwitcherPanel = target.closest('[data-quick-switcher-panel]');
+
+      if (!quickSwitcherPanel) {
+        setIsPlanQuickSwitcherOpen(false);
+      }
+    };
+
+    // Use capture phase to handle clicks before they bubble
+    document.addEventListener('click', handleClickOutside, true);
+    return () => document.removeEventListener('click', handleClickOutside, true);
+  }, [isPlanQuickSwitcherOpen]);
 
   // Test page routing - return early if on a test page
   if (testPage) {
@@ -998,6 +1026,15 @@ function AppContent() {
 
       {/* Confirmation Dialog */}
       <ConfirmationDialog {...confirmationDialogProps} />
+
+      {/* Plan Quick Switcher */}
+      {!hasNoProjects && (
+        <PlanQuickSwitcherPalette
+          projectId={currentProjectId}
+          isOpen={isPlanQuickSwitcherOpen}
+          onClose={() => setIsPlanQuickSwitcherOpen(false)}
+        />
+      )}
 
       {/* Toast notifications */}
       <Toaster position="bottom-left" offset={toastBottomOffset} />

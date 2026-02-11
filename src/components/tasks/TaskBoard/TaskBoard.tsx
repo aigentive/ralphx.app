@@ -26,12 +26,14 @@ import { TaskBoardSkeleton } from "./TaskBoardSkeleton";
 import { Column } from "./Column";
 import { TaskCard } from "./TaskCard";
 import { useUiStore } from "@/stores/uiStore";
+import { usePlanStore } from "@/stores/planStore";
 import { Toggle } from "@/components/ui/toggle";
-import { Archive, GitMerge } from "lucide-react";
+import { Archive, GitMerge, FileText } from "lucide-react";
 import { api } from "@/lib/tauri";
 import { useTaskSearch } from "@/hooks/useTaskSearch";
 import { TaskSearchBar } from "../TaskSearchBar";
 import { EmptySearchState } from "../EmptySearchState";
+import { PlanSelectorInline } from "@/components/plan/PlanSelectorInline";
 import { infiniteTaskKeys } from "@/hooks/useInfiniteTasksQuery";
 import { defaultWorkflow, type WorkflowColumn } from "@/types/workflow";
 import type { Task, TaskListResponse, InternalStatus } from "@/types/task";
@@ -52,12 +54,23 @@ function getColumnStatuses(col: WorkflowColumn): InternalStatus[] {
 
 export interface TaskBoardProps {
   projectId: string;
+  /** Optional ideation session ID to filter tasks by plan */
+  ideationSessionId?: string | null;
 }
 
-export function TaskBoard({ projectId }: TaskBoardProps) {
+export function TaskBoard({ projectId, ideationSessionId: ideationSessionIdProp }: TaskBoardProps) {
   const queryClient = useQueryClient();
   const eventBus = useEventBus();
-  const { columns, onDragEnd, isLoading, error } = useTaskBoard(projectId);
+  const activePlanId = usePlanStore((s) => s.activePlanByProject[projectId] ?? null);
+  // Use prop if provided, otherwise fall back to active plan from store
+  const ideationSessionId = ideationSessionIdProp ?? activePlanId;
+
+  // Load active plan from backend on mount or project change
+  useEffect(() => {
+    usePlanStore.getState().loadActivePlan(projectId);
+  }, [projectId]);
+
+  const { columns, onDragEnd, isLoading, error } = useTaskBoard(projectId, ideationSessionId);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [overColumnId, setOverColumnId] = useState<string | null>(null);
   const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
@@ -72,8 +85,8 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
 
   // Fetch archived count to show/hide the toggle
   const { data: archivedCount = 0 } = useQuery({
-    queryKey: ["archived-count", projectId],
-    queryFn: () => api.tasks.getArchivedCount(projectId),
+    queryKey: ["archived-count", projectId, ideationSessionId],
+    queryFn: () => api.tasks.getArchivedCount(projectId, ideationSessionId),
   });
 
   // Count merge tasks across all columns reactively via cache observer
@@ -86,6 +99,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
           projectId,
           statuses: getColumnStatuses(col),
           includeArchived: showArchived,
+          ideationSessionId,
         });
         const colData = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);
         if (colData?.pages) {
@@ -101,7 +115,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
       setMergeTaskCount(countMergeTasks());
     });
     return unsubscribe;
-  }, [columns, projectId, showArchived, queryClient]);
+  }, [columns, projectId, showArchived, ideationSessionId, queryClient]);
 
   // Search functionality
   const {
@@ -111,6 +125,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
     projectId,
     query: boardSearchQuery,
     includeArchived: showArchived,
+    ideationSessionId,
   });
 
   // Check if search is active
@@ -211,7 +226,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
           });
           // Invalidate archived count
           queryClient.invalidateQueries({
-            queryKey: ['archived-count', projectId],
+            queryKey: ['archived-count', projectId, ideationSessionId],
           });
         }
       }
@@ -227,7 +242,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
             queryKey: infiniteTaskKeys.all,
           });
           queryClient.invalidateQueries({
-            queryKey: ['archived-count', projectId],
+            queryKey: ['archived-count', projectId, ideationSessionId],
           });
         }
       }
@@ -243,7 +258,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
             queryKey: infiniteTaskKeys.all,
           });
           queryClient.invalidateQueries({
-            queryKey: ['archived-count', projectId],
+            queryKey: ['archived-count', projectId, ideationSessionId],
           });
         }
       }
@@ -253,7 +268,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
     return () => {
       unsubscribers.forEach((unsub) => unsub());
     };
-  }, [projectId, queryClient, eventBus]);
+  }, [projectId, ideationSessionId, queryClient, eventBus]);
 
   // Distance-based activation - drag starts after moving 8px
   const sensors = useSensors(
@@ -296,6 +311,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
         projectId,
         statuses: getColumnStatuses(col),
         includeArchived: showArchived,
+        ideationSessionId,
       });
       const data = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);
       if (data?.pages) {
@@ -326,6 +342,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
         projectId,
         statuses: getColumnStatuses(col),
         includeArchived: showArchived,
+        ideationSessionId,
       });
       const data = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);
       return data?.pages?.some((page) => page.tasks.some((t: Task) => t.id === taskId));
@@ -355,6 +372,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
   // Check if we should show empty state
   const hasSearchResults = searchResults.length > 0;
   const showEmptyState = isSearchActive && !hasSearchResults && !isSearchLoading;
+  const showNoPlanState = !activePlanId;
 
   return (
     <DndContext
@@ -384,6 +402,9 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
                 />
               </div>
             )}
+
+            {/* Plan Selector - compact mode */}
+            <PlanSelectorInline projectId={projectId} compact source="kanban_inline" />
 
             {/* Show Archived toggle - simple Tahoe style */}
             {archivedCount > 0 && (
@@ -442,8 +463,23 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
             WebkitOverflowScrolling: "touch",
           }}
         >
-          {/* Show empty search state when search has no results */}
-          {showEmptyState ? (
+          {/* Show no plan state when no active plan is selected */}
+          {showNoPlanState ? (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="flex flex-col items-center justify-center py-24 max-w-md text-center">
+                <FileText className="h-16 w-16 text-gray-400 mb-4" />
+                <h3 className="text-xl font-medium mb-2">No plan selected</h3>
+                <p className="text-gray-400 mb-6">
+                  Select a plan to view work on the Kanban board.
+                </p>
+                <div className="space-y-2">
+                  <PlanSelectorInline projectId={projectId} source="kanban_inline" />
+                  <p className="text-sm text-gray-500">or press Cmd+Shift+P</p>
+                </div>
+              </div>
+            </div>
+          ) : /* Show empty search state when search has no results */
+          showEmptyState ? (
             <div className="flex-1 flex items-center justify-center">
               <EmptySearchState
                 searchQuery={boardSearchQuery || ''}
@@ -492,6 +528,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
                     matchCount={matchCount}
                     {...(groups && { groups })}
                     isLast={index === displayColumns.length - 1}
+                    ideationSessionId={ideationSessionId}
                   />
                 );
               })}

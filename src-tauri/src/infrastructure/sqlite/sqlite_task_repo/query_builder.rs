@@ -7,43 +7,44 @@ use super::queries::TASK_COLUMNS;
 /// # Arguments
 /// * `status_count` - Number of statuses to filter by (0 = no filter)
 /// * `include_archived` - Whether to include archived tasks
+/// * `has_session_filter` - Whether to filter by ideation_session_id
 ///
 /// When status_count > 0, generates `internal_status IN (?2, ?3, ...)` clause.
-/// Parameter indices: ?1=project_id, ?2..?(1+count)=statuses, ?(2+count)=limit, ?(3+count)=offset
-pub(super) fn build_paginated_query(status_count: usize, include_archived: bool) -> String {
-    let base = format!("SELECT {} FROM tasks WHERE project_id = ?1", TASK_COLUMNS);
+/// When has_session_filter = true, adds ideation_session_id = ? filter.
+/// Parameter indices depend on filters used (see implementation)
+pub(super) fn build_paginated_query(status_count: usize, include_archived: bool, has_session_filter: bool) -> String {
+    let mut conditions = vec!["project_id = ?1".to_string()];
+    let mut param_idx = 2;
 
-    if status_count == 0 {
-        // No status filter
-        if include_archived {
-            format!("{} ORDER BY created_at DESC LIMIT ?2 OFFSET ?3", base)
-        } else {
-            format!(
-                "{} AND archived_at IS NULL ORDER BY created_at DESC LIMIT ?2 OFFSET ?3",
-                base
-            )
-        }
-    } else {
-        // Build IN clause: ?2, ?3, ... for status_count statuses
-        let placeholders: Vec<String> = (2..=status_count + 1)
+    // Add status IN clause if needed
+    if status_count > 0 {
+        let placeholders: Vec<String> = (param_idx..param_idx + status_count)
             .map(|i| format!("?{}", i))
             .collect();
         let in_clause = placeholders.join(", ");
-        let limit_idx = status_count + 2;
-        let offset_idx = status_count + 3;
-
-        if include_archived {
-            format!(
-                "{} AND internal_status IN ({}) ORDER BY created_at DESC LIMIT ?{} OFFSET ?{}",
-                base, in_clause, limit_idx, offset_idx
-            )
-        } else {
-            format!(
-                "{} AND internal_status IN ({}) AND archived_at IS NULL ORDER BY created_at DESC LIMIT ?{} OFFSET ?{}",
-                base, in_clause, limit_idx, offset_idx
-            )
-        }
+        conditions.push(format!("internal_status IN ({})", in_clause));
+        param_idx += status_count;
     }
+
+    // Add archived filter
+    if !include_archived {
+        conditions.push("archived_at IS NULL".to_string());
+    }
+
+    // Add session filter
+    if has_session_filter {
+        conditions.push(format!("ideation_session_id = ?{}", param_idx));
+        param_idx += 1;
+    }
+
+    let where_clause = conditions.join(" AND ");
+    let limit_idx = param_idx;
+    let offset_idx = param_idx + 1;
+
+    format!(
+        "SELECT {} FROM tasks WHERE {} ORDER BY created_at DESC LIMIT ?{} OFFSET ?{}",
+        TASK_COLUMNS, where_clause, limit_idx, offset_idx
+    )
 }
 
 /// Build search query with archived filter

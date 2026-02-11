@@ -10,6 +10,7 @@ pub mod chat_conversation;
 pub mod ideation;
 pub mod methodology;
 pub mod plan_branch;
+pub mod plan_selection_stats;
 pub mod project;
 pub mod research;
 pub mod review;
@@ -55,6 +56,7 @@ pub use methodology::{
     MethodologyPlanTemplate, MethodologyStatus, MethodologyTemplate, ParseMethodologyStatusError,
 };
 pub use plan_branch::{ParsePlanBranchStatusError, PlanBranch, PlanBranchId, PlanBranchStatus};
+pub use plan_selection_stats::{PlanSelectionStats, SelectionSource};
 pub use project::{GitMode, MergeValidationMode, Project};
 pub use research::{
     CustomDepth, ParseResearchDepthPresetError, ParseResearchProcessStatusError, ResearchBrief,

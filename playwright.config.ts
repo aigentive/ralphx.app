@@ -1,13 +1,14 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * Playwright configuration for visual regression testing.
+ * Playwright configuration for end-to-end testing.
  * Runs against the web mode dev server (npm run dev:web).
+ * Includes both visual regression tests and integration tests.
  *
  * @see https://playwright.dev/docs/test-configuration
  */
 export default defineConfig({
-  testDir: "./tests/visual",
+  testDir: "./tests",
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */

@@ -166,17 +166,6 @@ export function useTaskGraphFilters(): UseTaskGraphFiltersReturn {
         return false;
       }
 
-      // Check plan filter (empty = show all)
-      if (filters.planIds.length > 0) {
-        // Tasks without a plan are shown only if no plan filter is active
-        if (!node.planArtifactId) {
-          return false;
-        }
-        if (!filters.planIds.includes(node.planArtifactId)) {
-          return false;
-        }
-      }
-
       return true;
     },
     [filters]
@@ -222,14 +211,11 @@ export function useTaskGraphFilters(): UseTaskGraphFiltersReturn {
   // ============================================================================
 
   const hasActiveFilters = useMemo(() => {
-    return (
-      filters.statuses.length > 0 ||
-      filters.planIds.length > 0
-    );
+    return filters.statuses.length > 0;
   }, [filters]);
 
   const activeStatusCount = filters.statuses.length;
-  const activePlanCount = filters.planIds.length;
+  const activePlanCount = 0;
 
   return {
     // Filter state
@@ -288,17 +274,6 @@ export function filterFlowNodes<T extends Node>(
     // Check status filter (empty = show all)
     if (filters.statuses.length > 0 && !filters.statuses.includes(status)) {
       return false;
-    }
-
-    // Check plan filter (empty = show all)
-    if (filters.planIds.length > 0) {
-      const planArtifactId = data.planArtifactId;
-      if (!planArtifactId) {
-        return false;
-      }
-      if (!filters.planIds.includes(planArtifactId)) {
-        return false;
-      }
     }
 
     return true;

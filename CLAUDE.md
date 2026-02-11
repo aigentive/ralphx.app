@@ -63,6 +63,9 @@ className="outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:out
 style={{ boxShadow: "none", outline: "none" }}
 ```
 
+## Key Features
+- **Active Plan** — Project-scoped plan filtering for Graph/Kanban. User docs: `docs/features/active-plan.md` | API docs: `docs/architecture/active-plan-api.md`
+
 ## Key Principles
 1. TDD mandatory (tests FIRST)
 2. Anti-AI-slop (no purple gradients, no Inter)

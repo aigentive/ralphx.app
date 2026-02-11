@@ -55,6 +55,8 @@ interface ColumnProps {
   groups?: StateGroup[];
   /** Hide right border for last column */
   isLast?: boolean;
+  /** Optional ideation session ID to filter tasks by plan */
+  ideationSessionId?: string | null | undefined;
 }
 
 function InvalidDropIcon() {
@@ -88,7 +90,7 @@ function TaskSkeleton() {
   );
 }
 
-export function Column({ column, projectId, showArchived, showMergeTasks, isOver, isInvalid, onTaskSelect, hiddenTaskId, searchTasks, matchCount, groups, isLast = false }: ColumnProps) {
+export function Column({ column, projectId, showArchived, showMergeTasks, isOver, isInvalid, onTaskSelect, hiddenTaskId, searchTasks, matchCount, groups, isLast = false, ideationSessionId }: ColumnProps) {
   const { setNodeRef } = useDroppable({ id: column.id });
   const sentinelRef = useRef<HTMLDivElement>(null);
   const { active } = useDndContext();
@@ -142,6 +144,7 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
     projectId,
     statuses: columnStatuses,
     includeArchived: showArchived,
+    ideationSessionId,
   });
 
   // Use search tasks if provided (search mode), otherwise use fetched tasks

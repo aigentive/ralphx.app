@@ -13,6 +13,7 @@ import { mockReviewsApi } from "@/api-mock/reviews";
 import { mockIdeationApi } from "@/api-mock/ideation";
 import { mockExecutionApi } from "@/api-mock/execution";
 import { mockPlanBranchApi, toSnakeCasePlanBranch } from "@/api-mock/plan-branch";
+import { mockPlanApi } from "@/api-mock/plan";
 import type { ContextType } from "@/types/chat-conversation";
 
 /**
@@ -50,6 +51,16 @@ const commandHandlers: Record<
   get_project: async (args) => mockProjectsApi.get(args.projectId as string),
   get_git_branches: async (args) => mockGetGitBranches(args.workingDirectory as string),
   get_git_default_branch: async (args) => mockGetGitDefaultBranch(args.workingDirectory as string),
+
+  // Plan commands
+  get_active_plan: async (args) => mockPlanApi.getActivePlan(args.projectId as string),
+  set_active_plan: async (args) =>
+    mockPlanApi.setActivePlan(
+      args.projectId as string,
+      args.ideationSessionId as string,
+      args.source as Parameters<typeof mockPlanApi.setActivePlan>[2]
+    ),
+  clear_active_plan: async (args) => mockPlanApi.clearActivePlan(args.projectId as string),
 
   // Task commands
   list_tasks: async (args) => {
@@ -227,7 +238,11 @@ const commandHandlers: Record<
 
   // Task graph commands
   get_task_dependency_graph: async (args) =>
-    mockTaskGraphApi.getDependencyGraph(args.projectId as string),
+    mockTaskGraphApi.getDependencyGraph(
+      args.projectId as string,
+      args.includeArchived as boolean | undefined,
+      args.ideationSessionId as string | null | undefined ?? null
+    ),
   get_task_timeline_events: async (args) =>
     mockTaskGraphApi.getTimelineEvents(
       args.projectId as string,
