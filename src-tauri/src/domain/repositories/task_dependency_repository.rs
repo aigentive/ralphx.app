@@ -13,11 +13,7 @@ use crate::error::AppResult;
 #[async_trait]
 pub trait TaskDependencyRepository: Send + Sync {
     /// Add a dependency (task_id depends on depends_on_task_id)
-    async fn add_dependency(
-        &self,
-        task_id: &TaskId,
-        depends_on_task_id: &TaskId,
-    ) -> AppResult<()>;
+    async fn add_dependency(&self, task_id: &TaskId, depends_on_task_id: &TaskId) -> AppResult<()>;
 
     /// Remove a dependency
     async fn remove_dependency(
@@ -187,8 +183,7 @@ mod tests {
     #[test]
     fn test_task_dependency_repository_trait_can_be_object_safe() {
         // Verify that TaskDependencyRepository can be used as a trait object
-        let repo: Arc<dyn TaskDependencyRepository> =
-            Arc::new(MockTaskDependencyRepository::new());
+        let repo: Arc<dyn TaskDependencyRepository> = Arc::new(MockTaskDependencyRepository::new());
         assert!(Arc::strong_count(&repo) == 1);
     }
 
@@ -226,10 +221,8 @@ mod tests {
     async fn test_mock_repository_get_blockers_with_deps() {
         let task_id = TaskId::new();
         let blocker_id = TaskId::new();
-        let repo = MockTaskDependencyRepository::with_dependency(
-            task_id.clone(),
-            blocker_id.clone(),
-        );
+        let repo =
+            MockTaskDependencyRepository::with_dependency(task_id.clone(), blocker_id.clone());
 
         let result = repo.get_blockers(&task_id).await;
         assert!(result.is_ok());
@@ -295,10 +288,7 @@ mod tests {
         let task_a = TaskId::new();
         let task_b = TaskId::new();
         // B depends on A
-        let repo = MockTaskDependencyRepository::with_dependency(
-            task_b.clone(),
-            task_a.clone(),
-        );
+        let repo = MockTaskDependencyRepository::with_dependency(task_b.clone(), task_a.clone());
 
         // Adding A depends on B would create A -> B -> A cycle
         let result = repo.has_circular_dependency(&task_a, &task_b).await;
@@ -439,8 +429,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_repository_trait_object_add_remove_clear() {
-        let repo: Arc<dyn TaskDependencyRepository> =
-            Arc::new(MockTaskDependencyRepository::new());
+        let repo: Arc<dyn TaskDependencyRepository> = Arc::new(MockTaskDependencyRepository::new());
         let task_a = TaskId::new();
         let task_b = TaskId::new();
 

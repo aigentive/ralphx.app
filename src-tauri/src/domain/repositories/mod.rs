@@ -4,8 +4,8 @@
 pub mod active_plan_repository;
 pub mod activity_event_repository;
 pub mod agent_profile_repository;
-pub mod app_state_repository;
 pub mod agent_run_repository;
+pub mod app_state_repository;
 pub mod artifact_bucket_repository;
 pub mod artifact_flow_repository;
 pub mod artifact_repository;
@@ -34,12 +34,12 @@ pub mod workflow_repository;
 
 // Re-exports for convenience
 pub use active_plan_repository::ActivePlanRepository;
-pub use app_state_repository::AppStateRepository;
 pub use activity_event_repository::{
     ActivityEventFilter, ActivityEventPage, ActivityEventRepository,
 };
 pub use agent_profile_repository::{AgentProfileId, AgentProfileRepository};
 pub use agent_run_repository::AgentRunRepository;
+pub use app_state_repository::AppStateRepository;
 pub use artifact_bucket_repository::ArtifactBucketRepository;
 pub use artifact_flow_repository::ArtifactFlowRepository;
 pub use artifact_repository::{ArtifactRepository, ArtifactVersionSummary};

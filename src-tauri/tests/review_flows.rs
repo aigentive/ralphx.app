@@ -13,14 +13,16 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use ralphx_lib::application::ReviewService;
+use ralphx_lib::domain::entities::IssueSeverity;
 use ralphx_lib::domain::entities::{
     ProjectId, ReviewActionType, ReviewOutcome, ReviewStatus, ReviewerType, TaskId,
 };
 use ralphx_lib::domain::repositories::ReviewRepository;
 use ralphx_lib::domain::review::config::ReviewSettings;
 use ralphx_lib::domain::state_machine::{State, TaskEvent};
-use ralphx_lib::domain::entities::IssueSeverity;
-use ralphx_lib::domain::tools::complete_review::{CompleteReviewInput, ReviewIssueInput, ReviewToolOutcome};
+use ralphx_lib::domain::tools::complete_review::{
+    CompleteReviewInput, ReviewIssueInput, ReviewToolOutcome,
+};
 
 /// Helper to create a valid needs_changes input with a single issue
 fn make_needs_changes_input(notes: &str, fix_description: &str) -> CompleteReviewInput {
@@ -114,7 +116,10 @@ async fn test_ai_review_approve_flow() {
     let service = ReviewService::new(review_repo.clone(), task_repo.clone());
 
     // 1. Start AI review (creates Review in Pending status)
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     assert!(review.is_pending());
     assert_eq!(review.reviewer_type, ReviewerType::Ai);
     assert_eq!(review.task_id, task_id);
@@ -123,10 +128,16 @@ async fn test_ai_review_approve_flow() {
     let input = CompleteReviewInput::approved("All tests pass. Code quality is good.");
 
     // 3. Process the review result
-    let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
+    let fix_task_id = service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
 
     // 4. Verify no fix task was created
-    assert!(fix_task_id.is_none(), "Approved review should not create fix task");
+    assert!(
+        fix_task_id.is_none(),
+        "Approved review should not create fix task"
+    );
 
     // 5. Verify review is now approved
     assert!(review.is_approved());
@@ -161,9 +172,15 @@ async fn test_ai_review_approve_state_machine_transition() {
 
     // Conduct AI review
     let service = ReviewService::new(review_repo, task_repo);
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input = CompleteReviewInput::approved("LGTM");
-    service.process_review_result(&mut review, &input).await.unwrap();
+    service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
 
     // Transition state machine: Reviewing -> ReviewPassed
     let new_state = sm_repo
@@ -179,7 +196,9 @@ async fn test_ai_review_approve_state_machine_transition() {
     assert_eq!(new_state, State::ReviewPassed);
 
     // Human approval: ReviewPassed -> Approved
-    let new_state = sm_repo.process_event(&task_id, &TaskEvent::HumanApprove).unwrap();
+    let new_state = sm_repo
+        .process_event(&task_id, &TaskEvent::HumanApprove)
+        .unwrap();
     assert_eq!(new_state, State::Approved);
 }
 
@@ -205,7 +224,10 @@ async fn test_ai_review_no_duplicate() {
     let service = ReviewService::new(review_repo, task_repo);
 
     // Start first review
-    let _review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let _review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
 
     // Starting second review should fail
     let result = service.start_ai_review(&task_id, &project_id).await;
@@ -219,7 +241,10 @@ async fn test_ai_review_stores_notes() {
 
     let service = ReviewService::new(review_repo.clone(), task_repo);
 
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let detailed_notes = "All acceptance criteria met:\n\
         1. ✅ Login form renders correctly\n\
         2. ✅ Validation works for email/password\n\
@@ -227,7 +252,10 @@ async fn test_ai_review_stores_notes() {
         4. ✅ Success redirects to dashboard";
 
     let input = CompleteReviewInput::approved(detailed_notes);
-    service.process_review_result(&mut review, &input).await.unwrap();
+    service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
 
     // Verify notes are stored in review
     let persisted = review_repo.get_by_id(&review.id).await.unwrap().unwrap();
@@ -235,7 +263,10 @@ async fn test_ai_review_stores_notes() {
 
     // Verify notes are stored in review_notes
     let notes = review_repo.get_notes_by_task_id(&task_id).await.unwrap();
-    assert!(notes[0].notes.as_ref().is_some_and(|n| n.contains("All acceptance criteria met")));
+    assert!(notes[0]
+        .notes
+        .as_ref()
+        .is_some_and(|n| n.contains("All acceptance criteria met")));
 }
 
 /// Test: Review records completed_at timestamp
@@ -245,11 +276,17 @@ async fn test_ai_review_records_completion_time() {
 
     let service = ReviewService::new(review_repo.clone(), task_repo);
 
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     assert!(review.completed_at.is_none()); // Not completed yet
 
     let input = CompleteReviewInput::approved("Approved");
-    service.process_review_result(&mut review, &input).await.unwrap();
+    service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
 
     // Check persisted review has completed_at set
     let persisted = review_repo.get_by_id(&review.id).await.unwrap().unwrap();
@@ -264,12 +301,21 @@ async fn test_ai_review_multiple_sequential() {
     let service = ReviewService::new(review_repo.clone(), task_repo);
 
     // First review - approved
-    let mut review1 = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review1 = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input = CompleteReviewInput::approved("First approval");
-    service.process_review_result(&mut review1, &input).await.unwrap();
+    service
+        .process_review_result(&mut review1, &input)
+        .await
+        .unwrap();
 
     // After completing, we can start a new review
-    let review2 = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let review2 = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     assert!(review2.is_pending());
     assert_ne!(review1.id, review2.id);
 }
@@ -287,9 +333,15 @@ async fn test_ai_review_with_custom_settings() {
     let settings = ReviewSettings::with_human_review();
     let service = ReviewService::with_settings(review_repo, task_repo, settings);
 
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input = CompleteReviewInput::approved("AI approves");
-    service.process_review_result(&mut review, &input).await.unwrap();
+    service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
 
     // AI marked it approved, but with require_human_review, the orchestration
     // layer should create a follow-up human review
@@ -321,9 +373,15 @@ async fn test_get_reviews_by_task_id() {
     let service = ReviewService::new(review_repo.clone(), task_repo);
 
     // Create and complete a review
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input = CompleteReviewInput::approved("Approved");
-    service.process_review_result(&mut review, &input).await.unwrap();
+    service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
 
     // Retrieve reviews by task
     let reviews = review_repo.get_by_task_id(&task_id).await.unwrap();
@@ -340,7 +398,10 @@ async fn test_get_pending_reviews() {
     let service = ReviewService::new(review_repo.clone(), task_repo);
 
     // Create a pending review
-    let _review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let _review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
 
     // Get pending reviews
     let pending = review_repo.get_pending(&project_id).await.unwrap();
@@ -360,7 +421,10 @@ async fn test_count_pending_reviews() {
     assert_eq!(count, 0);
 
     // Start a review
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
 
     // Now 1 pending
     let count = review_repo.count_pending(&project_id).await.unwrap();
@@ -368,7 +432,10 @@ async fn test_count_pending_reviews() {
 
     // Complete the review
     let input = CompleteReviewInput::approved("Done");
-    service.process_review_result(&mut review, &input).await.unwrap();
+    service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
 
     // Back to 0 pending
     let count = review_repo.count_pending(&project_id).await.unwrap();
@@ -386,12 +453,18 @@ async fn test_has_pending_review() {
     assert!(!review_repo.has_pending_review(&task_id).await.unwrap());
 
     // Start review
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     assert!(review_repo.has_pending_review(&task_id).await.unwrap());
 
     // Complete review
     let input = CompleteReviewInput::approved("Done");
-    service.process_review_result(&mut review, &input).await.unwrap();
+    service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
     assert!(!review_repo.has_pending_review(&task_id).await.unwrap());
 }
 
@@ -403,9 +476,15 @@ async fn test_get_reviews_by_status() {
     let service = ReviewService::new(review_repo.clone(), task_repo);
 
     // Create and approve a review
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input = CompleteReviewInput::approved("Done");
-    service.process_review_result(&mut review, &input).await.unwrap();
+    service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
 
     // Query by status
     let approved = review_repo
@@ -447,7 +526,10 @@ async fn test_ai_review_needs_changes_flow() {
     let service = ReviewService::new(review_repo.clone(), task_repo.clone());
 
     // 1. Start AI review
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     assert!(review.is_pending());
 
     // 2. Simulate reviewer agent returning NEEDS_CHANGES outcome
@@ -457,17 +539,29 @@ async fn test_ai_review_needs_changes_flow() {
     );
 
     // 3. Process the review result
-    let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
+    let fix_task_id = service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
 
     // 4. Verify fix task was created
-    assert!(fix_task_id.is_some(), "NEEDS_CHANGES should create fix task");
+    assert!(
+        fix_task_id.is_some(),
+        "NEEDS_CHANGES should create fix task"
+    );
     let fix_task_id = fix_task_id.unwrap();
 
     // 5. Verify fix task properties
     use ralphx_lib::domain::repositories::TaskRepository;
     let fix_task = task_repo.get_by_id(&fix_task_id).await.unwrap().unwrap();
-    assert!(fix_task.title.starts_with("Fix:"), "Fix task title should start with 'Fix:'");
-    assert_eq!(fix_task.category, "fix", "Fix task category should be 'fix'");
+    assert!(
+        fix_task.title.starts_with("Fix:"),
+        "Fix task title should start with 'Fix:'"
+    );
+    assert_eq!(
+        fix_task.category, "fix",
+        "Fix task category should be 'fix'"
+    );
     assert!(
         fix_task
             .description
@@ -510,9 +604,15 @@ async fn test_ai_review_needs_changes_state_machine_transition() {
 
     // Conduct AI review with NEEDS_CHANGES
     let service = ReviewService::new(review_repo, task_repo);
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input = make_needs_changes_input("Bug found", "Fix the bug");
-    service.process_review_result(&mut review, &input).await.unwrap();
+    service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
 
     // Transition state machine: Reviewing -> RevisionNeeded
     let new_state = sm_repo
@@ -540,12 +640,21 @@ async fn test_ai_review_needs_changes_auto_fix_disabled() {
     };
     let service = ReviewService::with_settings(review_repo.clone(), task_repo, settings);
 
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input = make_needs_changes_input("Missing tests", "Add unit tests");
-    let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
+    let fix_task_id = service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
 
     // Should NOT create a fix task when auto_fix is disabled
-    assert!(fix_task_id.is_none(), "Should not create fix task when auto_fix disabled");
+    assert!(
+        fix_task_id.is_none(),
+        "Should not create fix task when auto_fix disabled"
+    );
 
     // Verify action recorded as moved to backlog
     let actions = review_repo.get_actions(&review.id).await.unwrap();
@@ -568,9 +677,15 @@ async fn test_fix_task_has_higher_priority() {
 
     let service = ReviewService::new(review_repo, task_repo.clone());
 
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input = make_needs_changes_input("Fix needed", "Apply the fix");
-    let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
+    let fix_task_id = service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
 
     let fix_task = task_repo
         .get_by_id(&fix_task_id.unwrap())
@@ -591,9 +706,15 @@ async fn test_fix_task_requires_approval() {
     let settings = ReviewSettings::with_fix_approval();
     let service = ReviewService::with_settings(review_repo, task_repo.clone(), settings);
 
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input = make_needs_changes_input("Bug found", "Fix the bug");
-    let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
+    let fix_task_id = service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
 
     // Fix task should be in Blocked status (waiting for approval)
     use ralphx_lib::domain::entities::InternalStatus;
@@ -618,9 +739,15 @@ async fn test_fix_task_ready_without_approval() {
     // Default settings don't require fix approval
     let service = ReviewService::new(review_repo, task_repo.clone());
 
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input = make_needs_changes_input("Bug found", "Fix the bug");
-    let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
+    let fix_task_id = service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
 
     // Fix task should be in Ready status
     use ralphx_lib::domain::entities::InternalStatus;
@@ -644,10 +771,7 @@ fn test_complete_review_input_needs_changes() {
 
     assert_eq!(input.outcome, ReviewToolOutcome::NeedsChanges);
     assert_eq!(input.notes, "Missing tests");
-    assert_eq!(
-        input.fix_description,
-        Some("Add unit tests".to_string())
-    );
+    assert_eq!(input.fix_description, Some("Add unit tests".to_string()));
     assert!(input.escalation_reason.is_none());
     assert!(input.validate().is_ok());
 }
@@ -665,7 +789,10 @@ fn test_complete_review_input_needs_changes_requires_fix_description() {
         escalation_reason: None,
     };
 
-    assert!(input.validate().is_err(), "Should fail validation without fix_description");
+    assert!(
+        input.validate().is_err(),
+        "Should fail validation without fix_description"
+    );
 }
 
 /// Test: Count fix actions for a task
@@ -680,9 +807,15 @@ async fn test_count_fix_actions() {
     assert_eq!(count, 0);
 
     // Create a review with needs_changes
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input = make_needs_changes_input("Bug 1", "Fix 1");
-    service.process_review_result(&mut review, &input).await.unwrap();
+    service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
 
     // Now should be 1
     let count = service.get_fix_attempt_count(&task_id).await.unwrap();
@@ -697,16 +830,28 @@ async fn test_multiple_fix_attempts_tracked() {
     let service = ReviewService::new(review_repo.clone(), task_repo.clone());
 
     // First review with needs_changes
-    let mut review1 = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review1 = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input1 = make_needs_changes_input("Bug 1", "Fix 1");
-    let fix1_id = service.process_review_result(&mut review1, &input1).await.unwrap();
+    let fix1_id = service
+        .process_review_result(&mut review1, &input1)
+        .await
+        .unwrap();
     assert!(fix1_id.is_some());
 
     // Complete the first review (so we can start another)
     // Start a second review on the same task
-    let mut review2 = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review2 = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input2 = make_needs_changes_input("Bug 2", "Fix 2");
-    let fix2_id = service.process_review_result(&mut review2, &input2).await.unwrap();
+    let fix2_id = service
+        .process_review_result(&mut review2, &input2)
+        .await
+        .unwrap();
     assert!(fix2_id.is_some());
 
     // Should now have 2 fix actions
@@ -740,7 +885,10 @@ async fn test_ai_review_escalate_flow() {
     let service = ReviewService::new(review_repo.clone(), task_repo.clone());
 
     // 1. Start AI review
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     assert!(review.is_pending());
 
     // 2. Simulate reviewer agent returning ESCALATE outcome
@@ -750,7 +898,10 @@ async fn test_ai_review_escalate_flow() {
     );
 
     // 3. Process the review result
-    let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
+    let fix_task_id = service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
 
     // 4. Verify no fix task was created (escalate doesn't create fix tasks)
     assert!(fix_task_id.is_none(), "ESCALATE should not create fix task");
@@ -786,9 +937,15 @@ async fn test_ai_review_escalate_state_machine_blocked() {
 
     // Conduct AI review with ESCALATE
     let service = ReviewService::new(review_repo, task_repo);
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input = CompleteReviewInput::escalate("Needs human review", "Security concern");
-    service.process_review_result(&mut review, &input).await.unwrap();
+    service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
 
     // In the real system, the orchestrator would detect the escalation and
     // either keep the task in PendingReview for human review, or move to Blocked
@@ -839,12 +996,18 @@ async fn test_ai_review_escalate_security_sensitive() {
 
     let service = ReviewService::new(review_repo.clone(), task_repo);
 
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input = CompleteReviewInput::escalate(
         "Changes to authentication/authorization code require human verification",
         "Modifies user permission checks",
     );
-    service.process_review_result(&mut review, &input).await.unwrap();
+    service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
 
     // Verify escalation recorded
     let notes = review_repo.get_notes_by_task_id(&task_id).await.unwrap();
@@ -861,12 +1024,18 @@ async fn test_ai_review_escalate_design_decision() {
 
     let service = ReviewService::new(review_repo.clone(), task_repo);
 
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input = CompleteReviewInput::escalate(
         "Multiple valid approaches possible - human should decide",
         "Could use Redux or Context API for state management",
     );
-    service.process_review_result(&mut review, &input).await.unwrap();
+    service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
 
     // Verify escalation recorded
     let notes = review_repo.get_notes_by_task_id(&task_id).await.unwrap();
@@ -883,12 +1052,18 @@ async fn test_ai_review_escalate_breaking_changes() {
 
     let service = ReviewService::new(review_repo.clone(), task_repo);
 
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input = CompleteReviewInput::escalate(
         "Breaking changes to public API detected",
         "Removes deprecated endpoint /api/v1/users - requires migration plan",
     );
-    service.process_review_result(&mut review, &input).await.unwrap();
+    service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
 
     // Verify escalation recorded
     let persisted = review_repo.get_by_id(&review.id).await.unwrap().unwrap();
@@ -905,12 +1080,18 @@ async fn test_ai_review_escalate_low_confidence() {
 
     let service = ReviewService::new(review_repo.clone(), task_repo);
 
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input = CompleteReviewInput::escalate(
         "Unable to fully evaluate - test coverage unclear",
         "Cannot determine if all edge cases are covered without manual review",
     );
-    service.process_review_result(&mut review, &input).await.unwrap();
+    service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
 
     // Verify escalation recorded with uncertainty note
     let notes = review_repo.get_notes_by_task_id(&task_id).await.unwrap();
@@ -927,13 +1108,23 @@ async fn test_ai_review_escalate_no_actions() {
 
     let service = ReviewService::new(review_repo.clone(), task_repo);
 
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input = CompleteReviewInput::escalate("Needs human review", "Design decision");
-    service.process_review_result(&mut review, &input).await.unwrap();
+    service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
 
     // Verify no review actions were created
     let actions = review_repo.get_actions(&review.id).await.unwrap();
-    assert_eq!(actions.len(), 0, "ESCALATE should not create review actions");
+    assert_eq!(
+        actions.len(),
+        0,
+        "ESCALATE should not create review actions"
+    );
 }
 
 // ============================================================================
@@ -958,9 +1149,15 @@ async fn test_fix_task_rejection_creates_new_fix() {
     let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
 
     // 1. Create initial review with needs_changes to get a fix task
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input = make_needs_changes_input("Missing tests", "Add unit tests");
-    let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
+    let fix_task_id = service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
     assert!(fix_task_id.is_some());
     let fix_task_id = fix_task_id.unwrap();
 
@@ -971,9 +1168,15 @@ async fn test_fix_task_rejection_creates_new_fix() {
         .unwrap();
 
     // 3. Verify a new fix task was created
-    assert!(new_fix_id.is_some(), "Should create new fix task on rejection");
+    assert!(
+        new_fix_id.is_some(),
+        "Should create new fix task on rejection"
+    );
     let new_fix_id = new_fix_id.unwrap();
-    assert_ne!(fix_task_id, new_fix_id, "New fix task should have different ID");
+    assert_ne!(
+        fix_task_id, new_fix_id,
+        "New fix task should have different ID"
+    );
 
     // 4. Verify new fix task contains feedback
     use ralphx_lib::domain::repositories::TaskRepository;
@@ -999,9 +1202,15 @@ async fn test_fix_task_max_attempts_moves_to_backlog() {
     let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
 
     // Create initial review with needs_changes
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input = make_needs_changes_input("Bug found", "Fix the bug");
-    let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
+    let fix_task_id = service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
     assert!(fix_task_id.is_some());
     let fix_task_id = fix_task_id.unwrap();
 
@@ -1039,9 +1248,15 @@ async fn test_approve_fix_task_transitions_to_ready() {
     let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
 
     // Create fix task (starts as Blocked)
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input = make_needs_changes_input("Bug found", "Fix the bug");
-    let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
+    let fix_task_id = service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
     let fix_task_id = fix_task_id.unwrap();
 
     // Verify it starts as Blocked
@@ -1071,9 +1286,15 @@ async fn test_approve_fix_task_fails_if_not_blocked() {
     let service = ReviewService::new(review_repo.clone(), task_repo.clone());
 
     // Create fix task (starts as Ready because no fix approval required)
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input = make_needs_changes_input("Bug found", "Fix the bug");
-    let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
+    let fix_task_id = service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
     let fix_task_id = fix_task_id.unwrap();
 
     // Verify it's Ready (not Blocked)
@@ -1084,7 +1305,10 @@ async fn test_approve_fix_task_fails_if_not_blocked() {
 
     // Trying to approve should fail
     let result = service.approve_fix_task(&fix_task_id).await;
-    assert!(result.is_err(), "Should fail to approve a task that's not Blocked");
+    assert!(
+        result.is_err(),
+        "Should fail to approve a task that's not Blocked"
+    );
 }
 
 /// Test: Reject fix task increments attempt counter
@@ -1100,9 +1324,15 @@ async fn test_reject_fix_task_increments_attempt_counter() {
     assert_eq!(service.get_fix_attempt_count(&task_id).await.unwrap(), 0);
 
     // Create first fix task
-    let mut review1 = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review1 = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input1 = make_needs_changes_input("Bug 1", "Fix 1");
-    let fix1_id = service.process_review_result(&mut review1, &input1).await.unwrap();
+    let fix1_id = service
+        .process_review_result(&mut review1, &input1)
+        .await
+        .unwrap();
     let fix1_id = fix1_id.unwrap();
 
     // Count is now 1
@@ -1119,9 +1349,15 @@ async fn test_reject_fix_task_increments_attempt_counter() {
     // But we do have a new fix task now
 
     // Create another review and process needs_changes to add another fix action
-    let mut review2 = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review2 = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input2 = make_needs_changes_input("Bug 2", "Fix 2");
-    service.process_review_result(&mut review2, &input2).await.unwrap();
+    service
+        .process_review_result(&mut review2, &input2)
+        .await
+        .unwrap();
 
     // Now count should be 2
     assert_eq!(service.get_fix_attempt_count(&task_id).await.unwrap(), 2);
@@ -1137,9 +1373,15 @@ async fn test_fix_task_max_attempts_records_note() {
     let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
 
     // Create initial fix task
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input = make_needs_changes_input("Bug found", "Fix the bug");
-    let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
+    let fix_task_id = service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
     let fix_task_id = fix_task_id.unwrap();
 
     // Reject the fix task (should trigger max attempts reached)
@@ -1150,13 +1392,11 @@ async fn test_fix_task_max_attempts_records_note() {
 
     // Verify note was added about max attempts
     let notes = review_repo.get_notes_by_task_id(&task_id).await.unwrap();
-    let max_attempts_note = notes
-        .iter()
-        .find(|n| {
-            n.notes
-                .as_ref()
-                .map_or(false, |text| text.contains("Max fix attempts"))
-        });
+    let max_attempts_note = notes.iter().find(|n| {
+        n.notes
+            .as_ref()
+            .map_or(false, |text| text.contains("Max fix attempts"))
+    });
     assert!(
         max_attempts_note.is_some(),
         "Should add note about max attempts reached"
@@ -1172,9 +1412,15 @@ async fn test_new_fix_task_includes_feedback() {
     let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
 
     // Create initial fix task
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input = make_needs_changes_input("Missing validation", "Add input validation");
-    let fix_task_id = service.process_review_result(&mut review, &input).await.unwrap();
+    let fix_task_id = service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
     let fix_task_id = fix_task_id.unwrap();
 
     // Reject with specific feedback
@@ -1235,7 +1481,10 @@ async fn test_move_to_backlog() {
             .as_ref()
             .map_or(false, |text| text.contains("Too complex"))
     });
-    assert!(backlog_note.is_some(), "Should add note about backlog reason");
+    assert!(
+        backlog_note.is_some(),
+        "Should add note about backlog reason"
+    );
 }
 
 // ============================================================================
@@ -1260,11 +1509,17 @@ async fn test_human_review_approval_flow() {
     let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
 
     // 1. Start AI review
-    let mut review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
 
     // 2. AI approves the review
     let input = CompleteReviewInput::approved("All looks good from AI perspective");
-    service.process_review_result(&mut review, &input).await.unwrap();
+    service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
 
     // The AI review is approved, but since require_human_review is true,
     // the task should stay in PendingReview for human verification
@@ -1285,7 +1540,11 @@ async fn test_human_review_approval_flow() {
         .unwrap();
 
     // 5. Verify human review is approved
-    let updated_review = review_repo.get_by_id(&human_review.id).await.unwrap().unwrap();
+    let updated_review = review_repo
+        .get_by_id(&human_review.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert!(updated_review.is_approved());
     assert!(updated_review.completed_at.is_some());
 
@@ -1327,7 +1586,11 @@ async fn test_human_review_request_changes() {
     assert!(fix_task_id.is_some());
 
     // Verify review status
-    let updated_review = review_repo.get_by_id(&human_review.id).await.unwrap().unwrap();
+    let updated_review = review_repo
+        .get_by_id(&human_review.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(updated_review.status, ReviewStatus::ChangesRequested);
 }
 
@@ -1355,7 +1618,11 @@ async fn test_human_review_rejection() {
         .unwrap();
 
     // Verify review is rejected
-    let updated_review = review_repo.get_by_id(&human_review.id).await.unwrap().unwrap();
+    let updated_review = review_repo
+        .get_by_id(&human_review.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(updated_review.status, ReviewStatus::Rejected);
 
     // Verify note was created
@@ -1376,12 +1643,18 @@ async fn test_human_review_after_escalation() {
     let service = ReviewService::new(review_repo.clone(), task_repo.clone());
 
     // 1. AI review with escalation
-    let mut ai_review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut ai_review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input = CompleteReviewInput::escalate(
         "Security-sensitive changes",
         "This modifies authentication logic",
     );
-    service.process_review_result(&mut ai_review, &input).await.unwrap();
+    service
+        .process_review_result(&mut ai_review, &input)
+        .await
+        .unwrap();
 
     // AI review is rejected (escalated)
     assert_eq!(ai_review.status, ReviewStatus::Rejected);
@@ -1403,7 +1676,11 @@ async fn test_human_review_after_escalation() {
         .unwrap();
 
     // Verify approved
-    let updated = review_repo.get_by_id(&human_review.id).await.unwrap().unwrap();
+    let updated = review_repo
+        .get_by_id(&human_review.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert!(updated.is_approved());
 }
 
@@ -1416,11 +1693,17 @@ async fn test_cannot_start_human_review_with_pending_ai_review() {
     let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
 
     // Start AI review (leaves it pending)
-    let _ai_review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let _ai_review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
 
     // Try to start human review - should fail (AI review still pending)
     let result = service.start_human_review(&task_id, &project_id).await;
-    assert!(result.is_err(), "Should not allow human review while AI review is pending");
+    assert!(
+        result.is_err(),
+        "Should not allow human review while AI review is pending"
+    );
 }
 
 /// Test: Human review is recorded in review history
@@ -1432,9 +1715,15 @@ async fn test_human_review_recorded_in_history() {
     let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
 
     // Complete AI review
-    let mut ai_review = service.start_ai_review(&task_id, &project_id).await.unwrap();
+    let mut ai_review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
     let input = CompleteReviewInput::approved("AI approved");
-    service.process_review_result(&mut ai_review, &input).await.unwrap();
+    service
+        .process_review_result(&mut ai_review, &input)
+        .await
+        .unwrap();
 
     // Complete human review
     let human_review = service
@@ -1493,7 +1782,11 @@ async fn test_human_review_request_changes_without_fix() {
     assert!(fix_task_id.is_none(), "No fix task without fix description");
 
     // Review should still be ChangesRequested
-    let updated_review = review_repo.get_by_id(&human_review.id).await.unwrap().unwrap();
+    let updated_review = review_repo
+        .get_by_id(&human_review.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(updated_review.status, ReviewStatus::ChangesRequested);
 }
 

@@ -1,8 +1,8 @@
 // Supervisor actions
 // Actions that the supervisor can take in response to detected patterns
 
-use serde::{Deserialize, Serialize};
 use super::patterns::{DetectionResult, Pattern};
+use serde::{Deserialize, Serialize};
 
 /// Severity level of an issue
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -34,23 +34,13 @@ impl std::fmt::Display for Severity {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SupervisorAction {
     /// Log a warning and continue monitoring
-    Log {
-        severity: Severity,
-        message: String,
-    },
+    Log { severity: Severity, message: String },
     /// Inject guidance into agent context
-    InjectGuidance {
-        message: String,
-    },
+    InjectGuidance { message: String },
     /// Pause the task execution
-    Pause {
-        reason: String,
-    },
+    Pause { reason: String },
     /// Kill the task and mark as failed
-    Kill {
-        reason: String,
-        analysis: String,
-    },
+    Kill { reason: String, analysis: String },
     /// No action needed
     None,
 }
@@ -99,7 +89,10 @@ impl SupervisorAction {
 
     /// Check if this is an intervention action (not just logging)
     pub fn is_intervention(&self) -> bool {
-        matches!(self, Self::InjectGuidance { .. } | Self::Pause { .. } | Self::Kill { .. })
+        matches!(
+            self,
+            Self::InjectGuidance { .. } | Self::Pause { .. } | Self::Kill { .. }
+        )
     }
 }
 
@@ -113,8 +106,10 @@ pub fn action_for_detection(detection: &DetectionResult) -> SupervisorAction {
             if confidence >= 90 && occurrences >= 5 {
                 SupervisorAction::kill(
                     "Infinite loop detected with high confidence",
-                    format!("Tool called {} times with identical arguments. Pattern: {}",
-                        occurrences, detection.description),
+                    format!(
+                        "Tool called {} times with identical arguments. Pattern: {}",
+                        occurrences, detection.description
+                    ),
                 )
             } else if confidence >= 80 || occurrences >= 4 {
                 SupervisorAction::pause(format!(
@@ -298,10 +293,22 @@ mod tests {
 
     #[test]
     fn test_action_for_severity() {
-        assert!(matches!(action_for_severity(Severity::Low, "test"), SupervisorAction::Log { .. }));
-        assert!(matches!(action_for_severity(Severity::Medium, "test"), SupervisorAction::InjectGuidance { .. }));
-        assert!(matches!(action_for_severity(Severity::High, "test"), SupervisorAction::Pause { .. }));
-        assert!(matches!(action_for_severity(Severity::Critical, "test"), SupervisorAction::Kill { .. }));
+        assert!(matches!(
+            action_for_severity(Severity::Low, "test"),
+            SupervisorAction::Log { .. }
+        ));
+        assert!(matches!(
+            action_for_severity(Severity::Medium, "test"),
+            SupervisorAction::InjectGuidance { .. }
+        ));
+        assert!(matches!(
+            action_for_severity(Severity::High, "test"),
+            SupervisorAction::Pause { .. }
+        ));
+        assert!(matches!(
+            action_for_severity(Severity::Critical, "test"),
+            SupervisorAction::Kill { .. }
+        ));
     }
 
     #[test]
@@ -316,7 +323,9 @@ mod tests {
     fn test_supervisor_action_deserialize() {
         let json = r#"{"type": "inject_guidance", "message": "Try again"}"#;
         let action: SupervisorAction = serde_json::from_str(json).unwrap();
-        assert!(matches!(action, SupervisorAction::InjectGuidance { message } if message == "Try again"));
+        assert!(
+            matches!(action, SupervisorAction::InjectGuidance { message } if message == "Try again")
+        );
     }
 
     #[test]

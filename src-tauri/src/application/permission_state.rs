@@ -105,7 +105,10 @@ impl PermissionState {
             // Fire-and-forget persist to repo
             if let Some(repo) = &self.repo {
                 if let Err(e) = repo.resolve(request_id, &decision).await {
-                    error!("Failed to persist permission resolution {}: {}", request_id, e);
+                    error!(
+                        "Failed to persist permission resolution {}: {}",
+                        request_id, e
+                    );
                 }
             }
 
@@ -313,7 +316,12 @@ mod tests {
         // Register a pending permission
         let request_id = "to-remove".to_string();
         state
-            .register(request_id.clone(), "Bash".to_string(), serde_json::json!({}), None)
+            .register(
+                request_id.clone(),
+                "Bash".to_string(),
+                serde_json::json!({}),
+                None,
+            )
             .await;
 
         // Verify it exists

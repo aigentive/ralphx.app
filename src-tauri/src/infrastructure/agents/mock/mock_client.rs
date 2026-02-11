@@ -148,7 +148,10 @@ impl MockAgenticClient {
     }
 
     async fn record_call(&self, call_type: MockCallType) {
-        self.call_history.write().await.push(MockCall::new(call_type));
+        self.call_history
+            .write()
+            .await
+            .push(MockCall::new(call_type));
     }
 }
 
@@ -190,11 +193,7 @@ impl AgenticClient for MockAgenticClient {
         })
     }
 
-    async fn send_prompt(
-        &self,
-        handle: &AgentHandle,
-        prompt: &str,
-    ) -> AgentResult<AgentResponse> {
+    async fn send_prompt(&self, handle: &AgentHandle, prompt: &str) -> AgentResult<AgentResponse> {
         self.record_call(MockCallType::SendPrompt {
             handle_id: handle.id.clone(),
             prompt: prompt.to_string(),
@@ -221,10 +220,13 @@ impl AgenticClient for MockAgenticClient {
 
         // Spawn a task to record the call
         tokio::spawn(async move {
-            call_history.write().await.push(MockCall::new(MockCallType::StreamResponse {
-                handle_id,
-                prompt: prompt_str,
-            }));
+            call_history
+                .write()
+                .await
+                .push(MockCall::new(MockCallType::StreamResponse {
+                    handle_id,
+                    prompt: prompt_str,
+                }));
         });
 
         // Return mock stream
@@ -292,7 +294,10 @@ mod tests {
         let client = MockAgenticClient::new();
         let handle = AgentHandle::mock(AgentRole::Worker);
 
-        let response = client.send_prompt(&handle, "something random").await.unwrap();
+        let response = client
+            .send_prompt(&handle, "something random")
+            .await
+            .unwrap();
         assert_eq!(response.content, "MOCK_DEFAULT_RESPONSE");
     }
 
@@ -391,12 +396,17 @@ mod tests {
         let handle = AgentHandle::mock(AgentRole::Worker);
 
         client.when_prompt_contains("worker", "I'm a worker").await;
-        client.when_prompt_contains("reviewer", "I'm a reviewer").await;
+        client
+            .when_prompt_contains("reviewer", "I'm a reviewer")
+            .await;
 
         let r1 = client.send_prompt(&handle, "act as worker").await.unwrap();
         assert_eq!(r1.content, "I'm a worker");
 
-        let r2 = client.send_prompt(&handle, "act as reviewer").await.unwrap();
+        let r2 = client
+            .send_prompt(&handle, "act as reviewer")
+            .await
+            .unwrap();
         assert_eq!(r2.content, "I'm a reviewer");
     }
 

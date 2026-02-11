@@ -76,7 +76,10 @@ impl ArtifactFlowRepository for MockFlowRepository {
 
 // ==================== Test Helpers ====================
 
-fn create_service() -> (ArtifactFlowService<MockFlowRepository>, Arc<MockFlowRepository>) {
+fn create_service() -> (
+    ArtifactFlowService<MockFlowRepository>,
+    Arc<MockFlowRepository>,
+) {
     let flow_repo = Arc::new(MockFlowRepository::new());
     let service = ArtifactFlowService::new(flow_repo.clone());
     (service, flow_repo)
@@ -96,10 +99,9 @@ fn create_test_artifact(artifact_type: ArtifactType, bucket_id: Option<&str>) ->
 
 fn create_basic_flow() -> ArtifactFlow {
     use crate::domain::entities::ArtifactFlowTrigger;
-    ArtifactFlow::new("Basic Flow", ArtifactFlowTrigger::on_artifact_created())
-        .with_step(ArtifactFlowStep::copy(ArtifactBucketId::from_string(
-            "target-bucket",
-        )))
+    ArtifactFlow::new("Basic Flow", ArtifactFlowTrigger::on_artifact_created()).with_step(
+        ArtifactFlowStep::copy(ArtifactBucketId::from_string("target-bucket")),
+    )
 }
 
 fn create_filtered_flow() -> ArtifactFlow {
@@ -129,10 +131,9 @@ fn create_task_completed_flow() -> ArtifactFlow {
 
 fn create_process_completed_flow() -> ArtifactFlow {
     use crate::domain::entities::ArtifactFlowTrigger;
-    ArtifactFlow::new("Process Flow", ArtifactFlowTrigger::on_process_completed())
-        .with_step(ArtifactFlowStep::copy(ArtifactBucketId::from_string(
-            "archive-bucket",
-        )))
+    ArtifactFlow::new("Process Flow", ArtifactFlowTrigger::on_process_completed()).with_step(
+        ArtifactFlowStep::copy(ArtifactBucketId::from_string("archive-bucket")),
+    )
 }
 
 // ==================== Service Creation Tests ====================
@@ -703,7 +704,10 @@ async fn process_task_completed_without_artifact() {
 
     flow_repo.add_flow(create_task_completed_flow()).await;
 
-    let results = service.process_task_completed("task-1", None).await.unwrap();
+    let results = service
+        .process_task_completed("task-1", None)
+        .await
+        .unwrap();
 
     assert_eq!(results.len(), 1);
     assert!(results[0].step_results.is_empty()); // No artifact means no step execution
@@ -751,8 +755,7 @@ async fn research_to_dev_flow_scenario() {
     flow_repo.add_flow(create_filtered_flow()).await;
 
     // Create a recommendations artifact in research-outputs bucket
-    let artifact =
-        create_test_artifact(ArtifactType::Recommendations, Some("research-outputs"));
+    let artifact = create_test_artifact(ArtifactType::Recommendations, Some("research-outputs"));
 
     let results = service.process_artifact_created(&artifact).await.unwrap();
 
@@ -824,7 +827,9 @@ fn execute_steps_emit_event_step() {
     let evaluation = ArtifactFlowEvaluation {
         flow_id: ArtifactFlowId::new(),
         flow_name: "Test".to_string(),
-        steps: vec![ArtifactFlowStep::emit_event("plan:proposals_may_need_update")],
+        steps: vec![ArtifactFlowStep::emit_event(
+            "plan:proposals_may_need_update",
+        )],
     };
 
     let results = service.execute_steps(&evaluation, &artifact);

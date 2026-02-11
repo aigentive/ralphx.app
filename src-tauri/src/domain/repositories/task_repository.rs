@@ -107,10 +107,8 @@ pub trait TaskRepository: Send + Sync {
     ///
     /// Used by cascade delete to find all tasks that should be deleted
     /// when an ideation session is removed.
-    async fn get_by_ideation_session(
-        &self,
-        session_id: &IdeationSessionId,
-    ) -> AppResult<Vec<Task>>;
+    async fn get_by_ideation_session(&self, session_id: &IdeationSessionId)
+        -> AppResult<Vec<Task>>;
 
     // ═══════════════════════════════════════════════════════════════════════
     // Archive Operations (Phase 18 - Soft Delete)
@@ -137,7 +135,11 @@ pub trait TaskRepository: Send + Sync {
     ///
     /// # Returns
     /// * Count of archived tasks matching the criteria
-    async fn get_archived_count(&self, project_id: &ProjectId, ideation_session_id: Option<&str>) -> AppResult<u32>;
+    async fn get_archived_count(
+        &self,
+        project_id: &ProjectId,
+        ideation_session_id: Option<&str>,
+    ) -> AppResult<u32>;
 
     // ═══════════════════════════════════════════════════════════════════════
     // Pagination Operations (Phase 18 - Infinite Scroll)
@@ -385,7 +387,11 @@ mod tests {
             Ok(task)
         }
 
-        async fn get_archived_count(&self, _project_id: &ProjectId, _ideation_session_id: Option<&str>) -> AppResult<u32> {
+        async fn get_archived_count(
+            &self,
+            _project_id: &ProjectId,
+            _ideation_session_id: Option<&str>,
+        ) -> AppResult<u32> {
             Ok(0)
         }
 
@@ -506,7 +512,9 @@ mod tests {
         let repo = MockTaskRepository;
         let project_id = ProjectId::new();
 
-        let result = repo.get_by_status(&project_id, InternalStatus::Backlog).await;
+        let result = repo
+            .get_by_status(&project_id, InternalStatus::Backlog)
+            .await;
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
     }
@@ -517,7 +525,12 @@ mod tests {
         let task_id = TaskId::new();
 
         let result = repo
-            .persist_status_change(&task_id, InternalStatus::Backlog, InternalStatus::Ready, "user")
+            .persist_status_change(
+                &task_id,
+                InternalStatus::Backlog,
+                InternalStatus::Ready,
+                "user",
+            )
             .await;
         assert!(result.is_ok());
     }

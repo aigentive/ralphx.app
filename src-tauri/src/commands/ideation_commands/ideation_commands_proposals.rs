@@ -5,17 +5,15 @@ use tauri::{Emitter, State};
 
 use crate::application::AppState;
 use crate::domain::entities::{
-    BusinessValueFactor, Complexity, ComplexityFactor, CriticalPathFactor,
-    DependencyFactor, DependencyGraph, DependencyGraphEdge, DependencyGraphNode,
-    IdeationSessionId, IdeationSessionStatus, Priority, PriorityAssessment,
-    PriorityAssessmentFactors, TaskCategory, TaskProposal, TaskProposalId,
-    UserHintFactor,
+    BusinessValueFactor, Complexity, ComplexityFactor, CriticalPathFactor, DependencyFactor,
+    DependencyGraph, DependencyGraphEdge, DependencyGraphNode, IdeationSessionId,
+    IdeationSessionStatus, Priority, PriorityAssessment, PriorityAssessmentFactors, TaskCategory,
+    TaskProposal, TaskProposalId, UserHintFactor,
 };
 use crate::http_server::helpers::maybe_trigger_dependency_analysis;
 
 use super::ideation_commands_types::{
-    CreateProposalInput, PriorityAssessmentResponse, TaskProposalResponse,
-    UpdateProposalInput,
+    CreateProposalInput, PriorityAssessmentResponse, TaskProposalResponse, UpdateProposalInput,
 };
 
 // ============================================================================
@@ -289,9 +287,7 @@ pub async fn toggle_proposal_selection(
 
     // Fetch updated proposal and emit event
     if let Some(app_handle) = &state.app_handle {
-        if let Ok(Some(updated_proposal)) =
-            state.task_proposal_repo.get_by_id(&proposal_id).await
-        {
+        if let Ok(Some(updated_proposal)) = state.task_proposal_repo.get_by_id(&proposal_id).await {
             let response = TaskProposalResponse::from(updated_proposal);
             let _ = app_handle.emit(
                 "proposal:updated",
@@ -321,9 +317,7 @@ pub async fn set_proposal_selection(
 
     // Fetch updated proposal and emit event
     if let Some(app_handle) = &state.app_handle {
-        if let Ok(Some(updated_proposal)) =
-            state.task_proposal_repo.get_by_id(&proposal_id).await
-        {
+        if let Ok(Some(updated_proposal)) = state.task_proposal_repo.get_by_id(&proposal_id).await {
             let response = TaskProposalResponse::from(updated_proposal);
             let _ = app_handle.emit(
                 "proposal:updated",
@@ -360,8 +354,10 @@ pub async fn reorder_proposals(
     if let Some(app_handle) = &state.app_handle {
         // Fetch all proposals for this session with their new order
         if let Ok(proposals) = state.task_proposal_repo.get_by_session(&session_id).await {
-            let responses: Vec<TaskProposalResponse> =
-                proposals.into_iter().map(TaskProposalResponse::from).collect();
+            let responses: Vec<TaskProposalResponse> = proposals
+                .into_iter()
+                .map(TaskProposalResponse::from)
+                .collect();
             let _ = app_handle.emit(
                 "proposals:reordered",
                 serde_json::json!({

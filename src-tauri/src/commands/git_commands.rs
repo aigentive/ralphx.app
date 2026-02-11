@@ -126,8 +126,8 @@ pub async fn get_task_commits(
     };
 
     // Get commits since base (from HEAD of the working path)
-    let commits = GitService::get_commits_since(&working_path, base_branch)
-        .map_err(|e| e.to_string())?;
+    let commits =
+        GitService::get_commits_since(&working_path, base_branch).map_err(|e| e.to_string())?;
 
     Ok(TaskCommitsResponse {
         commits: commits.into_iter().map(CommitInfoResponse::from).collect(),
@@ -174,8 +174,8 @@ pub async fn get_task_diff_stats(
     };
 
     // Get diff stats
-    let stats = GitService::get_diff_stats(&working_path, base_branch)
-        .map_err(|e| e.to_string())?;
+    let stats =
+        GitService::get_diff_stats(&working_path, base_branch).map_err(|e| e.to_string())?;
 
     Ok(TaskDiffStatsResponse::from(stats))
 }
@@ -304,10 +304,7 @@ pub async fn retry_merge(
             .as_ref()
             .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
             .unwrap_or_else(|| serde_json::json!({}));
-        let mut meta_obj = metadata_json
-            .as_object()
-            .cloned()
-            .unwrap_or_default();
+        let mut meta_obj = metadata_json.as_object().cloned().unwrap_or_default();
         meta_obj.insert("skip_validation".to_string(), serde_json::json!(true));
         task.metadata = Some(serde_json::Value::Object(meta_obj).to_string());
         state
@@ -454,20 +451,23 @@ fn create_transition_service(
     execution_state: &Arc<ExecutionState>,
 ) -> TaskTransitionService<tauri::Wry> {
     // Create scheduler for post-merge scheduling (unblocked plan_merge tasks)
-    let scheduler_concrete = Arc::new(TaskSchedulerService::new(
-        Arc::clone(execution_state),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.task_dependency_repo),
-        Arc::clone(&state.chat_message_repo),
-        Arc::clone(&state.chat_conversation_repo),
-        Arc::clone(&state.agent_run_repo),
-        Arc::clone(&state.ideation_session_repo),
-        Arc::clone(&state.activity_event_repo),
-        Arc::clone(&state.message_queue),
-        Arc::clone(&state.running_agent_registry),
-        state.app_handle.clone(),
-    ).with_plan_branch_repo(Arc::clone(&state.plan_branch_repo)));
+    let scheduler_concrete = Arc::new(
+        TaskSchedulerService::new(
+            Arc::clone(execution_state),
+            Arc::clone(&state.project_repo),
+            Arc::clone(&state.task_repo),
+            Arc::clone(&state.task_dependency_repo),
+            Arc::clone(&state.chat_message_repo),
+            Arc::clone(&state.chat_conversation_repo),
+            Arc::clone(&state.agent_run_repo),
+            Arc::clone(&state.ideation_session_repo),
+            Arc::clone(&state.activity_event_repo),
+            Arc::clone(&state.message_queue),
+            Arc::clone(&state.running_agent_registry),
+            state.app_handle.clone(),
+        )
+        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo)),
+    );
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
@@ -511,7 +511,10 @@ async fn cleanup_task_git_resources(
             if let Some(worktree_path) = &task.worktree_path {
                 let worktree_path_buf = PathBuf::from(worktree_path);
                 if let Err(e) = GitService::delete_worktree(&repo_path, &worktree_path_buf) {
-                    warn!("Failed to delete worktree {}: {} (non-fatal)", worktree_path, e);
+                    warn!(
+                        "Failed to delete worktree {}: {} (non-fatal)",
+                        worktree_path, e
+                    );
                 }
             }
 

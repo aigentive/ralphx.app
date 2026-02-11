@@ -142,7 +142,10 @@ impl AcceptanceCriteria {
 
     /// Count testable criteria
     pub fn testable_count(&self) -> usize {
-        self.acceptance_criteria.iter().filter(|c| c.testable).count()
+        self.acceptance_criteria
+            .iter()
+            .filter(|c| c.testable)
+            .count()
     }
 
     /// Parse from JSON string
@@ -248,8 +251,13 @@ impl QATestSteps {
     }
 
     /// Get steps for a specific criterion
-    pub fn for_criterion<'a>(&'a self, criteria_id: &'a str) -> impl Iterator<Item = &'a QATestStep> {
-        self.qa_steps.iter().filter(move |s| s.criteria_id == criteria_id)
+    pub fn for_criterion<'a>(
+        &'a self,
+        criteria_id: &'a str,
+    ) -> impl Iterator<Item = &'a QATestStep> {
+        self.qa_steps
+            .iter()
+            .filter(move |s| s.criteria_id == criteria_id)
     }
 
     /// Get total command count across all steps
@@ -306,7 +314,10 @@ mod tests {
         assert_eq!(AcceptanceCriteriaType::Visual.as_str(), "visual");
         assert_eq!(AcceptanceCriteriaType::Behavior.as_str(), "behavior");
         assert_eq!(AcceptanceCriteriaType::Data.as_str(), "data");
-        assert_eq!(AcceptanceCriteriaType::Accessibility.as_str(), "accessibility");
+        assert_eq!(
+            AcceptanceCriteriaType::Accessibility.as_str(),
+            "accessibility"
+        );
     }
 
     #[test]
@@ -458,9 +469,15 @@ mod tests {
         let c = AcceptanceCriteria::from_json(json).unwrap();
         assert_eq!(c.len(), 2);
         assert_eq!(c.acceptance_criteria[0].id, "AC1");
-        assert_eq!(c.acceptance_criteria[0].criteria_type, AcceptanceCriteriaType::Visual);
+        assert_eq!(
+            c.acceptance_criteria[0].criteria_type,
+            AcceptanceCriteriaType::Visual
+        );
         assert_eq!(c.acceptance_criteria[1].id, "AC2");
-        assert_eq!(c.acceptance_criteria[1].criteria_type, AcceptanceCriteriaType::Behavior);
+        assert_eq!(
+            c.acceptance_criteria[1].criteria_type,
+            AcceptanceCriteriaType::Behavior
+        );
     }
 
     // ----------------
@@ -488,13 +505,7 @@ mod tests {
         let step = QATestStep::new("QA1", "AC1", "Test", vec![], "Expected");
         assert!(!step.has_commands());
 
-        let step2 = QATestStep::new(
-            "QA2",
-            "AC1",
-            "Test",
-            vec!["cmd".to_string()],
-            "Expected",
-        );
+        let step2 = QATestStep::new("QA2", "AC1", "Test", vec!["cmd".to_string()], "Expected");
         assert!(step2.has_commands());
     }
 
@@ -512,13 +523,7 @@ mod tests {
 
     #[test]
     fn test_step_serialize() {
-        let step = QATestStep::new(
-            "QA1",
-            "AC1",
-            "Test",
-            vec!["cmd".to_string()],
-            "Expected",
-        );
+        let step = QATestStep::new("QA1", "AC1", "Test", vec!["cmd".to_string()], "Expected");
         let json = serde_json::to_string(&step).unwrap();
         assert!(json.contains("\"id\":\"QA1\""));
         assert!(json.contains("\"criteria_id\":\"AC1\""));
@@ -586,15 +591,13 @@ mod tests {
 
     #[test]
     fn test_steps_json_roundtrip() {
-        let steps = vec![
-            QATestStep::new(
-                "QA1",
-                "AC1",
-                "Verify board",
-                vec!["agent-browser open http://localhost:1420".into()],
-                "Board visible",
-            ),
-        ];
+        let steps = vec![QATestStep::new(
+            "QA1",
+            "AC1",
+            "Verify board",
+            vec!["agent-browser open http://localhost:1420".into()],
+            "Board visible",
+        )];
         let s = QATestSteps::from_steps(steps);
 
         let json = s.to_json().unwrap();

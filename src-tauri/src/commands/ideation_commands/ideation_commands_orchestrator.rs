@@ -111,9 +111,7 @@ pub async fn is_orchestrator_available(state: State<'_, AppState>) -> Result<boo
 
 /// Get ideation settings
 #[tauri::command]
-pub async fn get_ideation_settings(
-    state: State<'_, AppState>,
-) -> Result<IdeationSettings, String> {
+pub async fn get_ideation_settings(state: State<'_, AppState>) -> Result<IdeationSettings, String> {
     state
         .ideation_settings_repo
         .get_settings()

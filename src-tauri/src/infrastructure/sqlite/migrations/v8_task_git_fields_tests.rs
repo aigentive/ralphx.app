@@ -50,11 +50,9 @@ fn test_v8_task_branch_can_be_set() {
 
     // Verify task_branch was stored
     let branch: Option<String> = conn
-        .query_row(
-            "SELECT task_branch FROM tasks WHERE id = 't1'",
-            [],
-            |row| row.get(0),
-        )
+        .query_row("SELECT task_branch FROM tasks WHERE id = 't1'", [], |row| {
+            row.get(0)
+        })
         .unwrap();
     assert_eq!(branch, Some("ralphx/test/task-t1".to_string()));
 }
@@ -86,7 +84,10 @@ fn test_v8_worktree_path_can_be_set() {
             |row| row.get(0),
         )
         .unwrap();
-    assert_eq!(path, Some("/home/user/ralphx-worktrees/test/task-t1".to_string()));
+    assert_eq!(
+        path,
+        Some("/home/user/ralphx-worktrees/test/task-t1".to_string())
+    );
 }
 
 #[test]

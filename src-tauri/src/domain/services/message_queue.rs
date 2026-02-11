@@ -266,8 +266,16 @@ mod tests {
         let queue = MessageQueue::new();
 
         // Queue two messages
-        let _msg1 = queue.queue(ChatContextType::Ideation, "session-1", "First message".to_string());
-        let _msg2 = queue.queue(ChatContextType::Ideation, "session-1", "Second message".to_string());
+        let _msg1 = queue.queue(
+            ChatContextType::Ideation,
+            "session-1",
+            "First message".to_string(),
+        );
+        let _msg2 = queue.queue(
+            ChatContextType::Ideation,
+            "session-1",
+            "Second message".to_string(),
+        );
 
         // Pop should return in FIFO order
         let popped1 = queue.pop(ChatContextType::Ideation, "session-1");
@@ -311,11 +319,17 @@ mod tests {
         queue.queue(ChatContextType::Project, "proj-1", "Message 1".to_string());
         queue.queue(ChatContextType::Project, "proj-1", "Message 2".to_string());
 
-        assert_eq!(queue.get_queued(ChatContextType::Project, "proj-1").len(), 2);
+        assert_eq!(
+            queue.get_queued(ChatContextType::Project, "proj-1").len(),
+            2
+        );
 
         queue.clear(ChatContextType::Project, "proj-1");
 
-        assert_eq!(queue.get_queued(ChatContextType::Project, "proj-1").len(), 0);
+        assert_eq!(
+            queue.get_queued(ChatContextType::Project, "proj-1").len(),
+            0
+        );
         assert!(queue.pop(ChatContextType::Project, "proj-1").is_none());
     }
 
@@ -327,7 +341,10 @@ mod tests {
         let msg2 = queue.queue(ChatContextType::Ideation, "sess-1", "Second".to_string());
         let _msg3 = queue.queue(ChatContextType::Ideation, "sess-1", "Third".to_string());
 
-        assert_eq!(queue.get_queued(ChatContextType::Ideation, "sess-1").len(), 3);
+        assert_eq!(
+            queue.get_queued(ChatContextType::Ideation, "sess-1").len(),
+            3
+        );
 
         // Delete middle message
         let deleted = queue.delete(ChatContextType::Ideation, "sess-1", &msg2.id);
@@ -348,16 +365,33 @@ mod tests {
         let queue = MessageQueue::new();
 
         // Queue messages for different context types
-        queue.queue(ChatContextType::Ideation, "id-1", "Ideation message".to_string());
+        queue.queue(
+            ChatContextType::Ideation,
+            "id-1",
+            "Ideation message".to_string(),
+        );
         queue.queue(ChatContextType::Task, "id-1", "Task message".to_string());
-        queue.queue(ChatContextType::Project, "id-1", "Project message".to_string());
-        queue.queue(ChatContextType::TaskExecution, "id-1", "Execution message".to_string());
+        queue.queue(
+            ChatContextType::Project,
+            "id-1",
+            "Project message".to_string(),
+        );
+        queue.queue(
+            ChatContextType::TaskExecution,
+            "id-1",
+            "Execution message".to_string(),
+        );
 
         // Each context type has its own queue
         assert_eq!(queue.get_queued(ChatContextType::Ideation, "id-1").len(), 1);
         assert_eq!(queue.get_queued(ChatContextType::Task, "id-1").len(), 1);
         assert_eq!(queue.get_queued(ChatContextType::Project, "id-1").len(), 1);
-        assert_eq!(queue.get_queued(ChatContextType::TaskExecution, "id-1").len(), 1);
+        assert_eq!(
+            queue
+                .get_queued(ChatContextType::TaskExecution, "id-1")
+                .len(),
+            1
+        );
 
         // Popping from one doesn't affect others
         let popped = queue.pop(ChatContextType::Ideation, "id-1");
@@ -372,18 +406,46 @@ mod tests {
     fn test_different_context_ids_isolated() {
         let queue = MessageQueue::new();
 
-        queue.queue(ChatContextType::Ideation, "session-1", "Session 1 message".to_string());
-        queue.queue(ChatContextType::Ideation, "session-2", "Session 2 message".to_string());
+        queue.queue(
+            ChatContextType::Ideation,
+            "session-1",
+            "Session 1 message".to_string(),
+        );
+        queue.queue(
+            ChatContextType::Ideation,
+            "session-2",
+            "Session 2 message".to_string(),
+        );
 
-        assert_eq!(queue.get_queued(ChatContextType::Ideation, "session-1").len(), 1);
-        assert_eq!(queue.get_queued(ChatContextType::Ideation, "session-2").len(), 1);
+        assert_eq!(
+            queue
+                .get_queued(ChatContextType::Ideation, "session-1")
+                .len(),
+            1
+        );
+        assert_eq!(
+            queue
+                .get_queued(ChatContextType::Ideation, "session-2")
+                .len(),
+            1
+        );
 
         let popped = queue.pop(ChatContextType::Ideation, "session-1");
         assert!(popped.is_some());
         assert_eq!(popped.unwrap().content, "Session 1 message");
 
-        assert_eq!(queue.get_queued(ChatContextType::Ideation, "session-1").len(), 0);
-        assert_eq!(queue.get_queued(ChatContextType::Ideation, "session-2").len(), 1);
+        assert_eq!(
+            queue
+                .get_queued(ChatContextType::Ideation, "session-1")
+                .len(),
+            0
+        );
+        assert_eq!(
+            queue
+                .get_queued(ChatContextType::Ideation, "session-2")
+                .len(),
+            1
+        );
     }
 
     #[test]
@@ -397,7 +459,12 @@ mod tests {
 
         // Should be accessible via both APIs
         assert_eq!(queue.get_queued_for_task(&task_id).len(), 1);
-        assert_eq!(queue.get_queued(ChatContextType::TaskExecution, "task-123").len(), 1);
+        assert_eq!(
+            queue
+                .get_queued(ChatContextType::TaskExecution, "task-123")
+                .len(),
+            1
+        );
 
         // Pop using backwards-compatible method
         let popped = queue.pop_for_task(&task_id);
@@ -445,18 +512,37 @@ mod tests {
         let queue2 = queue1.clone();
 
         // Queue via queue1
-        queue1.queue(ChatContextType::Ideation, "session-1", "Message".to_string());
+        queue1.queue(
+            ChatContextType::Ideation,
+            "session-1",
+            "Message".to_string(),
+        );
 
         // Should be visible via queue2 (shared Arc)
-        assert_eq!(queue2.get_queued(ChatContextType::Ideation, "session-1").len(), 1);
+        assert_eq!(
+            queue2
+                .get_queued(ChatContextType::Ideation, "session-1")
+                .len(),
+            1
+        );
 
         // Pop via queue2
         let popped = queue2.pop(ChatContextType::Ideation, "session-1");
         assert!(popped.is_some());
 
         // Should be empty in both
-        assert_eq!(queue1.get_queued(ChatContextType::Ideation, "session-1").len(), 0);
-        assert_eq!(queue2.get_queued(ChatContextType::Ideation, "session-1").len(), 0);
+        assert_eq!(
+            queue1
+                .get_queued(ChatContextType::Ideation, "session-1")
+                .len(),
+            0
+        );
+        assert_eq!(
+            queue2
+                .get_queued(ChatContextType::Ideation, "session-1")
+                .len(),
+            0
+        );
     }
 
     #[test]

@@ -8,32 +8,33 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 use tokio::process::Child;
 
-use crate::application::git_service::GitService;
-use crate::application::task_transition_service::TaskTransitionService;
-use crate::application::task_scheduler_service::TaskSchedulerService;
-use crate::domain::state_machine::services::TaskScheduler;
-use crate::domain::state_machine::resolve_merge_branches;
-use crate::domain::state_machine::transition_handler::complete_merge_internal;
-use crate::domain::state_machine::transition_handler::{
-    format_validation_error_metadata, run_validation_commands,
-};
-use crate::commands::ExecutionState;
-use crate::domain::entities::{
-    AgentRunId, ChatConversationId, ChatContextType, InternalStatus, TaskId,
-};
-use crate::domain::repositories::{
-    ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
-};
-use crate::domain::services::{MessageQueue, RunningAgentKey, RunningAgentRegistry};
 use super::chat_service_context;
 use super::chat_service_helpers::get_assistant_role;
 use super::chat_service_streaming::process_stream_background;
 use super::chat_service_types::{
-    AgentErrorPayload, AgentMessageCreatedPayload, AgentQueueSentPayload,
-    AgentRunCompletedPayload, AgentRunStartedPayload,
+    AgentErrorPayload, AgentMessageCreatedPayload, AgentQueueSentPayload, AgentRunCompletedPayload,
+    AgentRunStartedPayload,
 };
 use super::{event_context, has_meaningful_output, EventContextPayload};
+use crate::application::git_service::GitService;
+use crate::application::task_scheduler_service::TaskSchedulerService;
+use crate::application::task_transition_service::TaskTransitionService;
+use crate::commands::ExecutionState;
+use crate::domain::entities::{
+    AgentRunId, ChatContextType, ChatConversationId, InternalStatus, TaskId,
+};
+use crate::domain::repositories::{
+    ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
+    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
+    TaskRepository,
+};
+use crate::domain::services::{MessageQueue, RunningAgentKey, RunningAgentRegistry};
+use crate::domain::state_machine::resolve_merge_branches;
+use crate::domain::state_machine::services::TaskScheduler;
+use crate::domain::state_machine::transition_handler::complete_merge_internal;
+use crate::domain::state_machine::transition_handler::{
+    format_validation_error_metadata, run_validation_commands,
+};
 
 async fn finalize_assistant_message<R: Runtime>(
     chat_message_repo: &Arc<dyn ChatMessageRepository>,
@@ -145,7 +146,12 @@ pub fn spawn_send_message_background<R: Runtime>(
 
         // Create empty assistant message BEFORE streaming starts (crash recovery)
         let pre_assistant_msg = chat_service_context::create_assistant_message(
-            context_type, &context_id, "", conversation_id, &[], &[],
+            context_type,
+            &context_id,
+            "",
+            conversation_id,
+            &[],
+            &[],
         );
         let pre_assistant_msg_id = pre_assistant_msg.id.as_str().to_string();
         let _ = chat_message_repo.create(pre_assistant_msg).await;
@@ -188,7 +194,10 @@ pub fn spawn_send_message_background<R: Runtime>(
 
                 // Update conversation with claude_session_id
                 if let Some(ref sess_id) = claude_session_id {
-                    tracing::info!("[CHAT_SERVICE] Updating conversation with session_id={}", sess_id);
+                    tracing::info!(
+                        "[CHAT_SERVICE] Updating conversation with session_id={}",
+                        sess_id
+                    );
                     let _ = conversation_repo
                         .update_claude_session_id(&conversation_id, sess_id)
                         .await;
@@ -274,10 +283,13 @@ pub fn spawn_send_message_background<R: Runtime>(
                                     app_handle.clone(),
                                 );
                                 if let Some(ref repo) = plan_branch_repo {
-                                    scheduler_svc = scheduler_svc.with_plan_branch_repo(Arc::clone(repo));
+                                    scheduler_svc =
+                                        scheduler_svc.with_plan_branch_repo(Arc::clone(repo));
                                 }
                                 let scheduler_concrete = Arc::new(scheduler_svc);
-                                scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
+                                scheduler_concrete.set_self_ref(
+                                    Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>
+                                );
                                 let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
                                 let transition_service = TaskTransitionService::new(
@@ -373,7 +385,10 @@ pub fn spawn_send_message_background<R: Runtime>(
                 let has_session_for_queue = effective_session_id.is_some();
                 let will_process_queue = initial_queue_count > 0 && has_session_for_queue;
 
-                if initial_queue_count > 0 && claude_session_id.is_none() && stored_session_id.is_some() {
+                if initial_queue_count > 0
+                    && claude_session_id.is_none()
+                    && stored_session_id.is_some()
+                {
                     tracing::info!(
                         "[QUEUE] Stream had no session_id, using stored session_id from conversation for queue processing"
                     );
@@ -392,7 +407,6 @@ pub fn spawn_send_message_background<R: Runtime>(
                                 claude_session_id: effective_session_id.clone(),
                             },
                         );
-
                     }
                 } else {
                     tracing::info!(
@@ -415,12 +429,16 @@ pub fn spawn_send_message_background<R: Runtime>(
                             if total_processed > 0 {
                                 // We processed messages, give a small window for late arrivals
                                 tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-                                let final_count = message_queue.get_queued(context_type, &context_id).len();
+                                let final_count =
+                                    message_queue.get_queued(context_type, &context_id).len();
                                 if final_count == 0 {
                                     tracing::info!("[QUEUE] Queue processing complete: {} total messages processed", total_processed);
                                     break;
                                 }
-                                tracing::info!("[QUEUE] Found {} late-arriving messages, continuing...", final_count);
+                                tracing::info!(
+                                    "[QUEUE] Found {} late-arriving messages, continuing...",
+                                    final_count
+                                );
                             } else {
                                 tracing::info!("[QUEUE] No queued messages to process");
                                 break;
@@ -429,178 +447,199 @@ pub fn spawn_send_message_background<R: Runtime>(
 
                         tracing::info!(
                             "[QUEUE] Processing queue: session_id={}, context={}/{}, pending={}",
-                            sess_id, context_type, context_id, queue_count
+                            sess_id,
+                            context_type,
+                            context_id,
+                            queue_count
                         );
 
                         // Inner loop: process all currently queued messages
-                        while let Some(queued_msg) =
-                            message_queue.pop(context_type, &context_id)
-                        {
+                        while let Some(queued_msg) = message_queue.pop(context_type, &context_id) {
                             total_processed += 1;
-                        tracing::info!("[QUEUE] Processing queued message id={}, content_len={}", queued_msg.id, queued_msg.content.len());
-
-                        // Emit queue sent event (removes from frontend optimistic UI)
-                        if let Some(ref handle) = app_handle {
-                            let _ = handle.emit(
-                                "agent:queue_sent",
-                                AgentQueueSentPayload {
-                                    message_id: queued_msg.id.clone(),
-                                    conversation_id: conversation_id.as_str().to_string(),
-                                    context_type: context_type.to_string(),
-                                    context_id: context_id.clone(),
-                                },
+                            tracing::info!(
+                                "[QUEUE] Processing queued message id={}, content_len={}",
+                                queued_msg.id,
+                                queued_msg.content.len()
                             );
-                        }
 
-                        // Emit run_started for the queued message (so frontend shows activity)
-                        let queued_run_id = uuid::Uuid::new_v4().to_string();
-                        if let Some(ref handle) = app_handle {
-                            let _ = handle.emit(
-                                "agent:run_started",
-                                AgentRunStartedPayload {
-                                    run_id: queued_run_id.clone(),
-                                    conversation_id: conversation_id.as_str().to_string(),
-                                    context_type: context_type.to_string(),
-                                    context_id: context_id.clone(),
-                                },
-                            );
-                        }
-
-                        // Persist user message
-                        let user_msg = chat_service_context::create_user_message(
-                            context_type,
-                            &context_id,
-                            &queued_msg.content,
-                            conversation_id,
-                        );
-                        let user_msg_id = user_msg.id.as_str().to_string();
-                        let _ = chat_message_repo.create(user_msg).await;
-
-                        // Emit user message created
-                        if let Some(ref handle) = app_handle {
-                            let _ = handle.emit(
-                                "agent:message_created",
-                                AgentMessageCreatedPayload {
-                                    message_id: user_msg_id,
-                                    conversation_id: conversation_id.as_str().to_string(),
-                                    context_type: context_type.to_string(),
-                                    context_id: context_id.clone(),
-                                    role: "user".to_string(),
-                                    content: queued_msg.content.clone(),
-                                },
-                            );
-                        }
-
-                        // Build and spawn resume command
-                        let spawnable = match chat_service_context::build_resume_command(
-                            cli_path.as_path(),
-                            plugin_dir.as_path(),
-                            context_type,
-                            &context_id,
-                            &queued_msg.content,
-                            &working_directory,
-                            sess_id,
-                            resolved_project_id.as_deref(),
-                        ) {
-                            Ok(cmd) => cmd,
-                            Err(err) => {
-                                tracing::warn!(
-                                    error = %err,
-                                    %context_type,
-                                    context_id = %context_id,
-                                    "send_background spawn blocked"
+                            // Emit queue sent event (removes from frontend optimistic UI)
+                            if let Some(ref handle) = app_handle {
+                                let _ = handle.emit(
+                                    "agent:queue_sent",
+                                    AgentQueueSentPayload {
+                                        message_id: queued_msg.id.clone(),
+                                        conversation_id: conversation_id.as_str().to_string(),
+                                        context_type: context_type.to_string(),
+                                        context_id: context_id.clone(),
+                                    },
                                 );
-                                return;
                             }
-                        };
 
-                        tracing::info!(cmd = ?spawnable, "Spawning CLI agent (queue resume)");
-                        match spawnable.spawn().await {
-                            Ok(child) => {
-                                // Create empty assistant message before queue stream
-                                let queue_assistant_msg = chat_service_context::create_assistant_message(
-                                    context_type, &context_id, "", conversation_id, &[], &[],
+                            // Emit run_started for the queued message (so frontend shows activity)
+                            let queued_run_id = uuid::Uuid::new_v4().to_string();
+                            if let Some(ref handle) = app_handle {
+                                let _ = handle.emit(
+                                    "agent:run_started",
+                                    AgentRunStartedPayload {
+                                        run_id: queued_run_id.clone(),
+                                        conversation_id: conversation_id.as_str().to_string(),
+                                        context_type: context_type.to_string(),
+                                        context_id: context_id.clone(),
+                                    },
                                 );
-                                let queue_assistant_msg_id = queue_assistant_msg.id.as_str().to_string();
-                                let _ = chat_message_repo.create(queue_assistant_msg).await;
-
-                                match process_stream_background(
-                                    child,
-                                    context_type,
-                                    &context_id,
-                                    &conversation_id,
-                                    app_handle.clone(),
-                                    Some(Arc::clone(&activity_event_repo)),
-                                    Some(Arc::clone(&task_repo)),
-                                    Some(Arc::clone(&chat_message_repo)),
-                                    Some(queue_assistant_msg_id.clone()),
-                                )
-                                .await
-                                {
-                                    Ok(outcome) => {
-                                        let response = outcome.response_text;
-                                        let tools = outcome.tool_calls;
-                                        let blocks = outcome.content_blocks;
-                                        if has_meaningful_output(&response, tools.len()) {
-                                            let tool_calls_json = serde_json::to_string(&tools).ok();
-                                            let content_blocks_json = serde_json::to_string(&blocks).ok();
-                                            finalize_assistant_message(
-                                                &chat_message_repo,
-                                                app_handle.as_ref(),
-                                                &event_ctx,
-                                                &queue_assistant_msg_id,
-                                                &get_assistant_role(&context_type).to_string(),
-                                                &response,
-                                                tool_calls_json.as_deref(),
-                                                content_blocks_json.as_deref(),
-                                            )
-                                            .await;
-                                        }
-
-                                        // NOTE: Don't emit run_completed here for each queued message.
-                                        // We emit a single run_completed after ALL queue processing is done,
-                                        // to prevent UI flickering between messages.
-                                    }
-                                    Err(e) => {
-                                        tracing::error!(
-                                            "Failed to process queued message stream: {}",
-                                            e
-                                        );
-                                        // Emit error event
-                                        if let Some(ref handle) = app_handle {
-                                            let _ = handle.emit(
-                                                "agent:error",
-                                                AgentErrorPayload {
-                                                    conversation_id: Some(conversation_id.as_str().to_string()),
-                                                    context_type: context_type.to_string(),
-                                                    context_id: context_id.clone(),
-                                                    error: e.clone(),
-                                                    stderr: Some(e),
-                                                },
-                                            );
-                                        }
-                                    }
-                                }
                             }
-                            Err(e) => {
-                                tracing::error!("Failed to spawn queued message command: {}", e);
-                                // Emit error event
-                                if let Some(ref handle) = app_handle {
-                                    let _ = handle.emit(
-                                        "agent:error",
-                                        AgentErrorPayload {
-                                            conversation_id: Some(conversation_id.as_str().to_string()),
-                                            context_type: context_type.to_string(),
-                                            context_id: context_id.clone(),
-                                            error: e.to_string(),
-                                            stderr: None,
-                                        },
+
+                            // Persist user message
+                            let user_msg = chat_service_context::create_user_message(
+                                context_type,
+                                &context_id,
+                                &queued_msg.content,
+                                conversation_id,
+                            );
+                            let user_msg_id = user_msg.id.as_str().to_string();
+                            let _ = chat_message_repo.create(user_msg).await;
+
+                            // Emit user message created
+                            if let Some(ref handle) = app_handle {
+                                let _ = handle.emit(
+                                    "agent:message_created",
+                                    AgentMessageCreatedPayload {
+                                        message_id: user_msg_id,
+                                        conversation_id: conversation_id.as_str().to_string(),
+                                        context_type: context_type.to_string(),
+                                        context_id: context_id.clone(),
+                                        role: "user".to_string(),
+                                        content: queued_msg.content.clone(),
+                                    },
+                                );
+                            }
+
+                            // Build and spawn resume command
+                            let spawnable = match chat_service_context::build_resume_command(
+                                cli_path.as_path(),
+                                plugin_dir.as_path(),
+                                context_type,
+                                &context_id,
+                                &queued_msg.content,
+                                &working_directory,
+                                sess_id,
+                                resolved_project_id.as_deref(),
+                            ) {
+                                Ok(cmd) => cmd,
+                                Err(err) => {
+                                    tracing::warn!(
+                                        error = %err,
+                                        %context_type,
+                                        context_id = %context_id,
+                                        "send_background spawn blocked"
                                     );
+                                    return;
+                                }
+                            };
+
+                            tracing::info!(cmd = ?spawnable, "Spawning CLI agent (queue resume)");
+                            match spawnable.spawn().await {
+                                Ok(child) => {
+                                    // Create empty assistant message before queue stream
+                                    let queue_assistant_msg =
+                                        chat_service_context::create_assistant_message(
+                                            context_type,
+                                            &context_id,
+                                            "",
+                                            conversation_id,
+                                            &[],
+                                            &[],
+                                        );
+                                    let queue_assistant_msg_id =
+                                        queue_assistant_msg.id.as_str().to_string();
+                                    let _ = chat_message_repo.create(queue_assistant_msg).await;
+
+                                    match process_stream_background(
+                                        child,
+                                        context_type,
+                                        &context_id,
+                                        &conversation_id,
+                                        app_handle.clone(),
+                                        Some(Arc::clone(&activity_event_repo)),
+                                        Some(Arc::clone(&task_repo)),
+                                        Some(Arc::clone(&chat_message_repo)),
+                                        Some(queue_assistant_msg_id.clone()),
+                                    )
+                                    .await
+                                    {
+                                        Ok(outcome) => {
+                                            let response = outcome.response_text;
+                                            let tools = outcome.tool_calls;
+                                            let blocks = outcome.content_blocks;
+                                            if has_meaningful_output(&response, tools.len()) {
+                                                let tool_calls_json =
+                                                    serde_json::to_string(&tools).ok();
+                                                let content_blocks_json =
+                                                    serde_json::to_string(&blocks).ok();
+                                                finalize_assistant_message(
+                                                    &chat_message_repo,
+                                                    app_handle.as_ref(),
+                                                    &event_ctx,
+                                                    &queue_assistant_msg_id,
+                                                    &get_assistant_role(&context_type).to_string(),
+                                                    &response,
+                                                    tool_calls_json.as_deref(),
+                                                    content_blocks_json.as_deref(),
+                                                )
+                                                .await;
+                                            }
+
+                                            // NOTE: Don't emit run_completed here for each queued message.
+                                            // We emit a single run_completed after ALL queue processing is done,
+                                            // to prevent UI flickering between messages.
+                                        }
+                                        Err(e) => {
+                                            tracing::error!(
+                                                "Failed to process queued message stream: {}",
+                                                e
+                                            );
+                                            // Emit error event
+                                            if let Some(ref handle) = app_handle {
+                                                let _ = handle.emit(
+                                                    "agent:error",
+                                                    AgentErrorPayload {
+                                                        conversation_id: Some(
+                                                            conversation_id.as_str().to_string(),
+                                                        ),
+                                                        context_type: context_type.to_string(),
+                                                        context_id: context_id.clone(),
+                                                        error: e.clone(),
+                                                        stderr: Some(e),
+                                                    },
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::error!(
+                                        "Failed to spawn queued message command: {}",
+                                        e
+                                    );
+                                    // Emit error event
+                                    if let Some(ref handle) = app_handle {
+                                        let _ = handle.emit(
+                                            "agent:error",
+                                            AgentErrorPayload {
+                                                conversation_id: Some(
+                                                    conversation_id.as_str().to_string(),
+                                                ),
+                                                context_type: context_type.to_string(),
+                                                context_id: context_id.clone(),
+                                                error: e.to_string(),
+                                                stderr: None,
+                                            },
+                                        );
+                                    }
                                 }
                             }
                         }
-                    }
-                    // End of inner while loop, outer loop continues to check for more
+                        // End of inner while loop, outer loop continues to check for more
                     }
 
                     // After ALL queue processing is done, emit the final run_completed
@@ -617,7 +656,6 @@ pub fn spawn_send_message_background<R: Runtime>(
                                     claude_session_id: Some(sess_id.clone()),
                                 },
                             );
-
                         }
                     }
                 } else {
@@ -1075,7 +1113,10 @@ async fn attempt_merge_auto_complete<R: Runtime>(
             );
             transition_to_merge_incomplete(
                 &task_id,
-                &format!("Auto-complete failed: could not get task branch HEAD SHA: {}", e),
+                &format!(
+                    "Auto-complete failed: could not get task branch HEAD SHA: {}",
+                    e
+                ),
                 task_repo,
                 task_dependency_repo,
                 project_repo,
@@ -1113,7 +1154,10 @@ async fn attempt_merge_auto_complete<R: Runtime>(
             );
             transition_to_merge_incomplete(
                 &task_id,
-                &format!("Agent exited but task branch {} not merged to {}", task_branch_head, target_branch),
+                &format!(
+                    "Agent exited but task branch {} not merged to {}",
+                    task_branch_head, target_branch
+                ),
                 task_repo,
                 task_dependency_repo,
                 project_repo,
@@ -1170,7 +1214,10 @@ async fn attempt_merge_auto_complete<R: Runtime>(
             );
             transition_to_merge_incomplete(
                 &task_id,
-                &format!("Auto-complete failed: could not get main branch HEAD SHA: {}", e),
+                &format!(
+                    "Auto-complete failed: could not get main branch HEAD SHA: {}",
+                    e
+                ),
                 task_repo,
                 task_dependency_repo,
                 project_repo,
@@ -1197,14 +1244,8 @@ async fn attempt_merge_auto_complete<R: Runtime>(
         "attempt_merge_auto_complete: merge verified on target branch, completing"
     );
 
-    if let Err(e) = complete_merge_internal(
-        &mut task,
-        &project,
-        &commit_sha,
-        task_repo,
-        app_handle,
-    )
-    .await
+    if let Err(e) =
+        complete_merge_internal(&mut task, &project, &commit_sha, task_repo, app_handle).await
     {
         tracing::error!(
             task_id = task_id_str,

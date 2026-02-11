@@ -57,7 +57,11 @@ impl ArtifactRepository for MemoryArtifactRepository {
         Ok(artifacts.get(id).cloned())
     }
 
-    async fn get_by_id_at_version(&self, id: &ArtifactId, version: u32) -> AppResult<Option<Artifact>> {
+    async fn get_by_id_at_version(
+        &self,
+        id: &ArtifactId,
+        version: u32,
+    ) -> AppResult<Option<Artifact>> {
         let artifacts = self.artifacts.read().await;
         if let Some(artifact) = artifacts.get(id) {
             // For memory implementation, just return the artifact if the version matches
@@ -298,8 +302,7 @@ mod tests {
         repo.create(artifact1.clone()).await.unwrap();
         repo.create(artifact2.clone()).await.unwrap();
 
-        let relation =
-            ArtifactRelation::derived_from(artifact2.id.clone(), artifact1.id.clone());
+        let relation = ArtifactRelation::derived_from(artifact2.id.clone(), artifact1.id.clone());
         repo.add_relation(relation).await.unwrap();
 
         let relations = repo.get_relations(&artifact2.id).await.unwrap();

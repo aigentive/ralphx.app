@@ -10,23 +10,24 @@
 // - Spawn workers when moving to Executing state
 // - Emit events for UI updates
 
-use std::sync::Arc;
 use async_trait::async_trait;
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 
 use crate::application::{ChatService, ClaudeChatService};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{InternalStatus, Task, TaskId};
-use crate::domain::state_machine::transition_handler::set_trigger_origin;
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
+    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
+    TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::{
     AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStartResult, ReviewStarter,
     TaskScheduler,
 };
+use crate::domain::state_machine::transition_handler::set_trigger_origin;
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::agents::spawner::AgenticClientSpawner;
 use crate::infrastructure::ClaudeCodeClient;
@@ -228,12 +229,16 @@ impl<R: Runtime> DependencyManager for RepoBackedDependencyManager<R> {
                     }
 
                     // Record state transition history for timeline visibility
-                    if let Err(e) = self.task_repo.persist_status_change(
-                        &dependent_id,
-                        InternalStatus::Blocked,
-                        InternalStatus::Ready,
-                        "blockers_resolved",
-                    ).await {
+                    if let Err(e) = self
+                        .task_repo
+                        .persist_status_change(
+                            &dependent_id,
+                            InternalStatus::Blocked,
+                            InternalStatus::Ready,
+                            "blockers_resolved",
+                        )
+                        .await
+                    {
                         tracing::warn!(error = %e, task_id = %dependent_id, "Failed to record unblock transition (non-fatal)");
                     }
 
@@ -288,7 +293,10 @@ impl<R: Runtime> DependencyManager for RepoBackedDependencyManager<R> {
     async fn get_blocking_tasks(&self, task_id: &str) -> Vec<String> {
         let task_id = TaskId::from_string(task_id.to_string());
         match self.task_dep_repo.get_blockers(&task_id).await {
-            Ok(blockers) => blockers.into_iter().map(|id| id.as_str().to_string()).collect(),
+            Ok(blockers) => blockers
+                .into_iter()
+                .map(|id| id.as_str().to_string())
+                .collect(),
             Err(_) => Vec::new(),
         }
     }
@@ -312,7 +320,9 @@ impl ReviewStarter for NoOpReviewStarter {
 
 /// Convert InternalStatus to state machine State.
 /// Used by execute_entry_actions and execute_exit_actions.
-fn internal_status_to_state(status: InternalStatus) -> crate::domain::state_machine::machine::State {
+fn internal_status_to_state(
+    status: InternalStatus,
+) -> crate::domain::state_machine::machine::State {
     use crate::domain::state_machine::machine::State;
     match status {
         InternalStatus::Backlog => State::Backlog,
@@ -344,7 +354,9 @@ fn internal_status_to_state(status: InternalStatus) -> crate::domain::state_mach
 
 /// Convert state machine State to InternalStatus.
 /// Used for persisting auto-transitions to the database.
-fn state_to_internal_status(state: &crate::domain::state_machine::machine::State) -> InternalStatus {
+fn state_to_internal_status(
+    state: &crate::domain::state_machine::machine::State,
+) -> InternalStatus {
     use crate::domain::state_machine::machine::State;
     match state {
         State::Backlog => InternalStatus::Backlog,
@@ -451,14 +463,16 @@ impl<R: Runtime> TaskTransitionService<R> {
         };
 
         // Create other services
-        let event_emitter: Arc<dyn EventEmitter> = Arc::new(TauriEventEmitter::new(app_handle.clone()));
+        let event_emitter: Arc<dyn EventEmitter> =
+            Arc::new(TauriEventEmitter::new(app_handle.clone()));
         let notifier: Arc<dyn Notifier> = Arc::new(LoggingNotifier);
         // Use real dependency manager for automatic blocking/unblocking based on dependency graph
-        let dependency_manager: Arc<dyn DependencyManager> = Arc::new(RepoBackedDependencyManager::new(
-            task_dep_repo,
-            Arc::clone(&task_repo),
-            app_handle.clone(),
-        ));
+        let dependency_manager: Arc<dyn DependencyManager> =
+            Arc::new(RepoBackedDependencyManager::new(
+                task_dep_repo,
+                Arc::clone(&task_repo),
+                app_handle.clone(),
+            ));
         let review_starter: Arc<dyn ReviewStarter> = Arc::new(NoOpReviewStarter);
 
         Self {
@@ -516,11 +530,10 @@ impl<R: Runtime> TaskTransitionService<R> {
         );
 
         // 1. Fetch the task
-        let mut task = self
-            .task_repo
-            .get_by_id(task_id)
-            .await?
-            .ok_or_else(|| AppError::NotFound(format!("Task not found: {}", task_id.as_str())))?;
+        let mut task =
+            self.task_repo.get_by_id(task_id).await?.ok_or_else(|| {
+                AppError::NotFound(format!("Task not found: {}", task_id.as_str()))
+            })?;
 
         let old_status = task.internal_status;
         tracing::debug!(
@@ -548,7 +561,11 @@ impl<R: Runtime> TaskTransitionService<R> {
         self.task_repo.update(&task).await?;
 
         // 4.1 Record state transition history for time-travel feature
-        if let Err(e) = self.task_repo.persist_status_change(task_id, old_status, new_status, "system").await {
+        if let Err(e) = self
+            .task_repo
+            .persist_status_change(task_id, old_status, new_status, "system")
+            .await
+        {
             tracing::warn!(error = %e, "Failed to record state history (non-fatal)");
         }
         tracing::debug!("Task status persisted to database");
@@ -573,7 +590,8 @@ impl<R: Runtime> TaskTransitionService<R> {
             old_status = old_status.as_str(),
             "Executing exit actions for old status"
         );
-        self.execute_exit_actions(task_id, &task, old_status, new_status).await;
+        self.execute_exit_actions(task_id, &task, old_status, new_status)
+            .await;
 
         // 7. Execute entry actions for the new status
         tracing::debug!(
@@ -638,11 +656,7 @@ impl<R: Runtime> TaskTransitionService<R> {
         }
 
         // Create TaskContext
-        let context = TaskContext::new(
-            task_id.as_str(),
-            task.project_id.as_str(),
-            services,
-        );
+        let context = TaskContext::new(task_id.as_str(), task.project_id.as_str(), services);
 
         // Create state machine and handler
         let mut machine = TaskStateMachine::new(context);
@@ -674,7 +688,9 @@ impl<R: Runtime> TaskTransitionService<R> {
                 updated_task.internal_status = auto_status;
 
                 // Set trigger_origin for RevisionNeeded → ReExecuting transition
-                if from_status == InternalStatus::RevisionNeeded && auto_status == InternalStatus::ReExecuting {
+                if from_status == InternalStatus::RevisionNeeded
+                    && auto_status == InternalStatus::ReExecuting
+                {
                     set_trigger_origin(&mut updated_task, "revision");
                 }
 
@@ -683,7 +699,11 @@ impl<R: Runtime> TaskTransitionService<R> {
                     tracing::error!(error = %e, "Failed to persist auto-transition");
                 }
                 // Record auto-transition in history
-                if let Err(e) = self.task_repo.persist_status_change(task_id, from_status, auto_status, "auto").await {
+                if let Err(e) = self
+                    .task_repo
+                    .persist_status_change(task_id, from_status, auto_status, "auto")
+                    .await
+                {
                     tracing::warn!(error = %e, "Failed to record auto-transition history (non-fatal)");
                 }
             }
@@ -761,11 +781,7 @@ impl<R: Runtime> TaskTransitionService<R> {
         }
 
         // Create TaskContext
-        let context = TaskContext::new(
-            task_id.as_str(),
-            task.project_id.as_str(),
-            services,
-        );
+        let context = TaskContext::new(task_id.as_str(), task.project_id.as_str(), services);
 
         // Create state machine and handler
         let mut machine = TaskStateMachine::new(context);

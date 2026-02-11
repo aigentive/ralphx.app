@@ -278,8 +278,7 @@ mod tests {
 
     #[test]
     fn activity_event_filter_with_statuses() {
-        let filter =
-            ActivityEventFilter::new().with_statuses(vec![InternalStatus::Executing]);
+        let filter = ActivityEventFilter::new().with_statuses(vec![InternalStatus::Executing]);
         assert!(!filter.is_empty());
         assert!(filter.statuses.is_some());
     }

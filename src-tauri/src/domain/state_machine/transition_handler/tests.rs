@@ -1,10 +1,14 @@
-use crate::domain::state_machine::{State, TaskEvent, TaskStateMachine, TransitionHandler, TransitionResult};
 use crate::domain::state_machine::context::{TaskContext, TaskServices};
 use crate::domain::state_machine::mocks::{
-MockAgentSpawner, MockDependencyManager, MockEventEmitter, MockNotifier, MockReviewStarter,
+    MockAgentSpawner, MockDependencyManager, MockEventEmitter, MockNotifier, MockReviewStarter,
 };
-use crate::domain::state_machine::services::{AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStarter};
+use crate::domain::state_machine::services::{
+    AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStarter,
+};
 use crate::domain::state_machine::types::QaFailedData;
+use crate::domain::state_machine::{
+    State, TaskEvent, TaskStateMachine, TransitionHandler, TransitionResult,
+};
 use std::sync::Arc;
 
 fn create_test_services() -> (
@@ -33,7 +37,14 @@ fn create_test_services() -> (
         Arc::clone(&chat_service) as Arc<dyn ChatService>,
     );
 
-    (spawner, emitter, notifier, dep_manager, review_starter, services)
+    (
+        spawner,
+        emitter,
+        notifier,
+        dep_manager,
+        review_starter,
+        services,
+    )
 }
 
 fn create_context_with_services(
@@ -75,7 +86,8 @@ fn test_transition_result_not_handled() {
 
 #[tokio::test]
 async fn test_backlog_to_ready_transition() {
-    let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
+    let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) =
+        create_test_services();
     let context = create_context_with_services("task-1", "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
     let mut handler = TransitionHandler::new(&mut machine);
@@ -91,7 +103,8 @@ async fn test_backlog_to_ready_transition() {
 
 #[tokio::test]
 async fn test_backlog_to_ready_with_qa_enabled() {
-    let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
+    let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) =
+        create_test_services();
     let context = create_context_with_services("task-1", "proj-1", services).with_qa_enabled();
     let mut machine = TaskStateMachine::new(context);
     let mut handler = TransitionHandler::new(&mut machine);
@@ -114,7 +127,8 @@ async fn test_backlog_to_ready_with_qa_enabled() {
 
 #[tokio::test]
 async fn test_executing_complete_transitions_to_qa_refining_with_qa() {
-    let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
+    let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) =
+        create_test_services();
     let context = create_context_with_services("task-1", "proj-1", services).with_qa_enabled();
     let mut machine = TaskStateMachine::new(context);
     let mut handler = TransitionHandler::new(&mut machine);
@@ -128,13 +142,18 @@ async fn test_executing_complete_transitions_to_qa_refining_with_qa() {
 
     // Should wait for qa-prep and spawn qa-refiner
     let calls = spawner.get_calls();
-    assert!(calls.iter().any(|c| c.method == "wait_for" && c.args[0] == "qa-prep"));
-    assert!(calls.iter().any(|c| c.method == "spawn" && c.args[0] == "qa-refiner"));
+    assert!(calls
+        .iter()
+        .any(|c| c.method == "wait_for" && c.args[0] == "qa-prep"));
+    assert!(calls
+        .iter()
+        .any(|c| c.method == "spawn" && c.args[0] == "qa-refiner"));
 }
 
 #[tokio::test]
 async fn test_executing_complete_transitions_to_pending_review_without_qa() {
-    let (_spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
+    let (_spawner, _emitter, _notifier, _dep_manager, _review_starter, services) =
+        create_test_services();
     let context = create_context_with_services("task-1", "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
     let mut handler = TransitionHandler::new(&mut machine);
@@ -153,7 +172,8 @@ async fn test_executing_complete_transitions_to_pending_review_without_qa() {
 
 #[tokio::test]
 async fn test_executing_complete_with_qa_prep_complete_skips_wait() {
-    let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
+    let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) =
+        create_test_services();
     let context = create_context_with_services("task-1", "proj-1", services)
         .with_qa_enabled()
         .with_qa_prep_complete();
@@ -170,7 +190,9 @@ async fn test_executing_complete_with_qa_prep_complete_skips_wait() {
     let calls = spawner.get_calls();
     assert!(!calls.iter().any(|c| c.method == "wait_for"));
     // But should still spawn qa-refiner
-    assert!(calls.iter().any(|c| c.method == "spawn" && c.args[0] == "qa-refiner"));
+    assert!(calls
+        .iter()
+        .any(|c| c.method == "spawn" && c.args[0] == "qa-refiner"));
 }
 
 // ==================
@@ -179,7 +201,8 @@ async fn test_executing_complete_with_qa_prep_complete_skips_wait() {
 
 #[tokio::test]
 async fn test_qa_refining_to_qa_testing() {
-    let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
+    let (spawner, _emitter, _notifier, _dep_manager, _review_starter, services) =
+        create_test_services();
     let context = create_context_with_services("task-1", "proj-1", services).with_qa_enabled();
     let mut machine = TaskStateMachine::new(context);
     let mut handler = TransitionHandler::new(&mut machine);
@@ -192,18 +215,24 @@ async fn test_qa_refining_to_qa_testing() {
 
     // Should spawn qa-tester
     let calls = spawner.get_calls();
-    assert!(calls.iter().any(|c| c.method == "spawn" && c.args[0] == "qa-tester"));
+    assert!(calls
+        .iter()
+        .any(|c| c.method == "spawn" && c.args[0] == "qa-tester"));
 }
 
 #[tokio::test]
 async fn test_qa_testing_passed() {
-    let (_spawner, emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
+    let (_spawner, emitter, _notifier, _dep_manager, _review_starter, services) =
+        create_test_services();
     let context = create_context_with_services("task-1", "proj-1", services).with_qa_enabled();
     let mut machine = TaskStateMachine::new(context);
     let mut handler = TransitionHandler::new(&mut machine);
 
     let result = handler
-        .handle_transition(&State::QaTesting, &TaskEvent::QaTestsComplete { passed: true })
+        .handle_transition(
+            &State::QaTesting,
+            &TaskEvent::QaTestsComplete { passed: true },
+        )
         .await;
 
     // Should auto-transition from QaPassed to PendingReview
@@ -219,13 +248,17 @@ async fn test_qa_testing_passed() {
 
 #[tokio::test]
 async fn test_qa_testing_failed_notifies_user() {
-    let (_spawner, emitter, notifier, _dep_manager, _review_starter, services) = create_test_services();
+    let (_spawner, emitter, notifier, _dep_manager, _review_starter, services) =
+        create_test_services();
     let context = create_context_with_services("task-1", "proj-1", services).with_qa_enabled();
     let mut machine = TaskStateMachine::new(context);
     let mut handler = TransitionHandler::new(&mut machine);
 
     let result = handler
-        .handle_transition(&State::QaTesting, &TaskEvent::QaTestsComplete { passed: false })
+        .handle_transition(
+            &State::QaTesting,
+            &TaskEvent::QaTestsComplete { passed: false },
+        )
         .await;
 
     // Should transition to QaFailed
@@ -240,7 +273,8 @@ async fn test_qa_testing_failed_notifies_user() {
 
 #[tokio::test]
 async fn test_qa_failed_skip_qa_transitions_to_pending_review() {
-    let (_spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
+    let (_spawner, _emitter, _notifier, _dep_manager, _review_starter, services) =
+        create_test_services();
     let context = create_context_with_services("task-1", "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
     let mut handler = TransitionHandler::new(&mut machine);
@@ -262,16 +296,14 @@ async fn test_qa_failed_skip_qa_transitions_to_pending_review() {
 
 #[tokio::test]
 async fn test_qa_failed_retry_transitions_to_revision_needed() {
-    let (_spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
+    let (_spawner, _emitter, _notifier, _dep_manager, _review_starter, services) =
+        create_test_services();
     let context = create_context_with_services("task-1", "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
     let mut handler = TransitionHandler::new(&mut machine);
 
     let result = handler
-        .handle_transition(
-            &State::QaFailed(QaFailedData::default()),
-            &TaskEvent::Retry,
-        )
+        .handle_transition(&State::QaFailed(QaFailedData::default()), &TaskEvent::Retry)
         .await;
 
     // Should auto-transition from RevisionNeeded to ReExecuting
@@ -288,7 +320,8 @@ async fn test_qa_failed_retry_transitions_to_revision_needed() {
 
 #[tokio::test]
 async fn test_reviewing_approved_transitions_to_review_passed() {
-    let (_spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
+    let (_spawner, _emitter, _notifier, _dep_manager, _review_starter, services) =
+        create_test_services();
     let context = create_context_with_services("task-1", "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
     let mut handler = TransitionHandler::new(&mut machine);
@@ -309,16 +342,14 @@ async fn test_reviewing_approved_transitions_to_review_passed() {
 
 #[tokio::test]
 async fn test_review_passed_human_approve_transitions_to_pending_merge() {
-    let (_spawner, emitter, _notifier, dep_manager, _review_starter, services) = create_test_services();
+    let (_spawner, emitter, _notifier, dep_manager, _review_starter, services) =
+        create_test_services();
     let context = create_context_with_services("task-1", "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
     let mut handler = TransitionHandler::new(&mut machine);
 
     let result = handler
-        .handle_transition(
-            &State::ReviewPassed,
-            &TaskEvent::HumanApprove,
-        )
+        .handle_transition(&State::ReviewPassed, &TaskEvent::HumanApprove)
         .await;
 
     // Should auto-transition from Approved to PendingMerge (Phase 66 - merge workflow)
@@ -333,13 +364,16 @@ async fn test_review_passed_human_approve_transitions_to_pending_merge() {
 
     // Should NOT unblock dependents at Approved - only at Merged (after successful merge)
     let calls = dep_manager.get_calls();
-    assert!(!calls.iter().any(|c| c.method == "unblock_dependents"),
-        "unblock_dependents should NOT be called at Approved - only at Merged");
+    assert!(
+        !calls.iter().any(|c| c.method == "unblock_dependents"),
+        "unblock_dependents should NOT be called at Approved - only at Merged"
+    );
 }
 
 #[tokio::test]
 async fn test_reviewing_rejected_auto_transitions_to_re_executing() {
-    let (_spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
+    let (_spawner, _emitter, _notifier, _dep_manager, _review_starter, services) =
+        create_test_services();
     let context = create_context_with_services("task-1", "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
     let mut handler = TransitionHandler::new(&mut machine);
@@ -367,7 +401,8 @@ async fn test_reviewing_rejected_auto_transitions_to_re_executing() {
 
 #[tokio::test]
 async fn test_execution_failed_emits_event() {
-    let (_spawner, emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
+    let (_spawner, emitter, _notifier, _dep_manager, _review_starter, services) =
+        create_test_services();
     let context = create_context_with_services("task-1", "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
     let mut handler = TransitionHandler::new(&mut machine);
@@ -393,7 +428,8 @@ async fn test_execution_failed_emits_event() {
 
 #[tokio::test]
 async fn test_event_not_handled() {
-    let (_spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
+    let (_spawner, _emitter, _notifier, _dep_manager, _review_starter, services) =
+        create_test_services();
     let context = create_context_with_services("task-1", "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
     let mut handler = TransitionHandler::new(&mut machine);
@@ -413,7 +449,8 @@ async fn test_event_not_handled() {
 
 #[tokio::test]
 async fn test_entering_executing_spawns_worker() {
-    let (_spawner, _emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
+    let (_spawner, _emitter, _notifier, _dep_manager, _review_starter, services) =
+        create_test_services();
     let context = create_context_with_services("task-1", "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
 
@@ -431,7 +468,8 @@ async fn test_entering_executing_spawns_worker() {
 
 #[tokio::test]
 async fn test_entering_pending_review_starts_ai_review() {
-    let (_spawner, emitter, _notifier, _dep_manager, review_starter, services) = create_test_services();
+    let (_spawner, emitter, _notifier, _dep_manager, review_starter, services) =
+        create_test_services();
     let context = create_context_with_services("task-1", "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
 
@@ -444,9 +482,9 @@ async fn test_entering_pending_review_starts_ai_review() {
 
     // Should have emitted review:update event
     let events = emitter.get_events();
-    assert!(events.iter().any(|e| {
-        e.method == "emit_with_payload" && e.args[0] == "review:update"
-    }));
+    assert!(events
+        .iter()
+        .any(|e| { e.method == "emit_with_payload" && e.args[0] == "review:update" }));
 
     // NOTE: Reviewer is no longer spawned in PendingReview.
     // It's spawned in Reviewing state (via auto-transition).
@@ -481,7 +519,9 @@ async fn test_entering_pending_review_with_disabled_ai_review() {
 
     // Should NOT spawn reviewer agent when AI review is disabled
     let calls = spawner.get_calls();
-    assert!(!calls.iter().any(|c| c.method == "spawn" && c.args[0] == "reviewer"));
+    assert!(!calls
+        .iter()
+        .any(|c| c.method == "spawn" && c.args[0] == "reviewer"));
 
     // Should emit review:update with disabled type
     let events = emitter.get_events();
@@ -520,7 +560,9 @@ async fn test_entering_pending_review_with_error_notifies_user() {
 
     // Should NOT spawn reviewer agent when review fails to start
     let calls = spawner.get_calls();
-    assert!(!calls.iter().any(|c| c.method == "spawn" && c.args[0] == "reviewer"));
+    assert!(!calls
+        .iter()
+        .any(|c| c.method == "spawn" && c.args[0] == "reviewer"));
 
     // Should notify user about the error
     assert!(notifier.has_notification("review_error"));
@@ -528,7 +570,8 @@ async fn test_entering_pending_review_with_error_notifies_user() {
 
 #[tokio::test]
 async fn test_entering_pending_review_emits_started_event_with_review_id() {
-    let (_spawner, emitter, _notifier, _dep_manager, review_starter, services) = create_test_services();
+    let (_spawner, emitter, _notifier, _dep_manager, review_starter, services) =
+        create_test_services();
     let context = create_context_with_services("task-1", "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
 
@@ -537,9 +580,10 @@ async fn test_entering_pending_review_emits_started_event_with_review_id() {
 
     // Verify review:update event contains the review ID
     let events = emitter.get_events();
-    let review_event = events.iter().find(|e| {
-        e.method == "emit_with_payload" && e.args[0] == "review:update"
-    }).expect("Should have review:update event");
+    let review_event = events
+        .iter()
+        .find(|e| e.method == "emit_with_payload" && e.args[0] == "review:update")
+        .expect("Should have review:update event");
 
     assert!(review_event.args[2].contains("started"));
     assert!(review_event.args[2].contains("review-"));
@@ -556,7 +600,8 @@ async fn test_entering_pending_review_emits_started_event_with_review_id() {
 
 #[tokio::test]
 async fn test_executing_to_pending_review_starts_ai_review() {
-    let (_spawner, _emitter, _notifier, _dep_manager, review_starter, services) = create_test_services();
+    let (_spawner, _emitter, _notifier, _dep_manager, review_starter, services) =
+        create_test_services();
     let context = create_context_with_services("task-1", "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
     let mut handler = TransitionHandler::new(&mut machine);
@@ -580,14 +625,18 @@ async fn test_executing_to_pending_review_starts_ai_review() {
 
 #[tokio::test]
 async fn test_qa_passed_to_pending_review_starts_ai_review() {
-    let (_spawner, emitter, _notifier, _dep_manager, review_starter, services) = create_test_services();
+    let (_spawner, emitter, _notifier, _dep_manager, review_starter, services) =
+        create_test_services();
     let context = create_context_with_services("task-1", "proj-1", services).with_qa_enabled();
     let mut machine = TaskStateMachine::new(context);
     let mut handler = TransitionHandler::new(&mut machine);
 
     // Transition from QaTesting -> QaPassed -> PendingReview (auto)
     let result = handler
-        .handle_transition(&State::QaTesting, &TaskEvent::QaTestsComplete { passed: true })
+        .handle_transition(
+            &State::QaTesting,
+            &TaskEvent::QaTestsComplete { passed: true },
+        )
         .await;
 
     // Should auto-transition to PendingReview
@@ -601,9 +650,10 @@ async fn test_qa_passed_to_pending_review_starts_ai_review() {
     assert!(review_starter.has_review_for_task("task-1"));
 
     // Should have emitted review:update event
-    assert!(emitter.get_events().iter().any(|e| {
-        e.method == "emit_with_payload" && e.args[0] == "review:update"
-    }));
+    assert!(emitter
+        .get_events()
+        .iter()
+        .any(|e| { e.method == "emit_with_payload" && e.args[0] == "review:update" }));
 }
 
 // ==================
@@ -637,12 +687,17 @@ async fn test_entering_executing_uses_chat_service() {
     let _ = handler.on_enter(&State::Executing).await;
 
     // ChatService should have been called (check call count)
-    assert!(chat_service.call_count() > 0, "ChatService should have been called");
+    assert!(
+        chat_service.call_count() > 0,
+        "ChatService should have been called"
+    );
 
     // Agent spawner should NOT have been called (we used ChatService instead)
     let spawner_calls = spawner.get_calls();
     assert!(
-        !spawner_calls.iter().any(|c| c.method == "spawn" && c.args[0] == "worker"),
+        !spawner_calls
+            .iter()
+            .any(|c| c.method == "spawn" && c.args[0] == "worker"),
         "Agent spawner should not be called when ChatService is available"
     );
 }
@@ -713,19 +768,25 @@ async fn test_entering_reviewing_uses_chat_service() {
     let _ = handler.on_enter(&State::Reviewing).await;
 
     // ChatService should have been called for reviewer with Review context
-    assert!(chat_service.call_count() > 0, "ChatService should have been called");
+    assert!(
+        chat_service.call_count() > 0,
+        "ChatService should have been called"
+    );
 
     // Agent spawner should NOT have been called (we used ChatService instead)
     let spawner_calls = spawner.get_calls();
     assert!(
-        !spawner_calls.iter().any(|c| c.method == "spawn" && c.args[0] == "reviewer"),
+        !spawner_calls
+            .iter()
+            .any(|c| c.method == "spawn" && c.args[0] == "reviewer"),
         "Agent spawner should not be called when ChatService is available"
     );
 }
 
 #[tokio::test]
 async fn test_entering_review_passed_emits_event_and_notifies() {
-    let (_spawner, emitter, notifier, _dep_manager, _review_starter, services) = create_test_services();
+    let (_spawner, emitter, notifier, _dep_manager, _review_starter, services) =
+        create_test_services();
     let context = create_context_with_services("task-1", "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
 
@@ -766,24 +827,32 @@ async fn test_entering_re_executing_uses_chat_service() {
     let _ = handler.on_enter(&State::ReExecuting).await;
 
     // ChatService should have been called for worker with revision context
-    assert!(chat_service.call_count() > 0, "ChatService should have been called");
+    assert!(
+        chat_service.call_count() > 0,
+        "ChatService should have been called"
+    );
 
     // Agent spawner should NOT have been called (we used ChatService instead)
     let spawner_calls = spawner.get_calls();
     assert!(
-        !spawner_calls.iter().any(|c| c.method == "spawn" && c.args[0] == "worker"),
+        !spawner_calls
+            .iter()
+            .any(|c| c.method == "spawn" && c.args[0] == "worker"),
         "Agent spawner should not be called when ChatService is available"
     );
 }
 
 #[tokio::test]
 async fn test_exiting_reviewing_emits_event() {
-    let (_spawner, emitter, _notifier, _dep_manager, _review_starter, services) = create_test_services();
+    let (_spawner, emitter, _notifier, _dep_manager, _review_starter, services) =
+        create_test_services();
     let context = create_context_with_services("task-1", "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
 
     let handler = TransitionHandler::new(&mut machine);
-    handler.on_exit(&State::Reviewing, &State::ReviewPassed).await;
+    handler
+        .on_exit(&State::Reviewing, &State::ReviewPassed)
+        .await;
 
     // Should emit review:state_exited event
     assert!(emitter.has_event("review:state_exited"));
@@ -829,12 +898,17 @@ async fn test_auto_transition_pending_review_to_reviewing() {
     assert!(review_starter.has_review_for_task("task-1"));
 
     // ChatService should have been called for reviewer with Review context
-    assert!(chat_service.call_count() > 0, "ChatService should have been called");
+    assert!(
+        chat_service.call_count() > 0,
+        "ChatService should have been called"
+    );
 
     // Agent spawner should NOT have been called (we used ChatService instead)
     let spawner_calls = spawner.get_calls();
     assert!(
-        !spawner_calls.iter().any(|c| c.method == "spawn" && c.args[0] == "reviewer"),
+        !spawner_calls
+            .iter()
+            .any(|c| c.method == "spawn" && c.args[0] == "reviewer"),
         "Agent spawner should not be called when ChatService is available"
     );
 }
@@ -882,7 +956,10 @@ async fn test_auto_transition_revision_needed_to_re_executing() {
     }
 
     // Worker should be spawned via ChatService for re-execution
-    assert!(chat_service.call_count() > 0, "ChatService should spawn worker for re-execution");
+    assert!(
+        chat_service.call_count() > 0,
+        "ChatService should spawn worker for re-execution"
+    );
 }
 
 // ==================
@@ -903,7 +980,9 @@ async fn test_exiting_executing_decrements_running_count() {
     let mut machine = TaskStateMachine::new(context);
 
     let handler = TransitionHandler::new(&mut machine);
-    handler.on_exit(&State::Executing, &State::PendingReview).await;
+    handler
+        .on_exit(&State::Executing, &State::PendingReview)
+        .await;
 
     // Running count should be decremented
     assert_eq!(execution_state.running_count(), 0);
@@ -922,7 +1001,9 @@ async fn test_exiting_reviewing_decrements_running_count() {
     let mut machine = TaskStateMachine::new(context);
 
     let handler = TransitionHandler::new(&mut machine);
-    handler.on_exit(&State::Reviewing, &State::ReviewPassed).await;
+    handler
+        .on_exit(&State::Reviewing, &State::ReviewPassed)
+        .await;
 
     assert_eq!(execution_state.running_count(), 0);
 }
@@ -973,7 +1054,9 @@ async fn test_exiting_re_executing_decrements_running_count() {
     let mut machine = TaskStateMachine::new(context);
 
     let handler = TransitionHandler::new(&mut machine);
-    handler.on_exit(&State::ReExecuting, &State::PendingReview).await;
+    handler
+        .on_exit(&State::ReExecuting, &State::PendingReview)
+        .await;
 
     assert_eq!(execution_state.running_count(), 0);
 }
@@ -1007,7 +1090,9 @@ async fn test_exiting_without_execution_state_does_not_panic() {
 
     let handler = TransitionHandler::new(&mut machine);
     // Should not panic even without execution_state
-    handler.on_exit(&State::Executing, &State::PendingReview).await;
+    handler
+        .on_exit(&State::Executing, &State::PendingReview)
+        .await;
 }
 
 #[tokio::test]
@@ -1032,7 +1117,9 @@ async fn test_on_exit_with_execution_state_no_app_handle_does_not_panic() {
 
     let handler = TransitionHandler::new(&mut machine);
     // Should not panic - emit_status_changed is skipped when app_handle is None
-    handler.on_exit(&State::Executing, &State::PendingReview).await;
+    handler
+        .on_exit(&State::Executing, &State::PendingReview)
+        .await;
 
     // Running count should still be decremented
     assert_eq!(execution_state.running_count(), 0);
@@ -1067,8 +1154,10 @@ async fn test_on_exit_emits_for_all_agent_active_states() {
         handler.on_exit(from_state, &to_state).await;
 
         assert_eq!(
-            execution_state.running_count(), 0,
-            "Expected running_count=0 after exiting {:?}", from_state
+            execution_state.running_count(),
+            0,
+            "Expected running_count=0 after exiting {:?}",
+            from_state
         );
     }
 }
@@ -1083,7 +1172,8 @@ async fn test_exiting_pending_merge_triggers_retry_deferred_merges() {
 
     let scheduler = Arc::new(MockTaskScheduler::new());
     let services = TaskServices::new_mock()
-        .with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
+        .with_task_scheduler(Arc::clone(&scheduler)
+            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
 
     let context = create_context_with_services("task-1", "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
@@ -1098,12 +1188,21 @@ async fn test_exiting_pending_merge_triggers_retry_deferred_merges() {
 
     // Verify try_retry_deferred_merges was called
     let calls = scheduler.get_calls();
-    let retry_calls: Vec<_> = calls.iter()
+    let retry_calls: Vec<_> = calls
+        .iter()
         .filter(|c| c.method == "try_retry_deferred_merges")
         .collect();
 
-    assert_eq!(retry_calls.len(), 1, "Expected exactly one try_retry_deferred_merges call");
-    assert_eq!(retry_calls[0].args, vec!["proj-1"], "Expected project_id to be passed");
+    assert_eq!(
+        retry_calls.len(),
+        1,
+        "Expected exactly one try_retry_deferred_merges call"
+    );
+    assert_eq!(
+        retry_calls[0].args,
+        vec!["proj-1"],
+        "Expected project_id to be passed"
+    );
 }
 
 #[tokio::test]
@@ -1112,7 +1211,8 @@ async fn test_exiting_pending_merge_to_merge_incomplete_triggers_retry() {
 
     let scheduler = Arc::new(MockTaskScheduler::new());
     let services = TaskServices::new_mock()
-        .with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
+        .with_task_scheduler(Arc::clone(&scheduler)
+            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
 
     let context = create_context_with_services("task-1", "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
@@ -1120,18 +1220,25 @@ async fn test_exiting_pending_merge_to_merge_incomplete_triggers_retry() {
     let handler = TransitionHandler::new(&mut machine);
 
     // Transition from PendingMerge to MergeIncomplete (failed merge)
-    handler.on_exit(&State::PendingMerge, &State::MergeIncomplete).await;
+    handler
+        .on_exit(&State::PendingMerge, &State::MergeIncomplete)
+        .await;
 
     // Give the spawned task a moment to execute
     tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
 
     // Verify try_retry_deferred_merges was called even on failure
     let calls = scheduler.get_calls();
-    let retry_calls: Vec<_> = calls.iter()
+    let retry_calls: Vec<_> = calls
+        .iter()
         .filter(|c| c.method == "try_retry_deferred_merges")
         .collect();
 
-    assert_eq!(retry_calls.len(), 1, "Expected retry even on merge_incomplete");
+    assert_eq!(
+        retry_calls.len(),
+        1,
+        "Expected retry even on merge_incomplete"
+    );
     assert_eq!(retry_calls[0].args, vec!["proj-1"]);
 }
 
@@ -1141,7 +1248,8 @@ async fn test_exiting_merging_to_merged_triggers_retry() {
 
     let scheduler = Arc::new(MockTaskScheduler::new());
     let services = TaskServices::new_mock()
-        .with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
+        .with_task_scheduler(Arc::clone(&scheduler)
+            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
 
     let context = create_context_with_services("task-1", "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
@@ -1156,7 +1264,8 @@ async fn test_exiting_merging_to_merged_triggers_retry() {
 
     // Verify try_retry_deferred_merges was called
     let calls = scheduler.get_calls();
-    let retry_calls: Vec<_> = calls.iter()
+    let retry_calls: Vec<_> = calls
+        .iter()
         .filter(|c| c.method == "try_retry_deferred_merges")
         .collect();
 
@@ -1170,7 +1279,8 @@ async fn test_exiting_merging_to_merge_incomplete_triggers_retry() {
 
     let scheduler = Arc::new(MockTaskScheduler::new());
     let services = TaskServices::new_mock()
-        .with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
+        .with_task_scheduler(Arc::clone(&scheduler)
+            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
 
     let context = create_context_with_services("task-1", "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
@@ -1178,14 +1288,17 @@ async fn test_exiting_merging_to_merge_incomplete_triggers_retry() {
     let handler = TransitionHandler::new(&mut machine);
 
     // Transition from Merging to MergeIncomplete (merge failed during conflict resolution)
-    handler.on_exit(&State::Merging, &State::MergeIncomplete).await;
+    handler
+        .on_exit(&State::Merging, &State::MergeIncomplete)
+        .await;
 
     // Give the spawned task a moment to execute
     tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
 
     // Verify try_retry_deferred_merges was called
     let calls = scheduler.get_calls();
-    let retry_calls: Vec<_> = calls.iter()
+    let retry_calls: Vec<_> = calls
+        .iter()
         .filter(|c| c.method == "try_retry_deferred_merges")
         .collect();
 
@@ -1199,7 +1312,8 @@ async fn test_exiting_other_states_does_not_trigger_retry() {
 
     let scheduler = Arc::new(MockTaskScheduler::new());
     let services = TaskServices::new_mock()
-        .with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
+        .with_task_scheduler(Arc::clone(&scheduler)
+            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
 
     let context = create_context_with_services("task-1", "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
@@ -1214,11 +1328,16 @@ async fn test_exiting_other_states_does_not_trigger_retry() {
 
     // Verify try_retry_deferred_merges was NOT called for non-merge states
     let calls = scheduler.get_calls();
-    let retry_calls: Vec<_> = calls.iter()
+    let retry_calls: Vec<_> = calls
+        .iter()
         .filter(|c| c.method == "try_retry_deferred_merges")
         .collect();
 
-    assert_eq!(retry_calls.len(), 0, "Expected no retry calls for non-merge state transitions");
+    assert_eq!(
+        retry_calls.len(),
+        0,
+        "Expected no retry calls for non-merge state transitions"
+    );
 }
 
 #[tokio::test]
