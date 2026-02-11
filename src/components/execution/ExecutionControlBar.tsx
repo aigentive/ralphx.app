@@ -1,12 +1,17 @@
 /**
  * ExecutionControlBar - Premium execution status and controls
  *
- * Fixed bottom bar displaying running/queued tasks count with animated status indicator
+ * Fixed bottom bar displaying running/queued/merging tasks count with animated status indicator
  * and pause/stop controls. Follows the design spec from specs/design/pages/execution-control-bar.md
+ *
+ * Responsive breakpoints:
+ * - Wide (>1200px): Full labels "Running: 2/3", "Queued: 5", "Merging: 1"
+ * - Medium (800-1200px): Abbreviated "R: 2/3", "Q: 5", "M: 1"
+ * - Narrow (<800px): Counts only "2/3", "5", "1"
  */
 
 import { Pause, Play, Square, Loader2, Swords } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -17,6 +22,8 @@ import {
 import { cn } from "@/lib/utils";
 import { RunningProcessPopover } from "./RunningProcessPopover";
 import type { RunningProcess } from "@/api/running-processes";
+import { MergePipelinePopover } from "./MergePipelinePopover";
+import type { MergePipelineResponse } from "@/api/merge-pipeline";
 
 interface ExecutionControlBarProps {
   /** Number of currently running tasks */
@@ -25,6 +32,12 @@ interface ExecutionControlBarProps {
   maxConcurrent: number;
   /** Number of queued (planned) tasks */
   queuedCount: number;
+  /** Number of tasks in the merge pipeline */
+  mergingCount: number;
+  /** Whether any merge tasks need attention (conflict/incomplete) */
+  hasAttentionMerges: boolean;
+  /** Merge pipeline data for popover */
+  mergePipelineData: MergePipelineResponse | null;
   /** Whether execution is paused */
   isPaused: boolean;
   /** Whether a control action is in progress */
@@ -73,6 +86,9 @@ export function ExecutionControlBar({
   runningCount,
   maxConcurrent,
   queuedCount,
+  mergingCount,
+  hasAttentionMerges,
+  mergePipelineData,
   isPaused,
   isLoading = false,
   currentTaskName,
@@ -91,6 +107,31 @@ export function ExecutionControlBar({
   const statusState = getStatusState(runningCount, isPaused);
   const isRunning = runningCount > 0 && !isPaused;
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
+
+  // Responsive breakpoint tracking
+  const [breakpoint, setBreakpoint] = useState<"wide" | "medium" | "narrow">("wide");
+
+  useEffect(() => {
+    const updateBreakpoint = () => {
+      const width = window.innerWidth;
+      if (width > 1200) {
+        setBreakpoint("wide");
+      } else if (width >= 800) {
+        setBreakpoint("medium");
+      } else {
+        setBreakpoint("narrow");
+      }
+    };
+
+    updateBreakpoint();
+    window.addEventListener("resize", updateBreakpoint);
+    return () => window.removeEventListener("resize", updateBreakpoint);
+  }, []);
+
+  // Label formatting based on breakpoint
+  const runningLabel = breakpoint === "wide" ? "Running: " : breakpoint === "medium" ? "R: " : "";
+  const queuedLabel = breakpoint === "wide" ? "Queued: " : breakpoint === "medium" ? "Q: " : "";
+  const mergingLabel = breakpoint === "wide" ? "Merging: " : breakpoint === "medium" ? "M: " : "";
 
   return (
     <TooltipProvider>
@@ -123,7 +164,7 @@ export function ExecutionControlBar({
         {/* Status Section (Left) */}
         <div
           className="flex items-center gap-4"
-          aria-label={`${runningCount} tasks running out of ${maxConcurrent}, ${queuedCount} queued`}
+          aria-label={`${runningCount} tasks running out of ${maxConcurrent}, ${queuedCount} queued, ${mergingCount} merging`}
         >
           {/* Animated Status Indicator */}
           <div
@@ -151,7 +192,7 @@ export function ExecutionControlBar({
               style={{ color: "hsl(220 10% 90%)" }}
               onClick={() => setIsPopoverOpen(!isPopoverOpen)}
             >
-              Running: {runningCount}/{maxConcurrent}
+              {runningLabel}{runningCount}/{maxConcurrent}
             </button>
           </RunningProcessPopover>
 
@@ -164,8 +205,56 @@ export function ExecutionControlBar({
             className="text-[13px]"
             style={{ color: "hsl(220 10% 65%)" }}
           >
-            Queued: {queuedCount}
+            {queuedLabel}{queuedCount}
           </span>
+
+          {/* Separator */}
+          <span style={{ color: "hsl(220 10% 45%)" }}>•</span>
+
+          {/* Merging Count with Popover */}
+          {mergePipelineData ? (
+            <MergePipelinePopover
+              active={mergePipelineData.active}
+              waiting={mergePipelineData.waiting}
+              needsAttention={mergePipelineData.needsAttention}
+            >
+              <button
+                data-testid="merging-count"
+                className="flex items-center gap-1.5 text-[13px] cursor-pointer hover:opacity-80 transition-opacity"
+                style={{ color: "hsl(220 10% 65%)" }}
+              >
+                {mergingLabel}{mergingCount}
+                {hasAttentionMerges && (
+                  <span
+                    data-testid="merge-attention-indicator"
+                    className="text-sm"
+                    style={{ color: "hsl(45 90% 55%)" }}
+                    title="Some merges need attention"
+                  >
+                    ⚠
+                  </span>
+                )}
+              </button>
+            </MergePipelinePopover>
+          ) : (
+            <span
+              data-testid="merging-count"
+              className="flex items-center gap-1.5 text-[13px]"
+              style={{ color: "hsl(220 10% 65%)" }}
+            >
+              {mergingLabel}{mergingCount}
+              {hasAttentionMerges && (
+                <span
+                  data-testid="merge-attention-indicator"
+                  className="text-sm"
+                  style={{ color: "hsl(45 90% 55%)" }}
+                  title="Some merges need attention"
+                >
+                  ⚠
+                </span>
+              )}
+            </span>
+          )}
         </div>
 
         {/* Progress Section (Center) - Conditional */}
