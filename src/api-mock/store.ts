@@ -26,6 +26,8 @@ interface MockStore {
   tasks: Map<string, Task>;
   taskSteps: Map<string, TaskStep[]>;
   conversations: Map<string, ChatConversation>;
+  activePlans?: Map<string, string | null>; // projectId -> sessionId | null
+  sessions?: Map<string, unknown>; // sessionId -> session data
   initialized: boolean;
 }
 
