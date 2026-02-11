@@ -35,9 +35,9 @@ impl TaskRepository for MockTaskRepoForSpawner {
     async fn get_by_project_filtered(&self, _: &ProjectId, _: bool) -> AppResult<Vec<Task>> { Ok(vec![]) }
     async fn archive(&self, _: &TaskId) -> AppResult<Task> { unimplemented!() }
     async fn restore(&self, _: &TaskId) -> AppResult<Task> { unimplemented!() }
-    async fn get_archived_count(&self, _: &ProjectId) -> AppResult<u32> { Ok(0) }
-    async fn list_paginated(&self, _: &ProjectId, _: Option<Vec<crate::domain::entities::InternalStatus>>, _: u32, _: u32, _: bool) -> AppResult<Vec<Task>> { Ok(vec![]) }
-    async fn count_tasks(&self, _: &ProjectId, _: bool) -> AppResult<u32> { Ok(0) }
+    async fn get_archived_count(&self, _: &ProjectId, _: Option<&str>) -> AppResult<u32> { Ok(0) }
+    async fn list_paginated(&self, _: &ProjectId, _: Option<Vec<crate::domain::entities::InternalStatus>>, _: u32, _: u32, _: bool, _: Option<&str>) -> AppResult<Vec<Task>> { Ok(vec![]) }
+    async fn count_tasks(&self, _: &ProjectId, _: bool, _: Option<&str>) -> AppResult<u32> { Ok(0) }
     async fn search(&self, _: &ProjectId, _: &str, _: bool) -> AppResult<Vec<Task>> { Ok(vec![]) }
     async fn get_oldest_ready_task(&self) -> AppResult<Option<Task>> { Ok(None) }
     async fn get_oldest_ready_tasks(&self, _: u32) -> AppResult<Vec<Task>> { Ok(vec![]) }

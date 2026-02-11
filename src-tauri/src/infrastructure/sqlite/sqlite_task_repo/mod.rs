@@ -404,15 +404,25 @@ impl TaskRepository for SqliteTaskRepository {
         }
     }
 
-    async fn get_archived_count(&self, project_id: &ProjectId) -> AppResult<u32> {
+    async fn get_archived_count(&self, project_id: &ProjectId, ideation_session_id: Option<&str>) -> AppResult<u32> {
         let conn = self.conn.lock().await;
 
-        let count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM tasks WHERE project_id = ?1 AND archived_at IS NOT NULL",
-                [project_id.as_str()],
-                |row| row.get(0),
+        let (query, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = if let Some(sid) = ideation_session_id {
+            (
+                "SELECT COUNT(*) FROM tasks WHERE project_id = ?1 AND archived_at IS NOT NULL AND ideation_session_id = ?2".to_string(),
+                vec![Box::new(project_id.as_str().to_string()), Box::new(sid.to_string())]
             )
+        } else {
+            (
+                "SELECT COUNT(*) FROM tasks WHERE project_id = ?1 AND archived_at IS NOT NULL".to_string(),
+                vec![Box::new(project_id.as_str().to_string())]
+            )
+        };
+
+        let params_ref: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+
+        let count: i64 = conn
+            .query_row(&query, params_ref.as_slice(), |row| row.get(0))
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         Ok(count as u32)
@@ -425,41 +435,42 @@ impl TaskRepository for SqliteTaskRepository {
         offset: u32,
         limit: u32,
         include_archived: bool,
+        ideation_session_id: Option<&str>,
     ) -> AppResult<Vec<Task>> {
         let conn = self.conn.lock().await;
 
         let status_count = statuses.as_ref().map_or(0, |s| s.len());
-        let query = query_builder::build_paginated_query(status_count, include_archived);
+        let has_session_filter = ideation_session_id.is_some();
+        let query = query_builder::build_paginated_query(status_count, include_archived, has_session_filter);
 
         let mut stmt = conn
             .prepare(&query)
             .map_err(|e| AppError::Database(e.to_string()))?;
 
-        let tasks = if let Some(ref status_vec) = statuses {
-            // Build params: project_id, status1, status2, ..., limit, offset
-            let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-            params.push(Box::new(project_id.as_str().to_string()));
+        // Build params: project_id, [statuses...], [session_id?], limit, offset
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        params.push(Box::new(project_id.as_str().to_string()));
+
+        if let Some(ref status_vec) = statuses {
             for s in status_vec {
                 params.push(Box::new(s.as_str().to_string()));
             }
-            params.push(Box::new(limit as i64));
-            params.push(Box::new(offset as i64));
+        }
 
-            let params_ref: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        if let Some(sid) = ideation_session_id {
+            params.push(Box::new(sid.to_string()));
+        }
 
-            stmt.query_map(params_ref.as_slice(), Task::from_row)
-                .map_err(|e| AppError::Database(e.to_string()))?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| AppError::Database(e.to_string()))?
-        } else {
-            stmt.query_map(
-                rusqlite::params![project_id.as_str(), limit as i64, offset as i64],
-                Task::from_row,
-            )
+        params.push(Box::new(limit as i64));
+        params.push(Box::new(offset as i64));
+
+        let params_ref: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+
+        let tasks = stmt
+            .query_map(params_ref.as_slice(), Task::from_row)
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?
-        };
+            .map_err(|e| AppError::Database(e.to_string()))?;
 
         Ok(tasks)
     }
@@ -468,17 +479,33 @@ impl TaskRepository for SqliteTaskRepository {
         &self,
         project_id: &ProjectId,
         include_archived: bool,
+        ideation_session_id: Option<&str>,
     ) -> AppResult<u32> {
         let conn = self.conn.lock().await;
 
-        let query = if include_archived {
-            "SELECT COUNT(*) FROM tasks WHERE project_id = ?1"
-        } else {
-            "SELECT COUNT(*) FROM tasks WHERE project_id = ?1 AND archived_at IS NULL"
+        let (query, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = match (include_archived, ideation_session_id) {
+            (true, Some(sid)) => (
+                "SELECT COUNT(*) FROM tasks WHERE project_id = ?1 AND ideation_session_id = ?2".to_string(),
+                vec![Box::new(project_id.as_str().to_string()), Box::new(sid.to_string())]
+            ),
+            (true, None) => (
+                "SELECT COUNT(*) FROM tasks WHERE project_id = ?1".to_string(),
+                vec![Box::new(project_id.as_str().to_string())]
+            ),
+            (false, Some(sid)) => (
+                "SELECT COUNT(*) FROM tasks WHERE project_id = ?1 AND archived_at IS NULL AND ideation_session_id = ?2".to_string(),
+                vec![Box::new(project_id.as_str().to_string()), Box::new(sid.to_string())]
+            ),
+            (false, None) => (
+                "SELECT COUNT(*) FROM tasks WHERE project_id = ?1 AND archived_at IS NULL".to_string(),
+                vec![Box::new(project_id.as_str().to_string())]
+            ),
         };
 
+        let params_ref: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+
         let count: i64 = conn
-            .query_row(query, [project_id.as_str()], |row| row.get(0))
+            .query_row(&query, params_ref.as_slice(), |row| row.get(0))
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         Ok(count as u32)

@@ -289,11 +289,18 @@ impl TaskRepository for MemoryTaskRepository {
         }
     }
 
-    async fn get_archived_count(&self, project_id: &ProjectId) -> AppResult<u32> {
+    async fn get_archived_count(&self, project_id: &ProjectId, ideation_session_id: Option<&str>) -> AppResult<u32> {
         let tasks = self.tasks.read().await;
         let count = tasks
             .values()
-            .filter(|t| t.project_id == *project_id && t.archived_at.is_some())
+            .filter(|t| {
+                t.project_id == *project_id
+                    && t.archived_at.is_some()
+                    && (ideation_session_id.is_none()
+                        || t.ideation_session_id
+                            .as_ref()
+                            .is_some_and(|id| id.as_str() == ideation_session_id.unwrap()))
+            })
             .count();
         Ok(count as u32)
     }
@@ -305,6 +312,7 @@ impl TaskRepository for MemoryTaskRepository {
         offset: u32,
         limit: u32,
         include_archived: bool,
+        ideation_session_id: Option<&str>,
     ) -> AppResult<Vec<Task>> {
         let tasks = self.tasks.read().await;
 
@@ -329,6 +337,13 @@ impl TaskRepository for MemoryTaskRepository {
                     }
                 }
 
+                // Match session_id if provided
+                if let Some(sid) = ideation_session_id {
+                    if t.ideation_session_id.as_ref().is_none_or(|id| id.as_str() != sid) {
+                        return false;
+                    }
+                }
+
                 true
             })
             .cloned()
@@ -348,6 +363,7 @@ impl TaskRepository for MemoryTaskRepository {
         &self,
         project_id: &ProjectId,
         include_archived: bool,
+        ideation_session_id: Option<&str>,
     ) -> AppResult<u32> {
         let tasks = self.tasks.read().await;
         let count = tasks
@@ -355,6 +371,10 @@ impl TaskRepository for MemoryTaskRepository {
             .filter(|t| {
                 t.project_id == *project_id
                     && (include_archived || t.archived_at.is_none())
+                    && (ideation_session_id.is_none()
+                        || t.ideation_session_id
+                            .as_ref()
+                            .is_some_and(|id| id.as_str() == ideation_session_id.unwrap()))
             })
             .count();
         Ok(count as u32)
