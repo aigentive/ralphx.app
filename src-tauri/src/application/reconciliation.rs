@@ -20,6 +20,7 @@ use crate::domain::repositories::{
     IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
+use crate::domain::state_machine::transition_handler::set_trigger_origin;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RecoveryContext {
@@ -634,6 +635,17 @@ impl<R: Runtime> ReconciliationRunner<R> {
         match decision.action {
             RecoveryActionKind::None => false,
             RecoveryActionKind::ExecuteEntryActions => {
+                // Set trigger_origin="recovery" before resuming agent
+                let mut task_mut = task.clone();
+                set_trigger_origin(&mut task_mut, "recovery");
+                if let Err(e) = self.task_repo.update(&task_mut).await {
+                    tracing::error!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Failed to set trigger_origin=recovery in metadata"
+                    );
+                }
+
                 self.transition_service
                     .execute_entry_actions(&task.id, task, status)
                     .await;
