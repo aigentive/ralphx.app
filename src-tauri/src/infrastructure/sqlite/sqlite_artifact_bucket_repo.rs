@@ -351,7 +351,8 @@ mod tests {
 
         let result = repo.get_all().await;
         assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        // v24 migration seeds 4 system buckets
+        assert_eq!(result.unwrap().len(), 4);
     }
 
     #[tokio::test]
@@ -367,7 +368,8 @@ mod tests {
 
         let result = repo.get_all().await;
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 2);
+        // 4 seeded system buckets + 2 created = 6
+        assert_eq!(result.unwrap().len(), 6);
     }
 
     #[tokio::test]
@@ -386,8 +388,9 @@ mod tests {
         repo.create(bucket2).await.unwrap();
 
         let result = repo.get_all().await.unwrap();
+        // Results sorted by name: Alpha, Code Changes, PRD Library, Research Outputs, Work Context, Zebra
         assert_eq!(result[0].name, "Alpha Bucket");
-        assert_eq!(result[1].name, "Zebra Bucket");
+        assert_eq!(result.last().unwrap().name, "Zebra Bucket");
     }
 
     // ==================== GET SYSTEM BUCKETS TESTS ====================
@@ -403,7 +406,8 @@ mod tests {
 
         let result = repo.get_system_buckets().await;
         assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        // v24 migration seeds 4 system buckets
+        assert_eq!(result.unwrap().len(), 4);
     }
 
     #[tokio::test]
@@ -421,9 +425,10 @@ mod tests {
         assert!(result.is_ok());
 
         let buckets = result.unwrap();
-        assert_eq!(buckets.len(), 1);
-        assert!(buckets[0].is_system);
-        assert_eq!(buckets[0].id, system.id);
+        // 4 seeded system buckets + 1 created = 5
+        assert_eq!(buckets.len(), 5);
+        assert!(buckets.iter().all(|b| b.is_system));
+        assert!(buckets.iter().any(|b| b.id == system.id));
     }
 
     // ==================== UPDATE TESTS ====================
@@ -532,8 +537,9 @@ mod tests {
         let conn = setup_test_db();
         let repo = SqliteArtifactBucketRepository::new(conn);
 
+        // v24 migration already seeds the 4 buckets, so seed_builtin_buckets creates 0
         let count = repo.seed_builtin_buckets().await.unwrap();
-        assert_eq!(count, 4);
+        assert_eq!(count, 0);
 
         let all = repo.get_all().await.unwrap();
         assert_eq!(all.len(), 4);
@@ -547,12 +553,11 @@ mod tests {
         let conn = setup_test_db();
         let repo = SqliteArtifactBucketRepository::new(conn);
 
-        // Seed twice
+        // v24 migration already seeds the 4 buckets, both calls create 0
         let count1 = repo.seed_builtin_buckets().await.unwrap();
         let count2 = repo.seed_builtin_buckets().await.unwrap();
 
-        // First seed creates 4, second creates 0
-        assert_eq!(count1, 4);
+        assert_eq!(count1, 0);
         assert_eq!(count2, 0);
 
         // Still only 4 buckets
@@ -646,10 +651,10 @@ mod tests {
         let custom = create_test_bucket();
         repo.create(custom).await.unwrap();
 
-        // Seed built-ins
+        // Seed built-ins (already exist from v24 migration)
         repo.seed_builtin_buckets().await.unwrap();
 
-        // Should have 5 buckets total (1 custom + 4 system)
+        // Should have 5 buckets total (1 custom + 4 system from v24)
         let all = repo.get_all().await.unwrap();
         assert_eq!(all.len(), 5);
     }
