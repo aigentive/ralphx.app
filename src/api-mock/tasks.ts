@@ -44,11 +44,17 @@ export const mockTasksApi = {
     offset?: number;
     limit?: number;
     includeArchived?: boolean;
+    ideationSessionId?: string | null;
   }): Promise<TaskListResponse> => {
     const store = getStore();
     let tasks = Array.from(store.tasks.values()).filter(
       (t) => t.projectId === params.projectId
     );
+
+    // Filter by ideationSessionId (matches planArtifactId) if provided
+    if (params.ideationSessionId !== undefined) {
+      tasks = tasks.filter((t) => t.planArtifactId === params.ideationSessionId);
+    }
 
     // Filter by statuses if provided
     if (params.statuses && params.statuses.length > 0) {
@@ -76,16 +82,24 @@ export const mockTasksApi = {
   search: async (
     projectId: string,
     query: string,
-    _includeArchived?: boolean
+    _includeArchived?: boolean,
+    ideationSessionId?: string | null
   ): Promise<Task[]> => {
     const store = getStore();
     const lowerQuery = query.toLowerCase();
-    return Array.from(store.tasks.values()).filter(
+    let tasks = Array.from(store.tasks.values()).filter(
       (t) =>
         t.projectId === projectId &&
         (t.title.toLowerCase().includes(lowerQuery) ||
           (t.description && t.description.toLowerCase().includes(lowerQuery)))
     );
+
+    // Filter by ideationSessionId (matches planArtifactId) if provided
+    if (ideationSessionId !== undefined) {
+      tasks = tasks.filter((t) => t.planArtifactId === ideationSessionId);
+    }
+
+    return tasks;
   },
 
   get: async (taskId: string): Promise<Task> => {
@@ -156,8 +170,18 @@ export const mockTasksApi = {
     // Read-only mock: no-op
   },
 
-  getArchivedCount: async (_projectId: string): Promise<number> => {
-    return 0;
+  getArchivedCount: async (projectId: string, ideationSessionId?: string | null): Promise<number> => {
+    const store = getStore();
+    let tasks = Array.from(store.tasks.values()).filter(
+      (t) => t.projectId === projectId && t.archivedAt !== null
+    );
+
+    // Filter by ideationSessionId (matches planArtifactId) if provided
+    if (ideationSessionId !== undefined) {
+      tasks = tasks.filter((t) => t.planArtifactId === ideationSessionId);
+    }
+
+    return tasks.length;
   },
 
   getValidTransitions: async (taskId: string): Promise<{ status: string; label: string }[]> => {
