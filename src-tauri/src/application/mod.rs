@@ -10,6 +10,7 @@ pub mod diff_service;
 pub mod git_service;
 pub mod ideation_service;
 pub mod permission_state;
+pub mod plan_ranking;
 pub mod question_state;
 pub mod priority_service;
 pub mod qa_service;
@@ -44,6 +45,10 @@ pub use review_service::ReviewService;
 pub use session_reopen_service::SessionReopenService;
 pub use supervisor_service::{SupervisorConfig, SupervisorService, TaskMonitorState};
 pub use permission_state::{PendingPermissionInfo, PermissionDecision, PermissionState};
+pub use plan_ranking::{
+    compute_activity_score, compute_final_score, compute_final_score_with_breakdown,
+    compute_interaction_score, compute_recency_score, ScoreBreakdown,
+};
 pub use question_state::{PendingQuestionInfo, QuestionAnswer, QuestionOption, QuestionState};
 pub use chat_resumption::ChatResumptionRunner;
 pub use reconciliation::ReconciliationRunner;

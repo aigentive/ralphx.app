@@ -596,7 +596,7 @@ async fn test_get_archived_count_returns_correct_count() {
     repo.archive(&task1.id).await.unwrap();
     repo.archive(&task2.id).await.unwrap();
 
-    let count = repo.get_archived_count(&project_id).await.unwrap();
+    let count = repo.get_archived_count(&project_id, None).await.unwrap();
     assert_eq!(count, 2);
 }
 

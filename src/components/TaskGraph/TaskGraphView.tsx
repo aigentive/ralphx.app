@@ -42,6 +42,7 @@ import { getPlanGroupNodeId, getTierGroupNodeId } from "./groups/groupTypes";
 import { FloatingTimeline } from "./timeline/FloatingTimeline";
 import { GraphLegend } from "./controls/GraphLegend";
 import { FloatingGraphFilters } from "./controls/FloatingGraphFilters";
+import { PlanSelectorInline } from "@/components/plan/PlanSelectorInline";
 import {
   COMPACT_MODE_THRESHOLD,
   DEFAULT_GRAPH_FILTERS,
@@ -56,6 +57,7 @@ import { GraphSplitLayout } from "@/components/layout/GraphSplitLayout";
 import type { TaskGraphNode, TaskGraphEdge, PlanGroupInfo } from "@/api/task-graph.types";
 import type { InternalStatus } from "@/types/status";
 import { useUiStore } from "@/stores/uiStore";
+import { usePlanStore, selectActivePlanId } from "@/stores/planStore";
 import { useTaskMutation } from "@/hooks/useTaskMutation";
 import { useDeleteIdeationSession } from "@/hooks/useIdeation";
 import { useConfirmation } from "@/hooks/useConfirmation";
@@ -66,7 +68,7 @@ import { useChatStore } from "@/stores/chatStore";
 import { taskGraphKeys } from "./hooks/useTaskGraph";
 import { api } from "@/lib/tauri";
 import { toast } from "sonner";
-import { Filter, Loader2, X } from "lucide-react";
+import { AlertCircle, Filter, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { buildTierGroups, UNGROUPED_PLAN_ID } from "./groups/tierGroupUtils";
 import type { GroupInfo } from "@/lib/task-actions";
@@ -110,8 +112,7 @@ function applyGraphFilters(
   filters: GraphFilters
 ): { nodes: TaskGraphNode[]; edges: TaskGraphEdge[]; planGroups: PlanGroupInfo[] } {
   // Short-circuit: if no client-side filters are active, return original references
-  const noFilters = filters.statuses.length === 0
-    && filters.planIds.length === 0;
+  const noFilters = filters.statuses.length === 0;
   if (noFilters) {
     return { nodes, edges, planGroups };
   }
@@ -123,21 +124,6 @@ function applyGraphFilters(
     // Check status filter (empty = show all)
     if (filters.statuses.length > 0 && !filters.statuses.includes(status)) {
       return false;
-    }
-
-    // Check plan filter (empty = show all)
-    // Use plan group's authoritative taskIds list instead of node.planArtifactId
-    // This handles cases where session.plan_artifact_id differs from proposal.plan_artifact_id
-    if (filters.planIds.length > 0) {
-      const selectedPlanTaskIds = new Set(
-        planGroups
-          .filter((g) => filters.planIds.includes(g.planArtifactId))
-          .flatMap((g) => g.taskIds)
-      );
-
-      if (!selectedPlanTaskIds.has(node.taskId)) {
-        return false;
-      }
     }
 
     return true;
@@ -286,7 +272,15 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   // GraphControls state (declared early so showArchived is available for useTaskGraph)
   const [filters, setFilters] = useState<GraphFilters>(DEFAULT_GRAPH_FILTERS);
 
-  const { data: graphData, isLoading, error } = useTaskGraph(projectId, filters.showArchived);
+  // Get active plan ID from plan store
+  const activePlanId = usePlanStore(selectActivePlanId(projectId));
+
+  // Load active plan from backend on mount or project change
+  useEffect(() => {
+    usePlanStore.getState().loadActivePlan(projectId);
+  }, [projectId]);
+
+  const { data: graphData, isLoading, error } = useTaskGraph(projectId, filters.showArchived, activePlanId);
   const {
     fitNodeInView,
     centerOnNode,
@@ -1374,7 +1368,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   // Empty state (no tasks at all)
   if (!graphData || graphData.nodes.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex items-center justify-center h-full" data-testid="graph-empty-state">
         <div className="text-center">
           <p className="text-muted-foreground mb-2">No tasks to display</p>
           <p className="text-sm text-muted-foreground">
@@ -1387,8 +1381,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
 
   // Check if client-side filters might hide tasks (showArchived is a backend filter, not counted here)
   const hasActiveFilters =
-    filters.statuses.length > 0 ||
-    filters.planIds.length > 0;
+    filters.statuses.length > 0;
 
   return (
     <>
@@ -1426,12 +1419,27 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
           isAutoCompact={hasAnyAutoCompact && nodeModeOverride !== "compact"}
           grouping={grouping}
           onGroupingChange={setGrouping}
-          planGroups={graphData?.planGroups ?? []}
           isCompact={isNavCompact}
         />
 
-        {/* Show empty state when filters hide all tasks */}
-        {filteredGraphData.nodes.length === 0 && hasActiveFilters ? (
+        {/* Plan selector control */}
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
+          <PlanSelectorInline projectId={projectId} source="graph_inline" />
+        </div>
+
+        {/* Show empty state when no plan is selected */}
+        {!activePlanId ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-medium mb-2">No plan selected</h3>
+              <p className="text-muted-foreground mb-6">
+                Select a plan to view work on the Graph.
+              </p>
+              <PlanSelectorInline projectId={projectId} source="graph_inline" />
+            </div>
+          </div>
+        ) : filteredGraphData.nodes.length === 0 && hasActiveFilters ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
               <Filter className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
