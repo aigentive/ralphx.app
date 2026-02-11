@@ -17,6 +17,7 @@ pub mod review_issue;
 pub mod status;
 pub mod task;
 pub mod task_context;
+pub mod task_metadata;
 pub mod task_qa;
 pub mod task_step;
 pub mod types;
@@ -80,4 +81,8 @@ pub use review_issue::{
     IssueCategory, IssueProgressSummary, IssueSeverity, IssueStatus, ParseIssueCategoryError,
     ParseIssueSeverityError, ParseIssueStatusError, ReviewIssue as ReviewIssueEntity,
     SeverityBreakdown, SeverityCount,
+};
+pub use task_metadata::{
+    MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
+    MergeRecoverySource, MergeRecoveryState,
 };
