@@ -8,7 +8,7 @@
  * - Streaming tool calls / typing indicator footer
  */
 
-import React, { forwardRef, useCallback, useEffect, useMemo, useRef, useImperativeHandle } from "react";
+import React, { forwardRef, useEffect, useMemo, useRef, useImperativeHandle } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { MessageItem } from "./MessageItem";
 import { StreamingToolIndicator } from "./StreamingToolIndicator";
@@ -22,6 +22,9 @@ import type { ContentBlockItem } from "./MessageItem";
 import { isDiffToolCall } from "./DiffToolCallView.utils";
 import { DiffToolCallView } from "./DiffToolCallView";
 import { TaskSubagentCard } from "./TaskSubagentCard";
+import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
+import { ChevronDown } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 // ============================================================================
 // Constants
@@ -67,8 +70,6 @@ interface ChatMessageListProps {
   streamingTasks?: Map<string, StreamingTask>;
   /** Streaming assistant text from agent:chunk events */
   streamingText?: string;
-  /** Ref to scroll to */
-  messagesEndRef: React.RefObject<HTMLDivElement | null>;
   /** Optional timestamp to scroll to (for history mode) - scrolls to first message at or after this time */
   scrollToTimestamp?: string | null;
 }
@@ -89,7 +90,6 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       streamingToolCalls,
       streamingTasks,
       streamingText,
-      messagesEndRef,
       scrollToTimestamp,
     },
     ref
@@ -100,18 +100,6 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
 
     // Forward the ref to parent
     useImperativeHandle(ref, () => virtuosoRef.current!, []);
-
-    // Track whether user is at the bottom — drives followOutput behavior
-    const isAtBottomRef = useRef(true);
-    const handleAtBottomStateChange = useCallback((atBottom: boolean) => {
-      isAtBottomRef.current = atBottom;
-    }, []);
-
-    // followOutput callback: only auto-scroll when user is already at bottom
-    const handleFollowOutput = useCallback((isAtBottom: boolean) => {
-      if (isAtBottom) return "smooth" as const;
-      return false as const;
-    }, []);
 
     // Footer content hash — makes Virtuoso aware of footer height changes
     // without manual scrollTo calls. Virtuoso re-evaluates followOutput when
@@ -131,6 +119,21 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       taskCount: streamingTasks?.size ?? 0,
       hasText: !!streamingText,
     }), [streamingToolCalls.length, totalChildCalls, streamingTasks?.size, streamingText]);
+
+    // Unified auto-scroll hook
+    const isStreaming = isSending || isAgentRunning;
+    const {
+      messagesEndRef,
+      isAtBottom,
+      scrollToBottom,
+      handleAtBottomStateChange,
+      handleFollowOutput,
+    } = useChatAutoScroll({
+      messageCount: messages.length,
+      isStreaming,
+      streamingHash: footerContentHash,
+      disabled: !!scrollToTimestamp, // Disable auto-scroll in history mode
+    });
 
     // Scroll to specific timestamp for history mode (time-travel feature)
     // Finds the first message at or after the given timestamp and scrolls to it
@@ -253,7 +256,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
               );
 
               return (
-                <div className="px-3 pb-3 w-full" style={contentContainerStyle}>
+                <div className="px-3 pb-3 w-full relative" style={contentContainerStyle}>
                   {/* Show streaming assistant text from agent:chunk events */}
                   {streamingText && (
                     <MessageItem
@@ -285,6 +288,21 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                     ) : !streamingText && diffToolCalls.length === 0 ? (
                       <TypingIndicator />
                     ) : null
+                  )}
+
+                  {/* Scroll-to-bottom button */}
+                  {!isAtBottom && messages.length > 5 && (
+                    <div className="flex justify-center mt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={scrollToBottom}
+                        className="bg-background/95 backdrop-blur shadow-md hover:bg-accent"
+                      >
+                        <ChevronDown className="h-4 w-4 mr-1" />
+                        Scroll to bottom
+                      </Button>
+                    </div>
                   )}
                   <div ref={messagesEndRef} />
                 </div>

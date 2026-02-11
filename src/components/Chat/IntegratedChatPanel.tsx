@@ -370,11 +370,6 @@ export function IntegratedChatPanel({
   } = regularChatData;
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Track scroll settling period - hide messages until scroll animation completes
-  const [isScrollSettling, setIsScrollSettling] = useState(false);
-  const prevConversationIdRef = useRef<string | null>(null);
 
   // Recovery window: brief polling on startup for agent contexts
   useEffect(() => {
@@ -425,29 +420,6 @@ export function IntegratedChatPanel({
     selectedTaskId,
   ]);
 
-  // When conversation changes, enter settling mode until scroll completes
-  useEffect(() => {
-    // Only trigger settling when conversation actually changes to a new one
-    if (activeConversationId === prevConversationIdRef.current) {
-      return undefined;
-    }
-
-    prevConversationIdRef.current = activeConversationId;
-
-    // If we have a new conversation with messages, enter settling mode
-    if (!activeConversationId || activeConversation.isLoading) {
-      return undefined;
-    }
-
-    setIsScrollSettling(true);
-
-    // Match the scroll delay in ChatMessageList (300ms) + small buffer
-    const timeoutId = setTimeout(() => {
-      setIsScrollSettling(false);
-    }, 350);
-
-    return () => clearTimeout(timeoutId);
-  }, [activeConversationId, activeConversation.isLoading]);
 
   // Memoize messagesData to avoid dependency chain issues in useEffect hooks
   // No time-based filtering needed - we switch context types based on historical state
@@ -555,10 +527,9 @@ export function IntegratedChatPanel({
   }, [messagesData]);
 
   // Loading state: show skeleton when conversations list is loading OR active conversation is loading
-  // OR scroll is settling (hides the scroll animation when switching conversations)
   const isConversationsLoading = conversations.isLoading;
   const isActiveConversationLoading = activeConversationId ? activeConversation.isLoading : false;
-  const isLoading = isConversationsLoading || isActiveConversationLoading || isScrollSettling;
+  const isLoading = isConversationsLoading || isActiveConversationLoading;
 
   // Status badge helpers - disabled in history mode (no live agent)
   const isAgentActive = !isHistoryMode && (isSending || isAgentRunning || isExecutionMode);
@@ -677,7 +648,6 @@ export function IntegratedChatPanel({
               streamingToolCalls={streamingToolCalls}
               streamingTasks={streamingTasks}
               streamingText={streamingText}
-              messagesEndRef={messagesEndRef}
               scrollToTimestamp={isHistoryMode ? taskHistoryState?.timestamp : null}
             />
           )}
