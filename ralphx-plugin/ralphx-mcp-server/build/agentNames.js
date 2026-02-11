@@ -16,4 +16,6 @@ export const PROJECT_ANALYZER = "project-analyzer";
 export const SUPERVISOR = "supervisor";
 export const QA_PREP = "qa-prep";
 export const QA_TESTER = "qa-tester";
+export const MEMORY_MAINTAINER = "memory-maintainer";
+export const MEMORY_CAPTURE = "memory-capture";
 //# sourceMappingURL=agentNames.js.map
