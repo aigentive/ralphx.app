@@ -26,7 +26,7 @@ export const TaskSchema = z.object({
   /** Whether this task needs a review point (human-in-loop checkpoint) */
   needs_review_point: z.boolean().default(false),
   /** Ideation session ID (plan association) */
-  ideation_session_id: z.string().nullable().optional(),
+  ideation_session_id: z.string().optional(),
   // Accept RFC3339 timestamps with offset (e.g., +00:00)
   created_at: z.string().datetime({ offset: true }),
   updated_at: z.string().datetime({ offset: true }),
@@ -59,7 +59,7 @@ export interface Task {
   internalStatus: InternalStatus;
   needsReviewPoint: boolean;
   /** Ideation session ID (plan association) */
-  ideationSessionId?: string | null;
+  ideationSessionId?: string | undefined;
   createdAt: string;
   updatedAt: string;
   startedAt: string | null;
@@ -94,7 +94,7 @@ export function transformTask(raw: z.infer<typeof TaskSchema>): Task {
     priority: raw.priority,
     internalStatus: raw.internal_status,
     needsReviewPoint: raw.needs_review_point,
-    ideationSessionId: raw.ideation_session_id ?? null,
+    ideationSessionId: raw.ideation_session_id,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
     startedAt: raw.started_at,
