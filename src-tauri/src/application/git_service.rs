@@ -1187,7 +1187,7 @@ impl GitService {
         error_msg.contains("already used by worktree")
             || error_msg.contains("already checked out")
             || error_msg.contains("is already checked out at")
-            || (error_msg.contains("fatal") && error_msg.contains("branch") && error_msg.contains("checked out"))
+            || error_msg.contains("branch is checked out")
     }
 
     /// Reset the current branch to a specific commit (hard reset)
@@ -3274,6 +3274,16 @@ prunable gitdir file points to non-existent location
     #[test]
     fn test_is_branch_lock_error_non_git_error_not_deferrable() {
         let error = AppError::Database("connection failed".to_string());
+        assert!(!GitService::is_branch_lock_error(&error));
+    }
+
+    #[test]
+    fn test_is_branch_lock_error_false_positive_avoided() {
+        // This error contains "fatal", "branch", and "checked out" but is NOT a branch lock error.
+        // The old pattern would have incorrectly classified this as deferrable.
+        let error = AppError::GitOperation(
+            "fatal: could not read branch configuration, checked out files may be corrupt".to_string()
+        );
         assert!(!GitService::is_branch_lock_error(&error));
     }
 }
