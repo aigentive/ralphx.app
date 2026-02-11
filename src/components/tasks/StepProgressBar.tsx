@@ -12,6 +12,8 @@ interface StepProgressBarProps {
   compact?: boolean;
 }
 
+const COMPACT_DOT_CAP = 19;
+
 /**
  * Get background color class for step dot based on status
  */
@@ -76,6 +78,8 @@ export function StepProgressBar({ taskId, compact = false }: StepProgressBarProp
 
   // Compact mode: progress bar + percentage + dots for TaskCard
   if (compact) {
+    const visibleDotCount = Math.min(total, COMPACT_DOT_CAP);
+    const hiddenDotCount = Math.max(0, total - COMPACT_DOT_CAP);
     return (
       <div className="flex-1 space-y-1.5">
         {/* Progress bar row with percentage */}
@@ -100,8 +104,8 @@ export function StepProgressBar({ taskId, compact = false }: StepProgressBarProp
           </span>
         </div>
         {/* Dots row */}
-        <div className="flex items-center gap-1">
-          {Array.from({ length: total }).map((_, index) => (
+        <div className="flex items-center gap-1 min-w-0">
+          {Array.from({ length: visibleDotCount }).map((_, index) => (
             <div
               key={index}
               className={`h-1.5 w-1.5 rounded-full transition-colors ${getStepDotColor(
@@ -114,6 +118,15 @@ export function StepProgressBar({ taskId, compact = false }: StepProgressBarProp
               aria-hidden="true"
             />
           ))}
+          {hiddenDotCount > 0 && (
+            <span
+              className="text-[10px] shrink-0"
+              style={{ color: "hsl(220 10% 45%)" }}
+              aria-label={`${hiddenDotCount} more steps`}
+            >
+              +{hiddenDotCount} more
+            </span>
+          )}
         </div>
       </div>
     );
