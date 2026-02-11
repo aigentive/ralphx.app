@@ -560,7 +560,7 @@ fn truncate_output(s: &str, max_len: usize) -> String {
 /// When `cached_log` is provided, validate-phase commands that previously passed (status
 /// "success" or "cached") are skipped and emitted as "cached" instead of re-running.
 /// Setup-phase commands always re-run. Previously-failed commands always re-run.
-pub(crate) fn run_validation_commands(
+pub(crate) async fn run_validation_commands(
     project: &Project,
     task: &Task,
     merge_cwd: &Path,
@@ -568,6 +568,13 @@ pub(crate) fn run_validation_commands(
     app_handle: Option<&tauri::AppHandle>,
     cached_log: Option<&[ValidationLogEntry]>,
 ) -> Option<ValidationResult> {
+    let overall_start = std::time::Instant::now();
+    tracing::info!(
+        task_id = task_id_str,
+        cwd = %merge_cwd.display(),
+        "run_validation_commands: starting validation"
+    );
+
     // Load effective analysis: custom_analysis ?? detected_analysis
     let analysis_json = project
         .custom_analysis
@@ -600,6 +607,19 @@ pub(crate) fn run_validation_commands(
     let mut log: Vec<ValidationLogEntry> = Vec::new();
 
     // Run worktree_setup commands first (symlinks, etc.) — non-fatal
+    let setup_phase_start = std::time::Instant::now();
+    let mut setup_count = 0;
+    for entry in &entries {
+        setup_count += entry.worktree_setup.len();
+    }
+    if setup_count > 0 {
+        tracing::info!(
+            task_id = task_id_str,
+            command_count = setup_count,
+            "run_validation_commands: starting setup phase"
+        );
+    }
+
     for entry in &entries {
         for cmd_str in &entry.worktree_setup {
             let resolved_cmd = resolve(cmd_str);
@@ -632,13 +652,22 @@ pub(crate) fn run_validation_commands(
             );
 
             let start = std::time::Instant::now();
-            match Command::new("sh")
-                .arg("-c")
-                .arg(&resolved_cmd)
-                .current_dir(&cmd_cwd)
-                .output()
-            {
-                Ok(output) => {
+
+            // Clone for move into spawn_blocking
+            let resolved_cmd_clone = resolved_cmd.clone();
+            let cmd_cwd_clone = cmd_cwd.clone();
+
+            let result = tokio::task::spawn_blocking(move || {
+                Command::new("sh")
+                    .arg("-c")
+                    .arg(&resolved_cmd_clone)
+                    .current_dir(&cmd_cwd_clone)
+                    .output()
+            })
+            .await;
+
+            match result {
+                Ok(Ok(output)) => {
                     let duration_ms = start.elapsed().as_millis() as u64;
                     let stdout_raw = String::from_utf8_lossy(&output.stdout).to_string();
                     let stderr_raw = String::from_utf8_lossy(&output.stderr).to_string();
@@ -687,7 +716,8 @@ pub(crate) fn run_validation_commands(
                     }
                     log.push(log_entry);
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
+                    // Command execution failed
                     let duration_ms = start.elapsed().as_millis() as u64;
                     tracing::warn!(
                         command = %resolved_cmd,
@@ -726,12 +756,73 @@ pub(crate) fn run_validation_commands(
                     }
                     log.push(log_entry);
                 }
+                Err(e) => {
+                    // tokio task join error (cancelled/panicked)
+                    let duration_ms = start.elapsed().as_millis() as u64;
+                    tracing::error!(
+                        command = %resolved_cmd,
+                        error = %e,
+                        "Worktree setup task panicked or was cancelled"
+                    );
+
+                    let log_entry = ValidationLogEntry {
+                        phase: "setup".to_string(),
+                        command: resolved_cmd.clone(),
+                        path: resolved_path.clone(),
+                        label: entry.label.clone(),
+                        status: "failed".to_string(),
+                        exit_code: None,
+                        stdout: String::new(),
+                        stderr: truncate_output(&format!("Task failed: {}", e), 2000),
+                        duration_ms,
+                    };
+
+                    if let Some(handle) = app_handle {
+                        let _ = handle.emit(
+                            "merge:validation_step",
+                            serde_json::json!({
+                                "task_id": task_id_str,
+                                "phase": log_entry.phase,
+                                "command": log_entry.command,
+                                "path": log_entry.path,
+                                "label": log_entry.label,
+                                "status": log_entry.status,
+                                "exit_code": log_entry.exit_code,
+                                "stdout": log_entry.stdout,
+                                "stderr": log_entry.stderr,
+                                "duration_ms": log_entry.duration_ms,
+                            }),
+                        );
+                    }
+                    log.push(log_entry);
+                }
             }
         }
     }
 
+    if setup_count > 0 {
+        let setup_duration_ms = setup_phase_start.elapsed().as_millis() as u64;
+        tracing::info!(
+            task_id = task_id_str,
+            duration_ms = setup_duration_ms,
+            command_count = setup_count,
+            "run_validation_commands: completed setup phase"
+        );
+    }
+
     let mut failures = Vec::new();
     let mut ran_any = false;
+
+    // Count validate commands for logging
+    let validate_count: usize = entries.iter().map(|e| e.validate.len()).sum();
+    let validate_phase_start = std::time::Instant::now();
+    if validate_count > 0 {
+        tracing::info!(
+            task_id = task_id_str,
+            command_count = validate_count,
+            "run_validation_commands: starting validate phase"
+        );
+    }
 
     for entry in &entries {
         if entry.validate.is_empty() {
@@ -818,14 +909,22 @@ pub(crate) fn run_validation_commands(
             );
 
             let start = std::time::Instant::now();
-            let result = Command::new("sh")
-                .arg("-c")
-                .arg(&resolved_cmd)
-                .current_dir(&cmd_cwd)
-                .output();
+
+            // Clone for move into spawn_blocking
+            let resolved_cmd_clone = resolved_cmd.clone();
+            let cmd_cwd_clone = cmd_cwd.clone();
+
+            let result = tokio::task::spawn_blocking(move || {
+                Command::new("sh")
+                    .arg("-c")
+                    .arg(&resolved_cmd_clone)
+                    .current_dir(&cmd_cwd_clone)
+                    .output()
+            })
+            .await;
 
             match result {
-                Ok(output) => {
+                Ok(Ok(output)) => {
                     let duration_ms = start.elapsed().as_millis() as u64;
                     let stderr_raw = String::from_utf8_lossy(&output.stderr).to_string();
                     let stdout_raw = String::from_utf8_lossy(&output.stdout).to_string();
@@ -895,7 +994,8 @@ pub(crate) fn run_validation_commands(
                     }
                     log.push(log_entry);
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
+                    // Command execution failed
                     let duration_ms = start.elapsed().as_millis() as u64;
                     tracing::error!(command = %resolved_cmd, error = %e, "Failed to execute validation command");
                     failures.push(ValidationFailure {
@@ -936,17 +1036,91 @@ pub(crate) fn run_validation_commands(
                     }
                     log.push(log_entry);
                 }
+                Err(e) => {
+                    // tokio task join error (cancelled/panicked)
+                    let duration_ms = start.elapsed().as_millis() as u64;
+                    tracing::error!(
+                        command = %resolved_cmd,
+                        error = %e,
+                        "Validation task panicked or was cancelled"
+                    );
+                    failures.push(ValidationFailure {
+                        command: resolved_cmd.clone(),
+                        path: resolved_path.clone(),
+                        exit_code: None,
+                        stderr: format!("Task failed: {}", e),
+                    });
+
+                    let log_entry = ValidationLogEntry {
+                        phase: "validate".to_string(),
+                        command: resolved_cmd,
+                        path: resolved_path.clone(),
+                        label: entry.label.clone(),
+                        status: "failed".to_string(),
+                        exit_code: None,
+                        stdout: String::new(),
+                        stderr: truncate_output(&format!("Task failed: {}", e), 2000),
+                        duration_ms,
+                    };
+
+                    if let Some(handle) = app_handle {
+                        let _ = handle.emit(
+                            "merge:validation_step",
+                            serde_json::json!({
+                                "task_id": task_id_str,
+                                "phase": log_entry.phase,
+                                "command": log_entry.command,
+                                "path": log_entry.path,
+                                "label": log_entry.label,
+                                "status": log_entry.status,
+                                "exit_code": log_entry.exit_code,
+                                "stdout": log_entry.stdout,
+                                "stderr": log_entry.stderr,
+                                "duration_ms": log_entry.duration_ms,
+                            }),
+                        );
+                    }
+                    log.push(log_entry);
+                }
             }
         }
     }
 
     if !ran_any {
         // All entries had empty validate arrays
+        let overall_duration_ms = overall_start.elapsed().as_millis() as u64;
+        tracing::info!(
+            task_id = task_id_str,
+            duration_ms = overall_duration_ms,
+            "run_validation_commands: no validation commands to run"
+        );
         return None;
     }
 
+    if validate_count > 0 {
+        let validate_duration_ms = validate_phase_start.elapsed().as_millis() as u64;
+        tracing::info!(
+            task_id = task_id_str,
+            duration_ms = validate_duration_ms,
+            command_count = validate_count,
+            failure_count = failures.len(),
+            "run_validation_commands: completed validate phase"
+        );
+    }
+
+    let overall_duration_ms = overall_start.elapsed().as_millis() as u64;
+    let all_passed = failures.is_empty();
+    tracing::info!(
+        task_id = task_id_str,
+        duration_ms = overall_duration_ms,
+        all_passed = all_passed,
+        failure_count = failures.len(),
+        total_commands = log.len(),
+        "run_validation_commands: completed validation"
+    );
+
     Some(ValidationResult {
-        all_passed: failures.is_empty(),
+        all_passed,
         failures,
         log,
     })
@@ -2179,7 +2353,9 @@ impl<'a> super::TransitionHandler<'a> {
                                 task_id_str,
                                 app_handle_ref,
                                 cached_log.as_deref(),
-                            ) {
+                            )
+                            .await
+                            {
                                 if !validation.all_passed {
                                     if *validation_mode == MergeValidationMode::Warn {
                                         tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode (in-repo), proceeding with merge");
@@ -2563,7 +2739,9 @@ impl<'a> super::TransitionHandler<'a> {
                                 task_id_str,
                                 app_handle_ref,
                                 cached_log.as_deref(),
-                            ) {
+                            )
+                            .await
+                            {
                                 if !validation.all_passed {
                                     if *validation_mode == MergeValidationMode::Warn {
                                         tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode (worktree), proceeding with merge");
@@ -2957,7 +3135,9 @@ impl<'a> super::TransitionHandler<'a> {
                             task_id_str,
                             app_handle_ref,
                             cached_log.as_deref(),
-                        ) {
+                        )
+                        .await
+                        {
                             if !validation.all_passed {
                                 if *validation_mode == MergeValidationMode::Warn {
                                     tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode (local), proceeding with merge");
@@ -3831,35 +4011,35 @@ mod tests {
     // run_validation_commands tests
     // ==================
 
-    #[test]
-    fn run_validation_returns_none_when_no_analysis() {
+    #[tokio::test]
+    async fn run_validation_returns_none_when_no_analysis() {
         let project = make_project(Some("main"));
         let task = make_task(None, None);
-        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None);
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None).await;
         assert!(result.is_none());
     }
 
-    #[test]
-    fn run_validation_returns_none_when_empty_entries() {
+    #[tokio::test]
+    async fn run_validation_returns_none_when_empty_entries() {
         let mut project = make_project(Some("main"));
         project.detected_analysis = Some("[]".to_string());
         let task = make_task(None, None);
-        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None);
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None).await;
         assert!(result.is_none());
     }
 
-    #[test]
-    fn run_validation_returns_none_when_no_validate_commands() {
+    #[tokio::test]
+    async fn run_validation_returns_none_when_no_validate_commands() {
         let mut project = make_project(Some("main"));
         project.detected_analysis =
             Some(r#"[{"path": ".", "label": "Test", "validate": []}]"#.to_string());
         let task = make_task(None, None);
-        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None);
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None).await;
         assert!(result.is_none());
     }
 
-    #[test]
-    fn run_validation_prefers_custom_over_detected() {
+    #[tokio::test]
+    async fn run_validation_prefers_custom_over_detected() {
         let mut project = make_project(Some("main"));
         // detected has a failing command
         project.detected_analysis =
@@ -3868,18 +4048,18 @@ mod tests {
         project.custom_analysis =
             Some(r#"[{"path": ".", "label": "Test", "validate": ["true"]}]"#.to_string());
         let task = make_task(None, None);
-        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None);
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None).await;
         assert!(result.is_some());
         assert!(result.unwrap().all_passed);
     }
 
-    #[test]
-    fn run_validation_succeeds_with_passing_command() {
+    #[tokio::test]
+    async fn run_validation_succeeds_with_passing_command() {
         let mut project = make_project(Some("main"));
         project.detected_analysis =
             Some(r#"[{"path": ".", "label": "Test", "validate": ["true"]}]"#.to_string());
         let task = make_task(None, None);
-        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None);
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None).await;
         assert!(result.is_some());
         let r = result.unwrap();
         assert!(r.all_passed);
@@ -3890,13 +4070,13 @@ mod tests {
         assert_eq!(r.log[0].label, "Test");
     }
 
-    #[test]
-    fn run_validation_fails_with_failing_command() {
+    #[tokio::test]
+    async fn run_validation_fails_with_failing_command() {
         let mut project = make_project(Some("main"));
         project.detected_analysis =
             Some(r#"[{"path": ".", "label": "Test", "validate": ["false"]}]"#.to_string());
         let task = make_task(None, None);
-        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None);
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None).await;
         assert!(result.is_some());
         let r = result.unwrap();
         assert!(!r.all_passed);
@@ -3907,25 +4087,25 @@ mod tests {
         assert_eq!(r.log[0].status, "failed");
     }
 
-    #[test]
-    fn run_validation_resolves_template_vars() {
+    #[tokio::test]
+    async fn run_validation_resolves_template_vars() {
         let mut project = make_project(Some("main"));
         project.detected_analysis = Some(
             r#"[{"path": ".", "label": "Test", "validate": ["echo {project_root} {worktree_path}"]}]"#.to_string(),
         );
         let mut task = make_task(None, None);
         task.worktree_path = Some("/tmp/wt".to_string());
-        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None);
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None).await;
         assert!(result.is_some());
         assert!(result.unwrap().all_passed);
     }
 
-    #[test]
-    fn run_validation_returns_none_for_invalid_json() {
+    #[tokio::test]
+    async fn run_validation_returns_none_for_invalid_json() {
         let mut project = make_project(Some("main"));
         project.detected_analysis = Some("not valid json".to_string());
         let task = make_task(None, None);
-        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None);
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None).await;
         assert!(result.is_none());
     }
 
@@ -4107,8 +4287,8 @@ mod tests {
     // run_validation_commands caching tests
     // ==================
 
-    #[test]
-    fn run_validation_skips_passed_when_cached() {
+    #[tokio::test]
+    async fn run_validation_skips_passed_when_cached() {
         let mut project = make_project(Some("main"));
         // "true" always passes, "echo hello" always passes
         project.detected_analysis = Some(
@@ -4143,7 +4323,7 @@ mod tests {
         ];
 
         let result =
-            run_validation_commands(&project, &task, Path::new("/tmp"), "", None, Some(&cached));
+            run_validation_commands(&project, &task, Path::new("/tmp"), "", None, Some(&cached)).await;
         assert!(result.is_some());
         let r = result.unwrap();
         assert!(r.all_passed);
@@ -4157,14 +4337,14 @@ mod tests {
         assert_eq!(r.log[1].command, "echo hello");
     }
 
-    #[test]
-    fn run_validation_reruns_all_when_no_cache() {
+    #[tokio::test]
+    async fn run_validation_reruns_all_when_no_cache() {
         let mut project = make_project(Some("main"));
         project.detected_analysis =
             Some(r#"[{"path": ".", "label": "Test", "validate": ["true"]}]"#.to_string());
         let task = make_task(None, None);
 
-        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None);
+        let result = run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None).await;
         assert!(result.is_some());
         let r = result.unwrap();
         assert!(r.all_passed);
