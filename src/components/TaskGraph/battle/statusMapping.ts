@@ -23,6 +23,28 @@ const GROUP_SPECS: Record<Exclude<BattleStatusGroup, "complete">, BattleGroupSpe
   failure: { group: "failure", color: "#f85149", speed: 44, hp: 1 },
 };
 
+const STATUS_COLORS: Partial<Record<InternalStatus, string>> = {
+  backlog: "#ef4444",
+  ready: "#f97316",
+  blocked: "#dc2626",
+  executing: "#fb923c",
+  re_executing: "#f59e0b",
+  qa_refining: "#fbbf24",
+  qa_testing: "#eab308",
+  qa_passed: "#84cc16",
+  qa_failed: "#ef4444",
+  paused: "#f97316",
+  pending_review: "#fde047",
+  reviewing: "#a3e635",
+  review_passed: "#4ade80",
+  escalated: "#f43f5e",
+  revision_needed: "#f87171",
+  pending_merge: "#22c55e",
+  merging: "#16a34a",
+  merge_incomplete: "#65a30d",
+  merge_conflict: "#dc2626",
+};
+
 export function mapStatusToBattleGroup(status: InternalStatus): BattleStatusGroup {
   if (["backlog", "ready", "blocked"].includes(status)) return "queue";
 
@@ -46,7 +68,11 @@ export function mapStatusToBattleGroup(status: InternalStatus): BattleStatusGrou
 export function getBattleSpecForStatus(status: InternalStatus): BattleGroupSpec | null {
   const group = mapStatusToBattleGroup(status);
   if (group === "complete") return null;
-  return GROUP_SPECS[group];
+  const base = GROUP_SPECS[group];
+  return {
+    ...base,
+    color: STATUS_COLORS[status] ?? base.color,
+  };
 }
 
 export function isActivelyWorkedStatus(status: InternalStatus): boolean {
