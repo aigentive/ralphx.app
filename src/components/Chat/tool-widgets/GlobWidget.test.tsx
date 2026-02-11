@@ -143,6 +143,52 @@ describe("GlobWidget", () => {
     });
   });
 
+  describe("parseSearchResult integration", () => {
+    it("deduplicates repeated file paths", () => {
+      render(
+        <GlobWidget
+          toolCall={makeGlobCall({
+            result: "src/app.ts\nsrc/app.ts\nsrc/utils.ts",
+          })}
+        />,
+      );
+      expect(screen.getByText("2 matches")).toBeInTheDocument();
+    });
+
+    it("skips metadata lines", () => {
+      render(
+        <GlobWidget
+          toolCall={makeGlobCall({
+            result: "Found 2 files\nsrc/app.ts\nsrc/utils.ts",
+          })}
+        />,
+      );
+      expect(screen.getByText("2 matches")).toBeInTheDocument();
+    });
+
+    it("normalizes absolute paths to repo-relative", () => {
+      render(
+        <GlobWidget
+          toolCall={makeGlobCall({
+            result: "/Users/dev/project/src/app.ts\n/Users/dev/project/tests/test.ts",
+          })}
+        />,
+      );
+      expect(screen.getByText("src/app.ts")).toBeInTheDocument();
+      expect(screen.getByText("tests/test.ts")).toBeInTheDocument();
+    });
+
+    it("renders no-match note from search result", () => {
+      render(
+        <GlobWidget
+          toolCall={makeGlobCall({ result: "No files matched" })}
+        />,
+      );
+      expect(screen.getByText("No files matched")).toBeInTheDocument();
+      expect(screen.getByText("no matches")).toBeInTheDocument();
+    });
+  });
+
   describe("compact mode", () => {
     it("passes compact prop without crashing", () => {
       render(<GlobWidget toolCall={makeGlobCall()} compact />);
