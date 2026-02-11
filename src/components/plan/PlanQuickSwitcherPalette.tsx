@@ -244,7 +244,7 @@ export function PlanQuickSwitcherPalette({
           e.preventDefault();
           setHighlightedIndex(itemCount - 1);
           break;
-        case "Enter":
+        case "Enter": {
           e.preventDefault();
           if (canClearPlan && highlightedIndex === 0) {
             handleClear();
@@ -256,6 +256,7 @@ export function PlanQuickSwitcherPalette({
             handleSelect(filteredCandidates[candidateIndex].sessionId);
           }
           break;
+        }
         case "Escape":
           e.preventDefault();
           onClose();

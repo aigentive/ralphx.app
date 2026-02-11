@@ -344,6 +344,7 @@ mod tests {
 
     // ==================== GET ALL TESTS ====================
 
+    /// v24 migration seeds 4 system buckets, so get_all is never empty after migrations
     #[tokio::test]
     async fn test_get_all_empty() {
         let conn = setup_test_db();
@@ -351,7 +352,8 @@ mod tests {
 
         let result = repo.get_all().await;
         assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        // v24 seeds 4 system buckets
+        assert_eq!(result.unwrap().len(), 4);
     }
 
     #[tokio::test]
@@ -360,14 +362,13 @@ mod tests {
         let repo = SqliteArtifactBucketRepository::new(conn);
 
         let bucket1 = create_test_bucket();
-        let bucket2 = create_system_bucket();
 
         repo.create(bucket1).await.unwrap();
-        repo.create(bucket2).await.unwrap();
 
         let result = repo.get_all().await;
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 2);
+        // 4 seeded + 1 custom
+        assert_eq!(result.unwrap().len(), 5);
     }
 
     #[tokio::test]
@@ -386,24 +387,26 @@ mod tests {
         repo.create(bucket2).await.unwrap();
 
         let result = repo.get_all().await.unwrap();
+        // Results sorted by name: Alpha, Code Changes, PRD Library, Research Outputs, Work Context, Zebra
         assert_eq!(result[0].name, "Alpha Bucket");
-        assert_eq!(result[1].name, "Zebra Bucket");
+        assert_eq!(result.last().unwrap().name, "Zebra Bucket");
     }
 
     // ==================== GET SYSTEM BUCKETS TESTS ====================
 
     #[tokio::test]
-    async fn test_get_system_buckets_empty() {
+    async fn test_get_system_buckets_returns_seeded() {
         let conn = setup_test_db();
         let repo = SqliteArtifactBucketRepository::new(conn);
 
-        // Create only non-system bucket
+        // v24 seeds 4 system buckets; adding a custom one shouldn't affect count
         let bucket = create_test_bucket();
         repo.create(bucket).await.unwrap();
 
         let result = repo.get_system_buckets().await;
         assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        // 4 system buckets from v24 migration
+        assert_eq!(result.unwrap().len(), 4);
     }
 
     #[tokio::test]
@@ -421,9 +424,9 @@ mod tests {
         assert!(result.is_ok());
 
         let buckets = result.unwrap();
-        assert_eq!(buckets.len(), 1);
-        assert!(buckets[0].is_system);
-        assert_eq!(buckets[0].id, system.id);
+        // 4 seeded + 1 additional system bucket
+        assert_eq!(buckets.len(), 5);
+        assert!(buckets.iter().all(|b| b.is_system));
     }
 
     // ==================== UPDATE TESTS ====================
@@ -528,12 +531,13 @@ mod tests {
     // ==================== SEEDING TESTS ====================
 
     #[tokio::test]
-    async fn test_seed_builtin_buckets_creates_all_four() {
+    async fn test_seed_builtin_buckets_already_seeded_by_migration() {
         let conn = setup_test_db();
         let repo = SqliteArtifactBucketRepository::new(conn);
 
+        // v24 migration already seeded the 4 buckets, so seed_builtin_buckets returns 0
         let count = repo.seed_builtin_buckets().await.unwrap();
-        assert_eq!(count, 4);
+        assert_eq!(count, 0);
 
         let all = repo.get_all().await.unwrap();
         assert_eq!(all.len(), 4);
@@ -547,12 +551,11 @@ mod tests {
         let conn = setup_test_db();
         let repo = SqliteArtifactBucketRepository::new(conn);
 
-        // Seed twice
+        // v24 already seeded, so both calls return 0
         let count1 = repo.seed_builtin_buckets().await.unwrap();
         let count2 = repo.seed_builtin_buckets().await.unwrap();
 
-        // First seed creates 4, second creates 0
-        assert_eq!(count1, 4);
+        assert_eq!(count1, 0);
         assert_eq!(count2, 0);
 
         // Still only 4 buckets
@@ -646,10 +649,10 @@ mod tests {
         let custom = create_test_bucket();
         repo.create(custom).await.unwrap();
 
-        // Seed built-ins
+        // Seed built-ins (already seeded by v24, so 0 new)
         repo.seed_builtin_buckets().await.unwrap();
 
-        // Should have 5 buckets total (1 custom + 4 system)
+        // Should have 5 buckets total (1 custom + 4 system from migration)
         let all = repo.get_all().await.unwrap();
         assert_eq!(all.len(), 5);
     }

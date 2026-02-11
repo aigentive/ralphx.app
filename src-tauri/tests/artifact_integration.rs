@@ -68,11 +68,18 @@ fn create_prd_library_bucket() -> ArtifactBucket {
 // Shared Test Logic (works with any repository implementation)
 // ============================================================================
 
+/// Helper to create a bucket only if it doesn't already exist (v24 migration seeds system buckets)
+async fn ensure_bucket(state: &AppState, bucket: ArtifactBucket) {
+    if !state.artifact_bucket_repo.exists(&bucket.id).await.unwrap() {
+        state.artifact_bucket_repo.create(bucket).await.unwrap();
+    }
+}
+
 /// Test 1: Create artifact in research-outputs bucket
 async fn test_create_artifact_in_research_outputs_bucket(state: &AppState) {
-    // Create the research-outputs bucket first
+    // Ensure the research-outputs bucket exists (may already be seeded by v24 migration)
     let bucket = create_research_outputs_bucket();
-    state.artifact_bucket_repo.create(bucket.clone()).await.unwrap();
+    ensure_bucket(state, bucket.clone()).await;
 
     // Create a research findings artifact
     let artifact = Artifact::new_inline(
@@ -117,11 +124,11 @@ async fn test_create_artifact_in_research_outputs_bucket(state: &AppState) {
 
 /// Test 2: Copy artifact to prd-library bucket (simulate routing)
 async fn test_copy_artifact_to_another_bucket(state: &AppState) {
-    // Create both buckets
+    // Ensure both buckets exist
     let research_bucket = create_research_outputs_bucket();
     let prd_bucket = create_prd_library_bucket();
-    state.artifact_bucket_repo.create(research_bucket).await.unwrap();
-    state.artifact_bucket_repo.create(prd_bucket).await.unwrap();
+    ensure_bucket(state, research_bucket).await;
+    ensure_bucket(state, prd_bucket).await;
 
     // Create original artifact in research-outputs
     let original = Artifact::new_inline(
@@ -190,9 +197,9 @@ async fn test_copy_artifact_to_another_bucket(state: &AppState) {
 
 /// Test 3: Create artifact relation (derived_from)
 async fn test_create_artifact_relation_derived_from(state: &AppState) {
-    // Create bucket
+    // Ensure bucket exists
     let bucket = create_research_outputs_bucket();
-    state.artifact_bucket_repo.create(bucket).await.unwrap();
+    ensure_bucket(state, bucket).await;
 
     // Create source artifact (research document)
     let source = Artifact::new_inline(
@@ -254,11 +261,11 @@ async fn test_create_artifact_relation_derived_from(state: &AppState) {
 
 /// Test 4: Query artifacts by bucket and type
 async fn test_query_artifacts_by_bucket_and_type(state: &AppState) {
-    // Create buckets
+    // Ensure buckets exist
     let research_bucket = create_research_outputs_bucket();
     let prd_bucket = create_prd_library_bucket();
-    state.artifact_bucket_repo.create(research_bucket).await.unwrap();
-    state.artifact_bucket_repo.create(prd_bucket).await.unwrap();
+    ensure_bucket(state, research_bucket).await;
+    ensure_bucket(state, prd_bucket).await;
 
     // Create multiple artifacts in research-outputs
     let findings1 = Artifact::new_inline("Findings 1", ArtifactType::Findings, "Content 1", "researcher")
@@ -330,9 +337,9 @@ async fn test_query_artifacts_by_bucket_and_type(state: &AppState) {
 
 /// Test 5: Artifact CRUD cycle
 async fn test_artifact_crud_cycle(state: &AppState) {
-    // Create bucket
+    // Ensure bucket exists
     let bucket = create_research_outputs_bucket();
-    state.artifact_bucket_repo.create(bucket).await.unwrap();
+    ensure_bucket(state, bucket).await;
 
     // CREATE
     let artifact = Artifact::new_inline(
@@ -372,9 +379,9 @@ async fn test_artifact_crud_cycle(state: &AppState) {
 
 /// Test 6: Multiple artifacts coexist in buckets
 async fn test_multiple_artifacts_coexist(state: &AppState) {
-    // Create all system buckets
+    // Ensure all system buckets exist
     for bucket in ArtifactBucket::system_buckets() {
-        state.artifact_bucket_repo.create(bucket).await.unwrap();
+        ensure_bucket(state, bucket).await;
     }
 
     // Create artifacts in different buckets
@@ -428,9 +435,9 @@ async fn test_multiple_artifacts_coexist(state: &AppState) {
 
 /// Test 7: Related artifacts (not just derived_from)
 async fn test_related_artifacts(state: &AppState) {
-    // Create bucket
+    // Ensure bucket exists
     let bucket = create_prd_library_bucket();
-    state.artifact_bucket_repo.create(bucket).await.unwrap();
+    ensure_bucket(state, bucket).await;
 
     // Create two related PRDs
     let prd1 = Artifact::new_inline("Auth PRD", ArtifactType::Prd, "Auth features", "user")
@@ -465,9 +472,9 @@ async fn test_related_artifacts(state: &AppState) {
 
 /// Test 8: Delete relation
 async fn test_delete_artifact_relation(state: &AppState) {
-    // Create bucket
+    // Ensure bucket exists
     let bucket = create_research_outputs_bucket();
-    state.artifact_bucket_repo.create(bucket).await.unwrap();
+    ensure_bucket(state, bucket).await;
 
     // Create two artifacts
     let artifact1 = Artifact::new_inline("Doc 1", ArtifactType::ResearchDocument, "c1", "researcher")
@@ -499,10 +506,10 @@ async fn test_delete_artifact_relation(state: &AppState) {
 
 /// Test 9: Bucket access control
 async fn test_bucket_access_control(state: &AppState) {
-    // Create research-outputs bucket with specific writers
+    // Ensure research-outputs bucket exists
     let bucket = create_research_outputs_bucket();
     let bucket_id = bucket.id.clone();
-    state.artifact_bucket_repo.create(bucket).await.unwrap();
+    ensure_bucket(state, bucket).await;
 
     // Verify bucket properties
     let found = state.artifact_bucket_repo.get_by_id(&bucket_id).await.unwrap();
@@ -526,9 +533,9 @@ async fn test_bucket_access_control(state: &AppState) {
 
 /// Test 10: System buckets are flagged correctly
 async fn test_system_buckets_flagged(state: &AppState) {
-    // Create system buckets
+    // Ensure system buckets exist
     for bucket in ArtifactBucket::system_buckets() {
-        state.artifact_bucket_repo.create(bucket).await.unwrap();
+        ensure_bucket(state, bucket).await;
     }
 
     // Get all system buckets
