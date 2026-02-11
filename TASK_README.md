@@ -6,7 +6,35 @@ This task adds keyboard navigation polish to the `PlanQuickSwitcherPalette` comp
 
 ## Changes Made
 
-### 1. Component Enhancements (`src/components/plan/PlanQuickSwitcherPalette.tsx`)
+### 1. Application Integration (Revision 2)
+
+Integrated the PlanQuickSwitcherPalette component into the main application:
+
+#### Keyboard Shortcut Handler (`src/hooks/useAppKeyboardShortcuts.ts`)
+- Added `openPlanQuickSwitcher` prop to hook interface
+- Implemented Cmd+Shift+P handler to open the quick switcher
+- Added safety checks to prevent activation when typing in inputs
+
+#### App Component (`src/App.tsx`)
+- Added state management for quick switcher open/close (`isPlanQuickSwitcherOpen`)
+- Created `handleOpenPlanQuickSwitcher` callback
+- Integrated component into JSX (renders only when projects exist)
+- Wired up keyboard shortcut to component state
+
+#### Stub Store (`src/stores/planStore.ts`)
+- Created minimal stub implementation to prevent runtime errors
+- Exports types matching the implementation plan (PlanCandidate, TaskStats, etc.)
+- Provides empty state and stub methods with console warnings
+- Allows component to load gracefully until backend is implemented
+
+#### Store Tests (`src/stores/planStore.test.ts`)
+- Tests for stub store initialization
+- Tests for all stub methods (loadActivePlan, setActivePlan, etc.)
+- Verifies console warnings are shown
+
+**Result:** Component can now be opened via Cmd+Shift+P. Shows "No accepted plans found" until backend APIs are implemented.
+
+### 2. Component Enhancements (`src/components/plan/PlanQuickSwitcherPalette.tsx`)
 
 #### Added Features:
 - **Ref to highlighted list item** (line 44): Added `highlightedItemRef` to track the currently highlighted item
@@ -94,6 +122,10 @@ This component is part of the larger "Global Active Plan + Non-Modal Plan Quick 
 ### Files Modified:
 - `src/components/plan/PlanQuickSwitcherPalette.tsx` - Component implementation
 - `src/components/plan/PlanQuickSwitcherPalette.test.tsx` - Test suite (new)
+- `src/App.tsx` - Application integration
+- `src/hooks/useAppKeyboardShortcuts.ts` - Keyboard shortcut handler
+- `src/stores/planStore.ts` - Stub store implementation (new)
+- `src/stores/planStore.test.ts` - Store tests (new)
 
 ## Design Decisions
 
