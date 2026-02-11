@@ -43,6 +43,7 @@ import { FloatingTimeline } from "./timeline/FloatingTimeline";
 import { GraphLegend } from "./controls/GraphLegend";
 import { FloatingGraphFilters } from "./controls/FloatingGraphFilters";
 import { PlanSelectorInline } from "@/components/plan/PlanSelectorInline";
+import type { SelectionSource } from "@/api/plan";
 import {
   COMPACT_MODE_THRESHOLD,
   DEFAULT_GRAPH_FILTERS,
@@ -82,6 +83,8 @@ export interface TaskGraphViewProps {
   projectId: string;
   /** Optional footer to render at the bottom of the left section (e.g., ExecutionControlBar) */
   footer?: React.ReactNode;
+  /** Opens the global plan quick switcher with source attribution */
+  onOpenPlanQuickSwitcher?: (source: SelectionSource) => void;
 }
 
 // ============================================================================
@@ -266,9 +269,15 @@ interface TaskGraphViewInnerProps {
   projectId: string;
   /** Optional footer to render at the bottom of the left section (e.g., ExecutionControlBar) */
   footer?: React.ReactNode;
+  /** Opens the global plan quick switcher with source attribution */
+  onOpenPlanQuickSwitcher?: (source: SelectionSource) => void;
 }
 
-function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
+function TaskGraphViewInner({
+  projectId,
+  footer,
+  onOpenPlanQuickSwitcher,
+}: TaskGraphViewInnerProps) {
   // GraphControls state (declared early so showArchived is available for useTaskGraph)
   const [filters, setFilters] = useState<GraphFilters>(DEFAULT_GRAPH_FILTERS);
 
@@ -1546,7 +1555,11 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
         {/* Plan selector control (only when a plan is active) */}
         {activePlanId && (
           <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
-            <PlanSelectorInline projectId={projectId} source="graph_inline" />
+            <PlanSelectorInline
+              projectId={projectId}
+              source="graph_inline"
+              onOpenPalette={(source) => onOpenPlanQuickSwitcher?.(source)}
+            />
           </div>
         )}
 
@@ -1559,7 +1572,11 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
               <p className="text-muted-foreground mb-6">
                 Select a plan to view work on the Graph.
               </p>
-              <PlanSelectorInline projectId={projectId} source="graph_inline" />
+              <PlanSelectorInline
+                projectId={projectId}
+                source="graph_inline"
+                onOpenPalette={(source) => onOpenPlanQuickSwitcher?.(source)}
+              />
             </div>
           </div>
         ) : filteredGraphData.nodes.length === 0 && hasActiveFilters ? (
@@ -1629,10 +1646,20 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
 // Main Component (provides ReactFlowProvider)
 // ============================================================================
 
-export function TaskGraphView({ projectId, footer }: TaskGraphViewProps) {
+export function TaskGraphView({
+  projectId,
+  footer,
+  onOpenPlanQuickSwitcher,
+}: TaskGraphViewProps) {
   return (
     <ReactFlowProvider>
-      <TaskGraphViewInner projectId={projectId} footer={footer} />
+      <TaskGraphViewInner
+        projectId={projectId}
+        footer={footer}
+        {...(onOpenPlanQuickSwitcher
+          ? { onOpenPlanQuickSwitcher }
+          : {})}
+      />
     </ReactFlowProvider>
   );
 }

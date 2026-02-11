@@ -25,6 +25,7 @@ import type { RunningProcess } from "@/api/running-processes";
 import { MergePipelinePopover } from "./MergePipelinePopover";
 import type { MergePipelineResponse } from "@/api/merge-pipeline";
 import { QueuedTasksPopover } from "./QueuedTasksPopover";
+import { InfoTooltip } from "./InfoTooltip";
 
 interface ExecutionControlBarProps {
   /** The project ID */
@@ -180,44 +181,95 @@ export function ExecutionControlBar({
             style={{ backgroundColor: statusColor }}
           />
 
-          {/* Running Count (Clickable - opens popover) */}
-          <RunningProcessPopover
-            processes={runningProcesses}
-            maxConcurrent={maxConcurrent}
-            open={isPopoverOpen}
-            onOpenChange={setIsPopoverOpen}
-            onPauseProcess={onPauseProcess}
-            onStopProcess={onStopProcess}
-            onOpenSettings={onOpenSettings}
-          >
-            <button
-              data-testid="running-count"
-              className="text-[13px] font-medium cursor-pointer hover:opacity-80 transition-opacity"
-              style={{ color: "hsl(220 10% 90%)" }}
-              onClick={() => setIsPopoverOpen(!isPopoverOpen)}
+          {/* Running Count (Clickable - opens popover) + Info Tooltip */}
+          <div className="flex items-center gap-1.5">
+            <RunningProcessPopover
+              processes={runningProcesses}
+              maxConcurrent={maxConcurrent}
+              open={isPopoverOpen}
+              onOpenChange={setIsPopoverOpen}
+              onPauseProcess={onPauseProcess}
+              onStopProcess={onStopProcess}
+              onOpenSettings={onOpenSettings}
             >
-              {runningLabel}{runningCount}/{maxConcurrent}
-            </button>
-          </RunningProcessPopover>
+              <button
+                data-testid="running-count"
+                className="text-[13px] font-medium cursor-pointer hover:opacity-80 transition-opacity"
+                style={{ color: "hsl(220 10% 90%)" }}
+                onClick={() => setIsPopoverOpen(!isPopoverOpen)}
+              >
+                {runningLabel}{runningCount}/{maxConcurrent}
+              </button>
+            </RunningProcessPopover>
+            <InfoTooltip
+              testId="running-info-tooltip"
+              content={
+                <div className="space-y-2">
+                  <div>
+                    <strong className="block mb-1" style={{ color: "hsl(220 10% 95%)" }}>
+                      Concurrent Execution
+                    </strong>
+                    <p style={{ color: "hsl(220 10% 75%)" }}>
+                      Tasks running in parallel. Currently limited to{" "}
+                      <strong>{maxConcurrent}</strong> per project, 20 globally.
+                    </p>
+                  </div>
+                  <div>
+                    <p style={{ color: "hsl(220 10% 75%)" }}>
+                      Includes: executing, reviewing, re-executing, QA, and merging agents.
+                    </p>
+                  </div>
+                  <div className="pt-1 border-t" style={{ borderColor: "hsla(220 20% 100% / 0.08)" }}>
+                    <p className="text-xs" style={{ color: "hsl(220 10% 60%)" }}>
+                      Change limits → Settings
+                    </p>
+                  </div>
+                </div>
+              }
+            />
+          </div>
 
           {/* Separator */}
           <span style={{ color: "hsl(220 10% 45%)" }}>•</span>
 
-          {/* Queued Count (Clickable Popover) */}
-          <QueuedTasksPopover
-            projectId={projectId}
-            queuedCount={queuedCount}
-          >
-            <button
-              data-testid="queued-count"
-              className="text-[13px] cursor-pointer hover:underline transition-all"
-              style={{ color: "hsl(220 10% 65%)" }}
-              aria-label="View queued tasks"
-              aria-haspopup="dialog"
+          {/* Queued Count (Clickable Popover) + Info Tooltip */}
+          <div className="flex items-center gap-1.5">
+            <QueuedTasksPopover
+              projectId={projectId}
+              queuedCount={queuedCount}
             >
-              {queuedLabel}{queuedCount}
-            </button>
-          </QueuedTasksPopover>
+              <button
+                data-testid="queued-count"
+                className="text-[13px] cursor-pointer hover:underline transition-all"
+                style={{ color: "hsl(220 10% 65%)" }}
+                aria-label="View queued tasks"
+                aria-haspopup="dialog"
+              >
+                {queuedLabel}{queuedCount}
+              </button>
+            </QueuedTasksPopover>
+            <InfoTooltip
+              testId="queued-info-tooltip"
+              content={
+                <div className="space-y-2">
+                  <div>
+                    <strong className="block mb-1" style={{ color: "hsl(220 10% 95%)" }}>
+                      Task Queue
+                    </strong>
+                    <p style={{ color: "hsl(220 10% 75%)" }}>
+                      Tasks in "ready" status waiting for an open execution slot.
+                      Processed by priority then age (oldest first).
+                    </p>
+                  </div>
+                  <div>
+                    <p style={{ color: "hsl(220 10% 75%)" }}>
+                      Blocked tasks are NOT counted here.
+                    </p>
+                  </div>
+                </div>
+              }
+            />
+          </div>
 
           {/* Separator */}
           <span style={{ color: "hsl(220 10% 45%)" }}>•</span>

@@ -67,6 +67,10 @@ export default defineConfig(async ({ mode }) => {
     : {};
 
   return {
+    define: {
+      // UI debug logging is opt-in via shell env, e.g. DEBUG=true npm run tauri dev
+      __UI_DEBUG__: JSON.stringify(process.env.DEBUG === "true"),
+    },
     plugins: [
       react(),
       tailwindcss(),
@@ -112,6 +116,9 @@ export default defineConfig(async ({ mode }) => {
     optimizeDeps: {
       include: ["@dagrejs/dagre", "@dagrejs/graphlib"],
       esbuildOptions: {
+        // Suppress dependency sourcemap generation in dev pre-bundles.
+        // This avoids noisy *.js.map access-control warnings in the Tauri webview.
+        sourcemap: false,
         // Force CommonJS for dagre packages
         mainFields: ["main", "module"],
       },
