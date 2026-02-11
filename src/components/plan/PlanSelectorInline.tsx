@@ -8,7 +8,7 @@
  */
 
 import * as React from "react";
-import { FileText, AlertCircle, ChevronDown } from "lucide-react";
+import { FileText, AlertCircle, ChevronDown, Loader2, RefreshCw } from "lucide-react";
 import { usePlanStore, type PlanCandidate } from "@/stores/planStore";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -53,6 +53,7 @@ export function PlanSelectorInline({
   );
   const planCandidates = usePlanStore((state) => state.planCandidates);
   const isLoading = usePlanStore((state) => state.isLoading);
+  const error = usePlanStore((state) => state.error);
 
   // Store actions
   const loadCandidates = usePlanStore((state) => state.loadCandidates);
@@ -74,13 +75,26 @@ export function PlanSelectorInline({
     );
   }, [planCandidates, searchQuery]);
 
-  // Load candidates when popover opens
+  // Load candidates when popover opens (initial load)
   React.useEffect(() => {
     if (open) {
-      loadCandidates(projectId, searchQuery);
+      loadCandidates(projectId);
       setHighlightedIndex(0);
     }
-  }, [open, projectId, searchQuery, loadCandidates]);
+  }, [open, projectId, loadCandidates]);
+
+  // Debounced search (300ms)
+  React.useEffect(() => {
+    if (!open) return;
+
+    const timer = setTimeout(() => {
+      if (searchQuery) {
+        loadCandidates(projectId, searchQuery);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, open, projectId, loadCandidates]);
 
   // Reset search query when popover closes
   React.useEffect(() => {
@@ -103,6 +117,11 @@ export function PlanSelectorInline({
     await clearActivePlan(projectId);
     setOpen(false);
   }, [projectId, clearActivePlan]);
+
+  // Handle retry
+  const handleRetry = React.useCallback(() => {
+    loadCandidates(projectId, searchQuery);
+  }, [projectId, searchQuery, loadCandidates]);
 
   // Keyboard navigation
   const handleKeyDown = React.useCallback(
@@ -191,13 +210,29 @@ export function PlanSelectorInline({
           </div>
 
           {/* Candidate List */}
-          {isLoading ? (
-            <div className="p-8 text-center text-sm text-muted-foreground transition-colors">
-              Loading plans...
+          {error ? (
+            <div className="p-8 flex flex-col items-center justify-center gap-3 text-sm">
+              <AlertCircle className="h-5 w-5 text-destructive" />
+              <p className="text-muted-foreground text-center">{error}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRetry}
+                className="gap-2"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Retry
+              </Button>
+            </div>
+          ) : isLoading ? (
+            <div className="p-8 flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground transition-colors">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span>Loading plans...</span>
             </div>
           ) : filteredCandidates.length === 0 ? (
-            <div className="p-8 text-center text-sm text-muted-foreground transition-colors">
-              No accepted plans found
+            <div className="p-8 flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground transition-colors">
+              <FileText className="h-5 w-5 opacity-50" />
+              <span>{searchQuery ? "No accepted plans found" : "No accepted plans yet"}</span>
             </div>
           ) : (
             <ScrollArea className="max-h-64">
