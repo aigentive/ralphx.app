@@ -146,6 +146,55 @@ describe("GrepWidget", () => {
     });
   });
 
+  describe("parseSearchResult integration", () => {
+    it("deduplicates paths from grep content output", () => {
+      // Grep content mode: path:line:match — same file multiple times
+      render(
+        <GrepWidget
+          toolCall={makeGrepCall({
+            result: "src/app.ts:10:import React\nsrc/app.ts:20:export default\nsrc/utils.ts:5:export function",
+          })}
+        />,
+      );
+      expect(screen.getByText("2 files")).toBeInTheDocument();
+      expect(screen.getByText("src/app.ts")).toBeInTheDocument();
+      expect(screen.getByText("src/utils.ts")).toBeInTheDocument();
+    });
+
+    it("skips metadata lines like 'Found N files'", () => {
+      render(
+        <GrepWidget
+          toolCall={makeGrepCall({
+            result: "Found 2 files\nsrc/app.ts\nsrc/utils.ts",
+          })}
+        />,
+      );
+      expect(screen.getByText("2 files")).toBeInTheDocument();
+    });
+
+    it("normalizes absolute paths to repo-relative", () => {
+      render(
+        <GrepWidget
+          toolCall={makeGrepCall({
+            result: "/Users/dev/project/src/app.ts\n/Users/dev/project/src/utils.ts",
+          })}
+        />,
+      );
+      expect(screen.getByText("src/app.ts")).toBeInTheDocument();
+      expect(screen.getByText("src/utils.ts")).toBeInTheDocument();
+    });
+
+    it("renders no-match note from search result", () => {
+      render(
+        <GrepWidget
+          toolCall={makeGrepCall({ result: "No matches found" })}
+        />,
+      );
+      expect(screen.getByText("No matches found")).toBeInTheDocument();
+      expect(screen.getByText("no results")).toBeInTheDocument();
+    });
+  });
+
   describe("compact mode", () => {
     it("passes compact prop without crashing", () => {
       render(<GrepWidget toolCall={makeGrepCall()} compact />);
