@@ -12,8 +12,9 @@ import { StreamingToolIndicator } from "./StreamingToolIndicator";
 import { HookEventMessage } from "./HookEventMessage";
 import { type ToolCall } from "./ToolCallIndicator";
 import type { HookEvent, HookStartedEvent } from "@/types/hook-event";
-import { Bot, MessageSquare, Loader2, Activity, X } from "lucide-react";
+import { Bot, MessageSquare, Loader2, Activity, X, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 
 interface Message {
   id: string;
@@ -169,6 +170,23 @@ export function ChatMessages({
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const isTestEnv = import.meta.env.VITEST;
 
+  // Compute streaming hash for auto-scroll hook
+  const streamingHash = useMemo(() => {
+    if (!isAgentRunning && !isSending) return undefined;
+    return JSON.stringify({
+      toolCalls: streamingToolCalls.map(tc => tc.id),
+      activeHooks: activeHooks.map(h => h.hookName),
+    });
+  }, [isAgentRunning, isSending, streamingToolCalls, activeHooks]);
+
+  // Use unified auto-scroll hook
+  const { handleFollowOutput, handleAtBottomStateChange, isAtBottom, scrollToBottom } =
+    useChatAutoScroll({
+      messageCount: messages.length,
+      isStreaming: isAgentRunning || isSending,
+      streamingHash,
+    });
+
   // Build merged timeline: messages + hook events sorted chronologically
   const timeline = useMemo(() => {
     const items: TimelineItem[] = [];
@@ -266,11 +284,13 @@ export function ChatMessages({
   }
 
   return (
-    <div className="flex-1 overflow-hidden" data-testid="chat-panel-messages">
+    <div className="flex-1 overflow-hidden relative" data-testid="chat-panel-messages">
       <Virtuoso
         ref={virtuosoRef}
         data={timeline}
-        followOutput="smooth"
+        followOutput={handleFollowOutput}
+        atBottomStateChange={handleAtBottomStateChange}
+        atBottomThreshold={150}
         alignToBottom
         className="h-full"
         components={{
@@ -322,6 +342,22 @@ export function ChatMessages({
           );
         }}
       />
+      {/* Scroll-to-bottom button */}
+      {!isAtBottom && messages.length > 5 && (
+        <Button
+          size="icon-sm"
+          variant="outline"
+          onClick={scrollToBottom}
+          className="absolute bottom-4 right-4 rounded-full shadow-lg"
+          style={{
+            background: "linear-gradient(135deg, rgba(255,107,53,0.95) 0%, rgba(255,107,53,0.85) 100%)",
+            border: "1px solid rgba(255,107,53,0.3)",
+          }}
+          aria-label="Scroll to bottom"
+        >
+          <ArrowDown className="w-4 h-4 text-white" />
+        </Button>
+      )}
     </div>
   );
 }
