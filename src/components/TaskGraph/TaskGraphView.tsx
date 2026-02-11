@@ -1398,6 +1398,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   }, [focusSelectionInView]);
   const prevGraphSelectionRef = useRef<typeof graphSelection>(undefined);
   const prevEffectiveNodeModeRef = useRef<NodeMode | null>(null);
+  const prevGraphRightPanelVisibleRef = useRef<boolean | null>(null);
 
   useEffect(() => {
     if (!graphSelection) return;
@@ -1406,6 +1407,34 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     if (isFirstSelection) return;
     focusInViewRef.current(graphSelection);
   }, [graphSelection, graphRightPanelVisible, isNavCompact]);
+
+  // Re-center when opening the right panel (Cmd+L timeline toggle) with no active selection.
+  // Keep viewport behavior consistent with capped focus logic.
+  useEffect(() => {
+    if (!initialFitDoneRef.current || !graphReady || isLoading) return;
+
+    const previousVisible = prevGraphRightPanelVisibleRef.current;
+    prevGraphRightPanelVisibleRef.current = graphRightPanelVisible;
+    if (previousVisible === null) return;
+
+    const panelVisibilityChanged = previousVisible !== graphRightPanelVisible;
+    if (!panelVisibilityChanged) return;
+    if (graphSelection) return;
+
+    if (activePlanArtifactId) {
+      focusInViewRef.current({ kind: "planGroup", id: activePlanArtifactId });
+      return;
+    }
+
+    fitViewDefault({ padding: 0.2, duration: 200 });
+  }, [
+    activePlanArtifactId,
+    fitViewDefault,
+    graphReady,
+    graphRightPanelVisible,
+    graphSelection,
+    isLoading,
+  ]);
 
   // Re-center when switching Compact/Standard mode.
   // Uses the same viewport focus API path so fit/zoom capping behavior remains consistent.
