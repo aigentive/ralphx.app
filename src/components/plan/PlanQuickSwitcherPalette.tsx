@@ -41,6 +41,7 @@ export function PlanQuickSwitcherPalette({
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const highlightedItemRef = useRef<HTMLButtonElement>(null);
 
   // Store state
   const activePlanId = usePlanStore((state) => state.activePlanByProject[projectId] ?? null);
@@ -83,6 +84,16 @@ export function PlanQuickSwitcherPalette({
     setHighlightedIndex(0);
   }, [searchQuery]);
 
+  // Scroll highlighted item into view
+  useEffect(() => {
+    if (highlightedItemRef.current) {
+      highlightedItemRef.current.scrollIntoView({
+        block: "nearest",
+        behavior: "smooth",
+      });
+    }
+  }, [highlightedIndex]);
+
   // Click outside to close
   useEffect(() => {
     if (!isOpen) return;
@@ -115,6 +126,11 @@ export function PlanQuickSwitcherPalette({
     (e: React.KeyboardEvent) => {
       const candidateCount = filteredCandidates.length;
 
+      // Prevent navigation if no candidates
+      if (candidateCount === 0 && ["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
+        return;
+      }
+
       switch (e.key) {
         case "ArrowDown":
           e.preventDefault();
@@ -123,6 +139,14 @@ export function PlanQuickSwitcherPalette({
         case "ArrowUp":
           e.preventDefault();
           setHighlightedIndex((i) => (i - 1 + candidateCount) % candidateCount);
+          break;
+        case "Home":
+          e.preventDefault();
+          setHighlightedIndex(0);
+          break;
+        case "End":
+          e.preventDefault();
+          setHighlightedIndex(candidateCount - 1);
           break;
         case "Enter":
           e.preventDefault();
@@ -205,12 +229,13 @@ export function PlanQuickSwitcherPalette({
                   return (
                     <button
                       key={plan.sessionId}
+                      ref={isHighlighted ? highlightedItemRef : null}
                       onClick={() => handleSelect(plan.sessionId)}
                       onMouseEnter={() => setHighlightedIndex(index)}
                       className={cn(
                         "w-full text-left px-4 py-3 flex items-center justify-between",
                         "hover:bg-white/5 hover:scale-[1.01] transition-all origin-center",
-                        isHighlighted && "bg-white/10",
+                        isHighlighted && "bg-white/10 ring-2 ring-[#ff6b35] ring-opacity-50",
                         isActive && "border-l-2 border-[#ff6b35]"
                       )}
                     >

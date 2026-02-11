@@ -18,6 +18,7 @@ interface UseAppKeyboardShortcutsProps {
   openWelcomeOverlay?: () => void;
   closeWelcomeOverlay?: () => void;
   welcomeOverlayReturnView?: ViewType | null;
+  openPlanQuickSwitcher?: () => void;
 }
 
 export function useAppKeyboardShortcuts({
@@ -32,6 +33,7 @@ export function useAppKeyboardShortcuts({
   openWelcomeOverlay,
   closeWelcomeOverlay,
   welcomeOverlayReturnView,
+  openPlanQuickSwitcher,
 }: UseAppKeyboardShortcutsProps) {
   // Keyboard shortcuts for view switching (Cmd+1-5 for main views, Cmd+K for chat)
   useEffect(() => {
@@ -177,13 +179,30 @@ export function useAppKeyboardShortcuts({
             toggleGraphRightPanel();
             break;
           }
+          case "p":
+          case "P": {
+            // Cmd+Shift+P: Open plan quick switcher
+            if (!e.shiftKey || !openPlanQuickSwitcher) {
+              return;
+            }
+            const activeEl = document.activeElement;
+            if (
+              activeEl instanceof HTMLInputElement ||
+              activeEl instanceof HTMLTextAreaElement
+            ) {
+              return;
+            }
+            e.preventDefault();
+            openPlanQuickSwitcher();
+            break;
+          }
         }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [setCurrentView, toggleChatVisible, toggleReviewsPanel, toggleGraphRightPanel, currentView, openProjectWizard, hasProjects, showWelcomeOverlay, openWelcomeOverlay, closeWelcomeOverlay, welcomeOverlayReturnView]);
+  }, [setCurrentView, toggleChatVisible, toggleReviewsPanel, toggleGraphRightPanel, currentView, openProjectWizard, hasProjects, showWelcomeOverlay, openWelcomeOverlay, closeWelcomeOverlay, welcomeOverlayReturnView, openPlanQuickSwitcher]);
 
   // Global shortcut for Cmd+, (registered at OS level to bypass DevTools interception)
   const setCurrentViewRef = useRef(setCurrentView);
