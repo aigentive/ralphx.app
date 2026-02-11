@@ -31,6 +31,8 @@ import { PlanDisplay } from "./PlanDisplay";
 import { useUiStore } from "@/stores/uiStore";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
+import { usePlanStore } from "@/stores/planStore";
+import { useProjectStore } from "@/stores/projectStore";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { ConversationEmptyState } from "./EmptyStates";
 import { animationStyles } from "./PlanningView.constants";
@@ -159,9 +161,22 @@ export function PlanningView({
     if (!session) return;
     if (reopenDialogMode === "reopen") {
       reopenMutation.mutate(session.id, {
-        onSuccess: () => {
+        onSuccess: async () => {
           setReopenDialogOpen(false);
           toast.success("Session reopened");
+
+          // Clear active plan if this session was the active plan
+          if (activeProjectId) {
+            const activePlanId = activePlanByProject[activeProjectId];
+            if (activePlanId === session.id) {
+              try {
+                await clearActivePlan(activeProjectId);
+              } catch (err) {
+                console.error("Failed to clear active plan:", err);
+                toast.error("Failed to clear active plan");
+              }
+            }
+          }
         },
         onError: (err) => toast.error(`Failed to reopen: ${err.message}`),
       });
@@ -177,7 +192,7 @@ export function PlanningView({
         }
       );
     }
-  }, [session, reopenDialogMode, reopenMutation, resetMutation, proposals]);
+  }, [session, reopenDialogMode, reopenMutation, resetMutation, proposals, activeProjectId, activePlanByProject, clearActivePlan]);
 
   // Get the event bus from context (TauriEventBus or MockEventBus)
   const eventBus = useEventBus();
@@ -336,6 +351,11 @@ export function PlanningView({
   // Navigate to task handler - switches to kanban view and selects the task
   const setCurrentView = useUiStore((state) => state.setCurrentView);
   const setSelectedTaskId = useUiStore((state) => state.setSelectedTaskId);
+
+  // Plan store actions for clearing active plan on session reopen
+  const clearActivePlan = usePlanStore((state) => state.clearActivePlan);
+  const activePlanByProject = usePlanStore((state) => state.activePlanByProject);
+  const activeProjectId = useProjectStore((state) => state.activeProjectId);
 
   const handleNavigateToTask = useCallback((taskId: string) => {
     setCurrentView("kanban");
