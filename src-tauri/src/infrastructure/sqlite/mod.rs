@@ -37,6 +37,9 @@ pub mod sqlite_permission_repo;
 pub mod sqlite_workflow_repo;
 pub mod sqlite_running_agent_registry;
 pub mod state_machine_repository;
+pub mod sqlite_memory_entry_repository;
+pub mod sqlite_memory_event_repository;
+pub mod sqlite_memory_archive_job_repository;
 
 // Re-export commonly used items
 pub use connection::{get_app_data_db_path, get_default_db_path, open_connection, open_memory_connection};
@@ -75,3 +78,6 @@ pub use sqlite_question_repo::SqliteQuestionRepository;
 pub use sqlite_permission_repo::SqlitePermissionRepository;
 pub use sqlite_running_agent_registry::SqliteRunningAgentRegistry;
 pub use state_machine_repository::TaskStateMachineRepository;
+pub use sqlite_memory_entry_repository::SqliteMemoryEntryRepository;
+pub use sqlite_memory_event_repository::SqliteMemoryEventRepository;
+pub use sqlite_memory_archive_job_repository::SqliteMemoryArchiveJobRepository;

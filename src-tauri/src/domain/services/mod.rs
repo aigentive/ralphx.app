@@ -6,6 +6,7 @@
 pub mod artifact_flow_service;
 pub mod artifact_service;
 pub mod bucket_classifier;
+pub mod index_rewriter;
 pub mod message_queue;
 pub mod methodology_service;
 pub mod research_service;
@@ -17,6 +18,7 @@ pub mod workflow_service;
 pub use artifact_flow_service::{ArtifactFlowService, FlowExecutionResult, StepExecutionResult};
 pub use artifact_service::ArtifactService;
 pub use bucket_classifier::BucketClassifier;
+pub use index_rewriter::{IndexRewriter, RewriteResult};
 // Unified message queue - keyed by (context_type, context_id)
 pub use message_queue::{MessageQueue, QueuedMessage, QueueKey};
 pub use methodology_service::{MethodologyActivationResult, MethodologyService};
