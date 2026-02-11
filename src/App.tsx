@@ -40,6 +40,7 @@ import { useTasksAwaitingReview } from "@/hooks/useReviews";
 import { useReviewMutations } from "@/hooks/useReviewMutations";
 import { useExecutionEvents } from "@/hooks/useExecutionEvents";
 import { useExecutionStatus } from "@/hooks/useExecutionControl";
+import { useMergePipeline } from "@/hooks/useMergePipeline";
 import { useProjects, projectKeys } from "@/hooks/useProjects";
 import {
   useIdeationSession,
@@ -212,6 +213,16 @@ function AppContent() {
   // Fetch initial execution status and poll every 30s as fallback
   useExecutionStatus();
   const { isApproving, isRequestingChanges } = useReviewMutations();
+
+  // Merge pipeline data
+  const { data: mergePipelineData } = useMergePipeline();
+  const mergingCount = useMemo(() => {
+    if (!mergePipelineData) return 0;
+    return mergePipelineData.active.length + mergePipelineData.waiting.length + mergePipelineData.needsAttention.length;
+  }, [mergePipelineData]);
+  const hasAttentionMerges = useMemo(() => {
+    return (mergePipelineData?.needsAttention.length ?? 0) > 0;
+  }, [mergePipelineData]);
 
   // Ideation hooks
   const { data: sessionData, isLoading: isSessionLoading } = useIdeationSession(activeSession?.id ?? "");
@@ -900,6 +911,9 @@ function AppContent() {
                       runningCount={executionStatus.runningCount}
                       maxConcurrent={executionStatus.maxConcurrent}
                       queuedCount={executionStatus.queuedCount}
+                      mergingCount={mergingCount}
+                      hasAttentionMerges={hasAttentionMerges}
+                      mergePipelineData={mergePipelineData ?? null}
                       isPaused={executionStatus.isPaused}
                       isLoading={isExecutionLoading}
                       onPauseToggle={handlePauseToggle}
@@ -919,6 +933,9 @@ function AppContent() {
                       runningCount={executionStatus.runningCount}
                       maxConcurrent={executionStatus.maxConcurrent}
                       queuedCount={executionStatus.queuedCount}
+                      mergingCount={mergingCount}
+                      hasAttentionMerges={hasAttentionMerges}
+                      mergePipelineData={mergePipelineData ?? null}
                       isPaused={executionStatus.isPaused}
                       isLoading={isExecutionLoading}
                       onPauseToggle={handlePauseToggle}
