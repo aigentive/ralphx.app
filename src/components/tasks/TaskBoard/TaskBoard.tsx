@@ -8,7 +8,7 @@
  * - Premium Apple-grade typography and spacing
  */
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useSyncExternalStore, useCallback } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -34,6 +34,7 @@ import { useTaskSearch } from "@/hooks/useTaskSearch";
 import { TaskSearchBar } from "../TaskSearchBar";
 import { EmptySearchState } from "../EmptySearchState";
 import { PlanSelectorInline } from "@/components/plan/PlanSelectorInline";
+import type { SelectionSource } from "@/api/plan";
 import { infiniteTaskKeys } from "@/hooks/useInfiniteTasksQuery";
 import { defaultWorkflow, type WorkflowColumn } from "@/types/workflow";
 import type { Task, TaskListResponse, InternalStatus } from "@/types/task";
@@ -56,12 +57,21 @@ export interface TaskBoardProps {
   projectId: string;
   /** Optional ideation session ID to filter tasks by plan */
   ideationSessionId?: string | null;
+  /** Opens the global plan quick switcher with source attribution */
+  onOpenPlanQuickSwitcher?: (source: SelectionSource) => void;
 }
 
-export function TaskBoard({ projectId, ideationSessionId: ideationSessionIdProp }: TaskBoardProps) {
+export function TaskBoard({
+  projectId,
+  ideationSessionId: ideationSessionIdProp,
+  onOpenPlanQuickSwitcher,
+}: TaskBoardProps) {
   const queryClient = useQueryClient();
   const eventBus = useEventBus();
   const activePlanId = usePlanStore((s) => s.activePlanByProject[projectId] ?? null);
+  const activePlanLoaded = usePlanStore(
+    (s) => s.activePlanLoadedByProject[projectId] ?? false
+  );
   // Use prop if provided, otherwise fall back to active plan from store
   const ideationSessionId = ideationSessionIdProp ?? activePlanId;
 
@@ -74,7 +84,6 @@ export function TaskBoard({ projectId, ideationSessionId: ideationSessionIdProp 
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [overColumnId, setOverColumnId] = useState<string | null>(null);
   const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
-  const [searchOpen, setSearchOpen] = useState(false);
   const openModal = useUiStore((s) => s.openModal);
   const showArchived = useUiStore((s) => s.showArchived);
   const setShowArchived = useUiStore((s) => s.setShowArchived);
@@ -106,33 +115,36 @@ export function TaskBoard({ projectId, ideationSessionId: ideationSessionIdProp 
     queryFn: () => api.tasks.getArchivedCount(projectId, ideationSessionId),
   });
 
-  // Count merge tasks across all columns reactively via cache observer
-  const [mergeTaskCount, setMergeTaskCount] = useState(0);
-  useEffect(() => {
-    function countMergeTasks(): number {
-      let count = 0;
-      for (const col of columns) {
-        const key = infiniteTaskKeys.list({
-          projectId,
-          statuses: getColumnStatuses(col),
-          includeArchived: showArchived,
-          ideationSessionId,
-        });
-        const colData = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);
-        if (colData?.pages) {
-          for (const page of colData.pages) {
-            count += page.tasks.filter((t: Task) => t.category === "plan_merge").length;
-          }
+  // Count merge tasks reactively from query cache without render-phase setState.
+  const getMergeTaskCountSnapshot = useCallback((): number => {
+    let count = 0;
+    for (const col of columns) {
+      const key = infiniteTaskKeys.list({
+        projectId,
+        statuses: getColumnStatuses(col),
+        includeArchived: showArchived,
+        ideationSessionId,
+      });
+      const colData = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);
+      if (colData?.pages) {
+        for (const page of colData.pages) {
+          count += page.tasks.filter((t: Task) => t.category === "plan_merge").length;
         }
       }
-      return count;
     }
-    setMergeTaskCount(countMergeTasks());
-    const unsubscribe = queryClient.getQueryCache().subscribe(() => {
-      setMergeTaskCount(countMergeTasks());
-    });
-    return unsubscribe;
+    return count;
   }, [columns, projectId, showArchived, ideationSessionId, queryClient]);
+
+  const subscribeToQueryCache = useCallback(
+    (onStoreChange: () => void) => queryClient.getQueryCache().subscribe(onStoreChange),
+    [queryClient]
+  );
+
+  const mergeTaskCount = useSyncExternalStore(
+    subscribeToQueryCache,
+    getMergeTaskCountSnapshot,
+    getMergeTaskCountSnapshot
+  );
 
   // Search functionality
   const {
@@ -146,7 +158,7 @@ export function TaskBoard({ projectId, ideationSessionId: ideationSessionIdProp 
   });
 
   // Check if search is active
-  const isSearchActive = searchOpen && boardSearchQuery && boardSearchQuery.length >= 2;
+  const isSearchActive = !!boardSearchQuery && boardSearchQuery.length >= 2;
 
   // When search is active, group search results by column
   const searchTasksByColumn = useMemo(() => {
@@ -154,17 +166,17 @@ export function TaskBoard({ projectId, ideationSessionId: ideationSessionIdProp 
       return new Map<string, Task[]>();
     }
 
-    // Group search results by their internalStatus to distribute to columns
-    const tasksByStatus = new Map<string, Task[]>();
-    searchResults.forEach((task) => {
-      const existing = tasksByStatus.get(task.internalStatus) || [];
-      tasksByStatus.set(task.internalStatus, [...existing, task]);
-    });
-
     // Map to column IDs
     const tasksByColumn = new Map<string, Task[]>();
     columns.forEach((column) => {
-      const tasks = tasksByStatus.get(column.mapsTo) || [];
+      // Keep search mapping aligned with rendering logic:
+      // rendering uses groups resolved from defaultWorkflow by column.id.
+      const workflowColumn = defaultWorkflow.columns.find((c) => c.id === column.id);
+      const statusSource = workflowColumn ?? column;
+      const columnStatuses = new Set(getColumnStatuses(statusSource));
+      const tasks = searchResults.filter((task) =>
+        columnStatuses.has(task.internalStatus)
+      );
       if (tasks.length > 0) {
         tasksByColumn.set(column.id, tasks);
       }
@@ -191,7 +203,7 @@ export function TaskBoard({ projectId, ideationSessionId: ideationSessionIdProp 
     return () => clearTimeout(timeoutId);
   }, [movingTaskId]);
 
-  // Keyboard shortcuts: Cmd+N for new task, Cmd+F for search, Escape to close search
+  // Keyboard shortcuts: Cmd+N for new task, Cmd+F focuses search input, Escape clears search
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Guard: ignore if user is typing in an input/textarea
@@ -210,22 +222,20 @@ export function TaskBoard({ projectId, ideationSessionId: ideationSessionIdProp 
         openModal('task-create', { projectId });
       }
 
-      // Cmd+F / Ctrl+F: Open search
+      // Cmd+F / Ctrl+F: browser-level find should be disabled in board context
       if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
         e.preventDefault();
-        setSearchOpen(true);
       }
 
-      // Escape: Close search
-      if (e.key === 'Escape' && searchOpen) {
-        setSearchOpen(false);
+      // Escape: clear active search query
+      if (e.key === 'Escape' && boardSearchQuery) {
         setBoardSearchQuery(null);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [searchOpen, setBoardSearchQuery, openModal, projectId]);
+  }, [boardSearchQuery, setBoardSearchQuery, openModal, projectId]);
 
   // Listen for archive/restore/delete events for real-time updates
   useEffect(() => {
@@ -389,7 +399,7 @@ export function TaskBoard({ projectId, ideationSessionId: ideationSessionIdProp 
   // Check if we should show empty state
   const hasSearchResults = searchResults.length > 0;
   const showEmptyState = isSearchActive && !hasSearchResults && !isSearchLoading;
-  const showNoPlanState = !activePlanId;
+  const showNoPlanState = activePlanLoaded && !activePlanId && !isSearchActive;
 
   return (
     <DndContext
@@ -402,67 +412,69 @@ export function TaskBoard({ projectId, ideationSessionId: ideationSessionIdProp 
       {/* Container for the entire board including header */}
       <div className="flex flex-col h-full">
         {/* Header bar - macOS Tahoe: minimal, flat */}
-        {(searchOpen || archivedCount > 0 || mergeTaskCount > 0) && (
-          <div className="px-4 py-2 flex items-center gap-3">
-            {/* Search Bar (when search is open) */}
-            {searchOpen && (
-              <div className="flex-1 max-w-md">
-                <TaskSearchBar
-                  value={boardSearchQuery || ''}
-                  onChange={setBoardSearchQuery}
-                  onClose={() => {
-                    setSearchOpen(false);
-                    setBoardSearchQuery(null);
-                  }}
-                  resultCount={searchResults.length}
-                  isSearching={isSearchLoading}
-                />
-              </div>
-            )}
-
-            {/* Show Archived toggle - simple Tahoe style */}
-            {archivedCount > 0 && (
-              <Toggle
-                pressed={showArchived}
-                onPressedChange={setShowArchived}
-                aria-label="Toggle show archived tasks"
-                className="gap-1.5 h-7 px-2.5 rounded-md text-xs font-medium transition-colors"
-                style={{
-                  background: showArchived
-                    ? "hsla(14 100% 60% / 0.15)"
-                    : "transparent",
-                  color: showArchived
-                    ? "hsl(14 100% 60%)"
-                    : "hsl(220 10% 55%)",
-                }}
-              >
-                <Archive className="h-3.5 w-3.5" />
-                <span>Archived ({archivedCount})</span>
-              </Toggle>
-            )}
-
-            {/* Show Merge Tasks toggle */}
-            {mergeTaskCount > 0 && (
-              <Toggle
-                pressed={showMergeTasks}
-                onPressedChange={setShowMergeTasks}
-                aria-label="Toggle show merge tasks"
-                className="gap-1.5 h-7 px-2.5 rounded-md text-xs font-medium transition-colors"
-                style={{
-                  background: showMergeTasks
-                    ? "hsla(14 100% 60% / 0.15)"
-                    : "transparent",
-                  color: showMergeTasks
-                    ? "hsl(14 100% 60%)"
-                    : "hsl(220 10% 55%)",
-                }}
-              >
-                <GitMerge className="h-3.5 w-3.5" />
-                <span>Merge ({mergeTaskCount})</span>
-              </Toggle>
-            )}
+        <div className="px-4 py-2 flex items-center gap-3">
+          {/* Search Bar is always visible on Kanban */}
+          <div className="flex-1 max-w-md">
+            <TaskSearchBar
+              value={boardSearchQuery || ''}
+              onChange={setBoardSearchQuery}
+              onClose={() => {
+                setBoardSearchQuery(null);
+              }}
+              resultCount={searchResults.length}
+              isSearching={isSearchLoading}
+            />
           </div>
-        )}
+
+          {/* Active plan selector in header row */}
+          <PlanSelectorInline
+            projectId={projectId}
+            source="kanban_inline"
+            onOpenPalette={(source) => onOpenPlanQuickSwitcher?.(source)}
+          />
+
+          {/* Show Archived toggle - simple Tahoe style */}
+          {archivedCount > 0 && (
+            <Toggle
+              pressed={showArchived}
+              onPressedChange={setShowArchived}
+              aria-label="Toggle show archived tasks"
+              className="gap-1.5 h-7 px-2.5 rounded-md text-xs font-medium transition-colors"
+              style={{
+                background: showArchived
+                  ? "hsla(14 100% 60% / 0.15)"
+                  : "transparent",
+                color: showArchived
+                  ? "hsl(14 100% 60%)"
+                  : "hsl(220 10% 55%)",
+              }}
+            >
+              <Archive className="h-3.5 w-3.5" />
+              <span>Archived ({archivedCount})</span>
+            </Toggle>
+          )}
+
+          {/* Show Merge Tasks toggle */}
+          {mergeTaskCount > 0 && (
+            <Toggle
+              pressed={showMergeTasks}
+              onPressedChange={setShowMergeTasks}
+              aria-label="Toggle show merge tasks"
+              className="gap-1.5 h-7 px-2.5 rounded-md text-xs font-medium transition-colors"
+              style={{
+                background: showMergeTasks
+                  ? "hsla(14 100% 60% / 0.15)"
+                  : "transparent",
+                color: showMergeTasks
+                  ? "hsl(14 100% 60%)"
+                  : "hsl(220 10% 55%)",
+              }}
+            >
+              <GitMerge className="h-3.5 w-3.5" />
+              <span>Merge ({mergeTaskCount})</span>
+            </Toggle>
+          )}
+        </div>
 
         {/* TaskBoard container - macOS Tahoe: clean, flat, minimal */}
         <div
@@ -477,13 +489,6 @@ export function TaskBoard({ projectId, ideationSessionId: ideationSessionIdProp 
             WebkitOverflowScrolling: "touch",
           }}
         >
-          {/* Plan selector control (same centered treatment as Graph) */}
-          {activePlanId && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
-              <PlanSelectorInline projectId={projectId} source="kanban_inline" />
-            </div>
-          )}
-
           {/* Show no plan state when no active plan is selected */}
           {showNoPlanState ? (
             <div className="flex-1 flex items-center justify-center">
@@ -523,7 +528,11 @@ export function TaskBoard({ projectId, ideationSessionId: ideationSessionIdProp 
                   Select a plan to view work on the Kanban board.
                 </p>
                 <div className="space-y-2">
-                  <PlanSelectorInline projectId={projectId} source="kanban_inline" />
+                  <PlanSelectorInline
+                    projectId={projectId}
+                    source="kanban_inline"
+                    onOpenPalette={(source) => onOpenPlanQuickSwitcher?.(source)}
+                  />
                   <p className="text-sm text-gray-500">or press Cmd+Shift+P</p>
                 </div>
               </div>

@@ -21,6 +21,8 @@ import {
 interface PlanState {
   /** Active plan session ID by project ID (projectId → sessionId | null) */
   activePlanByProject: Record<string, string | null>;
+  /** Tracks whether active plan has been loaded at least once for a project */
+  activePlanLoadedByProject: Record<string, boolean>;
   /** Cached plan candidates (from last loadCandidates call) */
   planCandidates: PlanCandidate[];
   /** Loading state for async operations */
@@ -81,6 +83,7 @@ export const usePlanStore = create<PlanState & PlanActions>()(
   immer((set) => ({
     // Initial state
     activePlanByProject: {},
+    activePlanLoadedByProject: {},
     planCandidates: [],
     isLoading: false,
     error: null,
@@ -92,28 +95,37 @@ export const usePlanStore = create<PlanState & PlanActions>()(
         const sessionId = await planApi.getActivePlan(projectId);
         set((state) => {
           state.activePlanByProject[projectId] = sessionId;
+          state.activePlanLoadedByProject[projectId] = true;
           state.isLoading = false;
         });
       } catch (error) {
-        set({
-          error: error instanceof Error ? error.message : "Failed to load active plan",
-          isLoading: false,
+        set((state) => {
+          state.error = error instanceof Error ? error.message : "Failed to load active plan";
+          state.isLoading = false;
+          // Mark as loaded even on error to avoid indefinite placeholder limbo.
+          state.activePlanLoadedByProject[projectId] = true;
         });
       }
     },
 
     setActivePlan: async (projectId, sessionId, source) => {
+      const previousSessionId = usePlanStore.getState().activePlanByProject[projectId] ?? null;
       try {
-        set({ isLoading: true, error: null });
-        await planApi.setActivePlan(projectId, sessionId, source);
+        // Optimistic UI update so selectors reflect the new active plan immediately.
         set((state) => {
+          state.isLoading = true;
+          state.error = null;
           state.activePlanByProject[projectId] = sessionId;
-          state.isLoading = false;
+          state.activePlanLoadedByProject[projectId] = true;
         });
+        await planApi.setActivePlan(projectId, sessionId, source);
+        set({ isLoading: false });
       } catch (error) {
-        set({
-          error: error instanceof Error ? error.message : "Failed to set active plan",
-          isLoading: false,
+        set((state) => {
+          state.error = error instanceof Error ? error.message : "Failed to set active plan";
+          state.isLoading = false;
+          // Roll back optimistic update on failure.
+          state.activePlanByProject[projectId] = previousSessionId;
         });
         throw error; // Re-throw so callers can handle
       }
@@ -125,6 +137,7 @@ export const usePlanStore = create<PlanState & PlanActions>()(
         await planApi.clearActivePlan(projectId);
         set((state) => {
           state.activePlanByProject[projectId] = null;
+          state.activePlanLoadedByProject[projectId] = true;
           state.isLoading = false;
         });
       } catch (error) {

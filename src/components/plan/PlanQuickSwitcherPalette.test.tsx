@@ -58,12 +58,14 @@ const mockCandidates: PlanCandidate[] = [
 describe("PlanQuickSwitcherPalette", () => {
   const mockLoadCandidates = vi.fn();
   const mockSetActivePlan = vi.fn();
+  const mockClearActivePlan = vi.fn();
   const mockOnClose = vi.fn();
 
   const defaultProps = {
     projectId: "project-1",
     isOpen: true,
     onClose: mockOnClose,
+    showClearAction: false,
   };
 
   const defaultStoreState = {
@@ -73,6 +75,7 @@ describe("PlanQuickSwitcherPalette", () => {
     error: null,
     loadCandidates: mockLoadCandidates,
     setActivePlan: mockSetActivePlan,
+    clearActivePlan: mockClearActivePlan,
   };
 
   beforeEach(() => {
@@ -399,6 +402,43 @@ describe("PlanQuickSwitcherPalette", () => {
       });
 
       consoleErrorSpy.mockRestore();
+    });
+
+    it("uses provided selection source when selecting a plan", async () => {
+      mockSetActivePlan.mockResolvedValue(undefined);
+
+      render(
+        <PlanQuickSwitcherPalette
+          {...defaultProps}
+          selectionSource="graph_inline"
+        />
+      );
+
+      const featureBButton = screen.getByText("Feature B").closest("button")!;
+      fireEvent.click(featureBButton);
+
+      await waitFor(() => {
+        expect(mockSetActivePlan).toHaveBeenCalledWith("project-1", "session-2", "graph_inline");
+      });
+    });
+
+    it("shows and executes clear action when enabled", async () => {
+      mockClearActivePlan.mockResolvedValue(undefined);
+
+      render(
+        <PlanQuickSwitcherPalette
+          {...defaultProps}
+          showClearAction
+        />
+      );
+
+      const clearButton = screen.getByTestId("plan-quick-switcher-clear");
+      fireEvent.click(clearButton);
+
+      await waitFor(() => {
+        expect(mockClearActivePlan).toHaveBeenCalledWith("project-1");
+        expect(mockOnClose).toHaveBeenCalled();
+      });
     });
   });
 
