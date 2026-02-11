@@ -400,7 +400,7 @@ fn test_v24_fresh_db_creation() {
         )
         .unwrap();
 
-    assert_eq!(version, 24, "Schema version should be 24 after fresh install");
+    assert_eq!(version, 25, "Schema version should be 25 after fresh install");
 
     // Verify all memory tables exist
     assert!(helpers::table_exists(&conn, "project_memory_settings"));
