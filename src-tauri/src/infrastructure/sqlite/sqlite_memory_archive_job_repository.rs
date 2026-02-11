@@ -1,10 +1,12 @@
 // SQLite implementation of MemoryArchiveJobRepository
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 use serde_json::Value as JsonValue;
-use std::sync::Mutex;
+use tokio::sync::Mutex;
 
 use crate::domain::entities::{
     MemoryArchiveJob, MemoryArchiveJobId, MemoryArchiveJobStatus, MemoryArchiveJobType, ProcessId,
@@ -14,15 +16,20 @@ use crate::error::{AppError, AppResult};
 
 /// SQLite-backed memory archive job repository
 pub struct SqliteMemoryArchiveJobRepository {
-    conn: Mutex<Connection>,
+    conn: Arc<Mutex<Connection>>,
 }
 
 impl SqliteMemoryArchiveJobRepository {
     /// Create a new repository with the given connection
     pub fn new(conn: Connection) -> Self {
         Self {
-            conn: Mutex::new(conn),
+            conn: Arc::new(Mutex::new(conn)),
         }
+    }
+
+    /// Create from an Arc-wrapped mutex connection (for sharing)
+    pub fn from_shared(conn: Arc<Mutex<Connection>>) -> Self {
+        Self { conn }
     }
 
     /// Helper to parse a row into a MemoryArchiveJob
@@ -95,8 +102,7 @@ impl SqliteMemoryArchiveJobRepository {
 #[async_trait]
 impl MemoryArchiveJobRepository for SqliteMemoryArchiveJobRepository {
     async fn create(&self, job: MemoryArchiveJob) -> AppResult<MemoryArchiveJob> {
-        let conn = self.conn.lock()
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        let conn = self.conn.lock().await;
 
         let payload_json = serde_json::to_string(&job.payload)
             .map_err(|e| AppError::Database(format!("Failed to serialize payload: {}", e)))?;
@@ -125,8 +131,7 @@ impl MemoryArchiveJobRepository for SqliteMemoryArchiveJobRepository {
     }
 
     async fn get_by_id(&self, id: &MemoryArchiveJobId) -> AppResult<Option<MemoryArchiveJob>> {
-        let conn = self.conn.lock()
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        let conn = self.conn.lock().await;
 
         let result = conn.query_row(
             "SELECT id, project_id, job_type, payload_json, status, error_message,
@@ -147,8 +152,7 @@ impl MemoryArchiveJobRepository for SqliteMemoryArchiveJobRepository {
         &self,
         project_id: &ProcessId,
     ) -> AppResult<Vec<MemoryArchiveJob>> {
-        let conn = self.conn.lock()
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        let conn = self.conn.lock().await;
 
         let mut stmt = conn.prepare(
             "SELECT id, project_id, job_type, payload_json, status, error_message,
@@ -174,8 +178,7 @@ impl MemoryArchiveJobRepository for SqliteMemoryArchiveJobRepository {
         status: MemoryArchiveJobStatus,
         error_message: Option<String>,
     ) -> AppResult<()> {
-        let conn = self.conn.lock()
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        let conn = self.conn.lock().await;
 
         let now = Utc::now().to_rfc3339();
 
