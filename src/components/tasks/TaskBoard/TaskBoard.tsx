@@ -64,6 +64,12 @@ export function TaskBoard({ projectId, ideationSessionId: ideationSessionIdProp 
   const activePlanId = usePlanStore((s) => s.activePlanByProject[projectId] ?? null);
   // Use prop if provided, otherwise fall back to active plan from store
   const ideationSessionId = ideationSessionIdProp ?? activePlanId;
+
+  // Load active plan from backend on mount or project change
+  useEffect(() => {
+    usePlanStore.getState().loadActivePlan(projectId);
+  }, [projectId]);
+
   const { columns, onDragEnd, isLoading, error } = useTaskBoard(projectId, ideationSessionId);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [overColumnId, setOverColumnId] = useState<string | null>(null);

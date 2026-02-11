@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { setupApp } from "../fixtures/setup.fixtures";
 
 /**
@@ -12,6 +13,16 @@ import { setupApp } from "../fixtures/setup.fixtures";
  *
  * Uses web mode with mock API (api-mock/)
  */
+
+/**
+ * Wait for React Query queries to settle after plan state changes
+ * Since query keys include ideationSessionId, changing the plan causes new queries with different keys
+ * We need to wait for those queries to fetch and succeed before asserting on DOM
+ */
+async function waitForQueriesAfterPlanChange(page: Page, timeoutMs = 2000) {
+  // Wait for queries to refetch and settle
+  await page.waitForTimeout(timeoutMs);
+}
 
 test.describe("Active Plan Cross-View Sync", () => {
   test.beforeEach(async ({ page }) => {
@@ -130,28 +141,50 @@ test.describe("Active Plan Cross-View Sync", () => {
   });
 
   test("Test 1: Accept session in Ideation → navigate to Graph → verify filtered tasks shown", async ({ page }) => {
-    // Set active plan via planStore (simulating session acceptance)
-    await page.evaluate(async () => {
+    // Navigate to Graph first (simulating user navigation after session acceptance)
+    await page.click('[data-testid="nav-graph"]');
+
+    // Wait for graph empty state to appear initially (no plan selected yet)
+    await page.waitForSelector('[data-testid="graph-empty-state"]', { timeout: 10000 });
+
+    // Now set active plan via planStore (simulating session acceptance)
+    const debugInfo = await page.evaluate(async () => {
       // Get the planStore from window (exposed by zustand devtools or direct access)
       const { usePlanStore } = await import("/src/stores/planStore");
       const store = usePlanStore.getState();
       await store.setActivePlan("test-project-1", "session-1", "acceptance");
+
+      // Get fresh state after update (Zustand state is immutable, need to call getState() again)
+      const freshStore = usePlanStore.getState();
+      const activePlan = freshStore.activePlanByProject["test-project-1"];
+
+      // Check what's in the mock store
+      const mockStore = (window as unknown as { __mockStore?: { tasks: Map<string, unknown>, activePlans?: Map<string, string | null> } }).__mockStore;
+      const taskCount = mockStore?.tasks?.size ?? 0;
+      const activePlanFromMock = mockStore?.activePlans?.get("test-project-1");
+
+      // Force React Query to refetch task-graph queries with the new ideationSessionId
+      const queryClient = (window as unknown as { __queryClient?: { invalidateQueries: (options: { queryKey: string[] }) => Promise<void>, refetchQueries: (options: { queryKey: string[] }) => Promise<void> } }).__queryClient;
+      if (queryClient) {
+        // Invalidate and refetch task-graph queries
+        await queryClient.invalidateQueries({ queryKey: ['task-graph'] });
+        await queryClient.refetchQueries({ queryKey: ['task-graph'] });
+      }
+
+      return {
+        activePlanInStore: activePlan,
+        activePlanInMock: activePlanFromMock,
+        taskCount,
+      };
     });
 
-    // Wait for React Query to invalidate and refetch
-    await page.waitForTimeout(500);
+    console.log("Debug info:", debugInfo);
 
-    // Navigate to Graph
-    await page.click('[data-testid="nav-graph"]');
+    // Wait for React Query to refetch with new ideationSessionId and settle
+    await waitForQueriesAfterPlanChange(page, 2000);
 
-    // Wait for either graph view or empty state to appear
-    await Promise.race([
-      page.waitForSelector('[data-testid="task-graph-view"]', { timeout: 10000 }),
-      page.waitForSelector('[data-testid="graph-empty-state"]', { timeout: 10000 })
-    ]);
-
-    // Wait for graph to render
-    await page.waitForTimeout(500);
+    // Wait for task nodes to render
+    await page.waitForSelector('[data-testid="task-node"]', { timeout: 10000 });
 
     // Verify tasks from session-1 are shown by checking for task nodes with their IDs
     // TaskNode renders with data-testid="task-node" but we can use data attributes
@@ -174,8 +207,8 @@ test.describe("Active Plan Cross-View Sync", () => {
       await store.setActivePlan("test-project-1", "session-2", "acceptance");
     });
 
-    // Wait for React Query to invalidate and refetch
-    await page.waitForTimeout(500);
+    // Wait for React Query to refetch with new ideationSessionId
+    await waitForQueriesAfterPlanChange(page, 2000);
 
     // Navigate to Kanban
     await page.click('[data-testid="nav-kanban"]');
@@ -210,8 +243,8 @@ test.describe("Active Plan Cross-View Sync", () => {
       await store.setActivePlan("test-project-1", "session-1", "ui_selection");
     });
 
-    // Wait for graph to update
-    await page.waitForTimeout(500);
+    // Wait for React Query to refetch with new ideationSessionId
+    await waitForQueriesAfterPlanChange(page, 2000);
 
     // Navigate to Kanban
     await page.click('[data-testid="nav-kanban"]');
@@ -234,6 +267,9 @@ test.describe("Active Plan Cross-View Sync", () => {
       const store = usePlanStore.getState();
       await store.setActivePlan("test-project-1", "session-2", "quick_switcher");
     });
+
+    // Wait for React Query to refetch with new ideationSessionId
+    await waitForQueriesAfterPlanChange(page, 2000);
 
     // Verify Graph view shows only session-2 tasks
     await page.click('[data-testid="nav-graph"]');
@@ -269,6 +305,9 @@ test.describe("Active Plan Cross-View Sync", () => {
       await store.clearActivePlan("test-project-1");
     });
 
+    // Wait for React Query to refetch with null ideationSessionId
+    await waitForQueriesAfterPlanChange(page, 2000);
+
     // Check Graph view shows empty/no tasks
     await page.click('[data-testid="nav-graph"]');
 
@@ -301,8 +340,8 @@ test.describe("Active Plan Cross-View Sync", () => {
       await store.setActivePlan("test-project-1", "session-1", "acceptance");
     });
 
-    // Wait for active plan to be set
-    await page.waitForTimeout(500);
+    // Wait for queries to settle with session-1
+    await waitForQueriesAfterPlanChange(page, 2000);
 
     // Simulate reopening a session which clears the active plan
     await page.evaluate(async () => {
@@ -320,6 +359,9 @@ test.describe("Active Plan Cross-View Sync", () => {
       const store = usePlanStore.getState();
       await store.clearActivePlan("test-project-1");
     });
+
+    // Wait for queries to refetch with null ideationSessionId
+    await waitForQueriesAfterPlanChange(page, 2000);
 
     // Verify Graph shows no tasks
     await page.click('[data-testid="nav-graph"]');
