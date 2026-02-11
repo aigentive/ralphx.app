@@ -105,11 +105,7 @@ impl<R: WorkflowRepository> WorkflowService<R> {
             None => self.get_active_workflow().await?,
         };
 
-        let columns = workflow
-            .columns
-            .iter()
-            .map(AppliedColumn::from)
-            .collect();
+        let columns = workflow.columns.iter().map(AppliedColumn::from).collect();
 
         Ok(AppliedWorkflow {
             workflow_id: workflow.id,
@@ -299,7 +295,10 @@ mod tests {
         )
     }
 
-    fn create_service_with_mock() -> (WorkflowService<MockWorkflowRepository>, Arc<MockWorkflowRepository>) {
+    fn create_service_with_mock() -> (
+        WorkflowService<MockWorkflowRepository>,
+        Arc<MockWorkflowRepository>,
+    ) {
         let repo = Arc::new(MockWorkflowRepository::new());
         let service = WorkflowService::new(repo.clone());
         (service, repo)
@@ -501,7 +500,10 @@ mod tests {
         let result = service.validate_column_mappings(&workflow);
 
         assert!(!result.is_valid);
-        assert!(result.errors.iter().any(|e| e.error.contains("ID cannot be empty")));
+        assert!(result
+            .errors
+            .iter()
+            .any(|e| e.error.contains("ID cannot be empty")));
     }
 
     #[tokio::test]
@@ -515,7 +517,10 @@ mod tests {
         let result = service.validate_column_mappings(&workflow);
 
         assert!(!result.is_valid);
-        assert!(result.errors.iter().any(|e| e.error.contains("name cannot be empty")));
+        assert!(result
+            .errors
+            .iter()
+            .any(|e| e.error.contains("name cannot be empty")));
     }
 
     #[tokio::test]

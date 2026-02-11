@@ -44,7 +44,10 @@ pub async fn resolve_permission_request(
         message: args.message,
     };
 
-    let resolved = state.permission_state.resolve(&args.request_id, decision).await;
+    let resolved = state
+        .permission_state
+        .resolve(&args.request_id, decision)
+        .await;
 
     if resolved {
         Ok(ResolvePermissionResponse {

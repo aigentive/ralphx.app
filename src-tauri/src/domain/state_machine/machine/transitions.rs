@@ -28,8 +28,7 @@ impl TaskStateMachine {
             }
             TaskEvent::BlockerDetected { blocker_id } => {
                 // Add blocker to context
-                self.context
-                    .add_blocker(Blocker::new(blocker_id.clone()));
+                self.context.add_blocker(Blocker::new(blocker_id.clone()));
                 Response::Transition(State::Blocked)
             }
             TaskEvent::Cancel => Response::Transition(State::Cancelled),
@@ -72,6 +71,8 @@ impl TaskStateMachine {
                     .add_blocker(Blocker::human_input(reason.clone()));
                 Response::Transition(State::Blocked)
             }
+            TaskEvent::Pause => Response::Transition(State::Paused),
+            TaskEvent::Stop => Response::Transition(State::Stopped),
             TaskEvent::Cancel => Response::Transition(State::Cancelled),
             _ => Response::NotHandled,
         }
@@ -91,9 +92,9 @@ impl TaskStateMachine {
             TaskEvent::ExecutionFailed { error } => {
                 Response::Transition(State::Failed(FailedData::new(error.clone())))
             }
-            TaskEvent::BlockerDetected { blocker_id: _ } => {
-                Response::Transition(State::Blocked)
-            }
+            TaskEvent::BlockerDetected { blocker_id: _ } => Response::Transition(State::Blocked),
+            TaskEvent::Pause => Response::Transition(State::Paused),
+            TaskEvent::Stop => Response::Transition(State::Stopped),
             TaskEvent::Cancel => Response::Transition(State::Cancelled),
             _ => Response::NotHandled,
         }
@@ -110,6 +111,8 @@ impl TaskStateMachine {
             TaskEvent::ExecutionFailed { error } => {
                 Response::Transition(State::Failed(FailedData::new(error.clone())))
             }
+            TaskEvent::Pause => Response::Transition(State::Paused),
+            TaskEvent::Stop => Response::Transition(State::Stopped),
             TaskEvent::Cancel => Response::Transition(State::Cancelled),
             _ => Response::NotHandled,
         }
@@ -122,6 +125,8 @@ impl TaskStateMachine {
             TaskEvent::QaTestsComplete { passed: false } => {
                 Response::Transition(State::QaFailed(QaFailedData::default()))
             }
+            TaskEvent::Pause => Response::Transition(State::Paused),
+            TaskEvent::Stop => Response::Transition(State::Stopped),
             TaskEvent::Cancel => Response::Transition(State::Cancelled),
             _ => Response::NotHandled,
         }
@@ -180,6 +185,8 @@ impl TaskStateMachine {
                 }
                 Response::Transition(State::RevisionNeeded)
             }
+            TaskEvent::Pause => Response::Transition(State::Paused),
+            TaskEvent::Stop => Response::Transition(State::Stopped),
             TaskEvent::Cancel => Response::Transition(State::Cancelled),
             _ => Response::NotHandled,
         }
@@ -251,6 +258,8 @@ impl TaskStateMachine {
             TaskEvent::MergeComplete => Response::Transition(State::Merged),
             TaskEvent::MergeAgentFailed => Response::Transition(State::MergeConflict),
             TaskEvent::MergeAgentError => Response::Transition(State::MergeIncomplete),
+            TaskEvent::Pause => Response::Transition(State::Paused),
+            TaskEvent::Stop => Response::Transition(State::Stopped),
             _ => Response::NotHandled,
         }
     }

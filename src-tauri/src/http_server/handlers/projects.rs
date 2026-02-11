@@ -181,7 +181,12 @@ pub async fn get_project_analysis(
             .and_then(|t| t.task_branch.as_deref())
             .unwrap_or("");
 
-        resolve_template_vars(entries, &project.working_directory, worktree_path, task_branch)
+        resolve_template_vars(
+            entries,
+            &project.working_directory,
+            worktree_path,
+            task_branch,
+        )
     } else {
         resolve_template_vars(entries, &project.working_directory, "", "")
     };
@@ -214,8 +219,7 @@ pub async fn save_project_analysis(
         .ok_or(StatusCode::NOT_FOUND)?;
 
     // Update detected_analysis (never touch custom_analysis)
-    let entries_json = serde_json::to_string(&req.entries)
-        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    let entries_json = serde_json::to_string(&req.entries).map_err(|_| StatusCode::BAD_REQUEST)?;
     project.detected_analysis = Some(entries_json);
     project.analyzed_at = Some(chrono::Utc::now().to_rfc3339());
     project.touch();

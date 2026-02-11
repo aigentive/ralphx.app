@@ -33,11 +33,7 @@ impl<A: ArtifactRepository, B: ArtifactBucketRepository> ArtifactService<A, B> {
 
     /// Create a new artifact, optionally in a specific bucket.
     /// Validates bucket constraints (accepted types, writers) if bucket is specified.
-    pub async fn create_artifact(
-        &self,
-        artifact: Artifact,
-        creator: &str,
-    ) -> AppResult<Artifact> {
+    pub async fn create_artifact(&self, artifact: Artifact, creator: &str) -> AppResult<Artifact> {
         // Validate bucket constraints if bucket is specified
         if let Some(bucket_id) = &artifact.bucket_id {
             let bucket = self
@@ -121,9 +117,7 @@ impl<A: ArtifactRepository, B: ArtifactBucketRepository> ArtifactService<A, B> {
             .bucket_repo
             .get_by_id(target_bucket_id)
             .await?
-            .ok_or_else(|| {
-                AppError::NotFound(format!("Bucket not found: {}", target_bucket_id))
-            })?;
+            .ok_or_else(|| AppError::NotFound(format!("Bucket not found: {}", target_bucket_id)))?;
 
         // Validate the artifact type is accepted
         if !bucket.accepts_type(source.artifact_type) {
@@ -147,8 +141,7 @@ impl<A: ArtifactRepository, B: ArtifactBucketRepository> ArtifactService<A, B> {
             artifact_type: source.artifact_type,
             name: source.name.clone(),
             content: source.content.clone(),
-            metadata: ArtifactMetadata::new(copier)
-                .with_version(1),
+            metadata: ArtifactMetadata::new(copier).with_version(1),
             derived_from: vec![source.id.clone()],
             bucket_id: Some(target_bucket_id.clone()),
         };
@@ -194,8 +187,7 @@ impl<A: ArtifactRepository, B: ArtifactBucketRepository> ArtifactService<A, B> {
             artifact_type: current.artifact_type,
             name: current.name.clone(),
             content: new_content,
-            metadata: ArtifactMetadata::new(updater)
-                .with_version(new_version),
+            metadata: ArtifactMetadata::new(updater).with_version(new_version),
             derived_from: vec![current.id.clone()],
             bucket_id: current.bucket_id.clone(),
         };

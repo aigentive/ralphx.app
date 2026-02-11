@@ -1,5 +1,25 @@
 # Development Guide
 
+## Prerequisites and MCP Setup
+
+```bash
+# Rust toolchain
+rustup install stable
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+```bash
+# Register RalphX MCP server with Claude
+claude mcp add ralphx node ralphx-plugin/ralphx-mcp-server/build/index.js
+```
+
+Install MCP server dependencies:
+
+```bash
+cd ralphx-plugin/ralphx-mcp-server
+npm i
+```
+
 ## Starting the Dev Server
 
 ```bash

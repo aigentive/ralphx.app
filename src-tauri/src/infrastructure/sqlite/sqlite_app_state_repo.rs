@@ -29,8 +29,7 @@ impl AppStateRepository for SqliteAppStateRepository {
     async fn get(&self) -> Result<AppSettings, Box<dyn std::error::Error>> {
         let conn = self.conn.lock().await;
 
-        let mut stmt =
-            conn.prepare("SELECT active_project_id FROM app_state WHERE id = 1")?;
+        let mut stmt = conn.prepare("SELECT active_project_id FROM app_state WHERE id = 1")?;
 
         let result = stmt.query_row([], |row| {
             let active_project_id: Option<String> = row.get(0)?;

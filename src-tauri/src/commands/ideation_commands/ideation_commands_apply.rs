@@ -221,19 +221,13 @@ pub async fn apply_proposals_to_kanban(
                 .clone()
                 .unwrap_or_else(|| ArtifactId::from_string(session_id.as_str().to_string()));
 
-            let base_branch = project
-                .base_branch
-                .as_deref()
-                .unwrap_or("main")
-                .to_string();
+            let base_branch = project.base_branch.as_deref().unwrap_or("main").to_string();
             let repo_path = PathBuf::from(&project.working_directory);
 
             // Generate branch name: ralphx/{project-slug}/plan-{short-id}
             let project_slug = slug_from_name(&project.name);
-            let short_id =
-                &effective_plan_id.as_str()[..8.min(effective_plan_id.as_str().len())];
-            let branch_name =
-                format!("ralphx/{}/plan-{}", project_slug, short_id);
+            let short_id = &effective_plan_id.as_str()[..8.min(effective_plan_id.as_str().len())];
+            let branch_name = format!("ralphx/{}/plan-{}", project_slug, short_id);
 
             // Create git feature branch from base branch
             GitService::create_feature_branch(&repo_path, &branch_name, &base_branch)
@@ -268,8 +262,7 @@ pub async fn apply_proposals_to_kanban(
             merge_task.plan_artifact_id = plan_artifact_id.clone();
             merge_task.ideation_session_id = Some(session_id.clone());
             merge_task.internal_status = InternalStatus::Blocked;
-            merge_task.blocked_reason =
-                Some("Waiting for all plan tasks to complete".to_string());
+            merge_task.blocked_reason = Some("Waiting for all plan tasks to complete".to_string());
 
             let created_merge_task = state
                 .task_repo

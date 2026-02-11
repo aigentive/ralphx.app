@@ -498,7 +498,11 @@ mod tests {
     #[test]
     fn ideation_session_id_new_generates_unique_ids() {
         let ids: HashSet<String> = (0..100).map(|_| IdeationSessionId::new().0).collect();
-        assert_eq!(ids.len(), 100, "All generated IdeationSessionIds should be unique");
+        assert_eq!(
+            ids.len(),
+            100,
+            "All generated IdeationSessionIds should be unique"
+        );
     }
 
     #[test]
@@ -585,7 +589,11 @@ mod tests {
     #[test]
     fn task_proposal_id_new_generates_unique_ids() {
         let ids: HashSet<String> = (0..100).map(|_| TaskProposalId::new().0).collect();
-        assert_eq!(ids.len(), 100, "All generated TaskProposalIds should be unique");
+        assert_eq!(
+            ids.len(),
+            100,
+            "All generated TaskProposalIds should be unique"
+        );
     }
 
     #[test]
@@ -672,7 +680,11 @@ mod tests {
     #[test]
     fn chat_message_id_new_generates_unique_ids() {
         let ids: HashSet<String> = (0..100).map(|_| ChatMessageId::new().0).collect();
-        assert_eq!(ids.len(), 100, "All generated ChatMessageIds should be unique");
+        assert_eq!(
+            ids.len(),
+            100,
+            "All generated ChatMessageIds should be unique"
+        );
     }
 
     #[test]
@@ -844,7 +856,11 @@ mod tests {
     #[test]
     fn review_issue_id_new_generates_unique_ids() {
         let ids: HashSet<String> = (0..100).map(|_| ReviewIssueId::new().0).collect();
-        assert_eq!(ids.len(), 100, "All generated ReviewIssueIds should be unique");
+        assert_eq!(
+            ids.len(),
+            100,
+            "All generated ReviewIssueIds should be unique"
+        );
     }
 
     #[test]

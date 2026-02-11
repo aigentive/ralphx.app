@@ -121,7 +121,11 @@ impl TaskRepository for MemoryTaskRepository {
         let tasks = self.tasks.read().await;
         let mut result: Vec<Task> = tasks
             .values()
-            .filter(|t| t.project_id == *project_id && t.internal_status == status && t.archived_at.is_none())
+            .filter(|t| {
+                t.project_id == *project_id
+                    && t.internal_status == status
+                    && t.archived_at.is_none()
+            })
             .cloned()
             .collect();
         result.sort_by(|a, b| {
@@ -149,10 +153,7 @@ impl TaskRepository for MemoryTaskRepository {
 
         // Record history
         let mut history = self.history.write().await;
-        history.push((
-            id.clone(),
-            StatusTransition::new(from, to, trigger),
-        ));
+        history.push((id.clone(), StatusTransition::new(from, to, trigger)));
 
         Ok(())
     }
@@ -265,8 +266,7 @@ impl TaskRepository for MemoryTaskRepository {
         let mut result: Vec<Task> = tasks
             .values()
             .filter(|t| {
-                t.project_id == *project_id
-                    && (include_archived || t.archived_at.is_none())
+                t.project_id == *project_id && (include_archived || t.archived_at.is_none())
             })
             .cloned()
             .collect();
@@ -307,7 +307,11 @@ impl TaskRepository for MemoryTaskRepository {
         }
     }
 
-    async fn get_archived_count(&self, project_id: &ProjectId, ideation_session_id: Option<&str>) -> AppResult<u32> {
+    async fn get_archived_count(
+        &self,
+        project_id: &ProjectId,
+        ideation_session_id: Option<&str>,
+    ) -> AppResult<u32> {
         let tasks = self.tasks.read().await;
         let count = tasks
             .values()
@@ -357,7 +361,10 @@ impl TaskRepository for MemoryTaskRepository {
 
                 // Match session_id if provided
                 if let Some(sid) = ideation_session_id {
-                    if t.ideation_session_id.as_ref().is_none_or(|id| id.as_str() != sid) {
+                    if t.ideation_session_id
+                        .as_ref()
+                        .is_none_or(|id| id.as_str() != sid)
+                    {
                         return false;
                     }
                 }
@@ -372,7 +379,11 @@ impl TaskRepository for MemoryTaskRepository {
 
         // Apply pagination
         let start = offset as usize;
-        let paginated = result.into_iter().skip(start).take(limit as usize).collect();
+        let paginated = result
+            .into_iter()
+            .skip(start)
+            .take(limit as usize)
+            .collect();
 
         Ok(paginated)
     }

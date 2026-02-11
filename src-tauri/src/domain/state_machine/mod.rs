@@ -19,15 +19,16 @@ pub use context::{TaskContext, TaskServices};
 pub use events::TaskEvent;
 pub use machine::{ParseStateError, Response, State, TaskStateMachine};
 pub use mocks::{
-    MockAgentSpawner, MockDependencyManager, MockEventEmitter, MockNotifier, MockTaskScheduler, ServiceCall,
+    MockAgentSpawner, MockDependencyManager, MockEventEmitter, MockNotifier, MockTaskScheduler,
+    ServiceCall,
 };
-pub use services::{AgentSpawner, DependencyManager, EventEmitter, Notifier, TaskScheduler};
 pub use persistence::{
     deserialize_failed_data, deserialize_qa_failed_data, serialize_failed_data,
     serialize_qa_failed_data, state_has_data, StateData,
 };
+pub use services::{AgentSpawner, DependencyManager, EventEmitter, Notifier, TaskScheduler};
+pub use transition_handler::{resolve_merge_branches, TransitionHandler, TransitionResult};
 pub use types::{Blocker, FailedData, QaFailedData, QaFailure};
-pub use transition_handler::{TransitionHandler, TransitionResult, resolve_merge_branches};
 
 #[cfg(test)]
 mod tests {

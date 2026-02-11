@@ -32,15 +32,11 @@ impl Default for MemoryTaskDependencyRepository {
 
 #[async_trait]
 impl TaskDependencyRepository for MemoryTaskDependencyRepository {
-    async fn add_dependency(
-        &self,
-        task_id: &TaskId,
-        depends_on_task_id: &TaskId,
-    ) -> AppResult<()> {
-        self.dependencies.write().unwrap().push((
-            task_id.to_string(),
-            depends_on_task_id.to_string(),
-        ));
+    async fn add_dependency(&self, task_id: &TaskId, depends_on_task_id: &TaskId) -> AppResult<()> {
+        self.dependencies
+            .write()
+            .unwrap()
+            .push((task_id.to_string(), depends_on_task_id.to_string()));
         Ok(())
     }
 
@@ -49,9 +45,10 @@ impl TaskDependencyRepository for MemoryTaskDependencyRepository {
         task_id: &TaskId,
         depends_on_task_id: &TaskId,
     ) -> AppResult<()> {
-        self.dependencies.write().unwrap().retain(|(t, d)| {
-            t != &task_id.to_string() || d != &depends_on_task_id.to_string()
-        });
+        self.dependencies
+            .write()
+            .unwrap()
+            .retain(|(t, d)| t != &task_id.to_string() || d != &depends_on_task_id.to_string());
         Ok(())
     }
 
@@ -87,9 +84,10 @@ impl TaskDependencyRepository for MemoryTaskDependencyRepository {
     }
 
     async fn clear_dependencies(&self, task_id: &TaskId) -> AppResult<()> {
-        self.dependencies.write().unwrap().retain(|(t, d)| {
-            t != &task_id.to_string() && d != &task_id.to_string()
-        });
+        self.dependencies
+            .write()
+            .unwrap()
+            .retain(|(t, d)| t != &task_id.to_string() && d != &task_id.to_string());
         Ok(())
     }
 
@@ -113,7 +111,11 @@ impl TaskDependencyRepository for MemoryTaskDependencyRepository {
             .count() as u32)
     }
 
-    async fn has_dependency(&self, task_id: &TaskId, depends_on_task_id: &TaskId) -> AppResult<bool> {
+    async fn has_dependency(
+        &self,
+        task_id: &TaskId,
+        depends_on_task_id: &TaskId,
+    ) -> AppResult<bool> {
         Ok(self
             .dependencies
             .read()

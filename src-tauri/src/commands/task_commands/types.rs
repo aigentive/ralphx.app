@@ -1,7 +1,7 @@
 // Type definitions for task_commands module
 
-use serde::{Deserialize, Serialize};
 use crate::domain::entities::Task;
+use serde::{Deserialize, Serialize};
 
 /// Input for creating a new task
 #[derive(Debug, Deserialize)]
@@ -86,6 +86,7 @@ pub struct TaskResponse {
     pub priority: i32,
     pub internal_status: String,
     pub needs_review_point: bool,
+    pub ideation_session_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub started_at: Option<String>,
@@ -109,6 +110,7 @@ impl From<Task> for TaskResponse {
             priority: task.priority,
             internal_status: task.internal_status.as_str().to_string(),
             needs_review_point: task.needs_review_point,
+            ideation_session_id: task.ideation_session_id.map(|id| id.as_str().to_string()),
             created_at: task.created_at.to_rfc3339(),
             updated_at: task.updated_at.to_rfc3339(),
             started_at: task.started_at.map(|dt| dt.to_rfc3339()),

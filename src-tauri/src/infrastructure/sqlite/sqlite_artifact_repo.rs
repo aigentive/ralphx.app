@@ -165,7 +165,11 @@ impl ArtifactRepository for SqliteArtifactRepository {
         }
     }
 
-    async fn get_by_id_at_version(&self, id: &ArtifactId, target_version: u32) -> AppResult<Option<Artifact>> {
+    async fn get_by_id_at_version(
+        &self,
+        id: &ArtifactId,
+        target_version: u32,
+    ) -> AppResult<Option<Artifact>> {
         let conn = self.conn.lock().await;
 
         // Start with the current artifact
@@ -662,8 +666,8 @@ mod tests {
             .unwrap();
         }
 
-        let artifact = create_test_artifact()
-            .with_bucket(ArtifactBucketId::from_string("prd-library"));
+        let artifact =
+            create_test_artifact().with_bucket(ArtifactBucketId::from_string("prd-library"));
 
         let result = repo.create(artifact.clone()).await;
         assert!(result.is_ok());
@@ -1150,15 +1154,27 @@ mod tests {
         let repo = SqliteArtifactRepository::new(conn);
 
         // Create V1
-        let v1 = Artifact::new_inline("Plan", ArtifactType::Specification, "V1 content", "orchestrator");
+        let v1 = Artifact::new_inline(
+            "Plan",
+            ArtifactType::Specification,
+            "V1 content",
+            "orchestrator",
+        );
         let v1_id = v1.id.clone();
         repo.create(v1).await.unwrap();
 
         // Create V2 chained to V1
-        let mut v2 = Artifact::new_inline("Plan", ArtifactType::Specification, "V2 content", "orchestrator");
+        let mut v2 = Artifact::new_inline(
+            "Plan",
+            ArtifactType::Specification,
+            "V2 content",
+            "orchestrator",
+        );
         v2.metadata.version = 2;
         let v2_id = v2.id.clone();
-        repo.create_with_previous_version(v2, v1_id.clone()).await.unwrap();
+        repo.create_with_previous_version(v2, v1_id.clone())
+            .await
+            .unwrap();
 
         // Fetch V1 using V2's ID — should traverse chain and return V1
         let result = repo.get_by_id_at_version(&v2_id, 1).await.unwrap();
@@ -1179,12 +1195,22 @@ mod tests {
         let repo = SqliteArtifactRepository::new(conn);
 
         // Create V1
-        let v1 = Artifact::new_inline("Plan", ArtifactType::Specification, "V1 content", "orchestrator");
+        let v1 = Artifact::new_inline(
+            "Plan",
+            ArtifactType::Specification,
+            "V1 content",
+            "orchestrator",
+        );
         let v1_id = v1.id.clone();
         repo.create(v1).await.unwrap();
 
         // Create V2 chained to V1
-        let mut v2 = Artifact::new_inline("Plan", ArtifactType::Specification, "V2 content", "orchestrator");
+        let mut v2 = Artifact::new_inline(
+            "Plan",
+            ArtifactType::Specification,
+            "V2 content",
+            "orchestrator",
+        );
         v2.metadata.version = 2;
         let v2_id = v2.id.clone();
         repo.create_with_previous_version(v2, v1_id).await.unwrap();
@@ -1211,12 +1237,14 @@ mod tests {
         let v1_id = v1.id.clone();
         repo.create(v1).await.unwrap();
 
-        let mut v2 = Artifact::new_inline("Plan", ArtifactType::Specification, "V2", "orchestrator");
+        let mut v2 =
+            Artifact::new_inline("Plan", ArtifactType::Specification, "V2", "orchestrator");
         v2.metadata.version = 2;
         let v2_id = v2.id.clone();
         repo.create_with_previous_version(v2, v1_id).await.unwrap();
 
-        let mut v3 = Artifact::new_inline("Plan", ArtifactType::Specification, "V3", "orchestrator");
+        let mut v3 =
+            Artifact::new_inline("Plan", ArtifactType::Specification, "V3", "orchestrator");
         v3.metadata.version = 3;
         let v3_id = v3.id.clone();
         repo.create_with_previous_version(v3, v2_id).await.unwrap();
@@ -1243,7 +1271,10 @@ mod tests {
 
         // Ask for version 5 — doesn't exist
         let result = repo.get_by_id_at_version(&v1_id, 5).await.unwrap();
-        assert!(result.is_none(), "Should return None for nonexistent version");
+        assert!(
+            result.is_none(),
+            "Should return None for nonexistent version"
+        );
     }
 
     // ==================== SHARED CONNECTION TESTS ====================
@@ -1290,12 +1321,16 @@ mod tests {
         let v1_id = v1.id.clone();
         repo.create(v1).await.unwrap();
 
-        let mut v2 = Artifact::new_inline("Plan", ArtifactType::Specification, "V2", "orchestrator");
+        let mut v2 =
+            Artifact::new_inline("Plan", ArtifactType::Specification, "V2", "orchestrator");
         v2.metadata.version = 2;
         let v2_id = v2.id.clone();
-        repo.create_with_previous_version(v2, v1_id.clone()).await.unwrap();
+        repo.create_with_previous_version(v2, v1_id.clone())
+            .await
+            .unwrap();
 
-        let mut v3 = Artifact::new_inline("Plan", ArtifactType::Specification, "V3", "orchestrator");
+        let mut v3 =
+            Artifact::new_inline("Plan", ArtifactType::Specification, "V3", "orchestrator");
         v3.metadata.version = 3;
         let v3_id = v3.id.clone();
         repo.create_with_previous_version(v3, v2_id).await.unwrap();
@@ -1314,15 +1349,19 @@ mod tests {
         let v1_id = v1.id.clone();
         repo.create(v1).await.unwrap();
 
-        let mut v2 = Artifact::new_inline("Plan", ArtifactType::Specification, "V2", "orchestrator");
+        let mut v2 =
+            Artifact::new_inline("Plan", ArtifactType::Specification, "V2", "orchestrator");
         v2.metadata.version = 2;
         let v2_id = v2.id.clone();
         repo.create_with_previous_version(v2, v1_id).await.unwrap();
 
-        let mut v3 = Artifact::new_inline("Plan", ArtifactType::Specification, "V3", "orchestrator");
+        let mut v3 =
+            Artifact::new_inline("Plan", ArtifactType::Specification, "V3", "orchestrator");
         v3.metadata.version = 3;
         let v3_id = v3.id.clone();
-        repo.create_with_previous_version(v3, v2_id.clone()).await.unwrap();
+        repo.create_with_previous_version(v3, v2_id.clone())
+            .await
+            .unwrap();
 
         let resolved = repo.resolve_latest_artifact_id(&v2_id).await.unwrap();
         assert_eq!(resolved, v3_id, "V2 (middle) should resolve to V3 (latest)");
@@ -1336,16 +1375,33 @@ mod tests {
         let repo = SqliteArtifactRepository::new(conn);
 
         // Create V1 → V2 → V3 chain
-        let v1 = Artifact::new_inline("Plan", ArtifactType::Specification, "V1 content", "orchestrator");
+        let v1 = Artifact::new_inline(
+            "Plan",
+            ArtifactType::Specification,
+            "V1 content",
+            "orchestrator",
+        );
         let v1_id = v1.id.clone();
         repo.create(v1).await.unwrap();
 
-        let mut v2 = Artifact::new_inline("Plan", ArtifactType::Specification, "V2 content", "orchestrator");
+        let mut v2 = Artifact::new_inline(
+            "Plan",
+            ArtifactType::Specification,
+            "V2 content",
+            "orchestrator",
+        );
         v2.metadata.version = 2;
         let v2_id = v2.id.clone();
-        repo.create_with_previous_version(v2, v1_id.clone()).await.unwrap();
+        repo.create_with_previous_version(v2, v1_id.clone())
+            .await
+            .unwrap();
 
-        let mut v3 = Artifact::new_inline("Plan", ArtifactType::Specification, "V3 content", "orchestrator");
+        let mut v3 = Artifact::new_inline(
+            "Plan",
+            ArtifactType::Specification,
+            "V3 content",
+            "orchestrator",
+        );
         v3.metadata.version = 3;
         let v3_id = v3.id.clone();
         repo.create_with_previous_version(v3, v2_id).await.unwrap();
@@ -1356,8 +1412,14 @@ mod tests {
 
         // Fetch resolved artifact — this is what proposals would be linked to
         let resolved_artifact = repo.get_by_id(&resolved_id).await.unwrap().unwrap();
-        assert_eq!(resolved_artifact.metadata.version, 3, "Resolved artifact should be version 3");
-        assert_eq!(resolved_artifact.id, v3_id, "Resolved artifact ID should be V3");
+        assert_eq!(
+            resolved_artifact.metadata.version, 3,
+            "Resolved artifact should be version 3"
+        );
+        assert_eq!(
+            resolved_artifact.id, v3_id,
+            "Resolved artifact ID should be V3"
+        );
     }
 
     /// Integration test: simulates the update_plan_artifact flow twice using the original v1 ID.
@@ -1370,7 +1432,12 @@ mod tests {
         let repo = SqliteArtifactRepository::new(conn);
 
         // Create V1 (original artifact)
-        let v1 = Artifact::new_inline("Plan", ArtifactType::Specification, "V1 content", "orchestrator");
+        let v1 = Artifact::new_inline(
+            "Plan",
+            ArtifactType::Specification,
+            "V1 content",
+            "orchestrator",
+        );
         let v1_id = v1.id.clone();
         repo.create(v1).await.unwrap();
 
@@ -1379,26 +1446,46 @@ mod tests {
         assert_eq!(resolved1, v1_id, "First resolve should return v1 itself");
 
         let old1 = repo.get_by_id(&resolved1).await.unwrap().unwrap();
-        let mut v2 = Artifact::new_inline("Plan", ArtifactType::Specification, "V2 content", "orchestrator");
+        let mut v2 = Artifact::new_inline(
+            "Plan",
+            ArtifactType::Specification,
+            "V2 content",
+            "orchestrator",
+        );
         v2.metadata.version = old1.metadata.version + 1;
         let v2_id = v2.id.clone();
-        repo.create_with_previous_version(v2, resolved1).await.unwrap();
+        repo.create_with_previous_version(v2, resolved1)
+            .await
+            .unwrap();
 
         // --- Second update: agent passes SAME v1_id (stale) ---
         let resolved2 = repo.resolve_latest_artifact_id(&v1_id).await.unwrap();
-        assert_eq!(resolved2, v2_id, "Second resolve should walk v1 → v2 (latest)");
+        assert_eq!(
+            resolved2, v2_id,
+            "Second resolve should walk v1 → v2 (latest)"
+        );
 
         let old2 = repo.get_by_id(&resolved2).await.unwrap().unwrap();
         assert_eq!(old2.metadata.version, 2, "Resolved artifact should be v2");
 
-        let mut v3 = Artifact::new_inline("Plan", ArtifactType::Specification, "V3 content", "orchestrator");
+        let mut v3 = Artifact::new_inline(
+            "Plan",
+            ArtifactType::Specification,
+            "V3 content",
+            "orchestrator",
+        );
         v3.metadata.version = old2.metadata.version + 1;
         let v3_id = v3.id.clone();
-        repo.create_with_previous_version(v3, resolved2).await.unwrap();
+        repo.create_with_previous_version(v3, resolved2)
+            .await
+            .unwrap();
 
         // Verify final state: v1 → v2 → v3 chain
         let final_resolved = repo.resolve_latest_artifact_id(&v1_id).await.unwrap();
-        assert_eq!(final_resolved, v3_id, "After two updates, v1 should resolve to v3");
+        assert_eq!(
+            final_resolved, v3_id,
+            "After two updates, v1 should resolve to v3"
+        );
 
         let v3_artifact = repo.get_by_id(&v3_id).await.unwrap().unwrap();
         assert_eq!(v3_artifact.metadata.version, 3);

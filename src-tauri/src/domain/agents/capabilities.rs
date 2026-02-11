@@ -55,21 +55,9 @@ impl ClientCapabilities {
             supports_mcp: true,
             max_context_tokens: 200_000,
             models: vec![
-                ModelInfo::new(
-                    "claude-sonnet-4-5-20250929",
-                    "Claude Sonnet 4.5",
-                    64_000,
-                ),
-                ModelInfo::new(
-                    "claude-opus-4-5-20251101",
-                    "Claude Opus 4.5",
-                    32_000,
-                ),
-                ModelInfo::new(
-                    "claude-haiku-4-5-20251001",
-                    "Claude Haiku 4.5",
-                    32_000,
-                ),
+                ModelInfo::new("claude-sonnet-4-5-20250929", "Claude Sonnet 4.5", 64_000),
+                ModelInfo::new("claude-opus-4-5-20251101", "Claude Opus 4.5", 32_000),
+                ModelInfo::new("claude-haiku-4-5-20251001", "Claude Haiku 4.5", 32_000),
             ],
         }
     }

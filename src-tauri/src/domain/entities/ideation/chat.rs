@@ -5,8 +5,10 @@ use rusqlite::Row;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
-use crate::domain::entities::{ChatConversationId, ChatMessageId, IdeationSessionId, ProjectId, TaskId};
 use super::types::parse_datetime_helper;
+use crate::domain::entities::{
+    ChatConversationId, ChatMessageId, IdeationSessionId, ProjectId, TaskId,
+};
 
 // ============================================================================
 // ChatMessage and Related Types
@@ -132,7 +134,10 @@ impl ChatMessage {
     }
 
     /// Create a new orchestrator message in an ideation session
-    pub fn orchestrator_in_session(session_id: IdeationSessionId, content: impl Into<String>) -> Self {
+    pub fn orchestrator_in_session(
+        session_id: IdeationSessionId,
+        content: impl Into<String>,
+    ) -> Self {
         Self {
             id: ChatMessageId::new(),
             session_id: Some(session_id),

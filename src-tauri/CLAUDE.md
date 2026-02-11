@@ -85,7 +85,7 @@ pub type AppResult<T> = Result<T, AppError>;
 QaPassed→PendingReview | PendingReview→Reviewing | RevisionNeeded→ReExecuting | Approved→PendingMerge
 
 ### API Layer Patterns
-See @.claude/rules/api-layer.md for param conventions, response serialization, and cross-layer patterns.
+See api-layer.md for param conventions, response serialization, and cross-layer patterns.
 
 ### Command Handlers (THIN)
 Commands must be 5-10 lines max — extract, delegate, return:

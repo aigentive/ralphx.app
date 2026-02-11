@@ -31,9 +31,11 @@ fn test_v14_singleton_row_inserted() {
     run_migrations(&conn).unwrap();
 
     let (id, active_project_id): (i64, Option<String>) = conn
-        .query_row("SELECT id, active_project_id FROM app_state WHERE id = 1", [], |row| {
-            Ok((row.get(0)?, row.get(1)?))
-        })
+        .query_row(
+            "SELECT id, active_project_id FROM app_state WHERE id = 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
         .unwrap();
 
     assert_eq!(id, 1);

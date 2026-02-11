@@ -67,13 +67,17 @@ impl ProposalDependencyRepository for MemoryProposalDependencyRepository {
         proposal_id: &TaskProposalId,
         depends_on_id: &TaskProposalId,
     ) -> AppResult<()> {
-        self.dependencies.write().unwrap().retain(|(p, d, _)| {
-            p != &proposal_id.to_string() || d != &depends_on_id.to_string()
-        });
+        self.dependencies
+            .write()
+            .unwrap()
+            .retain(|(p, d, _)| p != &proposal_id.to_string() || d != &depends_on_id.to_string());
         Ok(())
     }
 
-    async fn get_dependencies(&self, proposal_id: &TaskProposalId) -> AppResult<Vec<TaskProposalId>> {
+    async fn get_dependencies(
+        &self,
+        proposal_id: &TaskProposalId,
+    ) -> AppResult<Vec<TaskProposalId>> {
         Ok(self
             .dependencies
             .read()
@@ -125,16 +129,18 @@ impl ProposalDependencyRepository for MemoryProposalDependencyRepository {
     }
 
     async fn clear_dependencies(&self, proposal_id: &TaskProposalId) -> AppResult<()> {
-        self.dependencies.write().unwrap().retain(|(p, d, _)| {
-            p != &proposal_id.to_string() && d != &proposal_id.to_string()
-        });
+        self.dependencies
+            .write()
+            .unwrap()
+            .retain(|(p, d, _)| p != &proposal_id.to_string() && d != &proposal_id.to_string());
         Ok(())
     }
 
     async fn clear_session_dependencies(&self, session_id: &IdeationSessionId) -> AppResult<()> {
-        self.dependencies.write().unwrap().retain(|(_, _, s)| {
-            s != &session_id.to_string()
-        });
+        self.dependencies
+            .write()
+            .unwrap()
+            .retain(|(_, _, s)| s != &session_id.to_string());
         Ok(())
     }
 

@@ -48,10 +48,7 @@ pub trait TaskStepRepository: Send + Sync {
 
     /// Count steps by status for a given task
     /// Returns a HashMap with counts for each status
-    async fn count_by_status(
-        &self,
-        task_id: &TaskId,
-    ) -> AppResult<HashMap<TaskStepStatus, u32>>;
+    async fn count_by_status(&self, task_id: &TaskId) -> AppResult<HashMap<TaskStepStatus, u32>>;
 
     // ═══════════════════════════════════════════════════════════════════════
     // Bulk Operations

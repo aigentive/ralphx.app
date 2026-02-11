@@ -84,7 +84,12 @@ mod tests {
         }
 
         async fn get_system_buckets(&self) -> AppResult<Vec<ArtifactBucket>> {
-            Ok(self.buckets.iter().filter(|b| b.is_system).cloned().collect())
+            Ok(self
+                .buckets
+                .iter()
+                .filter(|b| b.is_system)
+                .cloned()
+                .collect())
         }
 
         async fn update(&self, _bucket: &ArtifactBucket) -> AppResult<()> {
@@ -117,8 +122,7 @@ mod tests {
 
     #[test]
     fn test_artifact_bucket_repository_trait_can_be_object_safe() {
-        let repo: Arc<dyn ArtifactBucketRepository> =
-            Arc::new(MockArtifactBucketRepository::new());
+        let repo: Arc<dyn ArtifactBucketRepository> = Arc::new(MockArtifactBucketRepository::new());
         assert!(Arc::strong_count(&repo) == 1);
     }
 
@@ -167,7 +171,8 @@ mod tests {
     async fn test_mock_bucket_repository_get_all_with_buckets() {
         let bucket1 = create_test_bucket();
         let bucket2 = create_system_bucket();
-        let repo = MockArtifactBucketRepository::with_buckets(vec![bucket1.clone(), bucket2.clone()]);
+        let repo =
+            MockArtifactBucketRepository::with_buckets(vec![bucket1.clone(), bucket2.clone()]);
 
         let result = repo.get_all().await;
         assert!(result.is_ok());
@@ -278,8 +283,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_bucket_with_readers() {
-        let bucket = ArtifactBucket::new("Private Bucket")
-            .with_reader("orchestrator");
+        let bucket = ArtifactBucket::new("Private Bucket").with_reader("orchestrator");
 
         // Default has "all", so it can read
         assert!(bucket.can_read("orchestrator"));
@@ -316,7 +320,10 @@ mod tests {
     #[tokio::test]
     async fn test_research_outputs_bucket_config() {
         let buckets = ArtifactBucket::system_buckets();
-        let research = buckets.iter().find(|b| b.id.as_str() == "research-outputs").unwrap();
+        let research = buckets
+            .iter()
+            .find(|b| b.id.as_str() == "research-outputs")
+            .unwrap();
 
         assert!(research.accepts_type(ArtifactType::ResearchDocument));
         assert!(research.accepts_type(ArtifactType::Findings));
@@ -328,7 +335,10 @@ mod tests {
     #[tokio::test]
     async fn test_work_context_bucket_config() {
         let buckets = ArtifactBucket::system_buckets();
-        let work = buckets.iter().find(|b| b.id.as_str() == "work-context").unwrap();
+        let work = buckets
+            .iter()
+            .find(|b| b.id.as_str() == "work-context")
+            .unwrap();
 
         assert!(work.accepts_type(ArtifactType::Context));
         assert!(work.accepts_type(ArtifactType::TaskSpec));
@@ -340,7 +350,10 @@ mod tests {
     #[tokio::test]
     async fn test_code_changes_bucket_config() {
         let buckets = ArtifactBucket::system_buckets();
-        let code = buckets.iter().find(|b| b.id.as_str() == "code-changes").unwrap();
+        let code = buckets
+            .iter()
+            .find(|b| b.id.as_str() == "code-changes")
+            .unwrap();
 
         assert!(code.accepts_type(ArtifactType::CodeChange));
         assert!(code.accepts_type(ArtifactType::Diff));
@@ -351,7 +364,10 @@ mod tests {
     #[tokio::test]
     async fn test_prd_library_bucket_config() {
         let buckets = ArtifactBucket::system_buckets();
-        let prd = buckets.iter().find(|b| b.id.as_str() == "prd-library").unwrap();
+        let prd = buckets
+            .iter()
+            .find(|b| b.id.as_str() == "prd-library")
+            .unwrap();
 
         assert!(prd.accepts_type(ArtifactType::Prd));
         assert!(prd.accepts_type(ArtifactType::Specification));

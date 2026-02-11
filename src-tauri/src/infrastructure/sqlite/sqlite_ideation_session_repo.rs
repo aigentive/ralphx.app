@@ -8,7 +8,9 @@ use async_trait::async_trait;
 use chrono::Utc;
 use rusqlite::Connection;
 
-use crate::domain::entities::{IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId};
+use crate::domain::entities::{
+    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId,
+};
 use crate::domain::repositories::IdeationSessionRepository;
 use crate::error::{AppError, AppResult};
 
@@ -155,7 +157,11 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         Ok(())
     }
 
-    async fn update_plan_artifact_id(&self, id: &IdeationSessionId, plan_artifact_id: Option<String>) -> AppResult<()> {
+    async fn update_plan_artifact_id(
+        &self,
+        id: &IdeationSessionId,
+        plan_artifact_id: Option<String>,
+    ) -> AppResult<()> {
         let conn = self.conn.lock().await;
         let now = Utc::now();
 
@@ -179,7 +185,10 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         Ok(())
     }
 
-    async fn get_active_by_project(&self, project_id: &ProjectId) -> AppResult<Vec<IdeationSession>> {
+    async fn get_active_by_project(
+        &self,
+        project_id: &ProjectId,
+    ) -> AppResult<Vec<IdeationSession>> {
         let conn = self.conn.lock().await;
 
         let mut stmt = conn
@@ -262,8 +271,7 @@ mod tests {
     }
 
     fn create_test_session(project_id: &ProjectId, title: Option<&str>) -> IdeationSession {
-        let mut builder = IdeationSession::builder()
-            .project_id(project_id.clone());
+        let mut builder = IdeationSession::builder().project_id(project_id.clone());
 
         if let Some(t) = title {
             builder = builder.title(t);
@@ -368,7 +376,7 @@ mod tests {
 
         // Create a session with all fields set
         let mut session = create_test_session(&project_id, Some("Full Session"));
-        session.archive();  // This sets archived_at
+        session.archive(); // This sets archived_at
 
         repo.create(session.clone()).await.unwrap();
         let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
@@ -496,7 +504,9 @@ mod tests {
 
         repo.create(session.clone()).await.unwrap();
 
-        let result = repo.update_status(&session.id, IdeationSessionStatus::Archived).await;
+        let result = repo
+            .update_status(&session.id, IdeationSessionStatus::Archived)
+            .await;
         assert!(result.is_ok());
 
         let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
@@ -515,7 +525,9 @@ mod tests {
 
         repo.create(session.clone()).await.unwrap();
 
-        let result = repo.update_status(&session.id, IdeationSessionStatus::Accepted).await;
+        let result = repo
+            .update_status(&session.id, IdeationSessionStatus::Accepted)
+            .await;
         assert!(result.is_ok());
 
         let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
@@ -535,7 +547,9 @@ mod tests {
 
         repo.create(session.clone()).await.unwrap();
 
-        let result = repo.update_status(&session.id, IdeationSessionStatus::Active).await;
+        let result = repo
+            .update_status(&session.id, IdeationSessionStatus::Active)
+            .await;
         assert!(result.is_ok());
 
         let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
@@ -557,7 +571,9 @@ mod tests {
         // Small delay to ensure timestamp difference
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
-        repo.update_status(&session.id, IdeationSessionStatus::Archived).await.unwrap();
+        repo.update_status(&session.id, IdeationSessionStatus::Archived)
+            .await
+            .unwrap();
 
         let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
         assert!(found.updated_at >= original_updated);
@@ -576,7 +592,9 @@ mod tests {
 
         repo.create(session.clone()).await.unwrap();
 
-        let result = repo.update_title(&session.id, Some("New Title".to_string())).await;
+        let result = repo
+            .update_title(&session.id, Some("New Title".to_string()))
+            .await;
         assert!(result.is_ok());
 
         let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
@@ -615,7 +633,9 @@ mod tests {
 
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
-        repo.update_title(&session.id, Some("Updated".to_string())).await.unwrap();
+        repo.update_title(&session.id, Some("Updated".to_string()))
+            .await
+            .unwrap();
 
         let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
         assert!(found.updated_at >= original_updated);
@@ -739,7 +759,9 @@ mod tests {
 
         let repo = SqliteIdeationSessionRepository::new(conn);
 
-        let result = repo.count_by_status(&project_id, IdeationSessionStatus::Active).await;
+        let result = repo
+            .count_by_status(&project_id, IdeationSessionStatus::Active)
+            .await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 0);
@@ -765,9 +787,18 @@ mod tests {
         repo.create(archived).await.unwrap();
         repo.create(accepted).await.unwrap();
 
-        let active_count = repo.count_by_status(&project_id, IdeationSessionStatus::Active).await.unwrap();
-        let archived_count = repo.count_by_status(&project_id, IdeationSessionStatus::Archived).await.unwrap();
-        let accepted_count = repo.count_by_status(&project_id, IdeationSessionStatus::Accepted).await.unwrap();
+        let active_count = repo
+            .count_by_status(&project_id, IdeationSessionStatus::Active)
+            .await
+            .unwrap();
+        let archived_count = repo
+            .count_by_status(&project_id, IdeationSessionStatus::Archived)
+            .await
+            .unwrap();
+        let accepted_count = repo
+            .count_by_status(&project_id, IdeationSessionStatus::Accepted)
+            .await
+            .unwrap();
 
         assert_eq!(active_count, 2);
         assert_eq!(archived_count, 1);
@@ -792,8 +823,14 @@ mod tests {
         repo.create(session2).await.unwrap();
         repo.create(session3).await.unwrap();
 
-        let count_p1 = repo.count_by_status(&project_id1, IdeationSessionStatus::Active).await.unwrap();
-        let count_p2 = repo.count_by_status(&project_id2, IdeationSessionStatus::Active).await.unwrap();
+        let count_p1 = repo
+            .count_by_status(&project_id1, IdeationSessionStatus::Active)
+            .await
+            .unwrap();
+        let count_p2 = repo
+            .count_by_status(&project_id2, IdeationSessionStatus::Active)
+            .await
+            .unwrap();
 
         assert_eq!(count_p1, 1);
         assert_eq!(count_p2, 2);

@@ -39,12 +39,7 @@ pub async fn create_task_step(
     let sort_order = input.sort_order.unwrap_or(0);
 
     // Create new step
-    let mut step = TaskStep::new(
-        task_id,
-        input.title,
-        sort_order,
-        "user".to_string(),
-    );
+    let mut step = TaskStep::new(task_id, input.title, sort_order, "user".to_string());
 
     // Set description if provided
     if let Some(desc) = input.description {
@@ -82,7 +77,9 @@ pub async fn update_task_step(
         .task_step_repo
         .get_by_id(&step_id)
         .await?
-        .ok_or_else(|| crate::error::AppError::NotFound(format!("Step {} not found", step_id.as_str())))?;
+        .ok_or_else(|| {
+            crate::error::AppError::NotFound(format!("Step {} not found", step_id.as_str()))
+        })?;
 
     // Update fields
     if let Some(title) = input.title {
@@ -106,10 +103,7 @@ pub async fn update_task_step(
 
 /// Delete a task step
 #[tauri::command]
-pub async fn delete_task_step(
-    step_id: String,
-    state: State<'_, AppState>,
-) -> AppResult<()> {
+pub async fn delete_task_step(step_id: String, state: State<'_, AppState>) -> AppResult<()> {
     let step_id = TaskStepId::from_string(step_id);
     state.task_step_repo.delete(&step_id).await
 }
@@ -122,10 +116,7 @@ pub async fn reorder_task_steps(
     state: State<'_, AppState>,
 ) -> AppResult<Vec<TaskStepResponse>> {
     let task_id = TaskId::from_string(task_id);
-    let step_ids: Vec<TaskStepId> = step_ids
-        .into_iter()
-        .map(TaskStepId::from_string)
-        .collect();
+    let step_ids: Vec<TaskStepId> = step_ids.into_iter().map(TaskStepId::from_string).collect();
 
     state.task_step_repo.reorder(&task_id, step_ids).await?;
 
@@ -158,7 +149,9 @@ pub async fn start_step(
         .task_step_repo
         .get_by_id(&step_id)
         .await?
-        .ok_or_else(|| crate::error::AppError::NotFound(format!("Step {} not found", step_id.as_str())))?;
+        .ok_or_else(|| {
+            crate::error::AppError::NotFound(format!("Step {} not found", step_id.as_str()))
+        })?;
 
     // Validate step is Pending
     if step.status != crate::domain::entities::TaskStepStatus::Pending {
@@ -196,7 +189,9 @@ pub async fn complete_step(
         .task_step_repo
         .get_by_id(&step_id)
         .await?
-        .ok_or_else(|| crate::error::AppError::NotFound(format!("Step {} not found", step_id.as_str())))?;
+        .ok_or_else(|| {
+            crate::error::AppError::NotFound(format!("Step {} not found", step_id.as_str()))
+        })?;
 
     // Validate step is InProgress
     if step.status != crate::domain::entities::TaskStepStatus::InProgress {
@@ -235,7 +230,9 @@ pub async fn skip_step(
         .task_step_repo
         .get_by_id(&step_id)
         .await?
-        .ok_or_else(|| crate::error::AppError::NotFound(format!("Step {} not found", step_id.as_str())))?;
+        .ok_or_else(|| {
+            crate::error::AppError::NotFound(format!("Step {} not found", step_id.as_str()))
+        })?;
 
     // Validate step is Pending or InProgress
     if step.status != crate::domain::entities::TaskStepStatus::Pending
@@ -276,7 +273,9 @@ pub async fn fail_step(
         .task_step_repo
         .get_by_id(&step_id)
         .await?
-        .ok_or_else(|| crate::error::AppError::NotFound(format!("Step {} not found", step_id.as_str())))?;
+        .ok_or_else(|| {
+            crate::error::AppError::NotFound(format!("Step {} not found", step_id.as_str()))
+        })?;
 
     // Validate step is InProgress
     if step.status != crate::domain::entities::TaskStepStatus::InProgress {
@@ -312,19 +311,13 @@ mod tests {
     }
 
     async fn create_test_project(state: &AppState) -> Project {
-        let project = Project::new(
-            "Test Project".to_string(),
-            "/tmp/test".to_string(),
-        );
+        let project = Project::new("Test Project".to_string(), "/tmp/test".to_string());
         state.project_repo.create(project.clone()).await.unwrap();
         project
     }
 
     async fn create_test_task(state: &AppState, project_id: ProjectId) -> TaskId {
-        let task = crate::domain::entities::Task::new(
-            project_id,
-            "Test Task".to_string(),
-        );
+        let task = crate::domain::entities::Task::new(project_id, "Test Task".to_string());
         state.task_repo.create(task.clone()).await.unwrap();
         task.id
     }
@@ -358,18 +351,8 @@ mod tests {
         let task_id = create_test_task(&state, project.id).await;
 
         // Create two steps
-        let step1 = TaskStep::new(
-            task_id.clone(),
-            "Step 1".to_string(),
-            0,
-            "user".to_string(),
-        );
-        let step2 = TaskStep::new(
-            task_id.clone(),
-            "Step 2".to_string(),
-            1,
-            "user".to_string(),
-        );
+        let step1 = TaskStep::new(task_id.clone(), "Step 1".to_string(), 0, "user".to_string());
+        let step2 = TaskStep::new(task_id.clone(), "Step 2".to_string(), 1, "user".to_string());
 
         state.task_step_repo.create(step1).await.unwrap();
         state.task_step_repo.create(step2).await.unwrap();
@@ -402,7 +385,12 @@ mod tests {
 
         state.task_step_repo.update(&updated).await.unwrap();
 
-        let found = state.task_step_repo.get_by_id(&created.id).await.unwrap().unwrap();
+        let found = state
+            .task_step_repo
+            .get_by_id(&created.id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(found.title, "Updated Title");
         assert_eq!(found.description, Some("Updated Description".to_string()));
         assert_eq!(found.sort_order, 0); // Unchanged
@@ -437,21 +425,46 @@ mod tests {
         let task_id = create_test_task(&state, project.id).await;
 
         // Create three steps
-        let step1 = state.task_step_repo.create(
-            TaskStep::new(task_id.clone(), "Step 1".to_string(), 0, "user".to_string())
-        ).await.unwrap();
+        let step1 = state
+            .task_step_repo
+            .create(TaskStep::new(
+                task_id.clone(),
+                "Step 1".to_string(),
+                0,
+                "user".to_string(),
+            ))
+            .await
+            .unwrap();
 
-        let step2 = state.task_step_repo.create(
-            TaskStep::new(task_id.clone(), "Step 2".to_string(), 1, "user".to_string())
-        ).await.unwrap();
+        let step2 = state
+            .task_step_repo
+            .create(TaskStep::new(
+                task_id.clone(),
+                "Step 2".to_string(),
+                1,
+                "user".to_string(),
+            ))
+            .await
+            .unwrap();
 
-        let step3 = state.task_step_repo.create(
-            TaskStep::new(task_id.clone(), "Step 3".to_string(), 2, "user".to_string())
-        ).await.unwrap();
+        let step3 = state
+            .task_step_repo
+            .create(TaskStep::new(
+                task_id.clone(),
+                "Step 3".to_string(),
+                2,
+                "user".to_string(),
+            ))
+            .await
+            .unwrap();
 
         // Reorder: 3, 1, 2
         let new_order = vec![step3.id.clone(), step1.id.clone(), step2.id.clone()];
-        state.task_step_repo.reorder(&task_id, new_order).await.unwrap();
+        state
+            .task_step_repo
+            .reorder(&task_id, new_order)
+            .await
+            .unwrap();
 
         let reordered = state.task_step_repo.get_by_task(&task_id).await.unwrap();
 
@@ -471,16 +484,35 @@ mod tests {
         let task_id = create_test_task(&state, project.id).await;
 
         // Create steps with different statuses
-        let step1 = state.task_step_repo.create(
-            TaskStep::new(task_id.clone(), "Step 1".to_string(), 0, "user".to_string())
-        ).await.unwrap();
+        let step1 = state
+            .task_step_repo
+            .create(TaskStep::new(
+                task_id.clone(),
+                "Step 1".to_string(),
+                0,
+                "user".to_string(),
+            ))
+            .await
+            .unwrap();
 
-        state.task_step_repo.create(
-            TaskStep::new(task_id.clone(), "Step 2".to_string(), 1, "user".to_string())
-        ).await.unwrap();
+        state
+            .task_step_repo
+            .create(TaskStep::new(
+                task_id.clone(),
+                "Step 2".to_string(),
+                1,
+                "user".to_string(),
+            ))
+            .await
+            .unwrap();
 
         // Mark step 1 as completed
-        let mut step1_entity = state.task_step_repo.get_by_id(&step1.id).await.unwrap().unwrap();
+        let mut step1_entity = state
+            .task_step_repo
+            .get_by_id(&step1.id)
+            .await
+            .unwrap()
+            .unwrap();
         step1_entity.status = TaskStepStatus::Completed;
         state.task_step_repo.update(&step1_entity).await.unwrap();
 
@@ -500,19 +532,36 @@ mod tests {
         let task_id = create_test_task(&state, project.id).await;
 
         // Create a pending step
-        let step = state.task_step_repo.create(
-            TaskStep::new(task_id.clone(), "Test Step".to_string(), 0, "user".to_string())
-        ).await.unwrap();
+        let step = state
+            .task_step_repo
+            .create(TaskStep::new(
+                task_id.clone(),
+                "Test Step".to_string(),
+                0,
+                "user".to_string(),
+            ))
+            .await
+            .unwrap();
 
         // Start the step via command (simulating tauri command)
-        let mut updated = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        let mut updated = state
+            .task_step_repo
+            .get_by_id(&step.id)
+            .await
+            .unwrap()
+            .unwrap();
         updated.status = TaskStepStatus::InProgress;
         updated.started_at = Some(chrono::Utc::now());
         updated.touch();
         state.task_step_repo.update(&updated).await.unwrap();
 
         // Verify status changed
-        let found = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        let found = state
+            .task_step_repo
+            .get_by_id(&step.id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(found.status, TaskStepStatus::InProgress);
         assert!(found.started_at.is_some());
     }
@@ -524,16 +573,28 @@ mod tests {
         let task_id = create_test_task(&state, project.id).await;
 
         // Create a step and mark it as completed
-        let mut step = state.task_step_repo.create(
-            TaskStep::new(task_id.clone(), "Test Step".to_string(), 0, "user".to_string())
-        ).await.unwrap();
+        let mut step = state
+            .task_step_repo
+            .create(TaskStep::new(
+                task_id.clone(),
+                "Test Step".to_string(),
+                0,
+                "user".to_string(),
+            ))
+            .await
+            .unwrap();
 
         step.status = TaskStepStatus::Completed;
         state.task_step_repo.update(&step).await.unwrap();
 
         // Trying to start a completed step should fail
         // In actual command this would return AppError::Validation
-        let found = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        let found = state
+            .task_step_repo
+            .get_by_id(&step.id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(found.status, TaskStepStatus::Completed);
         assert_ne!(found.status, TaskStepStatus::Pending);
     }
@@ -545,16 +606,28 @@ mod tests {
         let task_id = create_test_task(&state, project.id).await;
 
         // Create and start a step
-        let mut step = state.task_step_repo.create(
-            TaskStep::new(task_id.clone(), "Test Step".to_string(), 0, "user".to_string())
-        ).await.unwrap();
+        let mut step = state
+            .task_step_repo
+            .create(TaskStep::new(
+                task_id.clone(),
+                "Test Step".to_string(),
+                0,
+                "user".to_string(),
+            ))
+            .await
+            .unwrap();
 
         step.status = TaskStepStatus::InProgress;
         step.started_at = Some(chrono::Utc::now());
         state.task_step_repo.update(&step).await.unwrap();
 
         // Complete the step
-        let mut found = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        let mut found = state
+            .task_step_repo
+            .get_by_id(&step.id)
+            .await
+            .unwrap()
+            .unwrap();
         found.status = TaskStepStatus::Completed;
         found.completed_at = Some(chrono::Utc::now());
         found.completion_note = Some("Done!".to_string());
@@ -562,7 +635,12 @@ mod tests {
         state.task_step_repo.update(&found).await.unwrap();
 
         // Verify
-        let completed = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        let completed = state
+            .task_step_repo
+            .get_by_id(&step.id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(completed.status, TaskStepStatus::Completed);
         assert!(completed.completed_at.is_some());
         assert_eq!(completed.completion_note, Some("Done!".to_string()));
@@ -575,12 +653,24 @@ mod tests {
         let task_id = create_test_task(&state, project.id).await;
 
         // Create a pending step (not in progress)
-        let step = state.task_step_repo.create(
-            TaskStep::new(task_id.clone(), "Test Step".to_string(), 0, "user".to_string())
-        ).await.unwrap();
+        let step = state
+            .task_step_repo
+            .create(TaskStep::new(
+                task_id.clone(),
+                "Test Step".to_string(),
+                0,
+                "user".to_string(),
+            ))
+            .await
+            .unwrap();
 
         // Trying to complete a pending step should fail in actual command
-        let found = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        let found = state
+            .task_step_repo
+            .get_by_id(&step.id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(found.status, TaskStepStatus::Pending);
         assert_ne!(found.status, TaskStepStatus::InProgress);
     }
@@ -592,12 +682,24 @@ mod tests {
         let task_id = create_test_task(&state, project.id).await;
 
         // Create a pending step
-        let step = state.task_step_repo.create(
-            TaskStep::new(task_id.clone(), "Test Step".to_string(), 0, "user".to_string())
-        ).await.unwrap();
+        let step = state
+            .task_step_repo
+            .create(TaskStep::new(
+                task_id.clone(),
+                "Test Step".to_string(),
+                0,
+                "user".to_string(),
+            ))
+            .await
+            .unwrap();
 
         // Skip the step
-        let mut found = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        let mut found = state
+            .task_step_repo
+            .get_by_id(&step.id)
+            .await
+            .unwrap()
+            .unwrap();
         found.status = TaskStepStatus::Skipped;
         found.completed_at = Some(chrono::Utc::now());
         found.completion_note = Some("Not needed".to_string());
@@ -605,7 +707,12 @@ mod tests {
         state.task_step_repo.update(&found).await.unwrap();
 
         // Verify
-        let skipped = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        let skipped = state
+            .task_step_repo
+            .get_by_id(&step.id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(skipped.status, TaskStepStatus::Skipped);
         assert!(skipped.completed_at.is_some());
         assert_eq!(skipped.completion_note, Some("Not needed".to_string()));
@@ -618,16 +725,28 @@ mod tests {
         let task_id = create_test_task(&state, project.id).await;
 
         // Create and start a step
-        let mut step = state.task_step_repo.create(
-            TaskStep::new(task_id.clone(), "Test Step".to_string(), 0, "user".to_string())
-        ).await.unwrap();
+        let mut step = state
+            .task_step_repo
+            .create(TaskStep::new(
+                task_id.clone(),
+                "Test Step".to_string(),
+                0,
+                "user".to_string(),
+            ))
+            .await
+            .unwrap();
 
         step.status = TaskStepStatus::InProgress;
         step.started_at = Some(chrono::Utc::now());
         state.task_step_repo.update(&step).await.unwrap();
 
         // Skip the step
-        let mut found = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        let mut found = state
+            .task_step_repo
+            .get_by_id(&step.id)
+            .await
+            .unwrap()
+            .unwrap();
         found.status = TaskStepStatus::Skipped;
         found.completed_at = Some(chrono::Utc::now());
         found.completion_note = Some("Changed approach".to_string());
@@ -635,7 +754,12 @@ mod tests {
         state.task_step_repo.update(&found).await.unwrap();
 
         // Verify
-        let skipped = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        let skipped = state
+            .task_step_repo
+            .get_by_id(&step.id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(skipped.status, TaskStepStatus::Skipped);
         assert!(skipped.completed_at.is_some());
     }
@@ -647,16 +771,28 @@ mod tests {
         let task_id = create_test_task(&state, project.id).await;
 
         // Create and start a step
-        let mut step = state.task_step_repo.create(
-            TaskStep::new(task_id.clone(), "Test Step".to_string(), 0, "user".to_string())
-        ).await.unwrap();
+        let mut step = state
+            .task_step_repo
+            .create(TaskStep::new(
+                task_id.clone(),
+                "Test Step".to_string(),
+                0,
+                "user".to_string(),
+            ))
+            .await
+            .unwrap();
 
         step.status = TaskStepStatus::InProgress;
         step.started_at = Some(chrono::Utc::now());
         state.task_step_repo.update(&step).await.unwrap();
 
         // Fail the step
-        let mut found = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        let mut found = state
+            .task_step_repo
+            .get_by_id(&step.id)
+            .await
+            .unwrap()
+            .unwrap();
         found.status = TaskStepStatus::Failed;
         found.completed_at = Some(chrono::Utc::now());
         found.completion_note = Some("Build error".to_string());
@@ -664,7 +800,12 @@ mod tests {
         state.task_step_repo.update(&found).await.unwrap();
 
         // Verify
-        let failed = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        let failed = state
+            .task_step_repo
+            .get_by_id(&step.id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(failed.status, TaskStepStatus::Failed);
         assert!(failed.completed_at.is_some());
         assert_eq!(failed.completion_note, Some("Build error".to_string()));
@@ -677,12 +818,24 @@ mod tests {
         let task_id = create_test_task(&state, project.id).await;
 
         // Create a pending step (not in progress)
-        let step = state.task_step_repo.create(
-            TaskStep::new(task_id.clone(), "Test Step".to_string(), 0, "user".to_string())
-        ).await.unwrap();
+        let step = state
+            .task_step_repo
+            .create(TaskStep::new(
+                task_id.clone(),
+                "Test Step".to_string(),
+                0,
+                "user".to_string(),
+            ))
+            .await
+            .unwrap();
 
         // Trying to fail a pending step should fail in actual command
-        let found = state.task_step_repo.get_by_id(&step.id).await.unwrap().unwrap();
+        let found = state
+            .task_step_repo
+            .get_by_id(&step.id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(found.status, TaskStepStatus::Pending);
         assert_ne!(found.status, TaskStepStatus::InProgress);
     }

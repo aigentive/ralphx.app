@@ -32,11 +32,7 @@ impl PermissionRepository for MemoryPermissionRepository {
         Ok(())
     }
 
-    async fn resolve(
-        &self,
-        request_id: &str,
-        decision: &PermissionDecision,
-    ) -> AppResult<bool> {
+    async fn resolve(&self, request_id: &str, decision: &PermissionDecision) -> AppResult<bool> {
         let mut permissions = self.permissions.write().unwrap();
         if let Some(entry) = permissions.get_mut(request_id) {
             entry.1 = Some(decision.clone());
@@ -99,7 +95,9 @@ mod tests {
     #[tokio::test]
     async fn test_create_and_get_pending() {
         let repo = MemoryPermissionRepository::new();
-        repo.create_pending(&sample_permission("perm-1")).await.unwrap();
+        repo.create_pending(&sample_permission("perm-1"))
+            .await
+            .unwrap();
 
         let pending = repo.get_pending().await.unwrap();
         assert_eq!(pending.len(), 1);
@@ -110,7 +108,9 @@ mod tests {
     #[tokio::test]
     async fn test_get_by_request_id() {
         let repo = MemoryPermissionRepository::new();
-        repo.create_pending(&sample_permission("perm-42")).await.unwrap();
+        repo.create_pending(&sample_permission("perm-42"))
+            .await
+            .unwrap();
 
         let found = repo.get_by_request_id("perm-42").await.unwrap();
         assert!(found.is_some());
@@ -123,7 +123,9 @@ mod tests {
     #[tokio::test]
     async fn test_resolve() {
         let repo = MemoryPermissionRepository::new();
-        repo.create_pending(&sample_permission("perm-1")).await.unwrap();
+        repo.create_pending(&sample_permission("perm-1"))
+            .await
+            .unwrap();
 
         let decision = PermissionDecision {
             decision: "allow".to_string(),
@@ -172,7 +174,9 @@ mod tests {
     #[tokio::test]
     async fn test_remove() {
         let repo = MemoryPermissionRepository::new();
-        repo.create_pending(&sample_permission("perm-rm")).await.unwrap();
+        repo.create_pending(&sample_permission("perm-rm"))
+            .await
+            .unwrap();
 
         assert!(repo.remove("perm-rm").await.unwrap());
         assert!(repo.get_by_request_id("perm-rm").await.unwrap().is_none());

@@ -6,11 +6,11 @@
 // - Event payloads include projectId
 
 use ralphx_lib::domain::entities::{InternalStatus, ProjectId, TaskId};
+use ralphx_lib::domain::entities::{Project, Task};
+use ralphx_lib::domain::repositories::{ProjectRepository, TaskRepository};
 use ralphx_lib::infrastructure::sqlite::{
     open_memory_connection, run_migrations, SqliteProjectRepository, SqliteTaskRepository,
 };
-use ralphx_lib::domain::repositories::{ProjectRepository, TaskRepository};
-use ralphx_lib::domain::entities::{Project, Task};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -29,8 +29,11 @@ async fn setup_multi_project_test() -> (
     run_migrations(&conn).unwrap();
     let shared_conn = Arc::new(Mutex::new(conn));
 
-    let task_repo: Arc<dyn TaskRepository> = Arc::new(SqliteTaskRepository::from_shared(Arc::clone(&shared_conn)));
-    let project_repo: Arc<dyn ProjectRepository> = Arc::new(SqliteProjectRepository::from_shared(Arc::clone(&shared_conn)));
+    let task_repo: Arc<dyn TaskRepository> =
+        Arc::new(SqliteTaskRepository::from_shared(Arc::clone(&shared_conn)));
+    let project_repo: Arc<dyn ProjectRepository> = Arc::new(SqliteProjectRepository::from_shared(
+        Arc::clone(&shared_conn),
+    ));
 
     // Create two projects using the constructor
     let mut project1 = Project::new("Project 1".to_string(), "/path/to/project1".to_string());
@@ -114,10 +117,34 @@ async fn test_queued_count_excludes_non_ready_tasks() {
     let (task_repo, _, project1_id, _) = setup_multi_project_test().await;
 
     // Create tasks in various states
-    create_task(&task_repo, "task-ready", &project1_id, InternalStatus::Ready).await;
-    create_task(&task_repo, "task-executing", &project1_id, InternalStatus::Executing).await;
-    create_task(&task_repo, "task-backlog", &project1_id, InternalStatus::Backlog).await;
-    create_task(&task_repo, "task-approved", &project1_id, InternalStatus::Approved).await;
+    create_task(
+        &task_repo,
+        "task-ready",
+        &project1_id,
+        InternalStatus::Ready,
+    )
+    .await;
+    create_task(
+        &task_repo,
+        "task-executing",
+        &project1_id,
+        InternalStatus::Executing,
+    )
+    .await;
+    create_task(
+        &task_repo,
+        "task-backlog",
+        &project1_id,
+        InternalStatus::Backlog,
+    )
+    .await;
+    create_task(
+        &task_repo,
+        "task-approved",
+        &project1_id,
+        InternalStatus::Approved,
+    )
+    .await;
 
     // Only 1 Ready task should be counted
     let project1_tasks = task_repo.get_by_project(&project1_id).await.unwrap();
@@ -142,20 +169,37 @@ async fn test_oldest_ready_tasks_ordering() {
 
     // Create Ready tasks with different timestamps
     // (created_at is set at creation time, so order of creation matters)
-    let task1 = create_task(&task_repo, "task-oldest", &project1_id, InternalStatus::Ready).await;
-    let _task2 = create_task(&task_repo, "task-middle", &project1_id, InternalStatus::Ready).await;
-    let _task3 = create_task(&task_repo, "task-newest", &project1_id, InternalStatus::Ready).await;
+    let task1 = create_task(
+        &task_repo,
+        "task-oldest",
+        &project1_id,
+        InternalStatus::Ready,
+    )
+    .await;
+    let _task2 = create_task(
+        &task_repo,
+        "task-middle",
+        &project1_id,
+        InternalStatus::Ready,
+    )
+    .await;
+    let _task3 = create_task(
+        &task_repo,
+        "task-newest",
+        &project1_id,
+        InternalStatus::Ready,
+    )
+    .await;
 
     let oldest_ready = task_repo.get_oldest_ready_tasks(10).await.unwrap();
 
-    assert!(oldest_ready.len() >= 3, "Should have at least 3 Ready tasks");
+    assert!(
+        oldest_ready.len() >= 3,
+        "Should have at least 3 Ready tasks"
+    );
 
     // First task should be the oldest (task1)
-    assert_eq!(
-        oldest_ready[0].id,
-        task1.id,
-        "Oldest task should be first"
-    );
+    assert_eq!(oldest_ready[0].id, task1.id, "Oldest task should be first");
 }
 
 /// Test: get_oldest_ready_tasks respects limit
@@ -165,7 +209,13 @@ async fn test_oldest_ready_tasks_limit() {
 
     // Create more Ready tasks than the limit
     for i in 0..10 {
-        create_task(&task_repo, &format!("task-{}", i), &project1_id, InternalStatus::Ready).await;
+        create_task(
+            &task_repo,
+            &format!("task-{}", i),
+            &project1_id,
+            InternalStatus::Ready,
+        )
+        .await;
     }
 
     let oldest_ready = task_repo.get_oldest_ready_tasks(3).await.unwrap();
@@ -212,9 +262,27 @@ async fn test_agent_active_tasks_by_project() {
     let (task_repo, _, project1_id, project2_id) = setup_multi_project_test().await;
 
     // Create executing tasks in both projects
-    create_task(&task_repo, "task-1-exec", &project1_id, InternalStatus::Executing).await;
-    create_task(&task_repo, "task-1-review", &project1_id, InternalStatus::Reviewing).await;
-    create_task(&task_repo, "task-2-exec", &project2_id, InternalStatus::Executing).await;
+    create_task(
+        &task_repo,
+        "task-1-exec",
+        &project1_id,
+        InternalStatus::Executing,
+    )
+    .await;
+    create_task(
+        &task_repo,
+        "task-1-review",
+        &project1_id,
+        InternalStatus::Reviewing,
+    )
+    .await;
+    create_task(
+        &task_repo,
+        "task-2-exec",
+        &project2_id,
+        InternalStatus::Executing,
+    )
+    .await;
 
     // Agent-active statuses (from execution_commands.rs)
     let agent_active_statuses = [
@@ -262,8 +330,20 @@ async fn test_project_scoped_pause_does_not_affect_other_projects() {
     let (task_repo, _, project1_id, project2_id) = setup_multi_project_test().await;
 
     // Create executing tasks in both projects
-    let task1 = create_task(&task_repo, "task-1-exec", &project1_id, InternalStatus::Executing).await;
-    let task2 = create_task(&task_repo, "task-2-exec", &project2_id, InternalStatus::Executing).await;
+    let task1 = create_task(
+        &task_repo,
+        "task-1-exec",
+        &project1_id,
+        InternalStatus::Executing,
+    )
+    .await;
+    let task2 = create_task(
+        &task_repo,
+        "task-2-exec",
+        &project2_id,
+        InternalStatus::Executing,
+    )
+    .await;
 
     // Simulate pausing Project 1 only by updating its tasks to Paused
     // (In production, pause_execution command does this via TransitionHandler)
@@ -377,7 +457,7 @@ fn test_can_start_task_respects_both_limits() {
     use ralphx_lib::commands::ExecutionState;
 
     let state = ExecutionState::new();
-    state.set_max_concurrent(10);       // Per-project max: 10
+    state.set_max_concurrent(10); // Per-project max: 10
     state.set_global_max_concurrent(5); // Global cap: 5 (lower)
 
     // With 0 running, should be able to start
@@ -387,7 +467,10 @@ fn test_can_start_task_respects_both_limits() {
     for _ in 0..4 {
         state.increment_running();
     }
-    assert!(state.can_start_task(), "Should start with 4 running (below 5)");
+    assert!(
+        state.can_start_task(),
+        "Should start with 4 running (below 5)"
+    );
 
     // Simulate 5th running task - hits global cap
     state.increment_running();
@@ -408,7 +491,7 @@ fn test_per_project_max_takes_precedence_when_lower() {
     use ralphx_lib::commands::ExecutionState;
 
     let state = ExecutionState::new();
-    state.set_max_concurrent(3);         // Per-project max: 3 (lower)
+    state.set_max_concurrent(3); // Per-project max: 3 (lower)
     state.set_global_max_concurrent(20); // Global cap: 20
 
     // Simulate 2 running tasks

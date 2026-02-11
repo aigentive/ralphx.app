@@ -11,11 +11,8 @@ fn test_v12_fixes_null_base_branch_for_worktree_projects() {
     run_migrations(&conn).unwrap();
 
     // Insert worktree project with NULL base_branch (pre-migration state simulated)
-    conn.execute(
-        "UPDATE projects SET base_branch = NULL WHERE 1=0",
-        [],
-    )
-    .unwrap();
+    conn.execute("UPDATE projects SET base_branch = NULL WHERE 1=0", [])
+        .unwrap();
 
     // Insert a fresh worktree project with NULL base_branch
     conn.execute(

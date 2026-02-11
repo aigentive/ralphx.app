@@ -1,8 +1,6 @@
 // Type definitions for IdeationService
 
-use crate::domain::entities::{
-    ChatMessage, IdeationSession, Priority, TaskCategory, TaskProposal,
-};
+use crate::domain::entities::{ChatMessage, IdeationSession, Priority, TaskCategory, TaskProposal};
 
 /// Configuration for plan artifacts in ideation flow
 #[derive(Debug, Clone)]

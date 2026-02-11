@@ -5,9 +5,9 @@
 //
 // Trait-based design allows SQLite persistence (production) or in-memory (tests).
 
+use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
-use async_trait::async_trait;
 use tokio::sync::Mutex;
 
 /// Key for identifying a running agent by context
@@ -227,10 +227,7 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
 
     async fn list_all(&self) -> Vec<(RunningAgentKey, RunningAgentInfo)> {
         let agents = self.agents.lock().await;
-        agents
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect()
+        agents.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
     }
 
     async fn stop_all(&self) -> Vec<RunningAgentKey> {
@@ -258,12 +255,14 @@ mod tests {
         let registry = MemoryRunningAgentRegistry::new();
         let key = RunningAgentKey::new("ideation", "session-123");
 
-        registry.register(
-            key.clone(),
-            12345,
-            "conv-abc".to_string(),
-            "run-xyz".to_string(),
-        ).await;
+        registry
+            .register(
+                key.clone(),
+                12345,
+                "conv-abc".to_string(),
+                "run-xyz".to_string(),
+            )
+            .await;
 
         let info = registry.get(&key).await;
         assert!(info.is_some());
@@ -280,12 +279,14 @@ mod tests {
 
         assert!(!registry.is_running(&key).await);
 
-        registry.register(
-            key.clone(),
-            12345,
-            "conv-abc".to_string(),
-            "run-xyz".to_string(),
-        ).await;
+        registry
+            .register(
+                key.clone(),
+                12345,
+                "conv-abc".to_string(),
+                "run-xyz".to_string(),
+            )
+            .await;
 
         assert!(registry.is_running(&key).await);
     }
@@ -295,12 +296,14 @@ mod tests {
         let registry = MemoryRunningAgentRegistry::new();
         let key = RunningAgentKey::new("project", "proj-123");
 
-        registry.register(
-            key.clone(),
-            12345,
-            "conv-abc".to_string(),
-            "run-xyz".to_string(),
-        ).await;
+        registry
+            .register(
+                key.clone(),
+                12345,
+                "conv-abc".to_string(),
+                "run-xyz".to_string(),
+            )
+            .await;
 
         let info = registry.unregister(&key).await;
         assert!(info.is_some());
@@ -316,19 +319,23 @@ mod tests {
     async fn test_list_all() {
         let registry = MemoryRunningAgentRegistry::new();
 
-        registry.register(
-            RunningAgentKey::new("ideation", "session-1"),
-            111,
-            "conv-1".to_string(),
-            "run-1".to_string(),
-        ).await;
+        registry
+            .register(
+                RunningAgentKey::new("ideation", "session-1"),
+                111,
+                "conv-1".to_string(),
+                "run-1".to_string(),
+            )
+            .await;
 
-        registry.register(
-            RunningAgentKey::new("task", "task-2"),
-            222,
-            "conv-2".to_string(),
-            "run-2".to_string(),
-        ).await;
+        registry
+            .register(
+                RunningAgentKey::new("task", "task-2"),
+                222,
+                "conv-2".to_string(),
+                "run-2".to_string(),
+            )
+            .await;
 
         let all = registry.list_all().await;
         assert_eq!(all.len(), 2);

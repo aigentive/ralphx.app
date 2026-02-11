@@ -21,7 +21,8 @@ use crate::commands::execution_commands::{ExecutionState, AGENT_ACTIVE_STATUSES}
 use crate::domain::entities::{ChatContextType, InterruptedConversation, TaskId};
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
+    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
+    TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 
@@ -170,7 +171,10 @@ impl<R: Runtime> ChatResumptionRunner<R> {
             }
         }
 
-        info!(count = resumed, "[CHAT_RESUMPTION] Chat resumption complete");
+        info!(
+            count = resumed,
+            "[CHAT_RESUMPTION] Chat resumption complete"
+        );
     }
 
     /// Sort interrupted conversations by priority.
@@ -311,17 +315,30 @@ mod tests {
     #[test]
     fn test_context_type_priority_ordering() {
         // TaskExecution should have highest priority (lowest number)
-        assert!(context_type_priority(ChatContextType::TaskExecution) < context_type_priority(ChatContextType::Review));
-        assert!(context_type_priority(ChatContextType::Review) < context_type_priority(ChatContextType::Task));
-        assert!(context_type_priority(ChatContextType::Task) < context_type_priority(ChatContextType::Ideation));
-        assert!(context_type_priority(ChatContextType::Ideation) < context_type_priority(ChatContextType::Project));
+        assert!(
+            context_type_priority(ChatContextType::TaskExecution)
+                < context_type_priority(ChatContextType::Review)
+        );
+        assert!(
+            context_type_priority(ChatContextType::Review)
+                < context_type_priority(ChatContextType::Task)
+        );
+        assert!(
+            context_type_priority(ChatContextType::Task)
+                < context_type_priority(ChatContextType::Ideation)
+        );
+        assert!(
+            context_type_priority(ChatContextType::Ideation)
+                < context_type_priority(ChatContextType::Project)
+        );
     }
 
     #[test]
     fn test_prioritize_resumptions_sorts_correctly() {
         // Create test conversations with different context types
         let create_interrupted = |context_type: ChatContextType| -> InterruptedConversation {
-            let mut conv = ChatConversation::new_ideation(crate::domain::entities::IdeationSessionId::new());
+            let mut conv =
+                ChatConversation::new_ideation(crate::domain::entities::IdeationSessionId::new());
             // Override context_type for testing (normally set by constructor)
             conv.context_type = context_type;
             conv.context_id = "test-id".to_string();
@@ -336,7 +353,7 @@ mod tests {
         };
 
         let conversations = vec![
-            create_interrupted(ChatContextType::Project),    // Lowest priority
+            create_interrupted(ChatContextType::Project), // Lowest priority
             create_interrupted(ChatContextType::TaskExecution), // Highest priority
             create_interrupted(ChatContextType::Ideation),
             create_interrupted(ChatContextType::Review),
@@ -351,11 +368,20 @@ mod tests {
         };
 
         // Verify order: TaskExecution, Review, Task, Ideation, Project
-        assert_eq!(sorted[0].conversation.context_type, ChatContextType::TaskExecution);
+        assert_eq!(
+            sorted[0].conversation.context_type,
+            ChatContextType::TaskExecution
+        );
         assert_eq!(sorted[1].conversation.context_type, ChatContextType::Review);
         assert_eq!(sorted[2].conversation.context_type, ChatContextType::Task);
-        assert_eq!(sorted[3].conversation.context_type, ChatContextType::Ideation);
-        assert_eq!(sorted[4].conversation.context_type, ChatContextType::Project);
+        assert_eq!(
+            sorted[3].conversation.context_type,
+            ChatContextType::Ideation
+        );
+        assert_eq!(
+            sorted[4].conversation.context_type,
+            ChatContextType::Project
+        );
     }
 
     #[tokio::test]
@@ -380,7 +406,11 @@ mod tests {
 
         // Create a project and task in Executing state
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         let mut task = Task::new(project.id.clone(), "Executing Task".to_string());
         task.internal_status = InternalStatus::Executing;
@@ -402,7 +432,10 @@ mod tests {
 
         // Should be handled by task resumption (task is in Executing status)
         let is_handled = runner.is_handled_by_task_resumption(&interrupted).await;
-        assert!(is_handled, "TaskExecution with Executing task should be handled by StartupJobRunner");
+        assert!(
+            is_handled,
+            "TaskExecution with Executing task should be handled by StartupJobRunner"
+        );
     }
 
     #[tokio::test]
@@ -411,7 +444,11 @@ mod tests {
 
         // Create a project and task in Ready state (NOT agent-active)
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         let mut task = Task::new(project.id.clone(), "Ready Task".to_string());
         task.internal_status = InternalStatus::Ready;
@@ -433,7 +470,10 @@ mod tests {
 
         // Should NOT be handled by task resumption (task is in Ready status)
         let is_handled = runner.is_handled_by_task_resumption(&interrupted).await;
-        assert!(!is_handled, "TaskExecution with Ready task should NOT be handled by StartupJobRunner");
+        assert!(
+            !is_handled,
+            "TaskExecution with Ready task should NOT be handled by StartupJobRunner"
+        );
     }
 
     #[tokio::test]
@@ -456,7 +496,10 @@ mod tests {
 
         // Ideation should NOT be handled by task resumption
         let is_handled = runner.is_handled_by_task_resumption(&interrupted).await;
-        assert!(!is_handled, "Ideation should NOT be handled by StartupJobRunner");
+        assert!(
+            !is_handled,
+            "Ideation should NOT be handled by StartupJobRunner"
+        );
     }
 
     #[tokio::test]
@@ -479,14 +522,21 @@ mod tests {
 
         // Project should NOT be handled by task resumption
         let is_handled = runner.is_handled_by_task_resumption(&interrupted).await;
-        assert!(!is_handled, "Project should NOT be handled by StartupJobRunner");
+        assert!(
+            !is_handled,
+            "Project should NOT be handled by StartupJobRunner"
+        );
     }
 
     async fn create_terminal_state_test(status: InternalStatus) -> bool {
         let (execution_state, app_state) = setup_test_state().await;
 
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         let mut task = Task::new(project.id.clone(), format!("{:?} Task", status));
         task.internal_status = status;
@@ -522,12 +572,18 @@ mod tests {
     #[tokio::test]
     async fn test_is_handled_for_cancelled_task() {
         let is_handled = create_terminal_state_test(InternalStatus::Cancelled).await;
-        assert!(is_handled, "Cancelled task should be skipped (terminal state)");
+        assert!(
+            is_handled,
+            "Cancelled task should be skipped (terminal state)"
+        );
     }
 
     #[tokio::test]
     async fn test_is_handled_for_stopped_task() {
         let is_handled = create_terminal_state_test(InternalStatus::Stopped).await;
-        assert!(is_handled, "Stopped task should be skipped (terminal state)");
+        assert!(
+            is_handled,
+            "Stopped task should be skipped (terminal state)"
+        );
     }
 }

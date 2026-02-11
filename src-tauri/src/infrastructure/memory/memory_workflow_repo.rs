@@ -33,10 +33,8 @@ impl MemoryWorkflowRepository {
 
     /// Create with pre-populated workflows (for tests)
     pub fn with_workflows(workflows: Vec<WorkflowSchema>) -> Self {
-        let map: HashMap<WorkflowId, WorkflowSchema> = workflows
-            .into_iter()
-            .map(|w| (w.id.clone(), w))
-            .collect();
+        let map: HashMap<WorkflowId, WorkflowSchema> =
+            workflows.into_iter().map(|w| (w.id.clone(), w)).collect();
         Self {
             workflows: Arc::new(RwLock::new(map)),
         }
@@ -349,10 +347,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_with_workflows_constructor() {
-        let workflows = vec![
-            create_test_workflow("One"),
-            create_test_workflow("Two"),
-        ];
+        let workflows = vec![create_test_workflow("One"), create_test_workflow("Two")];
         let repo = MemoryWorkflowRepository::with_workflows(workflows);
 
         let all = repo.get_all().await.unwrap();
@@ -364,7 +359,9 @@ mod tests {
     #[tokio::test]
     async fn test_concurrent_reads() {
         let workflow = create_test_workflow("Concurrent");
-        let repo = Arc::new(MemoryWorkflowRepository::with_workflows(vec![workflow.clone()]));
+        let repo = Arc::new(MemoryWorkflowRepository::with_workflows(vec![
+            workflow.clone()
+        ]));
 
         let handles: Vec<_> = (0..10)
             .map(|_| {

@@ -118,7 +118,10 @@ impl QuestionState {
             // Fire-and-forget persist to repo
             if let Some(repo) = &self.repo {
                 if let Err(e) = repo.resolve(request_id, &answer).await {
-                    error!("Failed to persist question resolution {}: {}", request_id, e);
+                    error!(
+                        "Failed to persist question resolution {}: {}",
+                        request_id, e
+                    );
                 }
             }
 

@@ -81,7 +81,8 @@ struct MethodologyConfig {
     #[serde(default)]
     templates: Vec<crate::domain::entities::methodology::MethodologyTemplate>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    plan_artifact_config: Option<crate::domain::entities::methodology::MethodologyPlanArtifactConfig>,
+    plan_artifact_config:
+        Option<crate::domain::entities::methodology::MethodologyPlanArtifactConfig>,
     #[serde(default)]
     plan_templates: Vec<crate::domain::entities::methodology::MethodologyPlanTemplate>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -352,7 +353,12 @@ mod tests {
 
         MethodologyExtension::new("BMAD Method", workflow)
             .with_description("Breakthrough Method for Agile AI-Driven Development")
-            .with_agent_profiles(["bmad-analyst", "bmad-pm", "bmad-architect", "bmad-developer"])
+            .with_agent_profiles([
+                "bmad-analyst",
+                "bmad-pm",
+                "bmad-architect",
+                "bmad-developer",
+            ])
             .with_skills(["skills/prd-creation", "skills/architecture-review"])
             .with_phase(
                 MethodologyPhase::new("analysis", "Analysis", 0)
@@ -380,7 +386,10 @@ mod tests {
                     .with_name("PRD Template")
                     .with_description("Product Requirements Document"),
             )
-            .with_template(MethodologyTemplate::new("design_doc", "templates/design.md"))
+            .with_template(MethodologyTemplate::new(
+                "design_doc",
+                "templates/design.md",
+            ))
             .with_hooks_config(serde_json::json!({
                 "phase_gates": {
                     "analysis": ["requirements_complete"],
@@ -684,7 +693,10 @@ mod tests {
         assert_eq!(sorted.len(), 4);
         assert_eq!(sorted[0].name, "Analysis");
         assert_eq!(sorted[0].order, 0);
-        assert_eq!(sorted[0].description, Some("Analyze requirements".to_string()));
+        assert_eq!(
+            sorted[0].description,
+            Some("Analyze requirements".to_string())
+        );
         assert_eq!(sorted[0].agent_profiles, vec!["bmad-analyst"]);
         assert_eq!(sorted[0].column_ids, vec!["brainstorm", "research"]);
     }
@@ -848,7 +860,8 @@ mod tests {
 
         repo.seed_builtin_methodologies().await.unwrap();
 
-        let bmad_id = crate::domain::entities::methodology::MethodologyId::from_string("bmad-method");
+        let bmad_id =
+            crate::domain::entities::methodology::MethodologyId::from_string("bmad-method");
         let bmad = repo.get_by_id(&bmad_id).await.unwrap();
         assert!(bmad.is_some());
 
@@ -889,7 +902,8 @@ mod tests {
 
         repo.seed_builtin_methodologies().await.unwrap();
 
-        let bmad_id = crate::domain::entities::methodology::MethodologyId::from_string("bmad-method");
+        let bmad_id =
+            crate::domain::entities::methodology::MethodologyId::from_string("bmad-method");
         let bmad = repo.get_by_id(&bmad_id).await.unwrap().unwrap();
 
         assert_eq!(bmad.workflow.columns.len(), 10);
@@ -919,17 +933,22 @@ mod tests {
 
         repo.seed_builtin_methodologies().await.unwrap();
 
-        let bmad_id = crate::domain::entities::methodology::MethodologyId::from_string("bmad-method");
+        let bmad_id =
+            crate::domain::entities::methodology::MethodologyId::from_string("bmad-method");
         let bmad = repo.get_by_id(&bmad_id).await.unwrap().unwrap();
 
         let analysis_phase = bmad.phase_at_order(0).unwrap();
         assert_eq!(analysis_phase.name, "Analysis");
-        assert!(analysis_phase.column_ids.contains(&"brainstorm".to_string()));
+        assert!(analysis_phase
+            .column_ids
+            .contains(&"brainstorm".to_string()));
         assert!(analysis_phase.column_ids.contains(&"research".to_string()));
 
         let implementation_phase = bmad.phase_at_order(3).unwrap();
         assert_eq!(implementation_phase.name, "Implementation");
-        assert!(implementation_phase.column_ids.contains(&"sprint".to_string()));
+        assert!(implementation_phase
+            .column_ids
+            .contains(&"sprint".to_string()));
     }
 
     #[tokio::test]
@@ -944,7 +963,9 @@ mod tests {
 
         let initialize_phase = gsd.phase_at_order(0).unwrap();
         assert_eq!(initialize_phase.name, "Initialize");
-        assert!(initialize_phase.column_ids.contains(&"initialize".to_string()));
+        assert!(initialize_phase
+            .column_ids
+            .contains(&"initialize".to_string()));
 
         let execute_phase = gsd.phase_at_order(2).unwrap();
         assert_eq!(execute_phase.name, "Execute");
@@ -960,7 +981,8 @@ mod tests {
 
         repo.seed_builtin_methodologies().await.unwrap();
 
-        let bmad_id = crate::domain::entities::methodology::MethodologyId::from_string("bmad-method");
+        let bmad_id =
+            crate::domain::entities::methodology::MethodologyId::from_string("bmad-method");
         let bmad = repo.get_by_id(&bmad_id).await.unwrap().unwrap();
         assert_eq!(bmad.templates.len(), 3);
 
@@ -976,7 +998,8 @@ mod tests {
 
         repo.seed_builtin_methodologies().await.unwrap();
 
-        let bmad_id = crate::domain::entities::methodology::MethodologyId::from_string("bmad-method");
+        let bmad_id =
+            crate::domain::entities::methodology::MethodologyId::from_string("bmad-method");
         let bmad = repo.get_by_id(&bmad_id).await.unwrap().unwrap();
         assert!(bmad.hooks_config.is_some());
         let hooks = bmad.hooks_config.unwrap();
@@ -997,6 +1020,9 @@ mod tests {
         repo.seed_builtin_methodologies().await.unwrap();
 
         let active = repo.get_active().await.unwrap();
-        assert!(active.is_none(), "No methodology should be active by default after seeding");
+        assert!(
+            active.is_none(),
+            "No methodology should be active by default after seeding"
+        );
     }
 }

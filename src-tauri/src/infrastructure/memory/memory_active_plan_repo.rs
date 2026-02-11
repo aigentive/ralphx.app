@@ -86,7 +86,9 @@ impl ActivePlanRepository for MemoryActivePlanRepository {
             ideation_session_id.as_str().to_string(),
         );
 
-        let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S+00:00").to_string();
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S+00:00")
+            .to_string();
 
         stats
             .entry(key)
@@ -207,7 +209,10 @@ mod tests {
             .unwrap();
 
         let stats = repo.selection_stats.read().await;
-        let key = (project_id.as_str().to_string(), session_id.as_str().to_string());
+        let key = (
+            project_id.as_str().to_string(),
+            session_id.as_str().to_string(),
+        );
         let stat = stats.get(&key).unwrap();
 
         assert_eq!(stat.selected_count, 1);
@@ -231,7 +236,10 @@ mod tests {
             .unwrap();
 
         let stats = repo.selection_stats.read().await;
-        let key = (project_id.as_str().to_string(), session_id.as_str().to_string());
+        let key = (
+            project_id.as_str().to_string(),
+            session_id.as_str().to_string(),
+        );
         let stat = stats.get(&key).unwrap();
 
         assert_eq!(stat.selected_count, 3);

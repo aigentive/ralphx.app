@@ -66,7 +66,7 @@ EventProvider wraps app with hooks: `useTaskEvents()`, `useSupervisorAlerts()`, 
 ## Rules
 
 ### API Layer Patterns
-See @.claude/rules/api-layer.md for Tauri conventions, schemas, transforms, and mocking.
+See api-layer.md for Tauri conventions, schemas, transforms, and mocking.
 
 ### TS Config (strict)
 ```json

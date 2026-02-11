@@ -32,11 +32,7 @@ impl QuestionRepository for MemoryQuestionRepository {
         Ok(())
     }
 
-    async fn resolve(
-        &self,
-        request_id: &str,
-        answer: &QuestionAnswer,
-    ) -> AppResult<bool> {
+    async fn resolve(&self, request_id: &str, answer: &QuestionAnswer) -> AppResult<bool> {
         let mut questions = self.questions.write().unwrap();
         if let Some(entry) = questions.get_mut(request_id) {
             entry.1 = Some(answer.clone());
@@ -55,10 +51,7 @@ impl QuestionRepository for MemoryQuestionRepository {
             .collect())
     }
 
-    async fn get_by_request_id(
-        &self,
-        request_id: &str,
-    ) -> AppResult<Option<PendingQuestionInfo>> {
+    async fn get_by_request_id(&self, request_id: &str) -> AppResult<Option<PendingQuestionInfo>> {
         let questions = self.questions.read().unwrap();
         Ok(questions.get(request_id).map(|(info, _)| info.clone()))
     }
@@ -106,7 +99,9 @@ mod tests {
     #[tokio::test]
     async fn test_create_and_get_pending() {
         let repo = MemoryQuestionRepository::new();
-        repo.create_pending(&sample_question("req-1")).await.unwrap();
+        repo.create_pending(&sample_question("req-1"))
+            .await
+            .unwrap();
 
         let pending = repo.get_pending().await.unwrap();
         assert_eq!(pending.len(), 1);
@@ -116,7 +111,9 @@ mod tests {
     #[tokio::test]
     async fn test_get_by_request_id() {
         let repo = MemoryQuestionRepository::new();
-        repo.create_pending(&sample_question("req-42")).await.unwrap();
+        repo.create_pending(&sample_question("req-42"))
+            .await
+            .unwrap();
 
         let found = repo.get_by_request_id("req-42").await.unwrap();
         assert!(found.is_some());
@@ -129,7 +126,9 @@ mod tests {
     #[tokio::test]
     async fn test_resolve() {
         let repo = MemoryQuestionRepository::new();
-        repo.create_pending(&sample_question("req-1")).await.unwrap();
+        repo.create_pending(&sample_question("req-1"))
+            .await
+            .unwrap();
 
         let answer = QuestionAnswer {
             selected_options: vec!["a".to_string()],
@@ -178,7 +177,9 @@ mod tests {
     #[tokio::test]
     async fn test_remove() {
         let repo = MemoryQuestionRepository::new();
-        repo.create_pending(&sample_question("req-rm")).await.unwrap();
+        repo.create_pending(&sample_question("req-rm"))
+            .await
+            .unwrap();
 
         assert!(repo.remove("req-rm").await.unwrap());
         assert!(repo.get_by_request_id("req-rm").await.unwrap().is_none());

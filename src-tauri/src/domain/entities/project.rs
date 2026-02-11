@@ -368,7 +368,10 @@ mod tests {
         assert_eq!(project.name, "Worktree Project");
         assert_eq!(project.working_directory, "/main/repo");
         assert_eq!(project.git_mode, GitMode::Worktree);
-        assert_eq!(project.worktree_path, Some("/worktrees/feature".to_string()));
+        assert_eq!(
+            project.worktree_path,
+            Some("/worktrees/feature".to_string())
+        );
         assert_eq!(project.worktree_branch, Some("feature-branch".to_string()));
         assert_eq!(project.base_branch, Some("main".to_string()));
         assert!(project.worktree_parent_directory.is_none());
@@ -579,10 +582,22 @@ mod tests {
 
     #[test]
     fn merge_validation_mode_serializes() {
-        assert_eq!(serde_json::to_string(&MergeValidationMode::Block).unwrap(), "\"block\"");
-        assert_eq!(serde_json::to_string(&MergeValidationMode::AutoFix).unwrap(), "\"auto_fix\"");
-        assert_eq!(serde_json::to_string(&MergeValidationMode::Warn).unwrap(), "\"warn\"");
-        assert_eq!(serde_json::to_string(&MergeValidationMode::Off).unwrap(), "\"off\"");
+        assert_eq!(
+            serde_json::to_string(&MergeValidationMode::Block).unwrap(),
+            "\"block\""
+        );
+        assert_eq!(
+            serde_json::to_string(&MergeValidationMode::AutoFix).unwrap(),
+            "\"auto_fix\""
+        );
+        assert_eq!(
+            serde_json::to_string(&MergeValidationMode::Warn).unwrap(),
+            "\"warn\""
+        );
+        assert_eq!(
+            serde_json::to_string(&MergeValidationMode::Off).unwrap(),
+            "\"off\""
+        );
     }
 
     #[test]
@@ -599,10 +614,22 @@ mod tests {
 
     #[test]
     fn merge_validation_mode_from_str() {
-        assert_eq!("block".parse::<MergeValidationMode>().unwrap(), MergeValidationMode::Block);
-        assert_eq!("auto_fix".parse::<MergeValidationMode>().unwrap(), MergeValidationMode::AutoFix);
-        assert_eq!("warn".parse::<MergeValidationMode>().unwrap(), MergeValidationMode::Warn);
-        assert_eq!("off".parse::<MergeValidationMode>().unwrap(), MergeValidationMode::Off);
+        assert_eq!(
+            "block".parse::<MergeValidationMode>().unwrap(),
+            MergeValidationMode::Block
+        );
+        assert_eq!(
+            "auto_fix".parse::<MergeValidationMode>().unwrap(),
+            MergeValidationMode::AutoFix
+        );
+        assert_eq!(
+            "warn".parse::<MergeValidationMode>().unwrap(),
+            MergeValidationMode::Warn
+        );
+        assert_eq!(
+            "off".parse::<MergeValidationMode>().unwrap(),
+            MergeValidationMode::Off
+        );
         assert!("invalid".parse::<MergeValidationMode>().is_err());
     }
 
@@ -664,8 +691,8 @@ mod tests {
 
     // ===== Project from_row Integration Tests =====
 
-    use rusqlite::Connection;
     use chrono::{Datelike, Timelike};
+    use rusqlite::Connection;
 
     fn setup_test_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
@@ -738,7 +765,10 @@ mod tests {
             .unwrap();
 
         assert_eq!(project.git_mode, GitMode::Worktree);
-        assert_eq!(project.worktree_path, Some("/worktrees/feature".to_string()));
+        assert_eq!(
+            project.worktree_path,
+            Some("/worktrees/feature".to_string())
+        );
         assert_eq!(project.worktree_branch, Some("feature-branch".to_string()));
         assert_eq!(project.base_branch, Some("main".to_string()));
     }

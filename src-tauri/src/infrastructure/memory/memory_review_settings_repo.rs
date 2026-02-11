@@ -5,8 +5,8 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::domain::review::ReviewSettings;
 use crate::domain::repositories::ReviewSettingsRepository;
+use crate::domain::review::ReviewSettings;
 
 /// In-memory implementation of ReviewSettingsRepository for testing
 /// Uses RwLock for thread-safe storage

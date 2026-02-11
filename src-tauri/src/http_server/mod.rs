@@ -17,14 +17,17 @@ use crate::error::AppResult;
 // Submodules
 // ============================================================================
 
-mod types;
-pub mod helpers;
 mod handlers;
+pub mod helpers;
+mod types;
 
-pub use types::*;
 use handlers::*;
+pub use types::*;
 
-pub async fn start_http_server(app_state: Arc<AppState>, execution_state: Arc<ExecutionState>) -> AppResult<()> {
+pub async fn start_http_server(
+    app_state: Arc<AppState>,
+    execution_state: Arc<ExecutionState>,
+) -> AppResult<()> {
     let state = HttpServerState {
         app_state,
         execution_state,
@@ -35,21 +38,39 @@ pub async fn start_http_server(app_state: Arc<AppState>, execution_state: Arc<Ex
         .route("/api/create_task_proposal", post(create_task_proposal))
         .route("/api/update_task_proposal", post(update_task_proposal))
         .route("/api/delete_task_proposal", post(delete_task_proposal))
-        .route("/api/add_proposal_dependency", post(add_proposal_dependency))
+        .route(
+            "/api/add_proposal_dependency",
+            post(add_proposal_dependency),
+        )
         // Dependency suggester tools (dependency-suggester agent)
-        .route("/api/apply_proposal_dependencies", post(apply_proposal_dependencies))
+        .route(
+            "/api/apply_proposal_dependencies",
+            post(apply_proposal_dependencies),
+        )
         // Proposal query tools (orchestrator-ideation agent)
-        .route("/api/list_session_proposals/:session_id", get(list_session_proposals))
+        .route(
+            "/api/list_session_proposals/:session_id",
+            get(list_session_proposals),
+        )
         .route("/api/proposal/:proposal_id", get(get_proposal))
         // Dependency analysis tools (orchestrator-ideation agent)
-        .route("/api/analyze_dependencies/:session_id", get(analyze_session_dependencies))
+        .route(
+            "/api/analyze_dependencies/:session_id",
+            get(analyze_session_dependencies),
+        )
         // Session tools (session-namer agent)
         .route("/api/update_session_title", post(update_session_title))
         // Plan artifact tools (orchestrator-ideation agent)
         .route("/api/create_plan_artifact", post(create_plan_artifact))
         .route("/api/update_plan_artifact", post(update_plan_artifact))
-        .route("/api/get_plan_artifact/:artifact_id", get(get_plan_artifact))
-        .route("/api/get_plan_artifact/:artifact_id/history", get(get_plan_artifact_history))
+        .route(
+            "/api/get_plan_artifact/:artifact_id",
+            get(get_plan_artifact),
+        )
+        .route(
+            "/api/get_plan_artifact/:artifact_id/history",
+            get(get_plan_artifact_history),
+        )
         .route("/api/link_proposals_to_plan", post(link_proposals_to_plan))
         .route("/api/get_session_plan/:session_id", get(get_session_plan))
         // Task tools (chat-task agent)
@@ -68,13 +89,22 @@ pub async fn start_http_server(app_state: Arc<AppState>, execution_state: Arc<Ex
         // Review issue tools (worker + reviewer agents)
         .route("/api/task_issues/:task_id", get(get_task_issues_http))
         .route("/api/issue_progress/:task_id", get(get_issue_progress_http))
-        .route("/api/mark_issue_in_progress", post(mark_issue_in_progress_http))
+        .route(
+            "/api/mark_issue_in_progress",
+            post(mark_issue_in_progress_http),
+        )
         .route("/api/mark_issue_addressed", post(mark_issue_addressed_http))
         // Worker context tools (worker agent)
         .route("/api/task_context/:task_id", get(get_task_context))
         .route("/api/artifact/:artifact_id", get(get_artifact_full))
-        .route("/api/artifact/:artifact_id/version/:version", get(get_artifact_version))
-        .route("/api/artifact/:artifact_id/related", get(get_related_artifacts))
+        .route(
+            "/api/artifact/:artifact_id/version/:version",
+            get(get_artifact_version),
+        )
+        .route(
+            "/api/artifact/:artifact_id/related",
+            get(get_related_artifacts),
+        )
         .route("/api/artifacts/search", post(search_artifacts))
         // Task step endpoints (worker agent)
         .route("/api/task_steps/:task_id", get(get_task_steps_http))
@@ -95,7 +125,10 @@ pub async fn start_http_server(app_state: Arc<AppState>, execution_state: Arc<Ex
         // Git merge endpoints (merger agent)
         .route("/api/git/tasks/:id/complete-merge", post(complete_merge))
         .route("/api/git/tasks/:id/report-conflict", post(report_conflict))
-        .route("/api/git/tasks/:id/report-incomplete", post(report_incomplete))
+        .route(
+            "/api/git/tasks/:id/report-incomplete",
+            post(report_incomplete),
+        )
         .route("/api/git/tasks/:id/commits", get(get_task_commits))
         .route("/api/git/tasks/:id/diff-stats", get(get_task_diff_stats))
         .route("/api/git/tasks/:id/merge-target", get(get_merge_target))
@@ -104,20 +137,25 @@ pub async fn start_http_server(app_state: Arc<AppState>, execution_state: Arc<Ex
         .route("/api/projects/:id/analysis", post(save_project_analysis))
         // Execution settings endpoints (Phase 82)
         .route("/api/execution/global-settings", get(get_global_settings))
-        .route("/api/execution/global-settings", post(update_global_settings))
+        .route(
+            "/api/execution/global-settings",
+            post(update_global_settings),
+        )
         .with_state(state)
-        .layer(CorsLayer::new()
-            .allow_origin(Any)
-            .allow_methods(Any)
-            .allow_headers(Any));
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any),
+        );
 
     let listener = bind_with_retry("127.0.0.1:3847", 5, Duration::from_millis(250)).await?;
 
     tracing::info!("MCP HTTP server listening on http://127.0.0.1:3847");
 
-    axum::serve(listener, app)
-        .await
-        .map_err(|e| crate::error::AppError::Infrastructure(format!("HTTP server crashed: {}", e)))?;
+    axum::serve(listener, app).await.map_err(|e| {
+        crate::error::AppError::Infrastructure(format!("HTTP server crashed: {}", e))
+    })?;
 
     Ok(())
 }

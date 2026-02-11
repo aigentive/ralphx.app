@@ -235,10 +235,22 @@ mod tests {
 
     #[test]
     fn test_status_parsing() {
-        assert_eq!("running".parse::<AgentRunStatus>().unwrap(), AgentRunStatus::Running);
-        assert_eq!("completed".parse::<AgentRunStatus>().unwrap(), AgentRunStatus::Completed);
-        assert_eq!("failed".parse::<AgentRunStatus>().unwrap(), AgentRunStatus::Failed);
-        assert_eq!("cancelled".parse::<AgentRunStatus>().unwrap(), AgentRunStatus::Cancelled);
+        assert_eq!(
+            "running".parse::<AgentRunStatus>().unwrap(),
+            AgentRunStatus::Running
+        );
+        assert_eq!(
+            "completed".parse::<AgentRunStatus>().unwrap(),
+            AgentRunStatus::Completed
+        );
+        assert_eq!(
+            "failed".parse::<AgentRunStatus>().unwrap(),
+            AgentRunStatus::Failed
+        );
+        assert_eq!(
+            "cancelled".parse::<AgentRunStatus>().unwrap(),
+            AgentRunStatus::Cancelled
+        );
         assert!("invalid".parse::<AgentRunStatus>().is_err());
     }
 

@@ -26,15 +26,6 @@ use rusqlite::Connection;
 use crate::error::{AppError, AppResult};
 
 pub mod helpers;
-mod v1_initial_schema;
-mod v2_add_dependency_reason;
-mod v3_add_activity_events;
-mod v4_add_blocked_reason;
-mod v5_add_review_summary_issues;
-mod v6_review_issues;
-mod v7_session_status_converted_to_accepted;
-mod v8_task_git_fields;
-mod v9_project_git_fields;
 mod v10_execution_settings;
 mod v11_per_project_execution_settings;
 mod v12_fix_worktree_project_settings;
@@ -45,29 +36,23 @@ mod v16_plan_branch_session_index;
 mod v17_running_agents;
 mod v18_task_metadata;
 mod v19_project_analysis;
+mod v1_initial_schema;
 mod v20_merge_validation_mode;
 mod v21_questions_permissions;
 mod v22_project_active_plan;
 mod v23_plan_selection_stats;
+mod v24_seed_artifact_buckets;
+mod v2_add_dependency_reason;
+mod v3_add_activity_events;
+mod v4_add_blocked_reason;
+mod v5_add_review_summary_issues;
+mod v6_review_issues;
+mod v7_session_status_converted_to_accepted;
+mod v8_task_git_fields;
+mod v9_project_git_fields;
 
 #[cfg(test)]
 mod tests;
-#[cfg(test)]
-mod v1_initial_schema_tests;
-#[cfg(test)]
-mod v2_add_dependency_reason_tests;
-#[cfg(test)]
-mod v3_add_activity_events_tests;
-#[cfg(test)]
-mod v4_add_blocked_reason_tests;
-#[cfg(test)]
-mod v6_review_issues_tests;
-#[cfg(test)]
-mod v7_session_status_converted_to_accepted_tests;
-#[cfg(test)]
-mod v8_task_git_fields_tests;
-#[cfg(test)]
-mod v9_project_git_fields_tests;
 #[cfg(test)]
 mod v10_execution_settings_tests;
 #[cfg(test)]
@@ -89,6 +74,8 @@ mod v18_task_metadata_tests;
 #[cfg(test)]
 mod v19_project_analysis_tests;
 #[cfg(test)]
+mod v1_initial_schema_tests;
+#[cfg(test)]
 mod v20_merge_validation_mode_tests;
 #[cfg(test)]
 mod v21_questions_permissions_tests;
@@ -96,9 +83,23 @@ mod v21_questions_permissions_tests;
 mod v22_project_active_plan_tests;
 #[cfg(test)]
 mod v23_plan_selection_stats_tests;
+#[cfg(test)]
+mod v2_add_dependency_reason_tests;
+#[cfg(test)]
+mod v3_add_activity_events_tests;
+#[cfg(test)]
+mod v4_add_blocked_reason_tests;
+#[cfg(test)]
+mod v6_review_issues_tests;
+#[cfg(test)]
+mod v7_session_status_converted_to_accepted_tests;
+#[cfg(test)]
+mod v8_task_git_fields_tests;
+#[cfg(test)]
+mod v9_project_git_fields_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 23;
+pub const SCHEMA_VERSION: i32 = 24;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -227,6 +228,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 23,
         name: "plan_selection_stats",
         migrate: v23_plan_selection_stats::migrate,
+    },
+    Migration {
+        version: 24,
+        name: "seed_artifact_buckets",
+        migrate: v24_seed_artifact_buckets::migrate,
     },
 ];
 

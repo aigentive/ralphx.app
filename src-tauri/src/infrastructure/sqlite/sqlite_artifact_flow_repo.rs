@@ -217,10 +217,9 @@ mod tests {
     }
 
     fn create_test_flow() -> ArtifactFlow {
-        ArtifactFlow::new("Test Flow", ArtifactFlowTrigger::on_artifact_created())
-            .with_step(ArtifactFlowStep::copy(ArtifactBucketId::from_string(
-                "test-bucket",
-            )))
+        ArtifactFlow::new("Test Flow", ArtifactFlowTrigger::on_artifact_created()).with_step(
+            ArtifactFlowStep::copy(ArtifactBucketId::from_string("test-bucket")),
+        )
     }
 
     fn create_flow_with_filter() -> ArtifactFlow {
@@ -552,10 +551,8 @@ mod tests {
         repo.create(flow.clone()).await.unwrap();
 
         // Add a new step
-        flow.steps.push(ArtifactFlowStep::spawn_process(
-            "verification",
-            "reviewer",
-        ));
+        flow.steps
+            .push(ArtifactFlowStep::spawn_process("verification", "reviewer"));
         repo.update(&flow).await.unwrap();
 
         let loaded = repo.get_by_id(&flow.id).await.unwrap().unwrap();

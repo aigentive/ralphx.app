@@ -34,11 +34,7 @@ pub trait AgenticClient: Send + Sync {
     ///
     /// This is a convenience method that spawns an agent, sends a prompt,
     /// waits for completion, and returns the response
-    async fn send_prompt(
-        &self,
-        handle: &AgentHandle,
-        prompt: &str,
-    ) -> AgentResult<AgentResponse>;
+    async fn send_prompt(&self, handle: &AgentHandle, prompt: &str) -> AgentResult<AgentResponse>;
 
     /// Stream responses from an agent
     ///

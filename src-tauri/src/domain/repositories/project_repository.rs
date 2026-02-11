@@ -43,7 +43,9 @@ mod tests {
 
     impl MockProjectRepository {
         fn new() -> Self {
-            Self { return_project: None }
+            Self {
+                return_project: None,
+            }
         }
 
         fn with_project(project: Project) -> Self {
