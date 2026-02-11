@@ -89,6 +89,9 @@ agents:
         link_proposals_to_plan,
         get_session_plan,
         ask_user_question,
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
       ]
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
@@ -124,14 +127,29 @@ agents:
     system_prompt_file: ralphx-plugin/agents/chat-task.md
     model: sonnet
     tools: { extends: base_tools, include: [Task] }
-    mcp_tools: [update_task, add_task_note, get_task_details]
+    mcp_tools:
+      [
+        update_task,
+        add_task_note,
+        get_task_details,
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
+      ]
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
   - name: chat-project
     system_prompt_file: ralphx-plugin/agents/chat-project.md
     model: sonnet
     tools: { extends: base_tools, include: [Task] }
-    mcp_tools: [suggest_task, list_tasks]
+    mcp_tools:
+      [
+        suggest_task,
+        list_tasks,
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
+      ]
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
   - name: ralphx-review-chat
@@ -149,6 +167,9 @@ agents:
         get_related_artifacts,
         search_project_artifacts,
         get_task_steps,
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
       ]
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
@@ -168,6 +189,9 @@ agents:
         get_artifact_version,
         get_related_artifacts,
         search_project_artifacts,
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
       ]
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
@@ -194,6 +218,9 @@ agents:
         mark_issue_in_progress,
         mark_issue_addressed,
         get_project_analysis,
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
       ]
     preapproved_cli_tools:
       [
@@ -229,6 +256,9 @@ agents:
         get_step_progress,
         get_issue_progress,
         get_project_analysis,
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
       ]
     preapproved_cli_tools: [Bash, Task(Explore), Task(Plan)]
 
@@ -250,7 +280,7 @@ agents:
     system_prompt_file: ralphx-plugin/agents/orchestrator.md
     model: opus
     tools: { extends: base_tools, include: [Write, Edit, Task] }
-    mcp_tools: []
+    mcp_tools: [search_memories, get_memory, get_memories_for_paths]
     preapproved_cli_tools: [Write, Edit, Bash, Task]
 
   - name: ralphx-supervisor
@@ -264,7 +294,7 @@ agents:
     system_prompt_file: ralphx-plugin/agents/deep-researcher.md
     model: opus
     tools: { extends: base_tools, include: [Write, Task] }
-    mcp_tools: []
+    mcp_tools: [search_memories, get_memory, get_memories_for_paths]
     preapproved_cli_tools:
       [Write, WebFetch, WebSearch, Task(Explore), Task(Plan)]
 
@@ -287,5 +317,39 @@ agents:
         get_merge_target,
         get_task_context,
         get_project_analysis,
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
       ]
     preapproved_cli_tools: [Read, Edit, Bash, Task(Explore), Task(Plan)]
+
+  - name: memory-maintainer
+    system_prompt_file: ralphx-plugin/agents/memory-maintainer.md
+    model: haiku
+    tools: { extends: base_tools, include: [Write, Edit] }
+    mcp_tools:
+      [
+        upsert_memories,
+        mark_memory_obsolete,
+        refresh_memory_rule_index,
+        ingest_rule_file,
+        rebuild_archive_snapshots,
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
+      ]
+    preapproved_cli_tools: [Read, Write, Edit, Grep, Glob, Bash]
+
+  - name: memory-capture
+    system_prompt_file: ralphx-plugin/agents/memory-capture.md
+    model: haiku
+    tools: { extends: base_tools }
+    mcp_tools:
+      [
+        upsert_memories,
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
+        get_conversation_transcript,
+      ]
+    preapproved_cli_tools: [Read, Grep, Glob]
