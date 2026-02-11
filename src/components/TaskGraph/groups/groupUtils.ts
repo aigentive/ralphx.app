@@ -75,11 +75,13 @@ export function calculateBoundingBox(
   for (const node of nodes) {
     const x = node.position.x;
     const y = node.position.y;
+    const width = typeof node.width === "number" ? node.width : nodeWidth;
+    const height = typeof node.height === "number" ? node.height : nodeHeight;
 
     minX = Math.min(minX, x);
     minY = Math.min(minY, y);
-    maxX = Math.max(maxX, x + nodeWidth);
-    maxY = Math.max(maxY, y + nodeHeight);
+    maxX = Math.max(maxX, x + width);
+    maxY = Math.max(maxY, y + height);
   }
 
   return {
@@ -152,12 +154,13 @@ export function expandBoundingBox(
   padding: number = GROUP_PADDING,
   headerHeight: number = HEADER_HEIGHT,
   minWidth: number = MIN_GROUP_WIDTH,
-  minHeight: number = MIN_GROUP_HEIGHT
+  minHeight: number = MIN_GROUP_HEIGHT,
+  paddingY: number = padding
 ): BoundingBox {
   let minX = bbox.minX - padding;
-  const minY = bbox.minY - padding - headerHeight;
+  const minY = bbox.minY - paddingY - headerHeight;
   let maxX = bbox.maxX + padding;
-  const maxY = bbox.maxY + padding;
+  const maxY = bbox.maxY + paddingY;
 
   const naturalWidth = maxX - minX;
   const width = Math.max(naturalWidth, minWidth);

@@ -40,6 +40,10 @@ interface GraphSelectionControllerParams {
     node: Node,
     options?: { duration?: number; zoom?: number; fallbackWidth?: number; fallbackHeight?: number }
   ) => void;
+  fitNode?: (
+    node: Node,
+    options?: { duration?: number; padding?: number; maxZoom?: number }
+  ) => void;
   fitViewDefault: (options?: { duration?: number; padding?: number }) => void;
   zoomBy: (delta: number, options?: { duration?: number; minZoom?: number; maxZoom?: number }) => boolean;
   graphReady: boolean;
@@ -228,6 +232,7 @@ export function useGraphSelectionController({
   centerOnPlanGroup,
   centerOnNode,
   centerOnNodeObject,
+  fitNode,
   fitViewDefault,
   zoomBy,
   graphReady,
@@ -383,7 +388,19 @@ export function useGraphSelectionController({
         const node = graphNodesById.get(nodeId);
         if (node) {
           if (selection.kind === "planGroup") {
-            centerOnNodeObject(node, { duration: 200, zoom: 0.9, fallbackWidth: 320, fallbackHeight: 120 });
+            // Keep the activation zoom effect, but cap zoom using fit-to-view bounds.
+            if (fitNode) {
+              fitNode(node, { duration: 200, padding: 0.18, maxZoom: 0.9 });
+            } else {
+              centerOnNodeObject(node, { duration: 200, zoom: 0.9, fallbackWidth: 320, fallbackHeight: 120 });
+            }
+          } else if (selection.kind === "tierGroup") {
+            // Tier groups can be tall/wide; cap zoom to fit viewport.
+            if (fitNode) {
+              fitNode(node, { duration: 200, padding: 0.16, maxZoom: 0.95 });
+            } else {
+              centerOnNodeObject(node, { duration: 200, zoom: 0.95, fallbackWidth: 180, fallbackHeight: 60 });
+            }
           } else {
             centerOnNodeObject(node, { duration: 200, zoom: 0.95, fallbackWidth: 180, fallbackHeight: 60 });
           }
@@ -402,6 +419,7 @@ export function useGraphSelectionController({
     [
       centerOnNode,
       centerOnNodeObject,
+      fitNode,
       centerOnPlanGroup,
       graphNodesById,
     ]
@@ -636,6 +654,23 @@ export function useGraphSelectionController({
       event.preventDefault();
 
       if (key === "Escape") {
+        const selectionForEscape =
+          (isNavigableGraphSelection(graphSelection) ? graphSelection : null) ??
+          (focusedNodeId
+            ? { kind: "task" as const, id: focusedNodeId }
+            : selectedTaskId
+              ? { kind: "task" as const, id: selectedTaskId }
+              : null);
+
+        let recenterPlanId: string | null = null;
+        if (selectionForEscape?.kind === "planGroup") {
+          recenterPlanId = selectionForEscape.id;
+        } else if (selectionForEscape?.kind === "tierGroup") {
+          recenterPlanId = tierGroupsById.get(selectionForEscape.id)?.planArtifactId ?? null;
+        } else if (selectionForEscape?.kind === "task") {
+          recenterPlanId = taskToPlanMap.get(selectionForEscape.id) ?? null;
+        }
+
         setSelectedTaskId(null);
         setFocusedNodeId(null);
         setHighlightedTaskId(null);
@@ -643,6 +678,13 @@ export function useGraphSelectionController({
         if (highlightTimeoutRef.current) {
           clearTimeout(highlightTimeoutRef.current);
           highlightTimeoutRef.current = null;
+        }
+        if (recenterPlanId) {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              focusSelectionInView({ kind: "planGroup", id: recenterPlanId });
+            });
+          });
         }
         return;
       }

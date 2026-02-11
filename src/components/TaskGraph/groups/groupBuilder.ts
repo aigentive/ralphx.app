@@ -21,6 +21,7 @@ export const COLLAPSED_GROUP_HEIGHT = HEADER_HEIGHT + 8;
 export const COLLAPSED_TIER_WIDTH = COLLAPSED_GROUP_WIDTH;
 export const COLLAPSED_TIER_HEIGHT = TIER_HEADER_HEIGHT + 8;
 const MIN_TIER_GROUP_WIDTH = 260;
+const STANDARD_TIER_VERTICAL_PADDING = 18;
 
 interface PlanGroupBuilderArgs {
   taskNodes: Node[];
@@ -332,13 +333,20 @@ export function buildTierGroupNodes({
       );
       const bbox = boundingBoxes[0];
       if (!bbox) continue;
+      const maxTierTaskHeight = Math.max(
+        nodeHeight,
+        ...tierTaskNodes.map((node) => (typeof node.height === "number" ? node.height : nodeHeight))
+      );
+      const tierVerticalPadding =
+        maxTierTaskHeight >= 100 ? STANDARD_TIER_VERTICAL_PADDING : GROUP_PADDING;
 
       const expanded = expandBoundingBox(
         bbox,
         GROUP_PADDING,
         TIER_HEADER_HEIGHT,
         MIN_TIER_GROUP_WIDTH,
-        MIN_GROUP_HEIGHT
+        MIN_GROUP_HEIGHT,
+        tierVerticalPadding
       );
       const groupDims = boundingBoxToGroupNode(expanded);
       const desiredWidth =

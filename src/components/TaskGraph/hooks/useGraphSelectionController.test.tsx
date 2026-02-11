@@ -28,6 +28,7 @@ interface TestHarnessProps {
   planGroups?: PlanGroupInfo[];
   onDeleteTask?: (taskId: string) => void;
   keyboardNavigationEnabled?: boolean;
+  fitNode?: (node: Node, options?: { duration?: number; padding?: number; maxZoom?: number }) => void;
 }
 
 function TestHarness({
@@ -61,6 +62,7 @@ function TestHarness({
   ],
   onDeleteTask,
   keyboardNavigationEnabled = true,
+  fitNode = noop,
 }: TestHarnessProps) {
   const { containerRef, onKeyDown } = useGraphSelectionController({
     nodes: layoutNodes,
@@ -78,6 +80,7 @@ function TestHarness({
     centerOnPlanGroup: vi.fn(() => true),
     centerOnNode: vi.fn(() => true),
     centerOnNodeObject: noop,
+    fitNode,
     fitViewDefault: noop,
     zoomBy: vi.fn(() => true),
     graphReady: true,
@@ -124,6 +127,32 @@ describe("useGraphSelectionController", () => {
     fireEvent.keyDown(container.firstChild as HTMLElement, { key: "ArrowDown" });
 
     expect(useUiStore.getState().graphSelection).toBeNull();
+  });
+
+  it("clears selection and recenters plan group on Escape", () => {
+    useUiStore.getState().clearGraphSelection();
+    const fitNode = vi.fn();
+    const rafSpy = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
+
+    const { container } = render(
+      <ReactFlowProvider>
+        <TestHarness fitNode={fitNode} />
+      </ReactFlowProvider>
+    );
+
+    act(() => {
+      useUiStore.getState().setGraphSelection({ kind: "planGroup", id: "plan-1" });
+    });
+
+    fireEvent.keyDown(container.firstChild as HTMLElement, { key: "Escape" });
+
+    expect(useUiStore.getState().graphSelection).toBeNull();
+    expect(fitNode).toHaveBeenCalled();
+
+    rafSpy.mockRestore();
   });
 
   describe("Backspace on task", () => {
