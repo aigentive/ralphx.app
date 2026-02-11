@@ -117,7 +117,7 @@ vi.mock("./ReopenSessionDialog", () => ({
 }));
 
 vi.mock("@/stores/planStore", () => ({
-  usePlanStore: vi.fn((selector: (state: any) => any) => {
+  usePlanStore: vi.fn((selector: (state: Record<string, unknown>) => unknown) => {
     const state = {
       setActivePlan: mockSetActivePlan,
       clearActivePlan: mockClearActivePlan,
@@ -133,7 +133,7 @@ vi.mock("@/stores/planStore", () => ({
 }));
 
 vi.mock("@/stores/projectStore", () => ({
-  useProjectStore: vi.fn((selector: (state: any) => any) => {
+  useProjectStore: vi.fn((selector: (state: Record<string, unknown>) => unknown) => {
     const state = {
       activeProjectId: "project-1",
       projects: {},
