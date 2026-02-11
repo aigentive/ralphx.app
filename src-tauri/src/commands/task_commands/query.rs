@@ -18,6 +18,7 @@ use super::helpers::status_to_label;
 /// * `offset` - Pagination offset (default 0)
 /// * `limit` - Page size (default 20)
 /// * `include_archived` - Whether to include archived tasks (default false)
+/// * `ideation_session_id` - Optional ideation session ID to filter tasks
 ///
 /// # Returns
 /// * `TaskListResponse` - Contains tasks, total count, has_more flag, and offset
@@ -28,6 +29,7 @@ pub async fn list_tasks(
     offset: Option<u32>,
     limit: Option<u32>,
     include_archived: Option<bool>,
+    ideation_session_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<TaskListResponse, String> {
     let project_id = ProjectId::from_string(project_id);
@@ -53,17 +55,24 @@ pub async fn list_tasks(
         None
     };
 
-    // Get paginated tasks
+    // Get paginated tasks with session filter passed to repository
     let tasks = state
         .task_repo
-        .list_paginated(&project_id, internal_statuses, offset, limit, include_archived)
+        .list_paginated(
+            &project_id,
+            internal_statuses,
+            offset,
+            limit,
+            include_archived,
+            ideation_session_id.as_deref(),
+        )
         .await
         .map_err(|e| e.to_string())?;
 
-    // Get total count
+    // Get total count with session filter passed to repository
     let total = state
         .task_repo
-        .count_tasks(&project_id, include_archived)
+        .count_tasks(&project_id, include_archived, ideation_session_id.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -100,18 +109,21 @@ pub async fn get_task(id: String, state: State<'_, AppState>) -> Result<Option<T
 ///
 /// # Arguments
 /// * `project_id` - The project ID
+/// * `ideation_session_id` - Optional ideation session ID to filter tasks
 ///
 /// # Returns
 /// * `u32` - The count of archived tasks
 #[tauri::command]
 pub async fn get_archived_count(
     project_id: String,
+    ideation_session_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<u32, String> {
     let project_id_obj = ProjectId::from_string(project_id);
+
     state
         .task_repo
-        .get_archived_count(&project_id_obj)
+        .get_archived_count(&project_id_obj, ideation_session_id.as_deref())
         .await
         .map_err(|e| e.to_string())
 }
@@ -125,6 +137,7 @@ pub async fn get_archived_count(
 /// * `project_id` - The project ID to search within
 /// * `query` - The search query string
 /// * `include_archived` - Whether to include archived tasks in search results (default: false)
+/// * `ideation_session_id` - Optional ideation session ID to filter tasks
 ///
 /// # Returns
 /// * `Vec<TaskResponse>` - All matching tasks (no pagination - results should be small)
@@ -132,27 +145,37 @@ pub async fn get_archived_count(
 /// # Examples
 /// ```ignore
 /// // Search for "authentication" in title or description
-/// search_tasks("proj-123", "authentication", None)
+/// search_tasks("proj-123", "authentication", None, None)
 ///
 /// // Search including archived tasks
-/// search_tasks("proj-123", "old feature", Some(true))
+/// search_tasks("proj-123", "old feature", Some(true), None)
 /// ```
 #[tauri::command]
 pub async fn search_tasks(
     project_id: String,
     query: String,
     include_archived: Option<bool>,
+    ideation_session_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<TaskResponse>, String> {
     let project_id_obj = ProjectId::from_string(project_id);
     let include_archived = include_archived.unwrap_or(false);
 
     // Call repository search method
-    let tasks = state
+    let mut tasks = state
         .task_repo
         .search(&project_id_obj, &query, include_archived)
         .await
         .map_err(|e| e.to_string())?;
+
+    // Filter by session_id if provided
+    if let Some(ref sid) = ideation_session_id {
+        tasks.retain(|t| {
+            t.ideation_session_id
+                .as_ref()
+                .is_some_and(|id| id.as_str() == sid)
+        });
+    }
 
     // Convert to response
     let task_responses: Vec<TaskResponse> = tasks.into_iter().map(TaskResponse::from).collect();
@@ -301,7 +324,7 @@ pub async fn get_tasks_awaiting_review(
     // Use a high limit to get all tasks (no pagination needed for this view)
     let tasks = state
         .task_repo
-        .list_paginated(&project_id, Some(review_statuses), 0, 1000, false)
+        .list_paginated(&project_id, Some(review_statuses), 0, 1000, false, None)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -319,6 +342,7 @@ pub async fn get_tasks_awaiting_review(
 /// # Arguments
 /// * `project_id` - The project ID
 /// * `include_archived` - Whether to include archived tasks (default: false)
+/// * `session_id` - Optional ideation session ID to filter tasks
 ///
 /// # Returns
 /// * `TaskDependencyGraphResponse` - Contains nodes, edges, plan groups, critical path, and cycle info
@@ -332,6 +356,7 @@ pub async fn get_tasks_awaiting_review(
 pub async fn get_task_dependency_graph(
     project_id: String,
     include_archived: Option<bool>,
+    session_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<TaskDependencyGraphResponse, String> {
     use std::collections::{HashMap, HashSet, VecDeque};
@@ -347,11 +372,20 @@ pub async fn get_task_dependency_graph(
         .map_err(|e| e.to_string())?;
 
     // Filter out archived tasks if not requested
-    let tasks: Vec<_> = if include_archived {
+    let mut tasks: Vec<_> = if include_archived {
         tasks
     } else {
         tasks.into_iter().filter(|t| t.archived_at.is_none()).collect()
     };
+
+    // Filter by session_id if provided
+    if let Some(ref sid) = session_id {
+        tasks.retain(|t| {
+            t.ideation_session_id
+                .as_ref()
+                .is_some_and(|id| id.as_str() == sid)
+        });
+    }
 
     // Build task lookup map
     let task_map: HashMap<String, &crate::domain::entities::Task> = tasks
@@ -684,6 +718,7 @@ fn categorize_status(status: &InternalStatus, summary: &mut StatusSummary) {
 /// * `project_id` - The project ID
 /// * `offset` - Pagination offset (default 0)
 /// * `limit` - Page size (default 50)
+/// * `session_id` - Optional ideation session ID to filter events
 ///
 /// # Returns
 /// * `TimelineEventsResponse` - Events in reverse chronological order (newest first)
@@ -697,6 +732,7 @@ pub async fn get_task_timeline_events(
     project_id: String,
     offset: Option<u32>,
     limit: Option<u32>,
+    session_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<TimelineEventsResponse, String> {
     let project_id_obj = ProjectId::from_string(project_id.clone());
@@ -704,11 +740,20 @@ pub async fn get_task_timeline_events(
     let limit = limit.unwrap_or(50) as usize;
 
     // 1. Get all tasks for the project
-    let tasks = state
+    let mut tasks = state
         .task_repo
         .get_by_project(&project_id_obj)
         .await
         .map_err(|e| e.to_string())?;
+
+    // Filter by session_id if provided
+    if let Some(ref sid) = session_id {
+        tasks.retain(|t| {
+            t.ideation_session_id
+                .as_ref()
+                .is_some_and(|id| id.as_str() == sid)
+        });
+    }
 
     // 2. Collect status change events from all tasks
     let mut all_events: Vec<TimelineEvent> = Vec::new();

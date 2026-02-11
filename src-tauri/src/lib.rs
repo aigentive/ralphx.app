@@ -616,7 +616,11 @@ pub fn run() {
             commands::plan_branch_commands::get_project_plan_branches,
             commands::plan_branch_commands::enable_feature_branch,
             commands::plan_branch_commands::disable_feature_branch,
-            commands::plan_branch_commands::update_project_feature_branch_setting
+            commands::plan_branch_commands::update_project_feature_branch_setting,
+            // Plan commands (Active plan management)
+            commands::plan_commands::get_active_plan,
+            commands::plan_commands::set_active_plan,
+            commands::plan_commands::clear_active_plan
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

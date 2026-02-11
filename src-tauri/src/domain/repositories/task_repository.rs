@@ -110,7 +110,14 @@ pub trait TaskRepository: Send + Sync {
     async fn restore(&self, task_id: &TaskId) -> AppResult<Task>;
 
     /// Count archived tasks for a project
-    async fn get_archived_count(&self, project_id: &ProjectId) -> AppResult<u32>;
+    ///
+    /// # Arguments
+    /// * `project_id` - The project ID
+    /// * `ideation_session_id` - Optional ideation session ID to filter tasks
+    ///
+    /// # Returns
+    /// * Count of archived tasks matching the criteria
+    async fn get_archived_count(&self, project_id: &ProjectId, ideation_session_id: Option<&str>) -> AppResult<u32>;
 
     // ═══════════════════════════════════════════════════════════════════════
     // Pagination Operations (Phase 18 - Infinite Scroll)
@@ -124,6 +131,7 @@ pub trait TaskRepository: Send + Sync {
     /// * `offset` - Number of tasks to skip
     /// * `limit` - Maximum number of tasks to return
     /// * `include_archived` - Whether to include archived tasks
+    /// * `ideation_session_id` - Optional ideation session ID to filter tasks
     ///
     /// # Returns
     /// * Tasks ordered by created_at DESC (newest first)
@@ -134,6 +142,7 @@ pub trait TaskRepository: Send + Sync {
         offset: u32,
         limit: u32,
         include_archived: bool,
+        ideation_session_id: Option<&str>,
     ) -> AppResult<Vec<Task>>;
 
     /// Count total tasks for a project
@@ -141,6 +150,7 @@ pub trait TaskRepository: Send + Sync {
     /// # Arguments
     /// * `project_id` - The project ID
     /// * `include_archived` - Whether to include archived tasks in the count
+    /// * `ideation_session_id` - Optional ideation session ID to filter tasks
     ///
     /// # Returns
     /// * Total count of tasks matching the criteria
@@ -148,6 +158,7 @@ pub trait TaskRepository: Send + Sync {
         &self,
         project_id: &ProjectId,
         include_archived: bool,
+        ideation_session_id: Option<&str>,
     ) -> AppResult<u32>;
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -346,7 +357,7 @@ mod tests {
             Ok(task)
         }
 
-        async fn get_archived_count(&self, _project_id: &ProjectId) -> AppResult<u32> {
+        async fn get_archived_count(&self, _project_id: &ProjectId, _ideation_session_id: Option<&str>) -> AppResult<u32> {
             Ok(0)
         }
 
@@ -357,6 +368,7 @@ mod tests {
             _offset: u32,
             _limit: u32,
             _include_archived: bool,
+            _ideation_session_id: Option<&str>,
         ) -> AppResult<Vec<Task>> {
             Ok(vec![])
         }
@@ -365,6 +377,7 @@ mod tests {
             &self,
             _project_id: &ProjectId,
             _include_archived: bool,
+            _ideation_session_id: Option<&str>,
         ) -> AppResult<u32> {
             Ok(0)
         }
