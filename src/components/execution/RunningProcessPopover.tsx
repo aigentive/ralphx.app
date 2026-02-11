@@ -7,7 +7,6 @@
 
 import {
   Popover,
-  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
@@ -33,8 +32,8 @@ interface RunningProcessPopoverProps {
   onOpenSettings: () => void;
   /** Children (trigger element) */
   children: React.ReactNode;
-  /** Optional anchor ref for popover positioning (aligns to status indicator) */
-  anchorRef?: React.RefObject<HTMLDivElement | null>;
+  /** Optional horizontal alignment offset for popover content */
+  alignOffset?: number;
 }
 
 export function RunningProcessPopover({
@@ -46,16 +45,17 @@ export function RunningProcessPopover({
   onStopProcess,
   onOpenSettings,
   children,
-  anchorRef,
+  alignOffset = -24,
 }: RunningProcessPopoverProps) {
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-      {anchorRef && <PopoverAnchor virtualRef={anchorRef as React.RefObject<HTMLDivElement>} />}
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent
         data-testid="running-process-popover"
         align="start"
+        alignOffset={alignOffset}
         side="top"
+        sideOffset={24}
         className="w-[420px] p-0 border-0"
         style={{
           backgroundColor: "hsl(220 10% 11%)",

@@ -7,6 +7,7 @@
 import { Square, Loader2 } from "lucide-react";
 import type { MergePipelineTask } from "@/api/merge-pipeline";
 import { useCallback, useState } from "react";
+import { getStatusIconConfig } from "@/types/status-icons";
 
 interface ActiveMergeCardProps {
   task: MergePipelineTask;
@@ -26,6 +27,9 @@ function formatElapsedTime(startTime: Date): string {
 }
 
 export function ActiveMergeCard({ task, onStop }: ActiveMergeCardProps) {
+  const mergingStyle = getStatusIconConfig("merging");
+  const conflictStyle = getStatusIconConfig("merge_conflict");
+  const stoppedStyle = getStatusIconConfig("stopped");
   const [startTime] = useState(() => new Date(Date.now() - 30000));
   const elapsedTime = formatElapsedTime(startTime);
 
@@ -45,7 +49,7 @@ export function ActiveMergeCard({ task, onStop }: ActiveMergeCardProps) {
     >
       <Loader2
         className="w-3.5 h-3.5 animate-spin shrink-0"
-        style={{ color: "hsl(180 60% 50%)" }}
+        style={{ color: mergingStyle.color }}
       />
       <span
         className="flex-1 text-xs font-medium truncate min-w-0"
@@ -62,7 +66,7 @@ export function ActiveMergeCard({ task, onStop }: ActiveMergeCardProps) {
       {task.conflictFiles && task.conflictFiles.length > 0 && (
         <span
           className="text-[11px] shrink-0"
-          style={{ color: "hsl(45 90% 55%)" }}
+          style={{ color: conflictStyle.color }}
         >
           {task.conflictFiles.length}cf
         </span>
@@ -76,7 +80,7 @@ export function ActiveMergeCard({ task, onStop }: ActiveMergeCardProps) {
       <button
         onClick={handleStop}
         className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.08] transition-colors shrink-0"
-        style={{ color: "hsl(0 70% 60%)" }}
+        style={{ color: stoppedStyle.color }}
         title="Stop merge"
       >
         <Square className="w-2.5 h-2.5 fill-current" />

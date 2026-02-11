@@ -9,7 +9,6 @@ import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import {
   Popover,
-  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
@@ -20,6 +19,7 @@ import { AttentionMergeCard } from "./AttentionMergeCard";
 import { api } from "@/lib/tauri";
 import { useUiStore } from "@/stores/uiStore";
 import { cn } from "@/lib/utils";
+import { getStatusIconConfig } from "@/types/status-icons";
 
 interface MergePipelinePopoverProps {
   /** Tasks currently being merged */
@@ -30,8 +30,8 @@ interface MergePipelinePopoverProps {
   needsAttention: MergePipelineTask[];
   /** Trigger element (e.g., merge count button) */
   children: React.ReactNode;
-  /** Optional anchor ref for popover positioning (aligns to status indicator) */
-  anchorRef?: React.RefObject<HTMLDivElement | null>;
+  /** Optional horizontal alignment offset for popover content */
+  alignOffset?: number;
 }
 
 interface SectionHeaderProps {
@@ -43,6 +43,8 @@ interface SectionHeaderProps {
 }
 
 function SectionHeader({ title, count, isOpen, onToggle, highlight = false }: SectionHeaderProps) {
+  const attentionStyle = getStatusIconConfig("merge_incomplete");
+
   return (
     <button
       onClick={onToggle}
@@ -57,7 +59,7 @@ function SectionHeader({ title, count, isOpen, onToggle, highlight = false }: Se
       />
       <span
         className="text-[10px] font-semibold uppercase tracking-wider"
-        style={{ color: highlight ? "hsl(14 100% 60%)" : "hsl(220 10% 50%)" }}
+        style={{ color: highlight ? attentionStyle.color : "hsl(220 10% 50%)" }}
       >
         {title}
       </span>
@@ -76,7 +78,7 @@ export function MergePipelinePopover({
   waiting,
   needsAttention,
   children,
-  anchorRef,
+  alignOffset = -24,
 }: MergePipelinePopoverProps) {
   const [sections, setSections] = useState({
     active: true,
@@ -114,13 +116,14 @@ export function MergePipelinePopover({
 
   return (
     <Popover>
-      {anchorRef && <PopoverAnchor virtualRef={anchorRef as React.RefObject<HTMLDivElement>} />}
       <PopoverTrigger asChild>
         {children}
       </PopoverTrigger>
       <PopoverContent
         side="top"
         align="start"
+        alignOffset={alignOffset}
+        sideOffset={24}
         className="w-[420px] p-3"
         style={{
           backgroundColor: "hsl(220 10% 11%)",

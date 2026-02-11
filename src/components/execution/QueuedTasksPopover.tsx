@@ -6,7 +6,6 @@
 
 import {
   Popover,
-  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
@@ -20,25 +19,26 @@ interface QueuedTasksPopoverProps {
   queuedCount: number;
   /** Children to use as trigger (e.g., "Queued: 5" text) */
   children: React.ReactNode;
-  /** Optional anchor ref for popover positioning (aligns to status indicator) */
-  anchorRef?: React.RefObject<HTMLDivElement | null>;
+  /** Optional horizontal alignment offset for popover content */
+  alignOffset?: number;
 }
 
 export function QueuedTasksPopover({
   projectId,
   queuedCount,
   children,
-  anchorRef,
+  alignOffset = -24,
 }: QueuedTasksPopoverProps) {
   const { data: queuedTasks, isLoading } = useQueuedTasks(projectId);
 
   return (
     <Popover>
-      {anchorRef && <PopoverAnchor virtualRef={anchorRef as React.RefObject<HTMLDivElement>} />}
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent
         side="top"
         align="start"
+        alignOffset={alignOffset}
+        sideOffset={24}
         className="w-[400px] p-0"
         style={{
           backgroundColor: "hsl(220 10% 11%)",
