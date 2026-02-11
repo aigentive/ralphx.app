@@ -146,6 +146,11 @@ function validateProjectScope(
   const projectScopedTools = [
     "get_project_analysis",
     "save_project_analysis",
+    // Memory write tools (memory agents only)
+    "upsert_memories",
+    "refresh_memory_rule_index",
+    "ingest_rule_file",
+    "rebuild_archive_snapshots",
   ];
 
   if (!projectScopedTools.includes(toolName)) {
