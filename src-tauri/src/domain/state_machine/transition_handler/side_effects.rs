@@ -2239,6 +2239,13 @@ impl<'a> super::TransitionHandler<'a> {
                             "Programmatic merge in-repo succeeded (fast path)"
                         );
 
+                        // TEMP: skip post-merge validation globally (user requested).
+                        let _skip_validation = take_skip_validation_flag(&mut task);
+                        tracing::warn!(
+                            task_id = task_id_str,
+                            "Skipping post-merge validation (temporarily disabled)"
+                        );
+                        /*
                         // Post-merge validation gate: check mode + skip flag
                         let skip_validation = take_skip_validation_flag(&mut task);
                         let validation_mode = &project.merge_validation_mode;
@@ -2295,6 +2302,7 @@ impl<'a> super::TransitionHandler<'a> {
                                 }
                             }
                         }
+                        */
 
                         let app_handle = self.machine.context.services.app_handle.as_ref();
                         if let Err(e) = complete_merge_internal(
@@ -2623,6 +2631,13 @@ impl<'a> super::TransitionHandler<'a> {
                             "Programmatic merge in worktree succeeded (fast path)"
                         );
 
+                        // TEMP: skip post-merge validation globally (user requested).
+                        let _skip_validation = take_skip_validation_flag(&mut task);
+                        tracing::warn!(
+                            task_id = task_id_str,
+                            "Skipping post-merge validation (temporarily disabled)"
+                        );
+                        /*
                         // Post-merge validation gate: check mode + skip flag
                         let skip_validation = take_skip_validation_flag(&mut task);
                         let validation_mode = &project.merge_validation_mode;
@@ -2687,6 +2702,7 @@ impl<'a> super::TransitionHandler<'a> {
                                 }
                             }
                         }
+                        */
 
                         if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt_path) {
                             tracing::warn!(
@@ -3018,6 +3034,13 @@ impl<'a> super::TransitionHandler<'a> {
                         "Programmatic merge succeeded (fast path)"
                     );
 
+                    // TEMP: skip post-merge validation globally (user requested).
+                    let _skip_validation = take_skip_validation_flag(&mut task);
+                    tracing::warn!(
+                        task_id = task_id_str,
+                        "Skipping post-merge validation (temporarily disabled)"
+                    );
+                    /*
                     // Post-merge validation gate: check mode + skip flag
                     let skip_validation = take_skip_validation_flag(&mut task);
                     let validation_mode = &project.merge_validation_mode;
@@ -3073,6 +3096,7 @@ impl<'a> super::TransitionHandler<'a> {
                             }
                         }
                     }
+                    */
 
                     let app_handle = self.machine.context.services.app_handle.as_ref();
                     if let Err(e) = complete_merge_internal(
