@@ -42,9 +42,11 @@ pub async fn set_active_plan(
         .map_err(|e| e.to_string())?;
 
     // Record selection in plan_selection_stats
-    // TODO: This will be implemented when plan_selection_stats table is added
-    // For now, we just set the active plan
-    let _ = source; // Suppress unused warning
+    state
+        .active_plan_repo
+        .record_selection(&project_id, &ideation_session_id, &source)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(())
 }
