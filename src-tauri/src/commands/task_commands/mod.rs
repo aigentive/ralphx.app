@@ -1,73 +1,52 @@
 // Tauri commands for Task CRUD operations
 // Modular structure: types, helpers, query (read), mutation (write), tests
 
-pub mod types;
 pub mod helpers;
-pub mod query;
 pub mod mutation;
+pub mod query;
+pub mod types;
 
 #[cfg(test)]
 mod tests;
 
 // Re-export types
 pub use types::{
-    CreateTaskInput,
-    UpdateTaskInput,
     AnswerUserQuestionInput,
     AnswerUserQuestionResponse,
+    CleanupReportResponse,
+    CreateTaskInput,
     InjectTaskInput,
     InjectTaskResponse,
-    TaskResponse,
-    TaskListResponse,
-    StatusTransition,
+    PlanGroupInfo,
     StateTransitionResponse,
-    CleanupReportResponse,
+    StatusSummary,
+    StatusTransition,
+    TaskDependencyGraphResponse,
+    TaskGraphEdge,
     // Task graph types (Phase 67)
     TaskGraphNode,
-    TaskGraphEdge,
-    StatusSummary,
-    PlanGroupInfo,
-    TaskDependencyGraphResponse,
+    TaskListResponse,
+    TaskResponse,
     // Timeline event types (Phase 67 - Task D.1)
     TimelineEvent,
     TimelineEventType,
     TimelineEventsResponse,
+    UpdateTaskInput,
 };
 
 // Re-export helpers (for use by other command modules)
-pub use helpers::{
-    default_target,
-    emit_queue_changed,
-    emit_task_lifecycle_event,
-    status_to_label,
-};
+pub use helpers::{default_target, emit_queue_changed, emit_task_lifecycle_event, status_to_label};
 
 // Re-export query commands
 pub use query::{
-    list_tasks,
-    get_task,
-    get_archived_count,
+    get_archived_count, get_task, get_task_dependency_graph, get_task_state_transitions,
+    get_task_timeline_events, get_tasks_awaiting_review, get_valid_transitions, list_tasks,
     search_tasks,
-    get_valid_transitions,
-    get_tasks_awaiting_review,
-    get_task_state_transitions,
-    get_task_dependency_graph,
-    get_task_timeline_events,
 };
 
 // Re-export mutation commands
 pub use mutation::{
-    create_task,
-    update_task,
-    delete_task,
-    move_task,
-    inject_task,
-    answer_user_question,
-    archive_task,
-    restore_task,
-    permanently_delete_task,
-    cleanup_task,
-    cleanup_tasks_in_group,
-    pause_task,
-    stop_task,
+    answer_user_question, archive_task, cleanup_task, cleanup_tasks_in_group, create_task,
+    delete_task, inject_task, move_task, pause_task, permanently_delete_task, restore_task,
+    stop_task, update_task,
 };

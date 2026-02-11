@@ -1,7 +1,10 @@
 // Mock service implementations for testing
 // These implementations record calls for verification in tests
 
-use super::services::{AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStarter, ReviewStartResult, TaskScheduler};
+use super::services::{
+    AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStartResult, ReviewStarter,
+    TaskScheduler,
+};
 use async_trait::async_trait;
 use std::sync::{Arc, Mutex};
 
@@ -426,10 +429,10 @@ impl MockTaskScheduler {
 #[async_trait]
 impl TaskScheduler for MockTaskScheduler {
     async fn try_schedule_ready_tasks(&self) {
-        self.calls.lock().unwrap().push(ServiceCall::new(
-            "try_schedule_ready_tasks",
-            vec![],
-        ));
+        self.calls
+            .lock()
+            .unwrap()
+            .push(ServiceCall::new("try_schedule_ready_tasks", vec![]));
     }
 
     async fn try_retry_deferred_merges(&self, project_id: &str) {
@@ -736,7 +739,11 @@ mod tests {
         let result1 = starter.start_ai_review("task-1", "proj-1").await;
         let result2 = starter.start_ai_review("task-2", "proj-1").await;
 
-        if let (ReviewStartResult::Started { review_id: id1 }, ReviewStartResult::Started { review_id: id2 }) = (result1, result2) {
+        if let (
+            ReviewStartResult::Started { review_id: id1 },
+            ReviewStartResult::Started { review_id: id2 },
+        ) = (result1, result2)
+        {
             assert_ne!(id1, id2);
         } else {
             panic!("Expected Started results");

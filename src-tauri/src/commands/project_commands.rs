@@ -134,7 +134,12 @@ fn ensure_git_initialized(path: &str) -> Result<(), String> {
 
     // Create initial commit so HEAD exists (needed for diff operations)
     let _ = Command::new("git")
-        .args(["commit", "--allow-empty", "-m", "Initial commit (auto-created by RalphX)"])
+        .args([
+            "commit",
+            "--allow-empty",
+            "-m",
+            "Initial commit (auto-created by RalphX)",
+        ])
         .current_dir(path)
         .output();
 
@@ -208,9 +213,7 @@ pub async fn update_project(
         project.base_branch = Some(base_branch);
     }
     if let Some(mode_str) = input.merge_validation_mode {
-        project.merge_validation_mode = mode_str
-            .parse()
-            .unwrap_or(MergeValidationMode::Block);
+        project.merge_validation_mode = mode_str.parse().unwrap_or(MergeValidationMode::Block);
     }
 
     project.touch();
@@ -476,10 +479,7 @@ pub fn spawn_project_analyzer(
 ///
 /// Triggers the project-analyzer agent for manual re-analysis from Settings UI.
 #[tauri::command]
-pub async fn reanalyze_project(
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn reanalyze_project(id: String, state: State<'_, AppState>) -> Result<(), String> {
     let project_id = ProjectId::from_string(id.clone());
 
     let mut project = state
@@ -689,7 +689,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_git_default_branch_nonexistent_directory() {
-        let result = get_git_default_branch("/nonexistent/path/that/does/not/exist".to_string()).await;
+        let result =
+            get_git_default_branch("/nonexistent/path/that/does/not/exist".to_string()).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("does not exist"));
     }

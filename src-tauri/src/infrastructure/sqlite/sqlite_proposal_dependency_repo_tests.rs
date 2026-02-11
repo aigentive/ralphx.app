@@ -4,11 +4,11 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::domain::entities::{
-IdeationSession, IdeationSessionId, Priority, ProjectId, TaskCategory, TaskProposal,
+    IdeationSession, IdeationSessionId, Priority, ProjectId, TaskCategory, TaskProposal,
 };
 use crate::domain::repositories::ProposalDependencyRepository;
 use crate::infrastructure::sqlite::{
-open_memory_connection, run_migrations, SqliteProposalDependencyRepository,
+    open_memory_connection, run_migrations, SqliteProposalDependencyRepository,
 };
 use rusqlite::Connection;
 
@@ -82,7 +82,9 @@ async fn test_add_dependency_creates_record() {
 
     let repo = SqliteProposalDependencyRepository::new(conn);
 
-    let result = repo.add_dependency(&proposal_a.id, &proposal_b.id, None).await;
+    let result = repo
+        .add_dependency(&proposal_a.id, &proposal_b.id, None)
+        .await;
 
     assert!(result.is_ok());
 
@@ -107,7 +109,9 @@ async fn test_add_dependency_duplicate_is_ignored() {
     repo.add_dependency(&proposal_a.id, &proposal_b.id, None)
         .await
         .unwrap();
-    let result = repo.add_dependency(&proposal_a.id, &proposal_b.id, None).await;
+    let result = repo
+        .add_dependency(&proposal_a.id, &proposal_b.id, None)
+        .await;
 
     assert!(result.is_ok());
 
@@ -359,8 +363,12 @@ async fn test_get_all_for_session_returns_all_deps() {
     let all = repo.get_all_for_session(&session.id).await.unwrap();
     assert_eq!(all.len(), 2);
     // Check that the dependencies exist (reason is None since we passed None)
-    assert!(all.iter().any(|(from, to, _)| from == &proposal_a.id && to == &proposal_b.id));
-    assert!(all.iter().any(|(from, to, _)| from == &proposal_b.id && to == &proposal_c.id));
+    assert!(all
+        .iter()
+        .any(|(from, to, _)| from == &proposal_a.id && to == &proposal_b.id));
+    assert!(all
+        .iter()
+        .any(|(from, to, _)| from == &proposal_b.id && to == &proposal_c.id));
 }
 
 #[tokio::test]
@@ -398,12 +406,16 @@ async fn test_get_all_for_session_filters_by_session() {
     // Should only get session 1 deps
     let s1_all = repo.get_all_for_session(&session1.id).await.unwrap();
     assert_eq!(s1_all.len(), 1);
-    assert!(s1_all.iter().any(|(from, to, _)| from == &s1_proposal_a.id && to == &s1_proposal_b.id));
+    assert!(s1_all
+        .iter()
+        .any(|(from, to, _)| from == &s1_proposal_a.id && to == &s1_proposal_b.id));
 
     // Should only get session 2 deps
     let s2_all = repo.get_all_for_session(&session2_id).await.unwrap();
     assert_eq!(s2_all.len(), 1);
-    assert!(s2_all.iter().any(|(from, to, _)| from == &s2_proposal_a.id && to == &s2_proposal_b.id));
+    assert!(s2_all
+        .iter()
+        .any(|(from, to, _)| from == &s2_proposal_a.id && to == &s2_proposal_b.id));
 }
 
 // ==================== WOULD CREATE CYCLE TESTS ====================
@@ -440,7 +452,9 @@ async fn test_would_create_cycle_direct_cycle() {
         .unwrap();
 
     // Would adding A -> B create a cycle? Yes (A -> B -> A)
-    let result = repo.would_create_cycle(&proposal_a.id, &proposal_b.id).await;
+    let result = repo
+        .would_create_cycle(&proposal_a.id, &proposal_b.id)
+        .await;
     assert!(result.is_ok());
     assert!(result.unwrap());
 }
@@ -466,7 +480,9 @@ async fn test_would_create_cycle_indirect_cycle() {
         .unwrap();
 
     // Would adding A -> B create a cycle? Yes (A -> B -> C -> A)
-    let result = repo.would_create_cycle(&proposal_a.id, &proposal_b.id).await;
+    let result = repo
+        .would_create_cycle(&proposal_a.id, &proposal_b.id)
+        .await;
     assert!(result.is_ok());
     assert!(result.unwrap());
 }
@@ -489,7 +505,9 @@ async fn test_would_create_cycle_no_cycle() {
         .unwrap();
 
     // Would adding B -> C create a cycle? No
-    let result = repo.would_create_cycle(&proposal_b.id, &proposal_c.id).await;
+    let result = repo
+        .would_create_cycle(&proposal_b.id, &proposal_c.id)
+        .await;
     assert!(result.is_ok());
     assert!(!result.unwrap());
 }
@@ -506,7 +524,9 @@ async fn test_would_create_cycle_empty_graph() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // No existing dependencies, would A -> B create a cycle? No
-    let result = repo.would_create_cycle(&proposal_a.id, &proposal_b.id).await;
+    let result = repo
+        .would_create_cycle(&proposal_a.id, &proposal_b.id)
+        .await;
     assert!(result.is_ok());
     assert!(!result.unwrap());
 }

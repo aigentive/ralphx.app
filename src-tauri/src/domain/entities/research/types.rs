@@ -277,12 +277,18 @@ impl ResearchProcessStatus {
 
     /// Returns true if the process is active (pending or running)
     pub fn is_active(&self) -> bool {
-        matches!(self, ResearchProcessStatus::Pending | ResearchProcessStatus::Running)
+        matches!(
+            self,
+            ResearchProcessStatus::Pending | ResearchProcessStatus::Running
+        )
     }
 
     /// Returns true if the process is terminal (completed or failed)
     pub fn is_terminal(&self) -> bool {
-        matches!(self, ResearchProcessStatus::Completed | ResearchProcessStatus::Failed)
+        matches!(
+            self,
+            ResearchProcessStatus::Completed | ResearchProcessStatus::Failed
+        )
     }
 }
 

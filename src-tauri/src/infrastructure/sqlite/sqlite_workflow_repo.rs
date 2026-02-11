@@ -160,8 +160,11 @@ impl WorkflowRepository for SqliteWorkflowRepository {
         let conn = self.conn.lock().await;
 
         // First, unset any existing default
-        conn.execute("UPDATE workflows SET is_default = 0 WHERE is_default = 1", [])
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        conn.execute(
+            "UPDATE workflows SET is_default = 0 WHERE is_default = 1",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
 
         // Then set the new default
         conn.execute(

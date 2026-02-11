@@ -9,9 +9,7 @@ use tokio::sync::RwLock;
 
 use crate::domain::entities::ProjectId;
 use crate::domain::execution::{ExecutionSettings, GlobalExecutionSettings};
-use crate::domain::repositories::{
-    ExecutionSettingsRepository, GlobalExecutionSettingsRepository,
-};
+use crate::domain::repositories::{ExecutionSettingsRepository, GlobalExecutionSettingsRepository};
 
 /// Maximum allowed value for global_max_concurrent
 const GLOBAL_MAX_CONCURRENT_LIMIT: u32 = 50;
@@ -128,7 +126,9 @@ impl GlobalExecutionSettingsRepository for MemoryGlobalExecutionSettingsReposito
         new_settings: &GlobalExecutionSettings,
     ) -> Result<GlobalExecutionSettings, Box<dyn std::error::Error>> {
         // Enforce max limit of 50
-        let clamped_max = new_settings.global_max_concurrent.min(GLOBAL_MAX_CONCURRENT_LIMIT);
+        let clamped_max = new_settings
+            .global_max_concurrent
+            .min(GLOBAL_MAX_CONCURRENT_LIMIT);
 
         let mut settings = self.settings.write().await;
         settings.global_max_concurrent = clamped_max;

@@ -81,7 +81,9 @@ pub struct ArtifactSummary {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::entities::{ArtifactId, InternalStatus, ProjectId, Task, TaskId, TaskProposalId};
+    use crate::domain::entities::{
+        ArtifactId, InternalStatus, ProjectId, Task, TaskId, TaskProposalId,
+    };
 
     #[test]
     fn test_task_context_creation() {
@@ -225,15 +227,9 @@ mod tests {
 
         assert_eq!(context.task.id, task.id);
         assert!(context.source_proposal.is_some());
-        assert_eq!(
-            context.source_proposal.unwrap().title,
-            "Original Proposal"
-        );
+        assert_eq!(context.source_proposal.unwrap().title, "Original Proposal");
         assert!(context.plan_artifact.is_some());
-        assert_eq!(
-            context.plan_artifact.unwrap().title,
-            "Implementation Plan"
-        );
+        assert_eq!(context.plan_artifact.unwrap().title, "Implementation Plan");
         assert_eq!(context.related_artifacts.len(), 1);
         assert_eq!(context.steps.len(), 0);
         assert!(context.step_progress.is_none());

@@ -86,11 +86,7 @@ impl TaskProposalRepository for MemoryTaskProposalRepository {
         Ok(())
     }
 
-    async fn set_created_task_id(
-        &self,
-        id: &TaskProposalId,
-        task_id: &TaskId,
-    ) -> AppResult<()> {
+    async fn set_created_task_id(&self, id: &TaskProposalId, task_id: &TaskId) -> AppResult<()> {
         if let Some(p) = self.proposals.write().unwrap().get_mut(&id.to_string()) {
             p.created_task_id = Some(task_id.clone());
         }
@@ -152,7 +148,10 @@ impl TaskProposalRepository for MemoryTaskProposalRepository {
             .count() as u32)
     }
 
-    async fn get_by_plan_artifact_id(&self, artifact_id: &ArtifactId) -> AppResult<Vec<TaskProposal>> {
+    async fn get_by_plan_artifact_id(
+        &self,
+        artifact_id: &ArtifactId,
+    ) -> AppResult<Vec<TaskProposal>> {
         let mut proposals: Vec<_> = self
             .proposals
             .read()

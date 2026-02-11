@@ -1,8 +1,4 @@
-use axum::{
-    extract::State,
-    http::StatusCode,
-    Json,
-};
+use axum::{extract::State, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 
 use super::*;
@@ -56,7 +52,9 @@ pub async fn update_global_settings(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Sync in-memory execution state
-    state.execution_state.set_global_max_concurrent(updated.global_max_concurrent);
+    state
+        .execution_state
+        .set_global_max_concurrent(updated.global_max_concurrent);
 
     Ok(Json(GlobalSettingsHttpResponse {
         global_max_concurrent: updated.global_max_concurrent,

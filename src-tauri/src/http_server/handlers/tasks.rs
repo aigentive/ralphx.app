@@ -1,8 +1,4 @@
-use axum::{
-    extract::State,
-    http::StatusCode,
-    Json,
-};
+use axum::{extract::State, http::StatusCode, Json};
 use tracing::error;
 
 use super::*;
@@ -38,15 +34,10 @@ pub async fn update_task(
     }
 
     // Save updated task
-    state
-        .app_state
-        .task_repo
-        .update(&task)
-        .await
-        .map_err(|e| {
-            error!("Failed to update task {}: {}", task_id.as_str(), e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    state.app_state.task_repo.update(&task).await.map_err(|e| {
+        error!("Failed to update task {}: {}", task_id.as_str(), e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     Ok(Json(task_to_response(&task)))
 }
@@ -77,15 +68,10 @@ pub async fn add_task_note(
     });
 
     // Save updated task
-    state
-        .app_state
-        .task_repo
-        .update(&task)
-        .await
-        .map_err(|e| {
-            error!("Failed to update task {}: {}", task_id.as_str(), e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    state.app_state.task_repo.update(&task).await.map_err(|e| {
+        error!("Failed to update task {}: {}", task_id.as_str(), e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     Ok(Json(task_to_response(&task)))
 }

@@ -6,16 +6,16 @@ use std::sync::Arc;
 use tauri::{Emitter, State};
 
 use crate::application::git_service::GitService;
-use crate::application::{StopMode, TaskCleanupService};
 use crate::application::AppState;
+use crate::application::{StopMode, TaskCleanupService};
+use crate::domain::entities::plan_branch::PlanBranchStatus;
 use crate::domain::entities::{
     IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, TaskId,
 };
-use crate::domain::entities::plan_branch::PlanBranchStatus;
 
 use super::ideation_commands_types::{
-    ChatMessageResponse, CreateSessionInput, IdeationSessionResponse,
-    SessionWithDataResponse, TaskProposalResponse,
+    ChatMessageResponse, CreateSessionInput, IdeationSessionResponse, SessionWithDataResponse,
+    TaskProposalResponse,
 };
 
 // ============================================================================
@@ -101,8 +101,14 @@ pub async fn get_ideation_session_with_data(
 
     Ok(Some(SessionWithDataResponse {
         session: IdeationSessionResponse::from(session),
-        proposals: proposals.into_iter().map(TaskProposalResponse::from).collect(),
-        messages: messages.into_iter().map(ChatMessageResponse::from).collect(),
+        proposals: proposals
+            .into_iter()
+            .map(TaskProposalResponse::from)
+            .collect(),
+        messages: messages
+            .into_iter()
+            .map(ChatMessageResponse::from)
+            .collect(),
     }))
 }
 
@@ -194,7 +200,8 @@ pub async fn delete_ideation_session(
 
         if let Some(project) = project {
             let repo_path = PathBuf::from(&project.working_directory);
-            if let Err(e) = GitService::delete_feature_branch(&repo_path, &plan_branch.branch_name) {
+            if let Err(e) = GitService::delete_feature_branch(&repo_path, &plan_branch.branch_name)
+            {
                 tracing::warn!(
                     branch = plan_branch.branch_name.as_str(),
                     error = %e,
@@ -266,7 +273,10 @@ pub async fn reopen_ideation_session(
         task_cleanup,
     );
 
-    service.reopen(&session_id).await.map_err(|e| e.to_string())?;
+    service
+        .reopen(&session_id)
+        .await
+        .map_err(|e| e.to_string())?;
 
     // Emit events for real-time UI updates
     let _ = app.emit(
@@ -365,7 +375,10 @@ pub async fn spawn_session_namer(
 
     // Set RALPHX_AGENT_TYPE so MCP server grants access to update_session_title tool
     let mut env = std::collections::HashMap::new();
-    env.insert("RALPHX_AGENT_TYPE".to_string(), mcp_agent_type(agent_names::AGENT_SESSION_NAMER).to_string());
+    env.insert(
+        "RALPHX_AGENT_TYPE".to_string(),
+        mcp_agent_type(agent_names::AGENT_SESSION_NAMER).to_string(),
+    );
 
     let config = AgentConfig {
         role: AgentRole::Custom(mcp_agent_type(agent_names::AGENT_SESSION_NAMER).to_string()),
@@ -494,10 +507,15 @@ pub async fn spawn_dependency_suggester(
 
     // Set RALPHX_AGENT_TYPE so MCP server grants access to apply_proposal_dependencies tool
     let mut env = std::collections::HashMap::new();
-    env.insert("RALPHX_AGENT_TYPE".to_string(), mcp_agent_type(agent_names::AGENT_DEPENDENCY_SUGGESTER).to_string());
+    env.insert(
+        "RALPHX_AGENT_TYPE".to_string(),
+        mcp_agent_type(agent_names::AGENT_DEPENDENCY_SUGGESTER).to_string(),
+    );
 
     let config = AgentConfig {
-        role: AgentRole::Custom(mcp_agent_type(agent_names::AGENT_DEPENDENCY_SUGGESTER).to_string()),
+        role: AgentRole::Custom(
+            mcp_agent_type(agent_names::AGENT_DEPENDENCY_SUGGESTER).to_string(),
+        ),
         prompt,
         working_directory,
         plugin_dir: Some(plugin_dir),

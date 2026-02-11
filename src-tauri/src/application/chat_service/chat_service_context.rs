@@ -9,15 +9,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::domain::entities::{
-    ChatContextType, ChatConversation, ChatConversationId, ChatMessage, ChatMessageId,
-    GitMode, IdeationSessionId, MessageRole, ProjectId, TaskId,
+    ChatContextType, ChatConversation, ChatConversationId, ChatMessage, ChatMessageId, GitMode,
+    IdeationSessionId, MessageRole, ProjectId, TaskId,
 };
-use crate::domain::repositories::{
-    IdeationSessionRepository, ProjectRepository, TaskRepository,
-};
+use crate::domain::repositories::{IdeationSessionRepository, ProjectRepository, TaskRepository};
 use crate::infrastructure::agents::claude::{
-    build_spawnable_command, mcp_agent_type, SpawnableCommand,
-    ContentBlockItem, ToolCall,
+    build_spawnable_command, mcp_agent_type, ContentBlockItem, SpawnableCommand, ToolCall,
 };
 
 use crate::infrastructure::agents::claude::agent_names;
@@ -36,10 +33,11 @@ pub async fn resolve_project_id(
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
 ) -> Option<String> {
     match context_type {
-        ChatContextType::Project => {
-            Some(context_id.to_string())
-        }
-        ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge => {
+        ChatContextType::Project => Some(context_id.to_string()),
+        ChatContextType::Task
+        | ChatContextType::TaskExecution
+        | ChatContextType::Review
+        | ChatContextType::Merge => {
             if let Ok(Some(task)) = task_repo
                 .get_by_id(&TaskId::from_string(context_id.to_string()))
                 .await
@@ -288,7 +286,10 @@ pub fn build_command(
 
     let (prompt, resume_session) = if should_resume {
         let session_id = conversation.claude_session_id.as_ref().unwrap();
-        (user_message.to_string(), Some(session_id.as_str().to_string()))
+        (
+            user_message.to_string(),
+            Some(session_id.as_str().to_string()),
+        )
     } else {
         let initial_prompt = build_initial_prompt(
             conversation.context_type,
@@ -299,14 +300,21 @@ pub fn build_command(
     };
 
     let mut spawnable = build_spawnable_command(
-        cli_path, plugin_dir, &prompt,
-        Some(agent_name), resume_session.as_deref(), working_directory,
+        cli_path,
+        plugin_dir,
+        &prompt,
+        Some(agent_name),
+        resume_session.as_deref(),
+        working_directory,
     )?;
 
     // Add env vars for agent/task/project scope
     spawnable.env("RALPHX_AGENT_TYPE", mcp_agent_type(agent_name));
     match conversation.context_type {
-        ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge => {
+        ChatContextType::Task
+        | ChatContextType::TaskExecution
+        | ChatContextType::Review
+        | ChatContextType::Merge => {
             spawnable.env("RALPHX_TASK_ID", &conversation.context_id);
         }
         _ => {}
@@ -335,8 +343,12 @@ pub fn build_resume_command(
     let agent_name = resolve_agent(&context_type, None);
 
     let mut spawnable = build_spawnable_command(
-        cli_path, plugin_dir, message,
-        Some(agent_name), Some(session_id), working_directory,
+        cli_path,
+        plugin_dir,
+        message,
+        Some(agent_name),
+        Some(session_id),
+        working_directory,
     )?;
 
     spawnable.env("RALPHX_AGENT_TYPE", mcp_agent_type(agent_name));
@@ -367,7 +379,10 @@ pub fn create_user_message(
         ChatContextType::Ideation => {
             ChatMessage::user_in_session(IdeationSessionId::from_string(context_id), content)
         }
-        ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge => {
+        ChatContextType::Task
+        | ChatContextType::TaskExecution
+        | ChatContextType::Review
+        | ChatContextType::Merge => {
             ChatMessage::user_about_task(TaskId::from_string(context_id.to_string()), content)
         }
         ChatContextType::Project => {
@@ -399,8 +414,10 @@ pub fn create_assistant_message(
             m
         }
         ChatContextType::Project => {
-            let mut m =
-                ChatMessage::user_in_project(ProjectId::from_string(context_id.to_string()), content);
+            let mut m = ChatMessage::user_in_project(
+                ProjectId::from_string(context_id.to_string()),
+                content,
+            );
             m.role = MessageRole::Orchestrator;
             m
         }

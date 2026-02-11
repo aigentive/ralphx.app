@@ -72,7 +72,11 @@ impl SqliteArtifactBucketRepository {
     /// Convert bucket to config JSON for storage
     fn bucket_to_config_json(bucket: &ArtifactBucket) -> AppResult<String> {
         let config = BucketConfig {
-            accepted_types: bucket.accepted_types.iter().map(|t| t.as_str().to_string()).collect(),
+            accepted_types: bucket
+                .accepted_types
+                .iter()
+                .map(|t| t.as_str().to_string())
+                .collect(),
             writers: bucket.writers.clone(),
             readers: bucket.readers.clone(),
         };

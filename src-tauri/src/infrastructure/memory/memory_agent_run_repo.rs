@@ -4,7 +4,9 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 
-use crate::domain::entities::{AgentRun, AgentRunId, AgentRunStatus, ChatConversationId, InterruptedConversation};
+use crate::domain::entities::{
+    AgentRun, AgentRunId, AgentRunStatus, ChatConversationId, InterruptedConversation,
+};
 use crate::domain::repositories::AgentRunRepository;
 use crate::error::AppResult;
 

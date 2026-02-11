@@ -17,7 +17,14 @@ pub fn detect_cycles(
 
     for node in nodes {
         if !visited.contains(node) {
-            dfs_cycle_detect(node, adj, &mut visited, &mut rec_stack, &mut path, &mut cycles);
+            dfs_cycle_detect(
+                node,
+                adj,
+                &mut visited,
+                &mut rec_stack,
+                &mut path,
+                &mut cycles,
+            );
         }
     }
 

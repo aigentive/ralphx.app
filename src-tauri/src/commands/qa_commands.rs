@@ -6,9 +6,7 @@ use tauri::State;
 
 use crate::application::AppState;
 use crate::domain::entities::{TaskId, TaskQA};
-use crate::domain::qa::{
-    AcceptanceCriterion, QAResults, QASettings, QAStepResult, QATestStep,
-};
+use crate::domain::qa::{AcceptanceCriterion, QAResults, QASettings, QAStepResult, QATestStep};
 
 // ============================================================================
 // Response Types
@@ -103,7 +101,11 @@ impl From<QAResults> for QAResultsResponse {
             total_steps: r.total_steps,
             passed_steps: r.passed_steps,
             failed_steps: r.failed_steps,
-            steps: r.steps.into_iter().map(QAStepResultResponse::from).collect(),
+            steps: r
+                .steps
+                .into_iter()
+                .map(QAStepResultResponse::from)
+                .collect(),
         }
     }
 }
@@ -286,7 +288,10 @@ pub async fn get_qa_results(
 /// Retry QA tests for a task
 /// Resets test results and triggers re-testing
 #[tauri::command]
-pub async fn retry_qa(task_id: String, state: State<'_, AppState>) -> Result<TaskQAResponse, String> {
+pub async fn retry_qa(
+    task_id: String,
+    state: State<'_, AppState>,
+) -> Result<TaskQAResponse, String> {
     let task_id_parsed = TaskId::from_string(task_id.clone());
 
     // Get existing TaskQA record
@@ -325,7 +330,10 @@ pub async fn retry_qa(task_id: String, state: State<'_, AppState>) -> Result<Tas
 
 /// Skip QA for a task (mark as passed to bypass failure)
 #[tauri::command]
-pub async fn skip_qa(task_id: String, state: State<'_, AppState>) -> Result<TaskQAResponse, String> {
+pub async fn skip_qa(
+    task_id: String,
+    state: State<'_, AppState>,
+) -> Result<TaskQAResponse, String> {
     let task_id_parsed = TaskId::from_string(task_id.clone());
 
     // Get existing TaskQA record
@@ -472,10 +480,8 @@ mod tests {
         state.task_qa_repo.create(&task_qa).await.unwrap();
 
         // Add results
-        let results = QAResults::from_results(
-            task_id.as_str(),
-            vec![QAStepResult::passed("QA1", None)],
-        );
+        let results =
+            QAResults::from_results(task_id.as_str(), vec![QAStepResult::passed("QA1", None)]);
         state
             .task_qa_repo
             .update_results(&qa_id, "agent-1", &results, &[])
@@ -500,9 +506,13 @@ mod tests {
         let qa_id = task_qa.id.clone();
 
         // Add test steps (needed for retry to generate step IDs)
-        let steps = QATestSteps::from_steps(vec![
-            QATestStep::new("QA1", "AC1", "Test step", vec![], "Expected"),
-        ]);
+        let steps = QATestSteps::from_steps(vec![QATestStep::new(
+            "QA1",
+            "AC1",
+            "Test step",
+            vec![],
+            "Expected",
+        )]);
         task_qa.qa_test_steps = Some(steps);
         state.task_qa_repo.create(&task_qa).await.unwrap();
 
@@ -518,7 +528,12 @@ mod tests {
             .unwrap();
 
         // Verify failed
-        let before = state.task_qa_repo.get_by_task_id(&task_id).await.unwrap().unwrap();
+        let before = state
+            .task_qa_repo
+            .get_by_task_id(&task_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert!(before.is_failed());
 
         // Retry
@@ -534,7 +549,12 @@ mod tests {
             .unwrap();
 
         // Verify reset
-        let after = state.task_qa_repo.get_by_task_id(&task_id).await.unwrap().unwrap();
+        let after = state
+            .task_qa_repo
+            .get_by_task_id(&task_id)
+            .await
+            .unwrap()
+            .unwrap();
         let results = after.test_results.unwrap();
         assert_eq!(results.overall_status, QAOverallStatus::Pending);
     }
@@ -550,9 +570,13 @@ mod tests {
         let mut task_qa = TaskQA::new(task_id.clone());
         let qa_id = task_qa.id.clone();
 
-        let steps = QATestSteps::from_steps(vec![
-            QATestStep::new("QA1", "AC1", "Test step", vec![], "Expected"),
-        ]);
+        let steps = QATestSteps::from_steps(vec![QATestStep::new(
+            "QA1",
+            "AC1",
+            "Test step",
+            vec![],
+            "Expected",
+        )]);
         task_qa.qa_test_steps = Some(steps);
         state.task_qa_repo.create(&task_qa).await.unwrap();
 
@@ -572,7 +596,12 @@ mod tests {
             .unwrap();
 
         // Verify skipped (which counts as not passed/failed but complete)
-        let after = state.task_qa_repo.get_by_task_id(&task_id).await.unwrap().unwrap();
+        let after = state
+            .task_qa_repo
+            .get_by_task_id(&task_id)
+            .await
+            .unwrap()
+            .unwrap();
         let results = after.test_results.unwrap();
         assert_eq!(results.steps[0].status, QAStepStatus::Skipped);
     }
@@ -585,12 +614,17 @@ mod tests {
         let mut task_qa = TaskQA::new(task_id.clone());
 
         // Add acceptance criteria
-        let criteria = AcceptanceCriteria::from_criteria(vec![
-            AcceptanceCriterion::visual("AC1", "Visual test"),
-        ]);
-        let steps = QATestSteps::from_steps(vec![
-            QATestStep::new("QA1", "AC1", "Test step", vec!["cmd1".to_string()], "Expected"),
-        ]);
+        let criteria = AcceptanceCriteria::from_criteria(vec![AcceptanceCriterion::visual(
+            "AC1",
+            "Visual test",
+        )]);
+        let steps = QATestSteps::from_steps(vec![QATestStep::new(
+            "QA1",
+            "AC1",
+            "Test step",
+            vec!["cmd1".to_string()],
+            "Expected",
+        )]);
 
         task_qa.acceptance_criteria = Some(criteria);
         task_qa.qa_test_steps = Some(steps);

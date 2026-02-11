@@ -3,9 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::domain::entities::{
-    DependencyGraph, IdeationSession, TaskProposal,
-};
+use crate::domain::entities::{DependencyGraph, IdeationSession, TaskProposal};
 
 // Re-export shared ChatMessageResponse
 pub use crate::commands::chat_responses::ChatMessageResponse;

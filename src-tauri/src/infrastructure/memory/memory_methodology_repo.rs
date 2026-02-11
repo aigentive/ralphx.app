@@ -30,8 +30,10 @@ impl MemoryMethodologyRepository {
     }
 
     pub fn with_methodologies(methodologies: Vec<MethodologyExtension>) -> Self {
-        let map: HashMap<MethodologyId, MethodologyExtension> =
-            methodologies.into_iter().map(|m| (m.id.clone(), m)).collect();
+        let map: HashMap<MethodologyId, MethodologyExtension> = methodologies
+            .into_iter()
+            .map(|m| (m.id.clone(), m))
+            .collect();
         Self {
             methodologies: Arc::new(RwLock::new(map)),
         }
@@ -123,8 +125,7 @@ mod tests {
 
     fn create_test_methodology() -> MethodologyExtension {
         let workflow = create_test_workflow();
-        MethodologyExtension::new("Test Method", workflow)
-            .with_description("A test methodology")
+        MethodologyExtension::new("Test Method", workflow).with_description("A test methodology")
     }
 
     fn create_active_methodology() -> MethodologyExtension {

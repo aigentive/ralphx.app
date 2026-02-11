@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::application::git_service::GitService;
 use crate::application::task_cleanup_service::{StopMode, TaskCleanupService};
 use crate::domain::entities::plan_branch::PlanBranchStatus;
 use crate::domain::entities::{IdeationSessionId, IdeationSessionStatus};
@@ -12,7 +13,6 @@ use crate::domain::repositories::{
     IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskProposalRepository,
     TaskRepository,
 };
-use crate::application::git_service::GitService;
 use crate::error::AppResult;
 
 pub struct SessionReopenService {
@@ -58,10 +58,12 @@ impl SessionReopenService {
             .ideation_session_repo
             .get_by_id(session_id)
             .await?
-            .ok_or_else(|| crate::error::AppError::NotFound(format!(
-                "Session not found: {}",
-                session_id.as_str()
-            )))?;
+            .ok_or_else(|| {
+                crate::error::AppError::NotFound(format!(
+                    "Session not found: {}",
+                    session_id.as_str()
+                ))
+            })?;
 
         match session.status {
             IdeationSessionStatus::Accepted | IdeationSessionStatus::Archived => {}
@@ -88,8 +90,7 @@ impl SessionReopenService {
             if plan_branch.status == PlanBranchStatus::Active {
                 if let Ok(Some(project)) = self.project_repo.get_by_id(&session.project_id).await {
                     let repo_path = PathBuf::from(&project.working_directory);
-                    let _ =
-                        GitService::delete_feature_branch(&repo_path, &plan_branch.branch_name);
+                    let _ = GitService::delete_feature_branch(&repo_path, &plan_branch.branch_name);
                 }
                 let _ = self
                     .plan_branch_repo
@@ -145,11 +146,7 @@ mod tests {
 
         // Create session and accept it
         let session = IdeationSession::new(project_id.clone());
-        let created = state
-            .ideation_session_repo
-            .create(session)
-            .await
-            .unwrap();
+        let created = state.ideation_session_repo.create(session).await.unwrap();
         state
             .ideation_session_repo
             .update_status(&created.id, IdeationSessionStatus::Accepted)
@@ -164,7 +161,11 @@ mod tests {
             Priority::Medium,
         );
         proposal.created_task_id = Some(crate::domain::entities::TaskId::new());
-        state.task_proposal_repo.create(proposal.clone()).await.unwrap();
+        state
+            .task_proposal_repo
+            .create(proposal.clone())
+            .await
+            .unwrap();
 
         // Create tasks linked to this session
         let mut task = Task::new(project_id.clone(), "Test Task".to_string());
@@ -208,11 +209,7 @@ mod tests {
         let project_id = ProjectId::new();
 
         let session = IdeationSession::new(project_id);
-        let created = state
-            .ideation_session_repo
-            .create(session)
-            .await
-            .unwrap();
+        let created = state.ideation_session_repo.create(session).await.unwrap();
         state
             .ideation_session_repo
             .update_status(&created.id, IdeationSessionStatus::Archived)
@@ -237,11 +234,7 @@ mod tests {
         let project_id = ProjectId::new();
 
         let session = IdeationSession::new(project_id);
-        let created = state
-            .ideation_session_repo
-            .create(session)
-            .await
-            .unwrap();
+        let created = state.ideation_session_repo.create(session).await.unwrap();
 
         let service = build_service(&state);
 
@@ -265,11 +258,7 @@ mod tests {
         let project_id = ProjectId::new();
 
         let session = IdeationSession::new(project_id);
-        let created = state
-            .ideation_session_repo
-            .create(session)
-            .await
-            .unwrap();
+        let created = state.ideation_session_repo.create(session).await.unwrap();
         state
             .ideation_session_repo
             .update_status(&created.id, IdeationSessionStatus::Accepted)

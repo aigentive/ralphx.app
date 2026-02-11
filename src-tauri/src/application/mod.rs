@@ -11,9 +11,9 @@ pub mod git_service;
 pub mod ideation_service;
 pub mod permission_state;
 pub mod plan_ranking;
-pub mod question_state;
 pub mod priority_service;
 pub mod qa_service;
+pub mod question_state;
 pub mod reconciliation;
 pub mod review_issue_service;
 pub mod review_service;
@@ -30,6 +30,7 @@ pub use app_state::AppState;
 pub use apply_service::{
     ApplyProposalsOptions, ApplyProposalsResult, ApplyService, SelectionValidation, TargetColumn,
 };
+pub use chat_resumption::ChatResumptionRunner;
 pub use dependency_service::{DependencyAnalysis, DependencyService, ValidationResult};
 pub use diff_service::{DiffService, FileChange, FileChangeStatus, FileDiff};
 pub use git_service::{
@@ -38,22 +39,23 @@ pub use git_service::{
 pub use ideation_service::{
     CreateProposalOptions, IdeationService, SessionStats, SessionWithData, UpdateProposalOptions,
 };
-pub use priority_service::PriorityService;
-pub use qa_service::{QAPrepStatus, QAService, TaskQAState};
-pub use review_issue_service::{CreateIssueInput, ReviewIssueService};
-pub use review_service::ReviewService;
-pub use session_reopen_service::SessionReopenService;
-pub use supervisor_service::{SupervisorConfig, SupervisorService, TaskMonitorState};
 pub use permission_state::{PendingPermissionInfo, PermissionDecision, PermissionState};
 pub use plan_ranking::{
     compute_activity_score, compute_final_score, compute_final_score_with_breakdown,
     compute_interaction_score, compute_recency_score, ScoreBreakdown,
 };
+pub use priority_service::PriorityService;
+pub use qa_service::{QAPrepStatus, QAService, TaskQAState};
 pub use question_state::{PendingQuestionInfo, QuestionAnswer, QuestionOption, QuestionState};
-pub use chat_resumption::ChatResumptionRunner;
 pub use reconciliation::ReconciliationRunner;
+pub use review_issue_service::{CreateIssueInput, ReviewIssueService};
+pub use review_service::ReviewService;
+pub use session_reopen_service::SessionReopenService;
 pub use startup_jobs::StartupJobRunner;
-pub use task_cleanup_service::{CleanupReport, StopMode, TaskCleanupService, TaskGroup, TaskStopper};
+pub use supervisor_service::{SupervisorConfig, SupervisorService, TaskMonitorState};
+pub use task_cleanup_service::{
+    CleanupReport, StopMode, TaskCleanupService, TaskGroup, TaskStopper,
+};
 pub use task_context_service::TaskContextService;
 pub use task_scheduler_service::TaskSchedulerService;
 pub use task_transition_service::TaskTransitionService;
@@ -61,6 +63,7 @@ pub use task_transition_service::TaskTransitionService;
 // Unified chat service (handles all chat contexts: ideation, task, project, task_execution)
 pub use chat_service::{
     AgentChunkPayload, AgentErrorPayload, AgentMessageCreatedPayload, AgentQueueSentPayload,
-    AgentRunCompletedPayload, AgentRunStartedPayload, AgentToolCallPayload, ChatConversationWithMessages,
-    ChatService, ChatServiceError, ClaudeChatService, MockChatService, MockChatResponse, SendResult,
+    AgentRunCompletedPayload, AgentRunStartedPayload, AgentToolCallPayload,
+    ChatConversationWithMessages, ChatService, ChatServiceError, ClaudeChatService,
+    MockChatResponse, MockChatService, SendResult,
 };

@@ -1,6 +1,6 @@
-use crate::infrastructure::sqlite::SqliteTaskRepository;
 use crate::domain::entities::{IdeationSessionId, InternalStatus, ProjectId, Task, TaskId};
 use crate::domain::repositories::TaskRepository;
+use crate::infrastructure::sqlite::SqliteTaskRepository;
 use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
 use rusqlite::Connection;
 
@@ -382,7 +382,9 @@ async fn test_get_by_status_filters_correctly() {
         .unwrap();
 
     assert_eq!(ready_tasks.len(), 2);
-    assert!(ready_tasks.iter().all(|t| t.internal_status == InternalStatus::Ready));
+    assert!(ready_tasks
+        .iter()
+        .all(|t| t.internal_status == InternalStatus::Ready));
 }
 
 #[tokio::test]
@@ -502,7 +504,9 @@ async fn test_get_next_executable_excludes_blocked_tasks() {
     repo.create(unblocked_task.clone()).await.unwrap();
     repo.create(blocker.clone()).await.unwrap();
 
-    repo.add_blocker(&blocked_task.id, &blocker.id).await.unwrap();
+    repo.add_blocker(&blocked_task.id, &blocker.id)
+        .await
+        .unwrap();
 
     // Should return unblocked task even though blocked has higher priority
     let next = repo.get_next_executable(&project_id).await.unwrap();
@@ -703,7 +707,10 @@ async fn test_search_by_description() {
     repo.create(task2.clone()).await.unwrap();
 
     // Search for "authentication" - should match description
-    let results = repo.search(&project_id, "authentication", false).await.unwrap();
+    let results = repo
+        .search(&project_id, "authentication", false)
+        .await
+        .unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].id, task1.id);
 }
@@ -740,7 +747,10 @@ async fn test_search_returns_no_results_for_no_match() {
     repo.create(task.clone()).await.unwrap();
 
     // Search for something that doesn't exist
-    let results = repo.search(&project_id, "nonexistent", false).await.unwrap();
+    let results = repo
+        .search(&project_id, "nonexistent", false)
+        .await
+        .unwrap();
     assert_eq!(results.len(), 0);
 }
 
@@ -758,7 +768,10 @@ async fn test_search_excludes_archived_by_default() {
     repo.archive(&task2.id).await.unwrap();
 
     // Search without including archived - should only find active task
-    let results = repo.search(&project_id, "authentication", false).await.unwrap();
+    let results = repo
+        .search(&project_id, "authentication", false)
+        .await
+        .unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].id, task1.id);
 }
@@ -777,7 +790,10 @@ async fn test_search_includes_archived_when_requested() {
     repo.archive(&task2.id).await.unwrap();
 
     // Search with including archived - should find both tasks
-    let results = repo.search(&project_id, "authentication", true).await.unwrap();
+    let results = repo
+        .search(&project_id, "authentication", true)
+        .await
+        .unwrap();
     assert_eq!(results.len(), 2);
 }
 
@@ -810,7 +826,10 @@ async fn test_create_preserves_blocked_reason() {
     repo.create(task.clone()).await.unwrap();
     let found = repo.get_by_id(&task.id).await.unwrap().unwrap();
 
-    assert_eq!(found.blocked_reason, Some("Waiting for API design".to_string()));
+    assert_eq!(
+        found.blocked_reason,
+        Some("Waiting for API design".to_string())
+    );
     assert_eq!(found.internal_status, InternalStatus::Blocked);
 }
 
@@ -828,7 +847,10 @@ async fn test_update_preserves_blocked_reason() {
     repo.update(&task).await.unwrap();
 
     let found = repo.get_by_id(&task.id).await.unwrap().unwrap();
-    assert_eq!(found.blocked_reason, Some("Waiting for dependency".to_string()));
+    assert_eq!(
+        found.blocked_reason,
+        Some("Waiting for dependency".to_string())
+    );
     assert_eq!(found.internal_status, InternalStatus::Blocked);
 }
 

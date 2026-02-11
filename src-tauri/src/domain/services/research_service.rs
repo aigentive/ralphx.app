@@ -37,8 +37,7 @@ impl<R: ProcessRepository> ResearchService<R> {
         depth: ResearchDepth,
         output: Option<ResearchOutput>,
     ) -> AppResult<ResearchProcess> {
-        let mut process = ResearchProcess::new(name, brief, agent_profile_id)
-            .with_depth(depth);
+        let mut process = ResearchProcess::new(name, brief, agent_profile_id).with_depth(depth);
 
         if let Some(output_config) = output {
             process = process.with_output(output_config);
@@ -152,10 +151,7 @@ impl<R: ProcessRepository> ResearchService<R> {
     }
 
     /// Advance the iteration counter for a research process
-    pub async fn advance_iteration(
-        &self,
-        id: &ResearchProcessId,
-    ) -> AppResult<ResearchProcess> {
+    pub async fn advance_iteration(&self, id: &ResearchProcessId) -> AppResult<ResearchProcess> {
         let mut process = self
             .process_repo
             .get_by_id(id)
@@ -242,10 +238,7 @@ impl<R: ProcessRepository> ResearchService<R> {
     }
 
     /// Get a research process by ID
-    pub async fn get_process(
-        &self,
-        id: &ResearchProcessId,
-    ) -> AppResult<Option<ResearchProcess>> {
+    pub async fn get_process(&self, id: &ResearchProcessId) -> AppResult<Option<ResearchProcess>> {
         self.process_repo.get_by_id(id).await
     }
 

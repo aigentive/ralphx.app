@@ -73,7 +73,9 @@ impl ArtifactBucketRepository for MemoryArtifactBucketRepository {
         let buckets = self.buckets.read().await;
         if let Some(bucket) = buckets.get(id) {
             if bucket.is_system {
-                return Err(AppError::Validation("Cannot delete system bucket".to_string()));
+                return Err(AppError::Validation(
+                    "Cannot delete system bucket".to_string(),
+                ));
             }
         }
         drop(buckets);

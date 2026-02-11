@@ -7,13 +7,13 @@ use std::path::Path;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 
-use crate::domain::entities::{ChatContextType, ChatConversationId};
-use crate::domain::repositories::{ActivityEventRepository, ChatMessageRepository, TaskRepository};
-use crate::domain::services::MessageQueue;
 use super::chat_service_context;
 use super::chat_service_streaming::process_stream_background;
 use super::chat_service_types::{AgentQueueSentPayload, AgentRunStartedPayload};
 use super::has_meaningful_output;
+use crate::domain::entities::{ChatContextType, ChatConversationId};
+use crate::domain::repositories::{ActivityEventRepository, ChatMessageRepository, TaskRepository};
+use crate::domain::services::MessageQueue;
 
 /// Process all queued messages for a context with retry loop
 ///
@@ -170,7 +170,12 @@ pub async fn process_message_queue<R: Runtime + 'static>(
 
                     // Create empty assistant message before queue stream
                     let queue_assistant_msg = chat_service_context::create_assistant_message(
-                        context_type, context_id, "", conversation_id, &[], &[],
+                        context_type,
+                        context_id,
+                        "",
+                        conversation_id,
+                        &[],
+                        &[],
                     );
                     let queue_assistant_msg_id = queue_assistant_msg.id.as_str().to_string();
                     let _ = chat_message_repo.create(queue_assistant_msg).await;
@@ -195,12 +200,16 @@ pub async fn process_message_queue<R: Runtime + 'static>(
                             if has_meaningful_output(&response, tools.len()) {
                                 let tool_calls_json = serde_json::to_string(&tools).ok();
                                 let content_blocks_json = serde_json::to_string(&blocks).ok();
-                                let _ = chat_message_repo.update_content(
-                                    &crate::domain::entities::ChatMessageId::from_string(queue_assistant_msg_id.clone()),
-                                    &response,
-                                    tool_calls_json.as_deref(),
-                                    content_blocks_json.as_deref(),
-                                ).await;
+                                let _ = chat_message_repo
+                                    .update_content(
+                                        &crate::domain::entities::ChatMessageId::from_string(
+                                            queue_assistant_msg_id.clone(),
+                                        ),
+                                        &response,
+                                        tool_calls_json.as_deref(),
+                                        content_blocks_json.as_deref(),
+                                    )
+                                    .await;
 
                                 // Emit assistant message created
                                 if let Some(ref handle) = app_handle {
@@ -208,9 +217,7 @@ pub async fn process_message_queue<R: Runtime + 'static>(
                                         "agent:message_created",
                                         super::chat_service_types::AgentMessageCreatedPayload {
                                             message_id: queue_assistant_msg_id,
-                                            conversation_id: conversation_id
-                                                .as_str()
-                                                .to_string(),
+                                            conversation_id: conversation_id.as_str().to_string(),
                                             context_type: context_type.to_string(),
                                             context_id: context_id.to_string(),
                                             role: super::chat_service_helpers::get_assistant_role(
@@ -234,9 +241,7 @@ pub async fn process_message_queue<R: Runtime + 'static>(
                                 let _ = handle.emit(
                                     "agent:error",
                                     super::chat_service_types::AgentErrorPayload {
-                                        conversation_id: Some(
-                                            conversation_id.as_str().to_string(),
-                                        ),
+                                        conversation_id: Some(conversation_id.as_str().to_string()),
                                         context_type: context_type.to_string(),
                                         context_id: context_id.to_string(),
                                         error: e.clone(),

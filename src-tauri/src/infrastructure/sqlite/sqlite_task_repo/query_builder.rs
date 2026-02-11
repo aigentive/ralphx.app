@@ -12,7 +12,11 @@ use super::queries::TASK_COLUMNS;
 /// When status_count > 0, generates `internal_status IN (?2, ?3, ...)` clause.
 /// When has_session_filter = true, adds ideation_session_id = ? filter.
 /// Parameter indices depend on filters used (see implementation)
-pub(super) fn build_paginated_query(status_count: usize, include_archived: bool, has_session_filter: bool) -> String {
+pub(super) fn build_paginated_query(
+    status_count: usize,
+    include_archived: bool,
+    has_session_filter: bool,
+) -> String {
     let mut conditions = vec!["project_id = ?1".to_string()];
     let mut param_idx = 2;
 
@@ -57,10 +61,7 @@ pub(super) fn build_search_query(include_archived: bool) -> String {
     if include_archived {
         format!("{} ORDER BY created_at DESC", base)
     } else {
-        format!(
-            "{} AND archived_at IS NULL ORDER BY created_at DESC",
-            base
-        )
+        format!("{} AND archived_at IS NULL ORDER BY created_at DESC", base)
     }
 }
 

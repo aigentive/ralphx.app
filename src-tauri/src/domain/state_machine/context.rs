@@ -1,14 +1,19 @@
 // TaskServices container and TaskContext for state machine
 // These provide the shared context needed during state transitions
 
-use super::mocks::{MockAgentSpawner, MockDependencyManager, MockEventEmitter, MockNotifier, MockReviewStarter, MockTaskScheduler};
-use super::services::{AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStarter, TaskScheduler};
+use super::mocks::{
+    MockAgentSpawner, MockDependencyManager, MockEventEmitter, MockNotifier, MockReviewStarter,
+    MockTaskScheduler,
+};
+use super::services::{
+    AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStarter, TaskScheduler,
+};
 use super::types::Blocker;
 use crate::application::ChatService;
 use crate::commands::ExecutionState;
 use crate::domain::repositories::{PlanBranchRepository, ProjectRepository, TaskRepository};
-use std::sync::Arc;
 use std::any::Any;
+use std::sync::Arc;
 use tauri::{AppHandle, Runtime, Wry};
 
 /// Container for all services used by the state machine.
@@ -164,12 +169,33 @@ impl std::fmt::Debug for TaskServices {
             .field("dependency_manager", &"<DependencyManager>")
             .field("review_starter", &"<ReviewStarter>")
             .field("chat_service", &"<ChatService>")
-            .field("execution_state", &self.execution_state.as_ref().map(|_| "<ExecutionState>"))
-            .field("app_handle", &self.app_handle.as_ref().map(|_| "<AppHandle>"))
-            .field("task_scheduler", &self.task_scheduler.as_ref().map(|_| "<TaskScheduler>"))
-            .field("task_repo", &self.task_repo.as_ref().map(|_| "<TaskRepository>"))
-            .field("project_repo", &self.project_repo.as_ref().map(|_| "<ProjectRepository>"))
-            .field("plan_branch_repo", &self.plan_branch_repo.as_ref().map(|_| "<PlanBranchRepository>"))
+            .field(
+                "execution_state",
+                &self.execution_state.as_ref().map(|_| "<ExecutionState>"),
+            )
+            .field(
+                "app_handle",
+                &self.app_handle.as_ref().map(|_| "<AppHandle>"),
+            )
+            .field(
+                "task_scheduler",
+                &self.task_scheduler.as_ref().map(|_| "<TaskScheduler>"),
+            )
+            .field(
+                "task_repo",
+                &self.task_repo.as_ref().map(|_| "<TaskRepository>"),
+            )
+            .field(
+                "project_repo",
+                &self.project_repo.as_ref().map(|_| "<ProjectRepository>"),
+            )
+            .field(
+                "plan_branch_repo",
+                &self
+                    .plan_branch_repo
+                    .as_ref()
+                    .map(|_| "<PlanBranchRepository>"),
+            )
             .finish()
     }
 }

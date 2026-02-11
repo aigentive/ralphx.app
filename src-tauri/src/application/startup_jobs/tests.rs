@@ -59,9 +59,15 @@ fn build_runner(
 fn test_startup_recovery_flag_detection() {
     use std::ffi::OsStr;
 
-    assert!(super::is_startup_recovery_disabled_var(Some(OsStr::new("1"))));
-    assert!(super::is_startup_recovery_disabled_var(Some(OsStr::new("true"))));
-    assert!(super::is_startup_recovery_disabled_var(Some(OsStr::new(""))));
+    assert!(super::is_startup_recovery_disabled_var(Some(OsStr::new(
+        "1"
+    ))));
+    assert!(super::is_startup_recovery_disabled_var(Some(OsStr::new(
+        "true"
+    ))));
+    assert!(super::is_startup_recovery_disabled_var(Some(OsStr::new(
+        ""
+    ))));
     assert!(!super::is_startup_recovery_disabled_var(None));
 }
 
@@ -71,7 +77,11 @@ async fn test_resumption_skipped_when_paused() {
 
     // Create a project with a task in Executing state
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Executing Task".to_string());
     task.internal_status = InternalStatus::Executing;
@@ -94,7 +104,11 @@ async fn test_resumption_skipped_when_paused() {
         .get_by_context(ChatContextType::TaskExecution, task.id.as_str())
         .await
         .unwrap();
-    assert_eq!(convs.len(), 0, "No conversations should be created when paused");
+    assert_eq!(
+        convs.len(),
+        0,
+        "No conversations should be created when paused"
+    );
 }
 
 #[tokio::test]
@@ -103,7 +117,11 @@ async fn test_resumption_spawns_agents() {
 
     // Create a project with a task in Executing state
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Executing Task".to_string());
     task.internal_status = InternalStatus::Executing;
@@ -115,7 +133,10 @@ async fn test_resumption_spawns_agents() {
 
     let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
     // Set active project in DB (simulates persisted state from previous session)
-    app_state_repo.set_active_project(Some(&project.id)).await.unwrap();
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
 
     // Run should trigger entry actions for the Executing task
     runner.run().await;
@@ -136,7 +157,12 @@ async fn test_resumption_spawns_agents() {
     );
 
     // Verify the task is still in Executing state (entry actions don't change status)
-    let updated_task = app_state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    let updated_task = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(updated_task.internal_status, InternalStatus::Executing);
 }
 
@@ -162,7 +188,11 @@ async fn test_resumption_respects_max_concurrent() {
 
     // Create a project with 5 tasks in Executing state
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     for i in 0..5 {
         let mut task = Task::new(project.id.clone(), format!("Executing Task {}", i));
@@ -171,7 +201,10 @@ async fn test_resumption_respects_max_concurrent() {
     }
 
     let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
-    app_state_repo.set_active_project(Some(&project.id)).await.unwrap();
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
 
     // Run should stop after 2 tasks due to max_concurrent
     runner.run().await;
@@ -192,7 +225,11 @@ async fn test_resumption_handles_multiple_statuses() {
 
     // Create a project with tasks in various agent-active states
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task1 = Task::new(project.id.clone(), "Executing Task".to_string());
     task1.internal_status = InternalStatus::Executing;
@@ -217,7 +254,10 @@ async fn test_resumption_handles_multiple_statuses() {
     execution_state.set_max_concurrent(10);
 
     let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
-    app_state_repo.set_active_project(Some(&project.id)).await.unwrap();
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
 
     // Run should complete
     runner.run().await;
@@ -299,7 +339,11 @@ async fn test_startup_schedules_after_resuming_agent_tasks() {
 
     // Create a project with an Executing task (agent-active)
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Executing Task".to_string());
     task.internal_status = InternalStatus::Executing;
@@ -312,7 +356,10 @@ async fn test_startup_schedules_after_resuming_agent_tasks() {
     let scheduler = Arc::new(MockTaskScheduler::new());
 
     let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
-    app_state_repo.set_active_project(Some(&project.id)).await.unwrap();
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
     let runner = runner.with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
 
     // Run startup - should resume the Executing task AND call scheduler
@@ -339,7 +386,11 @@ async fn test_merging_state_resumed_on_startup() {
 
     // Create a project with a task in Merging state
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Merging Task".to_string());
     task.internal_status = InternalStatus::Merging;
@@ -350,7 +401,10 @@ async fn test_merging_state_resumed_on_startup() {
     execution_state.set_max_concurrent(10);
 
     let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
-    app_state_repo.set_active_project(Some(&project.id)).await.unwrap();
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
 
     // Run startup
     runner.run().await;
@@ -369,7 +423,12 @@ async fn test_merging_state_resumed_on_startup() {
     );
 
     // Task should still be in Merging state (entry actions don't change status)
-    let updated_task = app_state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    let updated_task = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(updated_task.internal_status, InternalStatus::Merging);
 }
 
@@ -382,7 +441,11 @@ async fn test_pending_review_auto_transitions_on_startup() {
 
     // Create a project with a task in PendingReview state
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "PendingReview Task".to_string());
     task.internal_status = InternalStatus::PendingReview;
@@ -393,7 +456,10 @@ async fn test_pending_review_auto_transitions_on_startup() {
     execution_state.set_max_concurrent(10);
 
     let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
-    app_state_repo.set_active_project(Some(&project.id)).await.unwrap();
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
 
     // Run startup - should trigger auto-transition to Reviewing
     runner.run().await;
@@ -417,7 +483,12 @@ async fn test_pending_review_auto_transitions_on_startup() {
     );
 
     // Task should now be in Reviewing state
-    let updated_task = app_state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    let updated_task = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(
         updated_task.internal_status,
         InternalStatus::Reviewing,
@@ -434,7 +505,11 @@ async fn test_revision_needed_auto_transitions_on_startup() {
 
     // Create a project with a task in RevisionNeeded state
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "RevisionNeeded Task".to_string());
     task.internal_status = InternalStatus::RevisionNeeded;
@@ -445,7 +520,10 @@ async fn test_revision_needed_auto_transitions_on_startup() {
     execution_state.set_max_concurrent(10);
 
     let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
-    app_state_repo.set_active_project(Some(&project.id)).await.unwrap();
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
 
     // Run startup - should trigger auto-transition to ReExecuting
     runner.run().await;
@@ -469,7 +547,12 @@ async fn test_revision_needed_auto_transitions_on_startup() {
     );
 
     // Task should now be in ReExecuting state
-    let updated_task = app_state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    let updated_task = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(
         updated_task.internal_status,
         InternalStatus::ReExecuting,
@@ -486,7 +569,11 @@ async fn test_approved_auto_transitions_on_startup() {
 
     // Create a project with a task in Approved state
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Approved Task".to_string());
     task.internal_status = InternalStatus::Approved;
@@ -497,7 +584,10 @@ async fn test_approved_auto_transitions_on_startup() {
     execution_state.set_max_concurrent(10);
 
     let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
-    app_state_repo.set_active_project(Some(&project.id)).await.unwrap();
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
 
     // Run startup - should trigger auto-transition to PendingMerge
     runner.run().await;
@@ -511,7 +601,12 @@ async fn test_approved_auto_transitions_on_startup() {
     // Task should now be in PendingMerge state (or further if merge succeeded/failed)
     // Since we're in test mode without a real git repo, the merge will likely fail
     // and the task may transition to Merging or MergeConflict
-    let updated_task = app_state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    let updated_task = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .unwrap();
     // Approved should NOT be the final state - auto-transition should have occurred
     assert_ne!(
         updated_task.internal_status,
@@ -529,7 +624,11 @@ async fn test_pending_merge_auto_transitions_on_startup() {
 
     // Create a project with a task in PendingMerge state
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "PendingMerge Task".to_string());
     task.internal_status = InternalStatus::PendingMerge;
@@ -541,7 +640,10 @@ async fn test_pending_merge_auto_transitions_on_startup() {
     execution_state.set_max_concurrent(10);
 
     let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
-    app_state_repo.set_active_project(Some(&project.id)).await.unwrap();
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
 
     // Run startup - should trigger attempt_programmatic_merge()
     runner.run().await;
@@ -552,7 +654,12 @@ async fn test_pending_merge_auto_transitions_on_startup() {
     // 3. Task transitions to Merged (success), Merging (conflict), or MergeIncomplete (error)
     // Since we're in test mode without a real git repo, the merge will fail with an error
     // and the task transitions to MergeIncomplete
-    let updated_task = app_state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    let updated_task = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .unwrap();
     // PendingMerge should NOT be the final state - attempt_programmatic_merge should have run
     assert_ne!(
         updated_task.internal_status,
@@ -570,7 +677,11 @@ async fn test_qa_passed_auto_transitions_on_startup() {
 
     // Create a project with a task in QaPassed state
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "QaPassed Task".to_string());
     task.internal_status = InternalStatus::QaPassed;
@@ -581,7 +692,10 @@ async fn test_qa_passed_auto_transitions_on_startup() {
     execution_state.set_max_concurrent(10);
 
     let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
-    app_state_repo.set_active_project(Some(&project.id)).await.unwrap();
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
 
     // Run startup - should trigger auto-transition chain
     runner.run().await;
@@ -606,7 +720,12 @@ async fn test_qa_passed_auto_transitions_on_startup() {
     );
 
     // Task should now be in Reviewing state
-    let updated_task = app_state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    let updated_task = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(
         updated_task.internal_status,
         InternalStatus::Reviewing,
@@ -625,7 +744,11 @@ async fn test_auto_transition_respects_max_concurrent() {
 
     // Create a project with 5 tasks in PendingReview state
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     for i in 0..5 {
         let mut task = Task::new(project.id.clone(), format!("PendingReview Task {}", i));
@@ -634,7 +757,10 @@ async fn test_auto_transition_respects_max_concurrent() {
     }
 
     let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
-    app_state_repo.set_active_project(Some(&project.id)).await.unwrap();
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
 
     // Run startup - should stop after max_concurrent is reached
     runner.run().await;
@@ -659,18 +785,30 @@ async fn test_blocked_task_unblocked_when_blocker_is_merged() {
 
     // Create a project
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Create a blocker task that is already merged
     let mut blocker_task = Task::new(project.id.clone(), "Blocker Task".to_string());
     blocker_task.internal_status = InternalStatus::Merged;
-    app_state.task_repo.create(blocker_task.clone()).await.unwrap();
+    app_state
+        .task_repo
+        .create(blocker_task.clone())
+        .await
+        .unwrap();
 
     // Create a blocked task
     let mut blocked_task = Task::new(project.id.clone(), "Blocked Task".to_string());
     blocked_task.internal_status = InternalStatus::Blocked;
     blocked_task.blocked_reason = Some("Waiting for: Blocker Task".to_string());
-    app_state.task_repo.create(blocked_task.clone()).await.unwrap();
+    app_state
+        .task_repo
+        .create(blocked_task.clone())
+        .await
+        .unwrap();
 
     // Add the dependency relationship
     app_state
@@ -685,7 +823,12 @@ async fn test_blocked_task_unblocked_when_blocker_is_merged() {
     runner.run().await;
 
     // Verify the blocked task is now Ready
-    let updated_task = app_state.task_repo.get_by_id(&blocked_task.id).await.unwrap().unwrap();
+    let updated_task = app_state
+        .task_repo
+        .get_by_id(&blocked_task.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(
         updated_task.internal_status,
         InternalStatus::Ready,
@@ -703,17 +846,29 @@ async fn test_blocked_task_remains_blocked_when_blocker_is_approved() {
 
     // Create a project
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Create a blocker task that is approved (not yet merged)
     let mut blocker_task = Task::new(project.id.clone(), "Blocker Task".to_string());
     blocker_task.internal_status = InternalStatus::Approved;
-    app_state.task_repo.create(blocker_task.clone()).await.unwrap();
+    app_state
+        .task_repo
+        .create(blocker_task.clone())
+        .await
+        .unwrap();
 
     // Create a blocked task
     let mut blocked_task = Task::new(project.id.clone(), "Blocked Task".to_string());
     blocked_task.internal_status = InternalStatus::Blocked;
-    app_state.task_repo.create(blocked_task.clone()).await.unwrap();
+    app_state
+        .task_repo
+        .create(blocked_task.clone())
+        .await
+        .unwrap();
 
     // Add the dependency relationship
     app_state
@@ -732,7 +887,12 @@ async fn test_blocked_task_remains_blocked_when_blocker_is_approved() {
     runner.run().await;
 
     // Verify the blocked task remains Blocked (Approved is NOT a terminal state)
-    let updated_task = app_state.task_repo.get_by_id(&blocked_task.id).await.unwrap().unwrap();
+    let updated_task = app_state
+        .task_repo
+        .get_by_id(&blocked_task.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(
         updated_task.internal_status,
         InternalStatus::Blocked,
@@ -746,18 +906,30 @@ async fn test_blocked_task_remains_blocked_when_blocker_incomplete() {
 
     // Create a project
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Create a blocker task that is still executing
     let mut blocker_task = Task::new(project.id.clone(), "Blocker Task".to_string());
     blocker_task.internal_status = InternalStatus::Executing;
-    app_state.task_repo.create(blocker_task.clone()).await.unwrap();
+    app_state
+        .task_repo
+        .create(blocker_task.clone())
+        .await
+        .unwrap();
 
     // Create a blocked task
     let mut blocked_task = Task::new(project.id.clone(), "Blocked Task".to_string());
     blocked_task.internal_status = InternalStatus::Blocked;
     blocked_task.blocked_reason = Some("Waiting for: Blocker Task".to_string());
-    app_state.task_repo.create(blocked_task.clone()).await.unwrap();
+    app_state
+        .task_repo
+        .create(blocked_task.clone())
+        .await
+        .unwrap();
 
     // Add the dependency relationship
     app_state
@@ -775,7 +947,12 @@ async fn test_blocked_task_remains_blocked_when_blocker_incomplete() {
     runner.run().await;
 
     // Verify the blocked task is still Blocked
-    let updated_task = app_state.task_repo.get_by_id(&blocked_task.id).await.unwrap().unwrap();
+    let updated_task = app_state
+        .task_repo
+        .get_by_id(&blocked_task.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(
         updated_task.internal_status,
         InternalStatus::Blocked,
@@ -793,18 +970,30 @@ async fn test_blocked_task_remains_blocked_when_blocker_paused() {
 
     // Create a project
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Create a blocker task that is paused
     let mut blocker_task = Task::new(project.id.clone(), "Blocker Task".to_string());
     blocker_task.internal_status = InternalStatus::Paused;
-    app_state.task_repo.create(blocker_task.clone()).await.unwrap();
+    app_state
+        .task_repo
+        .create(blocker_task.clone())
+        .await
+        .unwrap();
 
     // Create a blocked task
     let mut blocked_task = Task::new(project.id.clone(), "Blocked Task".to_string());
     blocked_task.internal_status = InternalStatus::Blocked;
     blocked_task.blocked_reason = Some("Waiting for: Blocker Task".to_string());
-    app_state.task_repo.create(blocked_task.clone()).await.unwrap();
+    app_state
+        .task_repo
+        .create(blocked_task.clone())
+        .await
+        .unwrap();
 
     // Add the dependency relationship
     app_state
@@ -822,7 +1011,12 @@ async fn test_blocked_task_remains_blocked_when_blocker_paused() {
     runner.run().await;
 
     // Verify the blocked task is still Blocked
-    let updated_task = app_state.task_repo.get_by_id(&blocked_task.id).await.unwrap().unwrap();
+    let updated_task = app_state
+        .task_repo
+        .get_by_id(&blocked_task.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(
         updated_task.internal_status,
         InternalStatus::Blocked,
@@ -840,18 +1034,30 @@ async fn test_blocked_task_remains_blocked_when_blocker_stopped() {
 
     // Create a project
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Create a blocker task that is stopped
     let mut blocker_task = Task::new(project.id.clone(), "Blocker Task".to_string());
     blocker_task.internal_status = InternalStatus::Stopped;
-    app_state.task_repo.create(blocker_task.clone()).await.unwrap();
+    app_state
+        .task_repo
+        .create(blocker_task.clone())
+        .await
+        .unwrap();
 
     // Create a blocked task
     let mut blocked_task = Task::new(project.id.clone(), "Blocked Task".to_string());
     blocked_task.internal_status = InternalStatus::Blocked;
     blocked_task.blocked_reason = Some("Waiting for: Blocker Task".to_string());
-    app_state.task_repo.create(blocked_task.clone()).await.unwrap();
+    app_state
+        .task_repo
+        .create(blocked_task.clone())
+        .await
+        .unwrap();
 
     // Add the dependency relationship
     app_state
@@ -869,7 +1075,12 @@ async fn test_blocked_task_remains_blocked_when_blocker_stopped() {
     runner.run().await;
 
     // Verify the blocked task is still Blocked
-    let updated_task = app_state.task_repo.get_by_id(&blocked_task.id).await.unwrap().unwrap();
+    let updated_task = app_state
+        .task_repo
+        .get_by_id(&blocked_task.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(
         updated_task.internal_status,
         InternalStatus::Blocked,
@@ -887,7 +1098,11 @@ async fn test_blocked_task_with_multiple_blockers_all_complete() {
 
     // Create a project
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Create two blocker tasks - both complete
     let mut blocker1 = Task::new(project.id.clone(), "Blocker 1".to_string());
@@ -901,7 +1116,11 @@ async fn test_blocked_task_with_multiple_blockers_all_complete() {
     // Create a blocked task
     let mut blocked_task = Task::new(project.id.clone(), "Blocked Task".to_string());
     blocked_task.internal_status = InternalStatus::Blocked;
-    app_state.task_repo.create(blocked_task.clone()).await.unwrap();
+    app_state
+        .task_repo
+        .create(blocked_task.clone())
+        .await
+        .unwrap();
 
     // Add both dependency relationships
     app_state
@@ -921,7 +1140,12 @@ async fn test_blocked_task_with_multiple_blockers_all_complete() {
     runner.run().await;
 
     // Verify the blocked task is now Ready
-    let updated_task = app_state.task_repo.get_by_id(&blocked_task.id).await.unwrap().unwrap();
+    let updated_task = app_state
+        .task_repo
+        .get_by_id(&blocked_task.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(
         updated_task.internal_status,
         InternalStatus::Ready,
@@ -935,7 +1159,11 @@ async fn test_blocked_task_with_multiple_blockers_one_incomplete() {
 
     // Create a project
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Create two blocker tasks - one complete, one not
     let mut blocker1 = Task::new(project.id.clone(), "Blocker 1".to_string());
@@ -949,7 +1177,11 @@ async fn test_blocked_task_with_multiple_blockers_one_incomplete() {
     // Create a blocked task
     let mut blocked_task = Task::new(project.id.clone(), "Blocked Task".to_string());
     blocked_task.internal_status = InternalStatus::Blocked;
-    app_state.task_repo.create(blocked_task.clone()).await.unwrap();
+    app_state
+        .task_repo
+        .create(blocked_task.clone())
+        .await
+        .unwrap();
 
     // Add both dependency relationships
     app_state
@@ -972,7 +1204,12 @@ async fn test_blocked_task_with_multiple_blockers_one_incomplete() {
     runner.run().await;
 
     // Verify the blocked task is still Blocked
-    let updated_task = app_state.task_repo.get_by_id(&blocked_task.id).await.unwrap().unwrap();
+    let updated_task = app_state
+        .task_repo
+        .get_by_id(&blocked_task.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(
         updated_task.internal_status,
         InternalStatus::Blocked,
@@ -990,17 +1227,29 @@ async fn test_unblock_runs_even_when_paused() {
 
     // Create a project
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Create a merged blocker
     let mut blocker_task = Task::new(project.id.clone(), "Blocker Task".to_string());
     blocker_task.internal_status = InternalStatus::Merged;
-    app_state.task_repo.create(blocker_task.clone()).await.unwrap();
+    app_state
+        .task_repo
+        .create(blocker_task.clone())
+        .await
+        .unwrap();
 
     // Create a blocked task
     let mut blocked_task = Task::new(project.id.clone(), "Blocked Task".to_string());
     blocked_task.internal_status = InternalStatus::Blocked;
-    app_state.task_repo.create(blocked_task.clone()).await.unwrap();
+    app_state
+        .task_repo
+        .create(blocked_task.clone())
+        .await
+        .unwrap();
 
     // Add dependency
     app_state
@@ -1015,7 +1264,12 @@ async fn test_unblock_runs_even_when_paused() {
     runner.run().await;
 
     // Verify the blocked task is still unblocked even though execution is paused
-    let updated_task = app_state.task_repo.get_by_id(&blocked_task.id).await.unwrap().unwrap();
+    let updated_task = app_state
+        .task_repo
+        .get_by_id(&blocked_task.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(
         updated_task.internal_status,
         InternalStatus::Ready,
@@ -1035,7 +1289,11 @@ async fn test_resumption_reads_active_project_from_db() {
 
     // Create a project with a task in Executing state
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Executing Task".to_string());
     task.internal_status = InternalStatus::Executing;
@@ -1077,7 +1335,11 @@ async fn test_resumption_skips_when_no_active_project_in_db() {
 
     // Create a project with a task in Executing state
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Executing Task".to_string());
     task.internal_status = InternalStatus::Executing;

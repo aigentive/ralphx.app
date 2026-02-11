@@ -73,11 +73,9 @@ impl<R: MethodologyRepository> MethodologyService<R> {
         self.methodology_repo.activate(id).await?;
 
         // Re-fetch to get updated state
-        let activated = self
-            .methodology_repo
-            .get_by_id(id)
-            .await?
-            .ok_or_else(|| AppError::NotFound(format!("Methodology not found after activation: {}", id)))?;
+        let activated = self.methodology_repo.get_by_id(id).await?.ok_or_else(|| {
+            AppError::NotFound(format!("Methodology not found after activation: {}", id))
+        })?;
 
         Ok(MethodologyActivationResult {
             workflow: activated.workflow.clone(),
@@ -109,11 +107,9 @@ impl<R: MethodologyRepository> MethodologyService<R> {
         self.methodology_repo.deactivate(id).await?;
 
         // Re-fetch to get updated state
-        let deactivated = self
-            .methodology_repo
-            .get_by_id(id)
-            .await?
-            .ok_or_else(|| AppError::NotFound(format!("Methodology not found after deactivation: {}", id)))?;
+        let deactivated = self.methodology_repo.get_by_id(id).await?.ok_or_else(|| {
+            AppError::NotFound(format!("Methodology not found after deactivation: {}", id))
+        })?;
 
         Ok(deactivated)
     }
@@ -145,10 +141,7 @@ impl<R: MethodologyRepository> MethodologyService<R> {
     }
 
     /// Update a methodology
-    pub async fn update_methodology(
-        &self,
-        methodology: &MethodologyExtension,
-    ) -> AppResult<()> {
+    pub async fn update_methodology(&self, methodology: &MethodologyExtension) -> AppResult<()> {
         self.methodology_repo.update(methodology).await
     }
 
@@ -285,10 +278,7 @@ mod tests {
             Ok(methodology)
         }
 
-        async fn get_by_id(
-            &self,
-            id: &MethodologyId,
-        ) -> AppResult<Option<MethodologyExtension>> {
+        async fn get_by_id(&self, id: &MethodologyId) -> AppResult<Option<MethodologyExtension>> {
             let methodologies = self.methodologies.lock().await;
             Ok(methodologies.get(id.as_str()).cloned())
         }
@@ -339,7 +329,10 @@ mod tests {
 
     // ==================== Test Helpers ====================
 
-    fn create_service() -> (MethodologyService<MockMethodologyRepository>, Arc<MockMethodologyRepository>) {
+    fn create_service() -> (
+        MethodologyService<MockMethodologyRepository>,
+        Arc<MockMethodologyRepository>,
+    ) {
         let methodology_repo = Arc::new(MockMethodologyRepository::new());
         let service = MethodologyService::new(methodology_repo.clone());
         (service, methodology_repo)
@@ -434,7 +427,11 @@ mod tests {
         assert_eq!(activation.previous_methodology, Some(first.id));
 
         // Verify first is now inactive
-        let first_now = repo.get_by_id(&MethodologyId::from_string("first")).await.unwrap().unwrap();
+        let first_now = repo
+            .get_by_id(&MethodologyId::from_string("first"))
+            .await
+            .unwrap()
+            .unwrap();
         assert!(!first_now.is_active);
     }
 
@@ -740,7 +737,10 @@ mod tests {
 
         let mut methodology = create_test_methodology();
         methodology = methodology.with_template(
-            crate::domain::entities::methodology::MethodologyTemplate::new("prd", "templates/prd.md"),
+            crate::domain::entities::methodology::MethodologyTemplate::new(
+                "prd",
+                "templates/prd.md",
+            ),
         );
         let id = methodology.id.clone();
         repo.add_methodology(methodology).await;

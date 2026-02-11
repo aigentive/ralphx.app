@@ -109,10 +109,8 @@ impl ReviewIssueRepository for MemoryReviewIssueRepository {
 
     async fn get_summary(&self, task_id: &TaskId) -> AppResult<IssueProgressSummary> {
         let issues = self.issues.read().await;
-        let task_issues: Vec<&ReviewIssue> = issues
-            .values()
-            .filter(|i| i.task_id == *task_id)
-            .collect();
+        let task_issues: Vec<&ReviewIssue> =
+            issues.values().filter(|i| i.task_id == *task_id).collect();
 
         let total = task_issues.len() as u32;
         let mut open = 0u32;

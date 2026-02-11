@@ -3,21 +3,23 @@
 // Ensures tasks don't get stuck when agent runs finish without transitions.
 // Can be used on startup and during runtime polling.
 
-use std::collections::HashSet;
-use std::sync::Arc;
 use serde::Serialize;
+use std::collections::HashSet;
+use std::str::FromStr;
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
-use tracing::warn;
 use tokio::sync::Mutex;
+use tracing::warn;
 
 use crate::application::{chat_service::reconcile_merge_auto_complete, TaskTransitionService};
-use crate::commands::execution_commands::ExecutionState;
+use crate::commands::execution_commands::{ExecutionState, AGENT_ACTIVE_STATUSES};
 use crate::domain::entities::{
     AgentRun, AgentRunId, AgentRunStatus, ChatContextType, InternalStatus, Task, TaskId,
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
+    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
+    TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::transition_handler::set_trigger_origin;
@@ -169,7 +171,9 @@ impl RecoveryPolicy {
                     }
                     return RecoveryDecision {
                         action: RecoveryActionKind::Prompt,
-                        reason: Some("Merge run missing but max concurrency is reached.".to_string()),
+                        reason: Some(
+                            "Merge run missing but max concurrency is reached.".to_string(),
+                        ),
                     };
                 }
                 RecoveryDecision {
@@ -187,12 +191,17 @@ impl RecoveryPolicy {
                 if evidence.is_deferred {
                     return RecoveryDecision {
                         action: RecoveryActionKind::ExecuteEntryActions,
-                        reason: Some("Stale deferred merge — re-triggering entry actions.".to_string()),
+                        reason: Some(
+                            "Stale deferred merge — re-triggering entry actions.".to_string(),
+                        ),
                     };
                 }
                 RecoveryDecision {
                     action: RecoveryActionKind::Transition(InternalStatus::MergeIncomplete),
-                    reason: Some("Stale pending merge with no deferred flag — surfacing to user.".to_string()),
+                    reason: Some(
+                        "Stale pending merge with no deferred flag — surfacing to user."
+                            .to_string(),
+                    ),
                 }
             }
             RecoveryContext::QaRefining | RecoveryContext::QaTesting => {
@@ -205,7 +214,9 @@ impl RecoveryPolicy {
                 if !evidence.can_start {
                     return RecoveryDecision {
                         action: RecoveryActionKind::Prompt,
-                        reason: Some("QA task is stale but max concurrency is reached.".to_string()),
+                        reason: Some(
+                            "QA task is stale but max concurrency is reached.".to_string(),
+                        ),
                     };
                 }
                 RecoveryDecision {
@@ -329,6 +340,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
     }
 
     pub async fn reconcile_stuck_tasks(&self) {
+        self.prune_stale_running_registry_entries().await;
+
         if self.execution_state.is_paused() {
             return;
         }
@@ -371,6 +384,121 @@ impl<R: Runtime> ReconciliationRunner<R> {
         }
     }
 
+    async fn prune_stale_running_registry_entries(&self) {
+        let entries = self.running_agent_registry.list_all().await;
+        if entries.is_empty() {
+            self.execution_state.set_running_count(0);
+            return;
+        }
+
+        let mut removed = 0u32;
+
+        for (key, info) in entries {
+            let context_type = ChatContextType::from_str(&key.context_type).ok();
+            let pid_alive = process_is_alive(info.pid);
+
+            let run = match self
+                .agent_run_repo
+                .get_by_id(&AgentRunId::from_string(&info.agent_run_id))
+                .await
+            {
+                Ok(run) => run,
+                Err(e) => {
+                    warn!(
+                        context_type = key.context_type,
+                        context_id = key.context_id,
+                        run_id = info.agent_run_id,
+                        error = %e,
+                        "Failed to load agent_run while pruning running registry; keeping entry"
+                    );
+                    continue;
+                }
+            };
+
+            let mut stale_reasons: Vec<&str> = Vec::new();
+
+            if !pid_alive {
+                stale_reasons.push("pid_missing");
+            }
+
+            match run.as_ref() {
+                Some(agent_run) if agent_run.status != AgentRunStatus::Running => {
+                    stale_reasons.push("run_not_running");
+                }
+                None => {
+                    stale_reasons.push("run_missing");
+                }
+                _ => {}
+            }
+
+            if let Some(ctx) = context_type {
+                if matches!(
+                    ctx,
+                    ChatContextType::TaskExecution
+                        | ChatContextType::Review
+                        | ChatContextType::Merge
+                ) {
+                    let task_id = TaskId::from_string(key.context_id.clone());
+                    match self.task_repo.get_by_id(&task_id).await {
+                        Ok(Some(task)) => {
+                            if !context_matches_task_status(ctx, task.internal_status) {
+                                stale_reasons.push("task_status_mismatch");
+                            }
+                        }
+                        Ok(None) => stale_reasons.push("task_missing"),
+                        Err(e) => {
+                            warn!(
+                                context_type = key.context_type,
+                                context_id = key.context_id,
+                                error = %e,
+                                "Failed to load task while pruning running registry; keeping entry"
+                            );
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            if stale_reasons.is_empty() {
+                continue;
+            }
+
+            if pid_alive {
+                let _ = self.running_agent_registry.stop(&key).await;
+            } else {
+                let _ = self.running_agent_registry.unregister(&key).await;
+            }
+            removed += 1;
+
+            if let Some(agent_run) = run {
+                if agent_run.status == AgentRunStatus::Running {
+                    let _ = self
+                        .agent_run_repo
+                        .cancel(&AgentRunId::from_string(&info.agent_run_id))
+                        .await;
+                }
+            }
+
+            warn!(
+                context_type = key.context_type,
+                context_id = key.context_id,
+                pid = info.pid,
+                run_id = info.agent_run_id,
+                reasons = stale_reasons.join(","),
+                "Pruned stale running agent registry entry"
+            );
+        }
+
+        let registry_count = self.running_agent_registry.list_all().await.len() as u32;
+        self.execution_state.set_running_count(registry_count);
+        if removed > 0 {
+            if let Some(handle) = self.app_handle.as_ref() {
+                self.execution_state
+                    .emit_status_changed(handle, "runtime_registry_gc");
+            }
+        }
+    }
+
     pub async fn reconcile_task(&self, task: &Task, status: InternalStatus) -> bool {
         match status {
             InternalStatus::Executing | InternalStatus::ReExecuting => {
@@ -391,9 +519,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
-        let run = self
-            .load_execution_run(task, status)
-            .await;
+        let run = self.load_execution_run(task, status).await;
         let evidence = self
             .build_run_evidence(task, ChatContextType::TaskExecution, run.as_ref())
             .await;
@@ -503,7 +629,9 @@ impl<R: Runtime> ReconciliationRunner<R> {
             is_stale: age >= chrono::Duration::minutes(5),
             is_deferred,
         };
-        let decision = self.policy.decide_reconciliation(RecoveryContext::PendingMerge, evidence);
+        let decision = self
+            .policy
+            .decide_reconciliation(RecoveryContext::PendingMerge, evidence);
 
         self.apply_recovery_decision(task, status, RecoveryContext::PendingMerge, decision)
             .await
@@ -535,9 +663,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             let _ = self.running_agent_registry.stop(&key).await;
         }
 
-        let run = self
-            .load_execution_run(&task, task.internal_status)
-            .await;
+        let run = self.load_execution_run(&task, task.internal_status).await;
         let evidence = RecoveryEvidence {
             run_status: run.as_ref().map(|r| r.status),
             registry_running,
@@ -687,9 +813,9 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 true
             }
             RecoveryActionKind::Prompt => {
-                let reason = decision.reason.unwrap_or_else(|| {
-                    "Recovery decision requires user input.".to_string()
-                });
+                let reason = decision
+                    .reason
+                    .unwrap_or_else(|| "Recovery decision requires user input.".to_string());
                 self.emit_recovery_prompt(task, status, context, reason)
                     .await
             }
@@ -719,11 +845,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         }
     }
 
-    async fn load_execution_run(
-        &self,
-        task: &Task,
-        status: InternalStatus,
-    ) -> Option<AgentRun> {
+    async fn load_execution_run(&self, task: &Task, status: InternalStatus) -> Option<AgentRun> {
         let status_history = match self.task_repo.get_status_history(&task.id).await {
             Ok(history) => history,
             Err(e) => {
@@ -854,6 +976,45 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .await
             .ok()
             .flatten()
+    }
+}
+
+fn context_matches_task_status(context_type: ChatContextType, status: InternalStatus) -> bool {
+    match context_type {
+        ChatContextType::TaskExecution => {
+            status == InternalStatus::Executing || status == InternalStatus::ReExecuting
+        }
+        ChatContextType::Review => status == InternalStatus::Reviewing,
+        ChatContextType::Merge => status == InternalStatus::Merging,
+        ChatContextType::Task | ChatContextType::Ideation | ChatContextType::Project => {
+            AGENT_ACTIVE_STATUSES.contains(&status)
+        }
+    }
+}
+
+fn process_is_alive(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(true)
+    }
+
+    #[cfg(windows)]
+    {
+        std::process::Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"])
+            .output()
+            .map(|output| {
+                if !output.status.success() {
+                    return true;
+                }
+                let text = String::from_utf8_lossy(&output.stdout);
+                !text.to_ascii_lowercase().contains("no tasks are running")
+            })
+            .unwrap_or(true)
     }
 }
 

@@ -5,9 +5,7 @@ use std::sync::Arc;
 
 use crate::application::AppState;
 use crate::commands::ExecutionState;
-use crate::domain::entities::{
-    Artifact, ArtifactContent, TaskProposal, TaskStep,
-};
+use crate::domain::entities::{Artifact, ArtifactContent, TaskProposal, TaskStep};
 
 // ============================================================================
 // HTTP Server State

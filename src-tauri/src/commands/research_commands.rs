@@ -6,8 +6,8 @@ use tauri::State;
 
 use crate::application::AppState;
 use crate::domain::entities::research::{
-    CustomDepth, ResearchBrief, ResearchDepth, ResearchDepthPreset, ResearchOutput, ResearchProcess,
-    ResearchProcessId, ResearchProcessStatus,
+    CustomDepth, ResearchBrief, ResearchDepth, ResearchDepthPreset, ResearchOutput,
+    ResearchProcess, ResearchProcessId, ResearchProcessStatus,
 };
 
 /// Input for creating/starting a new research process
@@ -34,7 +34,11 @@ pub struct CustomDepthInput {
 
 impl From<CustomDepthInput> for CustomDepth {
     fn from(input: CustomDepthInput) -> Self {
-        CustomDepth::new(input.max_iterations, input.timeout_hours, input.checkpoint_interval)
+        CustomDepth::new(
+            input.max_iterations,
+            input.timeout_hours,
+            input.checkpoint_interval,
+        )
     }
 }
 
@@ -475,11 +479,19 @@ mod tests {
         state.process_repo.create(process2).await.unwrap();
 
         // Get pending only
-        let pending = state.process_repo.get_by_status(ResearchProcessStatus::Pending).await.unwrap();
+        let pending = state
+            .process_repo
+            .get_by_status(ResearchProcessStatus::Pending)
+            .await
+            .unwrap();
         assert_eq!(pending.len(), 1);
 
         // Get running only
-        let running = state.process_repo.get_by_status(ResearchProcessStatus::Running).await.unwrap();
+        let running = state
+            .process_repo
+            .get_by_status(ResearchProcessStatus::Running)
+            .await
+            .unwrap();
         assert_eq!(running.len(), 1);
     }
 

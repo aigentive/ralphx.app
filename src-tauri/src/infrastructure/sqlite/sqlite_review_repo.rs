@@ -126,9 +126,8 @@ impl SqliteReviewRepository {
         let created_at = Self::parse_datetime(&created_at).unwrap_or_else(Utc::now);
 
         // Parse issues from JSON if present
-        let issues = issues_json.and_then(|json| {
-            serde_json::from_str::<Vec<ReviewIssue>>(&json).ok()
-        });
+        let issues =
+            issues_json.and_then(|json| serde_json::from_str::<Vec<ReviewIssue>>(&json).ok());
 
         Ok(ReviewNote {
             id: ReviewNoteId::from_string(id),
@@ -193,18 +192,25 @@ impl ReviewRepository for SqliteReviewRepository {
         );
 
         match result {
-            Ok((id, project_id, task_id, reviewer_type, status, notes, created_at, completed_at)) => {
-                Ok(Some(Self::row_to_review(
-                    id,
-                    project_id,
-                    task_id,
-                    reviewer_type,
-                    status,
-                    notes,
-                    created_at,
-                    completed_at,
-                )?))
-            }
+            Ok((
+                id,
+                project_id,
+                task_id,
+                reviewer_type,
+                status,
+                notes,
+                created_at,
+                completed_at,
+            )) => Ok(Some(Self::row_to_review(
+                id,
+                project_id,
+                task_id,
+                reviewer_type,
+                status,
+                notes,
+                created_at,
+                completed_at,
+            )?)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(AppError::Database(format!("Failed to get review: {}", e))),
         }
@@ -404,15 +410,9 @@ impl ReviewRepository for SqliteReviewRepository {
         );
 
         match result {
-            Ok((id, review_id, action_type, target_task_id, created_at)) => {
-                Ok(Some(Self::row_to_action(
-                    id,
-                    review_id,
-                    action_type,
-                    target_task_id,
-                    created_at,
-                )?))
-            }
+            Ok((id, review_id, action_type, target_task_id, created_at)) => Ok(Some(
+                Self::row_to_action(id, review_id, action_type, target_task_id, created_at)?,
+            )),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(AppError::Database(format!("Failed to get action: {}", e))),
         }
@@ -480,7 +480,14 @@ impl ReviewRepository for SqliteReviewRepository {
             let (id, task_id, reviewer, outcome, summary, note_text, issues_json, created_at) =
                 row.map_err(|e| AppError::Database(format!("Failed to read row: {}", e)))?;
             notes.push(Self::row_to_note(
-                id, task_id, reviewer, outcome, summary, note_text, issues_json, created_at,
+                id,
+                task_id,
+                reviewer,
+                outcome,
+                summary,
+                note_text,
+                issues_json,
+                created_at,
             )?);
         }
 

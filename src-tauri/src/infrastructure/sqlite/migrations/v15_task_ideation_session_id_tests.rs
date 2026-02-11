@@ -30,7 +30,11 @@ fn test_v15_column_exists() {
     let conn = open_memory_connection().unwrap();
     run_migrations(&conn).unwrap();
 
-    assert!(helpers::column_exists(&conn, "tasks", "ideation_session_id"));
+    assert!(helpers::column_exists(
+        &conn,
+        "tasks",
+        "ideation_session_id"
+    ));
 }
 
 #[test]
@@ -139,5 +143,9 @@ fn test_v15_idempotent() {
     // Running migrations again should not error
     run_migrations(&conn).unwrap();
 
-    assert!(helpers::column_exists(&conn, "tasks", "ideation_session_id"));
+    assert!(helpers::column_exists(
+        &conn,
+        "tasks",
+        "ideation_session_id"
+    ));
 }

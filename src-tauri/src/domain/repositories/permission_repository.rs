@@ -17,20 +17,14 @@ pub trait PermissionRepository: Send + Sync {
     async fn create_pending(&self, info: &PendingPermissionInfo) -> AppResult<()>;
 
     /// Mark a permission request as resolved with the given decision
-    async fn resolve(
-        &self,
-        request_id: &str,
-        decision: &PermissionDecision,
-    ) -> AppResult<bool>;
+    async fn resolve(&self, request_id: &str, decision: &PermissionDecision) -> AppResult<bool>;
 
     /// Get all currently pending permission requests
     async fn get_pending(&self) -> AppResult<Vec<PendingPermissionInfo>>;
 
     /// Get a single permission request by its request_id
-    async fn get_by_request_id(
-        &self,
-        request_id: &str,
-    ) -> AppResult<Option<PendingPermissionInfo>>;
+    async fn get_by_request_id(&self, request_id: &str)
+        -> AppResult<Option<PendingPermissionInfo>>;
 
     /// Expire all pending permission requests (e.g., on startup — agents that asked are gone)
     async fn expire_all_pending(&self) -> AppResult<u64>;
