@@ -13,10 +13,11 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { FileText, Check } from "lucide-react";
+import { FileText, Check, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { usePlanStore } from "@/stores/planStore";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
 
 // ============================================================================
 // Types
@@ -46,6 +47,7 @@ export function PlanQuickSwitcherPalette({
   const activePlanId = usePlanStore((state) => state.activePlanByProject[projectId] ?? null);
   const planCandidates = usePlanStore((state) => state.planCandidates);
   const isLoading = usePlanStore((state) => state.isLoading);
+  const error = usePlanStore((state) => state.error);
   const loadCandidates = usePlanStore((state) => state.loadCandidates);
   const setActivePlan = usePlanStore((state) => state.setActivePlan);
 
@@ -110,6 +112,11 @@ export function PlanQuickSwitcherPalette({
     [projectId, setActivePlan, onClose]
   );
 
+  // Handle retry
+  const handleRetry = useCallback(() => {
+    loadCandidates(projectId);
+  }, [projectId, loadCandidates]);
+
   // Keyboard navigation handler
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -172,8 +179,23 @@ export function PlanQuickSwitcherPalette({
             </div>
 
             {/* Results list */}
-            {isLoading ? (
-              <div className="p-8 text-center text-gray-400">
+            {error ? (
+              <div className="p-8 flex flex-col items-center justify-center gap-3 text-gray-400">
+                <AlertCircle className="h-5 w-5 text-red-400" />
+                <p className="text-center">{error}</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRetry}
+                  className="gap-2 bg-white/5 border-white/10 text-white hover:bg-white/10"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Retry
+                </Button>
+              </div>
+            ) : isLoading ? (
+              <div className="p-8 flex flex-col items-center justify-center gap-2 text-gray-400">
+                <Loader2 className="h-5 w-5 animate-spin" />
                 <p>Loading plans...</p>
               </div>
             ) : filteredCandidates.length > 0 ? (

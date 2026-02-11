@@ -44,6 +44,7 @@ describe("PlanSelectorInline", () => {
     activePlanByProject: {},
     planCandidates: [],
     isLoading: false,
+    error: null,
     loadCandidates: mockLoadCandidates,
     setActivePlan: mockSetActivePlan,
     clearActivePlan: mockClearActivePlan,
@@ -205,7 +206,7 @@ describe("PlanSelectorInline", () => {
       await user.click(screen.getByRole("button"));
 
       await waitFor(() => {
-        expect(mockLoadCandidates).toHaveBeenCalledWith("project-1", "");
+        expect(mockLoadCandidates).toHaveBeenCalledWith("project-1");
       });
     });
 
@@ -247,8 +248,58 @@ describe("PlanSelectorInline", () => {
       await user.click(screen.getByRole("button"));
 
       await waitFor(() => {
-        expect(screen.getByText("No accepted plans found")).toBeInTheDocument();
+        expect(screen.getByText("No accepted plans yet")).toBeInTheDocument();
       });
+    });
+
+    it("displays error state when there is an error", async () => {
+      const user = userEvent.setup();
+
+      (usePlanStore as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+        (selector: (state: typeof defaultStoreState) => unknown) =>
+          selector({
+            ...defaultStoreState,
+            error: "Failed to load plans",
+          })
+      );
+
+      render(
+        <PlanSelectorInline
+          projectId="project-1"
+          source="kanban_inline"
+        />
+      );
+
+      await user.click(screen.getByRole("button"));
+
+      await waitFor(() => {
+        expect(screen.getByText("Failed to load plans")).toBeInTheDocument();
+        expect(screen.getByText("Retry")).toBeInTheDocument();
+      });
+    });
+
+    it("calls loadCandidates when retry button is clicked", async () => {
+      const user = userEvent.setup();
+
+      (usePlanStore as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+        (selector: (state: typeof defaultStoreState) => unknown) =>
+          selector({
+            ...defaultStoreState,
+            error: "Failed to load plans",
+          })
+      );
+
+      render(
+        <PlanSelectorInline
+          projectId="project-1"
+          source="kanban_inline"
+        />
+      );
+
+      await user.click(screen.getByRole("button"));
+      await user.click(await screen.findByText("Retry"));
+
+      expect(mockLoadCandidates).toHaveBeenCalled();
     });
   });
 
@@ -443,7 +494,7 @@ describe("PlanSelectorInline", () => {
       });
     });
 
-    it("shows empty state when search has no results", async () => {
+    it("shows 'No accepted plans found' when search has no results", async () => {
       const user = userEvent.setup();
       const candidates = [
         createTestCandidate({ sessionId: "s1", title: "Plan Alpha" }),

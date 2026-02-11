@@ -379,4 +379,59 @@ describe("PlanQuickSwitcherPalette", () => {
       expect(mockOnClose).not.toHaveBeenCalled();
     });
   });
+
+  // ==========================================================================
+  // Error State
+  // ==========================================================================
+
+  describe("error state", () => {
+    it("displays error message when there is an error", () => {
+      (usePlanStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector) =>
+        selector({
+          ...defaultStoreState,
+          error: "Failed to load plans",
+          planCandidates: [],
+        })
+      );
+
+      render(<PlanQuickSwitcherPalette {...defaultProps} />);
+
+      expect(screen.getByText("Failed to load plans")).toBeInTheDocument();
+      expect(screen.getByText("Retry")).toBeInTheDocument();
+    });
+
+    it("calls loadCandidates when retry button is clicked", async () => {
+      (usePlanStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector) =>
+        selector({
+          ...defaultStoreState,
+          error: "Network error",
+          planCandidates: [],
+        })
+      );
+
+      render(<PlanQuickSwitcherPalette {...defaultProps} />);
+
+      const retryButton = screen.getByText("Retry");
+      fireEvent.click(retryButton);
+
+      await waitFor(() => {
+        expect(mockLoadCandidates).toHaveBeenCalledWith("project-1");
+      });
+    });
+
+    it("shows error state instead of empty state when both error and no candidates", () => {
+      (usePlanStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector) =>
+        selector({
+          ...defaultStoreState,
+          error: "Failed to fetch",
+          planCandidates: [],
+        })
+      );
+
+      render(<PlanQuickSwitcherPalette {...defaultProps} />);
+
+      expect(screen.getByText("Failed to fetch")).toBeInTheDocument();
+      expect(screen.queryByText("No accepted plans found")).not.toBeInTheDocument();
+    });
+  });
 });
