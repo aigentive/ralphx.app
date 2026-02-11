@@ -9,6 +9,7 @@ use tauri::{AppHandle, Emitter, Runtime};
 use tokio::process::Child;
 
 use crate::application::git_service::GitService;
+use crate::application::memory_orchestration::trigger_memory_pipelines;
 use crate::application::task_transition_service::TaskTransitionService;
 use crate::application::task_scheduler_service::TaskSchedulerService;
 use crate::domain::state_machine::services::TaskScheduler;
@@ -121,6 +122,7 @@ pub fn spawn_send_message_background<R: Runtime>(
     execution_state: Option<Arc<ExecutionState>>,
     plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
     app_handle: Option<AppHandle<R>>,
+    agent_name: Option<String>,
 ) {
     tokio::spawn(async move {
         tracing::debug!(
@@ -139,6 +141,7 @@ pub fn spawn_send_message_background<R: Runtime>(
             Arc::clone(&ideation_session_repo),
         )
         .await;
+        let resolved_project_id_typed = resolved_project_id.as_ref().map(|s| crate::domain::entities::ProjectId::from_string(s.clone()));
 
         // Create key for unregistering
         let registry_key = RunningAgentKey::new(context_type.to_string(), &context_id);
@@ -394,6 +397,19 @@ pub fn spawn_send_message_background<R: Runtime>(
                         );
 
                     }
+
+                    // Trigger memory pipelines (no queue processing path)
+                    trigger_memory_pipelines(
+                        context_type,
+                        &context_id,
+                        &conversation_id,
+                        resolved_project_id_typed.as_ref(),
+                        agent_name.as_deref(),
+                        &cli_path,
+                        &plugin_dir,
+                        &working_directory,
+                    )
+                    .await;
                 } else {
                     tracing::info!(
                         "[QUEUE] Deferring run_completed: {} queued messages to process first",
@@ -620,6 +636,19 @@ pub fn spawn_send_message_background<R: Runtime>(
 
                         }
                     }
+
+                    // Trigger memory pipelines after queue processing completes
+                    trigger_memory_pipelines(
+                        context_type,
+                        &context_id,
+                        &conversation_id,
+                        resolved_project_id_typed.as_ref(),
+                        agent_name.as_deref(),
+                        &cli_path,
+                        &plugin_dir,
+                        &working_directory,
+                    )
+                    .await;
                 } else {
                     // effective_session_id is None - no session ID from stream OR stored conversation
                     let queue_count = message_queue.get_queued(context_type, &context_id).len();
