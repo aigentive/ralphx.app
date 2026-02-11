@@ -18,6 +18,7 @@ import { usePlanStore } from "@/stores/planStore";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
+import type { SelectionSource } from "@/api/plan";
 
 // ============================================================================
 // Types
@@ -27,6 +28,10 @@ interface PlanQuickSwitcherPaletteProps {
   projectId: string;
   isOpen: boolean;
   onClose: () => void;
+  /** Source attribution for selection analytics */
+  selectionSource?: SelectionSource;
+  /** Show clear active plan command at top of list when active plan exists */
+  showClearAction?: boolean;
   /** Optional CSS selector used to anchor horizontal centering to a specific container */
   anchorSelector?: string;
 }
@@ -53,6 +58,8 @@ export function PlanQuickSwitcherPalette({
   projectId,
   isOpen,
   onClose,
+  selectionSource = "quick_switcher",
+  showClearAction = true,
   anchorSelector,
 }: PlanQuickSwitcherPaletteProps) {
   const [searchQuery, setSearchQuery] = useState("");
@@ -69,6 +76,8 @@ export function PlanQuickSwitcherPalette({
   const error = usePlanStore((state) => state.error);
   const loadCandidates = usePlanStore((state) => state.loadCandidates);
   const setActivePlan = usePlanStore((state) => state.setActivePlan);
+  const clearActivePlan = usePlanStore((state) => state.clearActivePlan);
+  const canClearPlan = showClearAction && Boolean(activePlanId);
 
   // Filter candidates by search query (case-insensitive)
   const filteredCandidates = searchQuery
@@ -175,14 +184,24 @@ export function PlanQuickSwitcherPalette({
   const handleSelect = useCallback(
     async (sessionId: string) => {
       try {
-        await setActivePlan(projectId, sessionId, "quick_switcher");
+        await setActivePlan(projectId, sessionId, selectionSource);
         onClose();
       } catch (error) {
         console.error("Failed to set active plan:", error);
       }
     },
-    [projectId, setActivePlan, onClose]
+    [projectId, setActivePlan, onClose, selectionSource]
   );
+
+  // Handle active plan clear
+  const handleClear = useCallback(async () => {
+    try {
+      await clearActivePlan(projectId);
+      onClose();
+    } catch (error) {
+      console.error("Failed to clear active plan:", error);
+    }
+  }, [clearActivePlan, onClose, projectId]);
 
   // Handle retry
   const handleRetry = useCallback(() => {
@@ -193,9 +212,10 @@ export function PlanQuickSwitcherPalette({
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       const candidateCount = filteredCandidates.length;
+      const itemCount = candidateCount + (canClearPlan ? 1 : 0);
 
-      // Prevent navigation if no candidates
-      if (candidateCount === 0 && ["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
+      // Prevent navigation if no interactive rows
+      if (itemCount === 0 && ["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
         return;
       }
 
@@ -203,9 +223,9 @@ export function PlanQuickSwitcherPalette({
         case "ArrowDown":
           e.preventDefault();
           if (e.shiftKey) {
-            setHighlightedIndex(candidateCount - 1);
+            setHighlightedIndex(itemCount - 1);
           } else {
-            setHighlightedIndex((i) => Math.min(i + 1, candidateCount - 1));
+            setHighlightedIndex((i) => Math.min(i + 1, itemCount - 1));
           }
           break;
         case "ArrowUp":
@@ -222,12 +242,18 @@ export function PlanQuickSwitcherPalette({
           break;
         case "End":
           e.preventDefault();
-          setHighlightedIndex(candidateCount - 1);
+          setHighlightedIndex(itemCount - 1);
           break;
         case "Enter":
           e.preventDefault();
-          if (highlightedIndex >= 0 && filteredCandidates[highlightedIndex]) {
-            handleSelect(filteredCandidates[highlightedIndex].sessionId);
+          if (canClearPlan && highlightedIndex === 0) {
+            handleClear();
+            return;
+          }
+
+          const candidateIndex = canClearPlan ? highlightedIndex - 1 : highlightedIndex;
+          if (candidateIndex >= 0 && filteredCandidates[candidateIndex]) {
+            handleSelect(filteredCandidates[candidateIndex].sessionId);
           }
           break;
         case "Escape":
@@ -236,7 +262,7 @@ export function PlanQuickSwitcherPalette({
           break;
       }
     },
-    [filteredCandidates, highlightedIndex, onClose, handleSelect]
+    [canClearPlan, filteredCandidates, handleClear, highlightedIndex, onClose, handleSelect]
   );
 
 
@@ -331,11 +357,49 @@ export function PlanQuickSwitcherPalette({
                 <Loader2 className="h-5 w-5 animate-spin" />
                 <p>Loading plans...</p>
               </div>
-            ) : filteredCandidates.length > 0 ? (
+            ) : filteredCandidates.length > 0 || canClearPlan ? (
               <ScrollArea className="max-h-[400px]">
+                {canClearPlan && (
+                  <button
+                    ref={highlightedIndex === 0 ? highlightedItemRef : null}
+                    onClick={handleClear}
+                    onMouseEnter={() => setHighlightedIndex(0)}
+                    className={cn(
+                      "w-full text-left px-3 py-2 rounded-lg flex items-center justify-between",
+                      "transition-all duration-150 origin-center",
+                      "hover:scale-[1.01]",
+                      "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                      highlightedIndex === 0 && "bg-accent"
+                    )}
+                    style={{
+                      background:
+                        highlightedIndex === 0
+                          ? "hsla(14 100% 60% / 0.16)"
+                          : "transparent",
+                      border:
+                        highlightedIndex === 0
+                          ? "1px solid hsla(14 100% 60% / 0.35)"
+                          : "1px solid transparent",
+                    }}
+                    data-testid="plan-quick-switcher-clear"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div
+                        className="text-[13px] font-medium leading-tight"
+                        style={{ color: highlightedIndex === 0 ? "hsl(14 100% 66%)" : "hsl(220 10% 90%)" }}
+                      >
+                        Clear active plan
+                      </div>
+                      <div className="text-xs leading-tight mt-0.5" style={{ color: "hsl(220 10% 62%)" }}>
+                        Return to no active plan state
+                      </div>
+                    </div>
+                  </button>
+                )}
                 {filteredCandidates.map((plan, index) => {
+                  const itemIndex = canClearPlan ? index + 1 : index;
                   const isActive = activePlanId === plan.sessionId;
-                  const isHighlighted = highlightedIndex === index;
+                  const isHighlighted = highlightedIndex === itemIndex;
                   const completionPercent = getCompletionPercent(
                     plan.taskStats.incomplete,
                     plan.taskStats.total
@@ -348,7 +412,7 @@ export function PlanQuickSwitcherPalette({
                       key={plan.sessionId}
                       ref={isHighlighted ? highlightedItemRef : null}
                       onClick={() => handleSelect(plan.sessionId)}
-                      onMouseEnter={() => setHighlightedIndex(index)}
+                      onMouseEnter={() => setHighlightedIndex(itemIndex)}
                       className={cn(
                         "w-full text-left px-3 py-2 rounded-lg flex items-center justify-between",
                         "transition-all duration-150 origin-center",

@@ -34,6 +34,7 @@ import { useTaskSearch } from "@/hooks/useTaskSearch";
 import { TaskSearchBar } from "../TaskSearchBar";
 import { EmptySearchState } from "../EmptySearchState";
 import { PlanSelectorInline } from "@/components/plan/PlanSelectorInline";
+import type { SelectionSource } from "@/api/plan";
 import { infiniteTaskKeys } from "@/hooks/useInfiniteTasksQuery";
 import { defaultWorkflow, type WorkflowColumn } from "@/types/workflow";
 import type { Task, TaskListResponse, InternalStatus } from "@/types/task";
@@ -56,9 +57,15 @@ export interface TaskBoardProps {
   projectId: string;
   /** Optional ideation session ID to filter tasks by plan */
   ideationSessionId?: string | null;
+  /** Opens the global plan quick switcher with source attribution */
+  onOpenPlanQuickSwitcher?: (source: SelectionSource) => void;
 }
 
-export function TaskBoard({ projectId, ideationSessionId: ideationSessionIdProp }: TaskBoardProps) {
+export function TaskBoard({
+  projectId,
+  ideationSessionId: ideationSessionIdProp,
+  onOpenPlanQuickSwitcher,
+}: TaskBoardProps) {
   const queryClient = useQueryClient();
   const eventBus = useEventBus();
   const activePlanId = usePlanStore((s) => s.activePlanByProject[projectId] ?? null);
@@ -480,7 +487,11 @@ export function TaskBoard({ projectId, ideationSessionId: ideationSessionIdProp 
           {/* Plan selector control (same centered treatment as Graph) */}
           {activePlanId && (
             <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
-              <PlanSelectorInline projectId={projectId} source="kanban_inline" />
+              <PlanSelectorInline
+                projectId={projectId}
+                source="kanban_inline"
+                onOpenPalette={(source) => onOpenPlanQuickSwitcher?.(source)}
+              />
             </div>
           )}
 
@@ -523,7 +534,11 @@ export function TaskBoard({ projectId, ideationSessionId: ideationSessionIdProp 
                   Select a plan to view work on the Kanban board.
                 </p>
                 <div className="space-y-2">
-                  <PlanSelectorInline projectId={projectId} source="kanban_inline" />
+                  <PlanSelectorInline
+                    projectId={projectId}
+                    source="kanban_inline"
+                    onOpenPalette={(source) => onOpenPlanQuickSwitcher?.(source)}
+                  />
                   <p className="text-sm text-gray-500">or press Cmd+Shift+P</p>
                 </div>
               </div>
