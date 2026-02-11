@@ -40,6 +40,7 @@ import { useTasksAwaitingReview } from "@/hooks/useReviews";
 import { useReviewMutations } from "@/hooks/useReviewMutations";
 import { useExecutionEvents } from "@/hooks/useExecutionEvents";
 import { useExecutionStatus } from "@/hooks/useExecutionControl";
+import { useRunningProcesses } from "@/hooks/useRunningProcesses";
 import { useProjects, projectKeys } from "@/hooks/useProjects";
 import {
   useIdeationSession,
@@ -55,6 +56,7 @@ import { useAppKeyboardShortcuts } from "@/hooks/useAppKeyboardShortcuts";
 import { useNavCompactBreakpoint } from "@/hooks";
 import { api, getGitBranches, getGitDefaultBranch } from "@/lib/tauri";
 import { executionApi } from "@/api/execution";
+import { tasksApi } from "@/api/tasks";
 import type { ProjectSettings } from "@/types/settings";
 import { DEFAULT_PROJECT_SETTINGS } from "@/types/settings";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -191,6 +193,9 @@ function AppContent() {
 
   // Execution settings state (persisted to database)
   const [executionSettings, setExecutionSettings] = useState<ProjectSettings | null>(null);
+
+  // Running processes data for popover
+  const { data: runningProcessesData } = useRunningProcesses();
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
@@ -425,6 +430,28 @@ function AppContent() {
     } finally {
       setIsExecutionLoading(false);
     }
+  };
+
+  const handlePauseProcess = async (taskId: string) => {
+    try {
+      await tasksApi.pause(taskId);
+      toast.success("Task paused");
+    } catch {
+      toast.error("Failed to pause task");
+    }
+  };
+
+  const handleStopProcess = async (taskId: string) => {
+    try {
+      await tasksApi.stop(taskId);
+      toast.success("Task stopped");
+    } catch {
+      toast.error("Failed to stop task");
+    }
+  };
+
+  const handleOpenSettings = () => {
+    setCurrentView("settings");
   };
 
   const handleBattleModeToggle = useCallback(() => {
@@ -905,6 +932,10 @@ function AppContent() {
                       onPauseToggle={handlePauseToggle}
                       onStop={handleStop}
                       showBattleModeToggle={false}
+                      runningProcesses={runningProcessesData?.processes ?? []}
+                      onPauseProcess={handlePauseProcess}
+                      onStopProcess={handleStopProcess}
+                      onOpenSettings={handleOpenSettings}
                     />
                   }
                 >
@@ -926,6 +957,10 @@ function AppContent() {
                       battleModeActive={battleModeActive}
                       onBattleModeToggle={handleBattleModeToggle}
                       showBattleModeToggle
+                      runningProcesses={runningProcessesData?.processes ?? []}
+                      onPauseProcess={handlePauseProcess}
+                      onStopProcess={handleStopProcess}
+                      onOpenSettings={handleOpenSettings}
                     />
                   }
                 />

@@ -6,6 +6,7 @@
  */
 
 import { Pause, Play, Square, Loader2, Swords } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -14,6 +15,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { RunningProcessPopover } from "./RunningProcessPopover";
+import type { RunningProcess } from "@/api/running-processes";
 
 interface ExecutionControlBarProps {
   /** Number of currently running tasks */
@@ -38,6 +41,14 @@ interface ExecutionControlBarProps {
   onBattleModeToggle?: () => void;
   /** Whether to show battle mode button */
   showBattleModeToggle?: boolean;
+  /** List of running processes (for popover) */
+  runningProcesses?: RunningProcess[];
+  /** Called when pause button clicked for a specific process */
+  onPauseProcess?: (taskId: string) => void;
+  /** Called when stop button clicked for a specific process */
+  onStopProcess?: (taskId: string) => void;
+  /** Called when settings link clicked in popover */
+  onOpenSettings?: () => void;
 }
 
 /**
@@ -70,11 +81,16 @@ export function ExecutionControlBar({
   battleModeActive = false,
   onBattleModeToggle,
   showBattleModeToggle = false,
+  runningProcesses = [],
+  onPauseProcess = () => {},
+  onStopProcess = () => {},
+  onOpenSettings = () => {},
 }: ExecutionControlBarProps) {
   const canStop = runningCount > 0 && !isLoading;
   const statusColor = getStatusColor(runningCount, isPaused);
   const statusState = getStatusState(runningCount, isPaused);
   const isRunning = runningCount > 0 && !isPaused;
+  const [isPopoverOpen, setIsPopoverOpen] = useState(false);
 
   return (
     <TooltipProvider>
@@ -119,14 +135,25 @@ export function ExecutionControlBar({
             style={{ backgroundColor: statusColor }}
           />
 
-          {/* Running Count */}
-          <span
-            data-testid="running-count"
-            className="text-[13px] font-medium"
-            style={{ color: "hsl(220 10% 90%)" }}
+          {/* Running Count (Clickable - opens popover) */}
+          <RunningProcessPopover
+            processes={runningProcesses}
+            maxConcurrent={maxConcurrent}
+            open={isPopoverOpen}
+            onOpenChange={setIsPopoverOpen}
+            onPauseProcess={onPauseProcess}
+            onStopProcess={onStopProcess}
+            onOpenSettings={onOpenSettings}
           >
-            Running: {runningCount}/{maxConcurrent}
-          </span>
+            <button
+              data-testid="running-count"
+              className="text-[13px] font-medium cursor-pointer hover:opacity-80 transition-opacity"
+              style={{ color: "hsl(220 10% 90%)" }}
+              onClick={() => setIsPopoverOpen(!isPopoverOpen)}
+            >
+              Running: {runningCount}/{maxConcurrent}
+            </button>
+          </RunningProcessPopover>
 
           {/* Separator */}
           <span style={{ color: "hsl(220 10% 45%)" }}>•</span>
