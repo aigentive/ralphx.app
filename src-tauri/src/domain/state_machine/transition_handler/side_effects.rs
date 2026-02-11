@@ -3024,7 +3024,6 @@ impl<'a> super::TransitionHandler<'a> {
                     {
                         return;
                     }
-                    }
 
                     let app_handle = self.machine.context.services.app_handle.as_ref();
                     if let Err(e) = complete_merge_internal(
