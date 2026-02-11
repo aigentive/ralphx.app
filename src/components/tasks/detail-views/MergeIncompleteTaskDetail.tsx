@@ -31,6 +31,7 @@ import { ValidationProgress } from "./MergingTaskDetail";
 import type { Task, TaskMetadata, MergeRecoveryEvent } from "@/types/task";
 import { useQueryClient } from "@tanstack/react-query";
 import { taskKeys } from "@/hooks/useTasks";
+import { extractErrorMessage } from "@/lib/errors";
 
 interface MergeIncompleteTaskDetailProps {
   task: Task;
@@ -515,9 +516,7 @@ export function MergeIncompleteTaskDetail({
         queryKey: taskKeys.list(task.projectId),
       });
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to retry merge",
-      );
+      setError(extractErrorMessage(err, "Failed to retry merge"));
     } finally {
       setIsProcessing(false);
     }
@@ -533,7 +532,7 @@ export function MergeIncompleteTaskDetail({
       });
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to retry merge",
+        extractErrorMessage(err, "Failed to retry merge (skipping validation)"),
       );
     } finally {
       setIsProcessing(false);
@@ -550,9 +549,7 @@ export function MergeIncompleteTaskDetail({
       });
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to mark merge as resolved",
+        extractErrorMessage(err, "Failed to mark merge as resolved"),
       );
     } finally {
       setIsProcessing(false);

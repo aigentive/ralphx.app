@@ -134,7 +134,7 @@ pub async fn get_merge_pipeline(
 
             // Resolve merge branches
             let (source_branch, target_branch) =
-                resolve_merge_branches(&task, &project, &Some(Arc::clone(&state.plan_branch_repo)))
+                resolve_merge_branches(&task, project, &Some(Arc::clone(&state.plan_branch_repo)))
                     .await;
 
             // Check if deferred

@@ -622,6 +622,16 @@ fn run_shell_command_with_timeout(
     }
 }
 
+fn parse_simple_ln_symlink_command(command: &str) -> Option<(&str, &str)> {
+    // Handles the common form used by worktree_setup: `ln -s <src> <dst>`.
+    let parts: Vec<&str> = command.split_whitespace().collect();
+    if parts.len() == 4 && parts[0] == "ln" && parts[1] == "-s" {
+        Some((parts[2], parts[3]))
+    } else {
+        None
+    }
+}
+
 /// Load effective analysis, resolve template vars, and run all validate commands.
 ///
 /// Returns `None` if no analysis entries exist (backward compatible — skip validation).
@@ -663,6 +673,7 @@ pub(crate) fn run_validation_commands(
     // Collect all validate commands with their resolved paths
     let project_root = &project.working_directory;
     let worktree_path = merge_cwd.to_str().unwrap_or(project_root);
+    let is_in_repo_merge = std::path::Path::new(project_root) == merge_cwd;
     let task_branch = task.task_branch.as_deref().unwrap_or("");
 
     let resolve = |s: &str| -> String {
@@ -673,138 +684,190 @@ pub(crate) fn run_validation_commands(
 
     let mut log: Vec<ValidationLogEntry> = Vec::new();
 
-    // Run worktree_setup commands first (symlinks, etc.) — non-fatal
-    // for entry in &entries {
-    //     for cmd_str in &entry.worktree_setup {
-    //         let resolved_cmd = resolve(cmd_str);
-    //         let resolved_path = resolve(&entry.path);
-    //         let cmd_cwd = if resolved_path == "." {
-    //             merge_cwd.to_path_buf()
-    //         } else {
-    //             merge_cwd.join(&resolved_path)
-    //         };
+    if is_in_repo_merge {
+        tracing::info!(
+            merge_cwd = %merge_cwd.display(),
+            project_root = %project_root,
+            "Skipping worktree setup commands for in-repo merge"
+        );
+    } else {
+        for entry in &entries {
+            for cmd_str in &entry.worktree_setup {
+                let resolved_cmd = resolve(cmd_str);
+                let resolved_path = resolve(&entry.path);
+                let cmd_cwd = if resolved_path == "." {
+                    merge_cwd.to_path_buf()
+                } else {
+                    merge_cwd.join(&resolved_path)
+                };
 
-    //         // Emit "running" event before execution
-    //         if let Some(handle) = app_handle {
-    //             let _ = handle.emit(
-    //                 "merge:validation_step",
-    //                 serde_json::json!({
-    //                     "task_id": task_id_str,
-    //                     "phase": "setup",
-    //                     "command": resolved_cmd,
-    //                     "path": resolved_path,
-    //                     "label": entry.label,
-    //                     "status": "running",
-    //                 }),
-    //             );
-    //         }
+                if let Some((_src, dst)) = parse_simple_ln_symlink_command(&resolved_cmd) {
+                    let dst_path = if Path::new(dst).is_absolute() {
+                        PathBuf::from(dst)
+                    } else {
+                        cmd_cwd.join(dst)
+                    };
 
-    //         tracing::info!(
-    //             command = %resolved_cmd,
-    //             cwd = %cmd_cwd.display(),
-    //             "Running worktree setup command"
-    //         );
+                    if dst_path.exists() {
+                        tracing::info!(
+                            command = %resolved_cmd,
+                            destination = %dst_path.display(),
+                            "Skipping worktree setup symlink command (destination already exists)"
+                        );
 
-    //         let start = std::time::Instant::now();
-    //         match run_shell_command_with_timeout(
-    //             &resolved_cmd,
-    //             &cmd_cwd,
-    //             command_timeout,
-    //             merge_cwd,
-    //         ) {
-    //             Ok(result) => {
-    //                 let duration_ms = start.elapsed().as_millis() as u64;
-    //                 let stdout_raw = result.stdout;
-    //                 let stderr_raw = result.stderr;
-    //                 let status = if !result.timed_out && result.exit_code == Some(0) {
-    //                     "success"
-    //                 } else {
-    //                     "failed"
-    //                 };
+                        let log_entry = ValidationLogEntry {
+                            phase: "setup".to_string(),
+                            command: resolved_cmd.clone(),
+                            path: resolved_path.clone(),
+                            label: entry.label.clone(),
+                            status: "cached".to_string(),
+                            exit_code: Some(0),
+                            stdout: String::new(),
+                            stderr: String::new(),
+                            duration_ms: 0,
+                        };
 
-    //                 if status == "failed" {
-    //                     tracing::warn!(
-    //                         command = %resolved_cmd,
-    //                         timeout_secs = command_timeout.as_secs(),
-    //                         timed_out = result.timed_out,
-    //                         stderr = %stderr_raw,
-    //                         "Worktree setup command failed (non-fatal)"
-    //                     );
-    //                 }
+                        if let Some(handle) = app_handle {
+                            let _ = handle.emit(
+                                "merge:validation_step",
+                                serde_json::json!({
+                                    "task_id": task_id_str,
+                                    "phase": log_entry.phase,
+                                    "command": log_entry.command,
+                                    "path": log_entry.path,
+                                    "label": log_entry.label,
+                                    "status": log_entry.status,
+                                    "exit_code": log_entry.exit_code,
+                                    "duration_ms": log_entry.duration_ms,
+                                }),
+                            );
+                        }
+                        log.push(log_entry);
+                        continue;
+                    }
+                }
 
-    //                 let log_entry = ValidationLogEntry {
-    //                     phase: "setup".to_string(),
-    //                     command: resolved_cmd.clone(),
-    //                     path: resolved_path.clone(),
-    //                     label: entry.label.clone(),
-    //                     status: status.to_string(),
-    //                     exit_code: result.exit_code,
-    //                     stdout: truncate_output(&stdout_raw, 2000),
-    //                     stderr: truncate_output(&stderr_raw, 2000),
-    //                     duration_ms,
-    //                 };
+                if let Some(handle) = app_handle {
+                    let _ = handle.emit(
+                        "merge:validation_step",
+                        serde_json::json!({
+                            "task_id": task_id_str,
+                            "phase": "setup",
+                            "command": resolved_cmd,
+                            "path": resolved_path,
+                            "label": entry.label,
+                            "status": "running",
+                        }),
+                    );
+                }
 
-    //                 if let Some(handle) = app_handle {
-    //                     let _ = handle.emit(
-    //                         "merge:validation_step",
-    //                         serde_json::json!({
-    //                             "task_id": task_id_str,
-    //                             "phase": log_entry.phase,
-    //                             "command": log_entry.command,
-    //                             "path": log_entry.path,
-    //                             "label": log_entry.label,
-    //                             "status": log_entry.status,
-    //                             "exit_code": log_entry.exit_code,
-    //                             "stdout": log_entry.stdout,
-    //                             "stderr": log_entry.stderr,
-    //                             "duration_ms": log_entry.duration_ms,
-    //                         }),
-    //                     );
-    //                 }
-    //                 log.push(log_entry);
-    //             }
-    //             Err(e) => {
-    //                 let duration_ms = start.elapsed().as_millis() as u64;
-    //                 tracing::warn!(
-    //                     command = %resolved_cmd,
-    //                     error = %e,
-    //                     "Worktree setup command failed (non-fatal)"
-    //                 );
+                tracing::info!(
+                    command = %resolved_cmd,
+                    cwd = %cmd_cwd.display(),
+                    "Running worktree setup command"
+                );
 
-    //                 let log_entry = ValidationLogEntry {
-    //                     phase: "setup".to_string(),
-    //                     command: resolved_cmd.clone(),
-    //                     path: resolved_path.clone(),
-    //                     label: entry.label.clone(),
-    //                     status: "failed".to_string(),
-    //                     exit_code: None,
-    //                     stdout: String::new(),
-    //                     stderr: truncate_output(&format!("Failed to execute: {}", e), 2000),
-    //                     duration_ms,
-    //                 };
+                let start = std::time::Instant::now();
+                match run_shell_command_with_timeout(
+                    &resolved_cmd,
+                    &cmd_cwd,
+                    command_timeout,
+                    merge_cwd,
+                ) {
+                    Ok(result) => {
+                        let duration_ms = start.elapsed().as_millis() as u64;
+                        let stdout_raw = result.stdout;
+                        let stderr_raw = result.stderr;
+                        let status = if !result.timed_out && result.exit_code == Some(0) {
+                            "success"
+                        } else {
+                            "failed"
+                        };
 
-    //                 if let Some(handle) = app_handle {
-    //                     let _ = handle.emit(
-    //                         "merge:validation_step",
-    //                         serde_json::json!({
-    //                             "task_id": task_id_str,
-    //                             "phase": log_entry.phase,
-    //                             "command": log_entry.command,
-    //                             "path": log_entry.path,
-    //                             "label": log_entry.label,
-    //                             "status": log_entry.status,
-    //                             "exit_code": log_entry.exit_code,
-    //                             "stdout": log_entry.stdout,
-    //                             "stderr": log_entry.stderr,
-    //                             "duration_ms": log_entry.duration_ms,
-    //                         }),
-    //                     );
-    //                 }
-    //                 log.push(log_entry);
-    //             }
-    //         }
-    //     }
-    // }
+                        if status == "failed" {
+                            tracing::warn!(
+                                command = %resolved_cmd,
+                                timeout_secs = command_timeout.as_secs(),
+                                timed_out = result.timed_out,
+                                stderr = %stderr_raw,
+                                "Worktree setup command failed (non-fatal)"
+                            );
+                        }
+
+                        let log_entry = ValidationLogEntry {
+                            phase: "setup".to_string(),
+                            command: resolved_cmd.clone(),
+                            path: resolved_path.clone(),
+                            label: entry.label.clone(),
+                            status: status.to_string(),
+                            exit_code: result.exit_code,
+                            stdout: truncate_output(&stdout_raw, 2000),
+                            stderr: truncate_output(&stderr_raw, 2000),
+                            duration_ms,
+                        };
+
+                        if let Some(handle) = app_handle {
+                            let _ = handle.emit(
+                                "merge:validation_step",
+                                serde_json::json!({
+                                    "task_id": task_id_str,
+                                    "phase": log_entry.phase,
+                                    "command": log_entry.command,
+                                    "path": log_entry.path,
+                                    "label": log_entry.label,
+                                    "status": log_entry.status,
+                                    "exit_code": log_entry.exit_code,
+                                    "stdout": log_entry.stdout,
+                                    "stderr": log_entry.stderr,
+                                    "duration_ms": log_entry.duration_ms,
+                                }),
+                            );
+                        }
+                        log.push(log_entry);
+                    }
+                    Err(e) => {
+                        let duration_ms = start.elapsed().as_millis() as u64;
+                        tracing::warn!(
+                            command = %resolved_cmd,
+                            error = %e,
+                            "Worktree setup command failed (non-fatal)"
+                        );
+
+                        let log_entry = ValidationLogEntry {
+                            phase: "setup".to_string(),
+                            command: resolved_cmd.clone(),
+                            path: resolved_path.clone(),
+                            label: entry.label.clone(),
+                            status: "failed".to_string(),
+                            exit_code: None,
+                            stdout: String::new(),
+                            stderr: truncate_output(&format!("Failed to execute: {}", e), 2000),
+                            duration_ms,
+                        };
+
+                        if let Some(handle) = app_handle {
+                            let _ = handle.emit(
+                                "merge:validation_step",
+                                serde_json::json!({
+                                    "task_id": task_id_str,
+                                    "phase": log_entry.phase,
+                                    "command": log_entry.command,
+                                    "path": log_entry.path,
+                                    "label": log_entry.label,
+                                    "status": log_entry.status,
+                                    "exit_code": log_entry.exit_code,
+                                    "stdout": log_entry.stdout,
+                                    "stderr": log_entry.stderr,
+                                    "duration_ms": log_entry.duration_ms,
+                                }),
+                            );
+                        }
+                        log.push(log_entry);
+                    }
+                }
+            }
+        }
+    }
 
     let mut failures = Vec::new();
     let mut ran_any = false;
@@ -1078,6 +1141,7 @@ fn take_skip_validation_flag(task: &mut Task) -> bool {
 
 /// Format validation warnings as a JSON metadata string for Warn mode.
 /// Stores the log but allows merge to proceed.
+#[allow(dead_code)] // TEMP: validation temporarily disabled
 fn format_validation_warn_metadata(
     log: &[ValidationLogEntry],
     source_branch: &str,
@@ -1099,6 +1163,7 @@ fn format_validation_warn_metadata(
 ///
 /// Note: Caching is effective in worktree mode. In local mode, rebase rewrites the source
 /// branch SHA on each retry, so cache hits are rare.
+#[allow(dead_code)] // TEMP: validation temporarily disabled
 fn extract_cached_validation(task: &Task, current_sha: &str) -> Option<Vec<ValidationLogEntry>> {
     let meta_str = task.metadata.as_ref()?;
     let val: serde_json::Value = serde_json::from_str(meta_str).ok()?;
@@ -2588,6 +2653,7 @@ impl<'a> super::TransitionHandler<'a> {
                             "Programmatic merge in worktree succeeded (fast path)"
                         );
 
+                        // TEMP: skip post-merge validation globally (user requested).
                         if !self
                             .run_post_merge_validation(
                                 &mut task,
@@ -2941,6 +3007,7 @@ impl<'a> super::TransitionHandler<'a> {
                         "Programmatic merge succeeded (fast path)"
                     );
 
+                    // TEMP: skip post-merge validation globally (user requested).
                     if !self
                         .run_post_merge_validation(
                             &mut task,
@@ -2956,6 +3023,7 @@ impl<'a> super::TransitionHandler<'a> {
                         .await
                     {
                         return;
+                    }
                     }
 
                     let app_handle = self.machine.context.services.app_handle.as_ref();
@@ -3450,6 +3518,7 @@ impl<'a> super::TransitionHandler<'a> {
     /// * `merge_path` - Path where the merge happened (for git reset)
     /// * `mode_label` - Label for log messages (e.g., "in-repo", "worktree", "local")
     /// * `validation_mode` - Current validation mode (AutoFix spawns agent, Block reverts)
+    #[allow(dead_code)] // TEMP: validation temporarily disabled
     async fn handle_validation_failure(
         &self,
         task: &mut Task,
