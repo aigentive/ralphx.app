@@ -77,12 +77,13 @@ export const taskGraphApi = {
    * Get the task dependency graph for a project
    * @param projectId - The project ID to get the graph for
    * @param includeArchived - Whether to include archived tasks (default false)
+   * @param ideationSessionId - Optional ideation session ID to filter by active plan
    * @returns Task dependency graph with nodes, edges, plan groups, critical path
    */
-  getDependencyGraph: (projectId: string, includeArchived: boolean = false): Promise<TaskDependencyGraphResponse> =>
+  getDependencyGraph: (projectId: string, includeArchived: boolean = false, ideationSessionId?: string | null): Promise<TaskDependencyGraphResponse> =>
     typedInvokeWithTransform(
       "get_task_dependency_graph",
-      { projectId, includeArchived },
+      { projectId, includeArchived, ideationSessionId },
       TaskDependencyGraphResponseSchema,
       transformTaskDependencyGraphResponse
     ),

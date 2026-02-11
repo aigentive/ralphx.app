@@ -73,11 +73,16 @@ function formatPlanTitle(planArtifactId: string, index: number): string {
   return `Plan ${suffix}`;
 }
 
-function buildGraphResponse(projectId: string): TaskDependencyGraphResponseRaw {
+function buildGraphResponse(projectId: string, ideationSessionId?: string | null): TaskDependencyGraphResponseRaw {
   const store = getStore();
-  const tasks = Array.from(store.tasks.values()).filter(
+  let tasks = Array.from(store.tasks.values()).filter(
     (task) => task.projectId === projectId
   );
+
+  // Filter by ideationSessionId (matches planArtifactId) if provided
+  if (ideationSessionId !== undefined) {
+    tasks = tasks.filter((task) => task.planArtifactId === ideationSessionId);
+  }
   const planGroupMap = new Map<
     string,
     {
@@ -139,8 +144,8 @@ function buildGraphResponse(projectId: string): TaskDependencyGraphResponseRaw {
 }
 
 export const mockTaskGraphApi = {
-  getDependencyGraph: async (projectId: string, _includeArchived: boolean = false): Promise<TaskDependencyGraphResponseRaw> =>
-    buildGraphResponse(projectId),
+  getDependencyGraph: async (projectId: string, _includeArchived: boolean = false, ideationSessionId?: string | null): Promise<TaskDependencyGraphResponseRaw> =>
+    buildGraphResponse(projectId, ideationSessionId),
 
   getTimelineEvents: async (
     _projectId: string,

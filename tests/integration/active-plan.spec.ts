@@ -18,7 +18,7 @@ test.describe("Active Plan Cross-View Sync", () => {
     await setupApp(page);
 
     // Seed mock store with accepted ideation sessions
-    await page.evaluate(() => {
+    await page.evaluate(async () => {
       const store = (window as unknown as { __mockStore?: unknown }).__mockStore;
       if (!store) {
         throw new Error("Mock store not available - ensure api-mock is configured");
@@ -38,6 +38,10 @@ test.describe("Active Plan Cross-View Sync", () => {
         updatedAt: new Date().toISOString(),
       };
       store.projects.set(project.id, project);
+
+      // Set as active project in projectStore (using dynamic import since we're in browser context)
+      const { useProjectStore } = await import("/src/stores/projectStore");
+      useProjectStore.getState().selectProject(project.id);
 
       // Create accepted sessions (plans)
       const sessions = [
@@ -74,7 +78,9 @@ test.describe("Active Plan Cross-View Sync", () => {
           description: "Task 1",
           internalStatus: "backlog",
           priority: 0,
+          category: "feature",
           ideationSessionId: "session-1",
+          planArtifactId: "session-1", // Graph API uses planArtifactId for filtering
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         },
@@ -85,7 +91,9 @@ test.describe("Active Plan Cross-View Sync", () => {
           description: "Task 2",
           internalStatus: "ready",
           priority: 1,
+          category: "feature",
           ideationSessionId: "session-1",
+          planArtifactId: "session-1",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         },
@@ -96,7 +104,9 @@ test.describe("Active Plan Cross-View Sync", () => {
           description: "Task 3",
           internalStatus: "executing",
           priority: 2,
+          category: "feature",
           ideationSessionId: "session-2",
+          planArtifactId: "session-2",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         },
@@ -120,21 +130,25 @@ test.describe("Active Plan Cross-View Sync", () => {
   });
 
   test("Test 1: Accept session in Ideation → navigate to Graph → verify filtered tasks shown", async ({ page }) => {
-    // Set active plan directly via mock store (simulating session acceptance)
-    await page.evaluate(() => {
-      const store = (window as unknown as { __mockStore?: unknown }).__mockStore;
-      if (store && store.activePlans) {
-        store.activePlans.set("test-project-1", "session-1");
-      }
-      const queryClient = (window as unknown as { __queryClient?: { invalidateQueries: () => void } }).__queryClient;
-      if (queryClient) {
-        queryClient.invalidateQueries();
-      }
+    // Set active plan via planStore (simulating session acceptance)
+    await page.evaluate(async () => {
+      // Get the planStore from window (exposed by zustand devtools or direct access)
+      const { usePlanStore } = await import("/src/stores/planStore");
+      const store = usePlanStore.getState();
+      await store.setActivePlan("test-project-1", "session-1", "acceptance");
     });
+
+    // Wait for React Query to invalidate and refetch
+    await page.waitForTimeout(500);
 
     // Navigate to Graph
     await page.click('[data-testid="nav-graph"]');
-    await page.waitForSelector('[data-testid="task-graph-view"]', { timeout: 10000 });
+
+    // Wait for either graph view or empty state to appear
+    await Promise.race([
+      page.waitForSelector('[data-testid="task-graph-view"]', { timeout: 10000 }),
+      page.waitForSelector('[data-testid="graph-empty-state"]', { timeout: 10000 })
+    ]);
 
     // Wait for graph to render
     await page.waitForTimeout(500);
@@ -153,17 +167,15 @@ test.describe("Active Plan Cross-View Sync", () => {
   });
 
   test("Test 2: Accept session → navigate to Kanban → verify filtered board", async ({ page }) => {
-    // Set active plan directly via mock store
-    await page.evaluate(() => {
-      const store = (window as unknown as { __mockStore?: unknown }).__mockStore;
-      if (store && store.activePlans) {
-        store.activePlans.set("test-project-1", "session-2");
-      }
-      const queryClient = (window as unknown as { __queryClient?: { invalidateQueries: () => void } }).__queryClient;
-      if (queryClient) {
-        queryClient.invalidateQueries();
-      }
+    // Set active plan via planStore (simulating session acceptance)
+    await page.evaluate(async () => {
+      const { usePlanStore } = await import("/src/stores/planStore");
+      const store = usePlanStore.getState();
+      await store.setActivePlan("test-project-1", "session-2", "acceptance");
     });
+
+    // Wait for React Query to invalidate and refetch
+    await page.waitForTimeout(500);
 
     // Navigate to Kanban
     await page.click('[data-testid="nav-kanban"]');
@@ -183,19 +195,19 @@ test.describe("Active Plan Cross-View Sync", () => {
   test("Test 3: Select plan in Graph inline selector → switch to Kanban → verify same plan active", async ({ page }) => {
     // Navigate to Graph
     await page.click('[data-testid="nav-graph"]');
-    await page.waitForSelector('[data-testid="task-graph-view"]', { timeout: 10000 });
 
-    // Simulate plan selection by updating mock store
+    // Wait for either graph view or empty state to appear
+    await Promise.race([
+      page.waitForSelector('[data-testid="task-graph-view"]', { timeout: 10000 }),
+      page.waitForSelector('[data-testid="graph-empty-state"]', { timeout: 10000 })
+    ]);
+
+    // Simulate plan selection via planStore
     // (Plan selector UI interaction would trigger this in real app)
-    await page.evaluate(() => {
-      const store = (window as unknown as { __mockStore?: unknown }).__mockStore;
-      if (store && store.activePlans) {
-        store.activePlans.set("test-project-1", "session-1");
-      }
-      const queryClient = (window as unknown as { __queryClient?: { invalidateQueries: () => void } }).__queryClient;
-      if (queryClient) {
-        queryClient.invalidateQueries();
-      }
+    await page.evaluate(async () => {
+      const { usePlanStore } = await import("/src/stores/planStore");
+      const store = usePlanStore.getState();
+      await store.setActivePlan("test-project-1", "session-1", "ui_selection");
     });
 
     // Wait for graph to update
@@ -215,22 +227,23 @@ test.describe("Active Plan Cross-View Sync", () => {
   });
 
   test("Test 4: Select plan via quick switcher → verify both Graph and Kanban update", async ({ page }) => {
-    // Simulate plan selection via quick switcher by updating mock store
+    // Simulate plan selection via quick switcher using planStore
     // (Quick switcher UI interaction would trigger this in real app)
-    await page.evaluate(() => {
-      const store = (window as unknown as { __mockStore?: unknown }).__mockStore;
-      if (store && store.activePlans) {
-        store.activePlans.set("test-project-1", "session-2");
-      }
-      const queryClient = (window as unknown as { __queryClient?: { invalidateQueries: () => void } }).__queryClient;
-      if (queryClient) {
-        queryClient.invalidateQueries();
-      }
+    await page.evaluate(async () => {
+      const { usePlanStore } = await import("/src/stores/planStore");
+      const store = usePlanStore.getState();
+      await store.setActivePlan("test-project-1", "session-2", "quick_switcher");
     });
 
     // Verify Graph view shows only session-2 tasks
     await page.click('[data-testid="nav-graph"]');
-    await page.waitForSelector('[data-testid="task-graph-view"]', { timeout: 10000 });
+
+    // Wait for either graph view or empty state to appear
+    await Promise.race([
+      page.waitForSelector('[data-testid="task-graph-view"]', { timeout: 10000 }),
+      page.waitForSelector('[data-testid="graph-empty-state"]', { timeout: 10000 })
+    ]);
+
     await page.waitForTimeout(500);
 
     const task3NodeInGraph = page.locator('[data-testid="task-node"]').filter({ has: page.locator('text="Task from Plan Beta"') });
@@ -249,21 +262,22 @@ test.describe("Active Plan Cross-View Sync", () => {
   });
 
   test("Test 5: No active plan → both views show empty state", async ({ page }) => {
-    // Clear active plan in mock store
-    await page.evaluate(() => {
-      const store = (window as unknown as { __mockStore?: unknown }).__mockStore;
-      if (store && store.activePlans) {
-        store.activePlans.set("test-project-1", null);
-      }
-      const queryClient = (window as unknown as { __queryClient?: { invalidateQueries: () => void } }).__queryClient;
-      if (queryClient) {
-        queryClient.invalidateQueries();
-      }
+    // Clear active plan via planStore
+    await page.evaluate(async () => {
+      const { usePlanStore } = await import("/src/stores/planStore");
+      const store = usePlanStore.getState();
+      await store.clearActivePlan("test-project-1");
     });
 
     // Check Graph view shows empty/no tasks
     await page.click('[data-testid="nav-graph"]');
-    await page.waitForSelector('[data-testid="task-graph-view"]', { timeout: 10000 });
+
+    // Wait for either graph view or empty state to appear
+    await Promise.race([
+      page.waitForSelector('[data-testid="task-graph-view"]', { timeout: 10000 }),
+      page.waitForSelector('[data-testid="graph-empty-state"]', { timeout: 10000 })
+    ]);
+
     await page.waitForTimeout(500);
 
     // Verify no task nodes are visible
@@ -280,45 +294,42 @@ test.describe("Active Plan Cross-View Sync", () => {
   });
 
   test("Test 6: Reopen active session → verify plan cleared → empty states shown", async ({ page }) => {
-    // Set initial active plan
-    await page.evaluate(() => {
-      const store = (window as unknown as { __mockStore?: unknown }).__mockStore;
-      if (store && store.activePlans) {
-        store.activePlans.set("test-project-1", "session-1");
-      }
-      const queryClient = (window as unknown as { __queryClient?: { invalidateQueries: () => void } }).__queryClient;
-      if (queryClient) {
-        queryClient.invalidateQueries();
-      }
+    // Set initial active plan via planStore
+    await page.evaluate(async () => {
+      const { usePlanStore } = await import("/src/stores/planStore");
+      const store = usePlanStore.getState();
+      await store.setActivePlan("test-project-1", "session-1", "acceptance");
     });
 
     // Wait for active plan to be set
     await page.waitForTimeout(500);
 
     // Simulate reopening a session which clears the active plan
-    await page.evaluate(() => {
-      const store = (window as unknown as { __mockStore?: unknown }).__mockStore;
-      if (store) {
+    await page.evaluate(async () => {
+      const mockStore = (window as unknown as { __mockStore?: unknown }).__mockStore;
+      if (mockStore) {
         // Change session status to active (reopened)
-        const session = store.sessions.get("session-1");
+        const session = mockStore.sessions.get("session-1");
         if (session) {
           session.status = "active";
           session.convertedAt = null;
         }
-        // Clear active plan
-        if (store.activePlans) {
-          store.activePlans.set("test-project-1", null);
-        }
       }
-      const queryClient = (window as unknown as { __queryClient?: { invalidateQueries: () => void } }).__queryClient;
-      if (queryClient) {
-        queryClient.invalidateQueries();
-      }
+      // Clear active plan via planStore
+      const { usePlanStore } = await import("/src/stores/planStore");
+      const store = usePlanStore.getState();
+      await store.clearActivePlan("test-project-1");
     });
 
     // Verify Graph shows no tasks
     await page.click('[data-testid="nav-graph"]');
-    await page.waitForSelector('[data-testid="task-graph-view"]', { timeout: 10000 });
+
+    // Wait for either graph view or empty state to appear
+    await Promise.race([
+      page.waitForSelector('[data-testid="task-graph-view"]', { timeout: 10000 }),
+      page.waitForSelector('[data-testid="graph-empty-state"]', { timeout: 10000 })
+    ]);
+
     await page.waitForTimeout(500);
 
     const taskNodesInGraph = page.locator('[data-testid="task-node"]');

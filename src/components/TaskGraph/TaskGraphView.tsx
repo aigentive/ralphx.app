@@ -63,6 +63,7 @@ import { useNavCompactBreakpoint } from "@/hooks";
 import { usePersistedNodeMode } from "@/hooks/usePersistedNodeMode";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useChatStore } from "@/stores/chatStore";
+import { usePlanStore } from "@/stores/planStore";
 import { taskGraphKeys } from "./hooks/useTaskGraph";
 import { api } from "@/lib/tauri";
 import { toast } from "sonner";
@@ -286,7 +287,10 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   // GraphControls state (declared early so showArchived is available for useTaskGraph)
   const [filters, setFilters] = useState<GraphFilters>(DEFAULT_GRAPH_FILTERS);
 
-  const { data: graphData, isLoading, error } = useTaskGraph(projectId, filters.showArchived);
+  // Get active plan for this project
+  const activePlanId = usePlanStore((s) => s.activePlanByProject[projectId] ?? null);
+
+  const { data: graphData, isLoading, error } = useTaskGraph(projectId, filters.showArchived, activePlanId);
   const {
     fitNodeInView,
     centerOnNode,
@@ -1374,7 +1378,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   // Empty state (no tasks at all)
   if (!graphData || graphData.nodes.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex items-center justify-center h-full" data-testid="graph-empty-state">
         <div className="text-center">
           <p className="text-muted-foreground mb-2">No tasks to display</p>
           <p className="text-sm text-muted-foreground">
