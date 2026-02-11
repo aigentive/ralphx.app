@@ -189,6 +189,24 @@ export const tasksApi = {
     typedInvokeWithTransform("restore_task", { taskId }, TaskSchema, transformTask),
 
   /**
+   * Pause a running task
+   * Transitions the task to Paused state, which can be resumed later
+   * @param taskId The task ID
+   * @returns The paused task
+   */
+  pause: (taskId: string): Promise<Task> =>
+    typedInvokeWithTransform("pause_task", { taskId }, TaskSchema, transformTask),
+
+  /**
+   * Stop a running task
+   * Transitions the task to Stopped state (terminal, requires manual restart)
+   * @param taskId The task ID
+   * @returns The stopped task
+   */
+  stop: (taskId: string): Promise<Task> =>
+    typedInvokeWithTransform("stop_task", { taskId }, TaskSchema, transformTask),
+
+  /**
    * Permanently delete a task (only works on archived tasks)
    * @deprecated Use `cleanupTask` instead — it handles force-stop, branch cleanup, and event emission.
    * @param taskId The task ID

@@ -30,6 +30,12 @@ pub enum TaskEvent {
     /// User cancels task from any non-terminal state
     Cancel,
 
+    /// User pauses a running task (can resume later)
+    Pause,
+
+    /// User stops a running task (terminal, requires manual restart)
+    Stop,
+
     /// Human override to approve task regardless of review state
     ForceApprove,
 
@@ -125,6 +131,8 @@ impl TaskEvent {
             TaskEvent::Schedule
                 | TaskEvent::StartExecution
                 | TaskEvent::Cancel
+                | TaskEvent::Pause
+                | TaskEvent::Stop
                 | TaskEvent::ForceApprove
                 | TaskEvent::HumanApprove
                 | TaskEvent::HumanRequestChanges { .. }
@@ -184,6 +192,8 @@ impl TaskEvent {
             TaskEvent::StartReview => "StartReview",
             TaskEvent::StartRevision => "StartRevision",
             TaskEvent::Cancel => "Cancel",
+            TaskEvent::Pause => "Pause",
+            TaskEvent::Stop => "Stop",
             TaskEvent::ForceApprove => "ForceApprove",
             TaskEvent::HumanApprove => "HumanApprove",
             TaskEvent::HumanRequestChanges { .. } => "HumanRequestChanges",

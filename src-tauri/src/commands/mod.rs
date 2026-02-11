@@ -83,8 +83,8 @@ pub use review_commands::{
 pub use task_commands::{
     answer_user_question, archive_task, create_task, delete_task, emit_queue_changed,
     get_archived_count, get_task, get_task_state_transitions, get_valid_transitions, inject_task,
-    list_tasks, move_task, permanently_delete_task, restore_task, search_tasks, update_task,
-    StateTransitionResponse,
+    list_tasks, move_task, pause_task, permanently_delete_task, restore_task, search_tasks,
+    stop_task, update_task, StateTransitionResponse,
 };
 pub use task_step_commands::{
     create_task_step, delete_task_step, get_step_progress, get_task_steps, reorder_task_steps,
