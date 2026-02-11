@@ -1,5 +1,7 @@
 // Frontend types for running processes API (camelCase)
 
+import type { TaskStep } from "@/types/task-step";
+
 /**
  * Step progress summary - frontend representation (camelCase)
  */
@@ -11,8 +13,8 @@ export interface StepProgressSummary {
   pending: number;
   skipped: number;
   failed: number;
-  currentStep: unknown | null; // TaskStep - nullable
-  nextStep: unknown | null; // TaskStep - nullable
+  currentStep: TaskStep | null;
+  nextStep: TaskStep | null;
   percentComplete: number;
 }
 

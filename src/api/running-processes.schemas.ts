@@ -1,6 +1,7 @@
 // Zod schemas for running processes API responses (snake_case from Rust backend)
 
 import { z } from "zod";
+import { TaskStepResponseSchema } from "@/types/task-step";
 
 /**
  * Step progress summary schema from Rust (snake_case)
@@ -13,8 +14,8 @@ export const StepProgressSummarySchema = z.object({
   pending: z.number().int().nonnegative(),
   skipped: z.number().int().nonnegative(),
   failed: z.number().int().nonnegative(),
-  current_step: z.any().nullable(), // TaskStep - nullable
-  next_step: z.any().nullable(), // TaskStep - nullable
+  current_step: TaskStepResponseSchema.nullable(),
+  next_step: TaskStepResponseSchema.nullable(),
   percent_complete: z.number(),
 });
 
