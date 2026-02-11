@@ -1624,10 +1624,17 @@ impl<'a> super::TransitionHandler<'a> {
         // In worktree mode, git only allows one worktree per branch. If another task
         // is already merging (PendingMerge or Merging) into the same target branch,
         // we must defer this task to avoid the "branch already checked out" error.
-        // Priority: older task (by created_at) wins; newer task gets deferred.
+        // Priority: task that entered pending_merge first wins; later task gets deferred.
+        // Tie-breaker: lexical task ID comparison for deterministic results.
         if project.git_mode == GitMode::Worktree {
             let all_tasks = task_repo.get_by_project(&project.id).await.unwrap_or_default();
             let merge_states = [InternalStatus::PendingMerge, InternalStatus::Merging];
+
+            // Get this task's pending_merge entry timestamp
+            let this_pending_merge_at = task_repo
+                .get_status_entered_at(&task.id, InternalStatus::PendingMerge)
+                .await
+                .unwrap_or(None);
 
             let has_older_merge = {
                 let mut found = false;
@@ -1652,16 +1659,50 @@ impl<'a> super::TransitionHandler<'a> {
                     if !task_targets_branch(other, &project, plan_branch_repo, &target_branch).await {
                         continue;
                     }
-                    // Older task has priority
-                    if other.created_at < task.created_at {
+
+                    // Get other task's pending_merge entry timestamp
+                    let other_pending_merge_at = task_repo
+                        .get_status_entered_at(&other.id, InternalStatus::PendingMerge)
+                        .await
+                        .unwrap_or(None);
+
+                    // Determine priority: earliest pending_merge entry wins
+                    let should_defer = match (other_pending_merge_at, this_pending_merge_at) {
+                        (Some(other_time), Some(this_time)) => {
+                            // Both have timestamps - compare them
+                            use std::cmp::Ordering;
+                            match other_time.cmp(&this_time) {
+                                Ordering::Less => true,
+                                Ordering::Equal => {
+                                    // Tie-breaker: lexical task ID comparison
+                                    other.id.as_str() < task.id.as_str()
+                                }
+                                Ordering::Greater => false,
+                            }
+                        }
+                        (Some(_), None) => {
+                            // Other has timestamp, this doesn't - other wins
+                            true
+                        }
+                        (None, Some(_)) => {
+                            // This has timestamp, other doesn't - this wins
+                            false
+                        }
+                        (None, None) => {
+                            // Neither has timestamp - fallback to lexical ID comparison
+                            other.id.as_str() < task.id.as_str()
+                        }
+                    };
+
+                    if should_defer {
                         tracing::info!(
                             task_id = task_id_str,
                             other_task_id = other.id.as_str(),
-                            other_created_at = %other.created_at,
-                            this_created_at = %task.created_at,
+                            other_pending_merge_at = ?other_pending_merge_at,
+                            this_pending_merge_at = ?this_pending_merge_at,
                             target_branch = %target_branch,
                             other_task_branch = ?other.task_branch,
-                            "Concurrent merge detected: older task has priority, deferring this task"
+                            "Concurrent merge detected: other task entered pending_merge first, deferring this task"
                         );
                         found = true;
                         break;
@@ -3598,5 +3639,91 @@ mod tests {
     async fn test_is_task_in_merge_workflow_nonexistent_task() {
         let repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::new());
         assert!(!is_task_in_merge_workflow(&repo, "nonexistent-id").await);
+    }
+
+    // ==================
+    // Concurrent merge arbitration tests
+    // ==================
+
+    /// Test: Lexical task ID comparison works as expected
+    ///
+    /// This documents the tie-breaker behavior when timestamps are equal or missing.
+    #[test]
+    fn test_merge_arbitration_task_id_lexical_comparison() {
+        let task_alpha = TaskId::from_string("task-alpha".to_string());
+        let task_beta = TaskId::from_string("task-beta".to_string());
+        let task_x = TaskId::from_string("task-x".to_string());
+        let task_y = TaskId::from_string("task-y".to_string());
+
+        // Verify lexical ordering works as expected
+        assert!(task_alpha.as_str() < task_beta.as_str(), "task-alpha < task-beta");
+        assert!(task_x.as_str() < task_y.as_str(), "task-x < task-y");
+        assert!(task_alpha.as_str() < task_x.as_str(), "task-alpha < task-x");
+    }
+
+    /// Test: get_status_entered_at integration with arbitration logic
+    ///
+    /// This verifies that we can query pending_merge entry times correctly,
+    /// which is what the arbitration logic depends on.
+    #[tokio::test]
+    async fn test_merge_arbitration_get_pending_merge_timestamp() {
+        let repo = MemoryTaskRepository::new();
+        let project_id = ProjectId::new();
+        let task = Task::new(project_id, "Test task".to_string());
+        repo.create(task.clone()).await.unwrap();
+
+        // Transition to pending_merge
+        repo.persist_status_change(
+            &task.id,
+            InternalStatus::Executing,
+            InternalStatus::PendingMerge,
+            "agent",
+        )
+        .await
+        .unwrap();
+
+        // Should be able to retrieve the timestamp
+        let timestamp = repo
+            .get_status_entered_at(&task.id, InternalStatus::PendingMerge)
+            .await
+            .unwrap();
+
+        assert!(timestamp.is_some(), "Should have pending_merge timestamp");
+    }
+
+    /// Test: Task without state history returns None for get_status_entered_at
+    ///
+    /// Documents the edge case where a task is in pending_merge but has no history.
+    #[tokio::test]
+    async fn test_merge_arbitration_missing_timestamp_edge_case() {
+        let repo = MemoryTaskRepository::new();
+        let project_id = ProjectId::new();
+
+        // Task in pending_merge but no state history recorded
+        let mut task = Task::new(project_id, "Edge case task".to_string());
+        task.internal_status = InternalStatus::PendingMerge;
+        repo.create(task.clone()).await.unwrap();
+
+        // Should return None since no transition was recorded
+        let timestamp = repo
+            .get_status_entered_at(&task.id, InternalStatus::PendingMerge)
+            .await
+            .unwrap();
+
+        assert!(timestamp.is_none(), "Should return None for missing history");
+    }
+
+    /// Test: Timestamp comparison works correctly with chrono::DateTime
+    ///
+    /// Documents the comparison behavior for the arbitration logic.
+    #[test]
+    fn test_merge_arbitration_timestamp_comparison() {
+        use chrono::{Duration, Utc};
+
+        let earlier = Utc::now() - Duration::minutes(30);
+        let later = Utc::now() - Duration::minutes(15);
+
+        assert!(earlier < later, "Earlier timestamp should be less than later");
+        assert_eq!(earlier, earlier, "Same timestamps should be equal");
     }
 }
