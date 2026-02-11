@@ -1636,8 +1636,9 @@ impl<'a> super::TransitionHandler<'a> {
                 .await
                 .unwrap_or(None);
 
-            let has_older_merge = {
+            let (has_older_merge, blocking_task_id) = {
                 let mut found = false;
+                let mut blocker_id: Option<String> = None;
                 for other in &all_tasks {
                     // Skip self
                     if other.id == task.id {
@@ -1695,20 +1696,31 @@ impl<'a> super::TransitionHandler<'a> {
                     };
 
                     if should_defer {
+                        // Determine arbitration reason for structured logging
+                        let reason = match (other_pending_merge_at, this_pending_merge_at) {
+                            (Some(_), Some(_)) => "earlier_pending_merge_timestamp",
+                            (Some(_), None) => "other_has_timestamp_this_missing",
+                            (None, None) => "lexical_task_id_tiebreaker",
+                            _ => "unknown",
+                        };
+
                         tracing::info!(
-                            task_id = task_id_str,
-                            other_task_id = other.id.as_str(),
-                            other_pending_merge_at = ?other_pending_merge_at,
-                            this_pending_merge_at = ?this_pending_merge_at,
+                            event = "merge_arbitration_decision",
+                            winner_task_id = other.id.as_str(),
+                            loser_task_id = task_id_str,
+                            winner_pending_merge_at = ?other_pending_merge_at,
+                            loser_pending_merge_at = ?this_pending_merge_at,
                             target_branch = %target_branch,
-                            other_task_branch = ?other.task_branch,
-                            "Concurrent merge detected: other task entered pending_merge first, deferring this task"
+                            reason = reason,
+                            "Merge arbitration: deferring loser task"
                         );
+
+                        blocker_id = Some(other.id.as_str().to_string());
                         found = true;
                         break;
                     }
                 }
-                found
+                (found, blocker_id)
             };
 
             if has_older_merge {
@@ -1718,6 +1730,9 @@ impl<'a> super::TransitionHandler<'a> {
                 if let Some(obj) = meta.as_object_mut() {
                     obj.insert("merge_deferred".to_string(), serde_json::json!(true));
                     obj.insert("merge_deferred_at".to_string(), serde_json::json!(now));
+                    if let Some(ref blocker_id) = blocking_task_id {
+                        obj.insert("blocking_task_id".to_string(), serde_json::json!(blocker_id));
+                    }
                 }
                 task.metadata = Some(meta.to_string());
                 task.touch();
@@ -1730,6 +1745,17 @@ impl<'a> super::TransitionHandler<'a> {
                     );
                 }
 
+                // Structured deferral event log
+                tracing::info!(
+                    event = "merge_deferred",
+                    deferred_task_id = task_id_str,
+                    blocking_task_id = blocking_task_id.as_deref().unwrap_or("unknown"),
+                    target_branch = %target_branch,
+                    reason_code = "target_branch_busy",
+                    deferred_at = %now,
+                    "Task merge deferred due to competing merge on same target branch"
+                );
+
                 self.machine
                     .context
                     .services
@@ -1737,19 +1763,29 @@ impl<'a> super::TransitionHandler<'a> {
                     .emit_status_change(task_id_str, "pending_merge", "pending_merge")
                     .await;
 
-                tracing::info!(
-                    task_id = task_id_str,
-                    target_branch = %target_branch,
-                    "Merge deferred — task stays in PendingMerge until competing merge completes"
-                );
                 return;
             }
 
             // If this task was previously deferred, clear the flag now that we're proceeding
+            // This means this task WON arbitration (no older competing merges found)
             if has_merge_deferred_metadata(&task) {
+                tracing::info!(
+                    event = "merge_arbitration_winner_retry",
+                    task_id = task_id_str,
+                    target_branch = %target_branch,
+                    "Task previously deferred, now winning arbitration and proceeding with merge"
+                );
                 clear_merge_deferred_metadata(&mut task);
                 task.touch();
                 let _ = task_repo.update(&task).await;
+            } else {
+                tracing::info!(
+                    event = "merge_arbitration_winner",
+                    task_id = task_id_str,
+                    target_branch = %target_branch,
+                    pending_merge_at = ?this_pending_merge_at,
+                    "Task won arbitration, proceeding with merge"
+                );
             }
         }
 
@@ -2022,17 +2058,12 @@ impl<'a> super::TransitionHandler<'a> {
                     Err(e) => {
                         // Classify error: deferrable (branch lock) vs terminal (true failure)
                         if GitService::is_branch_lock_error(&e) {
-                            tracing::warn!(
-                                task_id = task_id_str,
-                                error = %e,
-                                source_branch = %source_branch,
-                                target_branch = %target_branch,
-                                "Merge in-repo failed due to branch lock (deferrable), staying in PendingMerge"
-                            );
+                            let now = chrono::Utc::now().to_rfc3339();
 
                             // Set merge_deferred metadata and stay in pending_merge
                             task.metadata = Some(serde_json::json!({
                                 "merge_deferred": true,
+                                "merge_deferred_at": now,
                                 "error": e.to_string(),
                                 "source_branch": source_branch,
                                 "target_branch": target_branch,
@@ -2043,6 +2074,19 @@ impl<'a> super::TransitionHandler<'a> {
                             if let Err(e) = task_repo.update(&task).await {
                                 tracing::error!(error = %e, "Failed to update task with merge_deferred metadata");
                             }
+
+                            // Structured deferral event log
+                            tracing::warn!(
+                                event = "merge_deferred",
+                                deferred_task_id = task_id_str,
+                                blocking_task_id = "unknown",
+                                target_branch = %target_branch,
+                                source_branch = %source_branch,
+                                reason_code = "branch_lock",
+                                deferred_at = %now,
+                                git_error = %e,
+                                "Task merge deferred due to git branch lock error (in-repo mode)"
+                            );
 
                             // Task remains in pending_merge, will be retried when blocker exits
                         } else {
@@ -2255,22 +2299,16 @@ impl<'a> super::TransitionHandler<'a> {
                     Err(e) => {
                         // Classify error: deferrable (branch lock) vs terminal (true failure)
                         if GitService::is_branch_lock_error(&e) {
-                            tracing::warn!(
-                                task_id = task_id_str,
-                                error = %e,
-                                merge_worktree_path = %merge_wt_path_str,
-                                source_branch = %source_branch,
-                                target_branch = %target_branch,
-                                "Merge in worktree failed due to branch lock (deferrable), staying in PendingMerge"
-                            );
-
                             if merge_wt_path.exists() {
                                 let _ = GitService::delete_worktree(repo_path, &merge_wt_path);
                             }
 
+                            let now = chrono::Utc::now().to_rfc3339();
+
                             // Set merge_deferred metadata and stay in pending_merge
                             task.metadata = Some(serde_json::json!({
                                 "merge_deferred": true,
+                                "merge_deferred_at": now,
                                 "error": e.to_string(),
                                 "source_branch": source_branch,
                                 "target_branch": target_branch,
@@ -2281,6 +2319,20 @@ impl<'a> super::TransitionHandler<'a> {
                             if let Err(e) = task_repo.update(&task).await {
                                 tracing::error!(error = %e, "Failed to update task with merge_deferred metadata");
                             }
+
+                            // Structured deferral event log
+                            tracing::warn!(
+                                event = "merge_deferred",
+                                deferred_task_id = task_id_str,
+                                blocking_task_id = "unknown",
+                                target_branch = %target_branch,
+                                source_branch = %source_branch,
+                                reason_code = "branch_lock",
+                                deferred_at = %now,
+                                merge_worktree_path = %merge_wt_path_str,
+                                git_error = %e,
+                                "Task merge deferred due to git branch lock error (worktree mode - Phase 1)"
+                            );
 
                             // Task remains in pending_merge, will be retried when blocker exits
                         } else {
@@ -2468,18 +2520,12 @@ impl<'a> super::TransitionHandler<'a> {
                 Err(e) => {
                     // Classify error: deferrable (branch lock) vs terminal (true failure)
                     if GitService::is_branch_lock_error(&e) {
-                        tracing::warn!(
-                            task_id = task_id_str,
-                            error = %e,
-                            source_branch = %source_branch,
-                            target_branch = %target_branch,
-                            repo_path = %repo_path.display(),
-                            "Programmatic merge failed due to branch lock (deferrable), staying in PendingMerge"
-                        );
+                        let now = chrono::Utc::now().to_rfc3339();
 
                         // Set merge_deferred metadata and stay in pending_merge
                         task.metadata = Some(serde_json::json!({
                             "merge_deferred": true,
+                            "merge_deferred_at": now,
                             "error": e.to_string(),
                             "source_branch": source_branch,
                             "target_branch": target_branch,
@@ -2490,6 +2536,20 @@ impl<'a> super::TransitionHandler<'a> {
                         if let Err(e) = task_repo.update(&task).await {
                             tracing::error!(error = %e, "Failed to update task with merge_deferred metadata");
                         }
+
+                        // Structured deferral event log
+                        tracing::warn!(
+                            event = "merge_deferred",
+                            deferred_task_id = task_id_str,
+                            blocking_task_id = "unknown",
+                            target_branch = %target_branch,
+                            source_branch = %source_branch,
+                            reason_code = "branch_lock",
+                            deferred_at = %now,
+                            repo_path = %repo_path.display(),
+                            git_error = %e,
+                            "Task merge deferred due to git branch lock error (worktree mode - Phase 2)"
+                        );
 
                         // Task remains in pending_merge, will be retried when blocker exits
                     } else {
