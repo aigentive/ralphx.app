@@ -10,10 +10,10 @@ import type { Priority } from "@/types/ideation";
  * Convert numeric priority score to Priority enum
  *
  * Mapping:
- * - 90-100: critical
- * - 70-89: high
- * - 40-69: medium
- * - 0-39: low
+ * - >= 90: critical
+ * - >= 70: high
+ * - >= 40: medium
+ * - < 40: low
  *
  * @param score - Numeric priority score (0-100)
  * @returns Priority level

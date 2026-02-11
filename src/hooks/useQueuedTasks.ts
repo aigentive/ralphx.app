@@ -43,16 +43,17 @@ export function useQueuedTasks(projectId: string) {
         ),
       ];
 
-      // Fetch all sessions in parallel
+      // Fetch all sessions in parallel with graceful error handling
       const sessionMap = new Map<string, string>();
       if (sessionIds.length > 0) {
-        const sessions = await Promise.all(
+        const results = await Promise.allSettled(
           sessionIds.map((id) => ideationApi.sessions.get(id))
         );
-        sessions.forEach((session) => {
-          if (session) {
-            sessionMap.set(session.id, session.title || "Untitled Plan");
+        results.forEach((result) => {
+          if (result.status === "fulfilled" && result.value) {
+            sessionMap.set(result.value.id, result.value.title || "Untitled Plan");
           }
+          // If rejected or no value, task won't be in map → falls back to "Unknown Plan"
         });
       }
 
