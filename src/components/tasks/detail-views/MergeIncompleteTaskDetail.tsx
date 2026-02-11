@@ -13,6 +13,10 @@ import {
   Loader2,
   RefreshCw,
   SkipForward,
+  Clock,
+  PlayCircle,
+  XCircle,
+  CheckCircle,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
@@ -24,7 +28,7 @@ import {
   TwoColumnLayout,
 } from "./shared";
 import { ValidationProgress } from "./MergingTaskDetail";
-import type { Task } from "@/types/task";
+import type { Task, TaskMetadata, MergeRecoveryEvent } from "@/types/task";
 import { useQueryClient } from "@tanstack/react-query";
 import { taskKeys } from "@/hooks/useTasks";
 
@@ -39,18 +43,22 @@ interface MergeErrorContext {
   targetBranch: string | null;
   diagnosticInfo: string | null;
   hasValidationFailures: boolean;
+  recoveryEvents: MergeRecoveryEvent[];
+  metadata: TaskMetadata | null;
 }
 
 function parseMergeError(metadata?: string | null): MergeErrorContext | null {
   if (!metadata) return null;
   try {
-    const m = JSON.parse(metadata);
+    const m: TaskMetadata = JSON.parse(metadata);
     return {
       error: m.error ?? null,
       sourceBranch: m.source_branch ?? null,
       targetBranch: m.target_branch ?? null,
       diagnosticInfo: m.diagnostic_info ?? null,
       hasValidationFailures: Array.isArray(m.validation_failures) && m.validation_failures.length > 0,
+      recoveryEvents: m.merge_recovery?.events ?? [],
+      metadata: m,
     };
   } catch {
     return null;
@@ -185,6 +193,228 @@ function RecoverySteps({ branchName, targetBranch, hasValidationFailures }: { br
 }
 
 /**
+ * RecoveryTimeline - Shows chronological timeline of merge recovery attempts
+ */
+function RecoveryTimeline({ events }: { events: MergeRecoveryEvent[] }) {
+  const formatTimestamp = (isoString: string) => {
+    try {
+      const date = new Date(isoString);
+      return date.toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+    } catch {
+      return isoString;
+    }
+  };
+
+  const getEventIcon = (kind: string) => {
+    switch (kind) {
+      case "deferred":
+        return Clock;
+      case "auto_retry_triggered":
+        return RefreshCw;
+      case "attempt_started":
+        return PlayCircle;
+      case "attempt_failed":
+        return XCircle;
+      case "attempt_succeeded":
+        return CheckCircle;
+      case "manual_retry":
+        return RefreshCw;
+      default:
+        return Clock;
+    }
+  };
+
+  const getEventColor = (kind: string) => {
+    switch (kind) {
+      case "deferred":
+        return "rgba(255, 159, 10, 0.7)"; // amber
+      case "auto_retry_triggered":
+      case "manual_retry":
+        return "rgba(255, 107, 53, 0.7)"; // orange
+      case "attempt_started":
+        return "rgba(100, 200, 255, 0.7)"; // blue
+      case "attempt_failed":
+        return "rgba(255, 69, 58, 0.7)"; // red
+      case "attempt_succeeded":
+        return "#34c759"; // green
+      default:
+        return "rgba(255, 255, 255, 0.5)"; // white/gray
+    }
+  };
+
+  const getKindLabel = (kind: string) => {
+    switch (kind) {
+      case "deferred":
+        return "Deferred";
+      case "auto_retry_triggered":
+        return "Auto-retry Triggered";
+      case "attempt_started":
+        return "Attempt Started";
+      case "attempt_failed":
+        return "Attempt Failed";
+      case "attempt_succeeded":
+        return "Succeeded";
+      case "manual_retry":
+        return "Manual Retry";
+      default:
+        return kind;
+    }
+  };
+
+  const getSourceBadge = (source: string) => {
+    const colors = {
+      system: "rgba(100, 200, 255, 0.15)",
+      auto: "rgba(255, 107, 53, 0.15)",
+      user: "rgba(52, 199, 89, 0.15)",
+    };
+    return (
+      <span
+        className="text-[10px] px-2 py-0.5 rounded-full font-medium uppercase tracking-wide"
+        style={{
+          backgroundColor: colors[source as keyof typeof colors] ?? "rgba(255, 255, 255, 0.1)",
+          color: "rgba(255, 255, 255, 0.7)",
+        }}
+      >
+        {source}
+      </span>
+    );
+  };
+
+  return (
+    <div className="space-y-3">
+      {events.map((event, idx) => {
+        const Icon = getEventIcon(event.kind);
+        const color = getEventColor(event.kind);
+
+        return (
+          <div
+            key={idx}
+            className="flex gap-3 pb-3"
+            style={{
+              borderBottom:
+                idx < events.length - 1
+                  ? "1px solid rgba(255, 255, 255, 0.08)"
+                  : "none",
+            }}
+          >
+            {/* Icon */}
+            <div
+              className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: `${color}20` }}
+            >
+              <Icon className="w-4 h-4" style={{ color }} />
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 space-y-1.5">
+              {/* Header: kind + timestamp */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[13px] font-medium text-white/90">
+                    {getKindLabel(event.kind)}
+                  </span>
+                  {getSourceBadge(event.source)}
+                  {event.attempt !== undefined && (
+                    <span className="text-[11px] text-white/40">
+                      Attempt #{event.attempt}
+                    </span>
+                  )}
+                </div>
+                <span className="text-[11px] text-white/40 font-mono">
+                  {formatTimestamp(event.at)}
+                </span>
+              </div>
+
+              {/* Message */}
+              <p className="text-[13px] text-white/70">{event.message}</p>
+
+              {/* Additional metadata */}
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-white/50">
+                {event.blocking_task_id && (
+                  <div>
+                    <span className="text-white/40">Blocker: </span>
+                    <span className="font-mono">{event.blocking_task_id.slice(0, 8)}</span>
+                  </div>
+                )}
+                {event.target_branch && (
+                  <div>
+                    <span className="text-white/40">Target: </span>
+                    <span className="font-mono">{event.target_branch}</span>
+                  </div>
+                )}
+                {event.reason_code && (
+                  <div>
+                    <span className="text-white/40">Reason: </span>
+                    <span>{event.reason_code.replace(/_/g, " ")}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * RecoveryBadges - Show status badges based on recovery state
+ */
+function RecoveryBadges({
+  hasAutoRetry,
+  hasDeferred,
+  lastAttemptFailed,
+}: {
+  hasAutoRetry: boolean;
+  hasDeferred: boolean;
+  lastAttemptFailed: boolean;
+}) {
+  return (
+    <div className="flex gap-2 flex-wrap">
+      {hasAutoRetry && (
+        <span
+          className="text-[11px] px-2.5 py-1 rounded-full font-medium"
+          style={{
+            backgroundColor: "rgba(255, 107, 53, 0.15)",
+            color: "rgba(255, 107, 53, 0.9)",
+          }}
+        >
+          Auto-recovery attempted
+        </span>
+      )}
+      {hasDeferred && (
+        <span
+          className="text-[11px] px-2.5 py-1 rounded-full font-medium"
+          style={{
+            backgroundColor: "rgba(255, 159, 10, 0.15)",
+            color: "rgba(255, 159, 10, 0.9)",
+          }}
+        >
+          Deferred due to active merge
+        </span>
+      )}
+      {lastAttemptFailed && (
+        <span
+          className="text-[11px] px-2.5 py-1 rounded-full font-medium"
+          style={{
+            backgroundColor: "rgba(255, 69, 58, 0.15)",
+            color: "rgba(255, 69, 58, 0.9)",
+          }}
+        >
+          Last attempt failed
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
  * ActionButtons - Retry Merge (primary) + Mark Resolved (green)
  */
 function ActionButtons({
@@ -268,6 +498,14 @@ export function MergeIncompleteTaskDetail({
   const mergeError = parseMergeError(task.metadata);
   const branchName = mergeError?.sourceBranch ?? task.taskBranch ?? "task branch";
 
+  // Derive recovery state badges from events
+  const hasAutoRetryAttempts = mergeError?.recoveryEvents.some(
+    (e) => e.kind === "auto_retry_triggered" || e.source === "auto"
+  );
+  const hasDeferred = mergeError?.recoveryEvents.some((e) => e.kind === "deferred");
+  const lastEvent = mergeError?.recoveryEvents[mergeError.recoveryEvents.length - 1];
+  const lastAttemptFailed = lastEvent?.kind === "attempt_failed";
+
   const handleRetryMerge = useCallback(async () => {
     setIsProcessing(true);
     setError(null);
@@ -349,6 +587,32 @@ export function MergeIncompleteTaskDetail({
           />
         }
       />
+
+      {/* Recovery Attempts Timeline or Fallback */}
+      <section data-testid="recovery-attempts-section">
+        <SectionTitle>Recovery Attempts</SectionTitle>
+        {mergeError && mergeError.recoveryEvents.length > 0 ? (
+          <>
+            <DetailCard>
+              <RecoveryTimeline events={mergeError.recoveryEvents} />
+            </DetailCard>
+            {/* Recovery Status Badges */}
+            <div className="mt-3">
+              <RecoveryBadges
+                hasAutoRetry={hasAutoRetryAttempts ?? false}
+                hasDeferred={hasDeferred ?? false}
+                lastAttemptFailed={lastAttemptFailed ?? false}
+              />
+            </div>
+          </>
+        ) : (
+          <DetailCard>
+            <p className="text-[13px] text-white/50 italic">
+              No recorded recovery attempts for this task.
+            </p>
+          </DetailCard>
+        )}
+      </section>
 
       {/* Error Context */}
       <section data-testid="error-context-section">
