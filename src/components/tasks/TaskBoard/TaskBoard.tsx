@@ -54,12 +54,14 @@ function getColumnStatuses(col: WorkflowColumn): InternalStatus[] {
 
 export interface TaskBoardProps {
   projectId: string;
+  /** Optional ideation session ID to filter tasks by plan */
+  ideationSessionId?: string | null;
 }
 
-export function TaskBoard({ projectId }: TaskBoardProps) {
+export function TaskBoard({ projectId, ideationSessionId }: TaskBoardProps) {
   const queryClient = useQueryClient();
   const eventBus = useEventBus();
-  const { columns, onDragEnd, isLoading, error } = useTaskBoard(projectId);
+  const { columns, onDragEnd, isLoading, error } = useTaskBoard(projectId, ideationSessionId);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [overColumnId, setOverColumnId] = useState<string | null>(null);
   const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
@@ -75,8 +77,8 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
 
   // Fetch archived count to show/hide the toggle
   const { data: archivedCount = 0 } = useQuery({
-    queryKey: ["archived-count", projectId],
-    queryFn: () => api.tasks.getArchivedCount(projectId),
+    queryKey: ["archived-count", projectId, ideationSessionId],
+    queryFn: () => api.tasks.getArchivedCount(projectId, ideationSessionId),
   });
 
   // Count merge tasks across all columns reactively via cache observer
@@ -89,6 +91,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
           projectId,
           statuses: getColumnStatuses(col),
           includeArchived: showArchived,
+          ideationSessionId,
         });
         const colData = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);
         if (colData?.pages) {
@@ -104,7 +107,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
       setMergeTaskCount(countMergeTasks());
     });
     return unsubscribe;
-  }, [columns, projectId, showArchived, queryClient]);
+  }, [columns, projectId, showArchived, ideationSessionId, queryClient]);
 
   // Search functionality
   const {
@@ -114,6 +117,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
     projectId,
     query: boardSearchQuery,
     includeArchived: showArchived,
+    ideationSessionId,
   });
 
   // Check if search is active
@@ -214,7 +218,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
           });
           // Invalidate archived count
           queryClient.invalidateQueries({
-            queryKey: ['archived-count', projectId],
+            queryKey: ['archived-count', projectId, ideationSessionId],
           });
         }
       }
@@ -230,7 +234,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
             queryKey: infiniteTaskKeys.all,
           });
           queryClient.invalidateQueries({
-            queryKey: ['archived-count', projectId],
+            queryKey: ['archived-count', projectId, ideationSessionId],
           });
         }
       }
@@ -246,7 +250,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
             queryKey: infiniteTaskKeys.all,
           });
           queryClient.invalidateQueries({
-            queryKey: ['archived-count', projectId],
+            queryKey: ['archived-count', projectId, ideationSessionId],
           });
         }
       }
@@ -256,7 +260,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
     return () => {
       unsubscribers.forEach((unsub) => unsub());
     };
-  }, [projectId, queryClient, eventBus]);
+  }, [projectId, ideationSessionId, queryClient, eventBus]);
 
   // Distance-based activation - drag starts after moving 8px
   const sensors = useSensors(
@@ -299,6 +303,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
         projectId,
         statuses: getColumnStatuses(col),
         includeArchived: showArchived,
+        ideationSessionId,
       });
       const data = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);
       if (data?.pages) {
@@ -329,6 +334,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
         projectId,
         statuses: getColumnStatuses(col),
         includeArchived: showArchived,
+        ideationSessionId,
       });
       const data = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);
       return data?.pages?.some((page) => page.tasks.some((t: Task) => t.id === taskId));
@@ -514,6 +520,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
                     matchCount={matchCount}
                     {...(groups && { groups })}
                     isLast={index === displayColumns.length - 1}
+                    ideationSessionId={ideationSessionId}
                   />
                 );
               })}

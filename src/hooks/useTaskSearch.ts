@@ -20,6 +20,8 @@ export interface TaskSearchParams {
   query: string | null;
   /** Whether to include archived tasks in search results (default false) */
   includeArchived?: boolean | undefined;
+  /** Optional ideation session ID to filter tasks by plan */
+  ideationSessionId?: string | null | undefined;
 }
 
 /**
@@ -33,6 +35,7 @@ export const taskSearchKeys = {
       params.projectId,
       params.query,
       params.includeArchived,
+      params.ideationSessionId,
     ] as const,
 };
 
@@ -74,15 +77,16 @@ export function useTaskSearch({
   projectId,
   query,
   includeArchived = false,
+  ideationSessionId,
 }: TaskSearchParams) {
   return useQuery<Task[], Error>({
-    queryKey: taskSearchKeys.search({ projectId, query, includeArchived }),
+    queryKey: taskSearchKeys.search({ projectId, query, includeArchived, ideationSessionId }),
     queryFn: async () => {
       // This should never be called when enabled=false, but TypeScript doesn't know that
       if (!query || query.length < 2) {
         return [];
       }
-      return api.tasks.search(projectId, query, includeArchived);
+      return api.tasks.search(projectId, query, includeArchived, ideationSessionId);
     },
     // Only enable search when query has at least 2 characters
     enabled: query !== null && query.length >= 2,

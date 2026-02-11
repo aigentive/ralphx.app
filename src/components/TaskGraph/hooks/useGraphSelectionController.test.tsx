@@ -27,6 +27,7 @@ interface TestHarnessProps {
   groupNodes?: Node[];
   planGroups?: PlanGroupInfo[];
   onDeleteTask?: (taskId: string) => void;
+  keyboardNavigationEnabled?: boolean;
 }
 
 function TestHarness({
@@ -59,6 +60,7 @@ function TestHarness({
     },
   ],
   onDeleteTask,
+  keyboardNavigationEnabled = true,
 }: TestHarnessProps) {
   const { containerRef, onKeyDown } = useGraphSelectionController({
     nodes: layoutNodes,
@@ -82,6 +84,7 @@ function TestHarness({
     graphError: null,
     isLoading: false,
     onDeleteTask,
+    keyboardNavigationEnabled,
   });
 
   return (
@@ -108,6 +111,19 @@ describe("useGraphSelectionController", () => {
       kind: "planGroup",
       id: "plan-1",
     });
+  });
+
+  it("does not navigate by keyboard when keyboard navigation is disabled", () => {
+    useUiStore.getState().clearGraphSelection();
+    const { container } = render(
+      <ReactFlowProvider>
+        <TestHarness keyboardNavigationEnabled={false} />
+      </ReactFlowProvider>
+    );
+
+    fireEvent.keyDown(container.firstChild as HTMLElement, { key: "ArrowDown" });
+
+    expect(useUiStore.getState().graphSelection).toBeNull();
   });
 
   describe("Backspace on task", () => {
