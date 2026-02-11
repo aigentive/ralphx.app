@@ -9,6 +9,7 @@ pub mod diff_commands;
 pub mod execution_commands;
 pub mod git_commands;
 pub mod health;
+pub mod merge_pipeline_commands;
 pub mod ideation_commands;
 pub mod methodology_commands;
 pub mod permission_commands;
@@ -47,10 +48,13 @@ pub use artifact_commands::{
 };
 pub use diff_commands::{get_file_diff, get_task_file_changes};
 pub use execution_commands::{
-    get_execution_status, pause_execution, recover_task_execution, resolve_recovery_prompt,
+    get_execution_status, get_running_processes, pause_execution, recover_task_execution, resolve_recovery_prompt,
     resume_execution, set_active_project, get_active_project, stop_execution,
     get_global_execution_settings, update_global_execution_settings,
-    ActiveProjectState, ExecutionState,
+    ActiveProjectState, ExecutionState, RunningProcessesResponse,
+};
+pub use merge_pipeline_commands::{
+    get_merge_pipeline, MergePipelineResponse,
 };
 pub use health::health_check;
 pub use chat_responses::ChatMessageResponse;

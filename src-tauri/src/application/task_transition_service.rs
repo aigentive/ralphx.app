@@ -17,6 +17,7 @@ use tauri::{AppHandle, Emitter, Runtime};
 use crate::application::{ChatService, ClaudeChatService};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{InternalStatus, Task, TaskId};
+use crate::domain::state_machine::transition_handler::set_trigger_origin;
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
     IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
@@ -671,6 +672,12 @@ impl<R: Runtime> TaskTransitionService<R> {
             if let Ok(Some(mut updated_task)) = self.task_repo.get_by_id(task_id).await {
                 let from_status = updated_task.internal_status;
                 updated_task.internal_status = auto_status;
+
+                // Set trigger_origin for RevisionNeeded → ReExecuting transition
+                if from_status == InternalStatus::RevisionNeeded && auto_status == InternalStatus::ReExecuting {
+                    set_trigger_origin(&mut updated_task, "revision");
+                }
+
                 updated_task.touch();
                 if let Err(e) = self.task_repo.update(&updated_task).await {
                     tracing::error!(error = %e, "Failed to persist auto-transition");

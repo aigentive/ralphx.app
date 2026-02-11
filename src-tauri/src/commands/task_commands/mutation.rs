@@ -11,6 +11,7 @@ use super::types::{
     TaskResponse, InjectTaskResponse, AnswerUserQuestionResponse
 };
 use super::helpers::{emit_queue_changed, emit_task_lifecycle_event};
+use crate::domain::state_machine::transition_handler::set_trigger_origin;
 
 /// Create a new task
 #[tauri::command]
@@ -166,6 +167,19 @@ pub async fn move_task(
 
     let old_status = old_task.internal_status;
     let project_id = old_task.project_id.clone();
+
+    // Pre-seed trigger_origin="retry" when moving from terminal to Ready
+    if old_status.is_terminal() && new_status == InternalStatus::Ready {
+        let mut task_mut = old_task.clone();
+        set_trigger_origin(&mut task_mut, "retry");
+        if let Err(e) = state.task_repo.update(&task_mut).await {
+            tracing::error!(
+                task_id = task_id.as_str(),
+                error = %e,
+                "Failed to set trigger_origin=retry in metadata"
+            );
+        }
+    }
 
     // Create the task scheduler for auto-scheduling Ready tasks
     let scheduler_concrete = Arc::new(TaskSchedulerService::new(
