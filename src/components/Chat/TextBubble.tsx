@@ -4,7 +4,7 @@
  * Renders text content with:
  * - User vs assistant styling
  * - Copy button on hover
- * - Markdown rendering for assistant messages
+ * - Markdown rendering for user and assistant messages
  */
 
 import { useState, useCallback } from "react";
