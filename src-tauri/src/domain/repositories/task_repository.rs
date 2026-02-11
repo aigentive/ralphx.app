@@ -4,6 +4,7 @@
 // Implementations can use SQLite, PostgreSQL, in-memory, etc.
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 
 use crate::domain::entities::{IdeationSessionId, InternalStatus, ProjectId, Task, TaskId};
 use crate::domain::repositories::StatusTransition;
@@ -63,6 +64,25 @@ pub trait TaskRepository: Send + Sync {
 
     /// Get status history for audit
     async fn get_status_history(&self, id: &TaskId) -> AppResult<Vec<StatusTransition>>;
+
+    /// Get the timestamp when a task first entered a specific status
+    ///
+    /// Used for deterministic merge arbitration to identify which task
+    /// entered `pending_merge` first. Returns None if the task never
+    /// entered the specified status.
+    ///
+    /// # Arguments
+    /// * `task_id` - The task ID to query
+    /// * `status` - The status to search for in history
+    ///
+    /// # Returns
+    /// * `Some(DateTime<Utc>)` - The timestamp when the task first entered this status
+    /// * `None` - The task never entered this status
+    async fn get_status_entered_at(
+        &self,
+        task_id: &TaskId,
+        status: InternalStatus,
+    ) -> AppResult<Option<DateTime<Utc>>>;
 
     // ═══════════════════════════════════════════════════════════════════════
     // Query Operations
@@ -295,6 +315,14 @@ mod tests {
 
         async fn get_status_history(&self, _id: &TaskId) -> AppResult<Vec<StatusTransition>> {
             Ok(vec![])
+        }
+
+        async fn get_status_entered_at(
+            &self,
+            _task_id: &TaskId,
+            _status: InternalStatus,
+        ) -> AppResult<Option<DateTime<Utc>>> {
+            Ok(None)
         }
 
         async fn get_next_executable(&self, _project_id: &ProjectId) -> AppResult<Option<Task>> {

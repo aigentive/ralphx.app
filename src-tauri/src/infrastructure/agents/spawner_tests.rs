@@ -26,6 +26,7 @@ impl TaskRepository for MockTaskRepoForSpawner {
     async fn get_by_status(&self, _: &ProjectId, _: crate::domain::entities::InternalStatus) -> AppResult<Vec<Task>> { Ok(vec![]) }
     async fn persist_status_change(&self, _: &TaskId, _: crate::domain::entities::InternalStatus, _: crate::domain::entities::InternalStatus, _: &str) -> AppResult<()> { Ok(()) }
     async fn get_status_history(&self, _: &TaskId) -> AppResult<Vec<StatusTransition>> { Ok(vec![]) }
+    async fn get_status_entered_at(&self, _: &TaskId, _: crate::domain::entities::InternalStatus) -> AppResult<Option<chrono::DateTime<chrono::Utc>>> { Ok(None) }
     async fn get_next_executable(&self, _: &ProjectId) -> AppResult<Option<Task>> { Ok(None) }
     async fn get_blockers(&self, _: &TaskId) -> AppResult<Vec<Task>> { Ok(vec![]) }
     async fn get_dependents(&self, _: &TaskId) -> AppResult<Vec<Task>> { Ok(vec![]) }
