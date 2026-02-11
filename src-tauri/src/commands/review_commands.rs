@@ -4,7 +4,9 @@
 use tauri::{Emitter, State};
 
 use crate::application::AppState;
-use crate::domain::entities::{ProjectId, ReviewId, ReviewNote, ReviewOutcome, ReviewerType, TaskId};
+use crate::domain::entities::{
+    ProjectId, ReviewId, ReviewNote, ReviewOutcome, ReviewerType, TaskId,
+};
 
 // Re-export types for external use
 pub use super::review_commands_types::{
@@ -262,7 +264,11 @@ pub async fn reject_fix_task(
         .ok_or_else(|| format!("Fix task not found: {}", fix_task_id.as_str()))?;
 
     fix_task.internal_status = InternalStatus::Failed;
-    state.task_repo.update(&fix_task).await.map_err(|e| e.to_string())?;
+    state
+        .task_repo
+        .update(&fix_task)
+        .await
+        .map_err(|e| e.to_string())?;
 
     // Get original task
     let original_task = state
@@ -286,7 +292,11 @@ pub async fn reject_fix_task(
         // Move original task to backlog
         let mut original = original_task;
         original.internal_status = InternalStatus::Backlog;
-        state.task_repo.update(&original).await.map_err(|e| e.to_string())?;
+        state
+            .task_repo
+            .update(&original)
+            .await
+            .map_err(|e| e.to_string())?;
 
         // Add review note about max attempts
         let note = ReviewNote::with_notes(
@@ -298,7 +308,11 @@ pub async fn reject_fix_task(
                 settings.max_fix_attempts, input.feedback
             ),
         );
-        state.review_repo.add_note(&note).await.map_err(|e| e.to_string())?;
+        state
+            .review_repo
+            .add_note(&note)
+            .await
+            .map_err(|e| e.to_string())?;
 
         return Ok(None);
     }
@@ -404,7 +418,9 @@ pub async fn approve_task_for_review(
         task_id.clone(),
         ReviewerType::Human,
         ReviewOutcome::Approved,
-        input.notes.unwrap_or_else(|| "Approved by user".to_string()),
+        input
+            .notes
+            .unwrap_or_else(|| "Approved by user".to_string()),
     );
     state
         .review_repo
@@ -413,21 +429,23 @@ pub async fn approve_task_for_review(
         .map_err(|e| e.to_string())?;
 
     // 3. Create scheduler for post-merge scheduling (Approved → PendingMerge path)
-    let scheduler_concrete = Arc::new(TaskSchedulerService::new(
-        Arc::clone(&execution_state),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.task_dependency_repo),
-        Arc::clone(&state.chat_message_repo),
-        Arc::clone(&state.chat_conversation_repo),
-        Arc::clone(&state.agent_run_repo),
-        Arc::clone(&state.ideation_session_repo),
-        Arc::clone(&state.activity_event_repo),
-        Arc::clone(&state.message_queue),
-        Arc::clone(&state.running_agent_registry),
-        Some(app.clone()),
-    )
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo)));
+    let scheduler_concrete = Arc::new(
+        TaskSchedulerService::new(
+            Arc::clone(&execution_state),
+            Arc::clone(&state.project_repo),
+            Arc::clone(&state.task_repo),
+            Arc::clone(&state.task_dependency_repo),
+            Arc::clone(&state.chat_message_repo),
+            Arc::clone(&state.chat_conversation_repo),
+            Arc::clone(&state.agent_run_repo),
+            Arc::clone(&state.ideation_session_repo),
+            Arc::clone(&state.activity_event_repo),
+            Arc::clone(&state.message_queue),
+            Arc::clone(&state.running_agent_registry),
+            Some(app.clone()),
+        )
+        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo)),
+    );
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
@@ -456,14 +474,20 @@ pub async fn approve_task_for_review(
         .map_err(|e| e.to_string())?;
 
     // 5. Emit events
-    let _ = app.emit("review:human_approved", serde_json::json!({
-        "task_id": task_id.as_str(),
-    }));
-    let _ = app.emit("task:status_changed", serde_json::json!({
-        "task_id": task_id.as_str(),
-        "old_status": old_status,
-        "new_status": "approved",
-    }));
+    let _ = app.emit(
+        "review:human_approved",
+        serde_json::json!({
+            "task_id": task_id.as_str(),
+        }),
+    );
+    let _ = app.emit(
+        "task:status_changed",
+        serde_json::json!({
+            "task_id": task_id.as_str(),
+            "old_status": old_status,
+            "new_status": "approved",
+        }),
+    );
 
     Ok(())
 }
@@ -534,15 +558,21 @@ pub async fn request_task_changes_for_review(
         .map_err(|e| e.to_string())?;
 
     // 4. Emit events
-    let _ = app.emit("review:human_changes_requested", serde_json::json!({
-        "task_id": task_id.as_str(),
-        "feedback": input.feedback,
-    }));
-    let _ = app.emit("task:status_changed", serde_json::json!({
-        "task_id": task_id.as_str(),
-        "old_status": old_status,
-        "new_status": "revision_needed",
-    }));
+    let _ = app.emit(
+        "review:human_changes_requested",
+        serde_json::json!({
+            "task_id": task_id.as_str(),
+            "feedback": input.feedback,
+        }),
+    );
+    let _ = app.emit(
+        "task:status_changed",
+        serde_json::json!({
+            "task_id": task_id.as_str(),
+            "old_status": old_status,
+            "new_status": "revision_needed",
+        }),
+    );
 
     Ok(())
 }
@@ -565,20 +595,16 @@ pub async fn get_task_issues(
     let task_id = TaskId::from_string(task_id);
 
     let issues = match status_filter.as_deref() {
-        Some("open") => {
-            state
-                .review_issue_repo
-                .get_open_by_task_id(&task_id)
-                .await
-                .map_err(|e| e.to_string())?
-        }
-        _ => {
-            state
-                .review_issue_repo
-                .get_by_task_id(&task_id)
-                .await
-                .map_err(|e| e.to_string())?
-        }
+        Some("open") => state
+            .review_issue_repo
+            .get_open_by_task_id(&task_id)
+            .await
+            .map_err(|e| e.to_string())?,
+        _ => state
+            .review_issue_repo
+            .get_by_task_id(&task_id)
+            .await
+            .map_err(|e| e.to_string())?,
     };
 
     Ok(issues.into_iter().map(ReviewIssueResponse::from).collect())
@@ -752,7 +778,11 @@ mod tests {
         let state = setup_test_state().await;
         let project_id = ProjectId::from_string("proj-1".to_string());
 
-        let reviews = state.review_repo.get_pending(&project_id).await.expect("Failed to get pending reviews in test");
+        let reviews = state
+            .review_repo
+            .get_pending(&project_id)
+            .await
+            .expect("Failed to get pending reviews in test");
         assert!(reviews.is_empty());
     }
 
@@ -764,9 +794,17 @@ mod tests {
 
         // Create a pending review
         let review = Review::new(project_id.clone(), task_id, ReviewerType::Ai);
-        state.review_repo.create(&review).await.expect("Failed to create review in test");
+        state
+            .review_repo
+            .create(&review)
+            .await
+            .expect("Failed to create review in test");
 
-        let reviews = state.review_repo.get_pending(&project_id).await.expect("Failed to get pending reviews in test");
+        let reviews = state
+            .review_repo
+            .get_pending(&project_id)
+            .await
+            .expect("Failed to get pending reviews in test");
         assert_eq!(reviews.len(), 1);
         assert!(reviews[0].is_pending());
     }
@@ -779,9 +817,17 @@ mod tests {
 
         let review = Review::new(project_id, task_id, ReviewerType::Human);
         let review_id = review.id.clone();
-        state.review_repo.create(&review).await.expect("Failed to create review in test");
+        state
+            .review_repo
+            .create(&review)
+            .await
+            .expect("Failed to create review in test");
 
-        let retrieved = state.review_repo.get_by_id(&review_id).await.expect("Failed to get review by id in test");
+        let retrieved = state
+            .review_repo
+            .get_by_id(&review_id)
+            .await
+            .expect("Failed to get review by id in test");
         assert!(retrieved.is_some());
         assert_eq!(retrieved.expect("Expected to find review").id, review_id);
     }
@@ -791,7 +837,11 @@ mod tests {
         let state = setup_test_state().await;
         let nonexistent = ReviewId::from_string("nonexistent");
 
-        let retrieved = state.review_repo.get_by_id(&nonexistent).await.expect("Failed to get review by id in test");
+        let retrieved = state
+            .review_repo
+            .get_by_id(&nonexistent)
+            .await
+            .expect("Failed to get review by id in test");
         assert!(retrieved.is_none());
     }
 
@@ -804,10 +854,22 @@ mod tests {
         // Create two reviews for same task
         let review1 = Review::new(project_id.clone(), task_id.clone(), ReviewerType::Ai);
         let review2 = Review::new(project_id, task_id.clone(), ReviewerType::Human);
-        state.review_repo.create(&review1).await.expect("Failed to create review1 in test");
-        state.review_repo.create(&review2).await.expect("Failed to create review2 in test");
+        state
+            .review_repo
+            .create(&review1)
+            .await
+            .expect("Failed to create review1 in test");
+        state
+            .review_repo
+            .create(&review2)
+            .await
+            .expect("Failed to create review2 in test");
 
-        let reviews = state.review_repo.get_by_task_id(&task_id).await.expect("Failed to get reviews by task id in test");
+        let reviews = state
+            .review_repo
+            .get_by_task_id(&task_id)
+            .await
+            .expect("Failed to get reviews by task id in test");
         assert_eq!(reviews.len(), 2);
     }
 
@@ -819,15 +881,33 @@ mod tests {
 
         let review = Review::new(project_id, task_id, ReviewerType::Ai);
         let review_id = review.id.clone();
-        state.review_repo.create(&review).await.expect("Failed to create review in test");
+        state
+            .review_repo
+            .create(&review)
+            .await
+            .expect("Failed to create review in test");
 
         // Approve via repository (simulating what the command does)
-        let mut review = state.review_repo.get_by_id(&review_id).await.expect("Failed to get review by id in test").expect("Expected to find review");
+        let mut review = state
+            .review_repo
+            .get_by_id(&review_id)
+            .await
+            .expect("Failed to get review by id in test")
+            .expect("Expected to find review");
         review.approve(Some("Looks good!".to_string()));
-        state.review_repo.update(&review).await.expect("Failed to update review in test");
+        state
+            .review_repo
+            .update(&review)
+            .await
+            .expect("Failed to update review in test");
 
         // Verify
-        let updated = state.review_repo.get_by_id(&review_id).await.expect("Failed to get review by id in test").expect("Expected to find updated review");
+        let updated = state
+            .review_repo
+            .get_by_id(&review_id)
+            .await
+            .expect("Failed to get review by id in test")
+            .expect("Expected to find updated review");
         assert!(updated.is_approved());
         assert_eq!(updated.notes, Some("Looks good!".to_string()));
     }
@@ -840,15 +920,33 @@ mod tests {
 
         let review = Review::new(project_id, task_id, ReviewerType::Human);
         let review_id = review.id.clone();
-        state.review_repo.create(&review).await.expect("Failed to create review in test");
+        state
+            .review_repo
+            .create(&review)
+            .await
+            .expect("Failed to create review in test");
 
         // Request changes via repository
-        let mut review = state.review_repo.get_by_id(&review_id).await.expect("Failed to get review by id in test").expect("Expected to find review");
+        let mut review = state
+            .review_repo
+            .get_by_id(&review_id)
+            .await
+            .expect("Failed to get review by id in test")
+            .expect("Expected to find review");
         review.request_changes("Missing tests".to_string());
-        state.review_repo.update(&review).await.expect("Failed to update review in test");
+        state
+            .review_repo
+            .update(&review)
+            .await
+            .expect("Failed to update review in test");
 
         // Verify
-        let updated = state.review_repo.get_by_id(&review_id).await.expect("Failed to get review by id in test").expect("Expected to find updated review");
+        let updated = state
+            .review_repo
+            .get_by_id(&review_id)
+            .await
+            .expect("Failed to get review by id in test")
+            .expect("Expected to find updated review");
         assert_eq!(updated.status, ReviewStatus::ChangesRequested);
         assert_eq!(updated.notes, Some("Missing tests".to_string()));
     }
@@ -861,15 +959,33 @@ mod tests {
 
         let review = Review::new(project_id, task_id, ReviewerType::Ai);
         let review_id = review.id.clone();
-        state.review_repo.create(&review).await.expect("Failed to create review in test");
+        state
+            .review_repo
+            .create(&review)
+            .await
+            .expect("Failed to create review in test");
 
         // Reject via repository
-        let mut review = state.review_repo.get_by_id(&review_id).await.expect("Failed to get review by id in test").expect("Expected to find review");
+        let mut review = state
+            .review_repo
+            .get_by_id(&review_id)
+            .await
+            .expect("Failed to get review by id in test")
+            .expect("Expected to find review");
         review.reject("Fundamentally wrong".to_string());
-        state.review_repo.update(&review).await.expect("Failed to update review in test");
+        state
+            .review_repo
+            .update(&review)
+            .await
+            .expect("Failed to update review in test");
 
         // Verify
-        let updated = state.review_repo.get_by_id(&review_id).await.expect("Failed to get review by id in test").expect("Expected to find updated review");
+        let updated = state
+            .review_repo
+            .get_by_id(&review_id)
+            .await
+            .expect("Failed to get review by id in test")
+            .expect("Expected to find updated review");
         assert_eq!(updated.status, ReviewStatus::Rejected);
         assert_eq!(updated.notes, Some("Fundamentally wrong".to_string()));
     }
@@ -890,7 +1006,8 @@ mod tests {
         assert!(response.completed_at.is_none());
 
         // Verify it serializes to JSON
-        let json = serde_json::to_string(&response).expect("Failed to serialize response to JSON in test");
+        let json =
+            serde_json::to_string(&response).expect("Failed to serialize response to JSON in test");
         assert!(json.contains("\"reviewer_type\":\"human\""));
     }
 
@@ -905,12 +1022,20 @@ mod tests {
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
         let mut project_with_id = project;
         project_with_id.id = project_id.clone();
-        state.project_repo.create(project_with_id).await.expect("Failed to create project in test");
+        state
+            .project_repo
+            .create(project_with_id)
+            .await
+            .expect("Failed to create project in test");
 
         // Create a task
         let mut task = Task::new(project_id, "Test Task".to_string());
         task.internal_status = InternalStatus::PendingReview;
-        state.task_repo.create(task.clone()).await.expect("Failed to create task in test");
+        state
+            .task_repo
+            .create(task.clone())
+            .await
+            .expect("Failed to create task in test");
         task
     }
 
@@ -919,12 +1044,20 @@ mod tests {
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
         let mut project_with_id = project;
         project_with_id.id = project_id.clone();
-        state.project_repo.create(project_with_id).await.expect("Failed to create project in test");
+        state
+            .project_repo
+            .create(project_with_id)
+            .await
+            .expect("Failed to create project in test");
 
         // Create original task
         let mut original = Task::new(project_id.clone(), "Original Task".to_string());
         original.internal_status = InternalStatus::RevisionNeeded;
-        let original = state.task_repo.create(original).await.expect("Failed to create original task in test");
+        let original = state
+            .task_repo
+            .create(original)
+            .await
+            .expect("Failed to create original task in test");
 
         // Create fix task (blocked, waiting for approval)
         let mut fix_task = Task::new_with_category(
@@ -933,7 +1066,11 @@ mod tests {
             "fix".to_string(),
         );
         fix_task.internal_status = InternalStatus::Blocked;
-        let fix_task = state.task_repo.create(fix_task).await.expect("Failed to create fix task in test");
+        let fix_task = state
+            .task_repo
+            .create(fix_task)
+            .await
+            .expect("Failed to create fix task in test");
 
         (original, fix_task)
     }
@@ -947,17 +1084,36 @@ mod tests {
         let (_original, fix_task) = create_blocked_fix_task(&state, project_id).await;
 
         // Verify fix task is blocked initially
-        let task = state.task_repo.get_by_id(&fix_task.id).await.expect("Failed to get task by id in test").expect("Expected to find task");
+        let task = state
+            .task_repo
+            .get_by_id(&fix_task.id)
+            .await
+            .expect("Failed to get task by id in test")
+            .expect("Expected to find task");
         assert_eq!(task.internal_status, InternalStatus::Blocked);
 
         // Approve it directly (simulating what the command does)
-        let mut task = state.task_repo.get_by_id(&fix_task.id).await.expect("Failed to get task by id in test").expect("Expected to find task");
+        let mut task = state
+            .task_repo
+            .get_by_id(&fix_task.id)
+            .await
+            .expect("Failed to get task by id in test")
+            .expect("Expected to find task");
         assert_eq!(task.internal_status, InternalStatus::Blocked);
         task.internal_status = InternalStatus::Ready;
-        state.task_repo.update(&task).await.expect("Failed to update task in test");
+        state
+            .task_repo
+            .update(&task)
+            .await
+            .expect("Failed to update task in test");
 
         // Verify it's now Ready
-        let updated = state.task_repo.get_by_id(&fix_task.id).await.expect("Failed to get task by id in test").expect("Expected to find updated task");
+        let updated = state
+            .task_repo
+            .get_by_id(&fix_task.id)
+            .await
+            .expect("Failed to get task by id in test")
+            .expect("Expected to find updated task");
         assert_eq!(updated.internal_status, InternalStatus::Ready);
     }
 
@@ -970,12 +1126,26 @@ mod tests {
         let task = create_task_for_tests(&state, project_id).await;
 
         // Set it to Ready
-        let mut task = state.task_repo.get_by_id(&task.id).await.expect("Failed to get task by id in test").expect("Expected to find task");
+        let mut task = state
+            .task_repo
+            .get_by_id(&task.id)
+            .await
+            .expect("Failed to get task by id in test")
+            .expect("Expected to find task");
         task.internal_status = InternalStatus::Ready;
-        state.task_repo.update(&task).await.expect("Failed to update task in test");
+        state
+            .task_repo
+            .update(&task)
+            .await
+            .expect("Failed to update task in test");
 
         // Simulating the command logic - should reject non-Blocked tasks
-        let task = state.task_repo.get_by_id(&task.id).await.expect("Failed to get task by id in test").expect("Expected to find task");
+        let task = state
+            .task_repo
+            .get_by_id(&task.id)
+            .await
+            .expect("Failed to get task by id in test")
+            .expect("Expected to find task");
         assert_ne!(task.internal_status, InternalStatus::Blocked);
         // In the real command, this returns an error
     }
@@ -987,7 +1157,11 @@ mod tests {
         let nonexistent_id = TaskId::from_string("nonexistent".to_string());
 
         // Task not found
-        let result = state.task_repo.get_by_id(&nonexistent_id).await.expect("Failed to get task by id in test");
+        let result = state
+            .task_repo
+            .get_by_id(&nonexistent_id)
+            .await
+            .expect("Failed to get task by id in test");
         assert!(result.is_none());
     }
 
@@ -1005,13 +1179,26 @@ mod tests {
             original.id.clone(),
             ReviewerType::Ai,
         );
-        state.review_repo.create(&review).await.expect("Failed to create review in test");
+        state
+            .review_repo
+            .create(&review)
+            .await
+            .expect("Failed to create review in test");
 
         // Simulate reject_fix_task logic:
         // 1. Mark fix task as Failed
-        let mut fix = state.task_repo.get_by_id(&fix_task.id).await.expect("Failed to get task by id in test").expect("Expected to find fix task");
+        let mut fix = state
+            .task_repo
+            .get_by_id(&fix_task.id)
+            .await
+            .expect("Failed to get task by id in test")
+            .expect("Expected to find fix task");
         fix.internal_status = InternalStatus::Failed;
-        state.task_repo.update(&fix).await.expect("Failed to update fix task in test");
+        state
+            .task_repo
+            .update(&fix)
+            .await
+            .expect("Failed to update fix task in test");
 
         // 2. Create new fix task
         let mut new_fix_task = Task::new_with_category(
@@ -1026,14 +1213,27 @@ mod tests {
         )));
         new_fix_task.set_priority(original.priority + 1);
         new_fix_task.internal_status = InternalStatus::Ready;
-        let created = state.task_repo.create(new_fix_task).await.expect("Failed to create new fix task in test");
+        let created = state
+            .task_repo
+            .create(new_fix_task)
+            .await
+            .expect("Failed to create new fix task in test");
 
         // Verify new fix task was created
         assert!(created.title.starts_with("Fix:"));
-        assert!(created.description.as_ref().expect("Expected description to be set").contains("Not good enough"));
+        assert!(created
+            .description
+            .as_ref()
+            .expect("Expected description to be set")
+            .contains("Not good enough"));
 
         // Original fix task should be Failed
-        let old_fix = state.task_repo.get_by_id(&fix_task.id).await.expect("Failed to get task by id in test").expect("Expected to find old fix task");
+        let old_fix = state
+            .task_repo
+            .get_by_id(&fix_task.id)
+            .await
+            .expect("Failed to get task by id in test")
+            .expect("Expected to find old fix task");
         assert_eq!(old_fix.internal_status, InternalStatus::Failed);
     }
 
@@ -1046,7 +1246,11 @@ mod tests {
         let task = create_task_for_tests(&state, project_id).await;
 
         // Get fix attempts (should be 0)
-        let count = state.review_repo.count_fix_actions(&task.id).await.expect("Failed to count fix actions in test");
+        let count = state
+            .review_repo
+            .count_fix_actions(&task.id)
+            .await
+            .expect("Failed to count fix actions in test");
 
         assert_eq!(count, 0);
     }
@@ -1058,7 +1262,8 @@ mod tests {
             attempt_count: 2,
         };
 
-        let json = serde_json::to_string(&response).expect("Failed to serialize response to JSON in test");
+        let json =
+            serde_json::to_string(&response).expect("Failed to serialize response to JSON in test");
         assert!(json.contains("\"task_id\":\"task-123\""));
         assert!(json.contains("\"attempt_count\":2"));
     }

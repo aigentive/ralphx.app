@@ -9,10 +9,9 @@ use tokio::sync::Mutex;
 
 use crate::application::PermissionState;
 use crate::application::QuestionState;
-use crate::domain::entities::IdeationSessionId;
 use crate::domain::agents::AgenticClient;
+use crate::domain::entities::IdeationSessionId;
 use crate::domain::qa::QASettings;
-use crate::domain::services::{MemoryRunningAgentRegistry, MessageQueue, RunningAgentRegistry};
 use crate::domain::repositories::{
     ActivePlanRepository, ActivityEventRepository, AgentProfileRepository, AgentRunRepository,
     AppStateRepository, ArtifactBucketRepository, ArtifactFlowRepository, ArtifactRepository,
@@ -23,7 +22,7 @@ use crate::domain::repositories::{
     TaskDependencyRepository, TaskProposalRepository, TaskQARepository, TaskRepository,
     TaskStepRepository, WorkflowRepository,
 };
-use crate::infrastructure::sqlite::ReviewIssueRepository;
+use crate::domain::services::{MemoryRunningAgentRegistry, MessageQueue, RunningAgentRegistry};
 use crate::error::AppResult;
 use crate::infrastructure::memory::{
     MemoryActivePlanRepository, MemoryActivityEventRepository, MemoryAgentProfileRepository,
@@ -38,6 +37,7 @@ use crate::infrastructure::memory::{
     MemoryTaskDependencyRepository, MemoryTaskProposalRepository, MemoryTaskQARepository,
     MemoryTaskRepository, MemoryTaskStepRepository, MemoryWorkflowRepository,
 };
+use crate::infrastructure::sqlite::ReviewIssueRepository;
 use crate::infrastructure::sqlite::{
     get_app_data_db_path, get_default_db_path, open_connection, run_migrations,
     SqliteActivePlanRepository, SqliteActivityEventRepository, SqliteAgentProfileRepository,
@@ -50,7 +50,8 @@ use crate::infrastructure::sqlite::{
     SqliteProjectRepository, SqliteProposalDependencyRepository, SqliteQuestionRepository,
     SqliteReviewIssueRepository, SqliteReviewRepository, SqliteReviewSettingsRepository,
     SqliteRunningAgentRegistry, SqliteTaskDependencyRepository, SqliteTaskProposalRepository,
-    SqliteTaskQARepository, SqliteTaskRepository, SqliteTaskStepRepository, SqliteWorkflowRepository,
+    SqliteTaskQARepository, SqliteTaskRepository, SqliteTaskStepRepository,
+    SqliteWorkflowRepository,
 };
 use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
 
@@ -153,14 +154,12 @@ impl AppState {
         // Create repositories that are used by services
         let task_repo: Arc<dyn TaskRepository> =
             Arc::new(SqliteTaskRepository::from_shared(Arc::clone(&shared_conn)));
-        let task_proposal_repo: Arc<dyn TaskProposalRepository> =
-            Arc::new(SqliteTaskProposalRepository::from_shared(Arc::clone(
-                &shared_conn,
-            )));
-        let artifact_repo: Arc<dyn ArtifactRepository> =
-            Arc::new(SqliteArtifactRepository::from_shared(Arc::clone(
-                &shared_conn,
-            )));
+        let task_proposal_repo: Arc<dyn TaskProposalRepository> = Arc::new(
+            SqliteTaskProposalRepository::from_shared(Arc::clone(&shared_conn)),
+        );
+        let artifact_repo: Arc<dyn ArtifactRepository> = Arc::new(
+            SqliteArtifactRepository::from_shared(Arc::clone(&shared_conn)),
+        );
 
         Ok(Self {
             task_repo: Arc::clone(&task_repo),
@@ -173,8 +172,12 @@ impl AppState {
             agent_profile_repo: Arc::new(SqliteAgentProfileRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
-            task_qa_repo: Arc::new(SqliteTaskQARepository::from_shared(Arc::clone(&shared_conn))),
-            review_repo: Arc::new(SqliteReviewRepository::from_shared(Arc::clone(&shared_conn))),
+            task_qa_repo: Arc::new(SqliteTaskQARepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            review_repo: Arc::new(SqliteReviewRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
             review_settings_repo: Arc::new(SqliteReviewSettingsRepository::from_shared(
                 Arc::clone(&shared_conn),
             )),
@@ -187,9 +190,7 @@ impl AppState {
                 Arc::clone(&shared_conn),
             )),
             global_execution_settings_repo: Arc::new(
-                SqliteGlobalExecutionSettingsRepository::from_shared(
-                    Arc::clone(&shared_conn),
-                ),
+                SqliteGlobalExecutionSettingsRepository::from_shared(Arc::clone(&shared_conn)),
             ),
             ideation_session_repo: Arc::new(SqliteIdeationSessionRepository::from_shared(
                 Arc::clone(&shared_conn),
@@ -230,17 +231,27 @@ impl AppState {
             process_repo: Arc::new(SqliteProcessRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
-            methodology_repo: Arc::new(SqliteMethodologyRepository::from_shared(Arc::clone(&shared_conn))),
-            plan_branch_repo: Arc::new(SqlitePlanBranchRepository::from_shared(Arc::clone(&shared_conn))),
-            plan_selection_stats_repo: Arc::new(SqlitePlanSelectionStatsRepository::from_shared(Arc::clone(&shared_conn))),
-            app_state_repo: Arc::new(SqliteAppStateRepository::from_shared(Arc::clone(&shared_conn))),
-            active_plan_repo: Arc::new(SqliteActivePlanRepository::from_shared(Arc::clone(&shared_conn))),
-            permission_state: Arc::new(PermissionState::with_repo(
-                Arc::new(SqlitePermissionRepository::from_shared(Arc::clone(&shared_conn)))
+            methodology_repo: Arc::new(SqliteMethodologyRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            plan_branch_repo: Arc::new(SqlitePlanBranchRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            plan_selection_stats_repo: Arc::new(SqlitePlanSelectionStatsRepository::from_shared(
+                Arc::clone(&shared_conn),
             )),
-            question_state: Arc::new(QuestionState::with_repo(
-                Arc::new(SqliteQuestionRepository::from_shared(Arc::clone(&shared_conn)))
-            )),
+            app_state_repo: Arc::new(SqliteAppStateRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            active_plan_repo: Arc::new(SqliteActivePlanRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            permission_state: Arc::new(PermissionState::with_repo(Arc::new(
+                SqlitePermissionRepository::from_shared(Arc::clone(&shared_conn)),
+            ))),
+            question_state: Arc::new(QuestionState::with_repo(Arc::new(
+                SqliteQuestionRepository::from_shared(Arc::clone(&shared_conn)),
+            ))),
             message_queue: Arc::new(MessageQueue::new()),
             running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(shared_conn)),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
@@ -259,14 +270,12 @@ impl AppState {
         // Create repositories that are used by services
         let task_repo: Arc<dyn TaskRepository> =
             Arc::new(SqliteTaskRepository::from_shared(Arc::clone(&shared_conn)));
-        let task_proposal_repo: Arc<dyn TaskProposalRepository> =
-            Arc::new(SqliteTaskProposalRepository::from_shared(Arc::clone(
-                &shared_conn,
-            )));
-        let artifact_repo: Arc<dyn ArtifactRepository> =
-            Arc::new(SqliteArtifactRepository::from_shared(Arc::clone(
-                &shared_conn,
-            )));
+        let task_proposal_repo: Arc<dyn TaskProposalRepository> = Arc::new(
+            SqliteTaskProposalRepository::from_shared(Arc::clone(&shared_conn)),
+        );
+        let artifact_repo: Arc<dyn ArtifactRepository> = Arc::new(
+            SqliteArtifactRepository::from_shared(Arc::clone(&shared_conn)),
+        );
 
         Ok(Self {
             task_repo: Arc::clone(&task_repo),
@@ -279,8 +288,12 @@ impl AppState {
             agent_profile_repo: Arc::new(SqliteAgentProfileRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
-            task_qa_repo: Arc::new(SqliteTaskQARepository::from_shared(Arc::clone(&shared_conn))),
-            review_repo: Arc::new(SqliteReviewRepository::from_shared(Arc::clone(&shared_conn))),
+            task_qa_repo: Arc::new(SqliteTaskQARepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            review_repo: Arc::new(SqliteReviewRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
             review_settings_repo: Arc::new(SqliteReviewSettingsRepository::from_shared(
                 Arc::clone(&shared_conn),
             )),
@@ -293,9 +306,7 @@ impl AppState {
                 Arc::clone(&shared_conn),
             )),
             global_execution_settings_repo: Arc::new(
-                SqliteGlobalExecutionSettingsRepository::from_shared(
-                    Arc::clone(&shared_conn),
-                ),
+                SqliteGlobalExecutionSettingsRepository::from_shared(Arc::clone(&shared_conn)),
             ),
             ideation_session_repo: Arc::new(SqliteIdeationSessionRepository::from_shared(
                 Arc::clone(&shared_conn),
@@ -336,17 +347,27 @@ impl AppState {
             process_repo: Arc::new(SqliteProcessRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
-            methodology_repo: Arc::new(SqliteMethodologyRepository::from_shared(Arc::clone(&shared_conn))),
-            plan_branch_repo: Arc::new(SqlitePlanBranchRepository::from_shared(Arc::clone(&shared_conn))),
-            plan_selection_stats_repo: Arc::new(SqlitePlanSelectionStatsRepository::from_shared(Arc::clone(&shared_conn))),
-            app_state_repo: Arc::new(SqliteAppStateRepository::from_shared(Arc::clone(&shared_conn))),
-            active_plan_repo: Arc::new(SqliteActivePlanRepository::from_shared(Arc::clone(&shared_conn))),
-            permission_state: Arc::new(PermissionState::with_repo(
-                Arc::new(SqlitePermissionRepository::from_shared(Arc::clone(&shared_conn)))
+            methodology_repo: Arc::new(SqliteMethodologyRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            plan_branch_repo: Arc::new(SqlitePlanBranchRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            plan_selection_stats_repo: Arc::new(SqlitePlanSelectionStatsRepository::from_shared(
+                Arc::clone(&shared_conn),
             )),
-            question_state: Arc::new(QuestionState::with_repo(
-                Arc::new(SqliteQuestionRepository::from_shared(Arc::clone(&shared_conn)))
-            )),
+            app_state_repo: Arc::new(SqliteAppStateRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            active_plan_repo: Arc::new(SqliteActivePlanRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            permission_state: Arc::new(PermissionState::with_repo(Arc::new(
+                SqlitePermissionRepository::from_shared(Arc::clone(&shared_conn)),
+            ))),
+            question_state: Arc::new(QuestionState::with_repo(Arc::new(
+                SqliteQuestionRepository::from_shared(Arc::clone(&shared_conn)),
+            ))),
             message_queue: Arc::new(MessageQueue::new()),
             running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(shared_conn)),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
@@ -395,12 +416,12 @@ impl AppState {
             plan_selection_stats_repo: Arc::new(MemoryPlanSelectionStatsRepository::new()),
             app_state_repo: Arc::new(MemoryAppStateRepository::new()),
             active_plan_repo: Arc::new(MemoryActivePlanRepository::new()),
-            permission_state: Arc::new(PermissionState::with_repo(
-                Arc::new(MemoryPermissionRepository::new())
-            )),
-            question_state: Arc::new(QuestionState::with_repo(
-                Arc::new(MemoryQuestionRepository::new())
-            )),
+            permission_state: Arc::new(PermissionState::with_repo(Arc::new(
+                MemoryPermissionRepository::new(),
+            ))),
+            question_state: Arc::new(QuestionState::with_repo(Arc::new(
+                MemoryQuestionRepository::new(),
+            ))),
             message_queue: Arc::new(MessageQueue::new()),
             running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
@@ -451,12 +472,12 @@ impl AppState {
             plan_selection_stats_repo: Arc::new(MemoryPlanSelectionStatsRepository::new()),
             app_state_repo: Arc::new(MemoryAppStateRepository::new()),
             active_plan_repo: Arc::new(MemoryActivePlanRepository::new()),
-            permission_state: Arc::new(PermissionState::with_repo(
-                Arc::new(MemoryPermissionRepository::new())
-            )),
-            question_state: Arc::new(QuestionState::with_repo(
-                Arc::new(MemoryQuestionRepository::new())
-            )),
+            permission_state: Arc::new(PermissionState::with_repo(Arc::new(
+                MemoryPermissionRepository::new(),
+            ))),
+            question_state: Arc::new(QuestionState::with_repo(Arc::new(
+                MemoryQuestionRepository::new(),
+            ))),
             message_queue: Arc::new(MessageQueue::new()),
             running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
@@ -611,11 +632,7 @@ mod tests {
         // Create an ideation session
         let session = IdeationSession::new_with_title(project_id.clone(), "Test Session");
         let session_id = session.id.clone();
-        state
-            .ideation_session_repo
-            .create(session)
-            .await
-            .unwrap();
+        state.ideation_session_repo.create(session).await.unwrap();
 
         // Verify we can retrieve it
         let retrieved = state
@@ -719,13 +736,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_extensibility_repos_accessible() {
+        use crate::domain::entities::methodology::MethodologyExtension;
+        use crate::domain::entities::research::{ResearchBrief, ResearchProcess};
+        use crate::domain::entities::status::InternalStatus;
         use crate::domain::entities::{
             Artifact, ArtifactBucket, ArtifactFlow, ArtifactFlowTrigger, ArtifactType,
             WorkflowColumn, WorkflowSchema,
         };
-        use crate::domain::entities::methodology::MethodologyExtension;
-        use crate::domain::entities::research::{ResearchBrief, ResearchProcess};
-        use crate::domain::entities::status::InternalStatus;
 
         let state = AppState::new_test();
 
@@ -751,8 +768,16 @@ mod tests {
         let bucket = ArtifactBucket::new("Test Bucket")
             .accepts(ArtifactType::Prd)
             .with_writer("user");
-        state.artifact_bucket_repo.create(bucket.clone()).await.unwrap();
-        let found_bucket = state.artifact_bucket_repo.get_by_id(&bucket.id).await.unwrap();
+        state
+            .artifact_bucket_repo
+            .create(bucket.clone())
+            .await
+            .unwrap();
+        let found_bucket = state
+            .artifact_bucket_repo
+            .get_by_id(&bucket.id)
+            .await
+            .unwrap();
         assert!(found_bucket.is_some());
 
         // Test artifact flow repository
@@ -770,8 +795,16 @@ mod tests {
 
         // Test methodology repository
         let methodology = MethodologyExtension::new("Test Method", workflow);
-        state.methodology_repo.create(methodology.clone()).await.unwrap();
-        let found_methodology = state.methodology_repo.get_by_id(&methodology.id).await.unwrap();
+        state
+            .methodology_repo
+            .create(methodology.clone())
+            .await
+            .unwrap();
+        let found_methodology = state
+            .methodology_repo
+            .get_by_id(&methodology.id)
+            .await
+            .unwrap();
         assert!(found_methodology.is_some());
     }
 }

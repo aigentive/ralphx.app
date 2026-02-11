@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use crate::domain::entities::{
-    ChatConversation, ChatConversationId, ChatContextType, IdeationSessionId, ProjectId, TaskId,
+    ChatContextType, ChatConversation, ChatConversationId, IdeationSessionId, ProjectId, TaskId,
 };
 use crate::domain::repositories::{ChatConversationRepository, ChatMessageRepository};
 

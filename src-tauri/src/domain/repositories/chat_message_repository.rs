@@ -5,7 +5,9 @@
 
 use async_trait::async_trait;
 
-use crate::domain::entities::{ChatMessage, ChatMessageId, ChatConversationId, IdeationSessionId, ProjectId, TaskId};
+use crate::domain::entities::{
+    ChatConversationId, ChatMessage, ChatMessageId, IdeationSessionId, ProjectId, TaskId,
+};
 use crate::error::AppResult;
 
 /// Repository trait for ChatMessage persistence.
@@ -28,7 +30,10 @@ pub trait ChatMessageRepository: Send + Sync {
     async fn get_by_task(&self, task_id: &TaskId) -> AppResult<Vec<ChatMessage>>;
 
     /// Get all messages for a specific conversation, ordered by created_at ASC
-    async fn get_by_conversation(&self, conversation_id: &ChatConversationId) -> AppResult<Vec<ChatMessage>>;
+    async fn get_by_conversation(
+        &self,
+        conversation_id: &ChatConversationId,
+    ) -> AppResult<Vec<ChatMessage>>;
 
     /// Delete all messages for a session
     async fn delete_by_session(&self, session_id: &IdeationSessionId) -> AppResult<()>;
@@ -142,7 +147,10 @@ mod tests {
             Ok(filtered)
         }
 
-        async fn get_by_conversation(&self, conversation_id: &ChatConversationId) -> AppResult<Vec<ChatMessage>> {
+        async fn get_by_conversation(
+            &self,
+            conversation_id: &ChatConversationId,
+        ) -> AppResult<Vec<ChatMessage>> {
             let mut filtered: Vec<_> = self
                 .messages
                 .iter()
@@ -274,7 +282,8 @@ mod tests {
         let message1 = create_test_message_in_session(&session_id);
         let message2 = create_test_message_in_session(&session_id);
 
-        let repo = MockChatMessageRepository::with_messages(vec![message1.clone(), message2.clone()]);
+        let repo =
+            MockChatMessageRepository::with_messages(vec![message1.clone(), message2.clone()]);
 
         let result = repo.get_by_session(&session_id).await;
         assert!(result.is_ok());
@@ -289,7 +298,8 @@ mod tests {
         let message1 = create_test_message_in_session(&session_id1);
         let message2 = create_test_message_in_session(&session_id2);
 
-        let repo = MockChatMessageRepository::with_messages(vec![message1.clone(), message2.clone()]);
+        let repo =
+            MockChatMessageRepository::with_messages(vec![message1.clone(), message2.clone()]);
 
         let result = repo.get_by_session(&session_id1).await;
         assert!(result.is_ok());
@@ -314,7 +324,8 @@ mod tests {
         let message1 = create_test_message_in_project(&project_id);
         let message2 = create_test_message_in_project(&project_id);
 
-        let repo = MockChatMessageRepository::with_messages(vec![message1.clone(), message2.clone()]);
+        let repo =
+            MockChatMessageRepository::with_messages(vec![message1.clone(), message2.clone()]);
 
         let result = repo.get_by_project(&project_id).await;
         assert!(result.is_ok());
@@ -338,7 +349,8 @@ mod tests {
         let message1 = create_test_message_about_task(&task_id);
         let message2 = create_test_message_about_task(&task_id);
 
-        let repo = MockChatMessageRepository::with_messages(vec![message1.clone(), message2.clone()]);
+        let repo =
+            MockChatMessageRepository::with_messages(vec![message1.clone(), message2.clone()]);
 
         let result = repo.get_by_task(&task_id).await;
         assert!(result.is_ok());

@@ -156,10 +156,7 @@ pub async fn create_proposal_impl(
         .get_by_id(plan_artifact_id)
         .await?
         .ok_or_else(|| {
-            AppError::NotFound(format!(
-                "Plan artifact {} not found",
-                plan_artifact_id
-            ))
+            AppError::NotFound(format!("Plan artifact {} not found", plan_artifact_id))
         })?;
 
     // Get current proposal count for sort_order
@@ -205,9 +202,7 @@ pub async fn update_proposal_impl(
         .task_proposal_repo
         .get_by_id(proposal_id)
         .await?
-        .ok_or_else(|| {
-            AppError::NotFound(format!("Proposal {} not found", proposal_id))
-        })?;
+        .ok_or_else(|| AppError::NotFound(format!("Proposal {} not found", proposal_id)))?;
 
     // Apply updates
     if let Some(title) = options.title {
@@ -248,10 +243,7 @@ pub async fn update_proposal_impl(
 /// # Errors
 /// - `AppError::NotFound` if task doesn't exist
 /// - Database errors from any repository
-pub async fn get_task_context_impl(
-    state: &AppState,
-    task_id: &TaskId,
-) -> AppResult<TaskContext> {
+pub async fn get_task_context_impl(state: &AppState, task_id: &TaskId) -> AppResult<TaskContext> {
     // 1. Fetch task by ID
     let task = state
         .task_repo
@@ -330,7 +322,9 @@ pub async fn get_task_context_impl(
 
     // 6. Calculate step progress summary if steps exist
     let step_progress = if !steps.is_empty() {
-        Some(crate::domain::entities::StepProgressSummary::from_steps(task_id, &steps))
+        Some(crate::domain::entities::StepProgressSummary::from_steps(
+            task_id, &steps,
+        ))
     } else {
         None
     };
@@ -362,7 +356,12 @@ pub async fn get_task_context_impl(
     } else {
         let incomplete_blockers = blocked_by
             .iter()
-            .filter(|b| !matches!(b.internal_status, crate::domain::entities::InternalStatus::Approved))
+            .filter(|b| {
+                !matches!(
+                    b.internal_status,
+                    crate::domain::entities::InternalStatus::Approved
+                )
+            })
             .count();
         Some((incomplete_blockers as u32) + 1)
     };
@@ -374,7 +373,12 @@ pub async fn get_task_context_impl(
     if !blocked_by.is_empty() {
         let incomplete: Vec<_> = blocked_by
             .iter()
-            .filter(|b| !matches!(b.internal_status, crate::domain::entities::InternalStatus::Approved))
+            .filter(|b| {
+                !matches!(
+                    b.internal_status,
+                    crate::domain::entities::InternalStatus::Approved
+                )
+            })
             .collect();
         if !incomplete.is_empty() {
             let names: Vec<_> = incomplete.iter().map(|t| t.title.as_str()).collect();
@@ -401,13 +405,20 @@ pub async fn get_task_context_impl(
         );
     }
     if plan_artifact.is_some() {
-        context_hints.push("Implementation plan available - use get_artifact to read full plan before starting".to_string());
+        context_hints.push(
+            "Implementation plan available - use get_artifact to read full plan before starting"
+                .to_string(),
+        );
     }
     if !related_artifacts.is_empty() {
         context_hints.push(format!(
             "{} related artifact{} found - may contain useful context",
             related_artifacts.len(),
-            if related_artifacts.len() == 1 { "" } else { "s" }
+            if related_artifacts.len() == 1 {
+                ""
+            } else {
+                "s"
+            }
         ));
     }
     if !steps.is_empty() {
@@ -452,7 +463,11 @@ pub async fn maybe_trigger_dependency_analysis(
     app_state: &AppState,
 ) {
     // Get proposal count
-    let count = match app_state.task_proposal_repo.get_by_session(session_id).await {
+    let count = match app_state
+        .task_proposal_repo
+        .get_by_session(session_id)
+        .await
+    {
         Ok(proposals) => proposals.len(),
         Err(e) => {
             tracing::warn!("Failed to get proposals for auto-trigger: {}", e);
@@ -562,7 +577,8 @@ pub async fn maybe_trigger_dependency_analysis(
         };
 
         // Build spawnable command using the established pattern
-        let agent_name = crate::infrastructure::agents::claude::agent_names::AGENT_DEPENDENCY_SUGGESTER;
+        let agent_name =
+            crate::infrastructure::agents::claude::agent_names::AGENT_DEPENDENCY_SUGGESTER;
         let spawnable = match crate::infrastructure::agents::claude::build_spawnable_command(
             &cli_path,
             &plugin_dir,
@@ -573,10 +589,7 @@ pub async fn maybe_trigger_dependency_analysis(
         ) {
             Ok(cmd) => cmd,
             Err(err) => {
-                tracing::warn!(
-                    "Dependency suggester spawn blocked: {}",
-                    err
-                );
+                tracing::warn!("Dependency suggester spawn blocked: {}", err);
                 return;
             }
         };
@@ -589,7 +602,10 @@ pub async fn maybe_trigger_dependency_analysis(
                     match child.wait().await {
                         Ok(status) => {
                             if !status.success() {
-                                tracing::warn!("Dependency suggester agent exited with status: {}", status);
+                                tracing::warn!(
+                                    "Dependency suggester agent exited with status: {}",
+                                    status
+                                );
                             }
                         }
                         Err(e) => {
@@ -647,14 +663,9 @@ mod tests {
         let project_id = ProjectId::new();
 
         // Create a session WITHOUT a plan artifact
-        let session =
-            IdeationSession::new_with_title(project_id.clone(), "Test Session");
+        let session = IdeationSession::new_with_title(project_id.clone(), "Test Session");
         let session_id = session.id.clone();
-        state
-            .ideation_session_repo
-            .create(session)
-            .await
-            .unwrap();
+        state.ideation_session_repo.create(session).await.unwrap();
 
         let options = CreateProposalOptions {
             title: "Test Proposal".to_string(),
@@ -702,11 +713,7 @@ mod tests {
             .plan_artifact_id(artifact_id.clone())
             .build();
         let session_id = session.id.clone();
-        state
-            .ideation_session_repo
-            .create(session)
-            .await
-            .unwrap();
+        state.ideation_session_repo.create(session).await.unwrap();
 
         let options = CreateProposalOptions {
             title: "Test Proposal".to_string(),
@@ -750,11 +757,7 @@ mod tests {
             .plan_artifact_id(artifact_id.clone())
             .build();
         let session_id = session.id.clone();
-        state
-            .ideation_session_repo
-            .create(session)
-            .await
-            .unwrap();
+        state.ideation_session_repo.create(session).await.unwrap();
 
         let options = CreateProposalOptions {
             title: "Versioned Proposal".to_string(),

@@ -8,11 +8,11 @@
  * Reference: Widget 10 in mockups/tool-call-widgets.html
  */
 
-import React from "react";
+import React, { useMemo } from "react";
 import { Search, FileText } from "lucide-react";
 import { WidgetCard, WidgetHeader, Badge } from "./shared";
 import type { ToolCallWidgetProps } from "./shared";
-import { colors, parseToolResultAsLines } from "./shared.constants";
+import { colors, parseSearchResult } from "./shared.constants";
 
 const MAX_INLINE_RESULTS = 3;
 
@@ -39,8 +39,8 @@ export const GrepWidget = React.memo(function GrepWidget({
   compact = false,
 }: ToolCallWidgetProps) {
   const { pattern, path } = parseGrepArgs(toolCall.arguments);
-  const files = parseToolResultAsLines(toolCall.result);
-  const fileCount = files.length;
+  const parsed = useMemo(() => parseSearchResult(toolCall.result), [toolCall.result]);
+  const fileCount = parsed.paths.length;
   const isInline = fileCount <= MAX_INLINE_RESULTS;
 
   // Build title: pattern in monospace, optionally with scope path
@@ -67,21 +67,6 @@ export const GrepWidget = React.memo(function GrepWidget({
     />
   );
 
-  // No results: just header, no body
-  if (fileCount === 0 && toolCall.result !== undefined) {
-    return (
-      <WidgetCard
-        header={header}
-        compact={compact}
-        alwaysExpanded
-      >
-        <span style={{ fontSize: 10.5, color: colors.textMuted }}>
-          No matches found
-        </span>
-      </WidgetCard>
-    );
-  }
-
   // Pending result (tool still running)
   if (toolCall.result === undefined) {
     return (
@@ -93,13 +78,24 @@ export const GrepWidget = React.memo(function GrepWidget({
     );
   }
 
+  // No results: header + muted note
+  if (parsed.isEmpty) {
+    return (
+      <WidgetCard header={header} compact={compact} alwaysExpanded>
+        <span style={{ fontSize: 10.5, color: colors.textMuted }}>
+          {parsed.note || "No matches found"}
+        </span>
+      </WidgetCard>
+    );
+  }
+
   return (
     <WidgetCard
       header={header}
       compact={compact}
       alwaysExpanded={isInline}
     >
-      <FileList files={files} />
+      <FileList files={parsed.paths} />
     </WidgetCard>
   );
 });

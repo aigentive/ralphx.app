@@ -56,25 +56,23 @@ impl SqliteProcessRepository {
 
         let started_at_parsed = started_at
             .map(|s| {
-                chrono::DateTime::parse_from_rfc3339(&s)
-                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                chrono::DateTime::parse_from_rfc3339(&s).map(|dt| dt.with_timezone(&chrono::Utc))
             })
             .transpose()
             .map_err(|e| rusqlite::Error::InvalidParameterName(e.to_string()))?;
 
         let completed_at_parsed = completed_at
             .map(|s| {
-                chrono::DateTime::parse_from_rfc3339(&s)
-                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                chrono::DateTime::parse_from_rfc3339(&s).map(|dt| dt.with_timezone(&chrono::Utc))
             })
             .transpose()
             .map_err(|e| rusqlite::Error::InvalidParameterName(e.to_string()))?;
 
-        let status_parsed: ResearchProcessStatus = status
-            .parse()
-            .map_err(|e: crate::domain::entities::research::ParseResearchProcessStatusError| {
+        let status_parsed: ResearchProcessStatus = status.parse().map_err(
+            |e: crate::domain::entities::research::ParseResearchProcessStatusError| {
                 rusqlite::Error::InvalidParameterName(e.to_string())
-            })?;
+            },
+        )?;
 
         // Reconstruct progress from stored fields
         let mut progress = ResearchProgress::new();
@@ -375,9 +373,8 @@ mod tests {
 
     fn create_running_process() -> ResearchProcess {
         let brief = ResearchBrief::new("Which database to choose?");
-        let mut process =
-            ResearchProcess::new("Database Research", brief, "deep-researcher")
-                .with_preset(ResearchDepthPreset::QuickScan);
+        let mut process = ResearchProcess::new("Database Research", brief, "deep-researcher")
+            .with_preset(ResearchDepthPreset::QuickScan);
         process.start();
         process.advance();
         process.advance();
@@ -690,16 +687,21 @@ mod tests {
         let output = ResearchOutput::new("custom-bucket")
             .with_artifact_type(ArtifactType::Findings)
             .with_artifact_type(ArtifactType::Recommendations);
-        let process = ResearchProcess::new("Output Test", brief, "researcher")
-            .with_output(output);
+        let process = ResearchProcess::new("Output Test", brief, "researcher").with_output(output);
         repo.create(process.clone()).await.unwrap();
 
         let loaded = repo.get_by_id(&process.id).await.unwrap().unwrap();
 
         assert_eq!(loaded.output.target_bucket, "custom-bucket");
         assert_eq!(loaded.output.artifact_types.len(), 2);
-        assert!(loaded.output.artifact_types.contains(&ArtifactType::Findings));
-        assert!(loaded.output.artifact_types.contains(&ArtifactType::Recommendations));
+        assert!(loaded
+            .output
+            .artifact_types
+            .contains(&ArtifactType::Findings));
+        assert!(loaded
+            .output
+            .artifact_types
+            .contains(&ArtifactType::Recommendations));
     }
 
     #[tokio::test]
@@ -745,7 +747,8 @@ mod tests {
         let brief = ResearchBrief::new("Question");
         let mut process = ResearchProcess::new("Checkpoint Test", brief, "researcher");
         process.start();
-        let checkpoint_id = crate::domain::entities::ArtifactId::from_string("checkpoint-artifact-1");
+        let checkpoint_id =
+            crate::domain::entities::ArtifactId::from_string("checkpoint-artifact-1");
         process.checkpoint(checkpoint_id.clone());
 
         repo.create(process.clone()).await.unwrap();

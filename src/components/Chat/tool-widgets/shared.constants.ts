@@ -163,49 +163,6 @@ export function parseToolResultAsLines(result: unknown): string[] {
 }
 
 /**
- * Normalize a path to repo-relative display format.
- * Converts backslashes to forward slashes, removes absolute prefixes,
- * and anchors on known project segments (src, src-tauri, tests, etc.).
- */
-export function normalizeDisplayPath(path: string): string {
-  if (!path) return path;
-
-  // Convert backslashes to forward slashes
-  let normalized = path.replace(/\\/g, "/");
-
-  // Remove leading /.../ or .../ artifacts
-  normalized = normalized.replace(/^\/?\.\.\.\//g, "");
-
-  // Known project segments to anchor on (order matters - check src-tauri before src)
-  const projectSegments = [
-    "src-tauri",
-    "src",
-    "tests",
-    "specs",
-    "scripts",
-    "docs",
-    "mockups",
-    "assets",
-    "public",
-  ];
-
-  // Find first known segment and extract from there
-  for (const segment of projectSegments) {
-    // Look for segment preceded by / or at start
-    const pattern = new RegExp(`(^|/)${segment.replace("-", "\\-")}/`);
-    const match = normalized.match(pattern);
-    if (match) {
-      const segmentIndex = match.index! + (match[1] ? 1 : 0);
-      return normalized.substring(segmentIndex);
-    }
-  }
-
-  // No known anchor found - return just the filename
-  const parts = normalized.split("/");
-  return parts[parts.length - 1] || normalized;
-}
-
-/**
  * Shorten a file path by collapsing middle directories.
  * Works on normalized paths only (never produces /.../...).
  */
@@ -218,112 +175,164 @@ export function shortenPath(path: string, maxLength: number): string {
   // Keep first directory and last 2 segments
   const first = parts[0] || "";
   const last2 = parts.slice(-2).join("/");
-  const shortened = `${first}/.../${last2}`;
+  const shortened = `${first}/${last2}`;
 
   if (shortened.length <= maxLength) return shortened;
 
-  // Last resort: just show .../ + filename
+  // Last resort: just show filename
   const filename = parts[parts.length - 1] || "";
-  return `.../${filename}`;
+  return filename;
 }
 
+// ============================================================================
+// Path Normalization
+// ============================================================================
+
+/** Known project-root directory anchors */
+const PROJECT_ANCHORS = [
+  "src-tauri",
+  "src",
+  "tests",
+  "specs",
+  "scripts",
+  "docs",
+  "mockups",
+  "assets",
+  "public",
+  "ralphx-plugin",
+  ".claude",
+];
+
 /**
- * Parse search result output (Grep/Glob) into file paths.
- * Handles path:line:match format, metadata lines, and no-match states.
+ * Normalize an absolute or messy path to repo-relative display.
+ * - Converts backslashes to forward slashes.
+ * - Removes leading absolute prefix by anchoring from first known project segment.
+ * - Removes leading `.../` or `/.../` artifacts.
+ * - Falls back to basename when no anchor exists.
  */
-export function parseSearchResult(result: unknown): {
+export function normalizeDisplayPath(path: string): string {
+  if (!path) return path;
+
+  // Normalize separators
+  let normalized = path.replace(/\\/g, "/");
+
+  // Remove leading/.../artifacts like /.../
+  normalized = normalized.replace(/^\/?\.\.\.\//, "");
+
+  // If already relative (no leading /), return as-is unless it still has absolute segments
+  if (!normalized.startsWith("/")) return normalized;
+
+  // Find earliest known project anchor in the path segments
+  const segments = normalized.split("/");
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    if (seg && PROJECT_ANCHORS.includes(seg)) {
+      return segments.slice(i).join("/");
+    }
+  }
+
+  // Fallback: strip common workspace prefixes (/Users/.../Code/project/)
+  // Just take from last known path segment
+  const filename = segments[segments.length - 1];
+  return filename || normalized;
+}
+
+// ============================================================================
+// Search Result Parser
+// ============================================================================
+
+export interface ParsedSearchResult {
   paths: string[];
   isEmpty: boolean;
   note?: string;
-} {
+}
+
+/** Metadata/header lines to skip in search results */
+const SEARCH_METADATA_RE = /^(Found \d+ files?|Showing|Page \d|Results? \d)/i;
+
+/** Explicit no-result markers */
+const SEARCH_EMPTY_RE = /^No (matches|files|results)( found| matched)?\.?$/i;
+
+/**
+ * Parse a search result (Grep/Glob) into deduplicated, normalized file paths.
+ * Handles metadata lines, no-result lines, and `path:line:match` content lines.
+ */
+export function parseSearchResult(result: unknown): ParsedSearchResult {
   const lines = parseToolResultAsLines(result);
 
   if (lines.length === 0) {
-    return { paths: [], isEmpty: false };
+    return { paths: [], isEmpty: true };
   }
-
-  // Check for explicit no-match states
-  const noMatchPatterns = [
-    /^No matches found/i,
-    /^No files found/i,
-    /^No files matched/i,
-  ];
-
-  for (const line of lines) {
-    for (const pattern of noMatchPatterns) {
-      if (pattern.test(line)) {
-        return { paths: [], isEmpty: true, note: line };
-      }
-    }
-  }
-
-  // Metadata line patterns to skip
-  const metadataPatterns = [
-    /^Found \d+ files?/i,
-    /^Page \d+ of \d+/i,
-    /^\d+ matches? in \d+ files?/i,
-  ];
 
   const pathSet = new Set<string>();
+  let note: string | undefined;
 
   for (const line of lines) {
     // Skip metadata lines
-    if (metadataPatterns.some((p) => p.test(line))) {
-      continue;
+    if (SEARCH_METADATA_RE.test(line)) continue;
+
+    // Detect no-result markers
+    if (SEARCH_EMPTY_RE.test(line)) {
+      return { paths: [], isEmpty: true, note: line };
     }
 
-    // Extract path from path:line:match format
-    const colonIndex = line.indexOf(":");
-    if (colonIndex > 0) {
-      const pathPart = line.substring(0, colonIndex);
-      if (pathPart && (pathPart.includes("/") || pathPart.includes("."))) {
-        pathSet.add(normalizeDisplayPath(pathPart));
-        continue;
-      }
+    // Extract path from `path:lineNum:content` (grep content mode)
+    // or `path:lineNum` (grep count mode)
+    // or plain path
+    let filePath = line;
+    const colonMatch = line.match(/^(.+?\.\w+):(\d+)/);
+    if (colonMatch?.[1]) {
+      filePath = colonMatch[1];
     }
 
-    // Plain file path (glob output)
-    if (line.includes("/") || line.includes(".")) {
-      pathSet.add(normalizeDisplayPath(line));
+    const normalized = normalizeDisplayPath(filePath.trim());
+    if (normalized) {
+      pathSet.add(normalized);
     }
   }
 
-  return { paths: Array.from(pathSet), isEmpty: false };
+  const paths = Array.from(pathSet);
+  const parsed: ParsedSearchResult = { paths, isEmpty: paths.length === 0 };
+  if (note !== undefined) parsed.note = note;
+  return parsed;
 }
 
+// ============================================================================
+// Read Output Parser
+// ============================================================================
+
+export interface ParsedReadOutput {
+  lines: string[];
+  inferredStartLine: number;
+  error?: string;
+}
+
+/** Match tool-added line-number prefixes like "   500→" or "     1→" */
+const LINE_PREFIX_RE = /^\s*(\d+)[→\t]/;
+
+/** Match XML error wrapper */
+const TOOL_ERROR_RE = /<tool_use_error>([\s\S]*?)<\/tool_use_error>/;
+
 /**
- * Parse Read tool output, stripping line-number prefixes and extracting errors.
- * Returns cleaned lines with inferred start line number.
+ * Parse raw Read tool output:
+ * - Removes tool-added line prefixes (`   N→`).
+ * - Preserves actual code indentation after the arrow/tab.
+ * - Extracts `<tool_use_error>...</tool_use_error>` into clean error text.
+ * - Infers start line from first prefix when offset is missing.
  */
 export function parseReadOutput(
   result: unknown,
   offset?: number,
-): {
-  lines: string[];
-  inferredStartLine: number;
-  error?: string;
-} {
-  // Extract text from MCP wrapper or plain string
-  let text = "";
-  if (typeof result === "string") {
-    text = result;
-  } else if (Array.isArray(result)) {
-    const first = result[0];
-    if (first && typeof first === "object" && "text" in first) {
-      text = String((first as { text: string }).text);
-    }
-  } else if (typeof result === "object" && result !== null && "text" in result) {
-    text = String((result as { text: string }).text);
-  }
+): ParsedReadOutput {
+  const raw = extractRawText(result);
 
-  // Return early for empty text
-  if (!text) {
+  if (!raw) {
     return { lines: [], inferredStartLine: offset ?? 1 };
   }
 
-  // Check for tool_use_error tags
-  const errorMatch = text.match(/<tool_use_error>(.*?)<\/tool_use_error>/s);
-  if (errorMatch && errorMatch[1]) {
+  // Check for error wrapper
+  const errorMatch = raw.match(TOOL_ERROR_RE);
+  if (errorMatch?.[1]) {
     return {
       lines: [],
       inferredStartLine: offset ?? 1,
@@ -331,36 +340,70 @@ export function parseReadOutput(
     };
   }
 
-  // Parse lines and strip prefixes
-  const rawLines = text.split("\n");
-  const lines: string[] = [];
-  let inferredStartLine = offset ?? 1;
+  const rawLines = raw.split("\n");
+  const parsedLines: string[] = [];
+  let inferredStartLine = offset ?? 0;
+  let firstPrefixSeen = false;
 
-  // Regex to match line prefixes like "   500→"
-  const prefixRegex = /^\s*(\d+)→(.*)$/;
-
-  for (let i = 0; i < rawLines.length; i++) {
-    const line = rawLines[i];
-    if (line === undefined) continue;
-
-    const match = prefixRegex.exec(line);
-
-    if (match && match[1] && match[2] !== undefined) {
-      // Extract line number from first match
-      if (i === 0 && !offset && match[1]) {
-        inferredStartLine = parseInt(match[1], 10);
+  for (const line of rawLines) {
+    const prefixMatch = line.match(LINE_PREFIX_RE);
+    if (prefixMatch) {
+      if (!firstPrefixSeen) {
+        firstPrefixSeen = true;
+        if (!offset && prefixMatch[1]) {
+          inferredStartLine = parseInt(prefixMatch[1], 10);
+        }
       }
-      // Add the content after arrow, preserving indentation
-      if (match[2] !== undefined) {
-        lines.push(match[2]);
+      // Strip the prefix — everything after the arrow/tab
+      const arrowIdx = line.indexOf("→");
+      if (arrowIdx !== -1) {
+        parsedLines.push(line.slice(arrowIdx + 1));
+      } else {
+        // Tab separator fallback
+        const tabIdx = line.indexOf("\t");
+        if (tabIdx !== -1) {
+          parsedLines.push(line.slice(tabIdx + 1));
+        } else {
+          parsedLines.push(line);
+        }
       }
     } else {
-      // No prefix found, add line as-is
-      lines.push(line);
+      // No prefix — pass through as-is
+      parsedLines.push(line);
     }
   }
 
-  return { lines, inferredStartLine };
+  if (inferredStartLine === 0) inferredStartLine = 1;
+
+  return { lines: parsedLines, inferredStartLine };
+}
+
+/** Extract raw text string from various result formats */
+function extractRawText(result: unknown): string | null {
+  if (typeof result === "string") return result;
+
+  if (Array.isArray(result)) {
+    const texts: string[] = [];
+    for (const item of result) {
+      if (
+        item &&
+        typeof item === "object" &&
+        "text" in item &&
+        typeof (item as { text: unknown }).text === "string"
+      ) {
+        texts.push((item as { text: string }).text);
+      }
+    }
+    if (texts.length > 0) return texts.join("\n");
+  }
+
+  if (result && typeof result === "object") {
+    const obj = result as Record<string, unknown>;
+    if (typeof obj.text === "string") return obj.text;
+    if (typeof obj.content === "string") return obj.content;
+  }
+
+  return null;
 }
 
 // ============================================================================

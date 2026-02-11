@@ -85,7 +85,10 @@ impl From<Artifact> for ArtifactResponse {
             version: artifact.metadata.version,
             bucket_id: artifact.bucket_id.map(|id| id.as_str().to_string()),
             task_id: artifact.metadata.task_id.map(|id| id.as_str().to_string()),
-            process_id: artifact.metadata.process_id.map(|id| id.as_str().to_string()),
+            process_id: artifact
+                .metadata
+                .process_id
+                .map(|id| id.as_str().to_string()),
             derived_from: artifact
                 .derived_from
                 .iter()
@@ -217,8 +220,18 @@ pub async fn create_artifact(
 
     // Create artifact based on content type
     let mut artifact = match input.content_type.as_str() {
-        "inline" => Artifact::new_inline(&input.name, artifact_type, &input.content, &input.created_by),
-        "file" => Artifact::new_file(&input.name, artifact_type, &input.content, &input.created_by),
+        "inline" => Artifact::new_inline(
+            &input.name,
+            artifact_type,
+            &input.content,
+            &input.created_by,
+        ),
+        "file" => Artifact::new_file(
+            &input.name,
+            artifact_type,
+            &input.content,
+            &input.created_by,
+        ),
         _ => return Err(format!("Invalid content type: {}", input.content_type)),
     };
 
@@ -449,7 +462,11 @@ mod tests {
         let state = setup_test_state();
 
         let artifact = Artifact::new_inline("Test PRD", ArtifactType::Prd, "Content", "user");
-        let created = state.artifact_repo.create(artifact).await.expect("Failed to create artifact in test");
+        let created = state
+            .artifact_repo
+            .create(artifact)
+            .await
+            .expect("Failed to create artifact in test");
 
         assert_eq!(created.name, "Test PRD");
         assert_eq!(created.artifact_type, ArtifactType::Prd);
@@ -462,9 +479,17 @@ mod tests {
         let artifact = Artifact::new_inline("Find Me", ArtifactType::Prd, "Content", "user");
         let id = artifact.id.clone();
 
-        state.artifact_repo.create(artifact).await.expect("Failed to create artifact in test");
+        state
+            .artifact_repo
+            .create(artifact)
+            .await
+            .expect("Failed to create artifact in test");
 
-        let found = state.artifact_repo.get_by_id(&id).await.expect("Failed to get artifact by id in test");
+        let found = state
+            .artifact_repo
+            .get_by_id(&id)
+            .await
+            .expect("Failed to get artifact by id in test");
         assert!(found.is_some());
         assert_eq!(found.expect("Expected to find artifact").name, "Find Me");
     }
@@ -477,9 +502,17 @@ mod tests {
         let artifact = Artifact::new_inline("In Bucket", ArtifactType::Prd, "Content", "user")
             .with_bucket(bucket_id.clone());
 
-        state.artifact_repo.create(artifact).await.expect("Failed to create artifact in test");
+        state
+            .artifact_repo
+            .create(artifact)
+            .await
+            .expect("Failed to create artifact in test");
 
-        let found = state.artifact_repo.get_by_bucket(&bucket_id).await.expect("Failed to get artifacts by bucket in test");
+        let found = state
+            .artifact_repo
+            .get_by_bucket(&bucket_id)
+            .await
+            .expect("Failed to get artifacts by bucket in test");
         assert_eq!(found.len(), 1);
     }
 
@@ -491,9 +524,17 @@ mod tests {
         let artifact = Artifact::new_inline("For Task", ArtifactType::CodeChange, "diff", "worker")
             .with_task(task_id.clone());
 
-        state.artifact_repo.create(artifact).await.expect("Failed to create artifact in test");
+        state
+            .artifact_repo
+            .create(artifact)
+            .await
+            .expect("Failed to create artifact in test");
 
-        let found = state.artifact_repo.get_by_task(&task_id).await.expect("Failed to get artifacts by task in test");
+        let found = state
+            .artifact_repo
+            .get_by_task(&task_id)
+            .await
+            .expect("Failed to get artifacts by task in test");
         assert_eq!(found.len(), 1);
     }
 
@@ -504,10 +545,22 @@ mod tests {
         let artifact = Artifact::new_inline("Delete Me", ArtifactType::Prd, "Content", "user");
         let id = artifact.id.clone();
 
-        state.artifact_repo.create(artifact).await.expect("Failed to create artifact in test");
-        state.artifact_repo.delete(&id).await.expect("Failed to delete artifact in test");
+        state
+            .artifact_repo
+            .create(artifact)
+            .await
+            .expect("Failed to create artifact in test");
+        state
+            .artifact_repo
+            .delete(&id)
+            .await
+            .expect("Failed to delete artifact in test");
 
-        let found = state.artifact_repo.get_by_id(&id).await.expect("Failed to get artifact by id in test");
+        let found = state
+            .artifact_repo
+            .get_by_id(&id)
+            .await
+            .expect("Failed to get artifact by id in test");
         assert!(found.is_none());
     }
 
@@ -519,7 +572,11 @@ mod tests {
             .accepts(ArtifactType::Prd)
             .with_writer("user");
 
-        let created = state.artifact_bucket_repo.create(bucket).await.expect("Failed to create bucket in test");
+        let created = state
+            .artifact_bucket_repo
+            .create(bucket)
+            .await
+            .expect("Failed to create bucket in test");
         assert_eq!(created.name, "Test Bucket");
     }
 
@@ -538,7 +595,11 @@ mod tests {
             .await
             .expect("Failed to create bucket 2 in test");
 
-        let all = state.artifact_bucket_repo.get_all().await.expect("Failed to get all buckets in test");
+        let all = state
+            .artifact_bucket_repo
+            .get_all()
+            .await
+            .expect("Failed to get all buckets in test");
         assert_eq!(all.len(), 2);
     }
 
@@ -552,13 +613,29 @@ mod tests {
         let id1 = artifact1.id.clone();
         let id2 = artifact2.id.clone();
 
-        state.artifact_repo.create(artifact1).await.expect("Failed to create parent artifact in test");
-        state.artifact_repo.create(artifact2).await.expect("Failed to create child artifact in test");
+        state
+            .artifact_repo
+            .create(artifact1)
+            .await
+            .expect("Failed to create parent artifact in test");
+        state
+            .artifact_repo
+            .create(artifact2)
+            .await
+            .expect("Failed to create child artifact in test");
 
         let relation = ArtifactRelation::derived_from(id2.clone(), id1.clone());
-        state.artifact_repo.add_relation(relation).await.expect("Failed to add artifact relation in test");
+        state
+            .artifact_repo
+            .add_relation(relation)
+            .await
+            .expect("Failed to add artifact relation in test");
 
-        let relations = state.artifact_repo.get_relations(&id2).await.expect("Failed to get artifact relations in test");
+        let relations = state
+            .artifact_repo
+            .get_relations(&id2)
+            .await
+            .expect("Failed to get artifact relations in test");
         assert_eq!(relations.len(), 1);
     }
 
@@ -576,7 +653,8 @@ mod tests {
         assert_eq!(response.bucket_id, Some("bucket-1".to_string()));
         assert_eq!(response.derived_from.len(), 1);
 
-        let json = serde_json::to_string(&response).expect("Failed to serialize artifact response in test");
+        let json = serde_json::to_string(&response)
+            .expect("Failed to serialize artifact response in test");
         assert!(json.contains("\"name\":\"Test\""));
     }
 
@@ -593,13 +671,16 @@ mod tests {
         assert_eq!(response.accepted_types.len(), 2);
         assert!(!response.is_system);
 
-        let json = serde_json::to_string(&response).expect("Failed to serialize bucket response in test");
+        let json =
+            serde_json::to_string(&response).expect("Failed to serialize bucket response in test");
         assert!(json.contains("\"name\":\"Test Bucket\""));
     }
 
     #[tokio::test]
     async fn test_get_system_buckets() {
-        let result = get_system_buckets().await.expect("Failed to get system buckets in test");
+        let result = get_system_buckets()
+            .await
+            .expect("Failed to get system buckets in test");
 
         assert_eq!(result.len(), 4);
 

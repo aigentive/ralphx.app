@@ -1,11 +1,17 @@
 /**
  * ExecutionControlBar - Premium execution status and controls
  *
- * Fixed bottom bar displaying running/queued tasks count with animated status indicator
+ * Fixed bottom bar displaying running/queued/merging tasks count with animated status indicator
  * and pause/stop controls. Follows the design spec from specs/design/pages/execution-control-bar.md
+ *
+ * Responsive breakpoints:
+ * - Wide (>1200px): Full labels "Running: 2/3", "Queued: 5", "Merging: 1"
+ * - Medium (800-1200px): Abbreviated "R: 2/3", "Q: 5", "M: 1"
+ * - Narrow (<800px): Counts only "2/3", "5", "1"
  */
 
 import { Pause, Play, Square, Loader2, Swords } from "lucide-react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -14,14 +20,29 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { RunningProcessPopover } from "./RunningProcessPopover";
+import type { RunningProcess } from "@/api/running-processes";
+import { MergePipelinePopover } from "./MergePipelinePopover";
+import type { MergePipelineResponse } from "@/api/merge-pipeline";
+import { QueuedTasksPopover } from "./QueuedTasksPopover";
+import { InfoTooltip } from "./InfoTooltip";
+import { getStatusIconConfig } from "@/types/status-icons";
 
 interface ExecutionControlBarProps {
+  /** The project ID */
+  projectId: string;
   /** Number of currently running tasks */
   runningCount: number;
   /** Maximum concurrent tasks allowed */
   maxConcurrent: number;
   /** Number of queued (planned) tasks */
   queuedCount: number;
+  /** Number of tasks in the merge pipeline */
+  mergingCount: number;
+  /** Whether any merge tasks need attention (conflict/incomplete) */
+  hasAttentionMerges: boolean;
+  /** Merge pipeline data for popover */
+  mergePipelineData: MergePipelineResponse | null;
   /** Whether execution is paused */
   isPaused: boolean;
   /** Whether a control action is in progress */
@@ -38,15 +59,34 @@ interface ExecutionControlBarProps {
   onBattleModeToggle?: () => void;
   /** Whether to show battle mode button */
   showBattleModeToggle?: boolean;
+  /** List of running processes (for popover) */
+  runningProcesses?: RunningProcess[];
+  /** Called when pause button clicked for a specific process */
+  onPauseProcess?: (taskId: string) => void;
+  /** Called when stop button clicked for a specific process */
+  onStopProcess?: (taskId: string) => void;
+  /** Called when settings link clicked in popover */
+  onOpenSettings?: () => void;
 }
 
 /**
  * Get status indicator color based on execution state
  */
+const STATUS_COLORS = {
+  running: getStatusIconConfig("executing").color,
+  paused: getStatusIconConfig("paused").color,
+  idle: getStatusIconConfig("backlog").color,
+  ready: getStatusIconConfig("ready").color,
+  pendingMerge: getStatusIconConfig("pending_merge").color,
+  mergeAttention: getStatusIconConfig("merge_incomplete").color,
+  stop: getStatusIconConfig("stopped").color,
+} as const;
+const POPOVER_ALIGN_TO_SEPARATOR_DOT = -20;
+
 function getStatusColor(running: number, paused: boolean): string {
-  if (paused) return "hsl(45 90% 55%)"; /* warning */
-  if (running > 0) return "hsl(145 60% 45%)"; /* success */
-  return "hsl(220 10% 45%)"; /* muted */
+  if (paused) return STATUS_COLORS.paused;
+  if (running > 0) return STATUS_COLORS.running;
+  return STATUS_COLORS.idle;
 }
 
 /**
@@ -59,9 +99,13 @@ function getStatusState(running: number, paused: boolean): "running" | "paused" 
 }
 
 export function ExecutionControlBar({
+  projectId,
   runningCount,
   maxConcurrent,
   queuedCount,
+  mergingCount,
+  hasAttentionMerges,
+  mergePipelineData,
   isPaused,
   isLoading = false,
   currentTaskName,
@@ -70,11 +114,41 @@ export function ExecutionControlBar({
   battleModeActive = false,
   onBattleModeToggle,
   showBattleModeToggle = false,
+  runningProcesses = [],
+  onPauseProcess = () => {},
+  onStopProcess = () => {},
+  onOpenSettings = () => {},
 }: ExecutionControlBarProps) {
   const canStop = runningCount > 0 && !isLoading;
   const statusColor = getStatusColor(runningCount, isPaused);
   const statusState = getStatusState(runningCount, isPaused);
   const isRunning = runningCount > 0 && !isPaused;
+  const [isPopoverOpen, setIsPopoverOpen] = useState(false);
+
+  // Responsive breakpoint tracking
+  const [breakpoint, setBreakpoint] = useState<"wide" | "medium" | "narrow">("wide");
+
+  useEffect(() => {
+    const updateBreakpoint = () => {
+      const width = window.innerWidth;
+      if (width > 1200) {
+        setBreakpoint("wide");
+      } else if (width >= 800) {
+        setBreakpoint("medium");
+      } else {
+        setBreakpoint("narrow");
+      }
+    };
+
+    updateBreakpoint();
+    window.addEventListener("resize", updateBreakpoint);
+    return () => window.removeEventListener("resize", updateBreakpoint);
+  }, []);
+
+  // Label formatting based on breakpoint
+  const runningLabel = breakpoint === "wide" ? "Running: " : breakpoint === "medium" ? "R: " : "";
+  const queuedLabel = breakpoint === "wide" ? "Queued: " : breakpoint === "medium" ? "Q: " : "";
+  const mergingLabel = breakpoint === "wide" ? "Merging: " : breakpoint === "medium" ? "M: " : "";
 
   return (
     <TooltipProvider>
@@ -107,9 +181,9 @@ export function ExecutionControlBar({
         {/* Status Section (Left) */}
         <div
           className="flex items-center gap-4"
-          aria-label={`${runningCount} tasks running out of ${maxConcurrent}, ${queuedCount} queued`}
+          aria-label={`${runningCount} tasks running out of ${maxConcurrent}, ${queuedCount} queued, ${mergingCount} merging`}
         >
-          {/* Animated Status Indicator */}
+          {/* Animated Status Indicator (anchor for all popovers) */}
           <div
             data-testid="status-indicator"
             className={cn(
@@ -119,26 +193,146 @@ export function ExecutionControlBar({
             style={{ backgroundColor: statusColor }}
           />
 
-          {/* Running Count */}
-          <span
-            data-testid="running-count"
-            className="text-[13px] font-medium"
-            style={{ color: "hsl(220 10% 90%)" }}
-          >
-            Running: {runningCount}/{maxConcurrent}
-          </span>
+          {/* Running Count (Clickable - opens popover) + Info Tooltip */}
+          <div className="flex items-center gap-1.5">
+            <RunningProcessPopover
+              processes={runningProcesses}
+              maxConcurrent={maxConcurrent}
+              open={isPopoverOpen}
+              onOpenChange={setIsPopoverOpen}
+              onPauseProcess={onPauseProcess}
+              onStopProcess={onStopProcess}
+              onOpenSettings={onOpenSettings}
+              alignOffset={POPOVER_ALIGN_TO_SEPARATOR_DOT}
+            >
+              <button
+                data-testid="running-count"
+                className="text-[13px] font-medium cursor-pointer hover:opacity-80 transition-opacity"
+                style={{ color: runningCount > 0 ? STATUS_COLORS.running : "hsl(220 10% 90%)" }}
+                onClick={() => setIsPopoverOpen(!isPopoverOpen)}
+              >
+                {runningLabel}{runningCount}/{maxConcurrent}
+              </button>
+            </RunningProcessPopover>
+            <InfoTooltip
+              testId="running-info-tooltip"
+              content={
+                <div className="space-y-2">
+                  <div>
+                    <strong className="block mb-1" style={{ color: "hsl(220 10% 95%)" }}>
+                      Concurrent Execution
+                    </strong>
+                    <p style={{ color: "hsl(220 10% 75%)" }}>
+                      Tasks running in parallel. Currently limited to{" "}
+                      <strong>{maxConcurrent}</strong> per project, 20 globally.
+                    </p>
+                  </div>
+                  <div>
+                    <p style={{ color: "hsl(220 10% 75%)" }}>
+                      Includes: executing, reviewing, re-executing, QA, and merging agents.
+                    </p>
+                  </div>
+                  <div className="pt-1 border-t" style={{ borderColor: "hsla(220 20% 100% / 0.08)" }}>
+                    <p className="text-xs" style={{ color: "hsl(220 10% 60%)" }}>
+                      Change limits → Settings
+                    </p>
+                  </div>
+                </div>
+              }
+            />
+          </div>
 
           {/* Separator */}
           <span style={{ color: "hsl(220 10% 45%)" }}>•</span>
 
-          {/* Queued Count */}
-          <span
-            data-testid="queued-count"
-            className="text-[13px]"
-            style={{ color: "hsl(220 10% 65%)" }}
-          >
-            Queued: {queuedCount}
-          </span>
+          {/* Queued Count (Clickable Popover) + Info Tooltip */}
+          <div className="flex items-center gap-1.5">
+            <QueuedTasksPopover
+              projectId={projectId}
+              queuedCount={queuedCount}
+              alignOffset={POPOVER_ALIGN_TO_SEPARATOR_DOT}
+            >
+              <button
+                data-testid="queued-count"
+                className="text-[13px] cursor-pointer hover:underline transition-all"
+                style={{ color: queuedCount > 0 ? STATUS_COLORS.ready : "hsl(220 10% 65%)" }}
+                aria-label="View queued tasks"
+                aria-haspopup="dialog"
+              >
+                {queuedLabel}{queuedCount}
+              </button>
+            </QueuedTasksPopover>
+            <InfoTooltip
+              testId="queued-info-tooltip"
+              content={
+                <div className="space-y-2">
+                  <div>
+                    <strong className="block mb-1" style={{ color: "hsl(220 10% 95%)" }}>
+                      Task Queue
+                    </strong>
+                    <p style={{ color: "hsl(220 10% 75%)" }}>
+                      Tasks in "ready" status waiting for an open execution slot.
+                      Processed by priority then age (oldest first).
+                    </p>
+                  </div>
+                  <div>
+                    <p style={{ color: "hsl(220 10% 75%)" }}>
+                      Blocked tasks are NOT counted here.
+                    </p>
+                  </div>
+                </div>
+              }
+            />
+          </div>
+
+          {/* Separator */}
+          <span style={{ color: "hsl(220 10% 45%)" }}>•</span>
+
+          {/* Merging Count with Popover */}
+          {mergePipelineData ? (
+            <MergePipelinePopover
+              active={mergePipelineData.active}
+              waiting={mergePipelineData.waiting}
+              needsAttention={mergePipelineData.needsAttention}
+              alignOffset={POPOVER_ALIGN_TO_SEPARATOR_DOT}
+            >
+              <button
+                data-testid="merging-count"
+                className="flex items-center gap-1.5 text-[13px] cursor-pointer hover:opacity-80 transition-opacity"
+                style={{ color: mergingCount > 0 ? STATUS_COLORS.pendingMerge : "hsl(220 10% 65%)" }}
+              >
+                {mergingLabel}{mergingCount}
+                {hasAttentionMerges && (
+                  <span
+                    data-testid="merge-attention-indicator"
+                    className="text-sm"
+                    style={{ color: STATUS_COLORS.mergeAttention }}
+                    title="Some merges need attention"
+                  >
+                    ⚠
+                  </span>
+                )}
+              </button>
+            </MergePipelinePopover>
+          ) : (
+            <span
+              data-testid="merging-count"
+              className="flex items-center gap-1.5 text-[13px]"
+              style={{ color: "hsl(220 10% 65%)" }}
+            >
+              {mergingLabel}{mergingCount}
+              {hasAttentionMerges && (
+                <span
+                  data-testid="merge-attention-indicator"
+                  className="text-sm"
+                  style={{ color: STATUS_COLORS.mergeAttention }}
+                  title="Some merges need attention"
+                >
+                  ⚠
+                </span>
+              )}
+            </span>
+          )}
         </div>
 
         {/* Progress Section (Center) - Conditional */}
@@ -149,7 +343,7 @@ export function ExecutionControlBar({
           >
             <Loader2
               className="w-4 h-4 animate-spin shrink-0"
-              style={{ color: "hsl(14 100% 60%)" }}
+              style={{ color: STATUS_COLORS.running }}
             />
             <span
               className="text-[13px] truncate"
@@ -176,9 +370,9 @@ export function ExecutionControlBar({
                   className="gap-2 h-9 px-4 transition-all duration-150 active:scale-[0.96] rounded-lg text-[13px]"
                   style={{
                     backgroundColor: battleModeActive
-                      ? "hsla(14 100% 60% / 0.2)"
+                      ? "hsla(14 100% 55% / 0.2)"
                       : "hsl(220 10% 18%)",
-                    color: battleModeActive ? "hsl(14 100% 60%)" : "hsl(220 10% 90%)",
+                    color: battleModeActive ? STATUS_COLORS.running : "hsl(220 10% 90%)",
                     border: "none",
                   }}
                 >
@@ -208,8 +402,8 @@ export function ExecutionControlBar({
                 className="gap-2 h-9 px-4 transition-all duration-150 active:scale-[0.96] rounded-lg text-[13px]"
                 style={{
                   /* macOS Tahoe: flat button styling */
-                  backgroundColor: isPaused ? "hsla(14 100% 60% / 0.15)" : "hsl(220 10% 18%)",
-                  color: isPaused ? "hsl(14 100% 60%)" : "hsl(220 10% 90%)",
+                  backgroundColor: isPaused ? "hsla(45 90% 55% / 0.15)" : "hsl(220 10% 18%)",
+                  color: isPaused ? STATUS_COLORS.paused : "hsl(220 10% 90%)",
                   border: "none",
                 }}
               >
@@ -249,7 +443,7 @@ export function ExecutionControlBar({
                 style={{
                   /* macOS Tahoe: flat button styling */
                   backgroundColor: canStop ? "hsla(0 70% 55% / 0.15)" : "hsl(220 10% 18%)",
-                  color: canStop ? "hsl(0 70% 60%)" : "hsl(220 10% 45%)",
+                  color: canStop ? STATUS_COLORS.stop : "hsl(220 10% 45%)",
                   border: "none",
                   opacity: canStop ? 1 : 0.5,
                 }}

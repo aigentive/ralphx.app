@@ -40,6 +40,8 @@ import { useTasksAwaitingReview } from "@/hooks/useReviews";
 import { useReviewMutations } from "@/hooks/useReviewMutations";
 import { useExecutionEvents } from "@/hooks/useExecutionEvents";
 import { useExecutionStatus } from "@/hooks/useExecutionControl";
+import { useRunningProcesses } from "@/hooks/useRunningProcesses";
+import { useMergePipeline } from "@/hooks/useMergePipeline";
 import { useProjects, projectKeys } from "@/hooks/useProjects";
 import {
   useIdeationSession,
@@ -55,6 +57,8 @@ import { useAppKeyboardShortcuts } from "@/hooks/useAppKeyboardShortcuts";
 import { useNavCompactBreakpoint } from "@/hooks";
 import { api, getGitBranches, getGitDefaultBranch } from "@/lib/tauri";
 import { executionApi } from "@/api/execution";
+import { tasksApi } from "@/api/tasks";
+import type { SelectionSource } from "@/api/plan";
 import type { ProjectSettings } from "@/types/settings";
 import { DEFAULT_PROJECT_SETTINGS } from "@/types/settings";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -160,6 +164,8 @@ function AppContent() {
 
   // Plan quick switcher state
   const [isPlanQuickSwitcherOpen, setIsPlanQuickSwitcherOpen] = useState(false);
+  const [planQuickSwitcherSource, setPlanQuickSwitcherSource] =
+    useState<SelectionSource>("quick_switcher");
 
   // Ideation state
   const activeSession = useIdeationStore(selectActiveSession);
@@ -191,6 +197,9 @@ function AppContent() {
 
   // Execution settings state (persisted to database)
   const [executionSettings, setExecutionSettings] = useState<ProjectSettings | null>(null);
+
+  // Running processes data for popover
+  const { data: runningProcessesData } = useRunningProcesses();
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
@@ -212,6 +221,16 @@ function AppContent() {
   // Fetch initial execution status and poll every 30s as fallback
   useExecutionStatus();
   const { isApproving, isRequestingChanges } = useReviewMutations();
+
+  // Merge pipeline data
+  const { data: mergePipelineData } = useMergePipeline();
+  const mergingCount = useMemo(() => {
+    if (!mergePipelineData) return 0;
+    return mergePipelineData.active.length + mergePipelineData.waiting.length + mergePipelineData.needsAttention.length;
+  }, [mergePipelineData]);
+  const hasAttentionMerges = useMemo(() => {
+    return (mergePipelineData?.needsAttention.length ?? 0) > 0;
+  }, [mergePipelineData]);
 
   // Ideation hooks
   const { data: sessionData, isLoading: isSessionLoading } = useIdeationSession(activeSession?.id ?? "");
@@ -427,6 +446,28 @@ function AppContent() {
     }
   };
 
+  const handlePauseProcess = async (taskId: string) => {
+    try {
+      await tasksApi.pause(taskId);
+      toast.success("Task paused");
+    } catch {
+      toast.error("Failed to pause task");
+    }
+  };
+
+  const handleStopProcess = async (taskId: string) => {
+    try {
+      await tasksApi.stop(taskId);
+      toast.success("Task stopped");
+    } catch {
+      toast.error("Failed to stop task");
+    }
+  };
+
+  const handleOpenSettings = () => {
+    setCurrentView("settings");
+  };
+
   const handleBattleModeToggle = useCallback(() => {
     if (battleModeActive) {
       exitBattleMode();
@@ -630,9 +671,13 @@ function AppContent() {
     }
   }, [isNavCompact, toggleGraphRightPanelCompactOpen, toggleGraphRightPanelUserOpen]);
 
-  const handleOpenPlanQuickSwitcher = useCallback(() => {
-    setIsPlanQuickSwitcherOpen(true);
-  }, []);
+  const handleOpenPlanQuickSwitcher = useCallback(
+    (source: SelectionSource = "quick_switcher") => {
+      setPlanQuickSwitcherSource(source);
+      setIsPlanQuickSwitcherOpen(true);
+    },
+    []
+  );
 
   useAppKeyboardShortcuts({
     currentView,
@@ -897,28 +942,44 @@ function AppContent() {
                   projectId={currentProjectId}
                   footer={
                     <ExecutionControlBar
+                      projectId={currentProjectId}
                       runningCount={executionStatus.runningCount}
                       maxConcurrent={executionStatus.maxConcurrent}
                       queuedCount={executionStatus.queuedCount}
+                      mergingCount={mergingCount}
+                      hasAttentionMerges={hasAttentionMerges}
+                      mergePipelineData={mergePipelineData ?? null}
                       isPaused={executionStatus.isPaused}
                       isLoading={isExecutionLoading}
                       onPauseToggle={handlePauseToggle}
                       onStop={handleStop}
                       showBattleModeToggle={false}
+                      runningProcesses={runningProcessesData?.processes ?? []}
+                      onPauseProcess={handlePauseProcess}
+                      onStopProcess={handleStopProcess}
+                      onOpenSettings={handleOpenSettings}
                     />
                   }
                 >
-                  <TaskBoard projectId={currentProjectId} />
+                  <TaskBoard
+                    projectId={currentProjectId}
+                    onOpenPlanQuickSwitcher={handleOpenPlanQuickSwitcher}
+                  />
                 </KanbanSplitLayout>
               )}
               {currentView === "graph" && (
                 <TaskGraphView
                   projectId={currentProjectId}
+                  onOpenPlanQuickSwitcher={handleOpenPlanQuickSwitcher}
                   footer={
                     <ExecutionControlBar
+                      projectId={currentProjectId}
                       runningCount={executionStatus.runningCount}
                       maxConcurrent={executionStatus.maxConcurrent}
                       queuedCount={executionStatus.queuedCount}
+                      mergingCount={mergingCount}
+                      hasAttentionMerges={hasAttentionMerges}
+                      mergePipelineData={mergePipelineData ?? null}
                       isPaused={executionStatus.isPaused}
                       isLoading={isExecutionLoading}
                       onPauseToggle={handlePauseToggle}
@@ -926,6 +987,10 @@ function AppContent() {
                       battleModeActive={battleModeActive}
                       onBattleModeToggle={handleBattleModeToggle}
                       showBattleModeToggle
+                      runningProcesses={runningProcessesData?.processes ?? []}
+                      onPauseProcess={handlePauseProcess}
+                      onStopProcess={handleStopProcess}
+                      onOpenSettings={handleOpenSettings}
                     />
                   }
                 />
@@ -1039,6 +1104,7 @@ function AppContent() {
           projectId={currentProjectId}
           isOpen={isPlanQuickSwitcherOpen}
           onClose={() => setIsPlanQuickSwitcherOpen(false)}
+          selectionSource={planQuickSwitcherSource}
           {...(quickSwitcherAnchorSelector
             ? { anchorSelector: quickSwitcherAnchorSelector }
             : {})}

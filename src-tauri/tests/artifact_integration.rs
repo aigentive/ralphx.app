@@ -37,9 +37,10 @@ fn create_sqlite_state() -> AppState {
     let shared_conn = Arc::new(Mutex::new(conn));
 
     let mut state = AppState::new_test();
-    state.artifact_repo = Arc::new(SqliteArtifactRepository::from_shared(Arc::clone(&shared_conn)));
-    state.artifact_bucket_repo =
-        Arc::new(SqliteArtifactBucketRepository::from_shared(shared_conn));
+    state.artifact_repo = Arc::new(SqliteArtifactRepository::from_shared(Arc::clone(
+        &shared_conn,
+    )));
+    state.artifact_bucket_repo = Arc::new(SqliteArtifactBucketRepository::from_shared(shared_conn));
     state
 }
 
@@ -72,7 +73,11 @@ fn create_prd_library_bucket() -> ArtifactBucket {
 async fn test_create_artifact_in_research_outputs_bucket(state: &AppState) {
     // Create the research-outputs bucket first
     let bucket = create_research_outputs_bucket();
-    state.artifact_bucket_repo.create(bucket.clone()).await.unwrap();
+    state
+        .artifact_bucket_repo
+        .create(bucket.clone())
+        .await
+        .unwrap();
 
     // Create a research findings artifact
     let artifact = Artifact::new_inline(
@@ -120,7 +125,11 @@ async fn test_copy_artifact_to_another_bucket(state: &AppState) {
     // Create both buckets
     let research_bucket = create_research_outputs_bucket();
     let prd_bucket = create_prd_library_bucket();
-    state.artifact_bucket_repo.create(research_bucket).await.unwrap();
+    state
+        .artifact_bucket_repo
+        .create(research_bucket)
+        .await
+        .unwrap();
     state.artifact_bucket_repo.create(prd_bucket).await.unwrap();
 
     // Create original artifact in research-outputs
@@ -227,10 +236,17 @@ async fn test_create_artifact_relation_derived_from(state: &AppState) {
     assert_eq!(created_relation.id, relation_id);
     assert_eq!(created_relation.from_artifact_id, derived_id);
     assert_eq!(created_relation.to_artifact_id, source_id);
-    assert_eq!(created_relation.relation_type, ArtifactRelationType::DerivedFrom);
+    assert_eq!(
+        created_relation.relation_type,
+        ArtifactRelationType::DerivedFrom
+    );
 
     // Verify we can retrieve relations
-    let relations = state.artifact_repo.get_relations(&derived_id).await.unwrap();
+    let relations = state
+        .artifact_repo
+        .get_relations(&derived_id)
+        .await
+        .unwrap();
     assert_eq!(relations.len(), 1);
     assert_eq!(relations[0].to_artifact_id, source_id);
 
@@ -257,16 +273,35 @@ async fn test_query_artifacts_by_bucket_and_type(state: &AppState) {
     // Create buckets
     let research_bucket = create_research_outputs_bucket();
     let prd_bucket = create_prd_library_bucket();
-    state.artifact_bucket_repo.create(research_bucket).await.unwrap();
+    state
+        .artifact_bucket_repo
+        .create(research_bucket)
+        .await
+        .unwrap();
     state.artifact_bucket_repo.create(prd_bucket).await.unwrap();
 
     // Create multiple artifacts in research-outputs
-    let findings1 = Artifact::new_inline("Findings 1", ArtifactType::Findings, "Content 1", "researcher")
-        .with_bucket(ArtifactBucketId::from_string("research-outputs"));
-    let findings2 = Artifact::new_inline("Findings 2", ArtifactType::Findings, "Content 2", "researcher")
-        .with_bucket(ArtifactBucketId::from_string("research-outputs"));
-    let recommendations = Artifact::new_inline("Recs", ArtifactType::Recommendations, "Recs content", "researcher")
-        .with_bucket(ArtifactBucketId::from_string("research-outputs"));
+    let findings1 = Artifact::new_inline(
+        "Findings 1",
+        ArtifactType::Findings,
+        "Content 1",
+        "researcher",
+    )
+    .with_bucket(ArtifactBucketId::from_string("research-outputs"));
+    let findings2 = Artifact::new_inline(
+        "Findings 2",
+        ArtifactType::Findings,
+        "Content 2",
+        "researcher",
+    )
+    .with_bucket(ArtifactBucketId::from_string("research-outputs"));
+    let recommendations = Artifact::new_inline(
+        "Recs",
+        ArtifactType::Recommendations,
+        "Recs content",
+        "researcher",
+    )
+    .with_bucket(ArtifactBucketId::from_string("research-outputs"));
 
     state.artifact_repo.create(findings1).await.unwrap();
     state.artifact_repo.create(findings2).await.unwrap();
@@ -275,8 +310,13 @@ async fn test_query_artifacts_by_bucket_and_type(state: &AppState) {
     // Create artifacts in prd-library
     let prd = Artifact::new_inline("Product PRD", ArtifactType::Prd, "PRD content", "user")
         .with_bucket(ArtifactBucketId::from_string("prd-library"));
-    let spec = Artifact::new_inline("API Spec", ArtifactType::Specification, "Spec content", "orchestrator")
-        .with_bucket(ArtifactBucketId::from_string("prd-library"));
+    let spec = Artifact::new_inline(
+        "API Spec",
+        ArtifactType::Specification,
+        "Spec content",
+        "orchestrator",
+    )
+    .with_bucket(ArtifactBucketId::from_string("prd-library"));
 
     state.artifact_repo.create(prd).await.unwrap();
     state.artifact_repo.create(spec).await.unwrap();
@@ -314,7 +354,11 @@ async fn test_query_artifacts_by_bucket_and_type(state: &AppState) {
     assert_eq!(recs.len(), 1);
 
     // Query by type: Prd (should be 1)
-    let prds = state.artifact_repo.get_by_type(ArtifactType::Prd).await.unwrap();
+    let prds = state
+        .artifact_repo
+        .get_by_type(ArtifactType::Prd)
+        .await
+        .unwrap();
     assert_eq!(prds.len(), 1);
     assert_eq!(prds[0].name, "Product PRD");
 
@@ -358,7 +402,12 @@ async fn test_artifact_crud_cycle(state: &AppState) {
     state.artifact_repo.update(&artifact).await.unwrap();
 
     // Verify update
-    let updated = state.artifact_repo.get_by_id(&artifact_id).await.unwrap().unwrap();
+    let updated = state
+        .artifact_repo
+        .get_by_id(&artifact_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(updated.name, "Updated Name");
     assert_eq!(updated.metadata.version, 2);
 
@@ -378,14 +427,21 @@ async fn test_multiple_artifacts_coexist(state: &AppState) {
     }
 
     // Create artifacts in different buckets
-    let code_artifact = Artifact::new_inline("Code Changes", ArtifactType::CodeChange, "diff", "worker")
-        .with_bucket(ArtifactBucketId::from_string("code-changes"));
-    let context_artifact = Artifact::new_inline("Task Context", ArtifactType::Context, "ctx", "orchestrator")
-        .with_bucket(ArtifactBucketId::from_string("work-context"));
+    let code_artifact =
+        Artifact::new_inline("Code Changes", ArtifactType::CodeChange, "diff", "worker")
+            .with_bucket(ArtifactBucketId::from_string("code-changes"));
+    let context_artifact =
+        Artifact::new_inline("Task Context", ArtifactType::Context, "ctx", "orchestrator")
+            .with_bucket(ArtifactBucketId::from_string("work-context"));
     let prd_artifact = Artifact::new_inline("Feature PRD", ArtifactType::Prd, "prd", "user")
         .with_bucket(ArtifactBucketId::from_string("prd-library"));
-    let research_artifact = Artifact::new_inline("Research", ArtifactType::ResearchDocument, "research", "deep-researcher")
-        .with_bucket(ArtifactBucketId::from_string("research-outputs"));
+    let research_artifact = Artifact::new_inline(
+        "Research",
+        ArtifactType::ResearchDocument,
+        "research",
+        "deep-researcher",
+    )
+    .with_bucket(ArtifactBucketId::from_string("research-outputs"));
 
     state.artifact_repo.create(code_artifact).await.unwrap();
     state.artifact_repo.create(context_artifact).await.unwrap();
@@ -435,8 +491,13 @@ async fn test_related_artifacts(state: &AppState) {
     // Create two related PRDs
     let prd1 = Artifact::new_inline("Auth PRD", ArtifactType::Prd, "Auth features", "user")
         .with_bucket(ArtifactBucketId::from_string("prd-library"));
-    let prd2 = Artifact::new_inline("Permissions PRD", ArtifactType::Prd, "Permission features", "user")
-        .with_bucket(ArtifactBucketId::from_string("prd-library"));
+    let prd2 = Artifact::new_inline(
+        "Permissions PRD",
+        ArtifactType::Prd,
+        "Permission features",
+        "user",
+    )
+    .with_bucket(ArtifactBucketId::from_string("prd-library"));
 
     let prd1_id = prd1.id.clone();
     let prd2_id = prd2.id.clone();
@@ -470,8 +531,9 @@ async fn test_delete_artifact_relation(state: &AppState) {
     state.artifact_bucket_repo.create(bucket).await.unwrap();
 
     // Create two artifacts
-    let artifact1 = Artifact::new_inline("Doc 1", ArtifactType::ResearchDocument, "c1", "researcher")
-        .with_bucket(ArtifactBucketId::from_string("research-outputs"));
+    let artifact1 =
+        Artifact::new_inline("Doc 1", ArtifactType::ResearchDocument, "c1", "researcher")
+            .with_bucket(ArtifactBucketId::from_string("research-outputs"));
     let artifact2 = Artifact::new_inline("Doc 2", ArtifactType::Findings, "c2", "researcher")
         .with_bucket(ArtifactBucketId::from_string("research-outputs"));
 
@@ -490,7 +552,11 @@ async fn test_delete_artifact_relation(state: &AppState) {
     assert_eq!(relations.len(), 1);
 
     // Delete relation
-    state.artifact_repo.delete_relation(&id2, &id1).await.unwrap();
+    state
+        .artifact_repo
+        .delete_relation(&id2, &id1)
+        .await
+        .unwrap();
 
     // Verify relation is gone
     let relations_after = state.artifact_repo.get_relations(&id2).await.unwrap();
@@ -505,7 +571,11 @@ async fn test_bucket_access_control(state: &AppState) {
     state.artifact_bucket_repo.create(bucket).await.unwrap();
 
     // Verify bucket properties
-    let found = state.artifact_bucket_repo.get_by_id(&bucket_id).await.unwrap();
+    let found = state
+        .artifact_bucket_repo
+        .get_by_id(&bucket_id)
+        .await
+        .unwrap();
     assert!(found.is_some());
     let bucket = found.unwrap();
 
@@ -532,7 +602,11 @@ async fn test_system_buckets_flagged(state: &AppState) {
     }
 
     // Get all system buckets
-    let system_buckets = state.artifact_bucket_repo.get_system_buckets().await.unwrap();
+    let system_buckets = state
+        .artifact_bucket_repo
+        .get_system_buckets()
+        .await
+        .unwrap();
     assert_eq!(system_buckets.len(), 4);
 
     // Verify all are marked as system
@@ -541,12 +615,15 @@ async fn test_system_buckets_flagged(state: &AppState) {
     }
 
     // Create a custom bucket
-    let custom = ArtifactBucket::new("Custom Bucket")
-        .accepts(ArtifactType::Prd);
+    let custom = ArtifactBucket::new("Custom Bucket").accepts(ArtifactType::Prd);
     state.artifact_bucket_repo.create(custom).await.unwrap();
 
     // System buckets should still be 4
-    let system_buckets = state.artifact_bucket_repo.get_system_buckets().await.unwrap();
+    let system_buckets = state
+        .artifact_bucket_repo
+        .get_system_buckets()
+        .await
+        .unwrap();
     assert_eq!(system_buckets.len(), 4);
 
     // But total buckets should be 5

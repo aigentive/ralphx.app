@@ -33,7 +33,12 @@ impl SqliteAgentProfileRepository {
 
 #[async_trait]
 impl AgentProfileRepository for SqliteAgentProfileRepository {
-    async fn create(&self, id: &AgentProfileId, profile: &AgentProfile, is_builtin: bool) -> AppResult<()> {
+    async fn create(
+        &self,
+        id: &AgentProfileId,
+        profile: &AgentProfile,
+        is_builtin: bool,
+    ) -> AppResult<()> {
         let conn = self.conn.lock().await;
 
         let profile_json = serde_json::to_string(profile)
@@ -69,8 +74,9 @@ impl AgentProfileRepository for SqliteAgentProfileRepository {
 
         match result {
             Ok(json) => {
-                let profile: AgentProfile = serde_json::from_str(&json)
-                    .map_err(|e| AppError::Database(format!("JSON deserialization error: {}", e)))?;
+                let profile: AgentProfile = serde_json::from_str(&json).map_err(|e| {
+                    AppError::Database(format!("JSON deserialization error: {}", e))
+                })?;
                 Ok(Some(profile))
             }
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
@@ -92,8 +98,9 @@ impl AgentProfileRepository for SqliteAgentProfileRepository {
 
         match result {
             Ok(json) => {
-                let profile: AgentProfile = serde_json::from_str(&json)
-                    .map_err(|e| AppError::Database(format!("JSON deserialization error: {}", e)))?;
+                let profile: AgentProfile = serde_json::from_str(&json).map_err(|e| {
+                    AppError::Database(format!("JSON deserialization error: {}", e))
+                })?;
                 Ok(Some(profile))
             }
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
@@ -155,7 +162,9 @@ impl AgentProfileRepository for SqliteAgentProfileRepository {
         let conn = self.conn.lock().await;
 
         let mut stmt = conn
-            .prepare("SELECT profile_json FROM agent_profiles WHERE is_builtin = 1 ORDER BY name ASC")
+            .prepare(
+                "SELECT profile_json FROM agent_profiles WHERE is_builtin = 1 ORDER BY name ASC",
+            )
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let profiles = stmt
@@ -180,7 +189,9 @@ impl AgentProfileRepository for SqliteAgentProfileRepository {
         let conn = self.conn.lock().await;
 
         let mut stmt = conn
-            .prepare("SELECT profile_json FROM agent_profiles WHERE is_builtin = 0 ORDER BY name ASC")
+            .prepare(
+                "SELECT profile_json FROM agent_profiles WHERE is_builtin = 0 ORDER BY name ASC",
+            )
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let profiles = stmt
@@ -315,12 +326,20 @@ mod tests {
     async fn test_get_all() {
         let repo = create_test_repo().await;
 
-        repo.create(&AgentProfileId::from_string("w1"), &AgentProfile::worker(), true)
-            .await
-            .unwrap();
-        repo.create(&AgentProfileId::from_string("r1"), &AgentProfile::reviewer(), true)
-            .await
-            .unwrap();
+        repo.create(
+            &AgentProfileId::from_string("w1"),
+            &AgentProfile::worker(),
+            true,
+        )
+        .await
+        .unwrap();
+        repo.create(
+            &AgentProfileId::from_string("r1"),
+            &AgentProfile::reviewer(),
+            true,
+        )
+        .await
+        .unwrap();
 
         let all = repo.get_all().await.unwrap();
         assert_eq!(all.len(), 2);
@@ -330,12 +349,20 @@ mod tests {
     async fn test_get_by_role() {
         let repo = create_test_repo().await;
 
-        repo.create(&AgentProfileId::from_string("w1"), &AgentProfile::worker(), true)
-            .await
-            .unwrap();
-        repo.create(&AgentProfileId::from_string("r1"), &AgentProfile::reviewer(), true)
-            .await
-            .unwrap();
+        repo.create(
+            &AgentProfileId::from_string("w1"),
+            &AgentProfile::worker(),
+            true,
+        )
+        .await
+        .unwrap();
+        repo.create(
+            &AgentProfileId::from_string("r1"),
+            &AgentProfile::reviewer(),
+            true,
+        )
+        .await
+        .unwrap();
 
         let workers = repo.get_by_role(ProfileRole::Worker).await.unwrap();
         assert_eq!(workers.len(), 1);
@@ -346,9 +373,13 @@ mod tests {
     async fn test_get_builtin_vs_custom() {
         let repo = create_test_repo().await;
 
-        repo.create(&AgentProfileId::from_string("w1"), &AgentProfile::worker(), true)
-            .await
-            .unwrap();
+        repo.create(
+            &AgentProfileId::from_string("w1"),
+            &AgentProfile::worker(),
+            true,
+        )
+        .await
+        .unwrap();
 
         let mut custom_profile = AgentProfile::worker();
         custom_profile.name = "Custom Worker".to_string();
@@ -446,7 +477,13 @@ mod tests {
 
         // Verify complex nested structures are preserved
         assert_eq!(retrieved.execution.model, profile.execution.model);
-        assert_eq!(retrieved.execution.max_iterations, profile.execution.max_iterations);
-        assert_eq!(retrieved.behavior.autonomy_level, profile.behavior.autonomy_level);
+        assert_eq!(
+            retrieved.execution.max_iterations,
+            profile.execution.max_iterations
+        );
+        assert_eq!(
+            retrieved.behavior.autonomy_level,
+            profile.behavior.autonomy_level
+        );
     }
 }

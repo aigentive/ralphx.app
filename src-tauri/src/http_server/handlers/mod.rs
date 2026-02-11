@@ -25,5 +25,5 @@ pub use tasks::*;
 pub use worker::*;
 
 // Re-export parent types and helpers for handlers to use
-pub use super::types::*;
 pub use super::helpers::*;
+pub use super::types::*;

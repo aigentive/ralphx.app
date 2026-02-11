@@ -77,9 +77,12 @@ fn methodology_extension_new_creates_correctly() {
 #[test]
 fn methodology_extension_with_description() {
     let workflow = create_test_workflow();
-    let methodology = MethodologyExtension::new("Test", workflow)
-        .with_description("A test methodology");
-    assert_eq!(methodology.description, Some("A test methodology".to_string()));
+    let methodology =
+        MethodologyExtension::new("Test", workflow).with_description("A test methodology");
+    assert_eq!(
+        methodology.description,
+        Some("A test methodology".to_string())
+    );
 }
 
 #[test]
@@ -90,14 +93,19 @@ fn methodology_extension_with_agent_profile() {
         .with_agent_profile("developer");
     assert_eq!(methodology.agent_profiles.len(), 2);
     assert!(methodology.agent_profiles.contains(&"analyst".to_string()));
-    assert!(methodology.agent_profiles.contains(&"developer".to_string()));
+    assert!(methodology
+        .agent_profiles
+        .contains(&"developer".to_string()));
 }
 
 #[test]
 fn methodology_extension_with_agent_profiles() {
     let workflow = create_test_workflow();
-    let methodology = MethodologyExtension::new("Test", workflow)
-        .with_agent_profiles(["pm", "architect", "developer"]);
+    let methodology = MethodologyExtension::new("Test", workflow).with_agent_profiles([
+        "pm",
+        "architect",
+        "developer",
+    ]);
     assert_eq!(methodology.agent_profiles.len(), 3);
 }
 
@@ -113,8 +121,8 @@ fn methodology_extension_with_skill() {
 #[test]
 fn methodology_extension_with_skills() {
     let workflow = create_test_workflow();
-    let methodology = MethodologyExtension::new("Test", workflow)
-        .with_skills(["skill1", "skill2", "skill3"]);
+    let methodology =
+        MethodologyExtension::new("Test", workflow).with_skills(["skill1", "skill2", "skill3"]);
     assert_eq!(methodology.skills.len(), 3);
 }
 
@@ -122,8 +130,7 @@ fn methodology_extension_with_skills() {
 fn methodology_extension_with_phase() {
     let workflow = create_test_workflow();
     let phase = MethodologyPhase::new("analysis", "Analysis", 0);
-    let methodology = MethodologyExtension::new("Test", workflow)
-        .with_phase(phase);
+    let methodology = MethodologyExtension::new("Test", workflow).with_phase(phase);
     assert_eq!(methodology.phases.len(), 1);
     assert_eq!(methodology.phases[0].name, "Analysis");
 }
@@ -135,8 +142,7 @@ fn methodology_extension_with_phases() {
         MethodologyPhase::new("p1", "Phase 1", 0),
         MethodologyPhase::new("p2", "Phase 2", 1),
     ];
-    let methodology = MethodologyExtension::new("Test", workflow)
-        .with_phases(phases);
+    let methodology = MethodologyExtension::new("Test", workflow).with_phases(phases);
     assert_eq!(methodology.phases.len(), 2);
 }
 
@@ -144,8 +150,7 @@ fn methodology_extension_with_phases() {
 fn methodology_extension_with_template() {
     let workflow = create_test_workflow();
     let template = MethodologyTemplate::new("prd", "templates/prd.md");
-    let methodology = MethodologyExtension::new("Test", workflow)
-        .with_template(template);
+    let methodology = MethodologyExtension::new("Test", workflow).with_template(template);
     assert_eq!(methodology.templates.len(), 1);
 }
 
@@ -156,8 +161,7 @@ fn methodology_extension_with_templates() {
         MethodologyTemplate::new("prd", "templates/prd.md"),
         MethodologyTemplate::new("design_doc", "templates/design.md"),
     ];
-    let methodology = MethodologyExtension::new("Test", workflow)
-        .with_templates(templates);
+    let methodology = MethodologyExtension::new("Test", workflow).with_templates(templates);
     assert_eq!(methodology.templates.len(), 2);
 }
 
@@ -168,8 +172,7 @@ fn methodology_extension_with_hooks_config() {
         "pre_commit": ["validate_prd"],
         "post_review": ["notify_pm"]
     });
-    let methodology = MethodologyExtension::new("Test", workflow)
-        .with_hooks_config(hooks);
+    let methodology = MethodologyExtension::new("Test", workflow).with_hooks_config(hooks);
     assert!(methodology.hooks_config.is_some());
 }
 
@@ -198,8 +201,8 @@ fn methodology_extension_phase_count() {
 #[test]
 fn methodology_extension_agent_count() {
     let workflow = create_test_workflow();
-    let methodology = MethodologyExtension::new("Test", workflow)
-        .with_agent_profiles(["a1", "a2", "a3"]);
+    let methodology =
+        MethodologyExtension::new("Test", workflow).with_agent_profiles(["a1", "a2", "a3"]);
     assert_eq!(methodology.agent_count(), 3);
 }
 
@@ -277,15 +280,14 @@ fn methodology_phase_new_creates_correctly() {
 
 #[test]
 fn methodology_phase_with_description() {
-    let phase = MethodologyPhase::new("analysis", "Analysis", 0)
-        .with_description("Analyze requirements");
+    let phase =
+        MethodologyPhase::new("analysis", "Analysis", 0).with_description("Analyze requirements");
     assert_eq!(phase.description, Some("Analyze requirements".to_string()));
 }
 
 #[test]
 fn methodology_phase_with_agent_profile() {
-    let phase = MethodologyPhase::new("analysis", "Analysis", 0)
-        .with_agent_profile("analyst");
+    let phase = MethodologyPhase::new("analysis", "Analysis", 0).with_agent_profile("analyst");
     assert_eq!(phase.agent_profiles.len(), 1);
     assert!(phase.agent_profiles.contains(&"analyst".to_string()));
 }
@@ -307,8 +309,8 @@ fn methodology_phase_with_column() {
 
 #[test]
 fn methodology_phase_with_columns() {
-    let phase = MethodologyPhase::new("analysis", "Analysis", 0)
-        .with_columns(["col1", "col2", "col3"]);
+    let phase =
+        MethodologyPhase::new("analysis", "Analysis", 0).with_columns(["col1", "col2", "col3"]);
     assert_eq!(phase.column_ids.len(), 3);
 }
 
@@ -359,8 +361,7 @@ fn methodology_template_new_creates_correctly() {
 
 #[test]
 fn methodology_template_with_name() {
-    let template = MethodologyTemplate::new("prd", "templates/prd.md")
-        .with_name("PRD Template");
+    let template = MethodologyTemplate::new("prd", "templates/prd.md").with_name("PRD Template");
     assert_eq!(template.name, Some("PRD Template".to_string()));
 }
 
@@ -368,7 +369,10 @@ fn methodology_template_with_name() {
 fn methodology_template_with_description() {
     let template = MethodologyTemplate::new("prd", "templates/prd.md")
         .with_description("Product Requirements Document template");
-    assert_eq!(template.description, Some("Product Requirements Document template".to_string()));
+    assert_eq!(
+        template.description,
+        Some("Product Requirements Document template".to_string())
+    );
 }
 
 #[test]
@@ -426,9 +430,18 @@ fn methodology_status_display() {
 
 #[test]
 fn methodology_status_from_str() {
-    assert_eq!(MethodologyStatus::from_str("available").unwrap(), MethodologyStatus::Available);
-    assert_eq!(MethodologyStatus::from_str("active").unwrap(), MethodologyStatus::Active);
-    assert_eq!(MethodologyStatus::from_str("disabled").unwrap(), MethodologyStatus::Disabled);
+    assert_eq!(
+        MethodologyStatus::from_str("available").unwrap(),
+        MethodologyStatus::Available
+    );
+    assert_eq!(
+        MethodologyStatus::from_str("active").unwrap(),
+        MethodologyStatus::Active
+    );
+    assert_eq!(
+        MethodologyStatus::from_str("disabled").unwrap(),
+        MethodologyStatus::Disabled
+    );
 }
 
 #[test]
@@ -440,9 +453,18 @@ fn methodology_status_from_str_error() {
 
 #[test]
 fn methodology_status_serializes() {
-    assert_eq!(serde_json::to_string(&MethodologyStatus::Available).unwrap(), "\"available\"");
-    assert_eq!(serde_json::to_string(&MethodologyStatus::Active).unwrap(), "\"active\"");
-    assert_eq!(serde_json::to_string(&MethodologyStatus::Disabled).unwrap(), "\"disabled\"");
+    assert_eq!(
+        serde_json::to_string(&MethodologyStatus::Available).unwrap(),
+        "\"available\""
+    );
+    assert_eq!(
+        serde_json::to_string(&MethodologyStatus::Active).unwrap(),
+        "\"active\""
+    );
+    assert_eq!(
+        serde_json::to_string(&MethodologyStatus::Disabled).unwrap(),
+        "\"disabled\""
+    );
 }
 
 #[test]
@@ -479,9 +501,13 @@ fn bmad_methodology_has_8_agent_profiles() {
     assert!(bmad.agent_profiles.contains(&"bmad-architect".to_string()));
     assert!(bmad.agent_profiles.contains(&"bmad-ux".to_string()));
     assert!(bmad.agent_profiles.contains(&"bmad-developer".to_string()));
-    assert!(bmad.agent_profiles.contains(&"bmad-scrum-master".to_string()));
+    assert!(bmad
+        .agent_profiles
+        .contains(&"bmad-scrum-master".to_string()));
     assert!(bmad.agent_profiles.contains(&"bmad-tea".to_string()));
-    assert!(bmad.agent_profiles.contains(&"bmad-tech-writer".to_string()));
+    assert!(bmad
+        .agent_profiles
+        .contains(&"bmad-tech-writer".to_string()));
 }
 
 #[test]
@@ -501,7 +527,12 @@ fn bmad_methodology_has_10_workflow_columns() {
     let bmad = MethodologyExtension::bmad();
     assert_eq!(bmad.workflow.columns.len(), 10);
 
-    let column_ids: Vec<_> = bmad.workflow.columns.iter().map(|c| c.id.as_str()).collect();
+    let column_ids: Vec<_> = bmad
+        .workflow
+        .columns
+        .iter()
+        .map(|c| c.id.as_str())
+        .collect();
     assert!(column_ids.contains(&"brainstorm"));
     assert!(column_ids.contains(&"research"));
     assert!(column_ids.contains(&"prd-draft"));
@@ -519,7 +550,11 @@ fn bmad_methodology_has_templates() {
     let bmad = MethodologyExtension::bmad();
     assert_eq!(bmad.templates.len(), 3);
 
-    let template_types: Vec<_> = bmad.templates.iter().map(|t| t.artifact_type.as_str()).collect();
+    let template_types: Vec<_> = bmad
+        .templates
+        .iter()
+        .map(|t| t.artifact_type.as_str())
+        .collect();
     assert!(template_types.contains(&"prd"));
     assert!(template_types.contains(&"design_doc"));
     assert!(template_types.contains(&"specification"));
@@ -557,8 +592,12 @@ fn gsd_methodology_has_correct_name() {
 fn gsd_methodology_has_11_agent_profiles() {
     let gsd = MethodologyExtension::gsd();
     assert_eq!(gsd.agent_profiles.len(), 11);
-    assert!(gsd.agent_profiles.contains(&"gsd-project-researcher".to_string()));
-    assert!(gsd.agent_profiles.contains(&"gsd-phase-researcher".to_string()));
+    assert!(gsd
+        .agent_profiles
+        .contains(&"gsd-project-researcher".to_string()));
+    assert!(gsd
+        .agent_profiles
+        .contains(&"gsd-phase-researcher".to_string()));
     assert!(gsd.agent_profiles.contains(&"gsd-planner".to_string()));
     assert!(gsd.agent_profiles.contains(&"gsd-plan-checker".to_string()));
     assert!(gsd.agent_profiles.contains(&"gsd-executor".to_string()));
@@ -606,7 +645,11 @@ fn gsd_methodology_has_templates() {
     let gsd = MethodologyExtension::gsd();
     assert_eq!(gsd.templates.len(), 3);
 
-    let template_types: Vec<_> = gsd.templates.iter().map(|t| t.artifact_type.as_str()).collect();
+    let template_types: Vec<_> = gsd
+        .templates
+        .iter()
+        .map(|t| t.artifact_type.as_str())
+        .collect();
     assert!(template_types.contains(&"specification"));
     assert!(template_types.contains(&"task_spec"));
     assert!(template_types.contains(&"context"));
@@ -648,13 +691,29 @@ fn bmad_workflow_column_behaviors_have_agent_profiles() {
     let bmad = MethodologyExtension::bmad();
 
     // Check that columns have correct agent behaviors
-    let brainstorm = bmad.workflow.columns.iter().find(|c| c.id == "brainstorm").unwrap();
+    let brainstorm = bmad
+        .workflow
+        .columns
+        .iter()
+        .find(|c| c.id == "brainstorm")
+        .unwrap();
     assert!(brainstorm.behavior.is_some());
-    assert_eq!(brainstorm.behavior.as_ref().unwrap().agent_profile, Some("bmad-analyst".to_string()));
+    assert_eq!(
+        brainstorm.behavior.as_ref().unwrap().agent_profile,
+        Some("bmad-analyst".to_string())
+    );
 
-    let sprint = bmad.workflow.columns.iter().find(|c| c.id == "sprint").unwrap();
+    let sprint = bmad
+        .workflow
+        .columns
+        .iter()
+        .find(|c| c.id == "sprint")
+        .unwrap();
     assert!(sprint.behavior.is_some());
-    assert_eq!(sprint.behavior.as_ref().unwrap().agent_profile, Some("bmad-developer".to_string()));
+    assert_eq!(
+        sprint.behavior.as_ref().unwrap().agent_profile,
+        Some("bmad-developer".to_string())
+    );
 }
 
 #[test]
@@ -662,13 +721,29 @@ fn gsd_workflow_column_behaviors_have_agent_profiles() {
     let gsd = MethodologyExtension::gsd();
 
     // Check that columns have correct agent behaviors
-    let initialize = gsd.workflow.columns.iter().find(|c| c.id == "initialize").unwrap();
+    let initialize = gsd
+        .workflow
+        .columns
+        .iter()
+        .find(|c| c.id == "initialize")
+        .unwrap();
     assert!(initialize.behavior.is_some());
-    assert_eq!(initialize.behavior.as_ref().unwrap().agent_profile, Some("gsd-project-researcher".to_string()));
+    assert_eq!(
+        initialize.behavior.as_ref().unwrap().agent_profile,
+        Some("gsd-project-researcher".to_string())
+    );
 
-    let executing = gsd.workflow.columns.iter().find(|c| c.id == "executing").unwrap();
+    let executing = gsd
+        .workflow
+        .columns
+        .iter()
+        .find(|c| c.id == "executing")
+        .unwrap();
     assert!(executing.behavior.is_some());
-    assert_eq!(executing.behavior.as_ref().unwrap().agent_profile, Some("gsd-executor".to_string()));
+    assert_eq!(
+        executing.behavior.as_ref().unwrap().agent_profile,
+        Some("gsd-executor".to_string())
+    );
 }
 
 #[test]

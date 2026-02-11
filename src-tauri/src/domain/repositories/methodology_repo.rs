@@ -86,10 +86,7 @@ mod tests {
             Ok(methodology)
         }
 
-        async fn get_by_id(
-            &self,
-            _id: &MethodologyId,
-        ) -> AppResult<Option<MethodologyExtension>> {
+        async fn get_by_id(&self, _id: &MethodologyId) -> AppResult<Option<MethodologyExtension>> {
             Ok(self.return_methodology.clone())
         }
 
@@ -143,8 +140,7 @@ mod tests {
             .with_description("A test methodology")
             .with_agent_profiles(["analyst", "developer"])
             .with_phase(
-                MethodologyPhase::new("analysis", "Analysis", 0)
-                    .with_agent_profile("analyst"),
+                MethodologyPhase::new("analysis", "Analysis", 0).with_agent_profile("analyst"),
             )
     }
 
@@ -157,8 +153,7 @@ mod tests {
 
     #[test]
     fn test_methodology_repository_trait_can_be_object_safe() {
-        let repo: Arc<dyn MethodologyRepository> =
-            Arc::new(MockMethodologyRepository::new());
+        let repo: Arc<dyn MethodologyRepository> = Arc::new(MockMethodologyRepository::new());
         assert!(Arc::strong_count(&repo) == 1);
     }
 
@@ -300,8 +295,9 @@ mod tests {
     #[tokio::test]
     async fn test_methodology_repository_trait_object_in_arc() {
         let methodology = create_test_methodology();
-        let repo: Arc<dyn MethodologyRepository> =
-            Arc::new(MockMethodologyRepository::with_methodology(methodology.clone()));
+        let repo: Arc<dyn MethodologyRepository> = Arc::new(
+            MockMethodologyRepository::with_methodology(methodology.clone()),
+        );
 
         // Use through trait object
         let result = repo.get_by_id(&methodology.id).await;
@@ -321,13 +317,9 @@ mod tests {
                     .with_description("Analyze requirements")
                     .with_agent_profiles(["analyst", "researcher"]),
             )
+            .with_phase(MethodologyPhase::new("planning", "Planning", 1).with_agent_profile("pm"))
             .with_phase(
-                MethodologyPhase::new("planning", "Planning", 1)
-                    .with_agent_profile("pm"),
-            )
-            .with_phase(
-                MethodologyPhase::new("execution", "Execution", 2)
-                    .with_agent_profile("developer"),
+                MethodologyPhase::new("execution", "Execution", 2).with_agent_profile("developer"),
             );
 
         let repo = MockMethodologyRepository::with_methodology(methodology.clone());
@@ -347,7 +339,10 @@ mod tests {
                     .with_name("PRD Template")
                     .with_description("Product Requirements Document"),
             )
-            .with_template(MethodologyTemplate::new("design_doc", "templates/design.md"));
+            .with_template(MethodologyTemplate::new(
+                "design_doc",
+                "templates/design.md",
+            ));
 
         let repo = MockMethodologyRepository::with_methodology(methodology.clone());
         let result = repo.get_by_id(&methodology.id).await.unwrap().unwrap();
@@ -360,8 +355,11 @@ mod tests {
     #[tokio::test]
     async fn test_methodology_with_skills_preserved() {
         let workflow = create_test_workflow();
-        let methodology = MethodologyExtension::new("Skills Test", workflow)
-            .with_skills(["skills/prd-creation", "skills/code-review", "skills/architecture"]);
+        let methodology = MethodologyExtension::new("Skills Test", workflow).with_skills([
+            "skills/prd-creation",
+            "skills/code-review",
+            "skills/architecture",
+        ]);
 
         let repo = MockMethodologyRepository::with_methodology(methodology.clone());
         let result = repo.get_by_id(&methodology.id).await.unwrap().unwrap();

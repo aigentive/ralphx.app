@@ -1,7 +1,10 @@
 use super::*;
 use crate::application::{AppState, TaskTransitionService};
 use crate::commands::execution_commands::ExecutionState;
-use crate::domain::entities::{InternalStatus, Project, Task};
+use crate::domain::entities::{
+    AgentRun, AgentRunId, AgentRunStatus, ChatConversationId, InternalStatus, Project, Task,
+};
+use crate::domain::services::RunningAgentKey;
 use std::sync::Arc;
 
 fn build_reconciler(
@@ -115,7 +118,10 @@ fn merge_policy_verifies_on_completed_run() {
     };
 
     let decision = policy.decide_reconciliation(RecoveryContext::Merge, evidence);
-    assert_eq!(decision.action, RecoveryActionKind::AttemptMergeAutoComplete);
+    assert_eq!(
+        decision.action,
+        RecoveryActionKind::AttemptMergeAutoComplete
+    );
 }
 
 #[test]
@@ -158,7 +164,11 @@ async fn recover_execution_stop_noops_for_paused_task() {
     let reconciler = build_reconciler(&app_state, &execution_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Paused Task".to_string());
     task.internal_status = InternalStatus::Paused;
@@ -175,7 +185,11 @@ async fn recover_execution_stop_noops_for_stopped_task() {
     let reconciler = build_reconciler(&app_state, &execution_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Stopped Task".to_string());
     task.internal_status = InternalStatus::Stopped;
@@ -246,4 +260,65 @@ fn pending_merge_deferred_waits_when_not_stale() {
 
     let decision = policy.decide_reconciliation(RecoveryContext::PendingMerge, evidence);
     assert_eq!(decision.action, RecoveryActionKind::None);
+}
+
+#[tokio::test]
+async fn reconcile_stuck_tasks_prunes_stale_registry_for_terminal_task() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Task already moved to terminal state, but runtime registry still has an old TaskExecution run.
+    let mut task = Task::new(project.id.clone(), "Terminal Task".to_string());
+    task.internal_status = InternalStatus::Merged;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let run = AgentRun::new(ChatConversationId::new());
+    let run_id = run.id;
+    app_state.agent_run_repo.create(run).await.unwrap();
+
+    let key = RunningAgentKey::new("task_execution", task.id.as_str());
+    app_state
+        .running_agent_registry
+        .register(
+            key.clone(),
+            999_999, // guaranteed nonexistent PID for liveness check
+            "conv-stale".to_string(),
+            run_id.as_str(),
+        )
+        .await;
+
+    assert!(app_state.running_agent_registry.is_running(&key).await);
+    assert_eq!(execution_state.running_count(), 0);
+
+    reconciler.reconcile_stuck_tasks().await;
+
+    assert!(
+        !app_state.running_agent_registry.is_running(&key).await,
+        "stale running_agents entry should be pruned"
+    );
+    assert_eq!(
+        execution_state.running_count(),
+        0,
+        "execution running_count should be synced to cleaned registry count"
+    );
+
+    let updated = app_state
+        .agent_run_repo
+        .get_by_id(&AgentRunId::from_string(run_id.as_str()))
+        .await
+        .unwrap()
+        .expect("run should still exist");
+    assert_eq!(
+        updated.status,
+        AgentRunStatus::Cancelled,
+        "stale running run should be cancelled after GC"
+    );
 }

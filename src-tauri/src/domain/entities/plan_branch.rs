@@ -128,11 +128,7 @@ impl PlanBranch {
     pub fn from_row(row: &Row) -> rusqlite::Result<Self> {
         let status_str: String = row.get("status")?;
         let status = PlanBranchStatus::from_db_string(&status_str).map_err(|e| {
-            rusqlite::Error::FromSqlConversionFailure(
-                0,
-                rusqlite::types::Type::Text,
-                Box::new(e),
-            )
+            rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e))
         })?;
 
         let merged_at: Option<DateTime<Utc>> = row

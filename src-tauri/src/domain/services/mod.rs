@@ -14,7 +14,7 @@ pub mod workflow_service;
 pub use artifact_flow_service::{ArtifactFlowService, FlowExecutionResult, StepExecutionResult};
 pub use artifact_service::ArtifactService;
 // Unified message queue - keyed by (context_type, context_id)
-pub use message_queue::{MessageQueue, QueuedMessage, QueueKey};
+pub use message_queue::{MessageQueue, QueueKey, QueuedMessage};
 pub use methodology_service::{MethodologyActivationResult, MethodologyService};
 pub use research_service::ResearchService;
 // Running agent registry for tracking and stopping agents

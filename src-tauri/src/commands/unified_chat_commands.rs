@@ -360,7 +360,9 @@ pub async fn get_agent_conversation(
                         role: m.role.to_string(),
                         content: m.content,
                         tool_calls: m.tool_calls.and_then(|tc| serde_json::from_str(&tc).ok()),
-                        content_blocks: m.content_blocks.and_then(|cb| serde_json::from_str(&cb).ok()),
+                        content_blocks: m
+                            .content_blocks
+                            .and_then(|cb| serde_json::from_str(&cb).ok()),
                         created_at: m.created_at.to_rfc3339(),
                     })
                     .collect(),
@@ -466,9 +468,7 @@ pub async fn create_agent_conversation(
     input: CreateAgentConversationInput,
     state: State<'_, AppState>,
 ) -> Result<AgentConversationResponse, String> {
-    use crate::domain::entities::{
-        ChatConversation, IdeationSessionId, ProjectId, TaskId,
-    };
+    use crate::domain::entities::{ChatConversation, IdeationSessionId, ProjectId, TaskId};
 
     let context_type = parse_context_type(&input.context_type)?;
 

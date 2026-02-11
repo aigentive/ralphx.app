@@ -1,14 +1,14 @@
 // Query (read-only) handlers for task_commands module
 
-use tauri::State;
-use crate::application::AppState;
-use crate::domain::entities::{InternalStatus, ProjectId, TaskId};
+use super::helpers::status_to_label;
 use super::types::{
-    TaskResponse, TaskListResponse, StatusTransition, StateTransitionResponse,
-    TaskGraphNode, TaskGraphEdge, PlanGroupInfo, StatusSummary, TaskDependencyGraphResponse,
+    PlanGroupInfo, StateTransitionResponse, StatusSummary, StatusTransition,
+    TaskDependencyGraphResponse, TaskGraphEdge, TaskGraphNode, TaskListResponse, TaskResponse,
     TimelineEvent, TimelineEventType, TimelineEventsResponse,
 };
-use super::helpers::status_to_label;
+use crate::application::AppState;
+use crate::domain::entities::{InternalStatus, ProjectId, TaskId};
+use tauri::State;
 
 /// List tasks for a project with pagination support
 ///
@@ -72,7 +72,11 @@ pub async fn list_tasks(
     // Get total count with session filter passed to repository
     let total = state
         .task_repo
-        .count_tasks(&project_id, include_archived, ideation_session_id.as_deref())
+        .count_tasks(
+            &project_id,
+            include_archived,
+            ideation_session_id.as_deref(),
+        )
         .await
         .map_err(|e| e.to_string())?;
 
@@ -92,7 +96,10 @@ pub async fn list_tasks(
 
 /// Get a single task by ID
 #[tauri::command]
-pub async fn get_task(id: String, state: State<'_, AppState>) -> Result<Option<TaskResponse>, String> {
+pub async fn get_task(
+    id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<TaskResponse>, String> {
     let task_id = TaskId::from_string(id);
     state
         .task_repo
@@ -375,7 +382,10 @@ pub async fn get_task_dependency_graph(
     let mut tasks: Vec<_> = if include_archived {
         tasks
     } else {
-        tasks.into_iter().filter(|t| t.archived_at.is_none()).collect()
+        tasks
+            .into_iter()
+            .filter(|t| t.archived_at.is_none())
+            .collect()
     };
 
     // Filter by session_id if provided
@@ -426,8 +436,14 @@ pub async fn get_task_dependency_graph(
                 });
                 *in_degree.entry(task_id_str.clone()).or_insert(0) += 1;
                 *out_degree.entry(blocker_str.clone()).or_insert(0) += 1;
-                adjacency.entry(blocker_str.clone()).or_default().push(task_id_str.clone());
-                reverse_adjacency.entry(task_id_str.clone()).or_default().push(blocker_str.clone());
+                adjacency
+                    .entry(blocker_str.clone())
+                    .or_default()
+                    .push(task_id_str.clone());
+                reverse_adjacency
+                    .entry(task_id_str.clone())
+                    .or_default()
+                    .push(blocker_str.clone());
             }
         }
     }
@@ -485,7 +501,8 @@ pub async fn get_task_dependency_graph(
     let mut critical_path_parent: HashMap<String, Option<String>> = HashMap::new();
 
     // Process nodes in topological order (by tier)
-    let mut nodes_by_tier: Vec<(String, u32)> = tier_map.iter().map(|(k, v)| (k.clone(), *v)).collect();
+    let mut nodes_by_tier: Vec<(String, u32)> =
+        tier_map.iter().map(|(k, v)| (k.clone(), *v)).collect();
     nodes_by_tier.sort_by_key(|(_, tier)| *tier);
 
     for (node, _) in &nodes_by_tier {
@@ -625,10 +642,17 @@ pub async fn get_task_dependency_graph(
             if grouped_task_ids.contains(&task_id_str) {
                 continue;
             }
-            if let Some(plan_id) = task.plan_artifact_id.as_ref().map(|id| id.as_str().to_string()) {
+            if let Some(plan_id) = task
+                .plan_artifact_id
+                .as_ref()
+                .map(|id| id.as_str().to_string())
+            {
                 if let Some(&group_idx) = plan_group_index.get(&plan_id) {
                     plan_groups[group_idx].task_ids.push(task_id_str);
-                    categorize_status(&task.internal_status, &mut plan_groups[group_idx].status_summary);
+                    categorize_status(
+                        &task.internal_status,
+                        &mut plan_groups[group_idx].status_summary,
+                    );
                 }
             }
         }
@@ -653,7 +677,11 @@ pub async fn get_task_dependency_graph(
             if grouped_task_ids.contains(&task_id_str) {
                 continue;
             }
-            if let Some(sid) = task.ideation_session_id.as_ref().map(|id| id.as_str().to_string()) {
+            if let Some(sid) = task
+                .ideation_session_id
+                .as_ref()
+                .map(|id| id.as_str().to_string())
+            {
                 if let Some(&idx) = session_group_index.get(&sid) {
                     plan_groups[idx].task_ids.push(task_id_str);
                     categorize_status(&task.internal_status, &mut plan_groups[idx].status_summary);
@@ -677,8 +705,14 @@ pub async fn get_task_dependency_graph(
                 in_degree: *in_degree.get(&task_id_str).unwrap_or(&0),
                 out_degree: *out_degree.get(&task_id_str).unwrap_or(&0),
                 tier: *tier_map.get(&task_id_str).unwrap_or(&0),
-                plan_artifact_id: task.plan_artifact_id.as_ref().map(|id| id.as_str().to_string()),
-                source_proposal_id: task.source_proposal_id.as_ref().map(|id| id.as_str().to_string()),
+                plan_artifact_id: task
+                    .plan_artifact_id
+                    .as_ref()
+                    .map(|id| id.as_str().to_string()),
+                source_proposal_id: task
+                    .source_proposal_id
+                    .as_ref()
+                    .map(|id| id.as_str().to_string()),
             }
         })
         .collect();
@@ -699,11 +733,23 @@ fn categorize_status(status: &InternalStatus, summary: &mut StatusSummary) {
         InternalStatus::Ready => summary.ready += 1,
         InternalStatus::Blocked => summary.blocked += 1,
         InternalStatus::Executing | InternalStatus::ReExecuting => summary.executing += 1,
-        InternalStatus::QaRefining | InternalStatus::QaTesting | InternalStatus::QaPassed | InternalStatus::QaFailed => summary.qa += 1,
-        InternalStatus::PendingReview | InternalStatus::Reviewing | InternalStatus::ReviewPassed | InternalStatus::Escalated | InternalStatus::RevisionNeeded => summary.review += 1,
-        InternalStatus::PendingMerge | InternalStatus::Merging | InternalStatus::MergeIncomplete | InternalStatus::MergeConflict => summary.merge += 1,
+        InternalStatus::QaRefining
+        | InternalStatus::QaTesting
+        | InternalStatus::QaPassed
+        | InternalStatus::QaFailed => summary.qa += 1,
+        InternalStatus::PendingReview
+        | InternalStatus::Reviewing
+        | InternalStatus::ReviewPassed
+        | InternalStatus::Escalated
+        | InternalStatus::RevisionNeeded => summary.review += 1,
+        InternalStatus::PendingMerge
+        | InternalStatus::Merging
+        | InternalStatus::MergeIncomplete
+        | InternalStatus::MergeConflict => summary.merge += 1,
         InternalStatus::Approved | InternalStatus::Merged => summary.completed += 1,
-        InternalStatus::Failed | InternalStatus::Cancelled | InternalStatus::Stopped => summary.terminal += 1,
+        InternalStatus::Failed | InternalStatus::Cancelled | InternalStatus::Stopped => {
+            summary.terminal += 1
+        }
         // Paused tasks are in a suspended state (not terminal, can resume)
         InternalStatus::Paused => summary.blocked += 1,
     }
@@ -766,10 +812,7 @@ pub async fn get_task_timeline_events(
             .map_err(|e| e.to_string())?;
 
         for (idx, transition) in transitions.iter().enumerate() {
-            let description = format_status_change_description(
-                &task.title,
-                transition.to.as_str(),
-            );
+            let description = format_status_change_description(&task.title, transition.to.as_str());
 
             all_events.push(TimelineEvent {
                 id: format!("{}-{}", task.id.as_str(), idx),
@@ -781,7 +824,10 @@ pub async fn get_task_timeline_events(
                 to_status: Some(transition.to.as_str().to_string()),
                 description,
                 trigger: Some(transition.trigger.clone()),
-                plan_artifact_id: task.plan_artifact_id.as_ref().map(|id| id.as_str().to_string()),
+                plan_artifact_id: task
+                    .plan_artifact_id
+                    .as_ref()
+                    .map(|id| id.as_str().to_string()),
                 session_title: None,
             });
         }
@@ -791,7 +837,11 @@ pub async fn get_task_timeline_events(
     // Find sessions with accepted plans that created tasks
     let plan_artifact_ids: Vec<String> = tasks
         .iter()
-        .filter_map(|t| t.plan_artifact_id.as_ref().map(|id| id.as_str().to_string()))
+        .filter_map(|t| {
+            t.plan_artifact_id
+                .as_ref()
+                .map(|id| id.as_str().to_string())
+        })
         .collect::<std::collections::HashSet<_>>()
         .into_iter()
         .collect();
@@ -816,7 +866,10 @@ pub async fn get_task_timeline_events(
                 .collect();
 
             if let Some(earliest) = plan_tasks.iter().min_by_key(|t| t.created_at) {
-                let session_title = session.title.clone().unwrap_or_else(|| "Untitled Plan".to_string());
+                let session_title = session
+                    .title
+                    .clone()
+                    .unwrap_or_else(|| "Untitled Plan".to_string());
                 let task_count = plan_tasks.len();
 
                 all_events.push(TimelineEvent {
@@ -851,11 +904,7 @@ pub async fn get_task_timeline_events(
 
                 if all_complete && !plan_tasks.is_empty() {
                     // Find the latest completion timestamp
-                    if let Some(latest) = plan_tasks
-                        .iter()
-                        .filter_map(|t| t.completed_at)
-                        .max()
-                    {
+                    if let Some(latest) = plan_tasks.iter().filter_map(|t| t.completed_at).max() {
                         let completed_count = plan_tasks
                             .iter()
                             .filter(|t| {
@@ -896,11 +945,7 @@ pub async fn get_task_timeline_events(
 
     // 5. Apply pagination
     let total = all_events.len() as u32;
-    let paginated: Vec<TimelineEvent> = all_events
-        .into_iter()
-        .skip(offset)
-        .take(limit)
-        .collect();
+    let paginated: Vec<TimelineEvent> = all_events.into_iter().skip(offset).take(limit).collect();
     let has_more = (offset + paginated.len()) < total as usize;
 
     Ok(TimelineEventsResponse {

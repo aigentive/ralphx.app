@@ -8,8 +8,8 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::domain::entities::{
-    AgentRun, ChatConversation, ChatConversationId, ChatContextType, IdeationSessionId,
-    ProjectId, TaskId,
+    AgentRun, ChatContextType, ChatConversation, ChatConversationId, IdeationSessionId, ProjectId,
+    TaskId,
 };
 use crate::domain::services::{MessageQueue, QueuedMessage};
 use crate::infrastructure::agents::claude::ToolCall;
@@ -103,7 +103,8 @@ impl ChatService for MockChatService {
         context_id: &str,
         _message: &str,
     ) -> Result<SendResult, ChatServiceError> {
-        self.call_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.call_count
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         if !*self.is_available.lock().await {
             return Err(ChatServiceError::AgentNotAvailable(
@@ -251,11 +252,7 @@ impl ChatService for MockChatService {
         Ok(false)
     }
 
-    async fn is_agent_running(
-        &self,
-        _context_type: ChatContextType,
-        _context_id: &str,
-    ) -> bool {
+    async fn is_agent_running(&self, _context_type: ChatContextType, _context_id: &str) -> bool {
         // Mock implementation - always returns false
         false
     }

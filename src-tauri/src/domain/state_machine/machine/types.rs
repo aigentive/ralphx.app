@@ -87,7 +87,11 @@ impl State {
     pub fn is_merge(&self) -> bool {
         matches!(
             self,
-            State::PendingMerge | State::Merging | State::MergeIncomplete | State::MergeConflict | State::Merged
+            State::PendingMerge
+                | State::Merging
+                | State::MergeIncomplete
+                | State::MergeConflict
+                | State::Merged
         )
     }
 }

@@ -49,7 +49,10 @@ impl QAStepStatus {
 
     /// Check if the step is in a terminal state
     pub fn is_terminal(&self) -> bool {
-        matches!(self, QAStepStatus::Passed | QAStepStatus::Failed | QAStepStatus::Skipped)
+        matches!(
+            self,
+            QAStepStatus::Passed | QAStepStatus::Failed | QAStepStatus::Skipped
+        )
     }
 
     /// Check if the step passed
@@ -307,10 +310,7 @@ pub struct QAResults {
 impl QAResults {
     /// Create new pending QA results for a task
     pub fn new(task_id: impl Into<String>, step_ids: Vec<String>) -> Self {
-        let steps: Vec<QAStepResult> = step_ids
-            .into_iter()
-            .map(QAStepResult::pending)
-            .collect();
+        let steps: Vec<QAStepResult> = step_ids.into_iter().map(QAStepResult::pending).collect();
         let total_steps = steps.len();
 
         Self {
@@ -350,7 +350,13 @@ impl QAResults {
     }
 
     /// Update a step result and recalculate totals
-    pub fn update_step(&mut self, step_id: &str, status: QAStepStatus, error: Option<String>, screenshot: Option<String>) {
+    pub fn update_step(
+        &mut self,
+        step_id: &str,
+        status: QAStepStatus,
+        error: Option<String>,
+        screenshot: Option<String>,
+    ) {
         if let Some(step) = self.steps.iter_mut().find(|s| s.step_id == step_id) {
             step.status = status;
             step.error = error;
@@ -445,7 +451,9 @@ pub struct QAResultsWrapper {
 impl QAResultsWrapper {
     /// Create a new wrapper
     pub fn new(results: QAResults) -> Self {
-        Self { qa_results: results }
+        Self {
+            qa_results: results,
+        }
     }
 
     /// Parse from JSON string (PRD format)
@@ -792,7 +800,10 @@ mod tests {
         assert_eq!(r.overall_status, QAOverallStatus::Passed);
         assert_eq!(r.total_steps, 5);
         assert_eq!(r.steps[0].step_id, "QA1");
-        assert_eq!(r.steps[0].screenshot, Some("screenshots/qa1-result.png".into()));
+        assert_eq!(
+            r.steps[0].screenshot,
+            Some("screenshots/qa1-result.png".into())
+        );
     }
 
     #[test]
@@ -832,7 +843,8 @@ mod tests {
         assert!(r_passed.is_complete());
         assert!(r_passed.is_passed());
 
-        let r_failed = QAResults::from_results("task-3", vec![QAStepResult::failed("QA1", "Error", None)]);
+        let r_failed =
+            QAResults::from_results("task-3", vec![QAStepResult::failed("QA1", "Error", None)]);
         assert!(r_failed.is_complete());
         assert!(r_failed.is_failed());
     }

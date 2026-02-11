@@ -102,12 +102,7 @@ impl DiffService {
     ) -> AppResult<FileDiff> {
         let full_path = std::path::Path::new(project_path).join(file_path);
         let new_content = std::fs::read_to_string(&full_path).unwrap_or_default();
-        self.get_file_diff_between_refs_with_new(
-            file_path,
-            project_path,
-            base_branch,
-            &new_content,
-        )
+        self.get_file_diff_between_refs_with_new(file_path, project_path, base_branch, &new_content)
     }
 
     /// Get files changed in a specific commit

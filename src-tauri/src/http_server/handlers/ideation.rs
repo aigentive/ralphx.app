@@ -26,9 +26,9 @@ use super::super::helpers::{
 };
 use super::super::types::{
     AddDependencyRequest, ApplyDependenciesResponse, ApplyDependencySuggestionsRequest,
-    CreateProposalRequest, DeleteProposalRequest,
-    HttpServerState, ListProposalsResponse, ProposalDetailResponse, ProposalResponse,
-    ProposalSummary, SuccessResponse, UpdateProposalRequest, UpdateSessionTitleRequest,
+    CreateProposalRequest, DeleteProposalRequest, HttpServerState, ListProposalsResponse,
+    ProposalDetailResponse, ProposalResponse, ProposalSummary, SuccessResponse,
+    UpdateProposalRequest, UpdateSessionTitleRequest,
 };
 
 pub async fn create_task_proposal(
@@ -58,17 +58,27 @@ pub async fn create_task_proposal(
     // Convert steps and acceptance criteria to JSON strings
     let steps = req
         .steps
-        .map(|s| serde_json::to_string(&s).map_err(|e| {
-            error!("Failed to serialize steps: {}", e);
-            json_error(StatusCode::BAD_REQUEST, format!("Failed to serialize steps: {}", e))
-        }))
+        .map(|s| {
+            serde_json::to_string(&s).map_err(|e| {
+                error!("Failed to serialize steps: {}", e);
+                json_error(
+                    StatusCode::BAD_REQUEST,
+                    format!("Failed to serialize steps: {}", e),
+                )
+            })
+        })
         .transpose()?;
     let acceptance_criteria = req
         .acceptance_criteria
-        .map(|ac| serde_json::to_string(&ac).map_err(|e| {
-            error!("Failed to serialize acceptance_criteria: {}", e);
-            json_error(StatusCode::BAD_REQUEST, format!("Failed to serialize acceptance_criteria: {}", e))
-        }))
+        .map(|ac| {
+            serde_json::to_string(&ac).map_err(|e| {
+                error!("Failed to serialize acceptance_criteria: {}", e);
+                json_error(
+                    StatusCode::BAD_REQUEST,
+                    format!("Failed to serialize acceptance_criteria: {}", e),
+                )
+            })
+        })
         .transpose()?;
 
     let options = CreateProposalOptions {
@@ -85,8 +95,14 @@ pub async fn create_task_proposal(
     let proposal = create_proposal_impl(&state.app_state, session_id, options)
         .await
         .map_err(|e| {
-            error!("Failed to create proposal for session {}: {}", session_id_str, e);
-            json_error(StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to create proposal: {}", e))
+            error!(
+                "Failed to create proposal for session {}: {}",
+                session_id_str, e
+            );
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to create proposal: {}", e),
+            )
         })?;
 
     // Emit event for real-time UI update
@@ -137,17 +153,27 @@ pub async fn update_task_proposal(
     // Convert steps and acceptance criteria to JSON strings
     let steps = req
         .steps
-        .map(|s| serde_json::to_string(&s).map_err(|e| {
-            error!("Failed to serialize steps: {}", e);
-            json_error(StatusCode::BAD_REQUEST, format!("Failed to serialize steps: {}", e))
-        }))
+        .map(|s| {
+            serde_json::to_string(&s).map_err(|e| {
+                error!("Failed to serialize steps: {}", e);
+                json_error(
+                    StatusCode::BAD_REQUEST,
+                    format!("Failed to serialize steps: {}", e),
+                )
+            })
+        })
         .transpose()?;
     let acceptance_criteria = req
         .acceptance_criteria
-        .map(|ac| serde_json::to_string(&ac).map_err(|e| {
-            error!("Failed to serialize acceptance_criteria: {}", e);
-            json_error(StatusCode::BAD_REQUEST, format!("Failed to serialize acceptance_criteria: {}", e))
-        }))
+        .map(|ac| {
+            serde_json::to_string(&ac).map_err(|e| {
+                error!("Failed to serialize acceptance_criteria: {}", e);
+                json_error(
+                    StatusCode::BAD_REQUEST,
+                    format!("Failed to serialize acceptance_criteria: {}", e),
+                )
+            })
+        })
         .transpose()?;
 
     let options = UpdateProposalOptions {
@@ -163,7 +189,10 @@ pub async fn update_task_proposal(
         .await
         .map_err(|e| {
             error!("Failed to update proposal {}: {}", proposal_id.as_str(), e);
-            json_error(StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to update proposal: {}", e))
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to update proposal: {}", e),
+            )
         })?;
 
     // Emit event for real-time UI update
@@ -245,7 +274,12 @@ pub async fn add_proposal_dependency(
         .add_dependency(&proposal_id, &depends_on_id, None)
         .await
         .map_err(|e| {
-            error!("Failed to add dependency from {} to {}: {}", proposal_id.as_str(), depends_on_id.as_str(), e);
+            error!(
+                "Failed to add dependency from {} to {}: {}",
+                proposal_id.as_str(),
+                depends_on_id.as_str(),
+                e
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
@@ -427,14 +461,16 @@ pub async fn apply_proposal_dependencies(
         .get_by_session(&session_id)
         .await
         .map_err(|e| {
-            error!("Failed to get proposals for session {}: {}", session_id.as_str(), e);
+            error!(
+                "Failed to get proposals for session {}: {}",
+                session_id.as_str(),
+                e
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    let valid_ids: std::collections::HashSet<String> = proposals
-        .iter()
-        .map(|p| p.id.to_string())
-        .collect();
+    let valid_ids: std::collections::HashSet<String> =
+        proposals.iter().map(|p| p.id.to_string()).collect();
 
     // Step 1: Clear all existing dependencies for this session
     state
@@ -443,7 +479,11 @@ pub async fn apply_proposal_dependencies(
         .clear_session_dependencies(&session_id)
         .await
         .map_err(|e| {
-            error!("Failed to clear dependencies for session {}: {}", session_id.as_str(), e);
+            error!(
+                "Failed to clear dependencies for session {}: {}",
+                session_id.as_str(),
+                e
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
@@ -453,7 +493,9 @@ pub async fn apply_proposal_dependencies(
 
     for suggestion in &req.dependencies {
         // Validate both IDs belong to this session
-        if !valid_ids.contains(&suggestion.proposal_id) || !valid_ids.contains(&suggestion.depends_on_id) {
+        if !valid_ids.contains(&suggestion.proposal_id)
+            || !valid_ids.contains(&suggestion.depends_on_id)
+        {
             skipped_count += 1;
             continue;
         }
@@ -469,12 +511,8 @@ pub async fn apply_proposal_dependencies(
 
         // Check if adding this would create a cycle
         // Simple check: would depends_on_id eventually reach proposal_id?
-        let would_cycle = would_create_cycle(
-            &state.app_state,
-            &session_id,
-            &proposal_id,
-            &depends_on_id,
-        ).await;
+        let would_cycle =
+            would_create_cycle(&state.app_state, &session_id, &proposal_id, &depends_on_id).await;
 
         if would_cycle {
             skipped_count += 1;
@@ -490,7 +528,12 @@ pub async fn apply_proposal_dependencies(
         {
             Ok(_) => applied_count += 1,
             Err(e) => {
-                error!("Failed to add dependency {} -> {}: {}", proposal_id.as_str(), depends_on_id.as_str(), e);
+                error!(
+                    "Failed to add dependency {} -> {}: {}",
+                    proposal_id.as_str(),
+                    depends_on_id.as_str(),
+                    e
+                );
                 skipped_count += 1;
             }
         }
@@ -512,7 +555,10 @@ pub async fn apply_proposal_dependencies(
         success: true,
         applied_count,
         skipped_count,
-        message: format!("Applied {} dependencies, skipped {} (cycles/invalid)", applied_count, skipped_count),
+        message: format!(
+            "Applied {} dependencies, skipped {} (cycles/invalid)",
+            applied_count, skipped_count
+        ),
     }))
 }
 
@@ -522,11 +568,11 @@ pub async fn analyze_session_dependencies(
     State(state): State<HttpServerState>,
     Path(session_id): Path<String>,
 ) -> Result<Json<super::super::types::AnalyzeDependenciesResponse>, StatusCode> {
-    use crate::domain::entities::{DependencyGraph, DependencyGraphEdge, DependencyGraphNode};
     use super::super::types::{
         AnalyzeDependenciesResponse, DependencyAnalysisSummary, DependencyEdgeResponse,
         DependencyNodeResponse,
     };
+    use crate::domain::entities::{DependencyGraph, DependencyGraphEdge, DependencyGraphNode};
 
     let session_id = IdeationSessionId::from_string(session_id.clone());
 
@@ -543,7 +589,11 @@ pub async fn analyze_session_dependencies(
         .get_by_session(&session_id)
         .await
         .map_err(|e| {
-            error!("Failed to get proposals for session {}: {}", session_id.as_str(), e);
+            error!(
+                "Failed to get proposals for session {}: {}",
+                session_id.as_str(),
+                e
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
@@ -554,7 +604,11 @@ pub async fn analyze_session_dependencies(
         .get_all_for_session(&session_id)
         .await
         .map_err(|e| {
-            error!("Failed to get dependencies for session {}: {}", session_id.as_str(), e);
+            error!(
+                "Failed to get dependencies for session {}: {}",
+                session_id.as_str(),
+                e
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
@@ -625,7 +679,8 @@ pub async fn analyze_session_dependencies(
         })
         .collect();
 
-    let response_critical_path: Vec<String> = critical_path.iter().map(|id| id.to_string()).collect();
+    let response_critical_path: Vec<String> =
+        critical_path.iter().map(|id| id.to_string()).collect();
 
     let response_cycles = if cycles.is_empty() {
         None
@@ -842,7 +897,9 @@ async fn would_create_cycle(
     // Build adjacency list: from_id -> [to_ids]
     let mut adj: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
     for (from, to, _reason) in &deps {
-        adj.entry(from.to_string()).or_default().push(to.to_string());
+        adj.entry(from.to_string())
+            .or_default()
+            .push(to.to_string());
     }
 
     // DFS from depends_on_id to see if we can reach proposal_id

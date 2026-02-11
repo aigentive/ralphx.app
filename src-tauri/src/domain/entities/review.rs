@@ -367,11 +367,7 @@ impl ReviewAction {
     }
 
     /// Create an action with a specific ID (for testing or database restoration)
-    pub fn with_id(
-        id: ReviewActionId,
-        review_id: ReviewId,
-        action_type: ReviewActionType,
-    ) -> Self {
+    pub fn with_id(id: ReviewActionId, review_id: ReviewId, action_type: ReviewActionType) -> Self {
         let mut action = Self::new(review_id, action_type);
         action.id = id;
         action
@@ -642,8 +638,14 @@ mod tests {
     fn test_reviewer_type_from_str() {
         assert_eq!(ReviewerType::from_str("ai").unwrap(), ReviewerType::Ai);
         assert_eq!(ReviewerType::from_str("AI").unwrap(), ReviewerType::Ai);
-        assert_eq!(ReviewerType::from_str("human").unwrap(), ReviewerType::Human);
-        assert_eq!(ReviewerType::from_str("HUMAN").unwrap(), ReviewerType::Human);
+        assert_eq!(
+            ReviewerType::from_str("human").unwrap(),
+            ReviewerType::Human
+        );
+        assert_eq!(
+            ReviewerType::from_str("HUMAN").unwrap(),
+            ReviewerType::Human
+        );
         assert!(ReviewerType::from_str("invalid").is_err());
     }
 
@@ -662,16 +664,31 @@ mod tests {
     fn test_review_status_display() {
         assert_eq!(format!("{}", ReviewStatus::Pending), "pending");
         assert_eq!(format!("{}", ReviewStatus::Approved), "approved");
-        assert_eq!(format!("{}", ReviewStatus::ChangesRequested), "changes_requested");
+        assert_eq!(
+            format!("{}", ReviewStatus::ChangesRequested),
+            "changes_requested"
+        );
         assert_eq!(format!("{}", ReviewStatus::Rejected), "rejected");
     }
 
     #[test]
     fn test_review_status_from_str() {
-        assert_eq!(ReviewStatus::from_str("pending").unwrap(), ReviewStatus::Pending);
-        assert_eq!(ReviewStatus::from_str("approved").unwrap(), ReviewStatus::Approved);
-        assert_eq!(ReviewStatus::from_str("changes_requested").unwrap(), ReviewStatus::ChangesRequested);
-        assert_eq!(ReviewStatus::from_str("rejected").unwrap(), ReviewStatus::Rejected);
+        assert_eq!(
+            ReviewStatus::from_str("pending").unwrap(),
+            ReviewStatus::Pending
+        );
+        assert_eq!(
+            ReviewStatus::from_str("approved").unwrap(),
+            ReviewStatus::Approved
+        );
+        assert_eq!(
+            ReviewStatus::from_str("changes_requested").unwrap(),
+            ReviewStatus::ChangesRequested
+        );
+        assert_eq!(
+            ReviewStatus::from_str("rejected").unwrap(),
+            ReviewStatus::Rejected
+        );
         assert!(ReviewStatus::from_str("invalid").is_err());
     }
 
@@ -688,16 +705,31 @@ mod tests {
 
     #[test]
     fn test_review_action_type_display() {
-        assert_eq!(format!("{}", ReviewActionType::CreatedFixTask), "created_fix_task");
-        assert_eq!(format!("{}", ReviewActionType::MovedToBacklog), "moved_to_backlog");
+        assert_eq!(
+            format!("{}", ReviewActionType::CreatedFixTask),
+            "created_fix_task"
+        );
+        assert_eq!(
+            format!("{}", ReviewActionType::MovedToBacklog),
+            "moved_to_backlog"
+        );
         assert_eq!(format!("{}", ReviewActionType::Approved), "approved");
     }
 
     #[test]
     fn test_review_action_type_from_str() {
-        assert_eq!(ReviewActionType::from_str("created_fix_task").unwrap(), ReviewActionType::CreatedFixTask);
-        assert_eq!(ReviewActionType::from_str("moved_to_backlog").unwrap(), ReviewActionType::MovedToBacklog);
-        assert_eq!(ReviewActionType::from_str("approved").unwrap(), ReviewActionType::Approved);
+        assert_eq!(
+            ReviewActionType::from_str("created_fix_task").unwrap(),
+            ReviewActionType::CreatedFixTask
+        );
+        assert_eq!(
+            ReviewActionType::from_str("moved_to_backlog").unwrap(),
+            ReviewActionType::MovedToBacklog
+        );
+        assert_eq!(
+            ReviewActionType::from_str("approved").unwrap(),
+            ReviewActionType::Approved
+        );
         assert!(ReviewActionType::from_str("invalid").is_err());
     }
 
@@ -779,7 +811,10 @@ mod tests {
         assert_eq!(review.status, ReviewStatus::Rejected);
         assert!(review.is_complete());
         assert!(!review.is_approved());
-        assert_eq!(review.notes, Some("Fundamentally wrong approach".to_string()));
+        assert_eq!(
+            review.notes,
+            Some("Fundamentally wrong approach".to_string())
+        );
         assert!(review.completed_at.is_some());
     }
 
@@ -888,15 +923,27 @@ mod tests {
     #[test]
     fn test_review_outcome_display() {
         assert_eq!(format!("{}", ReviewOutcome::Approved), "approved");
-        assert_eq!(format!("{}", ReviewOutcome::ChangesRequested), "changes_requested");
+        assert_eq!(
+            format!("{}", ReviewOutcome::ChangesRequested),
+            "changes_requested"
+        );
         assert_eq!(format!("{}", ReviewOutcome::Rejected), "rejected");
     }
 
     #[test]
     fn test_review_outcome_from_str() {
-        assert_eq!(ReviewOutcome::from_str("approved").unwrap(), ReviewOutcome::Approved);
-        assert_eq!(ReviewOutcome::from_str("changes_requested").unwrap(), ReviewOutcome::ChangesRequested);
-        assert_eq!(ReviewOutcome::from_str("rejected").unwrap(), ReviewOutcome::Rejected);
+        assert_eq!(
+            ReviewOutcome::from_str("approved").unwrap(),
+            ReviewOutcome::Approved
+        );
+        assert_eq!(
+            ReviewOutcome::from_str("changes_requested").unwrap(),
+            ReviewOutcome::ChangesRequested
+        );
+        assert_eq!(
+            ReviewOutcome::from_str("rejected").unwrap(),
+            ReviewOutcome::Rejected
+        );
         assert!(ReviewOutcome::from_str("invalid").is_err());
     }
 
@@ -946,7 +993,12 @@ mod tests {
     fn test_review_note_with_id() {
         let id = ReviewNoteId::from_string("note-custom");
         let task_id = TaskId::from_string("task-1".to_string());
-        let note = ReviewNote::with_id(id.clone(), task_id, ReviewerType::Ai, ReviewOutcome::Approved);
+        let note = ReviewNote::with_id(
+            id.clone(),
+            task_id,
+            ReviewerType::Ai,
+            ReviewOutcome::Approved,
+        );
 
         assert_eq!(note.id, id);
     }
@@ -956,7 +1008,11 @@ mod tests {
         let task_id = TaskId::from_string("task-1".to_string());
 
         let approved = ReviewNote::new(task_id.clone(), ReviewerType::Ai, ReviewOutcome::Approved);
-        let changes = ReviewNote::new(task_id.clone(), ReviewerType::Ai, ReviewOutcome::ChangesRequested);
+        let changes = ReviewNote::new(
+            task_id.clone(),
+            ReviewerType::Ai,
+            ReviewOutcome::ChangesRequested,
+        );
         let rejected = ReviewNote::new(task_id, ReviewerType::Ai, ReviewOutcome::Rejected);
 
         assert!(approved.is_positive());
@@ -969,7 +1025,11 @@ mod tests {
         let task_id = TaskId::from_string("task-1".to_string());
 
         let approved = ReviewNote::new(task_id.clone(), ReviewerType::Ai, ReviewOutcome::Approved);
-        let changes = ReviewNote::new(task_id.clone(), ReviewerType::Ai, ReviewOutcome::ChangesRequested);
+        let changes = ReviewNote::new(
+            task_id.clone(),
+            ReviewerType::Ai,
+            ReviewOutcome::ChangesRequested,
+        );
         let rejected = ReviewNote::new(task_id, ReviewerType::Ai, ReviewOutcome::Rejected);
 
         assert!(!approved.is_negative());

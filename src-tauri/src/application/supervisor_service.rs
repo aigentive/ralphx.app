@@ -175,7 +175,10 @@ impl SupervisorService {
                 tokens_used,
                 threshold,
                 ..
-            } => self.handle_token_threshold(&task_id, tokens_used, threshold).await,
+            } => {
+                self.handle_token_threshold(&task_id, tokens_used, threshold)
+                    .await
+            }
             SupervisorEvent::TimeThreshold {
                 task_id,
                 elapsed_minutes,
@@ -183,8 +186,12 @@ impl SupervisorService {
                 ..
             } => {
                 // Convert minutes to seconds for internal handling
-                self.handle_time_threshold(&task_id, elapsed_minutes as u64 * 60, threshold_minutes as u64 * 60)
-                    .await
+                self.handle_time_threshold(
+                    &task_id,
+                    elapsed_minutes as u64 * 60,
+                    threshold_minutes as u64 * 60,
+                )
+                .await
             }
         }
     }
@@ -231,7 +238,11 @@ impl SupervisorService {
         false
     }
 
-    async fn handle_tool_call(&self, task_id: &str, info: ToolCallInfo) -> Option<SupervisorAction> {
+    async fn handle_tool_call(
+        &self,
+        task_id: &str,
+        info: ToolCallInfo,
+    ) -> Option<SupervisorAction> {
         let mut states = self.task_states.write().await;
         let state = states.get_mut(task_id)?;
 
@@ -564,7 +575,11 @@ mod tests {
 
             if i >= 4 {
                 // After 5+ stuck checks, should take action
-                assert!(action.is_some(), "Expected action after {} stuck checks", i + 1);
+                assert!(
+                    action.is_some(),
+                    "Expected action after {} stuck checks",
+                    i + 1
+                );
             }
         }
     }

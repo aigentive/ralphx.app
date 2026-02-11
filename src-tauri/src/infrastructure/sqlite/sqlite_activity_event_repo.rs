@@ -308,10 +308,8 @@ impl ActivityEventRepository for SqliteActivityEventRepository {
             .prepare(&sql)
             .map_err(|e| AppError::Database(e.to_string()))?;
 
-        let params_refs: Vec<&dyn rusqlite::ToSql> = params
-            .iter()
-            .map(|s| s as &dyn rusqlite::ToSql)
-            .collect();
+        let params_refs: Vec<&dyn rusqlite::ToSql> =
+            params.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
 
         let mut events: Vec<ActivityEvent> = stmt
             .query_map(params_refs.as_slice(), ActivityEvent::from_row)
@@ -408,10 +406,8 @@ impl ActivityEventRepository for SqliteActivityEventRepository {
             .prepare(&sql)
             .map_err(|e| AppError::Database(e.to_string()))?;
 
-        let params_refs: Vec<&dyn rusqlite::ToSql> = params
-            .iter()
-            .map(|s| s as &dyn rusqlite::ToSql)
-            .collect();
+        let params_refs: Vec<&dyn rusqlite::ToSql> =
+            params.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
 
         let mut events: Vec<ActivityEvent> = stmt
             .query_map(params_refs.as_slice(), ActivityEvent::from_row)
@@ -481,10 +477,8 @@ impl ActivityEventRepository for SqliteActivityEventRepository {
             .prepare(&sql)
             .map_err(|e| AppError::Database(e.to_string()))?;
 
-        let params_refs: Vec<&dyn rusqlite::ToSql> = params
-            .iter()
-            .map(|s| s as &dyn rusqlite::ToSql)
-            .collect();
+        let params_refs: Vec<&dyn rusqlite::ToSql> =
+            params.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
 
         let count: i64 = stmt
             .query_row(params_refs.as_slice(), |row| row.get(0))
@@ -513,10 +507,8 @@ impl ActivityEventRepository for SqliteActivityEventRepository {
             .prepare(&sql)
             .map_err(|e| AppError::Database(e.to_string()))?;
 
-        let params_refs: Vec<&dyn rusqlite::ToSql> = params
-            .iter()
-            .map(|s| s as &dyn rusqlite::ToSql)
-            .collect();
+        let params_refs: Vec<&dyn rusqlite::ToSql> =
+            params.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
 
         let count: i64 = stmt
             .query_row(params_refs.as_slice(), |row| row.get(0))
@@ -562,8 +554,7 @@ impl ActivityEventRepository for SqliteActivityEventRepository {
                      LIMIT ?3",
                     where_clause
                 );
-                let mut params: Vec<String> =
-                    vec![cursor_ts, cursor_id, fetch_limit.to_string()];
+                let mut params: Vec<String> = vec![cursor_ts, cursor_id, fetch_limit.to_string()];
                 params.extend(filter_params);
                 (sql, params)
             } else {
@@ -591,8 +582,7 @@ impl ActivityEventRepository for SqliteActivityEventRepository {
             }
         } else {
             // First page (no cursor)
-            let (filter_conditions, filter_params) =
-                Self::build_list_all_filter_clause(filter, 2);
+            let (filter_conditions, filter_params) = Self::build_list_all_filter_clause(filter, 2);
 
             let where_clause = if filter_conditions.is_empty() {
                 "1=1".to_string()
@@ -617,10 +607,8 @@ impl ActivityEventRepository for SqliteActivityEventRepository {
             .prepare(&sql)
             .map_err(|e| AppError::Database(e.to_string()))?;
 
-        let params_refs: Vec<&dyn rusqlite::ToSql> = params
-            .iter()
-            .map(|s| s as &dyn rusqlite::ToSql)
-            .collect();
+        let params_refs: Vec<&dyn rusqlite::ToSql> =
+            params.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
 
         let mut events: Vec<ActivityEvent> = stmt
             .query_map(params_refs.as_slice(), ActivityEvent::from_row)
@@ -733,10 +721,7 @@ mod tests {
         }
 
         // First page
-        let page1 = repo
-            .list_by_task_id(&task_id, None, 3, None)
-            .await
-            .unwrap();
+        let page1 = repo.list_by_task_id(&task_id, None, 3, None).await.unwrap();
         assert_eq!(page1.events.len(), 3);
         assert!(page1.has_more);
         assert!(page1.cursor.is_some());
@@ -803,8 +788,7 @@ mod tests {
         .unwrap();
 
         // Filter by event type
-        let filter =
-            ActivityEventFilter::new().with_event_types(vec![ActivityEventType::Thinking]);
+        let filter = ActivityEventFilter::new().with_event_types(vec![ActivityEventType::Thinking]);
         let page = repo
             .list_by_task_id(&task_id, None, 50, Some(&filter))
             .await
@@ -932,8 +916,7 @@ mod tests {
         .await
         .unwrap();
 
-        let filter =
-            ActivityEventFilter::new().with_event_types(vec![ActivityEventType::Thinking]);
+        let filter = ActivityEventFilter::new().with_event_types(vec![ActivityEventType::Thinking]);
         let count = repo
             .count_by_task_id(&task_id, Some(&filter))
             .await

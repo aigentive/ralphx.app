@@ -122,8 +122,7 @@ impl<R: TaskQARepository, C: AgenticClient> QAService<R, C> {
         );
 
         // Spawn QA prep agent
-        let config = AgentConfig::qa_prep(prompt)
-            .with_working_dir(&self.working_directory);
+        let config = AgentConfig::qa_prep(prompt).with_working_dir(&self.working_directory);
         let handle = self.client.spawn_agent(config).await?;
 
         // Update state
@@ -169,7 +168,10 @@ impl<R: TaskQARepository, C: AgenticClient> QAService<R, C> {
         };
 
         let handle = handle.ok_or_else(|| {
-            AppError::TaskNotFound(format!("No QA prep agent found for task {}", task_id.as_str()))
+            AppError::TaskNotFound(format!(
+                "No QA prep agent found for task {}",
+                task_id.as_str()
+            ))
         })?;
 
         // Wait for agent to complete
@@ -224,14 +226,17 @@ impl<R: TaskQARepository, C: AgenticClient> QAService<R, C> {
             .repository
             .get_by_task_id(task_id)
             .await?
-            .ok_or_else(|| AppError::TaskNotFound(format!("No QA record for task {}", task_id.as_str())))?;
+            .ok_or_else(|| {
+                AppError::TaskNotFound(format!("No QA record for task {}", task_id.as_str()))
+            })?;
 
         let criteria = task_qa.acceptance_criteria.clone().ok_or_else(|| {
             AppError::Validation("QA prep not complete - no acceptance criteria".into())
         })?;
-        let steps = task_qa.effective_test_steps().cloned().ok_or_else(|| {
-            AppError::Validation("QA prep not complete - no test steps".into())
-        })?;
+        let steps = task_qa
+            .effective_test_steps()
+            .cloned()
+            .ok_or_else(|| AppError::Validation("QA prep not complete - no test steps".into()))?;
 
         // Build the prompt for QA executor (XML-delineated to prevent injection)
         let prompt = format!(
@@ -285,9 +290,7 @@ impl<R: TaskQARepository, C: AgenticClient> QAService<R, C> {
     ) -> AppResult<()> {
         // Get QA ID
         let states = self.task_states.read().await;
-        let qa_id = states
-            .get(task_id.as_str())
-            .and_then(|s| s.qa_id.clone());
+        let qa_id = states.get(task_id.as_str()).and_then(|s| s.qa_id.clone());
         drop(states);
 
         let qa_id = if let Some(id) = qa_id {
@@ -349,9 +352,9 @@ impl<R: TaskQARepository, C: AgenticClient> QAService<R, C> {
     pub async fn stop_agent(&self, task_id: &TaskId) -> AppResult<()> {
         let handles = {
             let states = self.task_states.read().await;
-            states.get(task_id.as_str()).map(|s| {
-                (s.prep_handle.clone(), s.test_handle.clone())
-            })
+            states
+                .get(task_id.as_str())
+                .map(|s| (s.prep_handle.clone(), s.test_handle.clone()))
         };
 
         if let Some((prep_handle, test_handle)) = handles {
@@ -396,13 +399,11 @@ fn parse_qa_prep_output(output: &str) -> AppResult<(AcceptanceCriteria, QATestSt
     let criteria = AcceptanceCriteria::from_criteria(criteria_vec);
 
     // Extract qa_steps (as array of QATestStep)
-    let steps_value = value.get("qa_steps").ok_or_else(|| {
-        AppError::Validation("Missing 'qa_steps' in QA prep output".into())
-    })?;
-    let steps_vec: Vec<crate::domain::qa::QATestStep> =
-        serde_json::from_value(steps_value.clone()).map_err(|e| {
-            AppError::Validation(format!("Failed to parse qa_steps: {}", e))
-        })?;
+    let steps_value = value
+        .get("qa_steps")
+        .ok_or_else(|| AppError::Validation("Missing 'qa_steps' in QA prep output".into()))?;
+    let steps_vec: Vec<crate::domain::qa::QATestStep> = serde_json::from_value(steps_value.clone())
+        .map_err(|e| AppError::Validation(format!("Failed to parse qa_steps: {}", e)))?;
     let steps = QATestSteps::from_steps(steps_vec);
 
     Ok((criteria, steps))
@@ -609,11 +610,17 @@ mod tests {
         async fn wait_for_completion(
             &self,
             _handle: &AgentHandle,
-        ) -> crate::domain::agents::error::AgentResult<crate::domain::agents::types::AgentOutput> {
+        ) -> crate::domain::agents::error::AgentResult<crate::domain::agents::types::AgentOutput>
+        {
             if self.success {
-                Ok(crate::domain::agents::types::AgentOutput::success(&self.output))
+                Ok(crate::domain::agents::types::AgentOutput::success(
+                    &self.output,
+                ))
             } else {
-                Ok(crate::domain::agents::types::AgentOutput::failed(&self.output, 1))
+                Ok(crate::domain::agents::types::AgentOutput::failed(
+                    &self.output,
+                    1,
+                ))
             }
         }
 
@@ -623,7 +630,9 @@ mod tests {
             _prompt: &str,
         ) -> crate::domain::agents::error::AgentResult<crate::domain::agents::types::AgentResponse>
         {
-            Ok(crate::domain::agents::types::AgentResponse::new(&self.output))
+            Ok(crate::domain::agents::types::AgentResponse::new(
+                &self.output,
+            ))
         }
 
         fn stream_response(
@@ -643,8 +652,9 @@ mod tests {
         }
 
         fn capabilities(&self) -> &crate::domain::agents::capabilities::ClientCapabilities {
-            static CAPS: std::sync::OnceLock<crate::domain::agents::capabilities::ClientCapabilities> =
-                std::sync::OnceLock::new();
+            static CAPS: std::sync::OnceLock<
+                crate::domain::agents::capabilities::ClientCapabilities,
+            > = std::sync::OnceLock::new();
             CAPS.get_or_init(crate::domain::agents::capabilities::ClientCapabilities::mock)
         }
 
@@ -707,7 +717,10 @@ mod tests {
         let service = QAService::new(repo.clone(), client);
 
         let task_id = TaskId::from_string("task-123".to_string());
-        service.start_qa_prep(&task_id, "Build a button").await.unwrap();
+        service
+            .start_qa_prep(&task_id, "Build a button")
+            .await
+            .unwrap();
 
         let result = service.wait_for_prep(&task_id).await;
         assert!(result.is_ok());
@@ -724,7 +737,10 @@ mod tests {
         let service = QAService::new(repo, client);
 
         let task_id = TaskId::from_string("task-123".to_string());
-        service.start_qa_prep(&task_id, "Build a button").await.unwrap();
+        service
+            .start_qa_prep(&task_id, "Build a button")
+            .await
+            .unwrap();
 
         let result = service.wait_for_prep(&task_id).await;
         assert!(result.is_err());
@@ -768,7 +784,10 @@ mod tests {
 
         // Start and complete prep
         let task_id = TaskId::from_string("task-123".to_string());
-        service.start_qa_prep(&task_id, "Build a button").await.unwrap();
+        service
+            .start_qa_prep(&task_id, "Build a button")
+            .await
+            .unwrap();
         service.wait_for_prep(&task_id).await.unwrap();
 
         // Record results
@@ -796,7 +815,10 @@ mod tests {
         let service = QAService::new(repo.clone(), client);
 
         let task_id = TaskId::from_string("task-123".to_string());
-        service.start_qa_prep(&task_id, "Build a button").await.unwrap();
+        service
+            .start_qa_prep(&task_id, "Build a button")
+            .await
+            .unwrap();
         service.wait_for_prep(&task_id).await.unwrap();
 
         // Record passing results
@@ -820,7 +842,10 @@ mod tests {
         let service = QAService::new(repo.clone(), client);
 
         let task_id = TaskId::from_string("task-123".to_string());
-        service.start_qa_prep(&task_id, "Build a button").await.unwrap();
+        service
+            .start_qa_prep(&task_id, "Build a button")
+            .await
+            .unwrap();
         service.wait_for_prep(&task_id).await.unwrap();
 
         // Record failing results
@@ -853,7 +878,10 @@ mod tests {
         assert!(service.get_state(&task_id).await.is_none());
 
         // After starting prep
-        service.start_qa_prep(&task_id, "Build a button").await.unwrap();
+        service
+            .start_qa_prep(&task_id, "Build a button")
+            .await
+            .unwrap();
         let state = service.get_state(&task_id).await;
         assert!(state.is_some());
         assert_eq!(state.unwrap().prep_status, QAPrepStatus::Running);
@@ -866,7 +894,10 @@ mod tests {
         let service = QAService::new(repo, client);
 
         let task_id = TaskId::from_string("task-123".to_string());
-        service.start_qa_prep(&task_id, "Build a button").await.unwrap();
+        service
+            .start_qa_prep(&task_id, "Build a button")
+            .await
+            .unwrap();
 
         let result = service.stop_agent(&task_id).await;
         assert!(result.is_ok());

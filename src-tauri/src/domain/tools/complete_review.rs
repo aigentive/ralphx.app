@@ -139,7 +139,11 @@ impl ReviewIssueInput {
     }
 
     /// Set the file location for this issue
-    pub fn with_file_location(mut self, file_path: impl Into<String>, line_number: Option<i32>) -> Self {
+    pub fn with_file_location(
+        mut self,
+        file_path: impl Into<String>,
+        line_number: Option<i32>,
+    ) -> Self {
         self.file_path = Some(file_path.into());
         self.line_number = line_number;
         self
@@ -156,7 +160,10 @@ impl ReviewIssueInput {
 
         // Either step_id OR no_step_reason must be provided
         let has_step = self.step_id.is_some();
-        let has_reason = self.no_step_reason.as_ref().is_some_and(|r| !r.trim().is_empty());
+        let has_reason = self
+            .no_step_reason
+            .as_ref()
+            .is_some_and(|r| !r.trim().is_empty());
 
         if !has_step && !has_reason {
             return Err(ReviewIssueValidationError::MissingStepOrReason);
@@ -244,16 +251,28 @@ impl std::fmt::Display for CompleteReviewValidationError {
                 write!(f, "notes field cannot be empty")
             }
             CompleteReviewValidationError::MissingFixDescription => {
-                write!(f, "fix_description is required when outcome is 'needs_changes'")
+                write!(
+                    f,
+                    "fix_description is required when outcome is 'needs_changes'"
+                )
             }
             CompleteReviewValidationError::EmptyFixDescription => {
-                write!(f, "fix_description cannot be empty when outcome is 'needs_changes'")
+                write!(
+                    f,
+                    "fix_description cannot be empty when outcome is 'needs_changes'"
+                )
             }
             CompleteReviewValidationError::MissingEscalationReason => {
-                write!(f, "escalation_reason is required when outcome is 'escalate'")
+                write!(
+                    f,
+                    "escalation_reason is required when outcome is 'escalate'"
+                )
             }
             CompleteReviewValidationError::EmptyEscalationReason => {
-                write!(f, "escalation_reason cannot be empty when outcome is 'escalate'")
+                write!(
+                    f,
+                    "escalation_reason cannot be empty when outcome is 'escalate'"
+                )
             }
             CompleteReviewValidationError::MissingIssues => {
                 write!(f, "issues are required when outcome is 'needs_changes'")
@@ -401,7 +420,10 @@ mod tests {
     #[test]
     fn test_review_tool_outcome_display() {
         assert_eq!(format!("{}", ReviewToolOutcome::Approved), "approved");
-        assert_eq!(format!("{}", ReviewToolOutcome::NeedsChanges), "needs_changes");
+        assert_eq!(
+            format!("{}", ReviewToolOutcome::NeedsChanges),
+            "needs_changes"
+        );
         assert_eq!(format!("{}", ReviewToolOutcome::Escalate), "escalate");
     }
 
@@ -630,7 +652,10 @@ mod tests {
         };
         assert!(matches!(
             input.validate(),
-            Err(CompleteReviewValidationError::InvalidIssue(0, ReviewIssueValidationError::MissingStepOrReason))
+            Err(CompleteReviewValidationError::InvalidIssue(
+                0,
+                ReviewIssueValidationError::MissingStepOrReason
+            ))
         ));
     }
 
@@ -700,8 +725,8 @@ mod tests {
     #[test]
     fn test_review_issue_input_with_step_id() {
         let step_id = TaskStepId::from_string("step-123".to_string());
-        let issue = ReviewIssueInput::new("Test issue", IssueSeverity::Major)
-            .with_step_id(step_id.clone());
+        let issue =
+            ReviewIssueInput::new("Test issue", IssueSeverity::Major).with_step_id(step_id.clone());
         assert_eq!(issue.step_id, Some(step_id));
         assert!(issue.validate().is_ok());
     }
@@ -710,14 +735,16 @@ mod tests {
     fn test_review_issue_input_with_no_step_reason() {
         let issue = ReviewIssueInput::new("Test issue", IssueSeverity::Minor)
             .with_no_step_reason("General code quality issue");
-        assert_eq!(issue.no_step_reason, Some("General code quality issue".to_string()));
+        assert_eq!(
+            issue.no_step_reason,
+            Some("General code quality issue".to_string())
+        );
         assert!(issue.validate().is_ok());
     }
 
     #[test]
     fn test_review_issue_input_validate_empty_title() {
-        let issue = ReviewIssueInput::new("", IssueSeverity::Major)
-            .with_no_step_reason("Reason");
+        let issue = ReviewIssueInput::new("", IssueSeverity::Major).with_no_step_reason("Reason");
         assert_eq!(
             issue.validate(),
             Err(ReviewIssueValidationError::EmptyTitle)
@@ -735,8 +762,8 @@ mod tests {
 
     #[test]
     fn test_review_issue_input_validate_whitespace_reason() {
-        let issue = ReviewIssueInput::new("Test issue", IssueSeverity::Major)
-            .with_no_step_reason("   ");
+        let issue =
+            ReviewIssueInput::new("Test issue", IssueSeverity::Major).with_no_step_reason("   ");
         assert_eq!(
             issue.validate(),
             Err(ReviewIssueValidationError::MissingStepOrReason)
@@ -765,10 +792,10 @@ mod tests {
 
     #[test]
     fn test_needs_changes_with_issues_constructor() {
-        let issue1 = ReviewIssueInput::new("Issue 1", IssueSeverity::Major)
-            .with_no_step_reason("General");
-        let issue2 = ReviewIssueInput::new("Issue 2", IssueSeverity::Minor)
-            .with_no_step_reason("General");
+        let issue1 =
+            ReviewIssueInput::new("Issue 1", IssueSeverity::Major).with_no_step_reason("General");
+        let issue2 =
+            ReviewIssueInput::new("Issue 2", IssueSeverity::Minor).with_no_step_reason("General");
 
         let input = CompleteReviewInput::needs_changes_with_issues(
             "Multiple issues",
@@ -797,11 +824,12 @@ mod tests {
 
     #[test]
     fn test_invalid_issue_error_display() {
-        let err = CompleteReviewValidationError::InvalidIssue(
-            2,
-            ReviewIssueValidationError::EmptyTitle,
+        let err =
+            CompleteReviewValidationError::InvalidIssue(2, ReviewIssueValidationError::EmptyTitle);
+        assert_eq!(
+            err.to_string(),
+            "issue at index 2: issue title cannot be empty"
         );
-        assert_eq!(err.to_string(), "issue at index 2: issue title cannot be empty");
     }
 
     // ===== Serialization Tests =====

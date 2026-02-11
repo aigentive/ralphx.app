@@ -246,19 +246,19 @@ impl ActivityEvent {
         let metadata: Option<String> = row.get(7)?;
         let created_at_str: String = row.get(8)?;
 
-        let event_type: ActivityEventType = event_type_str
-            .parse()
-            .map_err(|e: ParseActivityEventTypeError| {
-                rusqlite::Error::FromSqlConversionFailure(
-                    4,
-                    rusqlite::types::Type::Text,
-                    Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.0)),
-                )
-            })?;
+        let event_type: ActivityEventType =
+            event_type_str
+                .parse()
+                .map_err(|e: ParseActivityEventTypeError| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        4,
+                        rusqlite::types::Type::Text,
+                        Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.0)),
+                    )
+                })?;
 
-        let role: ActivityEventRole = role_str
-            .parse()
-            .map_err(|e: ParseActivityEventRoleError| {
+        let role: ActivityEventRole =
+            role_str.parse().map_err(|e: ParseActivityEventRoleError| {
                 rusqlite::Error::FromSqlConversionFailure(
                     5,
                     rusqlite::types::Type::Text,
@@ -272,7 +272,10 @@ impl ActivityEvent {
                     rusqlite::Error::FromSqlConversionFailure(
                         3,
                         rusqlite::types::Type::Text,
-                        Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            e.to_string(),
+                        )),
                     )
                 })
             })
@@ -330,11 +333,26 @@ mod tests {
 
     #[test]
     fn activity_event_type_parsing() {
-        assert_eq!("thinking".parse::<ActivityEventType>().unwrap(), ActivityEventType::Thinking);
-        assert_eq!("tool_call".parse::<ActivityEventType>().unwrap(), ActivityEventType::ToolCall);
-        assert_eq!("tool_result".parse::<ActivityEventType>().unwrap(), ActivityEventType::ToolResult);
-        assert_eq!("text".parse::<ActivityEventType>().unwrap(), ActivityEventType::Text);
-        assert_eq!("error".parse::<ActivityEventType>().unwrap(), ActivityEventType::Error);
+        assert_eq!(
+            "thinking".parse::<ActivityEventType>().unwrap(),
+            ActivityEventType::Thinking
+        );
+        assert_eq!(
+            "tool_call".parse::<ActivityEventType>().unwrap(),
+            ActivityEventType::ToolCall
+        );
+        assert_eq!(
+            "tool_result".parse::<ActivityEventType>().unwrap(),
+            ActivityEventType::ToolResult
+        );
+        assert_eq!(
+            "text".parse::<ActivityEventType>().unwrap(),
+            ActivityEventType::Text
+        );
+        assert_eq!(
+            "error".parse::<ActivityEventType>().unwrap(),
+            ActivityEventType::Error
+        );
         assert!("invalid".parse::<ActivityEventType>().is_err());
     }
 
@@ -347,9 +365,18 @@ mod tests {
 
     #[test]
     fn activity_event_role_parsing() {
-        assert_eq!("agent".parse::<ActivityEventRole>().unwrap(), ActivityEventRole::Agent);
-        assert_eq!("system".parse::<ActivityEventRole>().unwrap(), ActivityEventRole::System);
-        assert_eq!("user".parse::<ActivityEventRole>().unwrap(), ActivityEventRole::User);
+        assert_eq!(
+            "agent".parse::<ActivityEventRole>().unwrap(),
+            ActivityEventRole::Agent
+        );
+        assert_eq!(
+            "system".parse::<ActivityEventRole>().unwrap(),
+            ActivityEventRole::System
+        );
+        assert_eq!(
+            "user".parse::<ActivityEventRole>().unwrap(),
+            ActivityEventRole::User
+        );
         assert!("invalid".parse::<ActivityEventRole>().is_err());
     }
 
@@ -416,7 +443,10 @@ mod tests {
         let event = ActivityEvent::new_task_event(task_id, ActivityEventType::ToolResult, "result")
             .with_metadata(r#"{"tool_use_id": "abc123"}"#);
 
-        assert_eq!(event.metadata, Some(r#"{"tool_use_id": "abc123"}"#.to_string()));
+        assert_eq!(
+            event.metadata,
+            Some(r#"{"tool_use_id": "abc123"}"#.to_string())
+        );
     }
 
     #[test]

@@ -111,11 +111,23 @@ fn test_v3_activity_events_has_all_indexes() {
 
     // Check all expected indexes exist
     assert!(helpers::index_exists(&conn, "idx_activity_events_task_id"));
-    assert!(helpers::index_exists(&conn, "idx_activity_events_session_id"));
+    assert!(helpers::index_exists(
+        &conn,
+        "idx_activity_events_session_id"
+    ));
     assert!(helpers::index_exists(&conn, "idx_activity_events_type"));
-    assert!(helpers::index_exists(&conn, "idx_activity_events_created_at"));
-    assert!(helpers::index_exists(&conn, "idx_activity_events_task_cursor"));
-    assert!(helpers::index_exists(&conn, "idx_activity_events_session_cursor"));
+    assert!(helpers::index_exists(
+        &conn,
+        "idx_activity_events_created_at"
+    ));
+    assert!(helpers::index_exists(
+        &conn,
+        "idx_activity_events_task_cursor"
+    ));
+    assert!(helpers::index_exists(
+        &conn,
+        "idx_activity_events_session_cursor"
+    ));
 }
 
 #[test]

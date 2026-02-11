@@ -222,6 +222,14 @@ pub fn run() {
                 // Wait for HTTP server to be ready
                 tokio::time::sleep(Duration::from_millis(500)).await;
 
+                if application::startup_jobs::is_startup_recovery_disabled() {
+                    info!(
+                        env_var = application::startup_jobs::RALPHX_DISABLE_STARTUP_RECOVERY_ENV,
+                        "Startup recovery disabled via environment; skipping startup recovery pipeline"
+                    );
+                    return;
+                }
+
                 info!("Starting startup job runner...");
 
                 // Create TaskSchedulerService for auto-scheduling Ready tasks
@@ -409,6 +417,8 @@ pub fn run() {
             commands::task_commands::mutation::unblock_task,
             commands::task_commands::mutation::cleanup_task,
             commands::task_commands::mutation::cleanup_tasks_in_group,
+            commands::task_commands::mutation::pause_task,
+            commands::task_commands::mutation::stop_task,
             commands::task_commands::query::get_archived_count,
             commands::task_commands::query::search_tasks,
             commands::task_commands::query::get_valid_transitions,
@@ -480,6 +490,9 @@ pub fn run() {
             commands::execution_commands::get_active_project,
             commands::execution_commands::get_global_execution_settings,
             commands::execution_commands::update_global_execution_settings,
+            commands::execution_commands::get_running_processes,
+            // Merge pipeline commands
+            commands::merge_pipeline_commands::get_merge_pipeline,
             // Ideation session commands
             commands::ideation_commands::create_ideation_session,
             commands::ideation_commands::get_ideation_session,
