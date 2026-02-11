@@ -526,7 +526,7 @@ use super::*;
         state.task_repo.archive(&created2.id).await.unwrap();
 
         // Check archived count
-        let count = state.task_repo.get_archived_count(&project_id).await.unwrap();
+        let count = state.task_repo.get_archived_count(&project_id, None).await.unwrap();
         assert_eq!(count, 2);
     }
 
@@ -540,7 +540,7 @@ use super::*;
         state.task_repo.create(Task::new(project_id.clone(), "Active 2".to_string())).await.unwrap();
 
         // Check archived count
-        let count = state.task_repo.get_archived_count(&project_id).await.unwrap();
+        let count = state.task_repo.get_archived_count(&project_id, None).await.unwrap();
         assert_eq!(count, 0);
     }
 
@@ -608,14 +608,14 @@ use super::*;
         // No tasks exist
         let result = state
             .task_repo
-            .list_paginated(&project_id, None, 0, 20, false)
+            .list_paginated(&project_id, None, 0, 20, false, None)
             .await
             .unwrap();
 
         assert_eq!(result.len(), 0);
 
         // Count should also be 0
-        let count = state.task_repo.count_tasks(&project_id, false).await.unwrap();
+        let count = state.task_repo.count_tasks(&project_id, false, None).await.unwrap();
         assert_eq!(count, 0);
     }
 
@@ -636,14 +636,14 @@ use super::*;
         // Get first page (limit 3)
         let result = state
             .task_repo
-            .list_paginated(&project_id, None, 0, 3, false)
+            .list_paginated(&project_id, None, 0, 3, false, None)
             .await
             .unwrap();
 
         assert_eq!(result.len(), 3);
 
         // Total count should be 5
-        let count = state.task_repo.count_tasks(&project_id, false).await.unwrap();
+        let count = state.task_repo.count_tasks(&project_id, false, None).await.unwrap();
         assert_eq!(count, 5);
     }
 
@@ -664,7 +664,7 @@ use super::*;
         // Get last page (offset 3, limit 3 = should return 2 tasks)
         let result = state
             .task_repo
-            .list_paginated(&project_id, None, 3, 3, false)
+            .list_paginated(&project_id, None, 3, 3, false, None)
             .await
             .unwrap();
 
@@ -688,7 +688,7 @@ use super::*;
         // Request offset 10 (beyond total of 3)
         let result = state
             .task_repo
-            .list_paginated(&project_id, None, 10, 20, false)
+            .list_paginated(&project_id, None, 10, 20, false, None)
             .await
             .unwrap();
 
@@ -724,7 +724,7 @@ use super::*;
         // List without archived (include_archived = false)
         let result = state
             .task_repo
-            .list_paginated(&project_id, None, 0, 20, false)
+            .list_paginated(&project_id, None, 0, 20, false, None)
             .await
             .unwrap();
 
@@ -732,7 +732,7 @@ use super::*;
         assert_eq!(result[0].title, "Task 3");
 
         // Count without archived
-        let count = state.task_repo.count_tasks(&project_id, false).await.unwrap();
+        let count = state.task_repo.count_tasks(&project_id, false, None).await.unwrap();
         assert_eq!(count, 1);
     }
 
@@ -759,14 +759,14 @@ use super::*;
         // List with archived (include_archived = true)
         let result = state
             .task_repo
-            .list_paginated(&project_id, None, 0, 20, true)
+            .list_paginated(&project_id, None, 0, 20, true, None)
             .await
             .unwrap();
 
         assert_eq!(result.len(), 2);
 
         // Count with archived
-        let count = state.task_repo.count_tasks(&project_id, true).await.unwrap();
+        let count = state.task_repo.count_tasks(&project_id, true, None).await.unwrap();
         assert_eq!(count, 2);
     }
 
@@ -801,7 +801,7 @@ use super::*;
         // Get paginated tasks
         let result = state
             .task_repo
-            .list_paginated(&project_id, None, 0, 20, false)
+            .list_paginated(&project_id, None, 0, 20, false, None)
             .await
             .unwrap();
 
@@ -1208,7 +1208,7 @@ use super::*;
         state.task_repo.archive(&created2.id).await.unwrap();
 
         // Count all archived - should be 2
-        let total_archived = state.task_repo.get_archived_count(&project_id).await.unwrap();
+        let total_archived = state.task_repo.get_archived_count(&project_id, None).await.unwrap();
         assert_eq!(total_archived, 2);
 
         // Count with session filter
