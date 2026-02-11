@@ -14,6 +14,8 @@ pub mod chat_message_repository;
 pub mod execution_settings_repository;
 pub mod ideation_session_repository;
 pub mod ideation_settings_repository;
+pub mod memory_archive_repository;
+pub mod memory_entry_repository;
 pub mod methodology_repo;
 pub mod permission_repository;
 pub mod plan_branch_repository;
@@ -50,6 +52,8 @@ pub use execution_settings_repository::{
 };
 pub use ideation_session_repository::IdeationSessionRepository;
 pub use ideation_settings_repository::IdeationSettingsRepository;
+pub use memory_archive_repository::MemoryArchiveRepository;
+pub use memory_entry_repository::MemoryEntryRepository;
 pub use methodology_repo::MethodologyRepository;
 pub use permission_repository::PermissionRepository;
 pub use plan_branch_repository::PlanBranchRepository;
