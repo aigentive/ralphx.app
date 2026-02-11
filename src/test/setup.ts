@@ -7,6 +7,9 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 
+// Mock __UI_DEBUG__ global used by logger
+(globalThis as unknown as { __UI_DEBUG__: boolean }).__UI_DEBUG__ = false;
+
 // Mock ResizeObserver for Radix UI components (ScrollArea, etc.)
 class ResizeObserverMock implements ResizeObserver {
   observe = vi.fn();
