@@ -18,6 +18,8 @@ mod sqlite_chat_message_repo_tests;
 pub mod sqlite_execution_settings_repo;
 pub mod sqlite_ideation_session_repo;
 pub mod sqlite_ideation_settings_repo;
+pub mod sqlite_memory_archive_repo;
+pub mod sqlite_memory_entry_repo;
 pub mod sqlite_methodology_repo;
 pub mod sqlite_plan_branch_repo;
 pub mod sqlite_plan_selection_stats_repo;
@@ -56,6 +58,8 @@ pub use sqlite_execution_settings_repo::{
 };
 pub use sqlite_ideation_session_repo::SqliteIdeationSessionRepository;
 pub use sqlite_ideation_settings_repo::SqliteIdeationSettingsRepository;
+pub use sqlite_memory_archive_repo::SqliteMemoryArchiveRepository;
+pub use sqlite_memory_entry_repo::SqliteMemoryEntryRepository;
 pub use sqlite_methodology_repo::SqliteMethodologyRepository;
 pub use sqlite_plan_branch_repo::SqlitePlanBranchRepository;
 pub use sqlite_plan_selection_stats_repo::SqlitePlanSelectionStatsRepository;
