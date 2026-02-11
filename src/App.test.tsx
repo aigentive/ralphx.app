@@ -6,6 +6,7 @@ import { useUiStore } from "@/stores/uiStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
+import { useProjectStore } from "@/stores/projectStore";
 import { useExecutionStatus } from "@/hooks/useExecutionControl";
 import { useExecutionEvents } from "@/hooks/useExecutionEvents";
 
@@ -246,6 +247,12 @@ function resetStores() {
     lastDependencyRefreshRequestedAt: null,
     lastProposalUpdatedAt: null,
     lastUpdatedProposalId: null,
+  });
+
+  useProjectStore.setState({
+    activeProjectId: null,
+    projects: {},
+    isInitialized: false,
   });
 }
 
@@ -513,13 +520,8 @@ describe("App", () => {
     });
 
     it("should call useExecutionStatus with project ID when project is active", () => {
-      // Set up an active project
-      const { useProjectStore } = vi.importActual<typeof import("@/stores/projectStore")>(
-        "@/stores/projectStore"
-      );
-      if (useProjectStore) {
-        useProjectStore.setState({ activeProjectId: "test-project-123" });
-      }
+      // Set up an active project BEFORE rendering
+      useProjectStore.setState({ activeProjectId: "test-project-123" });
 
       render(<App />);
 
