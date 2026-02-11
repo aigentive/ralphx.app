@@ -453,6 +453,7 @@ export function IntegratedChatPanel({
   } = useIntegratedChatHandlers({
     isExecutionMode,
     isReviewMode,
+    isMergeMode,
     selectedTaskId: selectedTaskId ?? undefined,
     projectId,
     ideationSessionId,
