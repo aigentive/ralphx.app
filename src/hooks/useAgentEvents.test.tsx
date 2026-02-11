@@ -4,6 +4,7 @@
  * Covers:
  * - agent:run_started sets running state
  * - agent:run_completed clears running state
+ * - agent:stopped clears running state (defensive)
  * - agent:error clears running state
  * - Event listeners are properly cleaned up on unmount
  */
@@ -226,6 +227,72 @@ describe("useAgentEvents", () => {
     });
   });
 
+  describe("agent:stopped", () => {
+    it("clears agent running state on stop (defensive)", () => {
+      const wrapper = createWrapper();
+
+      act(() => {
+        useChatStore.getState().setAgentRunning("task:task-123", true);
+      });
+      expect(useChatStore.getState().isAgentRunning["task:task-123"]).toBe(true);
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:stopped", {
+          context_type: "task",
+          context_id: "task-123",
+          conversation_id: "conv-1",
+          agent_run_id: "run-1",
+        });
+      });
+
+      expect(useChatStore.getState().isAgentRunning["task:task-123"]).toBeUndefined();
+    });
+
+    it("clears running state for task_execution on stop", () => {
+      const wrapper = createWrapper();
+
+      act(() => {
+        useChatStore.getState().setAgentRunning("task_execution:task-123", true);
+      });
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:stopped", {
+          context_type: "task_execution",
+          context_id: "task-123",
+          conversation_id: "conv-1",
+          agent_run_id: "run-1",
+        });
+      });
+
+      expect(useChatStore.getState().isAgentRunning["task_execution:task-123"]).toBeUndefined();
+    });
+
+    it("clears running state for review on stop", () => {
+      const wrapper = createWrapper();
+
+      act(() => {
+        useChatStore.getState().setAgentRunning("review:task-123", true);
+      });
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:stopped", {
+          context_type: "review",
+          context_id: "task-123",
+          conversation_id: "conv-1",
+          agent_run_id: "run-1",
+        });
+      });
+
+      expect(useChatStore.getState().isAgentRunning["review:task-123"]).toBeUndefined();
+    });
+  });
+
   describe("agent:error", () => {
     it("clears agent running state on error", () => {
       const wrapper = createWrapper();
@@ -257,6 +324,7 @@ describe("useAgentEvents", () => {
       // Events should be registered
       expect(listeners.get("agent:run_started")?.size).toBe(1);
       expect(listeners.get("agent:run_completed")?.size).toBe(1);
+      expect(listeners.get("agent:stopped")?.size).toBe(1);
       expect(listeners.get("agent:error")?.size).toBe(1);
 
       unmount();
@@ -264,6 +332,7 @@ describe("useAgentEvents", () => {
       // After unmount, listeners should be cleared
       expect(listeners.get("agent:run_started")?.size ?? 0).toBe(0);
       expect(listeners.get("agent:run_completed")?.size ?? 0).toBe(0);
+      expect(listeners.get("agent:stopped")?.size ?? 0).toBe(0);
       expect(listeners.get("agent:error")?.size ?? 0).toBe(0);
     });
   });
