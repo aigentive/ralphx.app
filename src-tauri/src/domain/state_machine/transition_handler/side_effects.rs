@@ -1837,6 +1837,7 @@ impl<'a> super::TransitionHandler<'a> {
                 .event_emitter
                 .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
                 .await;
+            self.trigger_deferred_merge_retry("pending_merge_to_merge_incomplete");
 
             return;
         }
@@ -2347,6 +2348,7 @@ impl<'a> super::TransitionHandler<'a> {
                                     "merge_incomplete",
                                 )
                                 .await;
+                            self.trigger_deferred_merge_retry("complete_merge_internal_failed_in_repo");
                         } else {
                             self.post_merge_cleanup(
                                 task_id_str,
@@ -2602,6 +2604,7 @@ impl<'a> super::TransitionHandler<'a> {
                                     "merge_incomplete",
                                 )
                                 .await;
+                            self.trigger_deferred_merge_retry("merge_failed_in_repo_non_deferrable");
                         }
                     }
                 }
@@ -2756,6 +2759,7 @@ impl<'a> super::TransitionHandler<'a> {
                                     "merge_incomplete",
                                 )
                                 .await;
+                            self.trigger_deferred_merge_retry("complete_merge_internal_failed_worktree");
                         } else {
                             self.post_merge_cleanup(
                                 task_id_str,
@@ -3018,6 +3022,7 @@ impl<'a> super::TransitionHandler<'a> {
                                     "merge_incomplete",
                                 )
                                 .await;
+                            self.trigger_deferred_merge_retry("merge_failed_worktree_non_deferrable");
                         }
                     }
                 }
@@ -3137,6 +3142,7 @@ impl<'a> super::TransitionHandler<'a> {
                             .event_emitter
                             .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
                             .await;
+                        self.trigger_deferred_merge_retry("complete_merge_internal_failed_local");
                     } else {
                         self.post_merge_cleanup(task_id_str, &task_id, repo_path, plan_branch_repo)
                             .await;
@@ -3379,6 +3385,7 @@ impl<'a> super::TransitionHandler<'a> {
                             .event_emitter
                             .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
                             .await;
+                        self.trigger_deferred_merge_retry("merge_failed_local_non_deferrable");
                     }
                 }
             }
@@ -3460,6 +3467,27 @@ impl<'a> super::TransitionHandler<'a> {
         if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
             let scheduler = Arc::clone(scheduler);
             let project_id = self.machine.context.project_id.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
+                scheduler.try_retry_deferred_merges(&project_id).await;
+            });
+        }
+    }
+
+    /// Trigger retry for deferred merges in the same project.
+    ///
+    /// This is needed for direct PendingMerge -> MergeIncomplete fallbacks that don't
+    /// pass through a formal state-machine on_exit path.
+    fn trigger_deferred_merge_retry(&self, reason: &'static str) {
+        if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
+            let scheduler = Arc::clone(scheduler);
+            let project_id = self.machine.context.project_id.clone();
+            tracing::info!(
+                task_id = %self.machine.context.task_id,
+                project_id = %project_id,
+                reason = reason,
+                "Triggering deferred merge retry"
+            );
             tokio::spawn(async move {
                 tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
                 scheduler.try_retry_deferred_merges(&project_id).await;
