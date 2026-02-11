@@ -571,11 +571,17 @@ fn run_shell_command_with_timeout(
     command: &str,
     cwd: &Path,
     timeout: Duration,
+    merge_cwd: &Path,
 ) -> Result<ShellCommandResult, std::io::Error> {
+    // Use an isolated cargo target dir per merge worktree to avoid global lock contention
+    // when multiple merges run validation concurrently.
+    let isolated_cargo_target = merge_cwd.join("src-tauri").join("target-merge");
+
     let mut child = Command::new("sh")
         .arg("-c")
         .arg(command)
         .current_dir(cwd)
+        .env("CARGO_TARGET_DIR", isolated_cargo_target.as_os_str())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()?;
@@ -699,7 +705,12 @@ pub(crate) fn run_validation_commands(
             );
 
             let start = std::time::Instant::now();
-            match run_shell_command_with_timeout(&resolved_cmd, &cmd_cwd, command_timeout) {
+            match run_shell_command_with_timeout(
+                &resolved_cmd,
+                &cmd_cwd,
+                command_timeout,
+                merge_cwd,
+            ) {
                 Ok(result) => {
                     let duration_ms = start.elapsed().as_millis() as u64;
                     let stdout_raw = result.stdout;
@@ -882,7 +893,12 @@ pub(crate) fn run_validation_commands(
             );
 
             let start = std::time::Instant::now();
-            match run_shell_command_with_timeout(&resolved_cmd, &cmd_cwd, command_timeout) {
+            match run_shell_command_with_timeout(
+                &resolved_cmd,
+                &cmd_cwd,
+                command_timeout,
+                merge_cwd,
+            ) {
                 Ok(result) => {
                     let duration_ms = start.elapsed().as_millis() as u64;
                     let stderr_raw = result.stderr;
