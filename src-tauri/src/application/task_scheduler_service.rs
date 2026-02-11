@@ -10,16 +10,23 @@
 // - StartupJobRunner after resuming agent-active tasks
 // - resume_execution and set_max_concurrent commands (future Phase 26 tasks)
 
-use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Runtime};
 use tokio::sync::RwLock;
 
 use crate::commands::ExecutionState;
-use crate::domain::entities::{GitMode, InternalStatus, ProjectId, Task};
+use crate::domain::entities::{
+    task_metadata::{
+        MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
+        MergeRecoverySource, MergeRecoveryState,
+    },
+    GitMode, InternalStatus, ProjectId, Task,
+};
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
+    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
+    TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::TaskScheduler;
@@ -345,18 +352,14 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
         let deferred_tasks: Vec<_> = all_tasks
             .iter()
             .filter(|t| {
-                t.internal_status == InternalStatus::PendingMerge
-                    && has_merge_deferred_metadata(t)
+                t.internal_status == InternalStatus::PendingMerge && has_merge_deferred_metadata(t)
             })
             .collect();
 
         let deferred_count = deferred_tasks.len();
 
         if deferred_count == 0 {
-            tracing::debug!(
-                project_id = project_id,
-                "No deferred merges to retry"
-            );
+            tracing::debug!(project_id = project_id, "No deferred merges to retry");
             return;
         }
 
@@ -373,11 +376,11 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
                 .as_ref()
                 .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
                 .map(|val| {
-                    let target = val.get("target_branch")
+                    let target = val
+                        .get("target_branch")
                         .and_then(|v| v.as_str())
                         .unwrap_or("unknown");
-                    let blocker = val.get("blocking_task_id")
-                        .and_then(|v| v.as_str());
+                    let blocker = val.get("blocking_task_id").and_then(|v| v.as_str());
                     (target.to_string(), blocker.map(|s| s.to_string()))
                 })
                 .unwrap_or_else(|| ("unknown".to_string(), None));
@@ -391,27 +394,76 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
                 "Re-triggering deferred merge"
             );
 
-            // Clear the deferred flag
+            // Append auto_retry_triggered event before clearing deferred flag
             let mut updated = task.clone();
+
+            // Get or create merge recovery metadata
+            let mut recovery =
+                MergeRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
+                    .unwrap_or(None)
+                    .unwrap_or_else(MergeRecoveryMetadata::new);
+
+            // Count previous retry attempts from events
+            let attempt_count = recovery
+                .events
+                .iter()
+                .filter(|e| matches!(e.kind, MergeRecoveryEventKind::AutoRetryTriggered))
+                .count() as u32
+                + 1;
+
+            // Create auto_retry_triggered event
+            let auto_retry_event = MergeRecoveryEvent::new(
+                MergeRecoveryEventKind::AutoRetryTriggered,
+                MergeRecoverySource::Auto,
+                MergeRecoveryReasonCode::TargetBranchBusy,
+                format!(
+                    "Automatic retry attempt {}: blocker task completed or exited merge workflow",
+                    attempt_count
+                ),
+            )
+            .with_target_branch(&target_branch)
+            .with_attempt(attempt_count);
+
+            // Append event and update state to Retrying
+            recovery.append_event_with_state(auto_retry_event, MergeRecoveryState::Retrying);
+
+            // Update task metadata
+            match recovery.update_task_metadata(updated.metadata.as_deref()) {
+                Ok(updated_json) => {
+                    updated.metadata = Some(updated_json);
+                }
+                Err(e) => {
+                    tracing::error!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Failed to serialize merge recovery metadata during retry"
+                    );
+                }
+            }
+
+            // Clear the legacy deferred flag
             clear_merge_deferred_metadata(&mut updated);
             updated.touch();
+
             if let Err(e) = self.task_repo.update(&updated).await {
                 tracing::warn!(
                     error = %e,
                     task_id = task.id.as_str(),
-                    "Failed to clear merge_deferred metadata"
+                    "Failed to update task metadata with retry event"
                 );
                 continue;
             }
 
+            tracing::info!(
+                task_id = task.id.as_str(),
+                attempt = attempt_count,
+                "Appended auto_retry_triggered event, re-invoking merge attempt"
+            );
+
             // Re-invoke entry actions for PendingMerge to re-run attempt_programmatic_merge
             let transition_service = self.build_transition_service();
             transition_service
-                .execute_entry_actions(
-                    &task.id,
-                    &updated,
-                    InternalStatus::PendingMerge,
-                )
+                .execute_entry_actions(&task.id, &updated, InternalStatus::PendingMerge)
                 .await;
 
             // Only retry one deferred merge at a time to serialize them properly
@@ -460,7 +512,11 @@ mod tests {
 
         // Create a project with a Ready task
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         let mut task = Task::new(project.id.clone(), "Ready Task".to_string());
         task.internal_status = InternalStatus::Ready;
@@ -475,7 +531,12 @@ mod tests {
         scheduler.try_schedule_ready_tasks().await;
 
         // Task should still be Ready
-        let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+        let updated = app_state
+            .task_repo
+            .get_by_id(&task.id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(updated.internal_status, InternalStatus::Ready);
     }
 
@@ -489,7 +550,11 @@ mod tests {
 
         // Create a project with a Ready task
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         let mut task = Task::new(project.id.clone(), "Ready Task".to_string());
         task.internal_status = InternalStatus::Ready;
@@ -501,7 +566,12 @@ mod tests {
         scheduler.try_schedule_ready_tasks().await;
 
         // Task should still be Ready
-        let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+        let updated = app_state
+            .task_repo
+            .get_by_id(&task.id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(updated.internal_status, InternalStatus::Ready);
     }
 
@@ -530,12 +600,20 @@ mod tests {
 
         // Create a project
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         // Create older task first
         let mut older_task = Task::new(project.id.clone(), "Older Task".to_string());
         older_task.internal_status = InternalStatus::Ready;
-        app_state.task_repo.create(older_task.clone()).await.unwrap();
+        app_state
+            .task_repo
+            .create(older_task.clone())
+            .await
+            .unwrap();
         let older_task_id = older_task.id.clone();
 
         // Small delay to ensure different created_at timestamps
@@ -544,7 +622,11 @@ mod tests {
         // Create newer task
         let mut newer_task = Task::new(project.id.clone(), "Newer Task".to_string());
         newer_task.internal_status = InternalStatus::Ready;
-        app_state.task_repo.create(newer_task.clone()).await.unwrap();
+        app_state
+            .task_repo
+            .create(newer_task.clone())
+            .await
+            .unwrap();
         let newer_task_id = newer_task.id.clone();
 
         let scheduler = build_scheduler(&app_state, &execution_state);
@@ -553,7 +635,12 @@ mod tests {
         scheduler.try_schedule_ready_tasks().await;
 
         // Older task should be Executing (transitioned)
-        let updated_older = app_state.task_repo.get_by_id(&older_task_id).await.unwrap().unwrap();
+        let updated_older = app_state
+            .task_repo
+            .get_by_id(&older_task_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(
             updated_older.internal_status,
             InternalStatus::Executing,
@@ -561,7 +648,12 @@ mod tests {
         );
 
         // Newer task should still be Ready
-        let updated_newer = app_state.task_repo.get_by_id(&newer_task_id).await.unwrap().unwrap();
+        let updated_newer = app_state
+            .task_repo
+            .get_by_id(&newer_task_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(
             updated_newer.internal_status,
             InternalStatus::Ready,
@@ -578,15 +670,27 @@ mod tests {
 
         // Create two projects
         let project1 = Project::new("Project 1".to_string(), "/test/path1".to_string());
-        app_state.project_repo.create(project1.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project1.clone())
+            .await
+            .unwrap();
 
         let project2 = Project::new("Project 2".to_string(), "/test/path2".to_string());
-        app_state.project_repo.create(project2.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project2.clone())
+            .await
+            .unwrap();
 
         // Create older task in project 2
         let mut older_task = Task::new(project2.id.clone(), "Older Task (P2)".to_string());
         older_task.internal_status = InternalStatus::Ready;
-        app_state.task_repo.create(older_task.clone()).await.unwrap();
+        app_state
+            .task_repo
+            .create(older_task.clone())
+            .await
+            .unwrap();
         let older_task_id = older_task.id.clone();
 
         // Small delay
@@ -595,7 +699,11 @@ mod tests {
         // Create newer task in project 1
         let mut newer_task = Task::new(project1.id.clone(), "Newer Task (P1)".to_string());
         newer_task.internal_status = InternalStatus::Ready;
-        app_state.task_repo.create(newer_task.clone()).await.unwrap();
+        app_state
+            .task_repo
+            .create(newer_task.clone())
+            .await
+            .unwrap();
 
         let scheduler = build_scheduler(&app_state, &execution_state);
 
@@ -603,7 +711,12 @@ mod tests {
         scheduler.try_schedule_ready_tasks().await;
 
         // Older task should be Executing
-        let updated_older = app_state.task_repo.get_by_id(&older_task_id).await.unwrap().unwrap();
+        let updated_older = app_state
+            .task_repo
+            .get_by_id(&older_task_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(
             updated_older.internal_status,
             InternalStatus::Executing,
@@ -617,12 +730,20 @@ mod tests {
 
         // Create a project (default is Local mode)
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         // Create tasks with different statuses
         let mut ready_task = Task::new(project.id.clone(), "Ready Task".to_string());
         ready_task.internal_status = InternalStatus::Ready;
-        app_state.task_repo.create(ready_task.clone()).await.unwrap();
+        app_state
+            .task_repo
+            .create(ready_task.clone())
+            .await
+            .unwrap();
 
         let mut backlog_task = Task::new(project.id.clone(), "Backlog Task".to_string());
         backlog_task.internal_status = InternalStatus::Backlog;
@@ -660,7 +781,11 @@ mod tests {
         // Create a Local-mode project
         let mut project = Project::new("Local Project".to_string(), "/test/local".to_string());
         project.git_mode = GitMode::Local;
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         // Create an Executing task (blocks the project)
         let mut executing_task = Task::new(project.id.clone(), "Executing Task".to_string());
@@ -670,13 +795,20 @@ mod tests {
         // Create a Ready task (should be skipped)
         let mut ready_task = Task::new(project.id.clone(), "Ready Task".to_string());
         ready_task.internal_status = InternalStatus::Ready;
-        app_state.task_repo.create(ready_task.clone()).await.unwrap();
+        app_state
+            .task_repo
+            .create(ready_task.clone())
+            .await
+            .unwrap();
 
         let scheduler = build_scheduler(&app_state, &execution_state);
 
         // Should not find the Ready task (Local project has running task)
         let found = scheduler.find_oldest_schedulable_task().await;
-        assert!(found.is_none(), "Should not schedule task when Local-mode project has running task");
+        assert!(
+            found.is_none(),
+            "Should not schedule task when Local-mode project has running task"
+        );
     }
 
     #[tokio::test]
@@ -689,18 +821,29 @@ mod tests {
         // Create a Local-mode project
         let mut project = Project::new("Local Project".to_string(), "/test/local".to_string());
         project.git_mode = GitMode::Local;
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         // Create only a Ready task (no running tasks)
         let mut ready_task = Task::new(project.id.clone(), "Ready Task".to_string());
         ready_task.internal_status = InternalStatus::Ready;
-        app_state.task_repo.create(ready_task.clone()).await.unwrap();
+        app_state
+            .task_repo
+            .create(ready_task.clone())
+            .await
+            .unwrap();
 
         let scheduler = build_scheduler(&app_state, &execution_state);
 
         // Should find the Ready task
         let found = scheduler.find_oldest_schedulable_task().await;
-        assert!(found.is_some(), "Should schedule task when Local-mode project has no running task");
+        assert!(
+            found.is_some(),
+            "Should schedule task when Local-mode project has no running task"
+        );
         assert_eq!(found.unwrap().id, ready_task.id);
     }
 
@@ -714,7 +857,11 @@ mod tests {
         // Create a Worktree-mode project
         let mut project = Project::new("Worktree Project".to_string(), "/test/wt".to_string());
         project.git_mode = GitMode::Worktree;
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         // Create an Executing task
         let mut executing_task = Task::new(project.id.clone(), "Executing Task".to_string());
@@ -724,13 +871,20 @@ mod tests {
         // Create a Ready task
         let mut ready_task = Task::new(project.id.clone(), "Ready Task".to_string());
         ready_task.internal_status = InternalStatus::Ready;
-        app_state.task_repo.create(ready_task.clone()).await.unwrap();
+        app_state
+            .task_repo
+            .create(ready_task.clone())
+            .await
+            .unwrap();
 
         let scheduler = build_scheduler(&app_state, &execution_state);
 
         // Should find the Ready task (Worktree mode allows parallel)
         let found = scheduler.find_oldest_schedulable_task().await;
-        assert!(found.is_some(), "Worktree mode should allow parallel task execution");
+        assert!(
+            found.is_some(),
+            "Worktree mode should allow parallel task execution"
+        );
         assert_eq!(found.unwrap().id, ready_task.id);
     }
 
@@ -756,7 +910,11 @@ mod tests {
                 format!("/test/local/{}", blocking_state.as_str()),
             );
             project.git_mode = GitMode::Local;
-            app_state.project_repo.create(project.clone()).await.unwrap();
+            app_state
+                .project_repo
+                .create(project.clone())
+                .await
+                .unwrap();
 
             // Create a task in the blocking state
             let mut blocking_task = Task::new(project.id.clone(), "Blocking Task".to_string());
@@ -777,7 +935,8 @@ mod tests {
             // The found task, if any, should not be from this project
             if let Some(task) = found {
                 assert_ne!(
-                    task.project_id, project.id,
+                    task.project_id,
+                    project.id,
                     "State {} should block scheduling in Local mode",
                     blocking_state.as_str()
                 );
@@ -793,11 +952,17 @@ mod tests {
         execution_state.set_max_concurrent(10);
 
         // Create a Local-mode project with a running task
-        let mut local_project = Project::new("Local Project".to_string(), "/test/local".to_string());
+        let mut local_project =
+            Project::new("Local Project".to_string(), "/test/local".to_string());
         local_project.git_mode = GitMode::Local;
-        app_state.project_repo.create(local_project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(local_project.clone())
+            .await
+            .unwrap();
 
-        let mut local_executing = Task::new(local_project.id.clone(), "Local Executing".to_string());
+        let mut local_executing =
+            Task::new(local_project.id.clone(), "Local Executing".to_string());
         local_executing.internal_status = InternalStatus::Executing;
         app_state.task_repo.create(local_executing).await.unwrap();
 
@@ -812,7 +977,11 @@ mod tests {
         // Create a Worktree-mode project with a running task
         let mut wt_project = Project::new("Worktree Project".to_string(), "/test/wt".to_string());
         wt_project.git_mode = GitMode::Worktree;
-        app_state.project_repo.create(wt_project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(wt_project.clone())
+            .await
+            .unwrap();
 
         let mut wt_executing = Task::new(wt_project.id.clone(), "WT Executing".to_string());
         wt_executing.internal_status = InternalStatus::Executing;
@@ -827,9 +996,13 @@ mod tests {
 
         // Should skip Local project's Ready task and find Worktree project's Ready task
         let found = scheduler.find_oldest_schedulable_task().await;
-        assert!(found.is_some(), "Should find schedulable task from Worktree project");
+        assert!(
+            found.is_some(),
+            "Should find schedulable task from Worktree project"
+        );
         assert_eq!(
-            found.unwrap().project_id, wt_project.id,
+            found.unwrap().project_id,
+            wt_project.id,
             "Should schedule task from Worktree project, not blocked Local project"
         );
     }
@@ -850,7 +1023,11 @@ mod tests {
         // Create a Worktree-mode project (allows parallel tasks from same project)
         let mut project = Project::new("Test Project".to_string(), "/test/path".to_string());
         project.git_mode = GitMode::Worktree;
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         // Create 5 Ready tasks
         let mut task_ids = Vec::new();
@@ -873,7 +1050,12 @@ mod tests {
         let mut ready_count = 0;
 
         for task_id in &task_ids {
-            let task = app_state.task_repo.get_by_id(task_id).await.unwrap().unwrap();
+            let task = app_state
+                .task_repo
+                .get_by_id(task_id)
+                .await
+                .unwrap()
+                .unwrap();
             match task.internal_status {
                 InternalStatus::Executing => executing_count += 1,
                 InternalStatus::Ready => ready_count += 1,
@@ -885,10 +1067,7 @@ mod tests {
             executing_count, 3,
             "Should have scheduled 3 tasks (max_concurrent)"
         );
-        assert_eq!(
-            ready_count, 2,
-            "Should have 2 tasks still Ready"
-        );
+        assert_eq!(ready_count, 2, "Should have 2 tasks still Ready");
     }
 
     #[tokio::test]
@@ -905,12 +1084,13 @@ mod tests {
         // This allows testing capacity limits without Local-mode single-task constraint
         let mut task_ids = Vec::new();
         for i in 0..3 {
-            let mut project = Project::new(
-                format!("Project {}", i),
-                format!("/test/path{}", i),
-            );
+            let mut project = Project::new(format!("Project {}", i), format!("/test/path{}", i));
             project.git_mode = GitMode::Worktree;
-            app_state.project_repo.create(project.clone()).await.unwrap();
+            app_state
+                .project_repo
+                .create(project.clone())
+                .await
+                .unwrap();
 
             let mut task = Task::new(project.id.clone(), format!("Task {}", i));
             task.internal_status = InternalStatus::Ready;
@@ -929,7 +1109,12 @@ mod tests {
         let mut ready_count = 0;
 
         for task_id in &task_ids {
-            let task = app_state.task_repo.get_by_id(task_id).await.unwrap().unwrap();
+            let task = app_state
+                .task_repo
+                .get_by_id(task_id)
+                .await
+                .unwrap()
+                .unwrap();
             match task.internal_status {
                 InternalStatus::Executing => executing_count += 1,
                 InternalStatus::Ready => ready_count += 1,
@@ -941,14 +1126,12 @@ mod tests {
             executing_count, 1,
             "Should have scheduled only 1 task (1 slot available)"
         );
-        assert_eq!(
-            ready_count, 2,
-            "Should have 2 tasks still Ready"
-        );
+        assert_eq!(ready_count, 2, "Should have 2 tasks still Ready");
 
         // Verify running count is now at capacity (1 pre-filled + 1 scheduled = 2)
         assert_eq!(
-            execution_state.running_count(), 2,
+            execution_state.running_count(),
+            2,
             "Running count should be at max_concurrent"
         );
     }
@@ -962,7 +1145,11 @@ mod tests {
         let (execution_state, app_state) = setup_test_state().await;
 
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         // Create a task in Executing state with merge_deferred metadata (shouldn't happen
         // in practice, but tests the status filter)
@@ -972,12 +1159,23 @@ mod tests {
         app_state.task_repo.create(task.clone()).await.unwrap();
 
         let scheduler = build_scheduler(&app_state, &execution_state);
-        scheduler.try_retry_deferred_merges(project.id.as_str()).await;
+        scheduler
+            .try_retry_deferred_merges(project.id.as_str())
+            .await;
 
         // Task should still have merge_deferred metadata (not touched)
-        let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+        let updated = app_state
+            .task_repo
+            .get_by_id(&task.id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(updated.internal_status, InternalStatus::Executing);
-        assert!(updated.metadata.as_deref().unwrap().contains("merge_deferred"));
+        assert!(updated
+            .metadata
+            .as_deref()
+            .unwrap()
+            .contains("merge_deferred"));
     }
 
     #[tokio::test]
@@ -985,7 +1183,11 @@ mod tests {
         let (execution_state, app_state) = setup_test_state().await;
 
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         // Create a PendingMerge task without merge_deferred metadata
         let mut task = Task::new(project.id.clone(), "Pending Merge Task".to_string());
@@ -993,10 +1195,17 @@ mod tests {
         app_state.task_repo.create(task.clone()).await.unwrap();
 
         let scheduler = build_scheduler(&app_state, &execution_state);
-        scheduler.try_retry_deferred_merges(project.id.as_str()).await;
+        scheduler
+            .try_retry_deferred_merges(project.id.as_str())
+            .await;
 
         // Task should still be PendingMerge with no metadata changes
-        let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+        let updated = app_state
+            .task_repo
+            .get_by_id(&task.id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(updated.internal_status, InternalStatus::PendingMerge);
         assert!(updated.metadata.is_none());
     }
@@ -1006,7 +1215,11 @@ mod tests {
         let (execution_state, app_state) = setup_test_state().await;
 
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         // Create a PendingMerge task WITH merge_deferred metadata
         let mut task = Task::new(project.id.clone(), "Deferred Merge".to_string());
@@ -1017,14 +1230,25 @@ mod tests {
         app_state.task_repo.create(task.clone()).await.unwrap();
 
         let scheduler = build_scheduler(&app_state, &execution_state);
-        scheduler.try_retry_deferred_merges(project.id.as_str()).await;
+        scheduler
+            .try_retry_deferred_merges(project.id.as_str())
+            .await;
 
         // The merge_deferred flag should be cleared
-        let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+        let updated = app_state
+            .task_repo
+            .get_by_id(&task.id)
+            .await
+            .unwrap()
+            .unwrap();
         // Metadata should be None (only deferred fields existed)
         assert!(
             updated.metadata.is_none()
-                || !updated.metadata.as_deref().unwrap_or("").contains("merge_deferred"),
+                || !updated
+                    .metadata
+                    .as_deref()
+                    .unwrap_or("")
+                    .contains("merge_deferred"),
             "merge_deferred flag should be cleared"
         );
     }
@@ -1034,7 +1258,11 @@ mod tests {
         let (execution_state, app_state) = setup_test_state().await;
 
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         // Create two PendingMerge tasks with merge_deferred metadata
         let mut task1 = Task::new(project.id.clone(), "Deferred Merge 1".to_string());
@@ -1048,16 +1276,36 @@ mod tests {
         app_state.task_repo.create(task2.clone()).await.unwrap();
 
         let scheduler = build_scheduler(&app_state, &execution_state);
-        scheduler.try_retry_deferred_merges(project.id.as_str()).await;
+        scheduler
+            .try_retry_deferred_merges(project.id.as_str())
+            .await;
 
         // Only one task should have its flag cleared (serialization)
-        let updated1 = app_state.task_repo.get_by_id(&task1.id).await.unwrap().unwrap();
-        let updated2 = app_state.task_repo.get_by_id(&task2.id).await.unwrap().unwrap();
+        let updated1 = app_state
+            .task_repo
+            .get_by_id(&task1.id)
+            .await
+            .unwrap()
+            .unwrap();
+        let updated2 = app_state
+            .task_repo
+            .get_by_id(&task2.id)
+            .await
+            .unwrap()
+            .unwrap();
 
         let flag1_cleared = updated1.metadata.is_none()
-            || !updated1.metadata.as_deref().unwrap_or("").contains("merge_deferred");
+            || !updated1
+                .metadata
+                .as_deref()
+                .unwrap_or("")
+                .contains("merge_deferred");
         let flag2_cleared = updated2.metadata.is_none()
-            || !updated2.metadata.as_deref().unwrap_or("").contains("merge_deferred");
+            || !updated2
+                .metadata
+                .as_deref()
+                .unwrap_or("")
+                .contains("merge_deferred");
 
         assert!(
             flag1_cleared ^ flag2_cleared,
@@ -1073,10 +1321,18 @@ mod tests {
         let (execution_state, app_state) = setup_test_state().await;
 
         let project1 = Project::new("Project 1".to_string(), "/test/path1".to_string());
-        app_state.project_repo.create(project1.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project1.clone())
+            .await
+            .unwrap();
 
         let project2 = Project::new("Project 2".to_string(), "/test/path2".to_string());
-        app_state.project_repo.create(project2.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project2.clone())
+            .await
+            .unwrap();
 
         // Create a deferred merge task in project 1
         let mut task = Task::new(project1.id.clone(), "Deferred Merge".to_string());
@@ -1087,12 +1343,23 @@ mod tests {
         let scheduler = build_scheduler(&app_state, &execution_state);
 
         // Retry for project 2 — should not touch project 1's task
-        scheduler.try_retry_deferred_merges(project2.id.as_str()).await;
+        scheduler
+            .try_retry_deferred_merges(project2.id.as_str())
+            .await;
 
         // Task should still have the deferred flag
-        let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+        let updated = app_state
+            .task_repo
+            .get_by_id(&task.id)
+            .await
+            .unwrap()
+            .unwrap();
         assert!(
-            updated.metadata.as_deref().unwrap().contains("merge_deferred"),
+            updated
+                .metadata
+                .as_deref()
+                .unwrap()
+                .contains("merge_deferred"),
             "Task in project 1 should not be touched when retrying for project 2"
         );
     }
