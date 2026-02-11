@@ -10,6 +10,7 @@ pub mod diff_service;
 pub mod git_service;
 pub mod ideation_service;
 pub mod memory_archive_service;
+pub mod memory_orchestration;
 pub mod permission_state;
 pub mod plan_ranking;
 pub mod question_state;

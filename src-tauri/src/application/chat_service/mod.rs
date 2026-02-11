@@ -569,6 +569,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         let plugin_dir = self.plugin_dir.clone();
         let working_directory_clone = working_directory;
         let stored_session_id_clone = stored_session_id;
+        let resolved_agent_name = chat_service_helpers::resolve_agent(&context_type, entity_status.as_deref()).to_string();
 
         // 9. Process stream in background (extracted to separate module)
         chat_service_send_background::spawn_send_message_background(
@@ -594,6 +595,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             execution_state,
             plan_branch_repo,
             app_handle,
+            Some(resolved_agent_name),
         );
         tracing::debug!(
             conversation_id = conversation_id.as_str(),
