@@ -597,11 +597,14 @@ function computeLayoutWithCache(
   // Only process visible nodes (lazy loading - collapsed group tasks excluded)
   const nodes: Node[] = visibleNodes.map((graphNode) => {
     const pos = positions.get(graphNode.taskId) ?? { x: 0, y: 0 };
+    const dims = getNodeDimensions(graphNode.taskId);
 
     return {
       id: graphNode.taskId,
       type: "task", // Use custom TaskNode component
       position: pos,
+      width: dims.width,
+      height: dims.height,
       data: {
         label: graphNode.title, // Full title - TaskNode handles truncation
         taskId: graphNode.taskId,
@@ -727,10 +730,13 @@ function computeLayoutWithCache(
   // (includes collapsed group tasks that won't be rendered)
   const allPositionedNodes: Node[] = graphNodes.map((graphNode) => {
     const pos = positions.get(graphNode.taskId) ?? { x: 0, y: 0 };
+    const dims = getNodeDimensions(graphNode.taskId);
     return {
       id: graphNode.taskId,
       type: "task",
       position: pos,
+      width: dims.width,
+      height: dims.height,
       data: {},
     } as Node;
   });

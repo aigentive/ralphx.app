@@ -283,6 +283,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   const { data: graphData, isLoading, error } = useTaskGraph(projectId, filters.showArchived, activePlanId);
   const {
     fitNodeInView,
+    fitNode,
     centerOnNode,
     centerOnNodeObject,
     fitViewDefault,
@@ -661,10 +662,19 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
   }, [filteredGraphData, collapsedPlanIds, graphData, grouping.byPlan]);
 
   const hasAnyAutoCompact = autoCompactGroupIds.size > 0;
+  const isAutoCompactActive = nodeModeOverride === null && hasAnyAutoCompact;
 
   // Per-node mode lookup: resolves each node's effective display mode.
   const nodeModeLookup = useMemo(() => {
     const map = new Map<string, NodeMode>();
+
+    // Explicit user choice always wins over auto-compact.
+    if (nodeModeOverride === "standard") {
+      for (const n of filteredGraphData.nodes) {
+        map.set(n.taskId, "standard");
+      }
+      return map;
+    }
 
     // If user set compact globally → all compact
     if (nodeModeOverride === "compact") {
@@ -682,7 +692,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
       }
     }
 
-    // Per-group auto-compact applies regardless of user "standard" override
+    // Auto mode: per-group threshold decides compactness.
     for (const n of filteredGraphData.nodes) {
       const groupId = taskToGroup.get(n.taskId) ?? UNGROUPED_PLAN_ID;
       const isGroupAutoCompact = autoCompactGroupIds.has(groupId);
@@ -691,26 +701,26 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     return map;
   }, [filteredGraphData, nodeModeOverride, autoCompactGroupIds]);
 
-  // Derive a global effective mode for backward-compat (toolbar display).
-  // If user forced compact → "compact"; if any auto-compact → "compact"; else "standard".
-  const effectiveNodeMode: NodeMode = nodeModeOverride === "compact"
-    ? "compact"
-    : hasAnyAutoCompact
-      ? "compact"
-      : (nodeModeOverride ?? "standard");
+  // Derive a global effective mode for controls.
+  // Explicit user selection overrides auto-compact.
+  const effectiveNodeMode: NodeMode = nodeModeOverride === null
+    ? (hasAnyAutoCompact ? "compact" : "standard")
+    : nodeModeOverride;
 
   // Handler for manual node mode toggle
   const handleNodeModeChange = useCallback((mode: NodeMode) => {
-    if (mode === "compact" && hasAnyAutoCompact && nodeModeOverride === null) {
-      // User is clicking compact when auto-compact is already active → no-op or set explicitly
+    if (mode === "compact") {
       setNodeModeOverride("compact");
-    } else if (mode === "standard" && !hasAnyAutoCompact) {
-      // Return to auto when selecting what auto would choose
-      setNodeModeOverride(null);
-    } else {
-      setNodeModeOverride(mode === "compact" ? "compact" : "standard");
+      return;
     }
-  }, [hasAnyAutoCompact, nodeModeOverride, setNodeModeOverride]);
+    // For standard: use explicit override while auto-compact would otherwise apply.
+    // When auto-compact is inactive, standard can fall back to auto mode.
+    if (hasAnyAutoCompact) {
+      setNodeModeOverride("standard");
+    } else {
+      setNodeModeOverride(null);
+    }
+  }, [hasAnyAutoCompact, setNodeModeOverride]);
 
   const tierGroups = useMemo(
     () => buildTierGroups(filteredGraphData.nodes, filteredGraphData.planGroups, {
@@ -1142,6 +1152,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     centerOnPlanGroup,
     centerOnNode,
     centerOnNodeObject,
+    fitNode,
     fitViewDefault,
     zoomBy,
     graphReady,
@@ -1351,7 +1362,6 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
       if (expandedId) {
         const nodeId = getPlanGroupNodeId(expandedId);
         if (fitNodeInView(nodeId, { duration: 0, padding: 0.18, maxZoom: 0.95 })) {
-          centerOnPlanGroup(expandedId, 0, 0.9);
           select({ kind: "planGroup", id: expandedId }, { skipFocus: true });
           settle();
           return;
@@ -1387,6 +1397,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     focusInViewRef.current = focusSelectionInView;
   }, [focusSelectionInView]);
   const prevGraphSelectionRef = useRef<typeof graphSelection>(undefined);
+  const prevEffectiveNodeModeRef = useRef<NodeMode | null>(null);
 
   useEffect(() => {
     if (!graphSelection) return;
@@ -1395,6 +1406,35 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
     if (isFirstSelection) return;
     focusInViewRef.current(graphSelection);
   }, [graphSelection, graphRightPanelVisible, isNavCompact]);
+
+  // Re-center when switching Compact/Standard mode.
+  // Uses the same viewport focus API path so fit/zoom capping behavior remains consistent.
+  useEffect(() => {
+    if (!initialFitDoneRef.current || !graphReady || isLoading) return;
+
+    const previousMode = prevEffectiveNodeModeRef.current;
+    prevEffectiveNodeModeRef.current = effectiveNodeMode;
+    if (previousMode === null || previousMode === effectiveNodeMode) return;
+
+    if (graphSelection && graphSelection.kind !== "customGroup") {
+      focusInViewRef.current(graphSelection);
+      return;
+    }
+
+    if (activePlanArtifactId) {
+      focusInViewRef.current({ kind: "planGroup", id: activePlanArtifactId });
+      return;
+    }
+
+    fitViewDefault({ padding: 0.2, duration: 200 });
+  }, [
+    activePlanArtifactId,
+    effectiveNodeMode,
+    fitViewDefault,
+    graphReady,
+    graphSelection,
+    isLoading,
+  ]);
 
   // Loading state
   if (isLoading) {
@@ -1468,7 +1508,7 @@ function TaskGraphViewInner({ projectId, footer }: TaskGraphViewInnerProps) {
           onLayoutDirectionChange={setLayoutDirection}
           nodeMode={effectiveNodeMode}
           onNodeModeChange={handleNodeModeChange}
-          isAutoCompact={hasAnyAutoCompact && nodeModeOverride !== "compact"}
+          isAutoCompact={isAutoCompactActive}
           grouping={grouping}
           onGroupingChange={setGrouping}
           isCompact={isNavCompact}
