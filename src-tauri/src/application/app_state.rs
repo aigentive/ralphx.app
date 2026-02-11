@@ -18,8 +18,8 @@ use crate::domain::repositories::{
     AppStateRepository, ArtifactBucketRepository, ArtifactFlowRepository, ArtifactRepository,
     ChatConversationRepository, ChatMessageRepository, ExecutionSettingsRepository,
     GlobalExecutionSettingsRepository, IdeationSessionRepository, IdeationSettingsRepository,
-    MethodologyRepository, PlanBranchRepository, ProcessRepository, ProjectRepository,
-    ProposalDependencyRepository, ReviewRepository, ReviewSettingsRepository,
+    MethodologyRepository, PlanBranchRepository, PlanSelectionStatsRepository, ProcessRepository,
+    ProjectRepository, ProposalDependencyRepository, ReviewRepository, ReviewSettingsRepository,
     TaskDependencyRepository, TaskProposalRepository, TaskQARepository, TaskRepository,
     TaskStepRepository, WorkflowRepository,
 };
@@ -32,11 +32,11 @@ use crate::infrastructure::memory::{
     MemoryChatMessageRepository, MemoryExecutionSettingsRepository,
     MemoryGlobalExecutionSettingsRepository, MemoryIdeationSessionRepository,
     MemoryIdeationSettingsRepository, MemoryMethodologyRepository, MemoryPermissionRepository,
-    MemoryPlanBranchRepository, MemoryProcessRepository, MemoryProjectRepository,
-    MemoryProposalDependencyRepository, MemoryQuestionRepository, MemoryReviewIssueRepository,
-    MemoryReviewRepository, MemoryReviewSettingsRepository, MemoryTaskDependencyRepository,
-    MemoryTaskProposalRepository, MemoryTaskQARepository, MemoryTaskRepository,
-    MemoryTaskStepRepository, MemoryWorkflowRepository,
+    MemoryPlanBranchRepository, MemoryPlanSelectionStatsRepository, MemoryProcessRepository,
+    MemoryProjectRepository, MemoryProposalDependencyRepository, MemoryQuestionRepository,
+    MemoryReviewIssueRepository, MemoryReviewRepository, MemoryReviewSettingsRepository,
+    MemoryTaskDependencyRepository, MemoryTaskProposalRepository, MemoryTaskQARepository,
+    MemoryTaskRepository, MemoryTaskStepRepository, MemoryWorkflowRepository,
 };
 use crate::infrastructure::sqlite::{
     get_app_data_db_path, get_default_db_path, open_connection, run_migrations,
@@ -46,11 +46,11 @@ use crate::infrastructure::sqlite::{
     SqliteChatMessageRepository, SqliteExecutionSettingsRepository,
     SqliteGlobalExecutionSettingsRepository, SqliteIdeationSessionRepository,
     SqliteIdeationSettingsRepository, SqliteMethodologyRepository, SqlitePermissionRepository,
-    SqlitePlanBranchRepository, SqliteProcessRepository, SqliteProjectRepository,
-    SqliteProposalDependencyRepository, SqliteQuestionRepository, SqliteReviewIssueRepository,
-    SqliteReviewRepository, SqliteReviewSettingsRepository, SqliteRunningAgentRegistry,
-    SqliteTaskDependencyRepository, SqliteTaskProposalRepository, SqliteTaskQARepository,
-    SqliteTaskRepository, SqliteTaskStepRepository, SqliteWorkflowRepository,
+    SqlitePlanBranchRepository, SqlitePlanSelectionStatsRepository, SqliteProcessRepository,
+    SqliteProjectRepository, SqliteProposalDependencyRepository, SqliteQuestionRepository,
+    SqliteReviewIssueRepository, SqliteReviewRepository, SqliteReviewSettingsRepository,
+    SqliteRunningAgentRegistry, SqliteTaskDependencyRepository, SqliteTaskProposalRepository,
+    SqliteTaskQARepository, SqliteTaskRepository, SqliteTaskStepRepository, SqliteWorkflowRepository,
 };
 use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
 
@@ -125,6 +125,8 @@ pub struct AppState {
     pub analyzing_dependencies: Arc<tokio::sync::RwLock<HashSet<IdeationSessionId>>>,
     /// Plan branch repository for feature branch tracking
     pub plan_branch_repo: Arc<dyn PlanBranchRepository>,
+    /// Plan selection stats repository for tracking plan selection interactions
+    pub plan_selection_stats_repo: Arc<dyn PlanSelectionStatsRepository>,
     /// App state repository for persisting active_project_id across restarts
     pub app_state_repo: Arc<dyn AppStateRepository>,
     /// Active plan repository for persisting active plan per project
@@ -230,6 +232,7 @@ impl AppState {
             ))),
             methodology_repo: Arc::new(SqliteMethodologyRepository::from_shared(Arc::clone(&shared_conn))),
             plan_branch_repo: Arc::new(SqlitePlanBranchRepository::from_shared(Arc::clone(&shared_conn))),
+            plan_selection_stats_repo: Arc::new(SqlitePlanSelectionStatsRepository::from_shared(Arc::clone(&shared_conn))),
             app_state_repo: Arc::new(SqliteAppStateRepository::from_shared(Arc::clone(&shared_conn))),
             active_plan_repo: Arc::new(SqliteActivePlanRepository::from_shared(Arc::clone(&shared_conn))),
             permission_state: Arc::new(PermissionState::with_repo(
@@ -335,6 +338,7 @@ impl AppState {
             ))),
             methodology_repo: Arc::new(SqliteMethodologyRepository::from_shared(Arc::clone(&shared_conn))),
             plan_branch_repo: Arc::new(SqlitePlanBranchRepository::from_shared(Arc::clone(&shared_conn))),
+            plan_selection_stats_repo: Arc::new(SqlitePlanSelectionStatsRepository::from_shared(Arc::clone(&shared_conn))),
             app_state_repo: Arc::new(SqliteAppStateRepository::from_shared(Arc::clone(&shared_conn))),
             active_plan_repo: Arc::new(SqliteActivePlanRepository::from_shared(Arc::clone(&shared_conn))),
             permission_state: Arc::new(PermissionState::with_repo(
@@ -388,6 +392,7 @@ impl AppState {
             process_repo: Arc::new(MemoryProcessRepository::new()),
             methodology_repo: Arc::new(MemoryMethodologyRepository::new()),
             plan_branch_repo: Arc::new(MemoryPlanBranchRepository::new()),
+            plan_selection_stats_repo: Arc::new(MemoryPlanSelectionStatsRepository::new()),
             app_state_repo: Arc::new(MemoryAppStateRepository::new()),
             active_plan_repo: Arc::new(MemoryActivePlanRepository::new()),
             permission_state: Arc::new(PermissionState::with_repo(
@@ -443,6 +448,7 @@ impl AppState {
             process_repo: Arc::new(MemoryProcessRepository::new()),
             methodology_repo: Arc::new(MemoryMethodologyRepository::new()),
             plan_branch_repo: Arc::new(MemoryPlanBranchRepository::new()),
+            plan_selection_stats_repo: Arc::new(MemoryPlanSelectionStatsRepository::new()),
             app_state_repo: Arc::new(MemoryAppStateRepository::new()),
             active_plan_repo: Arc::new(MemoryActivePlanRepository::new()),
             permission_state: Arc::new(PermissionState::with_repo(
