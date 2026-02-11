@@ -167,10 +167,8 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
           border: (selected || isHighlighted || isFocused)
             ? "2px solid hsl(14 100% 55%)"
             : GLASS_SURFACE.border,
-          // Left border colored by status (only when not selected/focused)
-          borderLeft: (selected || isHighlighted || isFocused)
-            ? "2px solid hsl(14 100% 55%)"
-            : `3px solid ${statusColor}`,
+          // Keep status-colored left stripe visible in all states
+          borderLeft: `3px solid ${statusColor}`,
           boxShadow: GLASS_SURFACE.boxShadow,
           transition: "background 150ms ease, transform 150ms ease, box-shadow 150ms ease, border 150ms ease",
         }}
@@ -207,7 +205,12 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
 
         {/* Two-line title with line-clamp - no status badge */}
         <div
-          className="text-xs font-medium text-[hsl(220_10%_90%)] leading-tight line-clamp-2"
+          className="font-medium leading-tight line-clamp-2"
+          style={{
+            fontSize: "12px",
+            color: "hsl(220 10% 88%)",
+            lineHeight: 1.35,
+          }}
           title={abbreviateTitle(label)}
         >
           {label}

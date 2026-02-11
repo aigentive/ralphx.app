@@ -243,7 +243,7 @@ export function TaskCard({
           tabIndex={0}
         >
       {/* Status badge - shown for ALL task states */}
-      <div className="absolute top-1.5 right-1.5" data-testid="status-badge-container">
+      <div className="absolute top-1 right-1" data-testid="status-badge-container">
         <TaskStatusBadge
           status={task.internalStatus}
           isArchived={isArchived}
@@ -255,7 +255,7 @@ export function TaskCard({
       {isDraggable && !isArchived && (
         <div
           data-testid="drag-handle"
-          className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab"
+          className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab"
         >
           <GripVertical className="w-3.5 h-3.5" style={{ color: "hsl(220 10% 40%)" }} />
         </div>
@@ -268,10 +268,10 @@ export function TaskCard({
           data-testid="task-title"
           className="truncate"
           style={{
-            fontSize: "13px",
+            fontSize: "12px",
             fontWeight: 500,
-            color: "hsl(220 10% 90%)",
-            lineHeight: 1.4,
+            color: "hsl(220 10% 88%)",
+            lineHeight: 1.35,
           }}
         >
           {task.title}
@@ -282,9 +282,9 @@ export function TaskCard({
           <div
             className="mt-1 line-clamp-2 [&_*]:!mb-0 [&_*]:!mt-0"
             style={{
-              fontSize: "12px",
-              color: "hsl(220 10% 55%)",
-              lineHeight: 1.45,
+              fontSize: "11px",
+              color: "hsl(220 10% 50%)",
+              lineHeight: 1.4,
             }}
           >
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
@@ -318,12 +318,12 @@ export function TaskCard({
         )}
 
         {/* Badge row - simple, muted */}
-        <div className="flex flex-wrap items-center gap-1 mt-1.5">
+        <div className="flex flex-wrap items-center gap-1 mt-2">
           <span
             style={{
               fontSize: "10px",
               fontWeight: 500,
-              color: "hsl(220 10% 45%)",
+              color: "hsl(220 10% 42%)",
               textTransform: "capitalize",
             }}
           >
@@ -417,7 +417,10 @@ export function TaskCard({
 
             {/* Duration badge - shown when executing */}
             {(task.internalStatus === "executing" || task.internalStatus === "re_executing") && executionState.duration !== null && (
-              <div className="flex items-center gap-1 text-xs text-white/50">
+              <div
+                className="flex items-center gap-1 text-[11px]"
+                style={{ color: "hsl(220 10% 50%)" }}
+              >
                 <Clock className="w-3 h-3" />
                 <span>{formatDuration(executionState.duration)}</span>
               </div>
