@@ -16,13 +16,13 @@ Adding an MCP tool to an agent requires updates in **three places**. Missing any
 
 | # | Layer | File | What to Update | Controls |
 |---|-------|------|----------------|----------|
-| 1 | **Rust spawn config** | `src-tauri/src/infrastructure/agents/claude/agent_config.rs` | `AGENT_CONFIGS` → agent's `allowed_mcp_tools` array | `--allowedTools` flag at spawn time |
+| 1 | **Rust spawn config** | `src-tauri/src/infrastructure/agents/claude/agent_config/mod.rs` | `AGENT_CONFIGS` → agent's `allowed_mcp_tools` array | `--allowedTools` flag at spawn time |
 | 2 | **MCP server filter** | `ralphx-plugin/ralphx-mcp-server/src/tools.ts` | `TOOL_ALLOWLIST` → agent's array | Server-side tool filtering |
 | 3 | **Agent frontmatter** | `ralphx-plugin/agents/<name>.md` | `allowedTools:` YAML list (prefix: `mcp__ralphx__`) | Subagent spawning + documentation |
 
 ## Adding a New Tool to an Existing Agent — Checklist
 
-- [ ] **Layer 1 (Rust):** Add tool name to `allowed_mcp_tools` in `AGENT_CONFIGS` (`agent_config.rs`)
+- [ ] **Layer 1 (Rust):** Add tool name to `allowed_mcp_tools` in `AGENT_CONFIGS` (`agent_config/mod.rs`)
 - [ ] **Layer 1 (Rust):** Update corresponding test (`test_get_allowed_mcp_tools_<agent>`)
 - [ ] **Layer 2 (MCP):** Add tool name to `TOOL_ALLOWLIST[agent]` (`tools.ts`)
 - [ ] **Layer 2 (MCP):** Add handler in `CallToolRequestSchema` dispatch (`index.ts`)
@@ -59,7 +59,7 @@ All of the above, plus:
 ## Example: Adding `get_merge_target` to `ralphx-merger`
 
 ```rust
-// Layer 1: agent_config.rs
+// Layer 1: agent_config/mod.rs
 AgentConfig {
     name: "ralphx-merger",
     allowed_mcp_tools: &[
