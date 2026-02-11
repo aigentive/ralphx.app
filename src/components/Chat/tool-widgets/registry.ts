@@ -24,6 +24,7 @@ import { GrepWidget } from "./GrepWidget";
 import { GlobWidget } from "./GlobWidget";
 import { ReadWidget } from "./ReadWidget";
 import { BashWidget } from "./BashWidget";
+import { SkillWidget } from "./SkillWidget";
 
 /** Registry type: tool name (lowercase) → React component */
 export type ToolCallWidgetRegistry = Record<string, ComponentType<ToolCallWidgetProps>>;
@@ -40,6 +41,8 @@ export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
   // Search tools → GrepWidget / GlobWidget
   grep: GrepWidget,
   glob: GlobWidget,
+  // Skill tool → SkillWidget (skill invocation card)
+  "skill": SkillWidget,
   // Context tool → ContextWidget (always-visible context card)
   "get_task_context": ContextWidget,
   // Step lifecycle tools → StepIndicator (ultra-compact inline indicators)
