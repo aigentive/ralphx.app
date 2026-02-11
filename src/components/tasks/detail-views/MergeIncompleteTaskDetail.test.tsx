@@ -4,8 +4,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { invoke } from "@tauri-apps/api/core";
 import { MergeIncompleteTaskDetail } from "./MergeIncompleteTaskDetail";
 import type { Task, MergeRecoveryEvent } from "@/types/task";
 
@@ -13,6 +15,8 @@ import type { Task, MergeRecoveryEvent } from "@/types/task";
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
+
+const mockInvoke = vi.mocked(invoke);
 
 function createTestTask(overrides?: Partial<Task>): Task {
   return {
@@ -295,5 +299,145 @@ describe("MergeIncompleteTaskDetail", () => {
     // Should still render with fallback
     expect(screen.getByTestId("merge-incomplete-task-detail")).toBeInTheDocument();
     expect(screen.getByText("No recorded recovery attempts for this task.")).toBeInTheDocument();
+  });
+
+  describe("handleRetryMerge error handling", () => {
+    it("displays string rejection verbatim", async () => {
+      const user = userEvent.setup();
+      mockInvoke.mockRejectedValueOnce("Git merge failed: branch deleted");
+
+      const task = createTestTask();
+      render(<MergeIncompleteTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      await user.click(screen.getByTestId("retry-merge-button"));
+
+      await waitFor(() => {
+        expect(screen.getByText("Git merge failed: branch deleted")).toBeInTheDocument();
+      });
+    });
+
+    it("displays object rejection with .message verbatim", async () => {
+      const user = userEvent.setup();
+      mockInvoke.mockRejectedValueOnce({ message: "Lock file exists at .git/index.lock" });
+
+      const task = createTestTask();
+      render(<MergeIncompleteTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      await user.click(screen.getByTestId("retry-merge-button"));
+
+      await waitFor(() => {
+        expect(screen.getByText("Lock file exists at .git/index.lock")).toBeInTheDocument();
+      });
+    });
+
+    it("displays fallback for unknown object rejection", async () => {
+      const user = userEvent.setup();
+      mockInvoke.mockRejectedValueOnce({});
+
+      const task = createTestTask();
+      render(<MergeIncompleteTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      await user.click(screen.getByTestId("retry-merge-button"));
+
+      await waitFor(() => {
+        expect(screen.getByText("Failed to retry merge")).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe("handleRetrySkipValidation error handling", () => {
+    function createValidationFailureTask(): Task {
+      const metadata = JSON.stringify({
+        error: "Validation failed",
+        validation_failures: [{ command: "npm run typecheck", exit_code: 1 }],
+      });
+      return createTestTask({ metadata });
+    }
+
+    it("displays string rejection verbatim", async () => {
+      const user = userEvent.setup();
+      mockInvoke.mockRejectedValueOnce("Merge failed: cannot fast-forward");
+
+      const task = createValidationFailureTask();
+      render(<MergeIncompleteTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      await user.click(screen.getByTestId("retry-skip-validation-button"));
+
+      await waitFor(() => {
+        expect(screen.getByText("Merge failed: cannot fast-forward")).toBeInTheDocument();
+      });
+    });
+
+    it("displays object rejection with .message verbatim", async () => {
+      const user = userEvent.setup();
+      mockInvoke.mockRejectedValueOnce({ message: "Worktree directory missing" });
+
+      const task = createValidationFailureTask();
+      render(<MergeIncompleteTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      await user.click(screen.getByTestId("retry-skip-validation-button"));
+
+      await waitFor(() => {
+        expect(screen.getByText("Worktree directory missing")).toBeInTheDocument();
+      });
+    });
+
+    it("displays fallback for unknown object rejection", async () => {
+      const user = userEvent.setup();
+      mockInvoke.mockRejectedValueOnce({});
+
+      const task = createValidationFailureTask();
+      render(<MergeIncompleteTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      await user.click(screen.getByTestId("retry-skip-validation-button"));
+
+      await waitFor(() => {
+        expect(screen.getByText("Failed to retry merge (skipping validation)")).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe("handleMarkResolved error handling", () => {
+    it("displays string rejection verbatim", async () => {
+      const user = userEvent.setup();
+      mockInvoke.mockRejectedValueOnce("Task not in merge_incomplete state");
+
+      const task = createTestTask();
+      render(<MergeIncompleteTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      await user.click(screen.getByTestId("resolve-merge-button"));
+
+      await waitFor(() => {
+        expect(screen.getByText("Task not in merge_incomplete state")).toBeInTheDocument();
+      });
+    });
+
+    it("displays object rejection with .message verbatim", async () => {
+      const user = userEvent.setup();
+      mockInvoke.mockRejectedValueOnce({ message: "Branch not found: ralphx/task-123" });
+
+      const task = createTestTask();
+      render(<MergeIncompleteTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      await user.click(screen.getByTestId("resolve-merge-button"));
+
+      await waitFor(() => {
+        expect(screen.getByText("Branch not found: ralphx/task-123")).toBeInTheDocument();
+      });
+    });
+
+    it("displays fallback for unknown object rejection", async () => {
+      const user = userEvent.setup();
+      mockInvoke.mockRejectedValueOnce({});
+
+      const task = createTestTask();
+      render(<MergeIncompleteTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      await user.click(screen.getByTestId("resolve-merge-button"));
+
+      await waitFor(() => {
+        expect(screen.getByText("Failed to mark merge as resolved")).toBeInTheDocument();
+      });
+    });
   });
 });
