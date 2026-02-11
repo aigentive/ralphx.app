@@ -64,6 +64,13 @@ fn create_prd_library_bucket() -> ArtifactBucket {
         .with_writer("user")
 }
 
+/// Helper to ensure a bucket exists (creates only if not already present)
+async fn ensure_bucket(state: &AppState, bucket: ArtifactBucket) {
+    if !state.artifact_bucket_repo.exists(&bucket.id).await.unwrap() {
+        state.artifact_bucket_repo.create(bucket).await.unwrap();
+    }
+}
+
 // ============================================================================
 // Shared Test Logic (works with any repository implementation)
 // ============================================================================
@@ -72,7 +79,7 @@ fn create_prd_library_bucket() -> ArtifactBucket {
 async fn test_create_artifact_in_research_outputs_bucket(state: &AppState) {
     // Create the research-outputs bucket first
     let bucket = create_research_outputs_bucket();
-    state.artifact_bucket_repo.create(bucket.clone()).await.unwrap();
+    ensure_bucket(state, bucket.clone()).await;
 
     // Create a research findings artifact
     let artifact = Artifact::new_inline(
@@ -120,8 +127,8 @@ async fn test_copy_artifact_to_another_bucket(state: &AppState) {
     // Create both buckets
     let research_bucket = create_research_outputs_bucket();
     let prd_bucket = create_prd_library_bucket();
-    state.artifact_bucket_repo.create(research_bucket).await.unwrap();
-    state.artifact_bucket_repo.create(prd_bucket).await.unwrap();
+    ensure_bucket(state, research_bucket).await;
+    ensure_bucket(state, prd_bucket).await;
 
     // Create original artifact in research-outputs
     let original = Artifact::new_inline(
@@ -192,7 +199,7 @@ async fn test_copy_artifact_to_another_bucket(state: &AppState) {
 async fn test_create_artifact_relation_derived_from(state: &AppState) {
     // Create bucket
     let bucket = create_research_outputs_bucket();
-    state.artifact_bucket_repo.create(bucket).await.unwrap();
+    ensure_bucket(state, bucket).await;
 
     // Create source artifact (research document)
     let source = Artifact::new_inline(
@@ -257,8 +264,8 @@ async fn test_query_artifacts_by_bucket_and_type(state: &AppState) {
     // Create buckets
     let research_bucket = create_research_outputs_bucket();
     let prd_bucket = create_prd_library_bucket();
-    state.artifact_bucket_repo.create(research_bucket).await.unwrap();
-    state.artifact_bucket_repo.create(prd_bucket).await.unwrap();
+    ensure_bucket(state, research_bucket).await;
+    ensure_bucket(state, prd_bucket).await;
 
     // Create multiple artifacts in research-outputs
     let findings1 = Artifact::new_inline("Findings 1", ArtifactType::Findings, "Content 1", "researcher")
@@ -332,7 +339,7 @@ async fn test_query_artifacts_by_bucket_and_type(state: &AppState) {
 async fn test_artifact_crud_cycle(state: &AppState) {
     // Create bucket
     let bucket = create_research_outputs_bucket();
-    state.artifact_bucket_repo.create(bucket).await.unwrap();
+    ensure_bucket(state, bucket).await;
 
     // CREATE
     let artifact = Artifact::new_inline(
@@ -372,9 +379,9 @@ async fn test_artifact_crud_cycle(state: &AppState) {
 
 /// Test 6: Multiple artifacts coexist in buckets
 async fn test_multiple_artifacts_coexist(state: &AppState) {
-    // Create all system buckets
+    // Ensure all system buckets exist
     for bucket in ArtifactBucket::system_buckets() {
-        state.artifact_bucket_repo.create(bucket).await.unwrap();
+        ensure_bucket(state, bucket).await;
     }
 
     // Create artifacts in different buckets
@@ -430,7 +437,7 @@ async fn test_multiple_artifacts_coexist(state: &AppState) {
 async fn test_related_artifacts(state: &AppState) {
     // Create bucket
     let bucket = create_prd_library_bucket();
-    state.artifact_bucket_repo.create(bucket).await.unwrap();
+    ensure_bucket(state, bucket).await;
 
     // Create two related PRDs
     let prd1 = Artifact::new_inline("Auth PRD", ArtifactType::Prd, "Auth features", "user")
@@ -467,7 +474,7 @@ async fn test_related_artifacts(state: &AppState) {
 async fn test_delete_artifact_relation(state: &AppState) {
     // Create bucket
     let bucket = create_research_outputs_bucket();
-    state.artifact_bucket_repo.create(bucket).await.unwrap();
+    ensure_bucket(state, bucket).await;
 
     // Create two artifacts
     let artifact1 = Artifact::new_inline("Doc 1", ArtifactType::ResearchDocument, "c1", "researcher")
@@ -502,7 +509,7 @@ async fn test_bucket_access_control(state: &AppState) {
     // Create research-outputs bucket with specific writers
     let bucket = create_research_outputs_bucket();
     let bucket_id = bucket.id.clone();
-    state.artifact_bucket_repo.create(bucket).await.unwrap();
+    ensure_bucket(state, bucket).await;
 
     // Verify bucket properties
     let found = state.artifact_bucket_repo.get_by_id(&bucket_id).await.unwrap();
@@ -526,9 +533,9 @@ async fn test_bucket_access_control(state: &AppState) {
 
 /// Test 10: System buckets are flagged correctly
 async fn test_system_buckets_flagged(state: &AppState) {
-    // Create system buckets
+    // Ensure system buckets exist
     for bucket in ArtifactBucket::system_buckets() {
-        state.artifact_bucket_repo.create(bucket).await.unwrap();
+        ensure_bucket(state, bucket).await;
     }
 
     // Get all system buckets
@@ -543,7 +550,7 @@ async fn test_system_buckets_flagged(state: &AppState) {
     // Create a custom bucket
     let custom = ArtifactBucket::new("Custom Bucket")
         .accepts(ArtifactType::Prd);
-    state.artifact_bucket_repo.create(custom).await.unwrap();
+    ensure_bucket(state, custom).await;
 
     // System buckets should still be 4
     let system_buckets = state.artifact_bucket_repo.get_system_buckets().await.unwrap();
