@@ -149,6 +149,12 @@ export function PlanningView({
     [proposals]
   );
 
+  // Plan store actions
+  const setActivePlan = usePlanStore((state) => state.setActivePlan);
+  const clearActivePlan = usePlanStore((state) => state.clearActivePlan);
+  const activePlanByProject = usePlanStore((state) => state.activePlanByProject);
+  const activeProjectId = useProjectStore((state) => state.activeProjectId);
+
   const canReopen = isReadOnly && (session?.status === "accepted" || session?.status === "archived");
   const canResetReaccept = session?.status === "accepted";
 
@@ -161,9 +167,22 @@ export function PlanningView({
     if (!session) return;
     if (reopenDialogMode === "reopen") {
       reopenMutation.mutate(session.id, {
-        onSuccess: () => {
+        onSuccess: async () => {
           setReopenDialogOpen(false);
           toast.success("Session reopened");
+
+          // Clear active plan if this session was the active plan
+          if (activeProjectId) {
+            const activePlanId = activePlanByProject[activeProjectId];
+            if (activePlanId === session.id) {
+              try {
+                await clearActivePlan(activeProjectId);
+              } catch (err) {
+                console.error("Failed to clear active plan:", err);
+                toast.error("Failed to clear active plan");
+              }
+            }
+          }
         },
         onError: (err) => toast.error(`Failed to reopen: ${err.message}`),
       });
@@ -179,7 +198,7 @@ export function PlanningView({
         }
       );
     }
-  }, [session, reopenDialogMode, reopenMutation, resetMutation, proposals]);
+  }, [session, reopenDialogMode, reopenMutation, resetMutation, proposals, activeProjectId, activePlanByProject, clearActivePlan]);
 
   // Get the event bus from context (TauriEventBus or MockEventBus)
   const eventBus = useEventBus();
@@ -327,10 +346,6 @@ export function PlanningView({
   // Navigate to task handler - switches to kanban view and selects the task
   const setCurrentView = useUiStore((state) => state.setCurrentView);
   const setSelectedTaskId = useUiStore((state) => state.setSelectedTaskId);
-
-  // Plan store actions
-  const setActivePlan = usePlanStore((state) => state.setActivePlan);
-  const activeProjectId = useProjectStore((state) => state.activeProjectId);
 
   // Accept Plan handler - accepts ALL proposals (no selection)
   const handleAcceptPlan = useCallback(async (targetColumn: string) => {

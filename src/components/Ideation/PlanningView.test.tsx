@@ -13,13 +13,22 @@ vi.mock("@/providers/EventProvider", () => ({
   }),
 }));
 
+// Mock for plan store
+const mockClearActivePlan = vi.fn();
+const mockSetActivePlan = vi.fn().mockResolvedValue(undefined);
+const mockActivePlanByProject: Record<string, string | null> = {};
+
 vi.mock("@/hooks/useDependencyGraph", () => ({
   useDependencyGraph: () => ({ data: null, isFetching: false }),
 }));
 
+// Mock for useIdeation - will be replaced per-test for reopen tests
+const mockReopenMutate = vi.fn();
+const mockResetMutate = vi.fn();
+
 vi.mock("@/hooks/useIdeation", () => ({
-  useReopenSession: () => ({ mutate: vi.fn(), isPending: false }),
-  useResetAndReaccept: () => ({ mutate: vi.fn(), isPending: false }),
+  useReopenSession: () => ({ mutate: mockReopenMutate, isPending: false }),
+  useResetAndReaccept: () => ({ mutate: mockResetMutate, isPending: false }),
 }));
 
 vi.mock("@/hooks/useFileDrop", () => ({
@@ -107,19 +116,16 @@ vi.mock("./ReopenSessionDialog", () => ({
   ReopenSessionDialog: () => null,
 }));
 
-const mockSetActivePlan = vi.fn().mockResolvedValue(undefined);
-
-// Mock the store modules before importing the component
 vi.mock("@/stores/planStore", () => ({
-  usePlanStore: vi.fn((selector) => {
+  usePlanStore: vi.fn((selector: (state: any) => any) => {
     const state = {
       setActivePlan: mockSetActivePlan,
-      activePlanByProject: {},
+      clearActivePlan: mockClearActivePlan,
+      activePlanByProject: mockActivePlanByProject,
       planCandidates: [],
       isLoading: false,
       error: null,
       loadActivePlan: vi.fn(),
-      clearActivePlan: vi.fn(),
       loadCandidates: vi.fn(),
     };
     return selector ? selector(state) : state;
@@ -127,7 +133,7 @@ vi.mock("@/stores/planStore", () => ({
 }));
 
 vi.mock("@/stores/projectStore", () => ({
-  useProjectStore: vi.fn((selector) => {
+  useProjectStore: vi.fn((selector: (state: any) => any) => {
     const state = {
       activeProjectId: "project-1",
       projects: {},
@@ -334,5 +340,108 @@ describe("PlanningView", () => {
     await vi.waitFor(() => {
       expect(mockSetActivePlan).toHaveBeenCalledWith("project-1", "session-1", "ideation");
     });
+  });
+
+  it("clears active plan when reopening a session that was the active plan", async () => {
+    // Setup: session-1 is the active plan
+    mockActivePlanByProject["project-1"] = "session-1";
+    mockClearActivePlan.mockResolvedValue(undefined);
+
+    const acceptedSession = {
+      ...mockSession,
+      status: "accepted" as const,
+      convertedAt: "2026-01-24T02:00:00Z",
+    };
+
+    const user = userEvent.setup();
+    render(
+      <PlanningView
+        {...defaultProps}
+        session={acceptedSession}
+      />
+    );
+
+    // Click the Reopen button
+    const reopenButton = screen.getByRole("button", { name: /Reopen/i });
+    await user.click(reopenButton);
+
+    // This should trigger the reopen dialog (mocked away)
+    // Simulate the mutation succeeding by calling the onSuccess callback
+    expect(mockReopenMutate).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({
+        onSuccess: expect.any(Function),
+        onError: expect.any(Function),
+      })
+    );
+
+    // Extract and call the onSuccess handler
+    const onSuccessHandler = mockReopenMutate.mock.calls[0][1].onSuccess;
+    await onSuccessHandler();
+
+    // Verify clearActivePlan was called with the correct project ID
+    expect(mockClearActivePlan).toHaveBeenCalledWith("project-1");
+  });
+
+  it("does not clear active plan when reopening a different session", async () => {
+    // Setup: session-2 is the active plan, we're reopening session-1
+    mockActivePlanByProject["project-1"] = "session-2";
+    mockClearActivePlan.mockClear();
+
+    const acceptedSession = {
+      ...mockSession,
+      status: "accepted" as const,
+      convertedAt: "2026-01-24T02:00:00Z",
+    };
+
+    const user = userEvent.setup();
+    render(
+      <PlanningView
+        {...defaultProps}
+        session={acceptedSession}
+      />
+    );
+
+    // Click the Reopen button
+    const reopenButton = screen.getByRole("button", { name: /Reopen/i });
+    await user.click(reopenButton);
+
+    // Simulate the mutation succeeding
+    const onSuccessHandler = mockReopenMutate.mock.calls[0][1].onSuccess;
+    await onSuccessHandler();
+
+    // Verify clearActivePlan was NOT called
+    expect(mockClearActivePlan).not.toHaveBeenCalled();
+  });
+
+  it("does not clear active plan when no active plan is set", async () => {
+    // Setup: no active plan
+    mockActivePlanByProject["project-1"] = null;
+    mockClearActivePlan.mockClear();
+
+    const acceptedSession = {
+      ...mockSession,
+      status: "accepted" as const,
+      convertedAt: "2026-01-24T02:00:00Z",
+    };
+
+    const user = userEvent.setup();
+    render(
+      <PlanningView
+        {...defaultProps}
+        session={acceptedSession}
+      />
+    );
+
+    // Click the Reopen button
+    const reopenButton = screen.getByRole("button", { name: /Reopen/i });
+    await user.click(reopenButton);
+
+    // Simulate the mutation succeeding
+    const onSuccessHandler = mockReopenMutate.mock.calls[0][1].onSuccess;
+    await onSuccessHandler();
+
+    // Verify clearActivePlan was NOT called
+    expect(mockClearActivePlan).not.toHaveBeenCalled();
   });
 });
