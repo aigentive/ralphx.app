@@ -333,6 +333,7 @@ pub struct RequestTaskChangesRequest {
 #[derive(Debug, Deserialize)]
 pub struct PermissionRequestInput {
     pub tool_name: String,
+    #[serde(default)]
     pub tool_input: serde_json::Value,
     pub context: Option<String>,
 }

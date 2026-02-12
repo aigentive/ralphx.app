@@ -31,7 +31,8 @@
 #   preapproved `mcp__<mcp_server_name>__<tool>` entries in `--allowedTools`.
 # - preapproved_cli_tools:
 #   Additional preapproved CLI tools/variants in `--allowedTools`
-#   (e.g. `Task(Explore)`, `Task(Plan)`, `Write`, `Edit`).
+#   (e.g. `Task(Explore)`, `Task(Plan)`). All CLI tools from --tools are
+#   auto-preapproved; list here only extras/variants (e.g. Task(Explore)).
 #
 # claude:
 #   Runtime CLI behavior for Claude spawns.
@@ -297,3 +298,36 @@ agents:
         get_project_analysis,
       ]
     preapproved_cli_tools: [Read, Edit, Bash, Task(Explore), Task(Plan)]
+
+  - name: memory-maintainer
+    system_prompt_file: ralphx-plugin/agents/memory-maintainer.md
+    model: haiku
+    tools: { extends: base_tools, include: [Write, Edit] }
+    mcp_tools:
+      [
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
+        get_conversation_transcript,
+        upsert_memories,
+        mark_memory_obsolete,
+        refresh_memory_rule_index,
+        ingest_rule_file,
+        rebuild_archive_snapshots,
+      ]
+    preapproved_cli_tools: [Read, Grep, Glob, WebFetch, WebSearch, Bash, Write, Edit]
+
+  - name: memory-capture
+    system_prompt_file: ralphx-plugin/agents/memory-capture.md
+    model: haiku
+    tools: { extends: base_tools, include: [Write, Edit] }
+    mcp_tools:
+      [
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
+        get_conversation_transcript,
+        upsert_memories,
+        mark_memory_obsolete,
+      ]
+    preapproved_cli_tools: [Read, Grep, Glob, WebFetch, WebSearch, Bash, Write, Edit]

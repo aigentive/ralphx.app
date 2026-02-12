@@ -25,14 +25,10 @@ export declare const permissionRequestTool: Tool;
  * 2. GET /api/permission/await/:id - blocks until user decides (5 min timeout)
  * 3. Return decision to Claude CLI
  *
- * @param args - Tool call details from Claude CLI
- * @returns MCP tool result with decision (allowed: true/false)
+ * @param args - Tool call details from Claude CLI (shape may vary)
+ * @returns MCP tool result with decision (behavior + updatedInput / message)
  */
-export declare function handlePermissionRequest(args: {
-    tool_name: string;
-    tool_input: Record<string, unknown>;
-    context?: string;
-}): Promise<{
+export declare function handlePermissionRequest(args: Record<string, unknown>): Promise<{
     content: Array<{
         type: "text";
         text: string;

@@ -13,11 +13,6 @@ const DEFAULT_BASE_CLI_TOOLS: &[&str] = &[
     "Skill",
 ];
 
-pub const MEMORY_SKILLS: &[&str] = &[
-    "Skill(ralphx:rule-manager)",
-    "Skill(ralphx:knowledge-capture)",
-];
-
 #[derive(Debug, Clone)]
 pub struct AgentConfig {
     pub name: String,
@@ -270,13 +265,15 @@ pub fn get_preapproved_tools(agent_name: &str) -> Option<String> {
             tools.push(format!("mcp__{}__{}", mcp_server, t));
         }
 
+        // CLI tools the agent can use (--tools) are also pre-approved so they don't prompt.
+        if !c.mcp_only {
+            tools.extend(c.resolved_cli_tools.iter().cloned());
+        }
         tools.extend(c.preapproved_cli_tools.iter().cloned());
 
-        if !c.mcp_only {
-            for t in MEMORY_SKILLS {
-                tools.push((*t).to_string());
-            }
-        }
+        // Dedupe while preserving order (first occurrence wins)
+        let mut seen = HashSet::new();
+        tools.retain(|t| seen.insert(t.clone()));
 
         if tools.is_empty() {
             None
@@ -328,7 +325,6 @@ mod tests {
         assert!(tools.contains("mcp__ralphx__get_project_analysis"));
         assert!(tools.contains("Write"));
         assert!(tools.contains("Task(Explore)"));
-        assert!(tools.contains("Skill(ralphx:rule-manager)"));
     }
 
     #[test]

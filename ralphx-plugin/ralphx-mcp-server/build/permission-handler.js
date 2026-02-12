@@ -37,6 +37,19 @@ export const permissionRequestTool = {
         required: ["tool_name", "tool_input"],
     },
 };
+/** Normalize permission args from CLI (may send snake_case, camelCase, or name/input). */
+function normalizePermissionArgs(args) {
+    const tool_name = args.tool_name ??
+        args.toolName ??
+        args.name ??
+        "";
+    const raw_input = args.tool_input ?? args.toolInput ?? args.input;
+    const tool_input = raw_input != null && typeof raw_input === "object" && !Array.isArray(raw_input)
+        ? raw_input
+        : {};
+    const context = args.context ?? args.reason ?? undefined;
+    return { tool_name, tool_input, context };
+}
 /**
  * Handle a permission request by forwarding to Tauri backend
  * and waiting for user decision via long-poll.
@@ -46,22 +59,39 @@ export const permissionRequestTool = {
  * 2. GET /api/permission/await/:id - blocks until user decides (5 min timeout)
  * 3. Return decision to Claude CLI
  *
- * @param args - Tool call details from Claude CLI
- * @returns MCP tool result with decision (allowed: true/false)
+ * @param args - Tool call details from Claude CLI (shape may vary)
+ * @returns MCP tool result with decision (behavior + updatedInput / message)
  */
 export async function handlePermissionRequest(args) {
-    console.error(`[RalphX MCP] Permission request for tool: ${args.tool_name}`);
+    const { tool_name, tool_input, context } = normalizePermissionArgs(args);
+    if (!tool_name) {
+        console.error("[RalphX MCP] Permission request missing tool name", args);
+        return {
+            content: [
+                {
+                    type: "text",
+                    text: JSON.stringify({
+                        behavior: "deny",
+                        message: "Permission request missing tool name",
+                    }),
+                },
+            ],
+        };
+    }
+    console.error(`[RalphX MCP] Permission request for tool: ${tool_name}`);
     // 1. Register permission request with Tauri backend
     let request_id;
     try {
+        const body = {
+            tool_name,
+            tool_input,
+        };
+        if (context !== undefined && context !== "")
+            body.context = context;
         const registerResponse = await fetch(`${TAURI_API_URL}/api/permission/request`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                tool_name: args.tool_name,
-                tool_input: args.tool_input,
-                context: args.context,
-            }),
+            body: JSON.stringify(body),
         });
         if (!registerResponse.ok) {
             throw new Error(`Failed to register permission request: ${registerResponse.statusText}`);
@@ -77,8 +107,8 @@ export async function handlePermissionRequest(args) {
                 {
                     type: "text",
                     text: JSON.stringify({
-                        allowed: false,
-                        reason: `Failed to register permission request: ${error instanceof Error ? error.message : String(error)}`,
+                        behavior: "deny",
+                        message: `Failed to register permission request: ${error instanceof Error ? error.message : String(error)}`,
                     }),
                 },
             ],
@@ -102,8 +132,8 @@ export async function handlePermissionRequest(args) {
                         {
                             type: "text",
                             text: JSON.stringify({
-                                allowed: false,
-                                reason: "Permission request timed out waiting for user response",
+                                behavior: "deny",
+                                message: "Permission request timed out waiting for user response",
                             }),
                         },
                     ],
@@ -112,18 +142,21 @@ export async function handlePermissionRequest(args) {
             throw new Error(`Permission decision error: ${decisionResponse.statusText}`);
         }
         const decision = (await decisionResponse.json());
-        console.error(`[RalphX MCP] Permission ${decision.decision} for tool: ${args.tool_name}`);
+        console.error(`[RalphX MCP] Permission ${decision.decision} for tool: ${tool_name}`);
+        // Claude CLI expects permission-prompt-tool result to be a union:
+        // - allow: { behavior: "allow", updatedInput: <record> }
+        // - deny:  { behavior: "deny", message: <string> }
+        const payload = decision.decision === "allow"
+            ? { behavior: "allow", updatedInput: tool_input }
+            : {
+                behavior: "deny",
+                message: decision.message ?? "User denied the tool call",
+            };
         return {
             content: [
                 {
                     type: "text",
-                    text: JSON.stringify({
-                        allowed: decision.decision === "allow",
-                        reason: decision.message ||
-                            (decision.decision === "allow"
-                                ? "User approved the tool call"
-                                : "User denied the tool call"),
-                    }),
+                    text: JSON.stringify(payload),
                 },
             ],
         };
@@ -137,8 +170,8 @@ export async function handlePermissionRequest(args) {
                     {
                         type: "text",
                         text: JSON.stringify({
-                            allowed: false,
-                            reason: "Permission request timed out",
+                            behavior: "deny",
+                            message: "Permission request timed out",
                         }),
                     },
                 ],
