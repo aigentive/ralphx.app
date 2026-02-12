@@ -138,6 +138,7 @@ pub async fn trigger_memory_pipelines(
     cli_path: &Path,
     plugin_dir: &Path,
     working_directory: &Path,
+    settings: Option<ProjectMemorySettings>,
 ) {
     tracing::debug!(
         %context_type,
@@ -154,8 +155,8 @@ pub async fn trigger_memory_pipelines(
         }
     };
 
-    // Load project memory settings (stub - will be replaced with repository call)
-    let settings = load_project_memory_settings(proj_id).await;
+    // Use provided settings or defaults
+    let settings = settings.unwrap_or_default();
 
     let Some((should_maintain, should_capture)) =
         resolve_pipelines(context_type, project_id, agent_name, &settings)
@@ -246,17 +247,6 @@ pub async fn trigger_memory_pipelines(
 
     // Don't await - fire and forget
     // Tasks will log their own errors
-}
-
-/// Load project memory settings (stub implementation)
-///
-/// TODO: Replace with repository-backed implementation when memory_settings repository is available
-async fn load_project_memory_settings(_project_id: &ProjectId) -> ProjectMemorySettings {
-    // For now, return defaults
-    // When repository is available:
-    // project_memory_settings_repo.get_by_project_id(project_id).await
-    //     .unwrap_or_else(|_| ProjectMemorySettings::default())
-    ProjectMemorySettings::default()
 }
 
 /// Spawn memory-maintainer agent (stub implementation)
@@ -392,15 +382,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_load_project_memory_settings_returns_defaults() {
-        let project_id = ProjectId::from_string("test-project".to_string());
-        let settings = load_project_memory_settings(&project_id).await;
-        assert!(settings.enabled);
-        assert_eq!(settings.maintenance_categories.len(), 3);
-        assert_eq!(settings.capture_categories.len(), 3);
-    }
-
-    #[tokio::test]
     async fn test_trigger_memory_pipelines_no_project_id() {
         // Should return early without panicking
         let conv_id = ChatConversationId::from_string("conv-123".to_string());
@@ -417,6 +398,7 @@ mod tests {
             &cli_path,
             &plugin_dir,
             &wd,
+            None,
         )
         .await;
         // Test passes if no panic
@@ -440,6 +422,7 @@ mod tests {
             &cli_path,
             &plugin_dir,
             &wd,
+            None,
         )
         .await;
         // Test passes if no spawn happens (verified via logs in real scenario)
@@ -463,6 +446,7 @@ mod tests {
             &cli_path,
             &plugin_dir,
             &wd,
+            None,
         )
         .await;
         // Test passes if no spawn happens
