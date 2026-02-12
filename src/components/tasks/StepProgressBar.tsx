@@ -80,7 +80,9 @@ export function StepProgressBar({ taskId, compact = false, internalStatus }: Ste
   const percentComplete = Math.round((completedAndSkipped / total) * 100);
 
   // Determine if task is in terminal state (merged or approved)
-  const isTerminalComplete = internalStatus === "merged" || internalStatus === "approved";
+  // Default to true for backward compatibility: show completed dots as green unless explicitly set to non-terminal state
+  const isTerminalComplete =
+    internalStatus === undefined || internalStatus === "merged" || internalStatus === "approved";
 
   // Compact mode: progress bar + percentage + dots for TaskCard
   if (compact) {
