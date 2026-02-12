@@ -328,6 +328,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const { issue_id, resolution_notes, attempt_number } = args;
             result = await callTauri("mark_issue_addressed", { issue_id, resolution_notes, attempt_number });
         }
+        else if (name === "create_child_session") {
+            // POST /api/sessions/create_child_session
+            const { parent_session_id, title, description, inherit_context } = args;
+            result = await callTauri("sessions/create_child_session", { parent_session_id, title, description, inherit_context });
+        }
+        else if (name === "get_parent_session_context") {
+            // GET /api/sessions/:session_id/parent_context
+            const { session_id } = args;
+            result = await callTauriGet(`sessions/${session_id}/parent_context`);
+        }
         else if (name === "get_project_analysis") {
             // GET /api/projects/:project_id/analysis?task_id=
             const { project_id, task_id } = args;

@@ -284,6 +284,49 @@ export const ALL_TOOLS = [
         },
     },
     // ========================================================================
+    // SESSION LINKING TOOLS (orchestrator-ideation agent)
+    // ========================================================================
+    {
+        name: "create_child_session",
+        description: "Create a new ideation session as a child of an existing session. Use when you want to create follow-on work that inherits context from the parent session.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                parent_session_id: {
+                    type: "string",
+                    description: "The parent ideation session ID",
+                },
+                title: {
+                    type: "string",
+                    description: "Optional title for the new child session",
+                },
+                description: {
+                    type: "string",
+                    description: "Optional description of the child session",
+                },
+                inherit_context: {
+                    type: "boolean",
+                    description: "If true, inherit parent session's plan and proposals context. Default: true.",
+                },
+            },
+            required: ["parent_session_id"],
+        },
+    },
+    {
+        name: "get_parent_session_context",
+        description: "Get the parent session context for a child session. Returns parent session metadata, plan content, and proposals summary.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                session_id: {
+                    type: "string",
+                    description: "The child session ID",
+                },
+            },
+            required: ["session_id"],
+        },
+    },
+    // ========================================================================
     // TASK TOOLS (chat-task agent)
     // ========================================================================
     {
@@ -923,6 +966,9 @@ export const TOOL_ALLOWLIST = {
         "link_proposals_to_plan",
         "get_session_plan",
         "ask_user_question",
+        // session linking tools
+        "create_child_session",
+        "get_parent_session_context",
         // memory read tools
         "search_memories",
         "get_memory",
