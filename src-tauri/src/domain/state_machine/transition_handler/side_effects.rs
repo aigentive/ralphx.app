@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
+use chrono::Utc;
 use tauri::{AppHandle, Emitter};
 
 use super::super::machine::State;
@@ -16,7 +17,7 @@ use crate::domain::entities::{
         MergeRecoverySource, MergeRecoveryState,
     },
     GitMode, InternalStatus, MergeStrategy, MergeValidationMode, PlanBranchStatus, Project,
-    ProjectId, Task, TaskId,
+    ProjectId, Task, TaskId, TaskStepStatus,
 };
 use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 use crate::error::{AppError, AppResult};
@@ -1803,13 +1804,125 @@ impl<'a> super::TransitionHandler<'a> {
                 // PendingMerge (Phase 66). Unblocking happens at on_enter(Merged) after
                 // the task's work is actually on main.
             }
-            State::Failed(_) => {
+            State::Failed(data) => {
+                let task_id = &self.machine.context.task_id;
+
+                // Store failure reason in task metadata for frontend access
+                if let Some(ref task_repo) = self.machine.context.services.task_repo {
+                    let task_id_typed = TaskId::from_string(task_id.clone());
+                    match task_repo.get_by_id(&task_id_typed).await {
+                        Ok(Some(mut task)) => {
+                            // Build failure info object
+                            let failure_info = serde_json::json!({
+                                "failure_error": data.error,
+                                "failure_details": data.details,
+                                "is_timeout": data.is_timeout,
+                            });
+
+                            // Merge into existing metadata, preserving other keys
+                            let mut metadata_obj = if let Some(json_str) = task.metadata.as_ref() {
+                                match serde_json::from_str::<serde_json::Value>(json_str) {
+                                    Ok(obj) => obj,
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            task_id = task_id,
+                                            error = %e,
+                                            "Failed to parse task metadata JSON"
+                                        );
+                                        serde_json::json!({})
+                                    }
+                                }
+                            } else {
+                                serde_json::json!({})
+                            };
+
+                            if let Some(obj) = metadata_obj.as_object_mut() {
+                                obj.insert("failure_error".to_string(), failure_info["failure_error"].clone());
+                                if let Some(details) = &data.details {
+                                    obj.insert("failure_details".to_string(), serde_json::json!(details));
+                                }
+                                obj.insert("is_timeout".to_string(), serde_json::json!(data.is_timeout));
+                            }
+
+                            // Update task with new metadata
+                            match serde_json::to_string(&metadata_obj) {
+                                Ok(updated_metadata) => {
+                                    task.metadata = Some(updated_metadata);
+                                    if let Err(e) = task_repo.update(&task).await {
+                                        tracing::error!(
+                                            task_id = task_id,
+                                            error = %e,
+                                            "Failed to update task with failure metadata"
+                                        );
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::error!(
+                                        task_id = task_id,
+                                        error = %e,
+                                        "Failed to serialize failure metadata"
+                                    );
+                                }
+                            }
+                        }
+                        Ok(None) => {
+                            tracing::error!(task_id = task_id, "Task not found when storing failure metadata");
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                task_id = task_id,
+                                error = %e,
+                                "Error retrieving task for failure metadata"
+                            );
+                        }
+                    }
+                }
+
+                // Fail any in-progress steps (Bug 2: agent was terminated, won't call fail_step)
+                if let Some(ref step_repo) = self.machine.context.services.step_repo {
+                    let task_id_typed = TaskId::from_string(task_id.clone());
+                    match step_repo.get_by_task(&task_id_typed).await {
+                        Ok(steps) => {
+                            for step in steps.iter().filter(|s| s.status == TaskStepStatus::InProgress) {
+                                let mut failed_step = step.clone();
+                                failed_step.status = TaskStepStatus::Failed;
+                                failed_step.completion_note = Some("Task execution failed".to_string());
+                                failed_step.completed_at = Some(Utc::now());
+
+                                if let Err(e) = step_repo.update(&failed_step).await {
+                                    tracing::error!(
+                                        task_id = task_id,
+                                        step_id = %step.id,
+                                        error = %e,
+                                        "Failed to update in-progress step to failed status"
+                                    );
+                                } else {
+                                    // Emit step updated event
+                                    self.machine
+                                        .context
+                                        .services
+                                        .event_emitter
+                                        .emit("step:updated", &format!("{}", step.id))
+                                        .await;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                task_id = task_id,
+                                error = %e,
+                                "Failed to retrieve steps for failure handling"
+                            );
+                        }
+                    }
+                }
+
                 // Emit task failed event
                 self.machine
                     .context
                     .services
                     .event_emitter
-                    .emit("task_failed", &self.machine.context.task_id)
+                    .emit("task_failed", task_id)
                     .await;
             }
             State::PendingMerge => {
