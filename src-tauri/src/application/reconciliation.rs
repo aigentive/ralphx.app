@@ -14,7 +14,9 @@ use tracing::warn;
 use crate::application::{chat_service::reconcile_merge_auto_complete, TaskTransitionService};
 use crate::commands::execution_commands::{ExecutionState, AGENT_ACTIVE_STATUSES};
 use crate::domain::entities::{
-    AgentRun, AgentRunId, AgentRunStatus, ChatContextType, InternalStatus, Task, TaskId,
+    AgentRun, AgentRunId, AgentRunStatus, ChatContextType, InternalStatus,
+    MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
+    MergeRecoverySource, MergeRecoveryState, Task, TaskId,
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
@@ -23,6 +25,13 @@ use crate::domain::repositories::{
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::transition_handler::set_trigger_origin;
+
+const MERGING_TIMEOUT_SECONDS: i64 = 60;
+const PENDING_MERGE_STALE_MINUTES: i64 = 5;
+const QA_STALE_MINUTES: i64 = 5;
+const MERGE_INCOMPLETE_AUTO_RETRY_BASE_SECONDS: i64 = 30;
+const MERGE_INCOMPLETE_AUTO_RETRY_MAX_SECONDS: i64 = 300;
+const MERGE_INCOMPLETE_MAX_AUTO_RETRIES: u32 = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RecoveryContext {
@@ -160,6 +169,15 @@ impl RecoveryPolicy {
                     return RecoveryDecision {
                         action: RecoveryActionKind::AttemptMergeAutoComplete,
                         reason: None,
+                    };
+                }
+                if evidence.is_stale {
+                    return RecoveryDecision {
+                        action: RecoveryActionKind::Transition(InternalStatus::MergeIncomplete),
+                        reason: Some(
+                            "Merge timed out without completion signal — moving to MergeIncomplete."
+                                .to_string(),
+                        ),
                     };
                 }
                 if evidence.run_status.is_none() {
@@ -361,6 +379,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 InternalStatus::Reviewing,
                 InternalStatus::Merging,
                 InternalStatus::PendingMerge,
+                InternalStatus::MergeIncomplete,
                 InternalStatus::QaRefining,
                 InternalStatus::QaTesting,
             ] {
@@ -507,6 +526,9 @@ impl<R: Runtime> ReconciliationRunner<R> {
             InternalStatus::Reviewing => self.reconcile_reviewing_task(task, status).await,
             InternalStatus::Merging => self.reconcile_merging_task(task, status).await,
             InternalStatus::PendingMerge => self.reconcile_pending_merge_task(task, status).await,
+            InternalStatus::MergeIncomplete => {
+                self.reconcile_merge_incomplete_task(task, status).await
+            }
             InternalStatus::QaRefining | InternalStatus::QaTesting => {
                 self.reconcile_qa_task(task, status).await
             }
@@ -566,11 +588,24 @@ impl<R: Runtime> ReconciliationRunner<R> {
         let run = self
             .lookup_latest_run_for_task_context(task, ChatContextType::Merge)
             .await;
-        let evidence = self
+        let age = match self.latest_status_transition_age(task, status).await {
+            Some(age) => age,
+            None => return false,
+        };
+        let mut evidence = self
             .build_run_evidence(task, ChatContextType::Merge, run.as_ref())
             .await;
-        if evidence.run_status == Some(AgentRunStatus::Running) && evidence.registry_running {
+        evidence.is_stale = age >= chrono::Duration::seconds(MERGING_TIMEOUT_SECONDS);
+
+        if evidence.run_status == Some(AgentRunStatus::Running)
+            && evidence.registry_running
+            && !evidence.is_stale
+        {
             return true;
+        }
+
+        if evidence.is_stale {
+            self.record_merge_timeout_event(task, age).await;
         }
 
         let decision = self
@@ -595,7 +630,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             run_status: None,
             registry_running: false,
             can_start: self.execution_state.can_start_task(),
-            is_stale: age >= chrono::Duration::minutes(5),
+            is_stale: age >= chrono::Duration::minutes(QA_STALE_MINUTES),
             is_deferred: false,
         };
         let context = if status == InternalStatus::QaRefining {
@@ -622,11 +657,36 @@ impl<R: Runtime> ReconciliationRunner<R> {
         };
 
         let is_deferred = has_merge_deferred_metadata(task);
+
+        // Deferred-orphan watchdog: if the recorded blocker is no longer active
+        // (missing, archived, or no longer in merge workflow), immediately re-trigger
+        // entry actions instead of waiting for stale timeout.
+        if is_deferred {
+            if let Some(blocker_id) = self.latest_deferred_blocker_id(task) {
+                if !self.deferred_blocker_is_active(&blocker_id).await {
+                    return self
+                        .apply_recovery_decision(
+                            task,
+                            status,
+                            RecoveryContext::PendingMerge,
+                            RecoveryDecision {
+                                action: RecoveryActionKind::ExecuteEntryActions,
+                                reason: Some(
+                                    "Deferred merge blocker is no longer active — re-triggering."
+                                        .to_string(),
+                                ),
+                            },
+                        )
+                        .await;
+                }
+            }
+        }
+
         let evidence = RecoveryEvidence {
             run_status: None,
             registry_running: false,
             can_start: true,
-            is_stale: age >= chrono::Duration::minutes(5),
+            is_stale: age >= chrono::Duration::minutes(PENDING_MERGE_STALE_MINUTES),
             is_deferred,
         };
         let decision = self
@@ -635,6 +695,53 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
         self.apply_recovery_decision(task, status, RecoveryContext::PendingMerge, decision)
             .await
+    }
+
+    async fn reconcile_merge_incomplete_task(&self, task: &Task, status: InternalStatus) -> bool {
+        if status != InternalStatus::MergeIncomplete {
+            return false;
+        }
+
+        let age = match self.latest_status_transition_age(task, status).await {
+            Some(age) => age,
+            None => return false,
+        };
+
+        let retry_count = Self::merge_incomplete_auto_retry_count(task);
+        if retry_count >= MERGE_INCOMPLETE_MAX_AUTO_RETRIES {
+            return false;
+        }
+
+        let retry_delay = Self::merge_incomplete_retry_delay(retry_count);
+        if age < retry_delay {
+            return false;
+        }
+
+        let attempt = retry_count + 1;
+        if let Err(e) = self.record_merge_auto_retry_event(task, attempt).await {
+            warn!(
+                task_id = task.id.as_str(),
+                attempt = attempt,
+                error = %e,
+                "Failed to record merge auto-retry metadata"
+            );
+        }
+
+        match self
+            .transition_service
+            .transition_task(&task.id, InternalStatus::PendingMerge)
+            .await
+        {
+            Ok(_) => true,
+            Err(e) => {
+                warn!(
+                    task_id = task.id.as_str(),
+                    error = %e,
+                    "Failed to transition MergeIncomplete -> PendingMerge during recovery"
+                );
+                false
+            }
+        }
     }
 
     pub async fn recover_execution_stop(&self, task_id: &TaskId) -> bool {
@@ -894,12 +1001,167 @@ impl<R: Runtime> ReconciliationRunner<R> {
         task: &Task,
         status: InternalStatus,
     ) -> Option<chrono::Duration> {
-        let status_history = self.task_repo.get_status_history(&task.id).await.ok()?;
-        let latest_transition = status_history
+        let status_history = match self.task_repo.get_status_history(&task.id).await {
+            Ok(history) => history,
+            Err(e) => {
+                warn!(
+                    task_id = task.id.as_str(),
+                    status = ?status,
+                    error = %e,
+                    "Failed to load status history; falling back to task.updated_at for age"
+                );
+                return Some(chrono::Utc::now() - task.updated_at);
+            }
+        };
+
+        if let Some(latest_transition) = status_history
             .iter()
             .rev()
-            .find(|transition| transition.to == status)?;
-        Some(chrono::Utc::now() - latest_transition.timestamp)
+            .find(|transition| transition.to == status)
+        {
+            return Some(chrono::Utc::now() - latest_transition.timestamp);
+        }
+
+        // Fallback for manually-edited tasks (status changed without status history row).
+        Some(chrono::Utc::now() - task.updated_at)
+    }
+
+    fn merge_incomplete_auto_retry_count(task: &Task) -> u32 {
+        MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+            .ok()
+            .flatten()
+            .map(|meta| {
+                meta.events
+                    .iter()
+                    .filter(|e| matches!(e.kind, MergeRecoveryEventKind::AutoRetryTriggered))
+                    .count() as u32
+            })
+            .unwrap_or(0)
+    }
+
+    fn merge_incomplete_retry_delay(retry_count: u32) -> chrono::Duration {
+        let exponent = retry_count.min(6);
+        let scaled = MERGE_INCOMPLETE_AUTO_RETRY_BASE_SECONDS.saturating_mul(1_i64 << exponent);
+        chrono::Duration::seconds(scaled.min(MERGE_INCOMPLETE_AUTO_RETRY_MAX_SECONDS))
+    }
+
+    fn latest_deferred_blocker_id(&self, task: &Task) -> Option<TaskId> {
+        MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+            .ok()
+            .flatten()
+            .and_then(|meta| {
+                meta.events
+                    .iter()
+                    .rev()
+                    .find_map(|event| event.blocking_task_id.clone())
+            })
+    }
+
+    async fn deferred_blocker_is_active(&self, blocker_id: &TaskId) -> bool {
+        match self.task_repo.get_by_id(blocker_id).await {
+            Ok(Some(blocker)) => {
+                blocker.archived_at.is_none()
+                    && matches!(
+                        blocker.internal_status,
+                        InternalStatus::PendingMerge | InternalStatus::Merging
+                    )
+            }
+            Ok(None) => false,
+            Err(e) => {
+                warn!(
+                    blocker_id = blocker_id.as_str(),
+                    error = %e,
+                    "Failed to load deferred merge blocker status"
+                );
+                true
+            }
+        }
+    }
+
+    async fn record_merge_auto_retry_event(&self, task: &Task, attempt: u32) -> Result<(), String> {
+        let mut updated = task.clone();
+        let mut recovery = MergeRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
+            .unwrap_or(None)
+            .unwrap_or_default();
+
+        let mut event = MergeRecoveryEvent::new(
+            MergeRecoveryEventKind::AutoRetryTriggered,
+            MergeRecoverySource::Auto,
+            MergeRecoveryReasonCode::GitError,
+            format!(
+                "Auto-retry triggered after MergeIncomplete (attempt {})",
+                attempt
+            ),
+        )
+        .with_attempt(attempt);
+
+        if let Some(ref source_branch) = updated.task_branch {
+            event = event.with_source_branch(source_branch.clone());
+        }
+
+        recovery.append_event_with_state(event, MergeRecoveryState::Retrying);
+        updated.metadata = Some(
+            recovery
+                .update_task_metadata(updated.metadata.as_deref())
+                .map_err(|e| e.to_string())?,
+        );
+        set_trigger_origin(&mut updated, "recovery");
+        updated.touch();
+
+        self.task_repo.update(&updated).await.map_err(|e| e.to_string())
+    }
+
+    async fn record_merge_timeout_event(&self, task: &Task, age: chrono::Duration) {
+        let mut updated = task.clone();
+
+        let mut recovery = MergeRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
+            .unwrap_or(None)
+            .unwrap_or_default();
+
+        let failed_event = MergeRecoveryEvent::new(
+            MergeRecoveryEventKind::AttemptFailed,
+            MergeRecoverySource::System,
+            MergeRecoveryReasonCode::GitError,
+            format!(
+                "Merge timed out after {}s without completion signal",
+                age.num_seconds().max(0)
+            ),
+        );
+        recovery.append_event_with_state(failed_event, MergeRecoveryState::Failed);
+
+        let mut metadata = match recovery.update_task_metadata(updated.metadata.as_deref()) {
+            Ok(json) => serde_json::from_str::<serde_json::Value>(&json)
+                .unwrap_or_else(|_| serde_json::json!({})),
+            Err(_) => serde_json::json!({}),
+        };
+
+        if let Some(obj) = metadata.as_object_mut() {
+            obj.insert(
+                "error".to_string(),
+                serde_json::json!(format!(
+                    "Merge timed out after {}s without complete_merge callback",
+                    MERGING_TIMEOUT_SECONDS
+                )),
+            );
+            obj.insert(
+                "merge_timeout_seconds".to_string(),
+                serde_json::json!(MERGING_TIMEOUT_SECONDS),
+            );
+            obj.insert(
+                "merge_timeout_at".to_string(),
+                serde_json::json!(chrono::Utc::now().to_rfc3339()),
+            );
+        }
+
+        updated.metadata = Some(metadata.to_string());
+        updated.touch();
+        if let Err(e) = self.task_repo.update(&updated).await {
+            warn!(
+                task_id = task.id.as_str(),
+                error = %e,
+                "Failed to persist merge timeout metadata"
+            );
+        }
     }
 
     async fn emit_recovery_prompt(
