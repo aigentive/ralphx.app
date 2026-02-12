@@ -899,6 +899,21 @@ export const ALL_TOOLS: Tool[] = [
       required: ["project_id"],
     },
   },
+  {
+    name: "get_conversation_transcript",
+    description:
+      "Retrieve conversation messages for a given conversation ID, ordered chronologically. Used by memory-capture for analysis.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        conversation_id: {
+          type: "string",
+          description: "The conversation ID",
+        },
+      },
+      required: ["conversation_id"],
+    },
+  },
 
   // ========================================================================
   // PROJECT ANALYSIS TOOLS (worker/reviewer/merger + project-analyzer agents)

@@ -294,7 +294,7 @@ async fn spawn_memory_maintainer(
     cmd.env("RALPHX_CONVERSATION_ID", &conv_id_str);
     cmd.env("RALPHX_CONTEXT_TYPE", &context_type_str);
     cmd.env("RALPHX_CONTEXT_ID", context_id);
-    cmd.env("RALPHX_PROJECT_ID", &proj_id_str);
+    cmd.env("RALPHX_PROJECT_ID", proj_id_str);
 
     // Spawn and ignore the child process (fire-and-forget)
     let _child = cmd.spawn().await.map_err(|e| {
@@ -348,7 +348,7 @@ async fn spawn_memory_capture(
     cmd.env("RALPHX_CONVERSATION_ID", &conv_id_str);
     cmd.env("RALPHX_CONTEXT_TYPE", &context_type_str);
     cmd.env("RALPHX_CONTEXT_ID", context_id);
-    cmd.env("RALPHX_PROJECT_ID", &proj_id_str);
+    cmd.env("RALPHX_PROJECT_ID", proj_id_str);
 
     // Spawn and ignore the child process (fire-and-forget)
     let _child = cmd.spawn().await.map_err(|e| {
