@@ -11,6 +11,7 @@ use super::chat_service_context;
 use super::chat_service_streaming::process_stream_background;
 use super::chat_service_types::{AgentQueueSentPayload, AgentRunStartedPayload};
 use super::has_meaningful_output;
+use crate::application::question_state::QuestionState;
 use crate::domain::entities::{ChatContextType, ChatConversationId};
 use crate::domain::repositories::{ActivityEventRepository, ChatMessageRepository, TaskRepository};
 use crate::domain::services::MessageQueue;
@@ -34,6 +35,7 @@ pub async fn process_message_queue<R: Runtime + 'static>(
     cli_path: &Path,
     plugin_dir: &Path,
     working_directory: &Path,
+    question_state: Option<Arc<QuestionState>>,
     app_handle: Option<AppHandle<R>>,
     project_id: Option<&str>,
 ) -> u32 {
@@ -190,6 +192,7 @@ pub async fn process_message_queue<R: Runtime + 'static>(
                         Some(Arc::clone(&task_repo)),
                         Some(Arc::clone(&chat_message_repo)),
                         Some(queue_assistant_msg_id.clone()),
+                        question_state.clone(),
                     )
                     .await
                     {
