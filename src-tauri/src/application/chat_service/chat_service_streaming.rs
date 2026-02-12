@@ -11,10 +11,11 @@ use tracing::info;
 
 /// Maximum time to wait for a single line of stdout output before killing the agent.
 /// If no output is received for this duration, the agent is considered stuck.
-const LINE_READ_TIMEOUT: Duration = Duration::from_secs(300); // 5 minutes
+/// Increased to accommodate long-running validation commands (e.g. cargo test --lib).
+const LINE_READ_TIMEOUT: Duration = Duration::from_secs(600); // 10 minutes
 /// Maximum time to tolerate stdout traffic with no parseable stream events.
 /// Prevents "alive but no UI updates" stalls when output format drifts.
-const PARSE_STALL_TIMEOUT: Duration = Duration::from_secs(120); // 2 minutes
+const PARSE_STALL_TIMEOUT: Duration = Duration::from_secs(180); // 3 minutes
 
 use crate::domain::entities::{
     ActivityEvent, ActivityEventType, ChatContextType, ChatConversationId, ChatMessageId, TaskId,

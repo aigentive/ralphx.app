@@ -158,7 +158,7 @@ Quick reference:
 - Use `helpers::add_column_if_not_exists()` for ALTER TABLE
 
 ## Commands
-When using Claude/automation: run **only** `cargo test --lib`; **do not run** `cargo check` or full `cargo test` (they hang). No `--nocapture`/verbose. `cargo test --lib` can take 5–8+ min; use **10 min timeout** and `tail` so the run finishes before chat/stream limits (~300s); or doesn’t time out, or run a focused subset (e.g. by module).
+When using Claude/automation: run **only** `cargo test --lib`; **do not run** `cargo check` or full `cargo test` (they hang). No `--nocapture`/verbose. `cargo test --lib` can take 5–8+ min; use **10 min timeout** and `tail` so the run finishes before chat/stream limits (~600s), or run a focused subset (e.g. by module).
 ```bash
 cargo build                    # build
 # Unit tests: can take 5–8+ min. From repo root use 10m timeout + tail (accommodates slow runs):
