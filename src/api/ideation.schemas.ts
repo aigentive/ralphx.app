@@ -11,6 +11,7 @@ export const IdeationSessionResponseSchema = z.object({
   title: z.string().nullable(),
   status: z.string(),
   plan_artifact_id: z.string().nullable(),
+  parent_session_id: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
   archived_at: z.string().nullable(),
@@ -116,4 +117,38 @@ export const ApplyProposalsResultResponseSchema = z.object({
   dependencies_created: z.number(),
   warnings: z.array(z.string()),
   session_converted: z.boolean(),
+});
+
+/**
+ * Parent session context response (snake_case from Rust)
+ */
+export const ParentSessionContextResponseSchema = z.object({
+  parent_session: z.object({
+    id: z.string(),
+    title: z.string().nullable(),
+    status: z.string(),
+  }),
+  plan_content: z.string().nullable(),
+  proposals: z.array(
+    z.object({
+      id: z.string(),
+      title: z.string(),
+      category: z.string(),
+      priority: z.string().nullable(),
+      status: z.string(),
+      acceptance_criteria: z.array(z.string()),
+    })
+  ),
+});
+
+/**
+ * Create child session response (snake_case from Rust)
+ */
+export const CreateChildSessionResponseSchema = z.object({
+  session_id: z.string(),
+  parent_session_id: z.string(),
+  title: z.string().nullable(),
+  status: z.string(),
+  created_at: z.string(),
+  parent_context: ParentSessionContextResponseSchema.optional(),
 });

@@ -12,6 +12,8 @@ mod chat;
 mod graph;
 mod proposal;
 mod types;
+pub mod session_context;
+pub mod session_link;
 
 #[cfg(test)]
 mod tests;
@@ -21,6 +23,8 @@ pub use assessment::*;
 pub use chat::*;
 pub use graph::*;
 pub use proposal::TaskProposal;
+pub use session_context::*;
+pub use session_link::*;
 pub use types::*;
 
 use chrono::{DateTime, Utc};
@@ -44,6 +48,8 @@ pub struct IdeationSession {
     pub plan_artifact_id: Option<ArtifactId>,
     /// Optional reference to a draft task that seeded this session
     pub seed_task_id: Option<TaskId>,
+    /// Optional parent session for session linking (follow-on work, etc.)
+    pub parent_session_id: Option<IdeationSessionId>,
     /// When the session was created
     pub created_at: DateTime<Utc>,
     /// When the session was last updated
@@ -63,6 +69,7 @@ pub struct IdeationSessionBuilder {
     status: Option<IdeationSessionStatus>,
     plan_artifact_id: Option<ArtifactId>,
     seed_task_id: Option<TaskId>,
+    parent_session_id: Option<IdeationSessionId>,
     created_at: Option<DateTime<Utc>>,
     updated_at: Option<DateTime<Utc>>,
     archived_at: Option<DateTime<Utc>>,
@@ -111,6 +118,12 @@ impl IdeationSessionBuilder {
         self
     }
 
+    /// Set the parent session ID
+    pub fn parent_session_id(mut self, parent_session_id: IdeationSessionId) -> Self {
+        self.parent_session_id = Some(parent_session_id);
+        self
+    }
+
     /// Set the created_at timestamp
     pub fn created_at(mut self, created_at: DateTime<Utc>) -> Self {
         self.created_at = Some(created_at);
@@ -146,6 +159,7 @@ impl IdeationSessionBuilder {
             status: self.status.unwrap_or_default(),
             plan_artifact_id: self.plan_artifact_id,
             seed_task_id: self.seed_task_id,
+            parent_session_id: self.parent_session_id,
             created_at: self.created_at.unwrap_or(now),
             updated_at: self.updated_at.unwrap_or(now),
             archived_at: self.archived_at,
@@ -209,8 +223,24 @@ impl IdeationSession {
         self.updated_at = Utc::now();
     }
 
+    /// Validates that setting a parent session ID won't create a circular reference
+    /// This is a domain validation that checks the proposed parent chain
+    /// In practice, this would be called before persisting and would need access to a repository
+    /// to walk the parent chain. The actual database-backed validation happens in the repository layer.
+    pub fn validate_no_circular_parent(&self, proposed_parent_id: &IdeationSessionId) -> bool {
+        // Self-reference is always invalid
+        if self.id == *proposed_parent_id {
+            return false;
+        }
+
+        // This method validates the logical constraint.
+        // The actual parent chain walk happens at the repository level
+        // where we have access to fetch parent sessions from the database.
+        true
+    }
+
     /// Deserialize an IdeationSession from a SQLite row
-    /// Expects columns: id, project_id, title, status, plan_artifact_id, seed_task_id, created_at, updated_at, archived_at, converted_at
+    /// Expects columns: id, project_id, title, status, plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at
     pub fn from_row(row: &Row) -> rusqlite::Result<Self> {
         Ok(Self {
             id: IdeationSessionId::from_string(row.get::<_, String>("id")?),
@@ -226,6 +256,9 @@ impl IdeationSession {
             seed_task_id: row
                 .get::<_, Option<String>>("seed_task_id")?
                 .map(TaskId::from_string),
+            parent_session_id: row
+                .get::<_, Option<String>>("parent_session_id")?
+                .map(IdeationSessionId::from_string),
             created_at: Self::parse_datetime(row.get("created_at")?),
             updated_at: Self::parse_datetime(row.get("updated_at")?),
             archived_at: row

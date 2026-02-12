@@ -46,6 +46,7 @@ async fn create_accepted_session(
         status: IdeationSessionStatus::Accepted,
         plan_artifact_id: None,
         seed_task_id: None,
+        parent_session_id: None,
         created_at: converted_at - Duration::days(1),
         updated_at: converted_at,
         archived_at: None,

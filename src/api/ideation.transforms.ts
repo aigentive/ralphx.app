@@ -20,6 +20,8 @@ import type {
   PriorityAssessmentResponse,
   DependencyGraphResponse,
   ApplyProposalsResultResponse,
+  CreateChildSessionResponse,
+  ParentSessionContextResponse,
 } from "./ideation.types";
 import {
   IdeationSessionResponseSchema,
@@ -29,6 +31,8 @@ import {
   PriorityAssessmentResponseSchema,
   DependencyGraphResponseSchema,
   ApplyProposalsResultResponseSchema,
+  CreateChildSessionResponseSchema,
+  ParentSessionContextResponseSchema,
 } from "./ideation.schemas";
 
 export function transformSession(raw: z.infer<typeof IdeationSessionResponseSchema>): IdeationSessionResponse {
@@ -38,6 +42,7 @@ export function transformSession(raw: z.infer<typeof IdeationSessionResponseSche
     title: raw.title,
     status: raw.status as IdeationSessionStatus,
     planArtifactId: raw.plan_artifact_id,
+    parentSessionId: raw.parent_session_id,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
     archivedAt: raw.archived_at,
@@ -167,5 +172,39 @@ export function transformIdeationSettings(raw: IdeationSettingsResponse): Ideati
     requirePlanApproval: raw.require_plan_approval,
     suggestPlansForComplex: raw.suggest_plans_for_complex,
     autoLinkProposals: raw.auto_link_proposals,
+  };
+}
+
+export function transformParentSessionContext(
+  raw: z.infer<typeof ParentSessionContextResponseSchema>
+): ParentSessionContextResponse {
+  return {
+    parentSession: {
+      id: raw.parent_session.id,
+      title: raw.parent_session.title,
+      status: raw.parent_session.status,
+    },
+    planContent: raw.plan_content,
+    proposals: raw.proposals.map((p) => ({
+      id: p.id,
+      title: p.title,
+      category: p.category,
+      priority: p.priority,
+      status: p.status,
+      acceptanceCriteria: p.acceptance_criteria,
+    })),
+  };
+}
+
+export function transformCreateChildSession(
+  raw: z.infer<typeof CreateChildSessionResponseSchema>
+): CreateChildSessionResponse {
+  return {
+    sessionId: raw.session_id,
+    parentSessionId: raw.parent_session_id,
+    title: raw.title,
+    status: raw.status,
+    createdAt: raw.created_at,
+    parentContext: raw.parent_context ? transformParentSessionContext(raw.parent_context) : undefined,
   };
 }

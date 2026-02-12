@@ -32,6 +32,7 @@ pub mod sqlite_review_issue_repo;
 pub mod sqlite_review_repo;
 pub mod sqlite_review_settings_repo;
 pub mod sqlite_running_agent_registry;
+pub mod sqlite_session_link_repo;
 pub mod sqlite_task_dependency_repo;
 pub mod sqlite_task_proposal_repo;
 pub mod sqlite_task_qa_repo;
@@ -76,6 +77,7 @@ pub use sqlite_review_issue_repo::{ReviewIssueRepository, SqliteReviewIssueRepos
 pub use sqlite_review_repo::SqliteReviewRepository;
 pub use sqlite_review_settings_repo::SqliteReviewSettingsRepository;
 pub use sqlite_running_agent_registry::SqliteRunningAgentRegistry;
+pub use sqlite_session_link_repo::SqliteSessionLinkRepository;
 pub use sqlite_task_dependency_repo::SqliteTaskDependencyRepository;
 pub use sqlite_task_proposal_repo::SqliteTaskProposalRepository;
 pub use sqlite_task_qa_repo::SqliteTaskQARepository;

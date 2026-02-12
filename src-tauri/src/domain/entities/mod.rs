@@ -54,8 +54,8 @@ pub use ideation::{
     IdeationSessionBuilder, IdeationSessionStatus, MessageRole, ParseComplexityError,
     ParseIdeationSessionStatusError, ParseMessageRoleError, ParsePriorityError,
     ParseProposalStatusError, ParseTaskCategoryError, Priority, PriorityAssessment,
-    PriorityAssessmentFactors, PriorityFactors, ProposalStatus, TaskCategory, TaskProposal,
-    UserHintFactor,
+    PriorityAssessmentFactors, PriorityFactors, ProposalStatus, SessionLink, SessionRelationship,
+    TaskCategory, TaskProposal, UserHintFactor,
 };
 pub use memory_archive::{
     ArchiveJobPayload, ArchiveJobStatus, ArchiveJobType, FullRebuildPayload, MemoryArchiveJob,
@@ -98,8 +98,8 @@ pub use task_metadata::{
 pub use task_qa::TaskQA;
 pub use task_step::{StepProgressSummary, TaskStep, TaskStepStatus};
 pub use types::{
-    ChatMessageId, IdeationSessionId, ProjectId, ReviewIssueId, TaskId, TaskProposalId, TaskQAId,
-    TaskStepId,
+    ChatMessageId, IdeationSessionId, ProjectId, ReviewIssueId, SessionLinkId, TaskId,
+    TaskProposalId, TaskQAId, TaskStepId,
 };
 pub use workflow::{
     ColumnBehavior, ConflictResolution, ExternalStatusMapping, ExternalSyncConfig,

@@ -62,6 +62,20 @@ pub trait IdeationSessionRepository: Send + Sync {
         &self,
         plan_artifact_id: &str,
     ) -> AppResult<Vec<IdeationSession>>;
+
+    /// Get all child sessions for a given parent session ID
+    async fn get_children(&self, parent_id: &IdeationSessionId) -> AppResult<Vec<IdeationSession>>;
+
+    /// Get the ancestor chain for a session (parents, grandparents, etc.)
+    /// Returns sessions in order from direct parent to root ancestor
+    async fn get_ancestor_chain(&self, session_id: &IdeationSessionId) -> AppResult<Vec<IdeationSession>>;
+
+    /// Set the parent session ID for a session
+    async fn set_parent(
+        &self,
+        id: &IdeationSessionId,
+        parent_id: Option<&IdeationSessionId>,
+    ) -> AppResult<()>;
 }
 
 #[cfg(test)]
@@ -185,6 +199,47 @@ mod tests {
                 .cloned()
                 .collect())
         }
+
+        async fn get_children(&self, parent_id: &IdeationSessionId) -> AppResult<Vec<IdeationSession>> {
+            Ok(self
+                .sessions
+                .iter()
+                .filter(|s| s.parent_session_id.as_ref() == Some(parent_id))
+                .cloned()
+                .collect())
+        }
+
+        async fn get_ancestor_chain(
+            &self,
+            session_id: &IdeationSessionId,
+        ) -> AppResult<Vec<IdeationSession>> {
+            let mut chain = Vec::new();
+            let mut current_id = session_id.clone();
+
+            // Walk up the parent chain
+            while let Some(session) = self.sessions.iter().find(|s| s.id == current_id) {
+                if let Some(parent_id) = &session.parent_session_id {
+                    current_id = parent_id.clone();
+                    if let Some(parent) = self.sessions.iter().find(|s| s.id == current_id) {
+                        chain.push(parent.clone());
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            Ok(chain)
+        }
+
+        async fn set_parent(
+            &self,
+            _id: &IdeationSessionId,
+            _parent_id: Option<&IdeationSessionId>,
+        ) -> AppResult<()> {
+            // This is a mock implementation that doesn't actually persist
+            // In real implementations, this would update the database
+            Ok(())
+        }
     }
 
     fn create_test_session(project_id: &ProjectId) -> IdeationSession {
@@ -195,6 +250,7 @@ mod tests {
             status: IdeationSessionStatus::Active,
             plan_artifact_id: None,
             seed_task_id: None,
+            parent_session_id: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
             archived_at: None,
@@ -465,6 +521,120 @@ mod tests {
 
         // Test delete through trait object
         let result = repo.delete(&session.id).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_get_children() {
+        let project_id = ProjectId::new();
+        let parent = create_test_session(&project_id);
+        let mut child1 = create_test_session(&project_id);
+        child1.parent_session_id = Some(parent.id.clone());
+        let mut child2 = create_test_session(&project_id);
+        child2.parent_session_id = Some(parent.id.clone());
+
+        let repo = MockIdeationSessionRepository::with_sessions(vec![
+            parent.clone(),
+            child1.clone(),
+            child2.clone(),
+        ]);
+
+        let result = repo.get_children(&parent.id).await;
+        assert!(result.is_ok());
+        let children = result.unwrap();
+        assert_eq!(children.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_children_empty() {
+        let project_id = ProjectId::new();
+        let parent = create_test_session(&project_id);
+        let repo = MockIdeationSessionRepository::with_sessions(vec![parent.clone()]);
+
+        let result = repo.get_children(&parent.id).await;
+        assert!(result.is_ok());
+        let children = result.unwrap();
+        assert!(children.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_ancestor_chain_single_parent() {
+        let project_id = ProjectId::new();
+        let grandparent = create_test_session(&project_id);
+        let mut parent = create_test_session(&project_id);
+        parent.parent_session_id = Some(grandparent.id.clone());
+        let mut child = create_test_session(&project_id);
+        child.parent_session_id = Some(parent.id.clone());
+
+        let repo = MockIdeationSessionRepository::with_sessions(vec![
+            grandparent.clone(),
+            parent.clone(),
+            child.clone(),
+        ]);
+
+        let result = repo.get_ancestor_chain(&child.id).await;
+        assert!(result.is_ok());
+        let chain = result.unwrap();
+        // Should include parent and grandparent
+        assert!(!chain.is_empty());
+        assert_eq!(chain[0].id, parent.id);
+    }
+
+    #[tokio::test]
+    async fn test_get_ancestor_chain_three_levels_deep() {
+        let project_id = ProjectId::new();
+        let level1 = create_test_session(&project_id);
+        let mut level2 = create_test_session(&project_id);
+        level2.parent_session_id = Some(level1.id.clone());
+        let mut level3 = create_test_session(&project_id);
+        level3.parent_session_id = Some(level2.id.clone());
+
+        let repo = MockIdeationSessionRepository::with_sessions(vec![
+            level1.clone(),
+            level2.clone(),
+            level3.clone(),
+        ]);
+
+        let result = repo.get_ancestor_chain(&level3.id).await;
+        assert!(result.is_ok());
+        let chain = result.unwrap();
+        // Should walk up the chain: level3 → level2 → level1
+        assert!(!chain.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_ancestor_chain_no_parent() {
+        let project_id = ProjectId::new();
+        let session = create_test_session(&project_id);
+        let repo = MockIdeationSessionRepository::with_sessions(vec![session.clone()]);
+
+        let result = repo.get_ancestor_chain(&session.id).await;
+        assert!(result.is_ok());
+        let chain = result.unwrap();
+        // Session with no parent should return empty chain
+        assert!(chain.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_set_parent() {
+        let project_id = ProjectId::new();
+        let session = create_test_session(&project_id);
+        let parent = create_test_session(&project_id);
+        let repo = MockIdeationSessionRepository::with_sessions(vec![session.clone()]);
+
+        let result = repo.set_parent(&session.id, Some(&parent.id)).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_set_parent_to_none() {
+        let project_id = ProjectId::new();
+        let mut session = create_test_session(&project_id);
+        let parent = create_test_session(&project_id);
+        session.parent_session_id = Some(parent.id.clone());
+        let repo = MockIdeationSessionRepository::with_sessions(vec![session.clone()]);
+
+        let result = repo.set_parent(&session.id, None).await;
         assert!(result.is_ok());
     }
 }

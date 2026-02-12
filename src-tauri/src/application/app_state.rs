@@ -21,7 +21,7 @@ use crate::domain::repositories::{
     MemoryEventRepository, MethodologyRepository, PlanBranchRepository,
     PlanSelectionStatsRepository, ProcessRepository, ProjectRepository,
     ProposalDependencyRepository, ReviewRepository, ReviewSettingsRepository,
-    TaskDependencyRepository, TaskProposalRepository, TaskQARepository, TaskRepository,
+    SessionLinkRepository, TaskDependencyRepository, TaskProposalRepository, TaskQARepository, TaskRepository,
     TaskStepRepository, WorkflowRepository,
 };
 use crate::domain::services::{MemoryRunningAgentRegistry, MessageQueue, RunningAgentRegistry};
@@ -36,7 +36,7 @@ use crate::infrastructure::memory::{
     MemoryPlanBranchRepository, MemoryPlanSelectionStatsRepository, MemoryProcessRepository,
     MemoryProjectRepository, MemoryProposalDependencyRepository, MemoryQuestionRepository,
     MemoryReviewIssueRepository, MemoryReviewRepository, MemoryReviewSettingsRepository,
-    MemoryTaskDependencyRepository, MemoryTaskProposalRepository, MemoryTaskQARepository,
+    MemorySessionLinkRepository, MemoryTaskDependencyRepository, MemoryTaskProposalRepository, MemoryTaskQARepository,
     MemoryTaskRepository, MemoryTaskStepRepository, MemoryWorkflowRepository,
     InMemoryMemoryEntryRepository, InMemoryMemoryEventRepository,
 };
@@ -53,7 +53,7 @@ use crate::infrastructure::sqlite::{
     SqlitePlanBranchRepository, SqlitePlanSelectionStatsRepository, SqliteProcessRepository,
     SqliteProjectRepository, SqliteProposalDependencyRepository, SqliteQuestionRepository,
     SqliteReviewIssueRepository, SqliteReviewRepository, SqliteReviewSettingsRepository,
-    SqliteRunningAgentRegistry, SqliteTaskDependencyRepository, SqliteTaskProposalRepository,
+    SqliteRunningAgentRegistry, SqliteSessionLinkRepository, SqliteTaskDependencyRepository, SqliteTaskProposalRepository,
     SqliteTaskQARepository, SqliteTaskRepository, SqliteTaskStepRepository,
     SqliteWorkflowRepository,
 };
@@ -91,6 +91,8 @@ pub struct AppState {
     pub ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     /// Ideation settings repository
     pub ideation_settings_repo: Arc<dyn IdeationSettingsRepository>,
+    /// Session link repository for managing parent-child session relationships
+    pub session_link_repo: Arc<dyn SessionLinkRepository>,
     /// Task proposal repository
     pub task_proposal_repo: Arc<dyn TaskProposalRepository>,
     /// Proposal dependency repository
@@ -209,6 +211,9 @@ impl AppState {
             ideation_settings_repo: Arc::new(SqliteIdeationSettingsRepository::from_shared(
                 Arc::clone(&shared_conn),
             )),
+            session_link_repo: Arc::new(SqliteSessionLinkRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
             task_proposal_repo: Arc::clone(&task_proposal_repo),
             proposal_dependency_repo: Arc::new(SqliteProposalDependencyRepository::from_shared(
                 Arc::clone(&shared_conn),
@@ -334,6 +339,9 @@ impl AppState {
             ideation_settings_repo: Arc::new(SqliteIdeationSettingsRepository::from_shared(
                 Arc::clone(&shared_conn),
             )),
+            session_link_repo: Arc::new(SqliteSessionLinkRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
             task_proposal_repo: Arc::clone(&task_proposal_repo),
             proposal_dependency_repo: Arc::new(SqliteProposalDependencyRepository::from_shared(
                 Arc::clone(&shared_conn),
@@ -427,6 +435,7 @@ impl AppState {
             global_execution_settings_repo: Arc::new(MemoryGlobalExecutionSettingsRepository::new()),
             ideation_session_repo: Arc::new(MemoryIdeationSessionRepository::new()),
             ideation_settings_repo: Arc::new(MemoryIdeationSettingsRepository::new()),
+            session_link_repo: Arc::new(MemorySessionLinkRepository::new()),
             task_proposal_repo: Arc::clone(&task_proposal_repo),
             proposal_dependency_repo: Arc::new(MemoryProposalDependencyRepository::new()),
             chat_message_repo: Arc::new(MemoryChatMessageRepository::new()),
@@ -488,6 +497,7 @@ impl AppState {
             global_execution_settings_repo: Arc::new(MemoryGlobalExecutionSettingsRepository::new()),
             ideation_session_repo: Arc::new(MemoryIdeationSessionRepository::new()),
             ideation_settings_repo: Arc::new(MemoryIdeationSettingsRepository::new()),
+            session_link_repo: Arc::new(MemorySessionLinkRepository::new()),
             task_proposal_repo: Arc::clone(&task_proposal_repo),
             proposal_dependency_repo: Arc::new(MemoryProposalDependencyRepository::new()),
             chat_message_repo: Arc::new(MemoryChatMessageRepository::new()),

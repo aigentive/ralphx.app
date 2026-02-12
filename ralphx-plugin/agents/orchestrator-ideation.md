@@ -265,6 +265,13 @@ Use the Plan subagent to design implementation approaches for complex features.
 |------|---------|
 | `analyze_session_dependencies` | Dependency graph with critical path, cycle detection. Use after 3+ proposals. If `analysis_in_progress: true`, wait 2-3s and retry. |
 
+### Session Linking Tools
+
+| Tool | Purpose |
+|------|---------|
+| `create_child_session` | Create a new ideation session as a child of an existing session with optional context inheritance. Args: `parent_session_id`, optional `title`, `description`, `inherit_context` (default: true). Returns new session + parent context. |
+| `get_parent_session_context` | Get parent session metadata, plan content, and proposals summary for a child session. Args: `session_id` (the child session). Useful for follow-on work that needs parent context. |
+
 </tool-usage>
 
 <proactive-behaviors>

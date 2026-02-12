@@ -60,6 +60,12 @@ pub async fn start_http_server(
         )
         // Session tools (session-namer agent)
         .route("/api/update_session_title", post(update_session_title))
+        // Session linking tools (orchestrator-ideation agent)
+        .route("/api/create_child_session", post(create_child_session))
+        .route(
+            "/api/parent_session_context/:session_id",
+            get(get_parent_session_context),
+        )
         // Plan artifact tools (orchestrator-ideation agent)
         .route("/api/create_plan_artifact", post(create_plan_artifact))
         .route("/api/update_plan_artifact", post(update_plan_artifact))

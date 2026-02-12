@@ -14,6 +14,9 @@ import type {
   CreateProposalInput,
   UpdateProposalInput,
   ApplyProposalsInput,
+  CreateChildSessionResponse,
+  ParentSessionContextResponse,
+  CreateChildSessionInput,
 } from "@/api/ideation.types";
 import type { IdeationSettings, IdeationPlanMode } from "@/types/ideation-config";
 import { generateTestUuid } from "@/test/mock-data";
@@ -37,6 +40,7 @@ function ensureMockData(): void {
     status: "active",
     planArtifactId: null,
     seedTaskId: null,
+    parentSessionId: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     archivedAt: null,
@@ -87,6 +91,7 @@ export const mockIdeationApi = {
         status: "active",
         planArtifactId: null,
         seedTaskId: seedTaskId ?? null,
+        parentSessionId: null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         archivedAt: null,
@@ -157,6 +162,88 @@ export const mockIdeationApi = {
 
     spawnDependencySuggester: async (_sessionId: string): Promise<void> => {
       // No-op in mock mode
+    },
+
+    createChild: async (input: CreateChildSessionInput): Promise<CreateChildSessionResponse> => {
+      const childSession: IdeationSessionResponse = {
+        id: generateTestUuid(),
+        projectId: mockSessions.get(input.parentSessionId)?.projectId ?? "project-mock-1",
+        title: input.title ?? null,
+        status: "active",
+        planArtifactId: null,
+        seedTaskId: null,
+        parentSessionId: input.parentSessionId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        archivedAt: null,
+        convertedAt: null,
+      };
+      mockSessions.set(childSession.id, childSession);
+
+      const parentContext = input.inheritContext
+        ? {
+            parentSession: {
+              id: input.parentSessionId,
+              title: mockSessions.get(input.parentSessionId)?.title ?? null,
+              status: mockSessions.get(input.parentSessionId)?.status ?? "active",
+            },
+            planContent: null,
+            proposals: Array.from(mockProposals.values())
+              .filter((p) => p.sessionId === input.parentSessionId)
+              .map((p) => ({
+                id: p.id,
+                title: p.title,
+                category: p.category,
+                priority: p.userPriority ?? p.suggestedPriority,
+                status: p.status,
+                acceptanceCriteria: p.acceptanceCriteria,
+              })),
+          }
+        : undefined;
+
+      return {
+        sessionId: childSession.id,
+        parentSessionId: input.parentSessionId,
+        title: childSession.title,
+        status: childSession.status,
+        createdAt: childSession.createdAt,
+        parentContext,
+      };
+    },
+
+    getParentContext: async (sessionId: string): Promise<ParentSessionContextResponse | null> => {
+      ensureMockData();
+      const session = mockSessions.get(sessionId);
+      if (!session || !session.parentSessionId) return null;
+
+      const parentSession = mockSessions.get(session.parentSessionId);
+      if (!parentSession) return null;
+
+      return {
+        parentSession: {
+          id: parentSession.id,
+          title: parentSession.title,
+          status: parentSession.status,
+        },
+        planContent: null,
+        proposals: Array.from(mockProposals.values())
+          .filter((p) => p.sessionId === session.parentSessionId)
+          .map((p) => ({
+            id: p.id,
+            title: p.title,
+            category: p.category,
+            priority: p.userPriority ?? p.suggestedPriority,
+            status: p.status,
+            acceptanceCriteria: p.acceptanceCriteria,
+          })),
+      };
+    },
+
+    getChildren: async (sessionId: string): Promise<IdeationSessionResponse[]> => {
+      ensureMockData();
+      return Array.from(mockSessions.values()).filter(
+        (s) => s.parentSessionId === sessionId
+      );
     },
   },
 
