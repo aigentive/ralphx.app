@@ -98,6 +98,8 @@ agents:
         link_proposals_to_plan,
         get_session_plan,
         ask_user_question,
+        create_child_session,
+        get_parent_session_context,
       ]
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
@@ -111,6 +113,7 @@ agents:
         get_proposal,
         get_plan_artifact,
         get_session_plan,
+        get_parent_session_context,
       ]
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
