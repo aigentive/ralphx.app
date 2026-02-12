@@ -733,6 +733,30 @@ pub struct RebuildArchiveSnapshotsResponse {
 }
 
 // ============================================================================
+// Request/Response Types - Conversation Transcript
+// ============================================================================
+
+/// Single message in a transcript
+#[derive(Debug, Serialize, Clone)]
+pub struct TranscriptMessage {
+    pub role: String,       // "user", "assistant", etc.
+    pub content: String,
+    pub created_at: String, // RFC3339 timestamp
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GetConversationTranscriptRequest {
+    pub conversation_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GetConversationTranscriptResponse {
+    pub conversation_id: String,
+    pub messages: Vec<TranscriptMessage>,
+    pub message_count: usize,
+}
+
+// ============================================================================
 // Common Response Types
 // ============================================================================
 

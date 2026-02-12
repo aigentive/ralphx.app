@@ -413,3 +413,42 @@ pub async fn rebuild_archive_snapshots(
         message: "Full archive rebuild job enqueued".to_string(),
     }))
 }
+
+// ============================================================================
+// Handler: get_conversation_transcript
+// ============================================================================
+
+pub async fn get_conversation_transcript(
+    State(state): State<HttpServerState>,
+    Json(req): Json<GetConversationTranscriptRequest>,
+) -> Result<Json<GetConversationTranscriptResponse>, StatusCode> {
+    use crate::domain::entities::ChatConversationId;
+
+    let conversation_id = ChatConversationId::from_string(req.conversation_id.clone());
+    let messages = state
+        .app_state
+        .chat_message_repo
+        .get_by_conversation(&conversation_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to fetch conversation transcript: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let transcript_messages: Vec<TranscriptMessage> = messages
+        .into_iter()
+        .map(|msg| TranscriptMessage {
+            role: msg.role.to_string(),
+            content: msg.content,
+            created_at: msg.created_at.to_rfc3339(),
+        })
+        .collect();
+
+    let message_count = transcript_messages.len();
+
+    Ok(Json(GetConversationTranscriptResponse {
+        conversation_id: req.conversation_id,
+        messages: transcript_messages,
+        message_count,
+    }))
+}
