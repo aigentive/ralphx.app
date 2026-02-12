@@ -158,10 +158,11 @@ Quick reference:
 - Use `helpers::add_column_if_not_exists()` for ALTER TABLE
 
 ## Commands
-When using Claude/automation: run **only** `cargo test --lib` (unit tests); full `cargo test` hangs. Do not use `--nocapture`/verbose.
+When using Claude/automation: run **only** `cargo test --lib`; **do not run** `cargo check` or full `cargo test` (they hang). No `--nocapture`/verbose.
 ```bash
 cargo build                    # build
-cargo test --lib                # unit tests only (use this in automation; full cargo test hangs)
+cargo test --lib                # unit tests only (use in automation; full cargo test hangs)
+# Do NOT run cargo check in automation — it hangs
 cargo fmt                      # format
 cargo clippy --all-targets --all-features -- -D warnings  # lint (REQUIRED before commit)
 ```

@@ -9,6 +9,7 @@ use tauri::{AppHandle, Emitter, Runtime};
 use tokio::process::Child;
 
 use crate::application::git_service::GitService;
+use crate::application::question_state::QuestionState;
 use crate::application::task_transition_service::TaskTransitionService;
 use crate::application::task_scheduler_service::TaskSchedulerService;
 use crate::domain::state_machine::services::TaskScheduler;
@@ -182,6 +183,7 @@ async fn attempt_session_recovery(
         None, // no task repo
         None, // no incremental message update
         None, // no assistant message ID
+        None, // no question state
     )
     .await
     {
@@ -276,6 +278,7 @@ pub fn spawn_send_message_background<R: Runtime>(
     message_queue: Arc<MessageQueue>,
     running_agent_registry: Arc<dyn RunningAgentRegistry>,
     execution_state: Option<Arc<ExecutionState>>,
+    question_state: Option<Arc<QuestionState>>,
     plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
     app_handle: Option<AppHandle<R>>,
     is_retry_attempt: bool,
@@ -325,6 +328,7 @@ pub fn spawn_send_message_background<R: Runtime>(
             Some(Arc::clone(&task_repo)),
             Some(Arc::clone(&chat_message_repo)),
             Some(pre_assistant_msg_id.clone()),
+            question_state.clone(),
         )
         .await;
 
@@ -695,6 +699,7 @@ pub fn spawn_send_message_background<R: Runtime>(
                                     Some(Arc::clone(&task_repo)),
                                     Some(Arc::clone(&chat_message_repo)),
                                     Some(queue_assistant_msg_id.clone()),
+                                    question_state.clone(),
                                 )
                                 .await
                                 {
@@ -905,6 +910,7 @@ pub fn spawn_send_message_background<R: Runtime>(
                                                 Arc::clone(&message_queue),
                                                 Arc::clone(&running_agent_registry),
                                                 execution_state.clone(),
+                                                question_state.clone(),
                                                 plan_branch_repo.clone(),
                                                 app_handle.clone(),
                                                 true, // is_retry_attempt
@@ -1295,7 +1301,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
         );
 
         // Re-run validation commands on the merge path
-        match run_validation_commands(&project, &task, worktree, task_id_str, None, None) {
+        match run_validation_commands(&project, &task, worktree, task_id_str, None, None).await {
             Some(result) if !result.all_passed => {
                 // Agent didn't fix it — revert and fall back to MergeIncomplete
                 tracing::warn!(
