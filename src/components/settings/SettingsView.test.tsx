@@ -258,6 +258,37 @@ describe("SettingsView", () => {
       expect(screen.getByTestId("max-concurrent-tasks")).toHaveValue(5);
       expect(screen.getByTestId("auto-commit")).toHaveAttribute("data-state", "unchecked");
     });
+
+    it("updates settings when initialSettings prop changes", () => {
+      const initialSettings = {
+        ...DEFAULT_PROJECT_SETTINGS,
+        execution: {
+          ...DEFAULT_PROJECT_SETTINGS.execution,
+          max_concurrent_tasks: 3,
+        },
+      };
+
+      const { rerender } = render(<SettingsView initialSettings={initialSettings} />);
+      expect(screen.getByTestId("max-concurrent-tasks")).toHaveValue(3);
+
+      // Simulate project switch - new settings with different max_concurrent_tasks
+      const newSettings = {
+        ...DEFAULT_PROJECT_SETTINGS,
+        execution: {
+          ...DEFAULT_PROJECT_SETTINGS.execution,
+          max_concurrent_tasks: 7,
+        },
+      };
+
+      rerender(
+        <QueryClientProvider client={createTestQueryClient()}>
+          <SettingsView initialSettings={newSettings} />
+        </QueryClientProvider>
+      );
+
+      // Verify the input now shows the new project's value
+      expect(screen.getByTestId("max-concurrent-tasks")).toHaveValue(7);
+    });
   });
 
   describe("Disabled State", () => {

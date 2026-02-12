@@ -34,6 +34,7 @@ fn build_runner(
 
     let agent_run_repo = Arc::clone(&app_state.agent_run_repo);
     let app_state_repo = Arc::clone(&app_state.app_state_repo);
+    let execution_settings_repo = Arc::clone(&app_state.execution_settings_repo);
 
     let active_project_state = Arc::new(crate::commands::ActiveProjectState::new());
     let runner = StartupJobRunner::new(
@@ -51,6 +52,7 @@ fn build_runner(
         Arc::clone(execution_state),
         Arc::clone(&active_project_state),
         Arc::clone(&app_state_repo),
+        execution_settings_repo,
     );
     (runner, app_state_repo)
 }
@@ -1364,4 +1366,101 @@ async fn test_resumption_skips_when_no_active_project_in_db() {
         0,
         "No tasks should be resumed when no active project in DB"
     );
+}
+
+#[tokio::test]
+async fn test_startup_loads_persisted_project_quota() {
+    // Verifies the runner loads the persisted active project's execution settings
+    // and syncs the runtime quota before resuming tasks
+    let (execution_state, app_state) = setup_test_state().await;
+
+    // Create a project
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Set project-specific execution settings with max_concurrent = 3
+    let settings = crate::domain::execution::ExecutionSettings {
+        max_concurrent_tasks: 3,
+        auto_commit: false,
+        pause_on_failure: false,
+    };
+    app_state
+        .execution_settings_repo
+        .update_settings(Some(&project.id), &settings)
+        .await
+        .unwrap();
+
+    // Set initial runtime quota to 10 (simulate different value from previous session)
+    execution_state.set_max_concurrent(10);
+    assert_eq!(execution_state.max_concurrent(), 10);
+
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+
+    // Set active project in DB (simulates persisted state from previous session)
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
+
+    // Run the startup runner — it should load settings and update quota
+    runner.run().await;
+
+    // Verify the runtime quota was updated to match the persisted project settings
+    assert_eq!(
+        execution_state.max_concurrent(),
+        3,
+        "Runtime quota should be updated to match persisted project settings"
+    );
+}
+
+#[tokio::test]
+async fn test_startup_quota_sync_before_resumption() {
+    // Verifies quota sync happens BEFORE task resumption logic
+    // by checking that resumption respects the newly-loaded quota
+    let (execution_state, app_state) = setup_test_state().await;
+
+    // Create a project with 5 tasks in Executing state
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    for i in 0..5 {
+        let mut task = Task::new(project.id.clone(), format!("Executing Task {}", i));
+        task.internal_status = InternalStatus::Executing;
+        app_state.task_repo.create(task).await.unwrap();
+    }
+
+    // Set project-specific execution settings with max_concurrent = 2
+    let settings = crate::domain::execution::ExecutionSettings {
+        max_concurrent_tasks: 2,
+        auto_commit: false,
+        pause_on_failure: false,
+    };
+    app_state
+        .execution_settings_repo
+        .update_settings(Some(&project.id), &settings)
+        .await
+        .unwrap();
+
+    // Set initial runtime quota to 10 (different from project settings)
+    execution_state.set_max_concurrent(10);
+
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
+
+    // Run startup - should load quota (2) and only resume 2 tasks
+    runner.run().await;
+
+    // Verify the quota was updated BEFORE resumption checked it
+    assert_eq!(
+        execution_state.max_concurrent(),
+        2,
+        "Quota should be synced from project settings before resumption"
+    );
+
+    // Note: In this test environment with mock spawner, running_count stays at 0
+    // because the spawner doesn't increment. The test verifies that the quota
+    // was loaded correctly and is available for the resumption logic to check.
 }

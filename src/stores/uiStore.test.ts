@@ -25,7 +25,7 @@ describe("uiStore", () => {
       executionStatus: {
         isPaused: false,
         runningCount: 0,
-        maxConcurrent: 2,
+        maxConcurrent: 10,
         queuedCount: 0,
         canStartTask: true,
       },
@@ -349,7 +349,7 @@ describe("uiStore", () => {
       expect(state.executionStatus).toEqual({
         isPaused: false,
         runningCount: 0,
-        maxConcurrent: 2,
+        maxConcurrent: 10,
         queuedCount: 0,
         canStartTask: true,
       });
@@ -359,7 +359,7 @@ describe("uiStore", () => {
       useUiStore.getState().setExecutionStatus({
         isPaused: true,
         runningCount: 1,
-        maxConcurrent: 2,
+        maxConcurrent: 10,
         queuedCount: 3,
         canStartTask: false,
       });

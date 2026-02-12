@@ -15,7 +15,7 @@ pub struct ExecutionSettings {
 impl Default for ExecutionSettings {
     fn default() -> Self {
         Self {
-            max_concurrent_tasks: 2,
+            max_concurrent_tasks: 10,
             auto_commit: true,
             pause_on_failure: true,
         }
@@ -58,7 +58,7 @@ mod tests {
     #[test]
     fn test_execution_settings_default() {
         let settings = ExecutionSettings::default();
-        assert_eq!(settings.max_concurrent_tasks, 2);
+        assert_eq!(settings.max_concurrent_tasks, 10);
         assert!(settings.auto_commit);
         assert!(settings.pause_on_failure);
     }

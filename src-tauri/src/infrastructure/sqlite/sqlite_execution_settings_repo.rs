@@ -228,7 +228,7 @@ mod tests {
 
         // Get global defaults (project_id = None)
         let settings = repo.get_settings(None).await.unwrap();
-        assert_eq!(settings.max_concurrent_tasks, 2);
+        assert_eq!(settings.max_concurrent_tasks, 10);
         assert!(settings.auto_commit);
         assert!(settings.pause_on_failure);
     }
@@ -268,7 +268,7 @@ mod tests {
 
         // Initially, get_settings for a project should return global defaults
         let settings = repo.get_settings(Some(&project_id)).await.unwrap();
-        assert_eq!(settings.max_concurrent_tasks, 2); // global default
+        assert_eq!(settings.max_concurrent_tasks, 10); // global default
 
         // Create project-specific settings
         let project_settings = ExecutionSettings {
@@ -289,7 +289,7 @@ mod tests {
 
         // Global settings should remain unchanged
         let global = repo.get_settings(None).await.unwrap();
-        assert_eq!(global.max_concurrent_tasks, 2);
+        assert_eq!(global.max_concurrent_tasks, 10);
     }
 
     #[tokio::test]
@@ -343,6 +343,6 @@ mod tests {
         let repo = SqliteExecutionSettingsRepository::from_shared(Arc::clone(&shared_conn));
 
         let settings = repo.get_settings(None).await.unwrap();
-        assert_eq!(settings.max_concurrent_tasks, 2);
+        assert_eq!(settings.max_concurrent_tasks, 10);
     }
 }

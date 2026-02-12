@@ -416,6 +416,13 @@ export function SettingsView({
   );
   const [dismissedError, setDismissedError] = useState(false);
 
+  // Sync internal state when initialSettings prop changes (e.g., project switch)
+  useEffect(() => {
+    if (initialSettings) {
+      setSettings(initialSettings);
+    }
+  }, [initialSettings]);
+
   const handleExecutionChange = useCallback(
     (changes: Partial<ExecutionSettings>) => {
       setSettings((prev) => {
