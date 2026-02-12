@@ -120,8 +120,10 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       hasText: !!streamingText,
     }), [streamingToolCalls.length, totalChildCalls, streamingTasks?.size, streamingText]);
 
-    // Unified auto-scroll hook
-    const isStreaming = isSending || isAgentRunning;
+    // Unified auto-scroll hook — Virtuoso followOutput is the single scroll path.
+    // No isStreaming/streamingHash needed: Virtuoso re-evaluates followOutput
+    // when its context prop changes (footerContentHash), handling all streaming
+    // scroll updates through one mechanism.
     const {
       messagesEndRef,
       isAtBottom,
@@ -130,9 +132,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       handleFollowOutput,
     } = useChatAutoScroll({
       messageCount: messages.length,
-      isStreaming,
-      streamingHash: footerContentHash,
       disabled: !!scrollToTimestamp, // Disable auto-scroll in history mode
+      virtuosoRef, // Route scrollToBottom through Virtuoso scrollToIndex
     });
 
     // Scroll to specific timestamp for history mode (time-travel feature)
@@ -304,7 +305,6 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                       </Button>
                     </div>
                   )}
-                  <div ref={messagesEndRef} />
                 </div>
               );
             },

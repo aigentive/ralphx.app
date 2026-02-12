@@ -1,40 +1,40 @@
 /**
  * useChatAutoScroll - Unified scroll behavior for all chat components
  *
- * Provides smart bottom detection, auto-scroll control, streaming-aware triggers,
- * and manual scroll-to-bottom functionality. Ensures consistent scroll behavior
- * across ChatPanel, IntegratedChatPanel, and all Virtuoso-based message lists.
+ * Single-path scroll control: Virtuoso's followOutput callback is the ONLY
+ * auto-scroll mechanism. No useEffect triggers, no DOM marker scrolling,
+ * no requestAnimationFrame — just one callback that Virtuoso invokes when
+ * content changes and the user is at bottom.
  *
  * Key features:
- * - Bottom tracking with 150px threshold
- * - Auto-scroll on message count increase OR streaming content changes
+ * - Bottom tracking with 150px threshold (via Virtuoso atBottomStateChange)
+ * - Virtuoso-native scrolling when virtuosoRef is provided
+ * - DOM-based scrolling via messagesEndRef for non-Virtuoso consumers only
  * - Respects user manual scroll (pauses when scrolled up)
  * - Manual override via scrollToBottom()
  * - Disableable for history time-travel mode
- * - RAF debouncing for streaming updates to prevent scroll thrashing
  */
 
-import { useRef, useCallback, useEffect, useState } from "react";
+import { useRef, useCallback, useState } from "react";
+import type { VirtuosoHandle } from "react-virtuoso";
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export interface UseChatAutoScrollProps {
-  /** Number of messages - triggers scroll when count increases */
+  /** Number of messages - used for scrollToIndex target in Virtuoso mode */
   messageCount: number;
-  /** Is agent currently streaming */
-  isStreaming: boolean;
-  /** Hash of streaming content - triggers scroll when content changes (RAF-debounced) */
-  streamingHash?: unknown;
   /** Disable auto-scroll (for history mode) */
   disabled?: boolean;
+  /** Virtuoso handle ref — when provided, all scrolling goes through Virtuoso APIs */
+  virtuosoRef?: React.RefObject<VirtuosoHandle | null>;
 }
 
 export interface UseChatAutoScrollReturn {
   /** Ref to attach to scroll container (for div-based components) */
   containerRef: React.RefObject<HTMLDivElement | null>;
-  /** Ref to attach to end-of-messages marker (for div-based components) */
+  /** Ref to attach to end-of-messages marker (for div-based components only) */
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
   /** Is user at bottom of scroll area */
   isAtBottom: boolean;
@@ -54,11 +54,10 @@ export interface UseChatAutoScrollReturn {
 
 export function useChatAutoScroll({
   messageCount,
-  isStreaming,
-  streamingHash,
   disabled = false,
+  virtuosoRef,
 }: UseChatAutoScrollProps): UseChatAutoScrollReturn {
-  // Refs for div-based scroll components
+  // Refs for div-based scroll components (non-Virtuoso fallback)
   const containerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -74,6 +73,9 @@ export function useChatAutoScroll({
   }, []);
 
   // Virtuoso callback: control followOutput behavior
+  // This is the ONLY auto-scroll mechanism for Virtuoso-based lists.
+  // When user is at bottom and not in history mode, Virtuoso smoothly
+  // follows new content (messages, footer height changes).
   const handleFollowOutput = useCallback(
     (atBottom: boolean) => {
       if (atBottom && !disabled) return "smooth" as const;
@@ -83,34 +85,24 @@ export function useChatAutoScroll({
   );
 
   // Manual scroll-to-bottom
+  // Routes through Virtuoso scrollToIndex when available, falls back to DOM marker
   const scrollToBottom = useCallback(() => {
     setIsAtBottom(true);
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, []);
-
-  // Auto-scroll on message count increase
-  useEffect(() => {
-    if (shouldAutoScroll && messageCount > 0) {
+    if (virtuosoRef?.current && messageCount > 0) {
+      virtuosoRef.current.scrollToIndex({
+        index: messageCount - 1,
+        align: "end",
+        behavior: "smooth",
+      });
+    } else {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [shouldAutoScroll, messageCount]);
+  }, [virtuosoRef, messageCount]);
 
-  // Auto-scroll on streaming content changes (RAF-debounced)
-  useEffect(() => {
-    if (!shouldAutoScroll || !isStreaming || streamingHash === undefined) {
-      return undefined;
-    }
-
-    // Use RAF to debounce scroll updates during streaming
-    let rafId: number | null = null;
-    rafId = requestAnimationFrame(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    });
-
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
-    };
-  }, [shouldAutoScroll, isStreaming, streamingHash]);
+  // NOTE: No useEffect auto-scroll triggers here for Virtuoso mode.
+  // Virtuoso's followOutput callback handles all auto-scrolling natively.
+  // The old messagesEndRef.scrollIntoView effects competed with followOutput
+  // causing dual scroll mechanisms and jank during streaming.
 
   return {
     containerRef,

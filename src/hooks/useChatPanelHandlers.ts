@@ -23,7 +23,6 @@ interface UseChatPanelHandlersProps {
   activeConversationId: string | null;
   sendMessage: UseMutationResult<SendAgentMessageResult, Error, string, unknown>;
   queuedMessages: Array<{ id: string; content: string }>;
-  messagesEndRef: React.RefObject<HTMLDivElement | null>;
 }
 
 export function useChatPanelHandlers({
@@ -33,7 +32,6 @@ export function useChatPanelHandlers({
   activeConversationId,
   sendMessage,
   queuedMessages,
-  messagesEndRef,
 }: UseChatPanelHandlersProps) {
   const queryClient = useQueryClient();
   const chatStore = useChatStore();
@@ -285,17 +283,12 @@ export function useChatPanelHandlers({
         // Clear streaming tool calls
         setStreamingToolCalls([]);
         // Invalidate cache to get final messages
+        // Virtuoso's followOutput handles scrolling when new messages arrive
         if (conversation_id) {
           queryClient.invalidateQueries({
             queryKey: chatKeys.conversation(conversation_id),
           });
         }
-        // Force scroll to bottom after completion
-        setTimeout(() => {
-          if (messagesEndRef.current) {
-            messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-          }
-        }, 100);
       })
     );
 
@@ -370,7 +363,7 @@ export function useChatPanelHandlers({
       setStreamingToolCalls([]);
       unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
-  }, [queryClient, logError, messagesEndRef, activeConversationId, eventBus]);
+  }, [queryClient, logError, activeConversationId, eventBus]);
 
   return {
     streamingToolCalls,
