@@ -413,11 +413,7 @@ export function TaskCard({
           task.internalStatus === "approved" ||
           task.internalStatus === "merged") && (
           <div className="flex items-center gap-2 mt-2" data-testid="step-progress-footer">
-            <StepProgressBar
-              taskId={task.id}
-              compact={true}
-              isTerminalComplete={task.internalStatus === "merged" || task.internalStatus === "approved"}
-            />
+            <StepProgressBar taskId={task.id} compact={true} internalStatus={task.internalStatus} />
 
             {/* Duration badge - shown when executing */}
             {(task.internalStatus === "executing" || task.internalStatus === "re_executing") && executionState.duration !== null && (
