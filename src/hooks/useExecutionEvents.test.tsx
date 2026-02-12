@@ -67,7 +67,7 @@ describe("useExecutionEvents", () => {
       executionStatus: {
         isPaused: false,
         runningCount: 0,
-        maxConcurrent: 2,
+        maxConcurrent: 10,
         queuedCount: 0,
         canStartTask: true,
       },
@@ -90,7 +90,7 @@ describe("useExecutionEvents", () => {
         testEventBus.emit<ExecutionStatusEvent>("execution:status_changed", {
           isPaused: true,
           runningCount: 1,
-          maxConcurrent: 2,
+          maxConcurrent: 10,
           reason: "paused",
           timestamp: new Date().toISOString(),
         });
@@ -141,7 +141,7 @@ describe("useExecutionEvents", () => {
         testEventBus.emit<ExecutionStatusEvent>("execution:status_changed", {
           isPaused: false,
           runningCount: 1,
-          maxConcurrent: 2,
+          maxConcurrent: 10,
           reason: "task_started",
           timestamp: new Date().toISOString(),
         });
@@ -158,7 +158,7 @@ describe("useExecutionEvents", () => {
         testEventBus.emit<ExecutionStatusEvent>("execution:status_changed", {
           isPaused: true,
           runningCount: 0,
-          maxConcurrent: 2,
+          maxConcurrent: 10,
           reason: "paused",
           timestamp: new Date().toISOString(),
         });
@@ -174,8 +174,8 @@ describe("useExecutionEvents", () => {
       await act(async () => {
         testEventBus.emit<ExecutionStatusEvent>("execution:status_changed", {
           isPaused: false,
-          runningCount: 2,
-          maxConcurrent: 2,
+          runningCount: 10,
+          maxConcurrent: 10,
           reason: "task_started",
           timestamp: new Date().toISOString(),
         });
@@ -200,7 +200,7 @@ describe("useExecutionEvents", () => {
         testEventBus.emit<ExecutionStatusEvent>("execution:status_changed", {
           isPaused: false,
           runningCount: 1,
-          maxConcurrent: 2,
+          maxConcurrent: 10,
           reason: "task_started",
           timestamp: new Date().toISOString(),
         });
@@ -225,7 +225,7 @@ describe("useExecutionEvents", () => {
         executionStatus: {
           isPaused: false,
           runningCount: 1,
-          maxConcurrent: 2,
+          maxConcurrent: 10,
           queuedCount: 0,
           canStartTask: true,
         },
@@ -246,7 +246,7 @@ describe("useExecutionEvents", () => {
       // Other fields should be preserved
       expect(state.isPaused).toBe(false);
       expect(state.runningCount).toBe(1);
-      expect(state.maxConcurrent).toBe(2);
+      expect(state.maxConcurrent).toBe(10);
       expect(state.canStartTask).toBe(true);
     });
 

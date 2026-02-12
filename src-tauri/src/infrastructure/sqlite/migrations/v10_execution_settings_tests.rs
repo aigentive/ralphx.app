@@ -28,7 +28,7 @@ fn test_v10_inserts_default_row() {
         .unwrap();
 
     assert_eq!(id, 1);
-    assert_eq!(max_concurrent, 2);
+    assert_eq!(max_concurrent, 10);
     assert_eq!(auto_commit, 1);
     assert_eq!(pause_on_failure, 1);
 }

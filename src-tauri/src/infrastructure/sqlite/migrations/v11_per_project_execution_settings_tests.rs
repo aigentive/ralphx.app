@@ -53,7 +53,7 @@ fn test_v11_existing_settings_preserved() {
         .unwrap();
 
     assert_eq!(result.0, 1);
-    assert_eq!(result.1, 2); // Default max concurrent
+    assert_eq!(result.1, 10); // Default max concurrent
     assert_eq!(result.2, 1); // auto_commit true
     assert_eq!(result.3, 1); // pause_on_failure true
 }

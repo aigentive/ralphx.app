@@ -219,7 +219,8 @@ function AppContent() {
   // Real-time execution status updates via Tauri events
   useExecutionEvents();
   // Fetch initial execution status and poll every 30s as fallback
-  useExecutionStatus(activeProjectId ?? undefined);
+  // Pass currentProjectId for per-project execution status scoping
+  useExecutionStatus(currentProjectId || undefined);
   const { isApproving, isRequestingChanges } = useReviewMutations();
 
   // Merge pipeline data

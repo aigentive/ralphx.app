@@ -44,6 +44,7 @@ mod v23_plan_selection_stats;
 mod v24_memory_framework;
 mod v25_seed_artifact_buckets;
 mod v25_running_agent_worktree;
+mod v25_update_max_concurrent_default;
 mod v26_merge_strategy;
 mod v27_default_rebase_squash;
 mod v28_repair_schema_drift;
@@ -110,7 +111,7 @@ mod v8_task_git_fields_tests;
 mod v9_project_git_fields_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 29;
+pub const SCHEMA_VERSION: i32 = 30;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -269,6 +270,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 29,
         name: "repair_schema_drift",
         migrate: v28_repair_schema_drift::migrate,
+    },
+    Migration {
+        version: 30,
+        name: "update_max_concurrent_default",
+        migrate: v25_update_max_concurrent_default::migrate,
     },
 ];
 

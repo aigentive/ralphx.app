@@ -10,7 +10,7 @@ import { ModelSchema } from "./agent-profile";
 
 export const ExecutionSettingsSchema = z.object({
   /** Maximum concurrent tasks to run */
-  max_concurrent_tasks: z.number().int().min(1).max(10).default(2),
+  max_concurrent_tasks: z.number().int().min(1).max(10).default(10),
   /** Auto-commit changes after task completion */
   auto_commit: z.boolean().default(true),
   /** Commit message prefix (conventional commits) */
@@ -24,7 +24,7 @@ export const ExecutionSettingsSchema = z.object({
 export type ExecutionSettings = z.infer<typeof ExecutionSettingsSchema>;
 
 export const DEFAULT_EXECUTION_SETTINGS: ExecutionSettings = {
-  max_concurrent_tasks: 2,
+  max_concurrent_tasks: 10,
   auto_commit: true,
   commit_message_prefix: "feat: ",
   pause_on_failure: true,

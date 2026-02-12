@@ -24,8 +24,8 @@ use crate::commands::execution_commands::{
 };
 use crate::domain::entities::InternalStatus;
 use crate::domain::repositories::{
-    AgentRunRepository, AppStateRepository, ChatConversationRepository, ProjectRepository,
-    TaskDependencyRepository, TaskRepository,
+    AgentRunRepository, AppStateRepository, ChatConversationRepository, ExecutionSettingsRepository,
+    ProjectRepository, TaskDependencyRepository, TaskRepository,
 };
 use crate::domain::state_machine::services::TaskScheduler;
 
@@ -66,6 +66,8 @@ pub struct StartupJobRunner<R: Runtime = tauri::Wry> {
     active_project_state: Arc<ActiveProjectState>,
     /// Phase 90: App state repository for reading persisted active_project_id from DB
     app_state_repo: Arc<dyn AppStateRepository>,
+    /// Execution settings repository for loading per-project max_concurrent quota
+    execution_settings_repo: Arc<dyn ExecutionSettingsRepository>,
     /// Phase 105: Persisted agent registry for killing orphaned OS processes on restart
     running_agent_registry: Arc<dyn crate::domain::services::RunningAgentRegistry>,
     reconciler: ReconciliationRunner<R>,
@@ -95,6 +97,7 @@ impl<R: Runtime> StartupJobRunner<R> {
         execution_state: Arc<ExecutionState>,
         active_project_state: Arc<ActiveProjectState>,
         app_state_repo: Arc<dyn AppStateRepository>,
+        execution_settings_repo: Arc<dyn ExecutionSettingsRepository>,
     ) -> Self {
         let reconciler = ReconciliationRunner::new(
             Arc::clone(&task_repo),
@@ -121,6 +124,7 @@ impl<R: Runtime> StartupJobRunner<R> {
             execution_state,
             active_project_state,
             app_state_repo,
+            execution_settings_repo,
             running_agent_registry,
             reconciler,
             task_scheduler: None,
@@ -226,6 +230,27 @@ impl<R: Runtime> StartupJobRunner<R> {
             // Set in-memory state from DB value so other commands can use it immediately
             self.active_project_state.set(Some(pid.clone())).await;
             info!(project_id = pid.as_str(), "Active project loaded from DB");
+
+            // Load execution settings for this project and sync runtime quota
+            match self.execution_settings_repo.get_settings(Some(pid)).await {
+                Ok(settings) => {
+                    let old_max = self.execution_state.max_concurrent();
+                    self.execution_state.set_max_concurrent(settings.max_concurrent_tasks);
+                    info!(
+                        project_id = pid.as_str(),
+                        old_max = old_max,
+                        new_max = settings.max_concurrent_tasks,
+                        "Updated max_concurrent from persisted project settings"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        project_id = pid.as_str(),
+                        "Failed to load execution settings for active project, keeping current quota"
+                    );
+                }
+            }
         }
         if active_project_id.is_none() {
             info!("No active project in DB, skipping task resumption");
