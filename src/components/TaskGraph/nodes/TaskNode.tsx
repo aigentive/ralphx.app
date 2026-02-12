@@ -214,13 +214,20 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
           backdropFilter: GLASS_SURFACE.backdropFilter,
           WebkitBackdropFilter: GLASS_SURFACE.WebkitBackdropFilter,
           // Border: solid orange for all selection methods (click, keyboard, timeline)
-          border: (selected || isHighlighted || isFocused)
+          // Use explicit borderTop/Right/Bottom instead of shorthand to prevent conflicts with borderLeft
+          borderTop: (selected || isHighlighted || isFocused)
             ? "2px solid hsl(14 100% 55%)"
-            : GLASS_SURFACE.border,
+            : "1px solid hsla(220 10% 100% / 0.06)",
+          borderRight: (selected || isHighlighted || isFocused)
+            ? "2px solid hsl(14 100% 55%)"
+            : "1px solid hsla(220 10% 100% / 0.06)",
+          borderBottom: (selected || isHighlighted || isFocused)
+            ? "2px solid hsl(14 100% 55%)"
+            : "1px solid hsla(220 10% 100% / 0.06)",
           // Keep status-colored left stripe visible in all states
           borderLeft: `3px solid ${statusColor}`,
           boxShadow: GLASS_SURFACE.boxShadow,
-          transition: "background 150ms ease, transform 150ms ease, box-shadow 150ms ease, border 150ms ease",
+          transition: "background 150ms ease, transform 150ms ease, box-shadow 150ms ease, border-top 150ms ease, border-right 150ms ease, border-bottom 150ms ease",
         }}
       >
         {/* Status badge - top-right corner (shared with Kanban) */}
