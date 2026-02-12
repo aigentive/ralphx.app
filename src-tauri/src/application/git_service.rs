@@ -552,6 +552,27 @@ impl GitService {
         Ok(sha)
     }
 
+    /// Check if two branches have identical content (tree-level diff).
+    ///
+    /// Uses `git diff --quiet` which exits 0 if identical, 1 if different.
+    pub fn branches_have_same_content(
+        repo: &Path,
+        branch_a: &str,
+        branch_b: &str,
+    ) -> AppResult<bool> {
+        let output = Command::new("git")
+            .args(["diff", "--quiet", branch_a, branch_b])
+            .current_dir(repo)
+            .output()
+            .map_err(|e| {
+                AppError::GitOperation(format!(
+                    "Failed to diff {} {}: {}",
+                    branch_a, branch_b, e
+                ))
+            })?;
+        Ok(output.status.success())
+    }
+
     // =========================================================================
     // Rebase Operations (Phase 1 - fast path)
     // =========================================================================
@@ -1119,6 +1140,16 @@ impl GitService {
             Err(e) => debug!("Fetch from origin failed (non-fatal): {}", e),
         }
 
+        // Early return: if branches are already identical, skip merge entirely
+        if Self::branches_have_same_content(repo, source_branch, target_branch).unwrap_or(false) {
+            debug!(
+                "Source '{}' and target '{}' already identical, skipping merge",
+                source_branch, target_branch
+            );
+            let commit_sha = Self::get_branch_sha(repo, target_branch)?;
+            return Ok(MergeAttemptResult::Success { commit_sha });
+        }
+
         // Step 2: Checkout target branch
         Self::checkout_branch(repo, target_branch)?;
 
@@ -1164,9 +1195,10 @@ impl GitService {
             })?;
 
         if !commit_output.status.success() {
+            let stdout = String::from_utf8_lossy(&commit_output.stdout);
             let stderr = String::from_utf8_lossy(&commit_output.stderr);
             // "nothing to commit" means branches are identical — treat as success
-            if stderr.contains("nothing to commit") {
+            if stdout.contains("nothing to commit") || stderr.contains("nothing to commit") {
                 let commit_sha = Self::get_head_sha(repo)?;
                 debug!(
                     "Squash merge no-op (branches identical), SHA: {}",
@@ -1175,8 +1207,8 @@ impl GitService {
                 return Ok(MergeAttemptResult::Success { commit_sha });
             }
             return Err(AppError::GitOperation(format!(
-                "Failed to commit squash merge: {}",
-                stderr
+                "Failed to commit squash merge: stdout={}, stderr={}",
+                stdout, stderr
             )));
         }
 
@@ -1207,6 +1239,16 @@ impl GitService {
             "Attempting squash merge of '{}' into '{}' in worktree {:?}",
             source_branch, target_branch, merge_worktree_path
         );
+
+        // Early return: if branches are already identical, skip merge entirely
+        if Self::branches_have_same_content(repo, source_branch, target_branch).unwrap_or(false) {
+            debug!(
+                "Source '{}' and target '{}' already identical, skipping worktree merge",
+                source_branch, target_branch
+            );
+            let commit_sha = Self::get_branch_sha(repo, target_branch)?;
+            return Ok(MergeAttemptResult::Success { commit_sha });
+        }
 
         // Step 1: Create worktree on target branch
         Self::checkout_existing_branch_worktree(repo, merge_worktree_path, target_branch)?;
@@ -1256,8 +1298,9 @@ impl GitService {
             })?;
 
         if !commit_output.status.success() {
+            let stdout = String::from_utf8_lossy(&commit_output.stdout);
             let stderr = String::from_utf8_lossy(&commit_output.stderr);
-            if stderr.contains("nothing to commit") {
+            if stdout.contains("nothing to commit") || stderr.contains("nothing to commit") {
                 let commit_sha = Self::get_head_sha(merge_worktree_path)?;
                 debug!(
                     "Squash merge no-op in worktree (branches identical), SHA: {}",
@@ -1267,8 +1310,8 @@ impl GitService {
             }
             let _ = Self::delete_worktree(repo, merge_worktree_path);
             return Err(AppError::GitOperation(format!(
-                "Failed to commit squash merge in worktree: {}",
-                stderr
+                "Failed to commit squash merge in worktree: stdout={}, stderr={}",
+                stdout, stderr
             )));
         }
 
@@ -1300,6 +1343,16 @@ impl GitService {
         match Self::fetch_origin(repo) {
             Ok(_) => debug!("Fetch from origin succeeded for {:?}", repo),
             Err(e) => debug!("Fetch from origin failed (non-fatal): {}", e),
+        }
+
+        // Early return: if branches are already identical, skip merge entirely
+        if Self::branches_have_same_content(repo, source_branch, target_branch).unwrap_or(false) {
+            debug!(
+                "Source '{}' and target '{}' already identical, skipping rebase+squash",
+                source_branch, target_branch
+            );
+            let commit_sha = Self::get_branch_sha(repo, target_branch)?;
+            return Ok(MergeAttemptResult::Success { commit_sha });
         }
 
         // Step 2: Check for empty base (skip rebase for first task)
@@ -1354,14 +1407,17 @@ impl GitService {
                     })?;
 
                 if !commit_output.status.success() {
+                    let stdout = String::from_utf8_lossy(&commit_output.stdout);
                     let stderr = String::from_utf8_lossy(&commit_output.stderr);
-                    if stderr.contains("nothing to commit") {
+                    if stdout.contains("nothing to commit")
+                        || stderr.contains("nothing to commit")
+                    {
                         let sha = Self::get_head_sha(repo)?;
                         return Ok(MergeAttemptResult::Success { commit_sha: sha });
                     }
                     return Err(AppError::GitOperation(format!(
-                        "Failed to commit rebase+squash: {}",
-                        stderr
+                        "Failed to commit rebase+squash: stdout={}, stderr={}",
+                        stdout, stderr
                     )));
                 }
 
@@ -1405,6 +1461,16 @@ impl GitService {
         match Self::fetch_origin(repo) {
             Ok(_) => debug!("Fetch from origin succeeded"),
             Err(e) => debug!("Fetch from origin failed (non-fatal): {}", e),
+        }
+
+        // Early return: if branches are already identical, skip merge entirely
+        if Self::branches_have_same_content(repo, source_branch, target_branch).unwrap_or(false) {
+            debug!(
+                "Source '{}' and target '{}' already identical, skipping worktree rebase+squash",
+                source_branch, target_branch
+            );
+            let commit_sha = Self::get_branch_sha(repo, target_branch)?;
+            return Ok(MergeAttemptResult::Success { commit_sha });
         }
 
         // Step 2: Check for empty base
@@ -1498,15 +1564,16 @@ impl GitService {
             })?;
 
         if !commit_output.status.success() {
+            let stdout = String::from_utf8_lossy(&commit_output.stdout);
             let stderr = String::from_utf8_lossy(&commit_output.stderr);
-            if stderr.contains("nothing to commit") {
+            if stdout.contains("nothing to commit") || stderr.contains("nothing to commit") {
                 let sha = Self::get_head_sha(merge_worktree_path)?;
                 return Ok(MergeAttemptResult::Success { commit_sha: sha });
             }
             let _ = Self::delete_worktree(repo, merge_worktree_path);
             return Err(AppError::GitOperation(format!(
-                "Failed to commit rebase+squash in worktree: {}",
-                stderr
+                "Failed to commit rebase+squash in worktree: stdout={}, stderr={}",
+                stdout, stderr
             )));
         }
 
