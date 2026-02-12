@@ -308,8 +308,61 @@ export function ChatInput({
         />
 
         {/* Send/Stop Button - macOS Tahoe flat styling */}
-        {/* Only show stop button if agent is running AND not in read-only mode */}
-        {isAgentRunning && onStop && !isReadOnly ? (
+        {/* Three-branch logic:
+            1. Agent running + question active → Send + mini Stop
+            2. Agent running + no question → Stop only
+            3. Not running → Send only
+        */}
+        {isAgentRunning && questionMode ? (
+          // Branch 1: Agent running + question active → Send + mini Stop
+          <div className="flex gap-1 items-center">
+            <button
+              data-testid="chat-input-stop-secondary"
+              type="button"
+              onClick={onStop}
+              aria-label="Stop agent"
+              className="rounded-lg transition-colors shrink-0 w-[28px] h-[28px] flex items-center justify-center hover:brightness-110"
+              style={{
+                /* Secondary stop: muted red with hover to full opacity */
+                background: "hsla(0 70% 55% / 0.3)",
+                color: "hsl(0 70% 55%)",
+                boxShadow: "none",
+              }}
+              onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
+                const target = e.currentTarget as HTMLButtonElement;
+                target.style.background = "hsl(0 70% 55%)";
+                target.style.color = "white";
+              }}
+              onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => {
+                const target = e.currentTarget as HTMLButtonElement;
+                target.style.background = "hsla(0 70% 55% / 0.3)";
+                target.style.color = "hsl(0 70% 55%)";
+              }}
+            >
+              <StopIcon />
+            </button>
+            <button
+              data-testid="chat-input-send"
+              type="button"
+              onClick={handleSend}
+              disabled={!canSend}
+              aria-label="Send message"
+              aria-busy={isSending}
+              className="px-3 py-2 rounded-lg transition-colors disabled:opacity-40 shrink-0 h-[38px] flex items-center justify-center hover:brightness-110"
+              style={{
+                /* macOS Tahoe: flat solid color */
+                background: canSend
+                  ? "hsl(14 100% 60%)"
+                  : "hsla(14 100% 60% / 0.3)",
+                color: "white",
+                boxShadow: "none",
+              }}
+            >
+              {isSending ? <LoadingSpinner /> : <SendIcon />}
+            </button>
+          </div>
+        ) : isAgentRunning && onStop && !isReadOnly ? (
+          // Branch 2: Agent running + no question → Stop only
           <button
             data-testid="chat-input-stop"
             type="button"
@@ -326,6 +379,7 @@ export function ChatInput({
             <StopIcon />
           </button>
         ) : (
+          // Branch 3: Not running → Send only
           <button
             data-testid="chat-input-send"
             type="button"
