@@ -564,6 +564,7 @@ pub fn spawn_send_message_background<R: Runtime>(
                     }
 
                     // Trigger memory pipelines (no queue processing path)
+                    // TODO: Load settings from project_memory_settings table for per-project enable/disable
                     trigger_memory_pipelines(
                         context_type,
                         &context_id,
@@ -573,6 +574,7 @@ pub fn spawn_send_message_background<R: Runtime>(
                         &cli_path,
                         &plugin_dir,
                         &working_directory,
+                        None,
                     )
                     .await;
                 } else {
@@ -804,6 +806,7 @@ pub fn spawn_send_message_background<R: Runtime>(
                     }
 
                     // Trigger memory pipelines after queue processing completes
+                    // TODO: Load settings from project_memory_settings table for per-project enable/disable
                     trigger_memory_pipelines(
                         context_type,
                         &context_id,
@@ -813,6 +816,7 @@ pub fn spawn_send_message_background<R: Runtime>(
                         &cli_path,
                         &plugin_dir,
                         &working_directory,
+                        None,
                     )
                     .await;
                 } else {
