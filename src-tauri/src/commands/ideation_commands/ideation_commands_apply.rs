@@ -393,6 +393,7 @@ pub async fn apply_proposals_to_kanban(
             Arc::clone(&state.activity_event_repo),
             Arc::clone(&state.message_queue),
             Arc::clone(&state.running_agent_registry),
+            Arc::clone(&state.memory_event_repo),
             Some(app.clone()),
         );
 

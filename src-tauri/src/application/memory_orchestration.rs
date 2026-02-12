@@ -3,9 +3,11 @@
 // Triggers background memory-maintainer and memory-capture agents
 // after agent run completion based on context type and project settings.
 
-use crate::domain::entities::{ChatContextType, ChatConversationId, ProjectId};
+use crate::domain::entities::{ChatContextType, ChatConversationId, ProjectId, MemoryEvent, MemoryActorType};
+use crate::domain::repositories::MemoryEventRepository;
 use crate::infrastructure::agents::claude::build_spawnable_command;
 use std::path::Path;
+use std::sync::Arc;
 
 /// Memory category derived from chat context type
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -140,6 +142,7 @@ pub async fn trigger_memory_pipelines(
     plugin_dir: &Path,
     working_directory: &Path,
     settings: Option<ProjectMemorySettings>,
+    memory_event_repo: Option<Arc<dyn MemoryEventRepository>>,
 ) {
     tracing::debug!(
         %context_type,
@@ -185,6 +188,7 @@ pub async fn trigger_memory_pipelines(
         let cli = cli_path.to_path_buf();
         let plugin = plugin_dir.to_path_buf();
         let wd = working_directory.to_path_buf();
+        let event_repo = memory_event_repo.clone();
 
         spawn_tasks.push(tokio::spawn(async move {
             if let Err(e) = spawn_memory_maintainer(
@@ -203,7 +207,27 @@ pub async fn trigger_memory_pipelines(
                     conversation_id = conv_id.as_str(),
                     "trigger_memory_pipelines: failed to spawn memory-maintainer"
                 );
-                // TODO: Log to memory_events table when available
+                // Log spawn failure to memory_events table
+                if let Some(repo) = event_repo {
+                    let event = MemoryEvent::new(
+                        proj.clone(),
+                        "spawn_failed",
+                        MemoryActorType::System,
+                        serde_json::json!({
+                            "agent": "memory-maintainer",
+                            "conversation_id": conv_id.as_str(),
+                            "context_type": ctx.to_string(),
+                            "context_id": &ctx_id,
+                            "error": e.to_string(),
+                        }),
+                    );
+                    if let Err(log_err) = repo.create(event).await {
+                        tracing::warn!(
+                            error = %log_err,
+                            "trigger_memory_pipelines: failed to log spawn failure to memory_events"
+                        );
+                    }
+                }
             }
         }));
     }
@@ -216,6 +240,7 @@ pub async fn trigger_memory_pipelines(
         let cli = cli_path.to_path_buf();
         let plugin = plugin_dir.to_path_buf();
         let wd = working_directory.to_path_buf();
+        let event_repo = memory_event_repo.clone();
 
         spawn_tasks.push(tokio::spawn(async move {
             if let Err(e) = spawn_memory_capture(
@@ -234,7 +259,27 @@ pub async fn trigger_memory_pipelines(
                     conversation_id = conv_id.as_str(),
                     "trigger_memory_pipelines: failed to spawn memory-capture"
                 );
-                // TODO: Log to memory_events table when available
+                // Log spawn failure to memory_events table
+                if let Some(repo) = event_repo {
+                    let event = MemoryEvent::new(
+                        proj.clone(),
+                        "spawn_failed",
+                        MemoryActorType::System,
+                        serde_json::json!({
+                            "agent": "memory-capture",
+                            "conversation_id": conv_id.as_str(),
+                            "context_type": ctx.to_string(),
+                            "context_id": &ctx_id,
+                            "error": e.to_string(),
+                        }),
+                    );
+                    if let Err(log_err) = repo.create(event).await {
+                        tracing::warn!(
+                            error = %log_err,
+                            "trigger_memory_pipelines: failed to log spawn failure to memory_events"
+                        );
+                    }
+                }
             }
         }));
     }
@@ -442,6 +487,7 @@ mod tests {
             &plugin_dir,
             &wd,
             None,
+            None,
         )
         .await;
         // Test passes if no panic
@@ -466,6 +512,7 @@ mod tests {
             &plugin_dir,
             &wd,
             None,
+            None,
         )
         .await;
         // Test passes if no spawn happens (verified via logs in real scenario)
@@ -489,6 +536,7 @@ mod tests {
             &cli_path,
             &plugin_dir,
             &wd,
+            None,
             None,
         )
         .await;
