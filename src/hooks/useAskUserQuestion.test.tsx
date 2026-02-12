@@ -72,6 +72,7 @@ const validPayload: AskUserQuestionPayload = {
 describe("useAskUserQuestion", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.clearAllTimers();
     mockSubscribers.clear();
     mockResolve.mockResolvedValue(undefined);
     mockAnswer.mockResolvedValue(undefined);
@@ -80,10 +81,13 @@ describe("useAskUserQuestion", () => {
       activeQuestions: {},
       answeredQuestions: {},
     });
+    // Use fake timers for testing timeouts
+    vi.useFakeTimers();
   });
 
   afterEach(() => {
     mockSubscribers.clear();
+    vi.useRealTimers();
   });
 
   describe("listener registration", () => {
@@ -368,6 +372,148 @@ describe("useAskUserQuestion", () => {
       const state = useUiStore.getState();
       expect(state.activeQuestions["session-1"]?.requestId).toBe("req-1");
       expect(state.activeQuestions["session-2"]?.requestId).toBe("req-2");
+    });
+  });
+
+  describe("auto-dismiss timer", () => {
+    it("should automatically clear answered question after 3500ms delay", async () => {
+      useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      const response: AskUserQuestionResponse = {
+        requestId: "req-test-123",
+        selectedOptions: ["JWT tokens"],
+      };
+
+      await act(async () => {
+        await result.current.submitAnswer(response);
+      });
+
+      // Answered question should be set
+      expect(useUiStore.getState().answeredQuestions[TEST_SESSION]).toBe("JWT tokens");
+
+      // Advance time by 3500ms
+      act(() => {
+        vi.advanceTimersByTime(3500);
+      });
+
+      // Answered question should be cleared
+      expect(useUiStore.getState().answeredQuestions[TEST_SESSION]).toBeUndefined();
+    });
+
+    it("should cancel auto-dismiss timer when new question arrives for same session", async () => {
+      useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      const response: AskUserQuestionResponse = {
+        requestId: "req-test-123",
+        selectedOptions: ["JWT tokens"],
+      };
+
+      await act(async () => {
+        await result.current.submitAnswer(response);
+      });
+
+      // Answered question should be set
+      expect(useUiStore.getState().answeredQuestions[TEST_SESSION]).toBe("JWT tokens");
+
+      // Advance time by 1000ms (before auto-dismiss triggers)
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+
+      // New question arrives for same session
+      act(() => {
+        emitEvent("agent:ask_user_question", {
+          ...validPayload,
+          requestId: "req-test-456",
+        });
+      });
+
+      // Advance to what would have been the original timeout
+      act(() => {
+        vi.advanceTimersByTime(2500);
+      });
+
+      // Answered question should still exist (timer was cancelled)
+      expect(useUiStore.getState().answeredQuestions[TEST_SESSION]).toBe("JWT tokens");
+    });
+
+    it("should cancel auto-dismiss timer when user manually dismisses", async () => {
+      useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      useUiStore.getState().setAnsweredQuestion(TEST_SESSION, "some answer");
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      // Dismiss the question
+      await act(async () => {
+        await result.current.dismissQuestion();
+      });
+
+      // Answered question should be cleared by dismissQuestion
+      expect(useUiStore.getState().answeredQuestions[TEST_SESSION]).toBeUndefined();
+
+      // Advance timer to verify it won't try to clear again
+      act(() => {
+        vi.advanceTimersByTime(3500);
+      });
+
+      // Should still be undefined (no errors or double-clear)
+      expect(useUiStore.getState().answeredQuestions[TEST_SESSION]).toBeUndefined();
+    });
+
+    it("should cancel auto-dismiss timer on component unmount", async () => {
+      useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      const { result, unmount } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      const response: AskUserQuestionResponse = {
+        requestId: "req-test-123",
+        selectedOptions: ["JWT tokens"],
+      };
+
+      await act(async () => {
+        await result.current.submitAnswer(response);
+      });
+
+      // Answered question should be set
+      expect(useUiStore.getState().answeredQuestions[TEST_SESSION]).toBe("JWT tokens");
+
+      // Unmount component (cleanup runs)
+      unmount();
+
+      // Advance past the timeout that should have been cancelled
+      act(() => {
+        vi.advanceTimersByTime(3500);
+      });
+
+      // Answered question should still be set (timer was cleaned up)
+      expect(useUiStore.getState().answeredQuestions[TEST_SESSION]).toBe("JWT tokens");
+    });
+
+    it("should not start timer if submitAnswer fails", async () => {
+      useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      mockResolve.mockRejectedValueOnce(new Error("API error"));
+
+      const response: AskUserQuestionResponse = {
+        requestId: "req-test-123",
+        selectedOptions: ["JWT tokens"],
+      };
+
+      await act(async () => {
+        await result.current.submitAnswer(response);
+      });
+
+      // Should not have set answered question due to error
+      expect(useUiStore.getState().answeredQuestions[TEST_SESSION]).toBeUndefined();
+
+      // Advance time
+      act(() => {
+        vi.advanceTimersByTime(3500);
+      });
+
+      // Should still be undefined
+      expect(useUiStore.getState().answeredQuestions[TEST_SESSION]).toBeUndefined();
     });
   });
 });

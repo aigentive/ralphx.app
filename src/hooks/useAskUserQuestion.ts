@@ -6,7 +6,7 @@
  * or dismiss questions.
  */
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useEventBus } from "@/providers/EventProvider";
 import { api } from "@/lib/tauri";
 import { useUiStore } from "@/stores/uiStore";
@@ -23,6 +23,7 @@ import {
  */
 export function useAskUserQuestion(currentSessionId: string | undefined) {
   const [isLoading, setIsLoading] = useState(false);
+  const autoDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeQuestion = useUiStore((s) =>
     currentSessionId ? (s.activeQuestions[currentSessionId] ?? null) : null
@@ -37,6 +38,23 @@ export function useAskUserQuestion(currentSessionId: string | undefined) {
   const setAnsweredQuestion = useUiStore((s) => s.setAnsweredQuestion);
   const clearAnsweredQuestion = useUiStore((s) => s.clearAnsweredQuestion);
   const eventBus = useEventBus();
+
+  /**
+   * Cancel any pending auto-dismiss timer
+   */
+  const cancelAutoDismissTimer = useCallback(() => {
+    if (autoDismissTimerRef.current) {
+      clearTimeout(autoDismissTimerRef.current);
+      autoDismissTimerRef.current = null;
+    }
+  }, []);
+
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      cancelAutoDismissTimer();
+    };
+  }, [cancelAutoDismissTimer]);
 
   // Set up event listener for agent questions — stores ALL incoming questions by sessionId
   useEffect(() => {
@@ -54,11 +72,16 @@ export function useAskUserQuestion(currentSessionId: string | undefined) {
         return;
       }
 
+      // Cancel any pending auto-dismiss timer for this session (new question arrived)
+      if (sessionId === currentSessionId) {
+        cancelAutoDismissTimer();
+      }
+
       setActiveQuestion(sessionId, parsed.data);
     });
 
     return unsubscribe;
-  }, [setActiveQuestion, eventBus]);
+  }, [setActiveQuestion, eventBus, currentSessionId, cancelAutoDismissTimer]);
 
   /**
    * Submit an answer to the agent's question.
@@ -89,13 +112,20 @@ export function useAskUserQuestion(currentSessionId: string | undefined) {
           : response.customResponse ?? "";
         setAnsweredQuestion(currentSessionId, summary);
         clearActiveQuestion(currentSessionId);
+
+        // Auto-dismiss the answered banner after 3500ms
+        cancelAutoDismissTimer();
+        autoDismissTimerRef.current = setTimeout(() => {
+          clearAnsweredQuestion(currentSessionId);
+          autoDismissTimerRef.current = null;
+        }, 3500);
       } catch {
         // Don't clear question on error so user can retry
       } finally {
         setIsLoading(false);
       }
     },
-    [activeQuestion, currentSessionId, clearActiveQuestion, setAnsweredQuestion]
+    [activeQuestion, currentSessionId, clearActiveQuestion, setAnsweredQuestion, clearAnsweredQuestion, cancelAutoDismissTimer]
   );
 
   /**
@@ -107,6 +137,9 @@ export function useAskUserQuestion(currentSessionId: string | undefined) {
 
     const question = activeQuestion;
     dismissQuestionAction(currentSessionId);
+
+    // Cancel any pending auto-dismiss timer
+    cancelAutoDismissTimer();
 
     // If there's an active question with a requestId, send dismiss to backend
     if (question?.requestId) {
@@ -120,7 +153,7 @@ export function useAskUserQuestion(currentSessionId: string | undefined) {
         // Best-effort dismiss — don't block UI
       }
     }
-  }, [currentSessionId, activeQuestion, dismissQuestionAction]);
+  }, [currentSessionId, activeQuestion, dismissQuestionAction, cancelAutoDismissTimer]);
 
   /**
    * Clear just the answered summary for this session
