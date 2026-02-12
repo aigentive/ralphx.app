@@ -203,6 +203,12 @@ impl AgenticClient for ClaudeCodeClient {
         if runtime.dangerously_skip_permissions {
             args.push("--dangerously-skip-permissions".to_string());
         }
+        // Optional settings JSON passed to claude CLI via --settings (e.g. sandbox.enabled: false).
+        if let Some(ref s) = runtime.settings {
+            if let Ok(json) = serde_json::to_string(s) {
+                args.extend(["--settings".to_string(), json]);
+            }
+        }
 
         // Pre-approve agent-specific tools (MCP + CLI permissions, no prompts)
         if let Some(agent) = &config.agent {
@@ -424,6 +430,12 @@ impl ClaudeCodeClient {
         ]);
         if runtime.dangerously_skip_permissions {
             args.push("--dangerously-skip-permissions".to_string());
+        }
+        // Optional settings JSON passed to claude CLI via --settings (e.g. sandbox.enabled: false).
+        if let Some(ref s) = runtime.settings {
+            if let Ok(json) = serde_json::to_string(s) {
+                args.extend(["--settings".to_string(), json]);
+            }
         }
 
         // Pre-approve agent-specific tools (MCP + CLI permissions, no prompts)
