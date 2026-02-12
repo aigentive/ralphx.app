@@ -202,7 +202,7 @@ impl Default for IndexRewriter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::entities::{MemoryBucket, MemoryEntry, ProcessId};
+    use crate::domain::entities::{MemoryBucket, MemoryEntry, ProjectId};
 
     #[test]
     fn test_normalize_paths() {
@@ -264,7 +264,7 @@ mod tests {
     fn test_generate_index_content_with_memories() {
         let rewriter = IndexRewriter::new();
 
-        let project_id = ProcessId::from_string("test-project");
+        let project_id = ProjectId::from_string("test-project".to_string());
         let memory1 = MemoryEntry::new(
             project_id.clone(),
             MemoryBucket::ArchitecturePatterns,
@@ -272,6 +272,7 @@ mod tests {
             "State transitions must go through TransitionHandler".to_string(),
             "Details about state machine...".to_string(),
             vec!["src/domain/**".to_string()],
+            MemoryEntry::compute_content_hash("State Machine Pattern", "State transitions must go through TransitionHandler", "Details about state machine..."),
         );
 
         let memory2 = MemoryEntry::new(
@@ -281,6 +282,7 @@ mod tests {
             "async_trait macro required for async methods in traits".to_string(),
             "Details about async traits...".to_string(),
             vec!["src/**".to_string()],
+            MemoryEntry::compute_content_hash("Async Trait Gotcha", "async_trait macro required for async methods in traits", "Details about async traits..."),
         );
 
         let paths = vec!["src/**".to_string()];
@@ -301,7 +303,7 @@ mod tests {
     fn test_group_memories_by_bucket() {
         let rewriter = IndexRewriter::new();
 
-        let project_id = ProcessId::from_string("test-project");
+        let project_id = ProjectId::from_string("test-project".to_string());
         let memory1 = MemoryEntry::new(
             project_id.clone(),
             MemoryBucket::ArchitecturePatterns,
@@ -309,6 +311,7 @@ mod tests {
             "Summary 1".to_string(),
             "Details 1".to_string(),
             vec![],
+            MemoryEntry::compute_content_hash("Pattern 1", "Summary 1", "Details 1"),
         );
 
         let memory2 = MemoryEntry::new(
@@ -318,6 +321,7 @@ mod tests {
             "Summary 2".to_string(),
             "Details 2".to_string(),
             vec![],
+            MemoryEntry::compute_content_hash("Pattern 2", "Summary 2", "Details 2"),
         );
 
         let memory3 = MemoryEntry::new(
@@ -327,6 +331,7 @@ mod tests {
             "Summary 3".to_string(),
             "Details 3".to_string(),
             vec![],
+            MemoryEntry::compute_content_hash("Discovery 1", "Summary 3", "Details 3"),
         );
 
         let memories = vec![memory1, memory2, memory3];
