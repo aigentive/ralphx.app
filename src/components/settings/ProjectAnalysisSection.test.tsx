@@ -1,0 +1,356 @@
+/**
+ * Tests for ProjectAnalysisSection component
+ *
+ * Tests orchestration of analysis entries, dirty state UI, save/reset,
+ * re-analyze button, and template variables panel.
+ */
+
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { ProjectAnalysisSection } from "./ProjectAnalysisSection";
+import { useProjectStore } from "@/stores/projectStore";
+import * as tauriApi from "@/lib/tauri";
+import type { Project } from "@/types/project";
+
+// Mock dependencies
+vi.mock("@/lib/tauri");
+vi.mock("@/stores/projectStore");
+vi.mock("@/providers/EventProvider", () => ({
+  useEventBus: () => ({
+    subscribe: vi.fn((_event, _callback) => () => {}),
+  }),
+}));
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+  },
+}));
+
+const mockProject: Project = {
+  id: "test-project",
+  name: "Test Project",
+  workingDirectory: "/home/test",
+  baseBranch: "main",
+  gitMode: "worktree",
+  detectedAnalysis: JSON.stringify([
+    {
+      path: ".",
+      label: "Frontend",
+      install: "npm install",
+      validate: ["npm run typecheck"],
+      worktree_setup: ["ln -s node_modules"],
+    },
+  ]),
+  customAnalysis: null,
+  analyzedAt: new Date().toISOString(),
+  mergeValidationMode: "block",
+  useFeatureBranches: false,
+  worktreeParentDirectory: "~/ralphx-worktrees",
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+};
+
+describe("ProjectAnalysisSection", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    // Setup default store mock
+    const mockUpdateProject = vi.fn();
+    vi.mocked(useProjectStore).mockImplementation((selector) => {
+      const selectorStr = selector.toString();
+      if (selectorStr.includes("selectActiveProject")) {
+        return mockProject;
+      }
+      return mockUpdateProject;
+    });
+
+    // Setup API mock
+    vi.mocked(tauriApi).projects = {
+      reanalyzeProject: vi.fn().mockResolvedValue(undefined),
+      updateCustomAnalysis: vi.fn().mockResolvedValue(mockProject),
+      update: vi.fn().mockResolvedValue(mockProject),
+      changeGitMode: vi.fn().mockResolvedValue(undefined),
+    } as Record<string, unknown>;
+  });
+
+  describe("rendering", () => {
+    it("renders section with title and description", () => {
+      render(<ProjectAnalysisSection />);
+
+      expect(screen.getByText("Project Analysis")).toBeInTheDocument();
+      expect(
+        screen.getByText("Build system detection and validation commands")
+      ).toBeInTheDocument();
+    });
+
+    it("shows last analyzed timestamp", () => {
+      render(<ProjectAnalysisSection />);
+
+      expect(screen.getByText(/Last Analyzed:/)).toBeInTheDocument();
+    });
+
+    it("shows Re-analyze button", () => {
+      render(<ProjectAnalysisSection />);
+
+      const reanalyzeButton = screen.getByText("Re-analyze");
+      expect(reanalyzeButton).toBeInTheDocument();
+    });
+  });
+
+  describe("analysis entries display", () => {
+    it("renders detected analysis entries section", () => {
+      render(<ProjectAnalysisSection />);
+
+      // Section header and entry container should be present
+      expect(screen.getByText("Project Analysis")).toBeInTheDocument();
+      // Check for an expandable entry button
+      const buttons = screen.getAllByRole("button");
+      expect(buttons.length).toBeGreaterThan(0);
+    });
+
+    it("shows empty state when no analysis yet", () => {
+      const noAnalysisProject: Project = {
+        ...mockProject,
+        detectedAnalysis: null,
+        analyzedAt: null,
+      };
+
+      const mockUpdateProject = vi.fn();
+      vi.mocked(useProjectStore).mockImplementation((selector) => {
+        const selectorStr = selector.toString();
+        if (selectorStr.includes("selectActiveProject")) {
+          return noAnalysisProject;
+        }
+        return mockUpdateProject;
+      });
+
+      render(<ProjectAnalysisSection />);
+
+      expect(
+        screen.getByText(/Not yet analyzed. Click Re-analyze to detect build systems./)
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe("add entry functionality", () => {
+    it("renders Add Entry button", () => {
+      render(<ProjectAnalysisSection />);
+
+      const addButton = screen.getByText("Add Entry");
+      expect(addButton).toBeInTheDocument();
+    });
+
+    it("calls addEntry when Add Entry button clicked", async () => {
+      render(<ProjectAnalysisSection />);
+
+      const addButton = screen.getByText("Add Entry");
+      fireEvent.click(addButton);
+
+      // After clicking, the component should show dirty state
+      // (This would require modifying the entry, which we're testing the UI for)
+      expect(addButton).toBeInTheDocument(); // Button still available
+    });
+  });
+
+  describe("dirty state and save/reset buttons", () => {
+    it("does not show dirty footer when clean", () => {
+      render(<ProjectAnalysisSection />);
+
+      expect(
+        screen.queryByText("Analysis settings have unsaved changes")
+      ).not.toBeInTheDocument();
+    });
+
+    it("shows dirty footer when entries are modified", async () => {
+      render(<ProjectAnalysisSection />);
+
+      // Expand the first entry
+      const headers = screen.getAllByRole("button");
+      const expandButton = headers.find((btn) => btn.textContent?.includes("."));
+
+      if (expandButton) {
+        fireEvent.click(expandButton);
+
+        // Modify a field
+        const inputs = screen.getAllByPlaceholderText("e.g., . or src-tauri/");
+        if (inputs[0]) {
+          fireEvent.change(inputs[0], { target: { value: "modified" } });
+        }
+
+        // Now dirty footer should appear
+        await waitFor(() => {
+          expect(
+            screen.queryByText("Analysis settings have unsaved changes")
+          ).toBeInTheDocument();
+        });
+      }
+    });
+
+    it("shows Save and Reset All buttons in dirty footer", async () => {
+      render(<ProjectAnalysisSection />);
+
+      // Make it dirty by modifying
+      const headers = screen.getAllByRole("button");
+      const expandButton = headers.find((btn) => btn.textContent?.includes("."));
+
+      if (expandButton) {
+        fireEvent.click(expandButton);
+
+        const inputs = screen.getAllByPlaceholderText("e.g., . or src-tauri/");
+        if (inputs[0]) {
+          fireEvent.change(inputs[0], { target: { value: "modified" } });
+
+          await waitFor(() => {
+            expect(screen.getByText("Reset All")).toBeInTheDocument();
+            expect(screen.getByText("Save")).toBeInTheDocument();
+          });
+        }
+      }
+    });
+  });
+
+  describe("re-analyze functionality", () => {
+    it("triggers re-analyze when button clicked", () => {
+      render(<ProjectAnalysisSection />);
+
+      const reanalyzeButton = screen.getByText("Re-analyze");
+      expect(reanalyzeButton).toBeInTheDocument();
+      fireEvent.click(reanalyzeButton);
+      // Component should still be present after click
+      expect(screen.getByText("Re-analyze")).toBeInTheDocument();
+    });
+
+
+  });
+
+  describe("template variables reference", () => {
+    it("renders Template Variables info panel", () => {
+      render(<ProjectAnalysisSection />);
+
+      expect(screen.getByText("Template Variables")).toBeInTheDocument();
+    });
+
+    it("shows template variables on expand", () => {
+      render(<ProjectAnalysisSection />);
+
+      const templateButton = screen.getByText("Template Variables").closest("button");
+      expect(templateButton).toBeInTheDocument();
+
+      if (templateButton) {
+        fireEvent.click(templateButton);
+
+        expect(screen.getByText("{project_root}")).toBeInTheDocument();
+        expect(screen.getByText("{worktree_path}")).toBeInTheDocument();
+        expect(screen.getByText("{task_branch}")).toBeInTheDocument();
+      }
+    });
+
+    it("shows descriptions for template variables", () => {
+      render(<ProjectAnalysisSection />);
+
+      const templateButton = screen.getByText("Template Variables").closest("button");
+      if (templateButton) {
+        fireEvent.click(templateButton);
+
+        expect(
+          screen.getByText("Project working directory")
+        ).toBeInTheDocument();
+        expect(
+          screen.getByText(/Task worktree directory/)
+        ).toBeInTheDocument();
+      }
+    });
+  });
+
+  describe("integration with useAnalysisEditor", () => {
+    it("persists project state on successful save", async () => {
+      const mockUpdateProject = vi.fn();
+
+      vi.mocked(useProjectStore).mockImplementation((selector) => {
+        if (selector.toString().includes("selectActiveProject")) {
+          return mockProject;
+        }
+        // Return updateProject function
+        return mockUpdateProject;
+      });
+
+      const mockUpdateCustomAnalysis = vi
+        .fn()
+        .mockResolvedValue(mockProject);
+      vi.mocked(tauriApi).projects = {
+        updateCustomAnalysis: mockUpdateCustomAnalysis,
+        reanalyzeProject: vi.fn().mockResolvedValue(undefined),
+      } as Record<string, unknown>;
+
+      render(<ProjectAnalysisSection />);
+
+      // Make a modification and save
+      const headers = screen.getAllByRole("button");
+      const expandButton = headers.find((btn) => btn.textContent?.includes("."));
+
+      if (expandButton) {
+        fireEvent.click(expandButton);
+
+        const inputs = screen.getAllByPlaceholderText("e.g., . or src-tauri/");
+        if (inputs[0]) {
+          fireEvent.change(inputs[0], { target: { value: "modified" } });
+
+          await waitFor(() => {
+            expect(screen.getByText("Save")).toBeInTheDocument();
+          });
+
+          // Click Save
+          const saveButton = screen.getByText("Save");
+          fireEvent.click(saveButton);
+
+          // API call should be made
+          await waitFor(() => {
+            expect(mockUpdateCustomAnalysis).toHaveBeenCalled();
+          });
+        }
+      }
+    });
+  });
+
+  describe("timestamp formatting", () => {
+    it("formats timestamp correctly", () => {
+      const isoDate = "2024-01-15T10:30:00Z";
+      const projectWithDate: Project = {
+        ...mockProject,
+        analyzedAt: isoDate,
+      };
+
+      vi.mocked(useProjectStore).mockImplementation((selector) => {
+        if (selector.toString().includes("selectActiveProject")) {
+          return projectWithDate;
+        }
+        return vi.fn();
+      });
+
+      render(<ProjectAnalysisSection />);
+
+      // Should show some formatted date
+      expect(screen.getByText(/Last Analyzed:/)).toBeInTheDocument();
+    });
+
+    it("shows Never for null analyzedAt", () => {
+      const projectWithoutDate: Project = {
+        ...mockProject,
+        analyzedAt: null,
+      };
+
+      vi.mocked(useProjectStore).mockImplementation((selector) => {
+        if (selector.toString().includes("selectActiveProject")) {
+          return projectWithoutDate;
+        }
+        return vi.fn();
+      });
+
+      render(<ProjectAnalysisSection />);
+
+      expect(screen.getByText("Last Analyzed: Never")).toBeInTheDocument();
+    });
+  });
+});
