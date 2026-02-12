@@ -10,7 +10,7 @@
  * - Styling matches StreamingToolIndicator aesthetic (bg-elevated, border-subtle, orange accent)
  */
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { ChevronDown, ChevronRight, Loader2, Bot } from "lucide-react";
 import type { StreamingTask } from "@/types/streaming-task";
 import { ToolCallIndicator } from "./ToolCallIndicator";
@@ -21,6 +21,9 @@ import { ToolCallIndicator } from "./ToolCallIndicator";
 
 /** Maximum height for the tool list content area */
 const MAX_CONTENT_HEIGHT = 200;
+
+/** Distance from bottom (px) within which we consider the user "near bottom" */
+const NEAR_BOTTOM_THRESHOLD = 30;
 
 // ============================================================================
 // Types
@@ -126,8 +129,17 @@ export const TaskSubagentCard = React.memo(function TaskSubagentCard({
   const isCompleted = task.status === "completed";
   const [isExpanded, setIsExpanded] = useState(true);
   const contentRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
 
   const elapsed = useElapsedTimer(task.startedAt, isRunning);
+
+  // Track scroll position to determine if user is near bottom
+  const handleScroll = useCallback(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    isNearBottomRef.current = distanceFromBottom <= NEAR_BOTTOM_THRESHOLD;
+  }, []);
 
   // Auto-collapse when completed
   useEffect(() => {
@@ -141,9 +153,9 @@ export const TaskSubagentCard = React.memo(function TaskSubagentCard({
     (tc) => !tc.name.startsWith("result:toolu")
   );
 
-  // Auto-scroll content when new tool calls arrive
+  // Auto-scroll content when new tool calls arrive (only if user is near bottom)
   useEffect(() => {
-    if (contentRef.current && isRunning) {
+    if (contentRef.current && isRunning && isNearBottomRef.current) {
       contentRef.current.scrollTop = contentRef.current.scrollHeight;
     }
   }, [task.childToolCalls.length, isRunning]);
@@ -239,8 +251,9 @@ export const TaskSubagentCard = React.memo(function TaskSubagentCard({
               {hasChildCalls && (
                 <div
                   ref={contentRef}
+                  onScroll={handleScroll}
                   className="space-y-1 overflow-y-auto"
-                  style={{ maxHeight: `${MAX_CONTENT_HEIGHT}px` }}
+                  style={{ maxHeight: `${MAX_CONTENT_HEIGHT}px`, overscrollBehavior: "contain" }}
                 >
                   {/* All child calls rendered with compact ToolCallIndicator */}
                   {task.childToolCalls

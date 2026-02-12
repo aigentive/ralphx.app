@@ -2,32 +2,22 @@
  * useChatAutoScroll hook tests
  *
  * Tests the unified chat auto-scroll hook behavior:
- * - Bottom detection with 150px threshold
- * - Auto-scroll on new messages when at bottom
- * - Auto-scroll on streaming content changes
- * - Manual scroll-up pauses auto-scroll
- * - Manual scroll-to-bottom resumes auto-scroll
- * - History mode disables auto-scroll
- * - RAF debouncing for streaming updates
+ * - Virtuoso followOutput is the ONLY auto-scroll mechanism (no DOM effects)
+ * - followOutput + atBottomStateChange control all auto-scrolling
+ * - scrollToBottom routes through Virtuoso scrollToIndex when ref provided
+ * - DOM marker fallback for non-Virtuoso consumers only
+ * - History mode (disabled) disables auto-scroll
+ * - No isStreaming/streamingHash props — Virtuoso context handles streaming
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useChatAutoScroll } from "./useChatAutoScroll";
+import type { VirtuosoHandle } from "react-virtuoso";
 
 describe("useChatAutoScroll", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Mock requestAnimationFrame
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
-      cb(0);
-      return 0;
-    });
-    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
   });
 
   describe("initial state", () => {
@@ -35,7 +25,6 @@ describe("useChatAutoScroll", () => {
       const { result } = renderHook(() =>
         useChatAutoScroll({
           messageCount: 0,
-          isStreaming: false,
         })
       );
 
@@ -46,7 +35,6 @@ describe("useChatAutoScroll", () => {
       const { result } = renderHook(() =>
         useChatAutoScroll({
           messageCount: 0,
-          isStreaming: false,
           disabled: false,
         })
       );
@@ -58,7 +46,6 @@ describe("useChatAutoScroll", () => {
       const { result } = renderHook(() =>
         useChatAutoScroll({
           messageCount: 0,
-          isStreaming: false,
           disabled: true,
         })
       );
@@ -70,12 +57,11 @@ describe("useChatAutoScroll", () => {
       const { result } = renderHook(() =>
         useChatAutoScroll({
           messageCount: 0,
-          isStreaming: false,
         })
       );
 
       expect(result.current.containerRef).toBeDefined();
-      expect(result.current.containerRef.current).toBeNull(); // Not attached yet
+      expect(result.current.containerRef.current).toBeNull();
       expect(result.current.messagesEndRef).toBeDefined();
       expect(result.current.messagesEndRef.current).toBeNull();
     });
@@ -84,7 +70,6 @@ describe("useChatAutoScroll", () => {
       const { result } = renderHook(() =>
         useChatAutoScroll({
           messageCount: 0,
-          isStreaming: false,
         })
       );
 
@@ -94,12 +79,11 @@ describe("useChatAutoScroll", () => {
     });
   });
 
-  describe("bottom state tracking", () => {
-    it("should update isAtBottom via handleAtBottomStateChange", () => {
+  describe("bottom state tracking via handleAtBottomStateChange", () => {
+    it("should update isAtBottom when Virtuoso reports scroll position", () => {
       const { result } = renderHook(() =>
         useChatAutoScroll({
           messageCount: 0,
-          isStreaming: false,
         })
       );
 
@@ -122,7 +106,6 @@ describe("useChatAutoScroll", () => {
       const { result } = renderHook(() =>
         useChatAutoScroll({
           messageCount: 0,
-          isStreaming: false,
         })
       );
 
@@ -145,7 +128,6 @@ describe("useChatAutoScroll", () => {
       const { result } = renderHook(() =>
         useChatAutoScroll({
           messageCount: 0,
-          isStreaming: false,
           disabled: true,
         })
       );
@@ -161,12 +143,11 @@ describe("useChatAutoScroll", () => {
     });
   });
 
-  describe("handleFollowOutput (Virtuoso callback)", () => {
+  describe("handleFollowOutput (Virtuoso auto-scroll)", () => {
     it("should return 'smooth' when at bottom and not disabled", () => {
       const { result } = renderHook(() =>
         useChatAutoScroll({
           messageCount: 0,
-          isStreaming: false,
         })
       );
 
@@ -178,7 +159,6 @@ describe("useChatAutoScroll", () => {
       const { result } = renderHook(() =>
         useChatAutoScroll({
           messageCount: 0,
-          isStreaming: false,
         })
       );
 
@@ -186,11 +166,10 @@ describe("useChatAutoScroll", () => {
       expect(output).toBe(false);
     });
 
-    it("should return false when disabled, even if at bottom", () => {
+    it("should return false when disabled (history mode), even if at bottom", () => {
       const { result } = renderHook(() =>
         useChatAutoScroll({
           messageCount: 0,
-          isStreaming: false,
           disabled: true,
         })
       );
@@ -205,7 +184,6 @@ describe("useChatAutoScroll", () => {
         {
           initialProps: {
             messageCount: 0,
-            isStreaming: false,
             disabled: false,
           },
         }
@@ -215,7 +193,6 @@ describe("useChatAutoScroll", () => {
 
       rerender({
         messageCount: 0,
-        isStreaming: false,
         disabled: true,
       });
 
@@ -223,15 +200,14 @@ describe("useChatAutoScroll", () => {
     });
   });
 
-  describe("auto-scroll on message count changes", () => {
-    it("should trigger scrollIntoView when message count increases and at bottom", () => {
+  describe("single scroll path guarantee (no DOM-based auto-scroll)", () => {
+    it("should NOT trigger scrollIntoView when message count increases", () => {
       const mockScrollIntoView = vi.fn();
       const { result, rerender } = renderHook(
         (props) => useChatAutoScroll(props),
         {
           initialProps: {
             messageCount: 5,
-            isStreaming: false,
           },
         }
       );
@@ -243,23 +219,40 @@ describe("useChatAutoScroll", () => {
         } as unknown as HTMLDivElement;
       });
 
-      // Increase message count
-      rerender({
-        messageCount: 6,
-        isStreaming: false,
-      });
+      // Increase message count (simulates new messages during streaming)
+      rerender({ messageCount: 6 });
 
-      expect(mockScrollIntoView).toHaveBeenCalledWith({ behavior: "smooth" });
+      // No DOM-based auto-scroll — Virtuoso followOutput handles this
+      expect(mockScrollIntoView).not.toHaveBeenCalled();
     });
 
-    it("should not trigger scroll when scrolled up (not at bottom)", () => {
+    it("should NOT use requestAnimationFrame for any updates", () => {
+      const rafSpy = vi.spyOn(window, "requestAnimationFrame");
+      const { rerender } = renderHook(
+        (props) => useChatAutoScroll(props),
+        {
+          initialProps: {
+            messageCount: 5,
+          },
+        }
+      );
+
+      // Simulate streaming: rapid message count changes
+      rerender({ messageCount: 6 });
+      rerender({ messageCount: 7 });
+
+      // No RAF — Virtuoso handles streaming scroll natively
+      expect(rafSpy).not.toHaveBeenCalled();
+      rafSpy.mockRestore();
+    });
+
+    it("should NOT trigger any DOM scroll on rapid message count increases", () => {
       const mockScrollIntoView = vi.fn();
       const { result, rerender } = renderHook(
         (props) => useChatAutoScroll(props),
         {
           initialProps: {
             messageCount: 5,
-            isStreaming: false,
           },
         }
       );
@@ -271,309 +264,237 @@ describe("useChatAutoScroll", () => {
         } as unknown as HTMLDivElement;
       });
 
-      // User scrolled up
+      // Rapid increases (simulates burst of streaming updates)
+      rerender({ messageCount: 6 });
+      rerender({ messageCount: 7 });
+      rerender({ messageCount: 8 });
+
+      // Zero DOM scroll calls — Virtuoso handles all auto-scrolling
+      expect(mockScrollIntoView).not.toHaveBeenCalled();
+    });
+
+    it("should NOT use setTimeout for scroll operations", () => {
+      const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+      const initialCallCount = setTimeoutSpy.mock.calls.length;
+
+      const { rerender } = renderHook(
+        (props) => useChatAutoScroll(props),
+        {
+          initialProps: {
+            messageCount: 5,
+          },
+        }
+      );
+
+      // Simulate streaming updates
+      rerender({ messageCount: 6 });
+      rerender({ messageCount: 7 });
+      rerender({ messageCount: 8 });
+
+      // No setTimeout-based scroll scheduling
+      expect(setTimeoutSpy.mock.calls.length).toBe(initialCallCount);
+      setTimeoutSpy.mockRestore();
+    });
+
+    it("should have no useEffect-based scroll triggers", () => {
+      const mockScrollIntoView = vi.fn();
+      const mockScrollToIndex = vi.fn();
+      const virtuosoRef = {
+        current: { scrollToIndex: mockScrollToIndex } as unknown as VirtuosoHandle,
+      };
+
+      const { result, rerender } = renderHook(
+        (props) => useChatAutoScroll(props),
+        {
+          initialProps: {
+            messageCount: 5,
+            virtuosoRef,
+          },
+        }
+      );
+
+      // Attach mock DOM element
+      act(() => {
+        result.current.messagesEndRef.current = {
+          scrollIntoView: mockScrollIntoView,
+        } as unknown as HTMLDivElement;
+      });
+
+      // Simulate multiple streaming updates without explicit scrollToBottom calls
+      rerender({ messageCount: 6, virtuosoRef });
+      rerender({ messageCount: 7, virtuosoRef });
+      rerender({ messageCount: 8, virtuosoRef });
+
+      // Neither DOM nor Virtuoso scroll should be triggered by re-renders alone
+      // Only followOutput callback (called by Virtuoso internally) controls auto-scroll
+      expect(mockScrollIntoView).not.toHaveBeenCalled();
+      expect(mockScrollToIndex).not.toHaveBeenCalled();
+    });
+
+    it("followOutput returns exactly one scroll instruction per call during streaming", () => {
+      const { result, rerender } = renderHook(
+        (props) => useChatAutoScroll(props),
+        {
+          initialProps: {
+            messageCount: 5,
+          },
+        }
+      );
+
+      // Simulate rapid streaming updates — each should produce exactly one
+      // instruction from followOutput (either "smooth" or false, never both)
+      const results: Array<"smooth" | false> = [];
+      for (let i = 6; i <= 15; i++) {
+        rerender({ messageCount: i });
+        results.push(result.current.handleFollowOutput(true));
+      }
+
+      // All calls should return "smooth" (at bottom, not disabled)
+      expect(results).toEqual(Array(10).fill("smooth"));
+
+      // Simulate user scrolled up mid-stream
       act(() => {
         result.current.handleAtBottomStateChange(false);
       });
 
-      // Increase message count
-      rerender({
-        messageCount: 6,
-        isStreaming: false,
-      });
+      const scrolledUpResults: Array<"smooth" | false> = [];
+      for (let i = 16; i <= 20; i++) {
+        rerender({ messageCount: i });
+        scrolledUpResults.push(result.current.handleFollowOutput(false));
+      }
 
-      expect(mockScrollIntoView).not.toHaveBeenCalled();
+      // All calls should return false (not at bottom)
+      expect(scrolledUpResults).toEqual(Array(5).fill(false));
     });
+  });
 
-    it("should not trigger scroll when disabled", () => {
-      const mockScrollIntoView = vi.fn();
-      const { result, rerender } = renderHook(
-        (props) => useChatAutoScroll(props),
-        {
-          initialProps: {
-            messageCount: 5,
-            isStreaming: false,
-            disabled: true,
-          },
-        }
-      );
+  describe("scrollToBottom with Virtuoso ref", () => {
+    it("should route through Virtuoso scrollToIndex when virtuosoRef is provided", () => {
+      const mockScrollToIndex = vi.fn();
+      const virtuosoRef = {
+        current: { scrollToIndex: mockScrollToIndex } as unknown as VirtuosoHandle,
+      };
 
-      // Attach mock element
-      act(() => {
-        result.current.messagesEndRef.current = {
-          scrollIntoView: mockScrollIntoView,
-        } as unknown as HTMLDivElement;
-      });
-
-      // Increase message count
-      rerender({
-        messageCount: 6,
-        isStreaming: false,
-        disabled: true,
-      });
-
-      expect(mockScrollIntoView).not.toHaveBeenCalled();
-    });
-
-    it("should not scroll when message count is 0", () => {
-      const mockScrollIntoView = vi.fn();
       const { result } = renderHook(() =>
         useChatAutoScroll({
-          messageCount: 0,
-          isStreaming: false,
+          messageCount: 10,
+          virtuosoRef,
         })
       );
 
-      // Attach mock element
+      act(() => {
+        result.current.scrollToBottom();
+      });
+
+      expect(mockScrollToIndex).toHaveBeenCalledWith({
+        index: 9,
+        align: "end",
+        behavior: "smooth",
+      });
+    });
+
+    it("should set isAtBottom=true when scrollToBottom is called", () => {
+      const mockScrollToIndex = vi.fn();
+      const virtuosoRef = {
+        current: { scrollToIndex: mockScrollToIndex } as unknown as VirtuosoHandle,
+      };
+
+      const { result } = renderHook(() =>
+        useChatAutoScroll({
+          messageCount: 10,
+          virtuosoRef,
+        })
+      );
+
+      // Simulate user scrolled up
+      act(() => {
+        result.current.handleAtBottomStateChange(false);
+      });
+
+      expect(result.current.isAtBottom).toBe(false);
+
+      act(() => {
+        result.current.scrollToBottom();
+      });
+
+      expect(result.current.isAtBottom).toBe(true);
+    });
+
+    it("should not call Virtuoso scrollToIndex when messageCount is 0", () => {
+      const mockScrollToIndex = vi.fn();
+      const virtuosoRef = {
+        current: { scrollToIndex: mockScrollToIndex } as unknown as VirtuosoHandle,
+      };
+
+      const { result } = renderHook(() =>
+        useChatAutoScroll({
+          messageCount: 0,
+          virtuosoRef,
+        })
+      );
+
+      act(() => {
+        result.current.scrollToBottom();
+      });
+
+      // No scroll when there are no messages
+      expect(mockScrollToIndex).not.toHaveBeenCalled();
+    });
+
+    it("should fall back to DOM marker when virtuosoRef.current is null", () => {
+      const mockScrollIntoView = vi.fn();
+      const virtuosoRef = { current: null };
+
+      const { result } = renderHook(() =>
+        useChatAutoScroll({
+          messageCount: 5,
+          virtuosoRef: virtuosoRef as React.RefObject<VirtuosoHandle | null>,
+        })
+      );
+
+      // Attach mock end marker
       act(() => {
         result.current.messagesEndRef.current = {
           scrollIntoView: mockScrollIntoView,
         } as unknown as HTMLDivElement;
       });
 
-      expect(mockScrollIntoView).not.toHaveBeenCalled();
+      act(() => {
+        result.current.scrollToBottom();
+      });
+
+      expect(mockScrollIntoView).toHaveBeenCalledWith({ behavior: "smooth" });
     });
   });
 
-  describe("auto-scroll on streaming content changes", () => {
-    it("should trigger scroll when streaming hash changes", () => {
+  describe("scrollToBottom without Virtuoso ref (DOM fallback)", () => {
+    it("should use messagesEndRef.scrollIntoView", () => {
       const mockScrollIntoView = vi.fn();
-      const { result, rerender } = renderHook(
-        (props) => useChatAutoScroll(props),
-        {
-          initialProps: {
-            messageCount: 5,
-            isStreaming: true,
-            streamingHash: "hash1",
-          },
-        }
+      const { result } = renderHook(() =>
+        useChatAutoScroll({
+          messageCount: 5,
+          // No virtuosoRef
+        })
       );
 
-      // Attach mock element
       act(() => {
         result.current.messagesEndRef.current = {
           scrollIntoView: mockScrollIntoView,
         } as unknown as HTMLDivElement;
       });
 
-      mockScrollIntoView.mockClear();
-
-      // Change streaming hash
-      rerender({
-        messageCount: 5,
-        isStreaming: true,
-        streamingHash: "hash2",
+      act(() => {
+        result.current.scrollToBottom();
       });
 
       expect(mockScrollIntoView).toHaveBeenCalledWith({ behavior: "smooth" });
     });
 
-    it("should use RAF debouncing for streaming updates", () => {
-      const { result, rerender } = renderHook(
-        (props) => useChatAutoScroll(props),
-        {
-          initialProps: {
-            messageCount: 5,
-            isStreaming: true,
-            streamingHash: "hash1",
-          },
-        }
-      );
-
-      // Attach mock element
-      act(() => {
-        result.current.messagesEndRef.current = {
-          scrollIntoView: vi.fn(),
-        } as unknown as HTMLDivElement;
-      });
-
-      vi.clearAllMocks();
-
-      // Change streaming hash
-      rerender({
-        messageCount: 5,
-        isStreaming: true,
-        streamingHash: "hash2",
-      });
-
-      expect(window.requestAnimationFrame).toHaveBeenCalled();
-    });
-
-    it("should cancel RAF on cleanup", () => {
-      const { result, rerender, unmount } = renderHook(
-        (props) => useChatAutoScroll(props),
-        {
-          initialProps: {
-            messageCount: 5,
-            isStreaming: true,
-            streamingHash: "hash1",
-          },
-        }
-      );
-
-      // Attach mock element
-      act(() => {
-        result.current.messagesEndRef.current = {
-          scrollIntoView: vi.fn(),
-        } as unknown as HTMLDivElement;
-      });
-
-      // Change streaming hash to schedule RAF
-      rerender({
-        messageCount: 5,
-        isStreaming: true,
-        streamingHash: "hash2",
-      });
-
-      // Unmount should cancel RAF
-      unmount();
-
-      expect(window.cancelAnimationFrame).toHaveBeenCalled();
-    });
-
-    it("should not scroll when streaming hash changes but not at bottom", () => {
-      const mockScrollIntoView = vi.fn();
-      const { result, rerender } = renderHook(
-        (props) => useChatAutoScroll(props),
-        {
-          initialProps: {
-            messageCount: 5,
-            isStreaming: true,
-            streamingHash: "hash1",
-          },
-        }
-      );
-
-      // Attach mock element
-      act(() => {
-        result.current.messagesEndRef.current = {
-          scrollIntoView: mockScrollIntoView,
-        } as unknown as HTMLDivElement;
-      });
-
-      // User scrolled up
-      act(() => {
-        result.current.handleAtBottomStateChange(false);
-      });
-
-      mockScrollIntoView.mockClear();
-
-      // Change streaming hash
-      rerender({
-        messageCount: 5,
-        isStreaming: true,
-        streamingHash: "hash2",
-      });
-
-      expect(mockScrollIntoView).not.toHaveBeenCalled();
-    });
-
-    it("should not scroll when not streaming", () => {
-      const mockScrollIntoView = vi.fn();
-      const { result, rerender } = renderHook(
-        (props) => useChatAutoScroll(props),
-        {
-          initialProps: {
-            messageCount: 5,
-            isStreaming: false,
-            streamingHash: "hash1",
-          },
-        }
-      );
-
-      // Attach mock element
-      act(() => {
-        result.current.messagesEndRef.current = {
-          scrollIntoView: mockScrollIntoView,
-        } as unknown as HTMLDivElement;
-      });
-
-      mockScrollIntoView.mockClear();
-
-      // Change streaming hash (but not streaming)
-      rerender({
-        messageCount: 5,
-        isStreaming: false,
-        streamingHash: "hash2",
-      });
-
-      expect(mockScrollIntoView).not.toHaveBeenCalled();
-    });
-
-    it("should not scroll when streamingHash is undefined", () => {
-      const mockScrollIntoView = vi.fn();
-      const { result, rerender } = renderHook(
-        (props) => useChatAutoScroll(props),
-        {
-          initialProps: {
-            messageCount: 5,
-            isStreaming: true,
-            streamingHash: undefined,
-          },
-        }
-      );
-
-      // Attach mock element
-      act(() => {
-        result.current.messagesEndRef.current = {
-          scrollIntoView: mockScrollIntoView,
-        } as unknown as HTMLDivElement;
-      });
-
-      mockScrollIntoView.mockClear();
-
-      // Re-render (streamingHash still undefined)
-      rerender({
-        messageCount: 5,
-        isStreaming: true,
-        streamingHash: undefined,
-      });
-
-      expect(mockScrollIntoView).not.toHaveBeenCalled();
-    });
-
-    it("should not scroll when disabled, even during streaming", () => {
-      const mockScrollIntoView = vi.fn();
-      const { result, rerender } = renderHook(
-        (props) => useChatAutoScroll(props),
-        {
-          initialProps: {
-            messageCount: 5,
-            isStreaming: true,
-            streamingHash: "hash1",
-            disabled: true,
-          },
-        }
-      );
-
-      // Attach mock element
-      act(() => {
-        result.current.messagesEndRef.current = {
-          scrollIntoView: mockScrollIntoView,
-        } as unknown as HTMLDivElement;
-      });
-
-      mockScrollIntoView.mockClear();
-
-      // Change streaming hash
-      rerender({
-        messageCount: 5,
-        isStreaming: true,
-        streamingHash: "hash2",
-        disabled: true,
-      });
-
-      expect(mockScrollIntoView).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("manual scroll-to-bottom", () => {
     it("should set isAtBottom=true and trigger scroll", () => {
       const mockScrollIntoView = vi.fn();
       const { result } = renderHook(() =>
         useChatAutoScroll({
           messageCount: 5,
-          isStreaming: false,
         })
       );
 
@@ -600,55 +521,10 @@ describe("useChatAutoScroll", () => {
       expect(mockScrollIntoView).toHaveBeenCalledWith({ behavior: "smooth" });
     });
 
-    it("should resume auto-scroll after manual scroll-to-bottom", () => {
-      const mockScrollIntoView = vi.fn();
-      const { result, rerender } = renderHook(
-        (props) => useChatAutoScroll(props),
-        {
-          initialProps: {
-            messageCount: 5,
-            isStreaming: false,
-          },
-        }
-      );
-
-      // User scrolled up
-      act(() => {
-        result.current.handleAtBottomStateChange(false);
-      });
-
-      expect(result.current.shouldAutoScroll).toBe(false);
-
-      // Attach mock element
-      act(() => {
-        result.current.messagesEndRef.current = {
-          scrollIntoView: mockScrollIntoView,
-        } as unknown as HTMLDivElement;
-      });
-
-      // Manual scroll to bottom
-      act(() => {
-        result.current.scrollToBottom();
-      });
-
-      expect(result.current.shouldAutoScroll).toBe(true);
-
-      mockScrollIntoView.mockClear();
-
-      // New message arrives - should auto-scroll now
-      rerender({
-        messageCount: 6,
-        isStreaming: false,
-      });
-
-      expect(mockScrollIntoView).toHaveBeenCalledWith({ behavior: "smooth" });
-    });
-
-    it("should work when messagesEndRef is not attached", () => {
+    it("should not throw when messagesEndRef is not attached", () => {
       const { result } = renderHook(() =>
         useChatAutoScroll({
           messageCount: 5,
-          isStreaming: false,
         })
       );
 
@@ -664,90 +540,67 @@ describe("useChatAutoScroll", () => {
   });
 
   describe("disabled prop (history mode)", () => {
-    it("should disable auto-scroll completely when disabled=true", () => {
-      const mockScrollIntoView = vi.fn();
-      const { result, rerender } = renderHook(
-        (props) => useChatAutoScroll(props),
-        {
-          initialProps: {
-            messageCount: 5,
-            isStreaming: true,
-            streamingHash: "hash1",
-            disabled: true,
-          },
-        }
+    it("should disable followOutput auto-scroll when disabled=true", () => {
+      const { result } = renderHook(() =>
+        useChatAutoScroll({
+          messageCount: 5,
+          disabled: true,
+        })
       );
 
-      // Attach mock element
-      act(() => {
-        result.current.messagesEndRef.current = {
-          scrollIntoView: mockScrollIntoView,
-        } as unknown as HTMLDivElement;
-      });
-
-      // Try message count change
-      rerender({
-        messageCount: 6,
-        isStreaming: true,
-        streamingHash: "hash1",
-        disabled: true,
-      });
-
-      expect(mockScrollIntoView).not.toHaveBeenCalled();
-
-      // Try streaming hash change
-      rerender({
-        messageCount: 6,
-        isStreaming: true,
-        streamingHash: "hash2",
-        disabled: true,
-      });
-
-      expect(mockScrollIntoView).not.toHaveBeenCalled();
-
-      // Ensure shouldAutoScroll remains false
+      // followOutput should refuse to follow
+      expect(result.current.handleFollowOutput(true)).toBe(false);
       expect(result.current.shouldAutoScroll).toBe(false);
     });
 
-    it("should re-enable auto-scroll when disabled changes to false", () => {
-      const mockScrollIntoView = vi.fn();
+    it("should re-enable followOutput when disabled changes to false", () => {
       const { result, rerender } = renderHook(
         (props) => useChatAutoScroll(props),
         {
           initialProps: {
             messageCount: 5,
-            isStreaming: false,
             disabled: true,
           },
         }
       );
 
-      // Attach mock element
-      act(() => {
-        result.current.messagesEndRef.current = {
-          scrollIntoView: mockScrollIntoView,
-        } as unknown as HTMLDivElement;
-      });
-
       expect(result.current.shouldAutoScroll).toBe(false);
+      expect(result.current.handleFollowOutput(true)).toBe(false);
 
       // Re-enable
       rerender({
         messageCount: 5,
-        isStreaming: false,
         disabled: false,
       });
 
       expect(result.current.shouldAutoScroll).toBe(true);
+      expect(result.current.handleFollowOutput(true)).toBe("smooth");
+    });
 
-      // New message should trigger scroll
-      rerender({
-        messageCount: 6,
-        isStreaming: false,
-        disabled: false,
+    it("should still allow manual scrollToBottom when disabled", () => {
+      const mockScrollToIndex = vi.fn();
+      const virtuosoRef = {
+        current: { scrollToIndex: mockScrollToIndex } as unknown as VirtuosoHandle,
+      };
+
+      const { result } = renderHook(() =>
+        useChatAutoScroll({
+          messageCount: 10,
+          disabled: true,
+          virtuosoRef,
+        })
+      );
+
+      act(() => {
+        result.current.scrollToBottom();
       });
 
-      expect(mockScrollIntoView).toHaveBeenCalledWith({ behavior: "smooth" });
+      // Manual scroll still works even in history mode
+      expect(mockScrollToIndex).toHaveBeenCalledWith({
+        index: 9,
+        align: "end",
+        behavior: "smooth",
+      });
     });
   });
 
@@ -758,7 +611,6 @@ describe("useChatAutoScroll", () => {
         {
           initialProps: {
             messageCount: 5,
-            isStreaming: false,
           },
         }
       );
@@ -770,75 +622,14 @@ describe("useChatAutoScroll", () => {
       expect(() => {
         rerender({
           messageCount: 6,
-          isStreaming: false,
         });
       }).not.toThrow();
-    });
-
-    it("should handle rapid message count increases", () => {
-      const mockScrollIntoView = vi.fn();
-      const { result, rerender } = renderHook(
-        (props) => useChatAutoScroll(props),
-        {
-          initialProps: {
-            messageCount: 5,
-            isStreaming: false,
-          },
-        }
-      );
-
-      // Attach mock element
-      act(() => {
-        result.current.messagesEndRef.current = {
-          scrollIntoView: mockScrollIntoView,
-        } as unknown as HTMLDivElement;
-      });
-
-      // Rapid increases
-      rerender({ messageCount: 6, isStreaming: false });
-      rerender({ messageCount: 7, isStreaming: false });
-      rerender({ messageCount: 8, isStreaming: false });
-
-      // Should have called scroll for each increase
-      expect(mockScrollIntoView).toHaveBeenCalled();
-    });
-
-    it("should handle rapid streaming hash changes", () => {
-      const mockScrollIntoView = vi.fn();
-      const { result, rerender } = renderHook(
-        (props) => useChatAutoScroll(props),
-        {
-          initialProps: {
-            messageCount: 5,
-            isStreaming: true,
-            streamingHash: "hash1",
-          },
-        }
-      );
-
-      // Attach mock element
-      act(() => {
-        result.current.messagesEndRef.current = {
-          scrollIntoView: mockScrollIntoView,
-        } as unknown as HTMLDivElement;
-      });
-
-      mockScrollIntoView.mockClear();
-
-      // Rapid hash changes (RAF should debounce)
-      rerender({ messageCount: 5, isStreaming: true, streamingHash: "hash2" });
-      rerender({ messageCount: 5, isStreaming: true, streamingHash: "hash3" });
-      rerender({ messageCount: 5, isStreaming: true, streamingHash: "hash4" });
-
-      // RAF should have been called for each change
-      expect(window.requestAnimationFrame).toHaveBeenCalled();
     });
 
     it("should maintain separate state for containerRef and messagesEndRef", () => {
       const { result } = renderHook(() =>
         useChatAutoScroll({
           messageCount: 5,
-          isStreaming: false,
         })
       );
 
@@ -856,6 +647,47 @@ describe("useChatAutoScroll", () => {
       expect(result.current.messagesEndRef.current).toBe(mockMessagesEnd);
       expect(result.current.containerRef.current).not.toBe(
         result.current.messagesEndRef.current
+      );
+    });
+
+    it("should update scrollToIndex target when messageCount changes", () => {
+      const mockScrollToIndex = vi.fn();
+      const virtuosoRef = {
+        current: { scrollToIndex: mockScrollToIndex } as unknown as VirtuosoHandle,
+      };
+
+      const { result, rerender } = renderHook(
+        (props) => useChatAutoScroll(props),
+        {
+          initialProps: {
+            messageCount: 5,
+            virtuosoRef,
+          },
+        }
+      );
+
+      act(() => {
+        result.current.scrollToBottom();
+      });
+
+      expect(mockScrollToIndex).toHaveBeenCalledWith(
+        expect.objectContaining({ index: 4 })
+      );
+
+      mockScrollToIndex.mockClear();
+
+      // Message count increases
+      rerender({
+        messageCount: 15,
+        virtuosoRef,
+      });
+
+      act(() => {
+        result.current.scrollToBottom();
+      });
+
+      expect(mockScrollToIndex).toHaveBeenCalledWith(
+        expect.objectContaining({ index: 14 })
       );
     });
   });

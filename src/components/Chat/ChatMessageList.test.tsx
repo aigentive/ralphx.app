@@ -1,10 +1,11 @@
 /**
  * ChatMessageList integration tests
  * Tests scroll behavior in real component scenarios:
- * - Initial load
- * - Streaming
- * - Manual scroll
- * - Conversation switching
+ * - Single-path Virtuoso scroll (no DOM marker auto-scroll)
+ * - Hook receives virtuosoRef for Virtuoso-native scrolling
+ * - Streaming content renders without DOM scroll calls
+ * - Context switches (conversation changes)
+ * - History mode disables auto-scroll
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -13,7 +14,7 @@ import userEvent from "@testing-library/user-event";
 import { ChatMessageList, type ChatMessageData } from "./ChatMessageList";
 import type { ToolCall } from "./ToolCallIndicator";
 
-// Mock scrollIntoView before tests run
+// Mock scrollIntoView before tests run — should NEVER be called for auto-scroll
 const scrollIntoViewMock = vi.fn();
 Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
   value: scrollIntoViewMock,
@@ -28,16 +29,19 @@ const mockHandleFollowOutput = vi.fn((atBottom: boolean) =>
   atBottom ? "smooth" as const : false as const
 );
 
+// Capture hook call args to verify virtuosoRef and disabled are passed
+const mockUseChatAutoScroll = vi.fn(() => ({
+  isAtBottom: mockIsAtBottom,
+  scrollToBottom: mockScrollToBottom,
+  handleAtBottomStateChange: mockHandleAtBottomStateChange,
+  handleFollowOutput: mockHandleFollowOutput,
+  shouldAutoScroll: mockIsAtBottom,
+  containerRef: { current: null },
+  messagesEndRef: { current: null },
+}));
+
 vi.mock("@/hooks/useChatAutoScroll", () => ({
-  useChatAutoScroll: vi.fn(() => ({
-    isAtBottom: mockIsAtBottom,
-    scrollToBottom: mockScrollToBottom,
-    handleAtBottomStateChange: mockHandleAtBottomStateChange,
-    handleFollowOutput: mockHandleFollowOutput,
-    shouldAutoScroll: mockIsAtBottom,
-    containerRef: { current: null },
-    messagesEndRef: { current: null },
-  })),
+  useChatAutoScroll: (...args: unknown[]) => mockUseChatAutoScroll(...args),
 }));
 
 const createMessages = (count: number): ChatMessageData[] => {
@@ -415,7 +419,7 @@ describe("ChatMessageList - Scroll Behavior", () => {
       );
 
       // Verify streaming indicators render
-      // Component computes streamingHash internally for hook
+      // Virtuoso handles scroll via context prop (footerContentHash)
       expect(screen.getByTestId("streaming-tool-indicator")).toBeInTheDocument();
     });
 
@@ -429,8 +433,144 @@ describe("ChatMessageList - Scroll Behavior", () => {
       );
 
       // Verify streaming text renders
-      // Component computes streamingHash internally for hook
+      // Virtuoso handles scroll via context prop (footerContentHash)
       expect(screen.getByText(/Thinking/)).toBeInTheDocument();
+    });
+  });
+
+  describe("single-path Virtuoso scroll (no DOM auto-scroll)", () => {
+    it("passes virtuosoRef to useChatAutoScroll hook", () => {
+      render(<ChatMessageList {...defaultProps} />);
+
+      // Hook must receive virtuosoRef so scrollToBottom routes through Virtuoso
+      expect(mockUseChatAutoScroll).toHaveBeenCalled();
+      const hookArgs = mockUseChatAutoScroll.mock.calls[0][0] as Record<string, unknown>;
+      expect(hookArgs).toHaveProperty("virtuosoRef");
+      expect(hookArgs.virtuosoRef).toBeDefined();
+    });
+
+    it("passes disabled=true when scrollToTimestamp is set", () => {
+      const messages = createMessages(10);
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          scrollToTimestamp={messages[3].createdAt}
+        />
+      );
+
+      const hookArgs = mockUseChatAutoScroll.mock.calls[0][0] as Record<string, unknown>;
+      expect(hookArgs.disabled).toBe(true);
+    });
+
+    it("passes disabled=false when scrollToTimestamp is null", () => {
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          scrollToTimestamp={null}
+        />
+      );
+
+      const hookArgs = mockUseChatAutoScroll.mock.calls[0][0] as Record<string, unknown>;
+      expect(hookArgs.disabled).toBe(false);
+    });
+
+    it("passes correct messageCount to hook", () => {
+      const messages = createMessages(7);
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+        />
+      );
+
+      const hookArgs = mockUseChatAutoScroll.mock.calls[0][0] as Record<string, unknown>;
+      expect(hookArgs.messageCount).toBe(7);
+    });
+
+    it("does not pass isStreaming or streamingHash to hook (removed props)", () => {
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          isSending={true}
+          isAgentRunning={true}
+        />
+      );
+
+      const hookArgs = mockUseChatAutoScroll.mock.calls[0][0] as Record<string, unknown>;
+      // These props were removed — Virtuoso context handles streaming scroll
+      expect(hookArgs).not.toHaveProperty("isStreaming");
+      expect(hookArgs).not.toHaveProperty("streamingHash");
+    });
+
+    it("does NOT call scrollIntoView during streaming content changes", () => {
+      scrollIntoViewMock.mockClear();
+
+      const { rerender } = render(
+        <ChatMessageList
+          {...defaultProps}
+          isSending={true}
+          streamingToolCalls={[]}
+        />
+      );
+
+      // Add streaming tool call
+      rerender(
+        <ChatMessageList
+          {...defaultProps}
+          isSending={true}
+          streamingToolCalls={[{ id: "1", name: "Read", arguments: {} }]}
+        />
+      );
+
+      // Add streaming text
+      rerender(
+        <ChatMessageList
+          {...defaultProps}
+          isSending={true}
+          streamingToolCalls={[{ id: "1", name: "Read", arguments: {} }]}
+          streamingText="Response..."
+        />
+      );
+
+      // No DOM scrollIntoView — Virtuoso followOutput handles all auto-scrolling
+      expect(scrollIntoViewMock).not.toHaveBeenCalled();
+    });
+
+    it("does NOT call scrollIntoView on conversation switch", () => {
+      scrollIntoViewMock.mockClear();
+
+      const { rerender } = render(
+        <ChatMessageList {...defaultProps} conversationId="conv-1" />
+      );
+
+      // Switch conversation
+      rerender(
+        <ChatMessageList
+          {...defaultProps}
+          conversationId="conv-2"
+          messages={createMessages(5)}
+        />
+      );
+
+      // No DOM scrollIntoView — Virtuoso remounts with initialTopMostItemIndex
+      expect(scrollIntoViewMock).not.toHaveBeenCalled();
+    });
+
+    it("does NOT call scrollIntoView when new messages arrive", () => {
+      scrollIntoViewMock.mockClear();
+
+      const { rerender } = render(
+        <ChatMessageList {...defaultProps} messages={createMessages(5)} />
+      );
+
+      // New message arrives
+      rerender(
+        <ChatMessageList {...defaultProps} messages={createMessages(6)} />
+      );
+
+      // No DOM scrollIntoView — Virtuoso followOutput handles auto-scroll
+      expect(scrollIntoViewMock).not.toHaveBeenCalled();
     });
   });
 });

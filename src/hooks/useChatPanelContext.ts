@@ -120,26 +120,15 @@ export function useChatPanelContext({
   // Auto-select tracking
   const hasAutoSelectedRef = useRef(false);
 
-  // Track the previous context type and id for cache invalidation
-  useEffect(() => {
-    const currentContextType = ideationSessionId
-      ? "ideation"
-      : selectedTaskId
-        ? (isMergeMode ? "merge" : isExecutionMode ? "task_execution" : isReviewMode ? "review" : "task")
-        : "project";
-    const currentContextId = ideationSessionId || selectedTaskId || projectId;
-    prevContextTypeRef.current = { type: currentContextType, id: currentContextId };
-  }, [selectedTaskId, isMergeMode, isExecutionMode, isReviewMode, projectId, ideationSessionId]);
-
   // Handle context changes
   useEffect(() => {
     if (prevContextKeyRef.current !== contextKey) {
-      // Context changed - get the current conversation ID and context before clearing
+      // Context changed - capture OLD context from refs BEFORE updating them
       const currentConversationId = useChatStore.getState().activeConversationId;
       const oldContext = prevContextTypeRef.current;
 
-      // Clear the active conversation immediately
-      setActiveConversation(null);
+      // DO NOT clear active conversation here - let autoSelectConversation handle
+      // the transition atomically to avoid transient empty state
 
       // Clear streaming state
       setStreamingToolCalls([]);
@@ -185,9 +174,17 @@ export function useChatPanelContext({
       // Reset auto-select flag when context changes
       hasAutoSelectedRef.current = false;
 
+      // Update refs with NEW context AFTER cleanup
       prevContextKeyRef.current = contextKey;
+      const newContextType = ideationSessionId
+        ? "ideation"
+        : selectedTaskId
+          ? (isMergeMode ? "merge" : isExecutionMode ? "task_execution" : isReviewMode ? "review" : "task")
+          : "project";
+      const newContextId = ideationSessionId || selectedTaskId || projectId;
+      prevContextTypeRef.current = { type: newContextType, id: newContextId };
     }
-  }, [contextKey, storeContextKey, setActiveConversation, queryClient, clearMessages, setAgentRunning, setSending]);
+  }, [contextKey, storeContextKey, setActiveConversation, queryClient, clearMessages, setAgentRunning, setSending, ideationSessionId, selectedTaskId, projectId, isMergeMode, isExecutionMode, isReviewMode]);
 
   // Track previous override conversation ID to detect changes
   const prevOverrideConversationIdRef = useRef<string | undefined>(undefined);
@@ -242,11 +239,31 @@ export function useChatPanelContext({
     }
 
     // CRITICAL: Check for stale activeConversationId FIRST, before checking hasAutoSelectedRef.
-    if (activeConversationId && conversations.data && conversations.data.length > 0) {
-      const belongsToContext = conversations.data.some(c => c.id === activeConversationId);
+    // If current conversation is stale but new context has conversations, directly select replacement.
+    if (activeConversationId && conversations.data) {
+      const belongsToContext = conversations.data.length > 0
+        ? conversations.data.some(c => c.id === activeConversationId)
+        : false;
+
       if (!belongsToContext) {
-        hasAutoSelectedRef.current = false;
-        setActiveConversation(null);
+        // Current conversation is stale
+        if (conversations.data.length > 0) {
+          // New context has conversations - directly select most recent
+          const sorted = [...conversations.data].sort((a, b) => {
+            const aTime = a.lastMessageAt || a.createdAt;
+            const bTime = b.lastMessageAt || b.createdAt;
+            return new Date(bTime).getTime() - new Date(aTime).getTime();
+          });
+          const mostRecent = sorted[0];
+          if (mostRecent) {
+            hasAutoSelectedRef.current = true;
+            setActiveConversation(mostRecent.id);
+          }
+        } else {
+          // No conversations in new context - clear selection
+          hasAutoSelectedRef.current = false;
+          setActiveConversation(null);
+        }
         return;
       }
     }

@@ -5,7 +5,7 @@
  * Hook events appear as thin annotations between message bubbles.
  */
 
-import { useMemo, useRef, type RefObject } from "react";
+import { useRef, useMemo } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { MessageItem, type ContentBlockItem } from "./MessageItem";
 import { StreamingToolIndicator } from "./StreamingToolIndicator";
@@ -148,7 +148,6 @@ export interface ChatMessagesProps {
   streamingToolCalls: ToolCall[];
   failedErrorMessage: string | undefined;
   onDismissError: (() => void) | undefined;
-  messagesEndRef: RefObject<HTMLDivElement | null>;
   /** Resolved hook events (completed + blocks) */
   hookEvents?: HookEvent[];
   /** Currently running hooks */
@@ -163,28 +162,27 @@ export function ChatMessages({
   streamingToolCalls,
   failedErrorMessage,
   onDismissError,
-  messagesEndRef,
   hookEvents = [],
   activeHooks = [],
 }: ChatMessagesProps) {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const isTestEnv = import.meta.env.VITEST;
 
-  // Compute streaming hash for auto-scroll hook
-  const streamingHash = useMemo(() => {
-    if (!isAgentRunning && !isSending) return undefined;
-    return JSON.stringify({
-      toolCalls: streamingToolCalls.map(tc => tc.id),
-      activeHooks: activeHooks.map(h => h.hookName),
-    });
-  }, [isAgentRunning, isSending, streamingToolCalls, activeHooks]);
+  // Footer content hash — makes Virtuoso aware of footer height changes.
+  // Virtuoso re-evaluates followOutput when context changes, triggering a
+  // smooth scroll if user is at bottom.
+  const footerContentHash = useMemo(() => ({
+    toolCallCount: streamingToolCalls.length,
+    activeHookCount: activeHooks.length,
+    isSending,
+    isAgentRunning,
+  }), [streamingToolCalls.length, activeHooks.length, isSending, isAgentRunning]);
 
-  // Use unified auto-scroll hook
-  const { handleFollowOutput, handleAtBottomStateChange, isAtBottom, scrollToBottom } =
+  // Unified auto-scroll hook — Virtuoso followOutput is the single scroll path.
+  const { handleFollowOutput, handleAtBottomStateChange, isAtBottom, scrollToBottom, messagesEndRef: hookEndRef } =
     useChatAutoScroll({
       messageCount: messages.length,
-      isStreaming: isAgentRunning || isSending,
-      streamingHash,
+      virtuosoRef, // Route scrollToBottom through Virtuoso scrollToIndex
     });
 
   // Build merged timeline: messages + hook events sorted chronologically
@@ -277,7 +275,7 @@ export function ChatMessages({
               <TypingIndicator />
             )
           )}
-          <div ref={messagesEndRef} />
+          <div ref={hookEndRef} />
         </div>
       </div>
     );
@@ -288,6 +286,7 @@ export function ChatMessages({
       <Virtuoso
         ref={virtuosoRef}
         data={timeline}
+        context={footerContentHash}
         followOutput={handleFollowOutput}
         atBottomStateChange={handleAtBottomStateChange}
         atBottomThreshold={150}
@@ -315,7 +314,6 @@ export function ChatMessages({
                   <TypingIndicator />
                 )
               )}
-              <div ref={messagesEndRef} />
             </div>
           ),
         }}

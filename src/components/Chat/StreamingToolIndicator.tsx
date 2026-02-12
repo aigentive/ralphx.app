@@ -13,12 +13,15 @@
  * This is used ONLY during streaming - final messages use ToolCallIndicator.
  */
 
-import { useMemo, useRef, useEffect } from "react";
+import { useMemo, useRef, useEffect, useCallback } from "react";
 import { Wrench, Loader2 } from "lucide-react";
 import type { ToolCall } from "./ToolCallIndicator";
 
 // Maximum height for the tool list content area
 const MAX_CONTENT_HEIGHT = 200;
+
+/** Distance from bottom (px) within which we consider the user "near bottom" */
+const NEAR_BOTTOM_THRESHOLD = 30;
 
 // ============================================================================
 // Types
@@ -197,6 +200,15 @@ export function StreamingToolIndicator({
   isActive = true,
 }: StreamingToolIndicatorProps) {
   const contentRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
+
+  // Track scroll position to determine if user is near bottom
+  const handleScroll = useCallback(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    isNearBottomRef.current = distanceFromBottom <= NEAR_BOTTOM_THRESHOLD;
+  }, []);
 
   // Filter out result tools (result:toolu*) and process into summary lines
   const summaryLines = useMemo(() => {
@@ -216,9 +228,9 @@ export function StreamingToolIndicator({
       });
   }, [toolCalls]);
 
-  // Auto-scroll to bottom when new tool calls arrive
+  // Auto-scroll to bottom when new tool calls arrive (only if user is near bottom)
   useEffect(() => {
-    if (contentRef.current) {
+    if (contentRef.current && isNearBottomRef.current) {
       contentRef.current.scrollTop = contentRef.current.scrollHeight;
     }
   }, [summaryLines.length]);
@@ -265,8 +277,9 @@ export function StreamingToolIndicator({
       {/* Chain of thought - tool call summaries (scrollable) */}
       <div
         ref={contentRef}
+        onScroll={handleScroll}
         className="px-3 py-2 space-y-1.5 overflow-y-auto"
-        style={{ maxHeight: `${MAX_CONTENT_HEIGHT}px` }}
+        style={{ maxHeight: `${MAX_CONTENT_HEIGHT}px`, overscrollBehavior: "contain" }}
       >
         {summaryLines.map((line, index) => (
           <div
