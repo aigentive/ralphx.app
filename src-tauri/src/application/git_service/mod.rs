@@ -5,7 +5,10 @@
 //! - Worktree management (Worktree mode only)
 //! - Commit operations with configurable messages
 //! - Rebase and merge operations for the two-phase merge workflow
+//! - Checkout-free merge operations (git plumbing, no working tree mutation)
 //! - Query operations for commits and diff stats
+
+pub mod checkout_free;
 
 use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
@@ -117,6 +120,62 @@ impl GitService {
             )));
         }
 
+        Ok(())
+    }
+
+    /// Create a new branch pointing at a specific commit SHA
+    ///
+    /// Unlike `create_branch` which branches from another branch name,
+    /// this creates a branch at an exact commit. Used for conflict resolution
+    /// worktrees after checkout-free merge detects conflicts.
+    pub fn create_branch_at(repo: &Path, branch: &str, sha: &str) -> AppResult<()> {
+        debug!(
+            "Creating branch '{}' at {} in {:?}",
+            branch, sha, repo
+        );
+
+        let output = Command::new("git")
+            .args(["branch", branch, sha])
+            .current_dir(repo)
+            .output()
+            .map_err(|e| AppError::GitOperation(format!("Failed to run git branch: {}", e)))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AppError::GitOperation(format!(
+                "Failed to create branch '{}' at {}: {}",
+                branch, sha, stderr
+            )));
+        }
+
+        Ok(())
+    }
+
+    /// Sync working tree to match the current branch HEAD
+    ///
+    /// Runs `git reset --hard HEAD` to atomically update all files.
+    /// Used after checkout-free merge operations that advance the branch ref
+    /// without touching the working tree.
+    pub fn hard_reset_to_head(repo: &Path) -> AppResult<()> {
+        debug!("Resetting working tree to HEAD in {:?}", repo);
+
+        let output = Command::new("git")
+            .args(["reset", "--hard", "HEAD"])
+            .current_dir(repo)
+            .output()
+            .map_err(|e| {
+                AppError::GitOperation(format!("Failed to run git reset --hard HEAD: {}", e))
+            })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AppError::GitOperation(format!(
+                "git reset --hard HEAD failed: {}",
+                stderr
+            )));
+        }
+
+        debug!("Working tree synced to HEAD");
         Ok(())
     }
 
