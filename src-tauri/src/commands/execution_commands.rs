@@ -9,7 +9,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use tokio::sync::RwLock;
 
-use crate::application::reconciliation::UserRecoveryAction;
+use crate::application::reconciliation::{ReconciliationSummary, UserRecoveryAction};
 use crate::application::{
     AppState, ReconciliationRunner, TaskSchedulerService, TaskTransitionService,
 };
@@ -250,6 +250,16 @@ pub struct ExecutionCommandResponse {
     pub success: bool,
     /// Current execution status after the command
     pub status: ExecutionStatusResponse,
+}
+
+/// Response for manual reconciliation triggers.
+#[derive(Debug, Serialize)]
+pub struct ReconcileNowResponse {
+    pub success: bool,
+    pub checked_tasks: u32,
+    pub recovered_tasks: u32,
+    pub ignored_pause: bool,
+    pub was_paused: bool,
 }
 
 /// Response for execution settings queries
@@ -955,6 +965,71 @@ pub async fn resolve_recovery_prompt(
     };
 
     Ok(reconciler.apply_user_recovery_action(&task, action).await)
+}
+
+/// Force-run reconciliation immediately, including merge watchdog paths.
+///
+/// Unlike background reconciliation, this bypasses pause gating so merge recovery
+/// can be drained on demand from UI/CLI.
+#[tauri::command]
+pub async fn drain_merge_recovery_now(
+    execution_state: State<'_, Arc<ExecutionState>>,
+    app_state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<ReconcileNowResponse, String> {
+    let was_paused = execution_state.is_paused();
+
+    let transition_service = Arc::new(
+        TaskTransitionService::new(
+            Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.task_dependency_repo),
+            Arc::clone(&app_state.project_repo),
+            Arc::clone(&app_state.chat_message_repo),
+            Arc::clone(&app_state.chat_conversation_repo),
+            Arc::clone(&app_state.agent_run_repo),
+            Arc::clone(&app_state.ideation_session_repo),
+            Arc::clone(&app_state.activity_event_repo),
+            Arc::clone(&app_state.message_queue),
+            Arc::clone(&app_state.running_agent_registry),
+            Arc::clone(&execution_state),
+            app_state.app_handle.clone(),
+        )
+        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)),
+    );
+
+    let reconciler = ReconciliationRunner::new(
+        Arc::clone(&app_state.task_repo),
+        Arc::clone(&app_state.task_dependency_repo),
+        Arc::clone(&app_state.project_repo),
+        Arc::clone(&app_state.chat_conversation_repo),
+        Arc::clone(&app_state.chat_message_repo),
+        Arc::clone(&app_state.ideation_session_repo),
+        Arc::clone(&app_state.activity_event_repo),
+        Arc::clone(&app_state.message_queue),
+        Arc::clone(&app_state.running_agent_registry),
+        Arc::clone(&app_state.agent_run_repo),
+        transition_service,
+        Arc::clone(&execution_state),
+        Some(app),
+    )
+    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
+
+    let ReconciliationSummary {
+        checked_tasks,
+        recovered_tasks,
+    } = reconciler.reconcile_stuck_tasks_force().await;
+
+    if let Some(ref handle) = app_state.app_handle {
+        execution_state.emit_status_changed(handle, "manual_reconcile_now");
+    }
+
+    Ok(ReconcileNowResponse {
+        success: true,
+        checked_tasks,
+        recovered_tasks,
+        ignored_pause: true,
+        was_paused,
+    })
 }
 
 /// Set maximum concurrent tasks

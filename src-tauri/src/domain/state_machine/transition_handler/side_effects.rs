@@ -374,8 +374,24 @@ pub(crate) fn parse_metadata(task: &Task) -> Option<serde_json::Value> {
 
 /// Check if a task has the `merge_deferred` flag set in its metadata.
 pub(crate) fn has_merge_deferred_metadata(task: &Task) -> bool {
-    parse_metadata(task)
+    let legacy_deferred = parse_metadata(task)
         .and_then(|v| v.get("merge_deferred")?.as_bool())
+        .unwrap_or(false);
+    if legacy_deferred {
+        return true;
+    }
+
+    MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+        .ok()
+        .flatten()
+        .map(|meta| {
+            meta.last_state == MergeRecoveryState::Deferred
+                || meta
+                    .events
+                    .last()
+                    .map(|e| matches!(e.kind, MergeRecoveryEventKind::Deferred))
+                    .unwrap_or(false)
+        })
         .unwrap_or(false)
 }
 
@@ -394,6 +410,55 @@ pub(crate) fn clear_merge_deferred_metadata(task: &mut Task) {
             task.metadata = None;
         } else {
             task.metadata = Some(meta.to_string());
+        }
+    }
+}
+
+/// Mark task metadata as merge-deferred due to a branch lock error.
+///
+/// Uses structured `merge_recovery` metadata first, with a legacy fallback.
+fn set_branch_lock_deferred_metadata(
+    task: &mut Task,
+    task_id_str: &str,
+    source_branch: &str,
+    target_branch: &str,
+    error: &AppError,
+) {
+    let mut recovery = MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+        .unwrap_or(None)
+        .unwrap_or_else(MergeRecoveryMetadata::new);
+
+    let event = MergeRecoveryEvent::new(
+        MergeRecoveryEventKind::Deferred,
+        MergeRecoverySource::System,
+        MergeRecoveryReasonCode::GitError,
+        format!("Merge deferred due to branch lock: {}", error),
+    )
+    .with_target_branch(target_branch)
+    .with_source_branch(source_branch);
+
+    recovery.append_event_with_state(event, MergeRecoveryState::Deferred);
+
+    match recovery.update_task_metadata(task.metadata.as_deref()) {
+        Ok(updated_json) => {
+            task.metadata = Some(updated_json);
+        }
+        Err(serialize_err) => {
+            tracing::error!(
+                task_id = task_id_str,
+                error = %serialize_err,
+                "Failed to serialize merge recovery metadata, falling back to legacy"
+            );
+            task.metadata = Some(
+                serde_json::json!({
+                    "merge_deferred": true,
+                    "error": error.to_string(),
+                    "source_branch": source_branch,
+                    "target_branch": target_branch,
+                    "reason": "branch_lock",
+                })
+                .to_string(),
+            );
         }
     }
 }
@@ -505,7 +570,7 @@ pub async fn resolve_merge_branches(
     // Check if this task IS the merge task for a plan branch
     if let Ok(Some(pb)) = plan_branch_repo.get_by_merge_task_id(&task.id).await {
         if pb.status == PlanBranchStatus::Active {
-            tracing::info!(
+            tracing::debug!(
                 task_id = task.id.as_str(),
                 feature_branch = %pb.branch_name,
                 base_branch = %base_branch,
@@ -519,7 +584,7 @@ pub async fn resolve_merge_branches(
     if let Some(ref session_id) = task.ideation_session_id {
         if let Ok(Some(pb)) = plan_branch_repo.get_by_session_id(session_id).await {
             if pb.status == PlanBranchStatus::Active {
-                tracing::info!(
+                tracing::debug!(
                     task_id = task.id.as_str(),
                     task_branch = %task_branch,
                     feature_branch = %pb.branch_name,
@@ -4267,6 +4332,21 @@ impl<'a> super::TransitionHandler<'a> {
                                 error = %e,
                                 "Rebase merge in-repo failed due to branch lock, staying in PendingMerge"
                             );
+                            set_branch_lock_deferred_metadata(
+                                &mut task,
+                                task_id_str,
+                                &source_branch,
+                                &target_branch,
+                                &e,
+                            );
+                            task.touch();
+                            if let Err(update_err) = task_repo.update(&task).await {
+                                tracing::error!(
+                                    task_id = task_id_str,
+                                    error = %update_err,
+                                    "Failed to update task with merge_deferred metadata"
+                                );
+                            }
                             // Task stays in PendingMerge for retry
                         } else {
                             tracing::error!(
@@ -4567,6 +4647,22 @@ impl<'a> super::TransitionHandler<'a> {
                             }
                             if merge_wt_path.exists() {
                                 let _ = GitService::delete_worktree(repo_path, &merge_wt_path);
+                            }
+
+                            set_branch_lock_deferred_metadata(
+                                &mut task,
+                                task_id_str,
+                                &source_branch,
+                                &target_branch,
+                                &e,
+                            );
+                            task.touch();
+                            if let Err(update_err) = task_repo.update(&task).await {
+                                tracing::error!(
+                                    task_id = task_id_str,
+                                    error = %update_err,
+                                    "Failed to update task with merge_deferred metadata"
+                                );
                             }
                         } else {
                             tracing::error!(
@@ -5081,6 +5177,21 @@ impl<'a> super::TransitionHandler<'a> {
                             error = %e,
                             "Squash merge in worktree failed due to branch lock, staying in PendingMerge"
                         );
+                        set_branch_lock_deferred_metadata(
+                            &mut task,
+                            task_id_str,
+                            &source_branch,
+                            &target_branch,
+                            &e,
+                        );
+                        task.touch();
+                        if let Err(update_err) = task_repo.update(&task).await {
+                            tracing::error!(
+                                task_id = task_id_str,
+                                error = %update_err,
+                                "Failed to update task with merge_deferred metadata"
+                            );
+                        }
                     } else {
                         tracing::error!(
                             task_id = task_id_str,
@@ -5811,6 +5922,22 @@ impl<'a> super::TransitionHandler<'a> {
                             }
                             if merge_wt_path.exists() {
                                 let _ = GitService::delete_worktree(repo_path, &merge_wt_path);
+                            }
+
+                            set_branch_lock_deferred_metadata(
+                                &mut task,
+                                task_id_str,
+                                &source_branch,
+                                &target_branch,
+                                &e,
+                            );
+                            task.touch();
+                            if let Err(update_err) = task_repo.update(&task).await {
+                                tracing::error!(
+                                    task_id = task_id_str,
+                                    error = %update_err,
+                                    "Failed to update task with merge_deferred metadata"
+                                );
                             }
                         } else {
                             tracing::error!(task_id = task_id_str, error = %e, "Rebase+squash in worktrees failed, transitioning to MergeIncomplete");
@@ -6857,6 +6984,77 @@ mod tests {
         let mut task = make_task(None, None);
         task.metadata = Some(r#"{"merge_deferred": true}"#.to_string());
         assert!(has_merge_deferred_metadata(&task));
+    }
+
+    #[test]
+    fn has_merge_deferred_returns_true_when_merge_recovery_last_state_is_deferred() {
+        let mut task = make_task(None, None);
+        task.metadata = Some(
+            serde_json::json!({
+                "merge_recovery": {
+                    "version": 1,
+                    "events": [],
+                    "last_state": "deferred"
+                }
+            })
+            .to_string(),
+        );
+        assert!(has_merge_deferred_metadata(&task));
+    }
+
+    #[test]
+    fn has_merge_deferred_returns_true_when_latest_merge_recovery_event_is_deferred() {
+        let mut task = make_task(None, None);
+        task.metadata = Some(
+            serde_json::json!({
+                "merge_recovery": {
+                    "version": 1,
+                    "events": [
+                        {
+                            "at": "2026-02-10T00:00:00Z",
+                            "kind": "attempt_started",
+                            "source": "auto",
+                            "reason_code": "git_error",
+                            "message": "attempt started"
+                        },
+                        {
+                            "at": "2026-02-10T00:01:00Z",
+                            "kind": "deferred",
+                            "source": "system",
+                            "reason_code": "target_branch_busy",
+                            "message": "deferred due to blocker"
+                        }
+                    ],
+                    "last_state": "retrying"
+                }
+            })
+            .to_string(),
+        );
+        assert!(has_merge_deferred_metadata(&task));
+    }
+
+    #[test]
+    fn has_merge_deferred_returns_false_when_merge_recovery_not_deferred() {
+        let mut task = make_task(None, None);
+        task.metadata = Some(
+            serde_json::json!({
+                "merge_recovery": {
+                    "version": 1,
+                    "events": [
+                        {
+                            "at": "2026-02-10T00:00:00Z",
+                            "kind": "attempt_started",
+                            "source": "auto",
+                            "reason_code": "git_error",
+                            "message": "attempt started"
+                        }
+                    ],
+                    "last_state": "retrying"
+                }
+            })
+            .to_string(),
+        );
+        assert!(!has_merge_deferred_metadata(&task));
     }
 
     // ==================

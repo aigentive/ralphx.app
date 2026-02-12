@@ -49,6 +49,7 @@ pub use artifact_commands::{
 pub use chat_responses::ChatMessageResponse;
 pub use diff_commands::{get_file_diff, get_task_file_changes};
 pub use execution_commands::{
+    drain_merge_recovery_now,
     get_active_project, get_execution_status, get_global_execution_settings, get_running_processes,
     pause_execution, recover_task_execution, resolve_recovery_prompt, resume_execution,
     set_active_project, stop_execution, update_global_execution_settings, ActiveProjectState,

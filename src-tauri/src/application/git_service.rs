@@ -88,6 +88,26 @@ pub struct WorktreeInfo {
 pub struct GitService;
 
 impl GitService {
+    fn is_nothing_to_commit(stdout: &str, stderr: &str) -> bool {
+        let stdout_lower = stdout.to_ascii_lowercase();
+        let stderr_lower = stderr.to_ascii_lowercase();
+        stdout_lower.contains("nothing to commit")
+            || stderr_lower.contains("nothing to commit")
+            || stdout_lower.contains("working tree clean")
+            || stderr_lower.contains("working tree clean")
+    }
+
+    fn format_stdout_stderr(stdout: &str, stderr: &str) -> String {
+        let stdout_trimmed = stdout.trim();
+        let stderr_trimmed = stderr.trim();
+        match (!stdout_trimmed.is_empty(), !stderr_trimmed.is_empty()) {
+            (true, true) => format!("stdout: {}; stderr: {}", stdout_trimmed, stderr_trimmed),
+            (true, false) => format!("stdout: {}", stdout_trimmed),
+            (false, true) => format!("stderr: {}", stderr_trimmed),
+            (false, false) => "stdout/stderr empty".to_string(),
+        }
+    }
+
     // =========================================================================
     // Branch Operations (both modes)
     // =========================================================================
@@ -1164,9 +1184,10 @@ impl GitService {
             })?;
 
         if !commit_output.status.success() {
+            let stdout = String::from_utf8_lossy(&commit_output.stdout);
             let stderr = String::from_utf8_lossy(&commit_output.stderr);
             // "nothing to commit" means branches are identical — treat as success
-            if stderr.contains("nothing to commit") {
+            if Self::is_nothing_to_commit(&stdout, &stderr) {
                 let commit_sha = Self::get_head_sha(repo)?;
                 debug!(
                     "Squash merge no-op (branches identical), SHA: {}",
@@ -1176,7 +1197,7 @@ impl GitService {
             }
             return Err(AppError::GitOperation(format!(
                 "Failed to commit squash merge: {}",
-                stderr
+                Self::format_stdout_stderr(&stdout, &stderr)
             )));
         }
 
@@ -1256,8 +1277,9 @@ impl GitService {
             })?;
 
         if !commit_output.status.success() {
+            let stdout = String::from_utf8_lossy(&commit_output.stdout);
             let stderr = String::from_utf8_lossy(&commit_output.stderr);
-            if stderr.contains("nothing to commit") {
+            if Self::is_nothing_to_commit(&stdout, &stderr) {
                 let commit_sha = Self::get_head_sha(merge_worktree_path)?;
                 debug!(
                     "Squash merge no-op in worktree (branches identical), SHA: {}",
@@ -1268,7 +1290,7 @@ impl GitService {
             let _ = Self::delete_worktree(repo, merge_worktree_path);
             return Err(AppError::GitOperation(format!(
                 "Failed to commit squash merge in worktree: {}",
-                stderr
+                Self::format_stdout_stderr(&stdout, &stderr)
             )));
         }
 
@@ -1354,14 +1376,15 @@ impl GitService {
                     })?;
 
                 if !commit_output.status.success() {
+                    let stdout = String::from_utf8_lossy(&commit_output.stdout);
                     let stderr = String::from_utf8_lossy(&commit_output.stderr);
-                    if stderr.contains("nothing to commit") {
+                    if Self::is_nothing_to_commit(&stdout, &stderr) {
                         let sha = Self::get_head_sha(repo)?;
                         return Ok(MergeAttemptResult::Success { commit_sha: sha });
                     }
                     return Err(AppError::GitOperation(format!(
                         "Failed to commit rebase+squash: {}",
-                        stderr
+                        Self::format_stdout_stderr(&stdout, &stderr)
                     )));
                 }
 
@@ -1498,15 +1521,16 @@ impl GitService {
             })?;
 
         if !commit_output.status.success() {
+            let stdout = String::from_utf8_lossy(&commit_output.stdout);
             let stderr = String::from_utf8_lossy(&commit_output.stderr);
-            if stderr.contains("nothing to commit") {
+            if Self::is_nothing_to_commit(&stdout, &stderr) {
                 let sha = Self::get_head_sha(merge_worktree_path)?;
                 return Ok(MergeAttemptResult::Success { commit_sha: sha });
             }
             let _ = Self::delete_worktree(repo, merge_worktree_path);
             return Err(AppError::GitOperation(format!(
                 "Failed to commit rebase+squash in worktree: {}",
-                stderr
+                Self::format_stdout_stderr(&stdout, &stderr)
             )));
         }
 

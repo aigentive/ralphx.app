@@ -69,6 +69,12 @@ struct RecoveryEvidence {
     is_deferred: bool,
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize)]
+pub struct ReconciliationSummary {
+    pub checked_tasks: u32,
+    pub recovered_tasks: u32,
+}
+
 impl RecoveryEvidence {
     fn has_conflict(&self) -> bool {
         match self.run_status {
@@ -360,17 +366,26 @@ impl<R: Runtime> ReconciliationRunner<R> {
     }
 
     pub async fn reconcile_stuck_tasks(&self) {
+        let _ = self.reconcile_stuck_tasks_with_options(false).await;
+    }
+
+    pub async fn reconcile_stuck_tasks_force(&self) -> ReconciliationSummary {
+        self.reconcile_stuck_tasks_with_options(true).await
+    }
+
+    async fn reconcile_stuck_tasks_with_options(&self, ignore_pause: bool) -> ReconciliationSummary {
+        let mut summary = ReconciliationSummary::default();
         self.prune_stale_running_registry_entries().await;
 
-        if self.execution_state.is_paused() {
-            return;
+        if self.execution_state.is_paused() && !ignore_pause {
+            return summary;
         }
 
         let projects = match self.project_repo.get_all().await {
             Ok(projects) => projects,
             Err(e) => {
                 warn!(error = %e, "Failed to get projects for reconciliation");
-                return;
+                return summary;
             }
         };
 
@@ -400,10 +415,15 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 };
 
                 for task in tasks {
-                    let _ = self.reconcile_task(&task, status).await;
+                    summary.checked_tasks += 1;
+                    if self.reconcile_task(&task, status).await {
+                        summary.recovered_tasks += 1;
+                    }
                 }
             }
         }
+
+        summary
     }
 
     async fn prune_stale_running_registry_entries(&self) {

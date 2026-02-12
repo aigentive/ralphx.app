@@ -523,6 +523,7 @@ pub fn run() {
             commands::execution_commands::stop_execution,
             commands::execution_commands::recover_task_execution,
             commands::execution_commands::resolve_recovery_prompt,
+            commands::execution_commands::drain_merge_recovery_now,
             commands::execution_commands::set_max_concurrent,
             commands::execution_commands::get_execution_settings,
             commands::execution_commands::update_execution_settings,
