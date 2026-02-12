@@ -220,6 +220,8 @@ pub enum MergeRecoveryReasonCode {
     GitError,
     /// Validation failed
     ValidationFailed,
+    /// Source or target branch does not exist
+    BranchNotFound,
     /// Unknown/unclassified reason
     Unknown,
 }
@@ -763,5 +765,15 @@ mod tests {
         assert_eq!(parsed.events[0].message, "Deferred");
         assert_eq!(parsed.events[0].target_branch, Some("main".to_string()));
         assert_eq!(parsed.events[0].attempt, Some(1));
+    }
+
+    #[test]
+    fn merge_recovery_reason_code_branch_not_found_serializes() {
+        let code = MergeRecoveryReasonCode::BranchNotFound;
+        let json = serde_json::to_string(&code).unwrap();
+        assert_eq!(json, "\"branch_not_found\"");
+
+        let parsed: MergeRecoveryReasonCode = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, MergeRecoveryReasonCode::BranchNotFound);
     }
 }
