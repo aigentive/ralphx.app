@@ -96,7 +96,7 @@ describe("MergeConflictTaskDetail", () => {
   });
 
   describe("handleResolveConflicts error handling", () => {
-    it("displays fallback for string rejection (non-Error)", async () => {
+    it("displays extracted message for string rejection (non-Error)", async () => {
       const user = userEvent.setup();
       // Tauri rejects with plain strings for backend errors
       mockInvoke.mockRejectedValueOnce("Git merge failed: conflict in src/main.rs");
@@ -107,12 +107,12 @@ describe("MergeConflictTaskDetail", () => {
       await user.click(screen.getByTestId("resolve-conflict-button"));
 
       await waitFor(() => {
-        // String rejection is not instanceof Error, so fallback is shown
-        expect(screen.getByText("Failed to mark conflicts as resolved")).toBeInTheDocument();
+        // extractErrorMessage extracts the string value directly
+        expect(screen.getByText("Git merge failed: conflict in src/main.rs")).toBeInTheDocument();
       });
     });
 
-    it("displays fallback for object rejection with .message", async () => {
+    it("displays extracted message for object rejection with .message", async () => {
       const user = userEvent.setup();
       mockInvoke.mockRejectedValueOnce({ message: "Branch not found" });
 
@@ -122,8 +122,8 @@ describe("MergeConflictTaskDetail", () => {
       await user.click(screen.getByTestId("resolve-conflict-button"));
 
       await waitFor(() => {
-        // Plain object is not instanceof Error, so fallback is shown
-        expect(screen.getByText("Failed to mark conflicts as resolved")).toBeInTheDocument();
+        // extractErrorMessage extracts .message from plain objects
+        expect(screen.getByText("Branch not found")).toBeInTheDocument();
       });
     });
 
@@ -157,7 +157,7 @@ describe("MergeConflictTaskDetail", () => {
   });
 
   describe("handleRetryMerge error handling", () => {
-    it("displays fallback for string rejection (non-Error)", async () => {
+    it("displays extracted message for string rejection (non-Error)", async () => {
       const user = userEvent.setup();
       // Tauri rejects with plain strings for backend errors
       mockInvoke.mockRejectedValueOnce("Merge target branch is locked");
@@ -168,12 +168,12 @@ describe("MergeConflictTaskDetail", () => {
       await user.click(screen.getByTestId("retry-merge-button"));
 
       await waitFor(() => {
-        // String rejection is not instanceof Error, so fallback is shown
-        expect(screen.getByText("Failed to retry merge")).toBeInTheDocument();
+        // extractErrorMessage extracts the string value directly
+        expect(screen.getByText("Merge target branch is locked")).toBeInTheDocument();
       });
     });
 
-    it("displays fallback for object rejection with .message", async () => {
+    it("displays extracted message for object rejection with .message", async () => {
       const user = userEvent.setup();
       mockInvoke.mockRejectedValueOnce({ message: "Permission denied" });
 
@@ -183,8 +183,8 @@ describe("MergeConflictTaskDetail", () => {
       await user.click(screen.getByTestId("retry-merge-button"));
 
       await waitFor(() => {
-        // Plain object is not instanceof Error, so fallback is shown
-        expect(screen.getByText("Failed to retry merge")).toBeInTheDocument();
+        // extractErrorMessage extracts .message from plain objects
+        expect(screen.getByText("Permission denied")).toBeInTheDocument();
       });
     });
 

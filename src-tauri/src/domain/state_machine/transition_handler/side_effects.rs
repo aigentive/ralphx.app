@@ -2462,6 +2462,15 @@ impl<'a> super::TransitionHandler<'a> {
         // - (Merge, Local): direct merge, no rebase (operates on main repo)
         // - (Merge, Worktree): merge in isolated worktree (or in-repo if target checked out)
         // - (Rebase, Worktree): rebase in worktree then merge (or in-repo if target checked out)
+        // - (Squash, Local): squash merge for clean single commit (operates on main repo)
+        // - (Squash, Worktree): squash merge in worktree (or in-repo if target checked out)
+
+        // Build commit message for squash merges
+        let squash_commit_msg = format!(
+            "feat: {} ({})",
+            source_branch,
+            task.title,
+        );
         match (project.merge_strategy, project.git_mode) {
         (MergeStrategy::Merge, GitMode::Worktree) => {
             // Detect if the target branch is already checked out in the primary repo.
@@ -4452,6 +4461,1246 @@ impl<'a> super::TransitionHandler<'a> {
                                 error = %e,
                                 "Rebase-and-merge in worktree failed, transitioning to MergeIncomplete"
                             );
+
+                            if rebase_wt_path.exists() {
+                                let _ = GitService::delete_worktree(repo_path, &rebase_wt_path);
+                            }
+                            if merge_wt_path.exists() {
+                                let _ = GitService::delete_worktree(repo_path, &merge_wt_path);
+                            }
+
+                            task.metadata = Some(
+                                serde_json::json!({
+                                    "error": e.to_string(),
+                                    "source_branch": source_branch,
+                                    "target_branch": target_branch,
+                                })
+                                .to_string(),
+                            );
+                            task.internal_status = InternalStatus::MergeIncomplete;
+                            task.touch();
+
+                            let _ = task_repo.update(&task).await;
+                            let _ = task_repo
+                                .persist_status_change(
+                                    &task_id,
+                                    InternalStatus::PendingMerge,
+                                    InternalStatus::MergeIncomplete,
+                                    "merge_incomplete",
+                                )
+                                .await;
+
+                            self.machine
+                                .context
+                                .services
+                                .event_emitter
+                                .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                                .await;
+                        }
+                    }
+                }
+            }
+        }
+        (MergeStrategy::Squash, GitMode::Local) => {
+            // Local mode: squash merge for clean single commit
+            let merge_result =
+                GitService::try_squash_merge(repo_path, &source_branch, &target_branch, &squash_commit_msg);
+            match merge_result {
+                Ok(MergeAttemptResult::Success { commit_sha }) => {
+                    tracing::info!(
+                        task_id = task_id_str,
+                        commit_sha = %commit_sha,
+                        "Squash merge succeeded (single commit on target)"
+                    );
+
+                    emit_merge_progress(
+                        self.machine.context.services.app_handle.as_ref(),
+                        task_id_str,
+                        MergePhase::ProgrammaticMerge,
+                        MergePhaseStatus::Passed,
+                        format!("Squash merge completed: {}", commit_sha),
+                    );
+
+                    if TEMP_SKIP_POST_MERGE_VALIDATION {
+                        tracing::warn!(
+                            task_id = task_id_str,
+                            "Post-merge validation temporarily disabled (global flag, local squash merge)"
+                        );
+                    } else {
+                        let skip_validation = take_skip_validation_flag(&mut task);
+                        let validation_mode = &project.merge_validation_mode;
+                        if !skip_validation && *validation_mode != MergeValidationMode::Off {
+                            let source_sha =
+                                GitService::get_branch_sha(repo_path, &source_branch).ok();
+                            let cached_log = source_sha
+                                .as_deref()
+                                .and_then(|sha| extract_cached_validation(&task, sha));
+                            let app_handle_ref = self.machine.context.services.app_handle.as_ref();
+                            if let Some(validation) = run_validation_commands(
+                                &project,
+                                &task,
+                                repo_path,
+                                task_id_str,
+                                app_handle_ref,
+                                cached_log.as_deref(),
+                            )
+                            .await
+                            {
+                                if !validation.all_passed {
+                                    if *validation_mode == MergeValidationMode::Warn {
+                                        tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode (local squash merge), proceeding");
+                                        task.metadata = Some(format_validation_warn_metadata(
+                                            &validation.log,
+                                            &source_branch,
+                                            &target_branch,
+                                        ));
+                                    } else {
+                                        self.handle_validation_failure(
+                                            &mut task,
+                                            &task_id,
+                                            task_id_str,
+                                            task_repo,
+                                            &validation.failures,
+                                            &validation.log,
+                                            &source_branch,
+                                            &target_branch,
+                                            repo_path,
+                                            "local",
+                                            validation_mode,
+                                        )
+                                        .await;
+                                        return;
+                                    }
+                                } else {
+                                    task.metadata = Some(
+                                        serde_json::json!({
+                                            "validation_log": validation.log,
+                                            "validation_source_sha": source_sha,
+                                            "source_branch": source_branch,
+                                            "target_branch": target_branch,
+                                        })
+                                        .to_string(),
+                                    );
+                                }
+                            }
+                        }
+                    }
+
+                    let app_handle = self.machine.context.services.app_handle.as_ref();
+                    if let Err(e) = complete_merge_internal(
+                        &mut task,
+                        &project,
+                        &commit_sha,
+                        task_repo,
+                        app_handle,
+                    )
+                    .await
+                    {
+                        tracing::error!(error = %e, task_id = task_id_str, "Failed to complete squash merge, falling back to MergeIncomplete");
+
+                        task.metadata = Some(
+                            serde_json::json!({
+                                "error": format!("complete_merge_internal failed: {}", e),
+                                "source_branch": source_branch,
+                                "target_branch": target_branch,
+                            })
+                            .to_string(),
+                        );
+                        task.internal_status = InternalStatus::MergeIncomplete;
+                        task.touch();
+
+                        let _ = task_repo.update(&task).await;
+                        let _ = task_repo
+                            .persist_status_change(
+                                &task_id,
+                                InternalStatus::PendingMerge,
+                                InternalStatus::MergeIncomplete,
+                                "merge_incomplete",
+                            )
+                            .await;
+
+                        self.machine
+                            .context
+                            .services
+                            .event_emitter
+                            .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                            .await;
+                    } else {
+                        self.post_merge_cleanup(task_id_str, &task_id, repo_path, plan_branch_repo)
+                            .await;
+                    }
+                }
+                Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
+                    tracing::info!(
+                        task_id = task_id_str,
+                        conflict_count = conflict_files.len(),
+                        "Squash merge failed: conflicts detected, transitioning to Merging"
+                    );
+
+                    emit_merge_progress(
+                        self.machine.context.services.app_handle.as_ref(),
+                        task_id_str,
+                        MergePhase::ProgrammaticMerge,
+                        MergePhaseStatus::Failed,
+                        format!("Squash merge conflicts detected in {} files", conflict_files.len()),
+                    );
+
+                    task.internal_status = InternalStatus::Merging;
+                    task.touch();
+
+                    if let Err(e) = task_repo.update(&task).await {
+                        tracing::error!(error = %e, "Failed to update task to Merging status");
+                        return;
+                    }
+
+                    if let Err(e) = task_repo
+                        .persist_status_change(
+                            &task_id,
+                            InternalStatus::PendingMerge,
+                            InternalStatus::Merging,
+                            "merge_conflict",
+                        )
+                        .await
+                    {
+                        tracing::warn!(error = %e, "Failed to record squash merge conflict transition (non-fatal)");
+                    }
+
+                    self.machine
+                        .context
+                        .services
+                        .event_emitter
+                        .emit_status_change(task_id_str, "pending_merge", "merging")
+                        .await;
+
+                    let prompt = format!("Resolve merge conflicts for task: {}", task_id_str);
+                    tracing::info!(
+                        task_id = task_id_str,
+                        "Spawning merger agent for conflict resolution (squash merge)"
+                    );
+
+                    let result = self
+                        .machine
+                        .context
+                        .services
+                        .chat_service
+                        .send_message(
+                            crate::domain::entities::ChatContextType::Merge,
+                            task_id_str,
+                            &prompt,
+                        )
+                        .await;
+
+                    match &result {
+                        Ok(_) => tracing::info!(task_id = task_id_str, "Merger agent spawned successfully"),
+                        Err(e) => tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent"),
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(
+                        task_id = task_id_str,
+                        error = %e,
+                        "Squash merge failed, transitioning to MergeIncomplete"
+                    );
+
+                    task.metadata = Some(
+                        serde_json::json!({
+                            "error": e.to_string(),
+                            "source_branch": source_branch,
+                            "target_branch": target_branch,
+                        })
+                        .to_string(),
+                    );
+                    task.internal_status = InternalStatus::MergeIncomplete;
+                    task.touch();
+
+                    let _ = task_repo.update(&task).await;
+                    let _ = task_repo
+                        .persist_status_change(
+                            &task_id,
+                            InternalStatus::PendingMerge,
+                            InternalStatus::MergeIncomplete,
+                            "merge_incomplete",
+                        )
+                        .await;
+
+                    self.machine
+                        .context
+                        .services
+                        .event_emitter
+                        .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                        .await;
+                }
+            }
+        }
+        (MergeStrategy::Squash, GitMode::Worktree) => {
+            // Worktree mode: squash merge in worktree (or in-repo if target checked out)
+            let current_branch = GitService::get_current_branch(repo_path).unwrap_or_default();
+            let target_is_checked_out = current_branch == target_branch;
+
+            let merge_result = if target_is_checked_out {
+                tracing::info!(
+                    task_id = task_id_str,
+                    target_branch = %target_branch,
+                    "Target branch is checked out in primary repo, squash merging directly in-repo"
+                );
+                GitService::try_squash_merge(repo_path, &source_branch, &target_branch, &squash_commit_msg)
+            } else {
+                let merge_wt_path = PathBuf::from(compute_merge_worktree_path(&project, task_id_str));
+                tracing::info!(
+                    task_id = task_id_str,
+                    merge_worktree = %merge_wt_path.display(),
+                    "Squash merging in isolated worktree"
+                );
+                let result = GitService::try_squash_merge_in_worktree(
+                    repo_path,
+                    &source_branch,
+                    &target_branch,
+                    &merge_wt_path,
+                    &squash_commit_msg,
+                );
+                // Clean up worktree on success
+                if let Ok(MergeAttemptResult::Success { .. }) = &result {
+                    if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt_path) {
+                        tracing::warn!(
+                            error = %e,
+                            task_id = task_id_str,
+                            "Failed to delete merge worktree after squash success (non-fatal)"
+                        );
+                    }
+                }
+                result
+            };
+
+            match merge_result {
+                Ok(MergeAttemptResult::Success { commit_sha }) => {
+                    tracing::info!(
+                        task_id = task_id_str,
+                        commit_sha = %commit_sha,
+                        "Squash merge in worktree mode succeeded"
+                    );
+
+                    emit_merge_progress(
+                        self.machine.context.services.app_handle.as_ref(),
+                        task_id_str,
+                        MergePhase::ProgrammaticMerge,
+                        MergePhaseStatus::Passed,
+                        format!("Squash merge completed: {}", commit_sha),
+                    );
+
+                    if TEMP_SKIP_POST_MERGE_VALIDATION {
+                        tracing::warn!(
+                            task_id = task_id_str,
+                            "Post-merge validation temporarily disabled (global flag, worktree squash merge)"
+                        );
+                    } else {
+                        let skip_validation = take_skip_validation_flag(&mut task);
+                        let validation_mode = &project.merge_validation_mode;
+                        if !skip_validation && *validation_mode != MergeValidationMode::Off {
+                            let source_sha =
+                                GitService::get_branch_sha(repo_path, &source_branch).ok();
+                            let cached_log = source_sha
+                                .as_deref()
+                                .and_then(|sha| extract_cached_validation(&task, sha));
+                            let app_handle_ref = self.machine.context.services.app_handle.as_ref();
+                            if let Some(validation) = run_validation_commands(
+                                &project,
+                                &task,
+                                repo_path,
+                                task_id_str,
+                                app_handle_ref,
+                                cached_log.as_deref(),
+                            )
+                            .await
+                            {
+                                if !validation.all_passed {
+                                    if *validation_mode == MergeValidationMode::Warn {
+                                        tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode (worktree squash merge), proceeding");
+                                        task.metadata = Some(format_validation_warn_metadata(
+                                            &validation.log,
+                                            &source_branch,
+                                            &target_branch,
+                                        ));
+                                    } else {
+                                        self.handle_validation_failure(
+                                            &mut task,
+                                            &task_id,
+                                            task_id_str,
+                                            task_repo,
+                                            &validation.failures,
+                                            &validation.log,
+                                            &source_branch,
+                                            &target_branch,
+                                            repo_path,
+                                            "worktree",
+                                            validation_mode,
+                                        )
+                                        .await;
+                                        return;
+                                    }
+                                } else {
+                                    task.metadata = Some(
+                                        serde_json::json!({
+                                            "validation_log": validation.log,
+                                            "validation_source_sha": source_sha,
+                                            "source_branch": source_branch,
+                                            "target_branch": target_branch,
+                                        })
+                                        .to_string(),
+                                    );
+                                }
+                            }
+                        }
+                    }
+
+                    let app_handle = self.machine.context.services.app_handle.as_ref();
+                    if let Err(e) = complete_merge_internal(
+                        &mut task,
+                        &project,
+                        &commit_sha,
+                        task_repo,
+                        app_handle,
+                    )
+                    .await
+                    {
+                        tracing::error!(error = %e, task_id = task_id_str, "Failed to complete squash merge in worktree mode");
+
+                        task.metadata = Some(
+                            serde_json::json!({
+                                "error": format!("complete_merge_internal failed: {}", e),
+                                "source_branch": source_branch,
+                                "target_branch": target_branch,
+                            })
+                            .to_string(),
+                        );
+                        task.internal_status = InternalStatus::MergeIncomplete;
+                        task.touch();
+
+                        let _ = task_repo.update(&task).await;
+                        let _ = task_repo
+                            .persist_status_change(
+                                &task_id,
+                                InternalStatus::PendingMerge,
+                                InternalStatus::MergeIncomplete,
+                                "merge_incomplete",
+                            )
+                            .await;
+
+                        self.machine
+                            .context
+                            .services
+                            .event_emitter
+                            .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                            .await;
+                    } else {
+                        self.post_merge_cleanup(task_id_str, &task_id, repo_path, plan_branch_repo)
+                            .await;
+                    }
+                }
+                Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
+                    tracing::info!(
+                        task_id = task_id_str,
+                        conflict_count = conflict_files.len(),
+                        "Squash merge in worktree has conflicts, transitioning to Merging"
+                    );
+
+                    emit_merge_progress(
+                        self.machine.context.services.app_handle.as_ref(),
+                        task_id_str,
+                        MergePhase::ProgrammaticMerge,
+                        MergePhaseStatus::Failed,
+                        format!("Squash merge conflicts detected in {} files", conflict_files.len()),
+                    );
+
+                    task.internal_status = InternalStatus::Merging;
+                    task.touch();
+
+                    if let Err(e) = task_repo.update(&task).await {
+                        tracing::error!(error = %e, "Failed to update task to Merging status");
+                        return;
+                    }
+
+                    if let Err(e) = task_repo
+                        .persist_status_change(
+                            &task_id,
+                            InternalStatus::PendingMerge,
+                            InternalStatus::Merging,
+                            "merge_conflict",
+                        )
+                        .await
+                    {
+                        tracing::warn!(error = %e, "Failed to record squash merge conflict transition (non-fatal)");
+                    }
+
+                    self.machine
+                        .context
+                        .services
+                        .event_emitter
+                        .emit_status_change(task_id_str, "pending_merge", "merging")
+                        .await;
+
+                    let prompt = format!("Resolve merge conflicts for task: {}", task_id_str);
+                    tracing::info!(
+                        task_id = task_id_str,
+                        "Spawning merger agent for conflict resolution (squash merge, worktree)"
+                    );
+
+                    let result = self
+                        .machine
+                        .context
+                        .services
+                        .chat_service
+                        .send_message(
+                            crate::domain::entities::ChatContextType::Merge,
+                            task_id_str,
+                            &prompt,
+                        )
+                        .await;
+
+                    match &result {
+                        Ok(_) => tracing::info!(task_id = task_id_str, "Merger agent spawned successfully"),
+                        Err(e) => tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent"),
+                    }
+                }
+                Err(e) => {
+                    if GitService::is_branch_lock_error(&e) {
+                        tracing::warn!(
+                            task_id = task_id_str,
+                            error = %e,
+                            "Squash merge in worktree failed due to branch lock, staying in PendingMerge"
+                        );
+                    } else {
+                        tracing::error!(
+                            task_id = task_id_str,
+                            error = %e,
+                            "Squash merge in worktree failed, transitioning to MergeIncomplete"
+                        );
+
+                        task.metadata = Some(
+                            serde_json::json!({
+                                "error": e.to_string(),
+                                "source_branch": source_branch,
+                                "target_branch": target_branch,
+                            })
+                            .to_string(),
+                        );
+                        task.internal_status = InternalStatus::MergeIncomplete;
+                        task.touch();
+
+                        let _ = task_repo.update(&task).await;
+                        let _ = task_repo
+                            .persist_status_change(
+                                &task_id,
+                                InternalStatus::PendingMerge,
+                                InternalStatus::MergeIncomplete,
+                                "merge_incomplete",
+                            )
+                            .await;
+
+                        self.machine
+                            .context
+                            .services
+                            .event_emitter
+                            .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                            .await;
+                    }
+                }
+            }
+        }
+        (MergeStrategy::RebaseSquash, GitMode::Local) => {
+            // Local mode: rebase first (catches conflicts), then squash into single commit
+            let merge_result = GitService::try_rebase_squash_merge(
+                repo_path,
+                &source_branch,
+                &target_branch,
+                &squash_commit_msg,
+            );
+            match merge_result {
+                Ok(MergeAttemptResult::Success { commit_sha }) => {
+                    tracing::info!(
+                        task_id = task_id_str,
+                        commit_sha = %commit_sha,
+                        "Rebase+squash merge succeeded (single commit on target)"
+                    );
+
+                    emit_merge_progress(
+                        self.machine.context.services.app_handle.as_ref(),
+                        task_id_str,
+                        MergePhase::ProgrammaticMerge,
+                        MergePhaseStatus::Passed,
+                        format!("Rebase+squash completed: {}", commit_sha),
+                    );
+
+                    if TEMP_SKIP_POST_MERGE_VALIDATION {
+                        tracing::warn!(
+                            task_id = task_id_str,
+                            "Post-merge validation temporarily disabled (global flag, local rebase+squash)"
+                        );
+                    } else {
+                        let skip_validation = take_skip_validation_flag(&mut task);
+                        let validation_mode = &project.merge_validation_mode;
+                        if !skip_validation && *validation_mode != MergeValidationMode::Off {
+                            let source_sha =
+                                GitService::get_branch_sha(repo_path, &source_branch).ok();
+                            let cached_log = source_sha
+                                .as_deref()
+                                .and_then(|sha| extract_cached_validation(&task, sha));
+                            let app_handle_ref = self.machine.context.services.app_handle.as_ref();
+                            if let Some(validation) = run_validation_commands(
+                                &project,
+                                &task,
+                                repo_path,
+                                task_id_str,
+                                app_handle_ref,
+                                cached_log.as_deref(),
+                            )
+                            .await
+                            {
+                                if !validation.all_passed {
+                                    if *validation_mode == MergeValidationMode::Warn {
+                                        tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode (local rebase+squash), proceeding");
+                                        task.metadata = Some(format_validation_warn_metadata(
+                                            &validation.log,
+                                            &source_branch,
+                                            &target_branch,
+                                        ));
+                                    } else {
+                                        self.handle_validation_failure(
+                                            &mut task,
+                                            &task_id,
+                                            task_id_str,
+                                            task_repo,
+                                            &validation.failures,
+                                            &validation.log,
+                                            &source_branch,
+                                            &target_branch,
+                                            repo_path,
+                                            "local",
+                                            validation_mode,
+                                        )
+                                        .await;
+                                        return;
+                                    }
+                                } else {
+                                    task.metadata = Some(
+                                        serde_json::json!({
+                                            "validation_log": validation.log,
+                                            "validation_source_sha": source_sha,
+                                            "source_branch": source_branch,
+                                            "target_branch": target_branch,
+                                        })
+                                        .to_string(),
+                                    );
+                                }
+                            }
+                        }
+                    }
+
+                    let app_handle = self.machine.context.services.app_handle.as_ref();
+                    if let Err(e) = complete_merge_internal(
+                        &mut task,
+                        &project,
+                        &commit_sha,
+                        task_repo,
+                        app_handle,
+                    )
+                    .await
+                    {
+                        tracing::error!(error = %e, task_id = task_id_str, "Failed to complete rebase+squash, falling back to MergeIncomplete");
+
+                        task.metadata = Some(
+                            serde_json::json!({
+                                "error": format!("complete_merge_internal failed: {}", e),
+                                "source_branch": source_branch,
+                                "target_branch": target_branch,
+                            })
+                            .to_string(),
+                        );
+                        task.internal_status = InternalStatus::MergeIncomplete;
+                        task.touch();
+
+                        let _ = task_repo.update(&task).await;
+                        let _ = task_repo
+                            .persist_status_change(
+                                &task_id,
+                                InternalStatus::PendingMerge,
+                                InternalStatus::MergeIncomplete,
+                                "merge_incomplete",
+                            )
+                            .await;
+
+                        self.machine
+                            .context
+                            .services
+                            .event_emitter
+                            .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                            .await;
+                    } else {
+                        self.post_merge_cleanup(task_id_str, &task_id, repo_path, plan_branch_repo)
+                            .await;
+                    }
+                }
+                Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
+                    tracing::info!(
+                        task_id = task_id_str,
+                        conflict_count = conflict_files.len(),
+                        "Rebase+squash: rebase conflicts detected, transitioning to Merging"
+                    );
+
+                    emit_merge_progress(
+                        self.machine.context.services.app_handle.as_ref(),
+                        task_id_str,
+                        MergePhase::ProgrammaticMerge,
+                        MergePhaseStatus::Failed,
+                        format!("Rebase conflicts detected in {} files", conflict_files.len()),
+                    );
+
+                    task.internal_status = InternalStatus::Merging;
+                    task.touch();
+
+                    if let Err(e) = task_repo.update(&task).await {
+                        tracing::error!(error = %e, "Failed to update task to Merging status");
+                        return;
+                    }
+
+                    if let Err(e) = task_repo
+                        .persist_status_change(
+                            &task_id,
+                            InternalStatus::PendingMerge,
+                            InternalStatus::Merging,
+                            "merge_conflict",
+                        )
+                        .await
+                    {
+                        tracing::warn!(error = %e, "Failed to record rebase+squash conflict transition (non-fatal)");
+                    }
+
+                    self.machine
+                        .context
+                        .services
+                        .event_emitter
+                        .emit_status_change(task_id_str, "pending_merge", "merging")
+                        .await;
+
+                    let prompt = format!("Resolve rebase conflicts for task: {}. After resolving each file, run `git add <file>` then `git rebase --continue`.", task_id_str);
+                    tracing::info!(task_id = task_id_str, "Spawning merger agent for rebase conflict resolution (rebase+squash)");
+
+                    let result = self
+                        .machine
+                        .context
+                        .services
+                        .chat_service
+                        .send_message(
+                            crate::domain::entities::ChatContextType::Merge,
+                            task_id_str,
+                            &prompt,
+                        )
+                        .await;
+
+                    match &result {
+                        Ok(_) => tracing::info!(task_id = task_id_str, "Merger agent spawned successfully"),
+                        Err(e) => tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent"),
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(
+                        task_id = task_id_str,
+                        error = %e,
+                        "Rebase+squash failed, transitioning to MergeIncomplete"
+                    );
+
+                    task.metadata = Some(
+                        serde_json::json!({
+                            "error": e.to_string(),
+                            "source_branch": source_branch,
+                            "target_branch": target_branch,
+                        })
+                        .to_string(),
+                    );
+                    task.internal_status = InternalStatus::MergeIncomplete;
+                    task.touch();
+
+                    let _ = task_repo.update(&task).await;
+                    let _ = task_repo
+                        .persist_status_change(
+                            &task_id,
+                            InternalStatus::PendingMerge,
+                            InternalStatus::MergeIncomplete,
+                            "merge_incomplete",
+                        )
+                        .await;
+
+                    self.machine
+                        .context
+                        .services
+                        .event_emitter
+                        .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                        .await;
+                }
+            }
+        }
+        (MergeStrategy::RebaseSquash, GitMode::Worktree) => {
+            // Worktree mode: rebase in worktree, then squash into single commit
+            let current_branch = GitService::get_current_branch(repo_path).unwrap_or_default();
+            let target_is_checked_out = current_branch == target_branch;
+
+            if target_is_checked_out {
+                // Target checked out in primary repo — rebase+squash in-repo
+                tracing::info!(
+                    task_id = task_id_str,
+                    target_branch = %target_branch,
+                    "Target branch is checked out, rebase+squash directly in-repo"
+                );
+                let merge_result = GitService::try_rebase_squash_merge(
+                    repo_path,
+                    &source_branch,
+                    &target_branch,
+                    &squash_commit_msg,
+                );
+
+                match merge_result {
+                    Ok(MergeAttemptResult::Success { commit_sha }) => {
+                        tracing::info!(
+                            task_id = task_id_str,
+                            commit_sha = %commit_sha,
+                            "Rebase+squash in-repo succeeded"
+                        );
+
+                        emit_merge_progress(
+                            self.machine.context.services.app_handle.as_ref(),
+                            task_id_str,
+                            MergePhase::ProgrammaticMerge,
+                            MergePhaseStatus::Passed,
+                            format!("Rebase+squash completed: {}", commit_sha),
+                        );
+
+                        if TEMP_SKIP_POST_MERGE_VALIDATION {
+                            tracing::warn!(task_id = task_id_str, "Post-merge validation temporarily disabled (global flag, worktree rebase+squash in-repo)");
+                        } else {
+                            let skip_validation = take_skip_validation_flag(&mut task);
+                            let validation_mode = &project.merge_validation_mode;
+                            if !skip_validation && *validation_mode != MergeValidationMode::Off {
+                                let source_sha =
+                                    GitService::get_branch_sha(repo_path, &source_branch).ok();
+                                let cached_log = source_sha
+                                    .as_deref()
+                                    .and_then(|sha| extract_cached_validation(&task, sha));
+                                let app_handle_ref = self.machine.context.services.app_handle.as_ref();
+                                if let Some(validation) = run_validation_commands(
+                                    &project,
+                                    &task,
+                                    repo_path,
+                                    task_id_str,
+                                    app_handle_ref,
+                                    cached_log.as_deref(),
+                                )
+                                .await
+                                {
+                                    if !validation.all_passed {
+                                        if *validation_mode == MergeValidationMode::Warn {
+                                            tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode (worktree rebase+squash in-repo), proceeding");
+                                            task.metadata = Some(format_validation_warn_metadata(
+                                                &validation.log,
+                                                &source_branch,
+                                                &target_branch,
+                                            ));
+                                        } else {
+                                            self.handle_validation_failure(
+                                                &mut task,
+                                                &task_id,
+                                                task_id_str,
+                                                task_repo,
+                                                &validation.failures,
+                                                &validation.log,
+                                                &source_branch,
+                                                &target_branch,
+                                                repo_path,
+                                                "worktree",
+                                                validation_mode,
+                                            )
+                                            .await;
+                                            return;
+                                        }
+                                    } else {
+                                        task.metadata = Some(
+                                            serde_json::json!({
+                                                "validation_log": validation.log,
+                                                "validation_source_sha": source_sha,
+                                                "source_branch": source_branch,
+                                                "target_branch": target_branch,
+                                            })
+                                            .to_string(),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+
+                        let app_handle = self.machine.context.services.app_handle.as_ref();
+                        if let Err(e) = complete_merge_internal(
+                            &mut task,
+                            &project,
+                            &commit_sha,
+                            task_repo,
+                            app_handle,
+                        )
+                        .await
+                        {
+                            tracing::error!(error = %e, task_id = task_id_str, "Failed to complete rebase+squash in-repo");
+
+                            task.metadata = Some(
+                                serde_json::json!({
+                                    "error": format!("complete_merge_internal failed: {}", e),
+                                    "source_branch": source_branch,
+                                    "target_branch": target_branch,
+                                })
+                                .to_string(),
+                            );
+                            task.internal_status = InternalStatus::MergeIncomplete;
+                            task.touch();
+
+                            let _ = task_repo.update(&task).await;
+                            let _ = task_repo
+                                .persist_status_change(
+                                    &task_id,
+                                    InternalStatus::PendingMerge,
+                                    InternalStatus::MergeIncomplete,
+                                    "merge_incomplete",
+                                )
+                                .await;
+
+                            self.machine
+                                .context
+                                .services
+                                .event_emitter
+                                .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                                .await;
+                        } else {
+                            self.post_merge_cleanup(task_id_str, &task_id, repo_path, plan_branch_repo)
+                                .await;
+                        }
+                    }
+                    Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
+                        tracing::info!(
+                            task_id = task_id_str,
+                            conflict_count = conflict_files.len(),
+                            "Rebase+squash in-repo: conflicts detected, transitioning to Merging"
+                        );
+
+                        emit_merge_progress(
+                            self.machine.context.services.app_handle.as_ref(),
+                            task_id_str,
+                            MergePhase::ProgrammaticMerge,
+                            MergePhaseStatus::Failed,
+                            format!("Rebase conflicts detected in {} files", conflict_files.len()),
+                        );
+
+                        task.internal_status = InternalStatus::Merging;
+                        task.touch();
+
+                        if let Err(e) = task_repo.update(&task).await {
+                            tracing::error!(error = %e, "Failed to update task to Merging status");
+                            return;
+                        }
+
+                        if let Err(e) = task_repo
+                            .persist_status_change(
+                                &task_id,
+                                InternalStatus::PendingMerge,
+                                InternalStatus::Merging,
+                                "merge_conflict",
+                            )
+                            .await
+                        {
+                            tracing::warn!(error = %e, "Failed to record conflict transition (non-fatal)");
+                        }
+
+                        self.machine
+                            .context
+                            .services
+                            .event_emitter
+                            .emit_status_change(task_id_str, "pending_merge", "merging")
+                            .await;
+
+                        let prompt = format!("Resolve rebase conflicts for task: {}. After resolving each file, run `git add <file>` then `git rebase --continue`.", task_id_str);
+                        let result = self
+                            .machine
+                            .context
+                            .services
+                            .chat_service
+                            .send_message(
+                                crate::domain::entities::ChatContextType::Merge,
+                                task_id_str,
+                                &prompt,
+                            )
+                            .await;
+
+                        match &result {
+                            Ok(_) => tracing::info!(task_id = task_id_str, "Merger agent spawned successfully"),
+                            Err(e) => tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent"),
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!(task_id = task_id_str, error = %e, "Rebase+squash in-repo failed");
+
+                        task.metadata = Some(
+                            serde_json::json!({
+                                "error": e.to_string(),
+                                "source_branch": source_branch,
+                                "target_branch": target_branch,
+                            })
+                            .to_string(),
+                        );
+                        task.internal_status = InternalStatus::MergeIncomplete;
+                        task.touch();
+
+                        let _ = task_repo.update(&task).await;
+                        let _ = task_repo
+                            .persist_status_change(
+                                &task_id,
+                                InternalStatus::PendingMerge,
+                                InternalStatus::MergeIncomplete,
+                                "merge_incomplete",
+                            )
+                            .await;
+
+                        self.machine
+                            .context
+                            .services
+                            .event_emitter
+                            .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                            .await;
+                    }
+                }
+            } else {
+                // Target NOT checked out — use worktrees for both rebase and squash
+                let rebase_wt_path = PathBuf::from(compute_rebase_worktree_path(&project, task_id_str));
+                let merge_wt_path = PathBuf::from(compute_merge_worktree_path(&project, task_id_str));
+
+                tracing::info!(
+                    task_id = task_id_str,
+                    rebase_worktree = %rebase_wt_path.display(),
+                    merge_worktree = %merge_wt_path.display(),
+                    "Rebase+squash in isolated worktrees"
+                );
+
+                let merge_result = GitService::try_rebase_squash_merge_in_worktree(
+                    repo_path,
+                    &source_branch,
+                    &target_branch,
+                    &rebase_wt_path,
+                    &merge_wt_path,
+                    &squash_commit_msg,
+                );
+
+                match merge_result {
+                    Ok(MergeAttemptResult::Success { commit_sha }) => {
+                        tracing::info!(
+                            task_id = task_id_str,
+                            commit_sha = %commit_sha,
+                            "Rebase+squash in worktrees succeeded"
+                        );
+
+                        emit_merge_progress(
+                            self.machine.context.services.app_handle.as_ref(),
+                            task_id_str,
+                            MergePhase::ProgrammaticMerge,
+                            MergePhaseStatus::Passed,
+                            format!("Rebase+squash completed: {}", commit_sha),
+                        );
+
+                        // Clean up merge worktree
+                        if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt_path) {
+                            tracing::warn!(error = %e, task_id = task_id_str, "Failed to delete merge worktree (non-fatal)");
+                        }
+
+                        if TEMP_SKIP_POST_MERGE_VALIDATION {
+                            tracing::warn!(task_id = task_id_str, "Post-merge validation temporarily disabled (global flag, worktree rebase+squash)");
+                        } else {
+                            let skip_validation = take_skip_validation_flag(&mut task);
+                            let validation_mode = &project.merge_validation_mode;
+                            if !skip_validation && *validation_mode != MergeValidationMode::Off {
+                                let source_sha =
+                                    GitService::get_branch_sha(repo_path, &source_branch).ok();
+                                let cached_log = source_sha
+                                    .as_deref()
+                                    .and_then(|sha| extract_cached_validation(&task, sha));
+                                let app_handle_ref = self.machine.context.services.app_handle.as_ref();
+                                if let Some(validation) = run_validation_commands(
+                                    &project,
+                                    &task,
+                                    repo_path,
+                                    task_id_str,
+                                    app_handle_ref,
+                                    cached_log.as_deref(),
+                                )
+                                .await
+                                {
+                                    if !validation.all_passed {
+                                        if *validation_mode == MergeValidationMode::Warn {
+                                            tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode (worktree rebase+squash), proceeding");
+                                            task.metadata = Some(format_validation_warn_metadata(
+                                                &validation.log,
+                                                &source_branch,
+                                                &target_branch,
+                                            ));
+                                        } else {
+                                            self.handle_validation_failure(
+                                                &mut task,
+                                                &task_id,
+                                                task_id_str,
+                                                task_repo,
+                                                &validation.failures,
+                                                &validation.log,
+                                                &source_branch,
+                                                &target_branch,
+                                                repo_path,
+                                                "worktree",
+                                                validation_mode,
+                                            )
+                                            .await;
+                                            return;
+                                        }
+                                    } else {
+                                        task.metadata = Some(
+                                            serde_json::json!({
+                                                "validation_log": validation.log,
+                                                "validation_source_sha": source_sha,
+                                                "source_branch": source_branch,
+                                                "target_branch": target_branch,
+                                            })
+                                            .to_string(),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+
+                        let app_handle = self.machine.context.services.app_handle.as_ref();
+                        if let Err(e) = complete_merge_internal(
+                            &mut task,
+                            &project,
+                            &commit_sha,
+                            task_repo,
+                            app_handle,
+                        )
+                        .await
+                        {
+                            tracing::error!(error = %e, task_id = task_id_str, "Failed to complete rebase+squash in worktrees");
+
+                            task.metadata = Some(
+                                serde_json::json!({
+                                    "error": format!("complete_merge_internal failed: {}", e),
+                                    "source_branch": source_branch,
+                                    "target_branch": target_branch,
+                                })
+                                .to_string(),
+                            );
+                            task.internal_status = InternalStatus::MergeIncomplete;
+                            task.touch();
+
+                            let _ = task_repo.update(&task).await;
+                            let _ = task_repo
+                                .persist_status_change(
+                                    &task_id,
+                                    InternalStatus::PendingMerge,
+                                    InternalStatus::MergeIncomplete,
+                                    "merge_incomplete",
+                                )
+                                .await;
+
+                            self.machine
+                                .context
+                                .services
+                                .event_emitter
+                                .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                                .await;
+                        } else {
+                            self.post_merge_cleanup(task_id_str, &task_id, repo_path, plan_branch_repo)
+                                .await;
+                        }
+                    }
+                    Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
+                        tracing::info!(
+                            task_id = task_id_str,
+                            conflict_count = conflict_files.len(),
+                            "Rebase+squash in worktrees: rebase conflicts, transitioning to Merging"
+                        );
+
+                        emit_merge_progress(
+                            self.machine.context.services.app_handle.as_ref(),
+                            task_id_str,
+                            MergePhase::ProgrammaticMerge,
+                            MergePhaseStatus::Failed,
+                            format!("Rebase conflicts detected in {} files", conflict_files.len()),
+                        );
+
+                        // Set worktree_path to rebase worktree for agent CWD
+                        let rebase_wt_path_str = rebase_wt_path.to_string_lossy().to_string();
+                        task.worktree_path = Some(rebase_wt_path_str);
+                        let mut meta = parse_metadata(&task).unwrap_or_else(|| serde_json::json!({}));
+                        if let Some(obj) = meta.as_object_mut() {
+                            obj.insert("conflict_type".to_string(), serde_json::json!("rebase"));
+                        }
+                        task.metadata = Some(meta.to_string());
+                        task.internal_status = InternalStatus::Merging;
+                        task.touch();
+
+                        if let Err(e) = task_repo.update(&task).await {
+                            tracing::error!(error = %e, "Failed to update task to Merging");
+                            return;
+                        }
+
+                        if let Err(e) = task_repo
+                            .persist_status_change(
+                                &task_id,
+                                InternalStatus::PendingMerge,
+                                InternalStatus::Merging,
+                                "rebase_conflict",
+                            )
+                            .await
+                        {
+                            tracing::warn!(error = %e, "Failed to record rebase conflict transition (non-fatal)");
+                        }
+
+                        self.machine
+                            .context
+                            .services
+                            .event_emitter
+                            .emit_status_change(task_id_str, "pending_merge", "merging")
+                            .await;
+
+                        let prompt = format!(
+                            "Resolve rebase conflicts for task: {}. After resolving each file, run `git add <file>` then `git rebase --continue`.",
+                            task_id_str
+                        );
+                        let result = self
+                            .machine
+                            .context
+                            .services
+                            .chat_service
+                            .send_message(
+                                crate::domain::entities::ChatContextType::Merge,
+                                task_id_str,
+                                &prompt,
+                            )
+                            .await;
+
+                        match &result {
+                            Ok(_) => tracing::info!(task_id = task_id_str, "Merger agent spawned successfully"),
+                            Err(e) => tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent"),
+                        }
+                    }
+                    Err(e) => {
+                        if GitService::is_branch_lock_error(&e) {
+                            tracing::warn!(task_id = task_id_str, error = %e, "Rebase+squash in worktrees failed due to branch lock, staying in PendingMerge");
+                            if rebase_wt_path.exists() {
+                                let _ = GitService::delete_worktree(repo_path, &rebase_wt_path);
+                            }
+                            if merge_wt_path.exists() {
+                                let _ = GitService::delete_worktree(repo_path, &merge_wt_path);
+                            }
+                        } else {
+                            tracing::error!(task_id = task_id_str, error = %e, "Rebase+squash in worktrees failed, transitioning to MergeIncomplete");
 
                             if rebase_wt_path.exists() {
                                 let _ = GitService::delete_worktree(repo_path, &rebase_wt_path);

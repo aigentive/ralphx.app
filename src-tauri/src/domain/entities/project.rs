@@ -74,6 +74,10 @@ pub enum MergeStrategy {
     Rebase,
     /// Direct merge commit (non-linear)
     Merge,
+    /// Squash all commits into a single commit on target (clean linear history)
+    Squash,
+    /// Rebase first (resolve conflicts), then squash into single commit (cleanest history)
+    RebaseSquash,
 }
 
 impl std::fmt::Display for MergeStrategy {
@@ -81,6 +85,8 @@ impl std::fmt::Display for MergeStrategy {
         match self {
             MergeStrategy::Rebase => write!(f, "rebase"),
             MergeStrategy::Merge => write!(f, "merge"),
+            MergeStrategy::Squash => write!(f, "squash"),
+            MergeStrategy::RebaseSquash => write!(f, "rebase_squash"),
         }
     }
 }
@@ -92,6 +98,8 @@ impl FromStr for MergeStrategy {
         match s {
             "rebase" => Ok(MergeStrategy::Rebase),
             "merge" => Ok(MergeStrategy::Merge),
+            "squash" => Ok(MergeStrategy::Squash),
+            "rebase_squash" => Ok(MergeStrategy::RebaseSquash),
             _ => Err(format!("unknown merge strategy: '{}'", s)),
         }
     }
@@ -900,14 +908,26 @@ mod tests {
             serde_json::to_string(&MergeStrategy::Merge).unwrap(),
             "\"merge\""
         );
+        assert_eq!(
+            serde_json::to_string(&MergeStrategy::Squash).unwrap(),
+            "\"squash\""
+        );
+        assert_eq!(
+            serde_json::to_string(&MergeStrategy::RebaseSquash).unwrap(),
+            "\"rebase_squash\""
+        );
     }
 
     #[test]
     fn merge_strategy_deserializes() {
         let rebase: MergeStrategy = serde_json::from_str("\"rebase\"").unwrap();
         let merge: MergeStrategy = serde_json::from_str("\"merge\"").unwrap();
+        let squash: MergeStrategy = serde_json::from_str("\"squash\"").unwrap();
+        let rebase_squash: MergeStrategy = serde_json::from_str("\"rebase_squash\"").unwrap();
         assert_eq!(rebase, MergeStrategy::Rebase);
         assert_eq!(merge, MergeStrategy::Merge);
+        assert_eq!(squash, MergeStrategy::Squash);
+        assert_eq!(rebase_squash, MergeStrategy::RebaseSquash);
     }
 
     #[test]
@@ -920,6 +940,14 @@ mod tests {
             "merge".parse::<MergeStrategy>().unwrap(),
             MergeStrategy::Merge
         );
+        assert_eq!(
+            "squash".parse::<MergeStrategy>().unwrap(),
+            MergeStrategy::Squash
+        );
+        assert_eq!(
+            "rebase_squash".parse::<MergeStrategy>().unwrap(),
+            MergeStrategy::RebaseSquash
+        );
         assert!("invalid".parse::<MergeStrategy>().is_err());
     }
 
@@ -927,5 +955,7 @@ mod tests {
     fn merge_strategy_display() {
         assert_eq!(format!("{}", MergeStrategy::Rebase), "rebase");
         assert_eq!(format!("{}", MergeStrategy::Merge), "merge");
+        assert_eq!(format!("{}", MergeStrategy::Squash), "squash");
+        assert_eq!(format!("{}", MergeStrategy::RebaseSquash), "rebase_squash");
     }
 }

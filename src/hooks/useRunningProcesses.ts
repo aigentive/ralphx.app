@@ -19,7 +19,9 @@ import type { Unsubscribe } from "@/lib/event-bus";
 export const runningProcessesKeys = {
   all: ["running-processes"] as const,
   list: (projectId?: string) =>
-    [...runningProcessesKeys.all, "list", projectId ?? "all"] as const,
+    projectId
+      ? ([...runningProcessesKeys.all, "list", projectId] as const)
+      : ([...runningProcessesKeys.all, "list"] as const),
 };
 
 /**
