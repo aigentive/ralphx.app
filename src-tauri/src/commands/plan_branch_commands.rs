@@ -218,7 +218,12 @@ pub async fn enable_feature_branch(
         .collect();
 
     // Create merge task
-    let plan_title = format!("Merge plan into {}", base_branch);
+    let plan_title = match state.ideation_session_repo.get_by_id(&session_id).await {
+        Ok(Some(session)) if session.title.as_ref().is_some_and(|t| !t.trim().is_empty()) => {
+            session.title.unwrap()
+        }
+        _ => format!("Merge plan into {}", base_branch),
+    };
     let mut merge_task =
         Task::new_with_category(project_id.clone(), plan_title, "plan_merge".to_string());
     merge_task.description = Some(format!(

@@ -597,6 +597,18 @@ fn truncate_output(s: &str, max_len: usize) -> String {
     }
 }
 
+/// Build a squash commit message based on task category.
+///
+/// For plan_merge tasks: `feat: {title}\n\nPlan branch: {branch}`
+/// For regular tasks: `feat: {branch} ({title})`
+fn build_squash_commit_msg(category: &str, title: &str, source_branch: &str) -> String {
+    if category == "plan_merge" {
+        format!("feat: {}\n\nPlan branch: {}", title, source_branch)
+    } else {
+        format!("feat: {} ({})", source_branch, title)
+    }
+}
+
 /// Emit a high-level merge progress event for UI display
 fn emit_merge_progress<R: tauri::Runtime>(
     app_handle: Option<&AppHandle<R>>,
@@ -2587,11 +2599,7 @@ impl<'a> super::TransitionHandler<'a> {
         // - (Squash, Worktree): squash merge in worktree (or in-repo if target checked out)
 
         // Build commit message for squash merges
-        let squash_commit_msg = format!(
-            "feat: {} ({})",
-            source_branch,
-            task.title,
-        );
+        let squash_commit_msg = build_squash_commit_msg(&task.category, &task.title, &source_branch);
         match (project.merge_strategy, project.git_mode) {
         (MergeStrategy::Merge, GitMode::Worktree) => {
             // Detect if the target branch is already checked out in the primary repo.
@@ -7588,5 +7596,23 @@ mod tests {
             + 1;
 
         assert_eq!(attempt_count2, 2, "Second attempt should be 2, confirming retry count increments");
+    }
+
+    #[test]
+    fn test_build_squash_commit_msg_plan_merge() {
+        let msg = build_squash_commit_msg("plan_merge", "Fix \"Remove All From Plan\"", "ralphx/ralphx/plan-abc123");
+        assert_eq!(msg, "feat: Fix \"Remove All From Plan\"\n\nPlan branch: ralphx/ralphx/plan-abc123");
+    }
+
+    #[test]
+    fn test_build_squash_commit_msg_regular_task() {
+        let msg = build_squash_commit_msg("feat", "Write tests", "ralphx/ralphx/task-xyz");
+        assert_eq!(msg, "feat: ralphx/ralphx/task-xyz (Write tests)");
+    }
+
+    #[test]
+    fn test_build_squash_commit_msg_different_category() {
+        let msg = build_squash_commit_msg("fix", "Fix bug", "ralphx/ralphx/task-123");
+        assert_eq!(msg, "feat: ralphx/ralphx/task-123 (Fix bug)");
     }
 }
