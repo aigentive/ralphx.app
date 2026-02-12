@@ -61,7 +61,7 @@ export function useExecutionStatus(projectId?: string) {
     isPaused: query.data?.isPaused ?? false,
     runningCount: query.data?.runningCount ?? 0,
     queuedCount: query.data?.queuedCount ?? 0,
-    maxConcurrent: query.data?.maxConcurrent ?? 2,
+    maxConcurrent: query.data?.maxConcurrent ?? 10,
     globalMaxConcurrent: query.data?.globalMaxConcurrent ?? 20,
     canStartTask: query.data?.canStartTask ?? true,
   };
