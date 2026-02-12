@@ -442,6 +442,7 @@ pub async fn approve_task_for_review(
             Arc::clone(&state.activity_event_repo),
             Arc::clone(&state.message_queue),
             Arc::clone(&state.running_agent_registry),
+            Arc::clone(&state.memory_event_repo),
             Some(app.clone()),
         )
         .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo)),
@@ -463,6 +464,7 @@ pub async fn approve_task_for_review(
         Arc::clone(&state.running_agent_registry),
         Arc::clone(&execution_state),
         Some(app.clone()),
+        Arc::clone(&state.memory_event_repo),
     )
     .with_task_scheduler(task_scheduler)
     .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
@@ -548,6 +550,7 @@ pub async fn request_task_changes_for_review(
         Arc::clone(&state.running_agent_registry),
         Arc::clone(&execution_state),
         Some(app.clone()),
+        Arc::clone(&state.memory_event_repo),
     )
     .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
 

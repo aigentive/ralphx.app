@@ -20,7 +20,7 @@ use crate::domain::entities::{InternalStatus, Task, TaskId};
 use crate::domain::state_machine::transition_handler::set_trigger_origin;
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
+    IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
     TaskRepository, TaskStepRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
@@ -433,6 +433,7 @@ impl<R: Runtime> TaskTransitionService<R> {
         running_agent_registry: Arc<dyn RunningAgentRegistry>,
         execution_state: Arc<ExecutionState>,
         app_handle: Option<AppHandle<R>>,
+        memory_event_repo: Arc<dyn MemoryEventRepository>,
     ) -> Self {
         // Create the agent client for spawning
         let agent_client = Arc::new(ClaudeCodeClient::new());
@@ -458,6 +459,7 @@ impl<R: Runtime> TaskTransitionService<R> {
                 activity_event_repo,
                 message_queue,
                 running_agent_registry,
+                memory_event_repo,
             )
             .with_execution_state(Arc::clone(&execution_state));
             if let Some(ref handle) = app_handle {

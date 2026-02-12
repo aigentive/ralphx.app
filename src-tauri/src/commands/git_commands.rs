@@ -355,6 +355,7 @@ pub async fn retry_merge(
     let message_queue = Arc::clone(&state.message_queue);
     let running_agent_registry = Arc::clone(&state.running_agent_registry);
     let plan_branch_repo = Arc::clone(&state.plan_branch_repo);
+    let memory_event_repo = Arc::clone(&state.memory_event_repo);
     let execution_state_clone = Arc::clone(execution_state.inner());
     let app_handle_opt = state.app_handle.clone();
     let task_id_for_spawn = task_id_parsed.clone();
@@ -374,6 +375,7 @@ pub async fn retry_merge(
             message_queue,
             running_agent_registry,
             plan_branch_repo,
+            memory_event_repo,
             execution_state_clone,
             app_handle_opt,
         )
@@ -401,6 +403,7 @@ async fn execute_merge_retry_background(
     message_queue: Arc<crate::domain::services::MessageQueue>,
     running_agent_registry: Arc<dyn crate::domain::services::RunningAgentRegistry>,
     plan_branch_repo: Arc<dyn crate::domain::repositories::PlanBranchRepository>,
+    memory_event_repo: Arc<dyn crate::domain::repositories::MemoryEventRepository>,
     execution_state: Arc<ExecutionState>,
     app_handle_opt: Option<tauri::AppHandle>,
 ) {
@@ -422,6 +425,7 @@ async fn execute_merge_retry_background(
         Arc::clone(&activity_event_repo),
         Arc::clone(&message_queue),
         Arc::clone(&running_agent_registry),
+        Arc::clone(&memory_event_repo),
         app_handle_opt.clone(),
     ).with_plan_branch_repo(Arc::clone(&plan_branch_repo)));
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
@@ -440,6 +444,7 @@ async fn execute_merge_retry_background(
         Arc::clone(&running_agent_registry),
         Arc::clone(&execution_state),
         app_handle_opt,
+        Arc::clone(&memory_event_repo),
     )
     .with_task_scheduler(task_scheduler)
     .with_plan_branch_repo(Arc::clone(&plan_branch_repo));
@@ -650,6 +655,7 @@ fn create_transition_service(
             Arc::clone(&state.activity_event_repo),
             Arc::clone(&state.message_queue),
             Arc::clone(&state.running_agent_registry),
+            Arc::clone(&state.memory_event_repo),
             state.app_handle.clone(),
         )
         .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo)),
@@ -670,6 +676,7 @@ fn create_transition_service(
         Arc::clone(&state.running_agent_registry),
         Arc::clone(execution_state),
         state.app_handle.clone(),
+        Arc::clone(&state.memory_event_repo),
     )
     .with_task_scheduler(task_scheduler)
     .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))

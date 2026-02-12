@@ -20,8 +20,8 @@ use crate::domain::entities::{
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
-    TaskRepository,
+    IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
+    TaskDependencyRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::transition_handler::{has_branch_missing_metadata, set_trigger_origin};
@@ -301,6 +301,7 @@ pub struct ReconciliationRunner<R: Runtime = tauri::Wry> {
     activity_event_repo: Arc<dyn ActivityEventRepository>,
     message_queue: Arc<MessageQueue>,
     running_agent_registry: Arc<dyn RunningAgentRegistry>,
+    memory_event_repo: Arc<dyn MemoryEventRepository>,
     agent_run_repo: Arc<dyn AgentRunRepository>,
     transition_service: Arc<TaskTransitionService<R>>,
     execution_state: Arc<ExecutionState>,
@@ -322,6 +323,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         activity_event_repo: Arc<dyn ActivityEventRepository>,
         message_queue: Arc<MessageQueue>,
         running_agent_registry: Arc<dyn RunningAgentRegistry>,
+        memory_event_repo: Arc<dyn MemoryEventRepository>,
         agent_run_repo: Arc<dyn AgentRunRepository>,
         transition_service: Arc<TaskTransitionService<R>>,
         execution_state: Arc<ExecutionState>,
@@ -337,6 +339,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             activity_event_repo,
             message_queue,
             running_agent_registry,
+            memory_event_repo,
             agent_run_repo,
             transition_service,
             execution_state,
@@ -917,6 +920,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
                     &self.activity_event_repo,
                     &self.message_queue,
                     &self.running_agent_registry,
+                    &self.memory_event_repo,
                     &self.execution_state,
                     &self.plan_branch_repo,
                     self.app_handle.as_ref(),

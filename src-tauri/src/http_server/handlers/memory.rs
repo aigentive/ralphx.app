@@ -16,7 +16,7 @@ use super::*;
 use crate::domain::entities::{
     ArchiveJobPayload, ArchiveJobType,
     MemoryActorType, MemoryArchiveJob, MemoryBucket, MemoryEntry,
-    MemoryEntryId, MemoryEvent, MemoryStatus, ProcessId,
+    MemoryEntryId, MemoryEvent, MemoryStatus,
 };
 use crate::domain::entities::types::ProjectId;
 use crate::domain::services::{IndexRewriter, RuleIngestionService};
@@ -249,7 +249,7 @@ pub async fn mark_memory_obsolete(
 
     // Record audit event
     let event = MemoryEvent::new(
-        ProcessId::from_string(entry.project_id.0.clone()),
+        ProjectId::from_string(entry.project_id.0.clone()),
         "memory_obsoleted",
         MemoryActorType::System,
         json!({
