@@ -26,6 +26,12 @@ pub enum AppError {
     #[error("Agent error: {0}")]
     Agent(String),
 
+    #[error("Claude session expired: {session_id}")]
+    StaleSession {
+        session_id: String,
+        conversation_id: String,
+    },
+
     #[error("Not found: {0}")]
     NotFound(String),
 
@@ -37,6 +43,12 @@ pub enum AppError {
 
     #[error("Execution blocked: {0}")]
     ExecutionBlocked(String),
+
+    #[error("Claude session expired: {session_id}")]
+    StaleSession {
+        session_id: String,
+        conversation_id: String,
+    },
 }
 
 impl From<AgentError> for AppError {

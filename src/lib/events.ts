@@ -19,4 +19,5 @@ export const AGENT_MESSAGE = "agent:message";
 export const AGENT_TASK_STARTED = "agent:task_started";
 export const AGENT_TASK_COMPLETED = "agent:task_completed";
 export const AGENT_HOOK = "agent:hook";
+export const AGENT_SESSION_RECOVERED = "agent:session_recovered";
 

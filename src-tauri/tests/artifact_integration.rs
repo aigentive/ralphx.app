@@ -34,6 +34,8 @@ fn create_memory_state() -> AppState {
 fn create_sqlite_state() -> AppState {
     let conn = open_memory_connection().expect("Failed to open memory connection");
     run_migrations(&conn).expect("Failed to run migrations");
+    // Clear seeded buckets so tests start from clean state (like memory tests)
+    conn.execute("DELETE FROM artifact_buckets", []).unwrap();
     let shared_conn = Arc::new(Mutex::new(conn));
 
     let mut state = AppState::new_test();
