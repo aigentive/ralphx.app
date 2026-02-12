@@ -316,6 +316,48 @@ describe("MergeIncompleteTaskDetail", () => {
     expect(screen.getByText("No recorded recovery attempts for this task.")).toBeInTheDocument();
   });
 
+  it("shows fallback What Happened content when metadata has only recovery events", () => {
+    const metadata = JSON.stringify({
+      merge_recovery: {
+        version: 1,
+        events: [
+          createRecoveryEvent({
+            kind: "auto_retry_triggered",
+            source: "auto",
+            message: "Auto-retry triggered after MergeIncomplete (attempt 2)",
+          }),
+        ],
+        last_state: "retrying",
+      },
+    });
+
+    const task = createTestTask({ metadata });
+    render(<MergeIncompleteTaskDetail task={task} />, { wrapper: TestWrapper });
+
+    expect(screen.getByText("What Happened")).toBeInTheDocument();
+    expect(
+      screen.getByText(/The merge failed due to a git error that is not a merge conflict/i)
+    ).toBeInTheDocument();
+  });
+
+  it("shows branch-restore recovery steps for missing source branch reason", () => {
+    const metadata = JSON.stringify({
+      error: "Retry blocked: source branch missing",
+      source_branch: "ralphx/reefbot-ai/task-963992b2-1805-4c5b-a011-e5def12e7318",
+      target_branch: "main",
+      merge_recovery_reason: "missing_source_branch",
+      auto_retry_disabled: true,
+      auto_retry_disabled_reason: "source branch missing",
+    });
+
+    const task = createTestTask({ metadata });
+    render(<MergeIncompleteTaskDetail task={task} />, { wrapper: TestWrapper });
+
+    expect(screen.getByText(/source branch is missing/i)).toBeInTheDocument();
+    expect(screen.getByText(/git fetch origin/i)).toBeInTheDocument();
+    expect(screen.getByText(/after the branch exists again/i)).toBeInTheDocument();
+  });
+
   describe("handleRetryMerge error handling", () => {
     it("displays string rejection verbatim", async () => {
       const user = userEvent.setup();

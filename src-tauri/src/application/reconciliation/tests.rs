@@ -347,6 +347,49 @@ fn merge_incomplete_retry_count_reads_auto_retry_events() {
 }
 
 #[test]
+fn merge_incomplete_non_retryable_reason_detects_unresolvable_source_branch_error() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Merge Incomplete".to_string(),
+    );
+    task.metadata = Some(
+        serde_json::json!({
+            "error": "Empty source branch resolved. This typically means plan_branch_repo was unavailable."
+        })
+        .to_string(),
+    );
+
+    let reason = ReconciliationRunner::<tauri::Wry>::merge_incomplete_non_retryable_reason_from_error(&task);
+    assert!(reason.is_some());
+    assert!(
+        reason.unwrap().contains("source branch"),
+        "expected source branch reason"
+    );
+}
+
+#[test]
+fn merge_incomplete_non_retryable_reason_detects_missing_source_branch_reason_code() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Merge Incomplete".to_string(),
+    );
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_recovery_reason": "missing_source_branch"
+        })
+        .to_string(),
+    );
+
+    let reason =
+        ReconciliationRunner::<tauri::Wry>::merge_incomplete_non_retryable_reason_from_error(&task);
+    assert!(reason.is_some());
+    assert!(
+        reason.unwrap().contains("source branch"),
+        "expected missing source branch reason"
+    );
+}
+
+#[test]
 fn latest_deferred_blocker_id_reads_latest_blocker_from_metadata() {
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());

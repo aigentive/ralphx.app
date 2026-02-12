@@ -45,6 +45,9 @@ interface MergeErrorContext {
   targetBranch: string | null;
   diagnosticInfo: string | null;
   hasValidationFailures: boolean;
+  recoveryReason: string | null;
+  autoRetryDisabled: boolean;
+  autoRetryDisabledReason: string | null;
   recoveryEvents: MergeRecoveryEvent[];
   metadata: TaskMetadata | null;
 }
@@ -59,6 +62,9 @@ function parseMergeError(metadata?: string | null): MergeErrorContext | null {
       targetBranch: m.target_branch ?? null,
       diagnosticInfo: m.diagnostic_info ?? null,
       hasValidationFailures: Array.isArray(m.validation_failures) && m.validation_failures.length > 0,
+      recoveryReason: m.merge_recovery_reason ?? null,
+      autoRetryDisabled: m.auto_retry_disabled ?? false,
+      autoRetryDisabledReason: m.auto_retry_disabled_reason ?? null,
       recoveryEvents: m.merge_recovery?.events ?? [],
       metadata: m,
     };
@@ -71,21 +77,34 @@ function parseMergeError(metadata?: string | null): MergeErrorContext | null {
  * ErrorContextCard - Shows actual error details or generic fallback
  */
 function ErrorContextCard({ mergeError }: { mergeError: MergeErrorContext | null }) {
+  const renderFallback = () => (
+    <div className="space-y-3">
+      <p className="text-[13px] text-white/60">
+        The merge failed due to a git error that is not a merge conflict.
+        This can happen when:
+      </p>
+      <ul className="list-disc list-inside space-y-1.5 text-[13px] text-white/50">
+        <li>The task branch was deleted or corrupted</li>
+        <li>A git lock file is preventing operations</li>
+        <li>Network issues interrupted a fetch operation</li>
+        <li>The worktree directory is missing or inaccessible</li>
+      </ul>
+    </div>
+  );
+
   if (!mergeError) {
-    return (
-      <div className="space-y-3">
-        <p className="text-[13px] text-white/60">
-          The merge failed due to a git error that is not a merge conflict.
-          This can happen when:
-        </p>
-        <ul className="list-disc list-inside space-y-1.5 text-[13px] text-white/50">
-          <li>The task branch was deleted or corrupted</li>
-          <li>A git lock file is preventing operations</li>
-          <li>Network issues interrupted a fetch operation</li>
-          <li>The worktree directory is missing or inaccessible</li>
-        </ul>
-      </div>
-    );
+    return renderFallback();
+  }
+
+  const hasConcreteContext = Boolean(
+    mergeError.error ||
+    mergeError.sourceBranch ||
+    mergeError.targetBranch ||
+    mergeError.diagnosticInfo
+  );
+
+  if (!hasConcreteContext) {
+    return renderFallback();
   }
 
   return (
@@ -117,7 +136,17 @@ function ErrorContextCard({ mergeError }: { mergeError: MergeErrorContext | null
 /**
  * RecoverySteps - Numbered steps for manual recovery
  */
-function RecoverySteps({ branchName, targetBranch, hasValidationFailures }: { branchName: string; targetBranch?: string | null; hasValidationFailures: boolean }) {
+function RecoverySteps({
+  branchName,
+  targetBranch,
+  hasValidationFailures,
+  recoveryReason,
+}: {
+  branchName: string;
+  targetBranch?: string | null;
+  hasValidationFailures: boolean;
+  recoveryReason?: string | null;
+}) {
   return (
     <div className="space-y-3">
       {hasValidationFailures ? (
@@ -143,6 +172,44 @@ function RecoverySteps({ branchName, targetBranch, hasValidationFailures }: { br
               If fixed manually, click{" "}
               <strong className="text-white/70">Mark Resolved</strong>
             </li>
+          </ol>
+        </>
+      ) : recoveryReason === "missing_source_branch" ? (
+        <>
+          <p className="text-[13px] text-white/60">
+            The source branch is missing, so merge retry cannot succeed yet. Restore the branch first:
+          </p>
+          <ol className="list-decimal list-inside space-y-2 text-[13px] text-white/50">
+            <li>
+              Check local branch:{" "}
+              <code className="text-white/70 bg-white/5 px-1 rounded">
+                git show-ref --verify --quiet refs/heads/{branchName}
+              </code>
+            </li>
+            <li>
+              Try restoring from remote:{" "}
+              <code className="text-white/70 bg-white/5 px-1 rounded">
+                git fetch origin {branchName}:{branchName}
+              </code>
+            </li>
+            <li>
+              Click <strong className="text-white/70">Retry Merge</strong> after the branch exists again
+            </li>
+            <li>
+              If the branch is gone remotely, re-run task execution to recreate it, then retry
+            </li>
+          </ol>
+        </>
+      ) : recoveryReason === "source_branch_unresolved" ? (
+        <>
+          <p className="text-[13px] text-white/60">
+            Merge source branch could not be resolved from task metadata. Validate branch mapping first:
+          </p>
+          <ol className="list-decimal list-inside space-y-2 text-[13px] text-white/50">
+            <li>Verify this task still has an assigned task branch in task details</li>
+            <li>Check plan branch/session metadata if this is a plan merge task</li>
+            <li>Click <strong className="text-white/70">Retry Merge</strong> after source branch is resolvable</li>
+            <li>If already merged manually, click <strong className="text-white/70">Mark Resolved</strong></li>
           </ol>
         </>
       ) : (
@@ -666,7 +733,12 @@ export function MergeIncompleteTaskDetail({
         <section data-testid="recovery-steps-section">
           <SectionTitle>How to Recover</SectionTitle>
           <DetailCard>
-            <RecoverySteps branchName={branchName} targetBranch={mergeError?.targetBranch ?? null} hasValidationFailures={mergeError?.hasValidationFailures ?? false} />
+            <RecoverySteps
+              branchName={branchName}
+              targetBranch={mergeError?.targetBranch ?? null}
+              hasValidationFailures={mergeError?.hasValidationFailures ?? false}
+              recoveryReason={mergeError?.recoveryReason ?? null}
+            />
           </DetailCard>
         </section>
       )}

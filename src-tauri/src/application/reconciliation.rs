@@ -11,7 +11,7 @@ use tauri::{AppHandle, Emitter, Runtime};
 use tokio::sync::Mutex;
 use tracing::warn;
 
-use crate::application::{chat_service::reconcile_merge_auto_complete, TaskTransitionService};
+use crate::application::{chat_service::reconcile_merge_auto_complete, GitService, TaskTransitionService};
 use crate::commands::execution_commands::{ExecutionState, AGENT_ACTIVE_STATUSES};
 use crate::domain::entities::{
     AgentRun, AgentRunId, AgentRunStatus, ChatContextType, InternalStatus,
@@ -25,6 +25,7 @@ use crate::domain::repositories::{
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::transition_handler::set_trigger_origin;
+use std::path::Path;
 
 const MERGING_TIMEOUT_SECONDS: i64 = 60;
 const PENDING_MERGE_STALE_MINUTES: i64 = 5;
@@ -702,6 +703,11 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
+        if let Some(reason) = self.merge_incomplete_non_retryable_reason(task).await {
+            self.record_auto_retry_disabled_reason(task, &reason).await;
+            return false;
+        }
+
         let age = match self.latest_status_transition_age(task, status).await {
             Some(age) => age,
             None => return false,
@@ -1109,6 +1115,114 @@ impl<R: Runtime> ReconciliationRunner<R> {
         updated.touch();
 
         self.task_repo.update(&updated).await.map_err(|e| e.to_string())
+    }
+
+    fn merge_incomplete_non_retryable_reason_from_error(task: &Task) -> Option<String> {
+        let metadata = task
+            .metadata
+            .as_ref()
+            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())?;
+
+        if let Some(reason) = metadata.get("merge_recovery_reason").and_then(|v| v.as_str()) {
+            if reason == "missing_source_branch" {
+                return Some(
+                    "Auto-retry disabled: source branch is missing and must be restored."
+                        .to_string(),
+                );
+            }
+            if reason == "source_branch_unresolved" {
+                return Some(
+                    "Auto-retry disabled: source branch could not be resolved for merge."
+                        .to_string(),
+                );
+            }
+        }
+
+        let error = metadata.get("error")?.as_str()?.to_ascii_lowercase();
+
+        if error.contains("empty source branch resolved")
+            || error.contains("source branch resolved")
+        {
+            return Some(
+                "Auto-retry disabled: source branch could not be resolved for merge."
+                    .to_string(),
+            );
+        }
+
+        if error.contains("not a valid object name")
+            || error.contains("unknown revision")
+            || error.contains("bad revision")
+        {
+            return Some(
+                "Auto-retry disabled: source branch/revision is missing or invalid."
+                    .to_string(),
+            );
+        }
+
+        None
+    }
+
+    async fn merge_incomplete_non_retryable_reason(&self, task: &Task) -> Option<String> {
+        if let Some(reason) = Self::merge_incomplete_non_retryable_reason_from_error(task) {
+            return Some(reason);
+        }
+
+        let source_branch = task.task_branch.as_ref()?;
+        let project = match self.project_repo.get_by_id(&task.project_id).await {
+            Ok(Some(project)) => project,
+            _ => return None,
+        };
+
+        let repo_path = Path::new(&project.working_directory);
+        if GitService::get_branch_sha(repo_path, source_branch).is_err() {
+            return Some(format!(
+                "Auto-retry disabled: source branch '{}' no longer exists.",
+                source_branch
+            ));
+        }
+
+        None
+    }
+
+    async fn record_auto_retry_disabled_reason(&self, task: &Task, reason: &str) {
+        let mut updated = task.clone();
+        let mut metadata = updated
+            .metadata
+            .as_ref()
+            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        let Some(obj) = metadata.as_object_mut() else {
+            return;
+        };
+
+        let already_same = obj
+            .get("auto_retry_disabled_reason")
+            .and_then(|v| v.as_str())
+            .map(|v| v == reason)
+            .unwrap_or(false);
+        if already_same {
+            return;
+        }
+
+        obj.insert("auto_retry_disabled".to_string(), serde_json::json!(true));
+        obj.insert(
+            "auto_retry_disabled_reason".to_string(),
+            serde_json::json!(reason),
+        );
+        if obj.get("error").and_then(|v| v.as_str()).is_none() {
+            obj.insert("error".to_string(), serde_json::json!(reason));
+        }
+
+        updated.metadata = Some(metadata.to_string());
+        updated.touch();
+        if let Err(e) = self.task_repo.update(&updated).await {
+            warn!(
+                task_id = task.id.as_str(),
+                error = %e,
+                "Failed to persist auto-retry disabled reason"
+            );
+        }
     }
 
     async fn record_merge_timeout_event(&self, task: &Task, age: chrono::Duration) {

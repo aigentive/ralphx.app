@@ -267,6 +267,12 @@ export interface TaskMetadata {
   diagnostic_info?: string;
   /** Validation failures (legacy field) */
   validation_failures?: unknown[];
+  /** Auto-retry disabled by backend preflight/recovery guard */
+  auto_retry_disabled?: boolean;
+  /** Human-readable reason auto-retry was disabled */
+  auto_retry_disabled_reason?: string;
+  /** Typed merge recovery reason for tailored UI recovery steps */
+  merge_recovery_reason?: "missing_source_branch" | "source_branch_unresolved" | string;
   /** Structured merge recovery timeline */
   merge_recovery?: MergeRecoveryState;
 }

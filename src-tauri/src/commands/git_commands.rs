@@ -11,6 +11,7 @@ use crate::application::task_scheduler_service::TaskSchedulerService;
 use crate::application::{AppState, TaskTransitionService};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{GitMode, InternalStatus, ProjectId, TaskId};
+use crate::domain::state_machine::resolve_merge_branches;
 use crate::domain::state_machine::services::TaskScheduler;
 
 /// Response for get_task_commits command
@@ -263,6 +264,60 @@ pub async fn resolve_merge_conflict(
     Ok(())
 }
 
+fn merge_retry_preflight_error_message(reason: &str, source_branch: &str, target_branch: &str) -> String {
+    match reason {
+        "missing_source_branch" => format!(
+            "Retry blocked: source branch '{}' does not exist. Restore it first (for example: git fetch origin {0}:{0}), then retry merge.",
+            source_branch
+        ),
+        "source_branch_unresolved" => format!(
+            "Retry blocked: source branch could not be resolved for merge into '{}'. Verify plan branch metadata and task branch, then retry.",
+            target_branch
+        ),
+        _ => "Retry blocked due to merge preflight failure.".to_string(),
+    }
+}
+
+fn apply_merge_retry_preflight_failure_metadata(
+    task: &mut crate::domain::entities::Task,
+    reason: &str,
+    error_message: &str,
+    source_branch: &str,
+    target_branch: &str,
+) {
+    let mut metadata = task
+        .metadata
+        .as_ref()
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    if let Some(obj) = metadata.as_object_mut() {
+        obj.insert("error".to_string(), serde_json::json!(error_message));
+        obj.insert("auto_retry_disabled".to_string(), serde_json::json!(true));
+        obj.insert(
+            "auto_retry_disabled_reason".to_string(),
+            serde_json::json!(error_message),
+        );
+        obj.insert(
+            "merge_recovery_reason".to_string(),
+            serde_json::json!(reason),
+        );
+        obj.insert(
+            "retry_preflight_at".to_string(),
+            serde_json::json!(chrono::Utc::now().to_rfc3339()),
+        );
+        if !source_branch.is_empty() {
+            obj.insert("source_branch".to_string(), serde_json::json!(source_branch));
+        }
+        if !target_branch.is_empty() {
+            obj.insert("target_branch".to_string(), serde_json::json!(target_branch));
+        }
+    }
+
+    task.metadata = Some(metadata.to_string());
+    task.touch();
+}
+
 /// Re-attempt merge after user made changes
 ///
 /// Transitions task back to PendingMerge to trigger programmatic merge attempt.
@@ -286,6 +341,14 @@ pub async fn retry_merge(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Task not found: {}", task_id_parsed.as_str()))?;
+
+    // Get project (needed for branch preflight checks)
+    let project = state
+        .project_repo
+        .get_by_id(&task.project_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Project not found: {}", task.project_id.as_str()))?;
 
     // Check if merge retry is already in progress
     let metadata_json = task
@@ -319,11 +382,49 @@ pub async fn retry_merge(
         ));
     }
 
+    // Retry preflight: block retries that cannot succeed until source branch is restored.
+    let plan_branch_repo = Some(Arc::clone(&state.plan_branch_repo));
+    let (source_branch, target_branch) =
+        resolve_merge_branches(&task, &project, &plan_branch_repo).await;
+
+    let preflight_reason = if source_branch.trim().is_empty() {
+        Some("source_branch_unresolved")
+    } else {
+        let repo_path = PathBuf::from(&project.working_directory);
+        match GitService::get_branch_sha(&repo_path, &source_branch) {
+            Ok(_) => None,
+            Err(_) => Some("missing_source_branch"),
+        }
+    };
+
+    if let Some(reason) = preflight_reason {
+        let error_message =
+            merge_retry_preflight_error_message(reason, &source_branch, &target_branch);
+        apply_merge_retry_preflight_failure_metadata(
+            &mut task,
+            reason,
+            &error_message,
+            &source_branch,
+            &target_branch,
+        );
+        state
+            .task_repo
+            .update(&task)
+            .await
+            .map_err(|e| e.to_string())?;
+        return Err(error_message);
+    }
+
     // Set in-flight guard and optional skip_validation flag
     let mut meta_obj = metadata_json
         .as_object()
         .cloned()
         .unwrap_or_default();
+    // Clear stale preflight blockers when retry is valid again.
+    meta_obj.remove("auto_retry_disabled");
+    meta_obj.remove("auto_retry_disabled_reason");
+    meta_obj.remove("merge_recovery_reason");
+    meta_obj.remove("retry_preflight_at");
     meta_obj.insert("merge_retry_in_progress".to_string(), serde_json::json!(true));
 
     if skip_validation == Some(true) {
@@ -731,6 +832,8 @@ async fn cleanup_task_git_resources(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::entities::ProjectId;
+    use crate::domain::entities::Task;
 
     #[test]
     fn test_commit_info_response_conversion() {
@@ -761,5 +864,57 @@ mod tests {
         assert_eq!(response.insertions, 100);
         assert_eq!(response.deletions, 50);
         assert_eq!(response.changed_files.len(), 2);
+    }
+
+    #[test]
+    fn test_merge_retry_preflight_message_for_missing_branch() {
+        let msg = merge_retry_preflight_error_message(
+            "missing_source_branch",
+            "ralphx/proj/task-1",
+            "main",
+        );
+        assert!(msg.contains("does not exist"));
+        assert!(msg.contains("git fetch origin"));
+    }
+
+    #[test]
+    fn test_apply_merge_retry_preflight_failure_metadata_sets_reason_fields() {
+        let mut task = Task::new(ProjectId::new(), "Preflight Task".to_string());
+        task.metadata = Some(serde_json::json!({"existing":"value"}).to_string());
+
+        apply_merge_retry_preflight_failure_metadata(
+            &mut task,
+            "missing_source_branch",
+            "Retry blocked: source branch missing",
+            "ralphx/proj/task-1",
+            "main",
+        );
+
+        let metadata = task
+            .metadata
+            .as_ref()
+            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+            .expect("metadata should be valid json");
+
+        assert_eq!(
+            metadata.get("merge_recovery_reason").and_then(|v| v.as_str()),
+            Some("missing_source_branch")
+        );
+        assert_eq!(
+            metadata.get("auto_retry_disabled").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            metadata.get("source_branch").and_then(|v| v.as_str()),
+            Some("ralphx/proj/task-1")
+        );
+        assert_eq!(
+            metadata.get("target_branch").and_then(|v| v.as_str()),
+            Some("main")
+        );
+        assert_eq!(
+            metadata.get("existing").and_then(|v| v.as_str()),
+            Some("value")
+        );
     }
 }
