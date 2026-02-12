@@ -28,8 +28,6 @@ describe("ProjectSchema", () => {
     name: "Test Project",
     working_directory: "/path/to/project",
     git_mode: "local" as const,
-    worktree_path: null,
-    worktree_branch: null,
     base_branch: null,
     worktree_parent_directory: null,
     use_feature_branches: true,
@@ -45,12 +43,10 @@ describe("ProjectSchema", () => {
     expect(() => ProjectSchema.parse(validProject)).not.toThrow();
   });
 
-  it("should parse a project with worktree fields", () => {
+  it("should parse a project with worktree mode", () => {
     const worktreeProject = {
       ...validProject,
       git_mode: "worktree" as const,
-      worktree_path: "/path/to/worktree",
-      worktree_branch: "feature-branch",
       base_branch: "main",
     };
     expect(() => ProjectSchema.parse(worktreeProject)).not.toThrow();
@@ -116,8 +112,6 @@ describe("CreateProjectSchema", () => {
       name: "New Project",
       workingDirectory: "/path/to/project",
       gitMode: "worktree" as const,
-      worktreePath: "/path/to/worktree",
-      worktreeBranch: "feature-branch",
       baseBranch: "main",
     };
     expect(() => CreateProjectSchema.parse(createData)).not.toThrow();
@@ -169,8 +163,6 @@ describe("UpdateProjectSchema", () => {
 
   it("should allow setting nullable fields to null", () => {
     const updateData = {
-      worktreePath: null,
-      worktreeBranch: null,
       baseBranch: null,
     };
     expect(() => UpdateProjectSchema.parse(updateData)).not.toThrow();

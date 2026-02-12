@@ -54,8 +54,6 @@ export const mockProjectsApi = {
     if (input.name !== undefined) updated.name = input.name;
     if (input.workingDirectory !== undefined) updated.workingDirectory = input.workingDirectory;
     if (input.gitMode !== undefined) updated.gitMode = input.gitMode;
-    if (input.worktreePath !== undefined) updated.worktreePath = input.worktreePath;
-    if (input.worktreeBranch !== undefined) updated.worktreeBranch = input.worktreeBranch;
     if (input.baseBranch !== undefined) updated.baseBranch = input.baseBranch;
     if (input.worktreeParentDirectory !== undefined) updated.worktreeParentDirectory = input.worktreeParentDirectory;
     if (input.mergeValidationMode !== undefined) updated.mergeValidationMode = input.mergeValidationMode;

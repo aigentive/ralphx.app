@@ -12,7 +12,6 @@ export interface FormState {
   name: string;
   workingDirectory: string;
   gitMode: GitMode;
-  worktreeBranch: string;
   baseBranch: string;
   worktreeParentDirectory: string;
 }
@@ -20,25 +19,12 @@ export interface FormState {
 export interface FormErrors {
   name?: string;
   workingDirectory?: string;
-  worktreeBranch?: string;
   baseBranch?: string;
 }
 
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-/**
- * Generate default branch name from project name
- * Format: ralphx/<project-name-slug>
- */
-export function generateBranchName(projectName: string): string {
-  const slug = projectName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-  return slug ? `ralphx/${slug}` : "ralphx/feature";
-}
 
 /**
  * Generate worktree path from working directory
@@ -75,12 +61,6 @@ export function validateForm(form: FormState): FormErrors {
   }
 
   if (form.gitMode === "worktree") {
-    if (!form.worktreeBranch.trim()) {
-      errors.worktreeBranch = "Branch name is required";
-    } else if (!/^[a-zA-Z0-9/_-]+$/.test(form.worktreeBranch)) {
-      errors.worktreeBranch = "Branch name contains invalid characters";
-    }
-
     if (!form.baseBranch.trim()) {
       errors.baseBranch = "Base branch is required";
     }
