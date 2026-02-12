@@ -10,6 +10,7 @@ use tauri::{AppHandle, Emitter};
 
 use super::super::machine::State;
 use crate::application::{GitService, MergeAttemptResult};
+use crate::application::git_service::checkout_free::{self, CheckoutFreeMergeResult};
 use crate::domain::entities::{
     merge_progress_event::{map_command_to_phase, MergePhase, MergePhaseStatus, MergeProgressEvent},
     task_metadata::{
@@ -2595,22 +2596,48 @@ impl<'a> super::TransitionHandler<'a> {
 
             if target_is_checked_out {
                 // Target branch (e.g., main) is checked out in the primary repo.
-                // Merge directly there instead of creating a worktree.
+                // Use checkout-free merge (git plumbing) to avoid disrupting working tree.
                 tracing::info!(
                     task_id = task_id_str,
                     target_branch = %target_branch,
-                    "Target branch is checked out in primary repo, merging directly in-repo"
+                    "Target branch is checked out, using checkout-free merge"
                 );
 
-                let merge_result =
-                    GitService::try_merge_in_repo(repo_path, &source_branch, &target_branch);
+                // Validate branches exist before merge
+                if !GitService::branch_exists(repo_path, &source_branch) {
+                    tracing::error!(task_id = task_id_str, "Source branch '{}' does not exist", source_branch);
+                    task.metadata = Some(serde_json::json!({"error": format!("Branch '{}' does not exist", source_branch), "missing_branch": source_branch, "source_branch": source_branch, "target_branch": target_branch}).to_string());
+                    task.internal_status = InternalStatus::MergeIncomplete;
+                    task.touch();
+                    let _ = task_repo.update(&task).await;
+                    let _ = task_repo.persist_status_change(&task_id, InternalStatus::PendingMerge, InternalStatus::MergeIncomplete, "merge_incomplete").await;
+                    self.machine.context.services.event_emitter.emit_status_change(task_id_str, "pending_merge", "merge_incomplete").await;
+                    return;
+                }
+                if !GitService::branch_exists(repo_path, &target_branch) {
+                    tracing::error!(task_id = task_id_str, "Target branch '{}' does not exist", target_branch);
+                    task.metadata = Some(serde_json::json!({"error": format!("Branch '{}' does not exist", target_branch), "missing_branch": target_branch, "source_branch": source_branch, "target_branch": target_branch}).to_string());
+                    task.internal_status = InternalStatus::MergeIncomplete;
+                    task.touch();
+                    let _ = task_repo.update(&task).await;
+                    let _ = task_repo.persist_status_change(&task_id, InternalStatus::PendingMerge, InternalStatus::MergeIncomplete, "merge_incomplete").await;
+                    self.machine.context.services.event_emitter.emit_status_change(task_id_str, "pending_merge", "merge_incomplete").await;
+                    return;
+                }
 
-                match merge_result {
-                    Ok(MergeAttemptResult::Success { commit_sha }) => {
+                let cf_result = checkout_free::try_merge_checkout_free(repo_path, &source_branch, &target_branch);
+
+                match cf_result {
+                    Ok(CheckoutFreeMergeResult::Success { commit_sha }) => {
+                        // Atomically sync working tree
+                        if let Err(e) = GitService::hard_reset_to_head(repo_path) {
+                            tracing::error!(error = %e, task_id = task_id_str, "Failed to sync working tree after checkout-free merge");
+                        }
+
                         tracing::info!(
                             task_id = task_id_str,
                             commit_sha = %commit_sha,
-                            "Programmatic merge in-repo succeeded (fast path)"
+                            "Checkout-free merge succeeded"
                         );
 
                         // Emit merge progress success event
@@ -2625,7 +2652,7 @@ impl<'a> super::TransitionHandler<'a> {
                         if TEMP_SKIP_POST_MERGE_VALIDATION {
                             tracing::warn!(
                                 task_id = task_id_str,
-                                "Post-merge validation temporarily disabled (global flag, in-repo merge)"
+                                "Post-merge validation temporarily disabled (global flag, checkout-free merge)"
                             );
                         } else {
                             // Post-merge validation gate: check mode + skip flag
@@ -2650,7 +2677,7 @@ impl<'a> super::TransitionHandler<'a> {
                                 {
                                     if !validation.all_passed {
                                         if *validation_mode == MergeValidationMode::Warn {
-                                            tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode (in-repo), proceeding with merge");
+                                            tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode (checkout-free merge), proceeding");
                                             task.metadata = Some(format_validation_warn_metadata(
                                                 &validation.log,
                                                 &source_branch,
@@ -2667,7 +2694,7 @@ impl<'a> super::TransitionHandler<'a> {
                                                 &source_branch,
                                                 &target_branch,
                                                 repo_path,
-                                                "in-repo",
+                                                "checkout-free",
                                                 validation_mode,
                                             )
                                             .await;
@@ -2699,7 +2726,7 @@ impl<'a> super::TransitionHandler<'a> {
                         )
                         .await
                         {
-                            tracing::error!(error = %e, task_id = task_id_str, "Failed to complete programmatic merge, falling back to MergeIncomplete");
+                            tracing::error!(error = %e, task_id = task_id_str, "Failed to complete checkout-free merge, falling back to MergeIncomplete");
 
                             task.metadata = Some(
                                 serde_json::json!({
@@ -2742,15 +2769,14 @@ impl<'a> super::TransitionHandler<'a> {
                             .await;
                         }
                     }
-                    Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
-                        // Conflict detected in primary repo — merger agent resolves in-place
+                    Ok(CheckoutFreeMergeResult::Conflict { files: conflict_files }) => {
+                        // Conflict detected — create temp worktree for merger agent
                         tracing::info!(
                             task_id = task_id_str,
                             conflict_count = conflict_files.len(),
-                            "Merge in-repo has conflicts, transitioning to Merging"
+                            "Checkout-free merge has conflicts, creating temp worktree for resolution"
                         );
 
-                        // Emit merge progress conflict event
                         emit_merge_progress(
                             self.machine.context.services.app_handle.as_ref(),
                             task_id_str,
@@ -2763,9 +2789,27 @@ impl<'a> super::TransitionHandler<'a> {
                             tracing::debug!(task_id = task_id_str, file = %file.display(), "Conflict file");
                         }
 
-                        // Keep task.worktree_path unchanged. Merge CWD selection is handled
-                        // by merge-context path resolution so Review/ReExecuting do not inherit
-                        // a primary-repo path after merge handling completes.
+                        // Create temp worktree for conflict resolution (keeps primary checkout clean)
+                        let merge_wt_path = PathBuf::from(compute_merge_worktree_path(&project, task_id_str));
+                        let target_sha = GitService::get_branch_sha(repo_path, &target_branch).unwrap_or_default();
+                        let resolve_branch = format!("merge-resolve/{}", task_id_str);
+
+                        // Create temp branch at target's current commit
+                        if let Err(e) = GitService::create_branch_at(repo_path, &resolve_branch, &target_sha) {
+                            tracing::error!(error = %e, task_id = task_id_str, "Failed to create resolve branch");
+                        }
+
+                        // Create worktree on the temp branch
+                        if let Err(e) = GitService::checkout_existing_branch_worktree(repo_path, &merge_wt_path, &resolve_branch) {
+                            tracing::error!(error = %e, task_id = task_id_str, "Failed to create merge worktree for conflict resolution");
+                        }
+
+                        // Start the actual merge in the worktree (leaves conflicts for agent)
+                        let _ = std::process::Command::new("git")
+                            .args(["merge", &source_branch, "--no-edit"])
+                            .current_dir(&merge_wt_path)
+                            .output();
+
                         task.internal_status = InternalStatus::Merging;
                         task.touch();
 
@@ -2793,11 +2837,12 @@ impl<'a> super::TransitionHandler<'a> {
                             .emit_status_change(task_id_str, "pending_merge", "merging")
                             .await;
 
-                        // Spawn merger agent — CWD is primary repo
+                        // Spawn merger agent — CWD is the temp worktree
                         let prompt = format!("Resolve merge conflicts for task: {}", task_id_str);
                         tracing::info!(
                             task_id = task_id_str,
-                            "Spawning merger agent for in-repo conflict resolution"
+                            merge_worktree = %merge_wt_path.display(),
+                            "Spawning merger agent for conflict resolution in temp worktree"
                         );
 
                         let result = self
@@ -2813,26 +2858,20 @@ impl<'a> super::TransitionHandler<'a> {
                             .await;
 
                         match &result {
-                            Ok(_) => tracing::info!(
-                                task_id = task_id_str,
-                                "Merger agent spawned successfully"
-                            ),
-                            Err(e) => {
-                                tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent")
-                            }
+                            Ok(_) => tracing::info!(task_id = task_id_str, "Merger agent spawned successfully"),
+                            Err(e) => tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent"),
                         }
                     }
-                    Ok(MergeAttemptResult::BranchNotFound { branch }) => {
+                    Err(e) => {
                         tracing::error!(
                             task_id = task_id_str,
-                            missing_branch = %branch,
-                            "Merge failed: branch '{}' does not exist", branch
+                            error = %e,
+                            "Checkout-free merge failed, transitioning to MergeIncomplete"
                         );
 
                         task.metadata = Some(
                             serde_json::json!({
-                                "error": format!("Branch '{}' does not exist", branch),
-                                "missing_branch": branch,
+                                "error": e.to_string(),
                                 "source_branch": source_branch,
                                 "target_branch": target_branch,
                             })
@@ -2841,205 +2880,26 @@ impl<'a> super::TransitionHandler<'a> {
                         task.internal_status = InternalStatus::MergeIncomplete;
                         task.touch();
 
-                        if let Err(e) = task_repo.update(&task).await {
-                            tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
-                            return;
-                        }
-
-                        if let Err(e) = task_repo
+                        let _ = task_repo.update(&task).await;
+                        let _ = task_repo
                             .persist_status_change(
                                 &task_id,
                                 InternalStatus::PendingMerge,
                                 InternalStatus::MergeIncomplete,
                                 "merge_incomplete",
                             )
-                            .await
-                        {
-                            tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
-                        }
+                            .await;
 
                         self.machine
                             .context
                             .services
                             .event_emitter
-                            .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                            .emit_status_change(
+                                task_id_str,
+                                "pending_merge",
+                                "merge_incomplete",
+                            )
                             .await;
-                    }
-                    Err(e) => {
-                        // Classify error: deferrable (branch lock) vs terminal (true failure)
-                        if GitService::is_branch_lock_error(&e) {
-                            tracing::warn!(
-                                task_id = task_id_str,
-                                error = %e,
-                                source_branch = %source_branch,
-                                target_branch = %target_branch,
-                                "Merge in-repo failed due to branch lock (deferrable), staying in PendingMerge"
-                            );
-
-                            // Get or create merge recovery metadata
-                            let mut recovery =
-                                MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
-                                    .unwrap_or(None)
-                                    .unwrap_or_else(MergeRecoveryMetadata::new);
-
-                            // Create deferred event for branch lock
-                            let event = MergeRecoveryEvent::new(
-                                MergeRecoveryEventKind::Deferred,
-                                MergeRecoverySource::System,
-                                MergeRecoveryReasonCode::GitError,
-                                format!("Merge deferred due to branch lock: {}", e),
-                            )
-                            .with_target_branch(&target_branch)
-                            .with_source_branch(&source_branch);
-
-                            // Append event and update state
-                            recovery.append_event_with_state(event, MergeRecoveryState::Deferred);
-
-                            // Update task metadata
-                            match recovery.update_task_metadata(task.metadata.as_deref()) {
-                                Ok(updated_json) => {
-                                    task.metadata = Some(updated_json);
-                                }
-                                Err(e) => {
-                                    tracing::error!(
-                                        task_id = task_id_str,
-                                        error = %e,
-                                        "Failed to serialize merge recovery metadata, falling back to legacy"
-                                    );
-                                    // Fallback to legacy metadata
-                                    task.metadata = Some(
-                                        serde_json::json!({
-                                            "merge_deferred": true,
-                                            "error": e.to_string(),
-                                            "source_branch": source_branch,
-                                            "target_branch": target_branch,
-                                            "reason": "branch_lock",
-                                        })
-                                        .to_string(),
-                                    );
-                                }
-                            }
-
-                            task.touch();
-
-                            if let Err(e) = task_repo.update(&task).await {
-                                tracing::error!(error = %e, "Failed to update task with merge_deferred metadata");
-                            }
-
-                            // Task remains in pending_merge, will be retried when blocker exits
-                        } else {
-                            // Non-deferrable error: transition to merge_incomplete
-                            tracing::error!(
-                                task_id = task_id_str,
-                                error = %e,
-                                source_branch = %source_branch,
-                                target_branch = %target_branch,
-                                "Merge in-repo failed, transitioning to MergeIncomplete"
-                            );
-
-                            // Append attempt_failed event
-                            let mut recovery =
-                                MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
-                                    .unwrap_or(None)
-                                    .unwrap_or_else(MergeRecoveryMetadata::new);
-
-                            let attempt_count = recovery
-                                .events
-                                .iter()
-                                .filter(|ev| {
-                                    matches!(ev.kind, MergeRecoveryEventKind::AutoRetryTriggered)
-                                })
-                                .count() as u32
-                                + 1;
-
-                            let failed_event = MergeRecoveryEvent::new(
-                                MergeRecoveryEventKind::AttemptFailed,
-                                MergeRecoverySource::System,
-                                MergeRecoveryReasonCode::GitError,
-                                format!("Merge attempt failed (in-repo): {}", e),
-                            )
-                            .with_target_branch(&target_branch)
-                            .with_source_branch(&source_branch)
-                            .with_attempt(attempt_count);
-
-                            recovery
-                                .append_event_with_state(failed_event, MergeRecoveryState::Failed);
-
-                            // Update task metadata with both recovery data and legacy error fields
-                            match recovery.update_task_metadata(task.metadata.as_deref()) {
-                                Ok(updated_json) => {
-                                    // Also preserve legacy error metadata
-                                    if let Ok(mut meta) =
-                                        serde_json::from_str::<serde_json::Value>(&updated_json)
-                                    {
-                                        if let Some(obj) = meta.as_object_mut() {
-                                            obj.insert(
-                                                "error".to_string(),
-                                                serde_json::json!(e.to_string()),
-                                            );
-                                            obj.insert(
-                                                "source_branch".to_string(),
-                                                serde_json::json!(source_branch),
-                                            );
-                                            obj.insert(
-                                                "target_branch".to_string(),
-                                                serde_json::json!(target_branch),
-                                            );
-                                        }
-                                        task.metadata = Some(meta.to_string());
-                                    } else {
-                                        task.metadata = Some(updated_json);
-                                    }
-                                }
-                                Err(e) => {
-                                    tracing::error!(
-                                        task_id = task_id_str,
-                                        error = %e,
-                                        "Failed to serialize merge recovery metadata on failure"
-                                    );
-                                    // Fallback to legacy metadata
-                                    task.metadata = Some(
-                                        serde_json::json!({
-                                            "error": e.to_string(),
-                                            "source_branch": source_branch,
-                                            "target_branch": target_branch,
-                                        })
-                                        .to_string(),
-                                    );
-                                }
-                            }
-
-                            task.internal_status = InternalStatus::MergeIncomplete;
-                            task.touch();
-
-                            if let Err(e) = task_repo.update(&task).await {
-                                tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
-                                return;
-                            }
-
-                            if let Err(e) = task_repo
-                                .persist_status_change(
-                                    &task_id,
-                                    InternalStatus::PendingMerge,
-                                    InternalStatus::MergeIncomplete,
-                                    "merge_incomplete",
-                                )
-                                .await
-                            {
-                                tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
-                            }
-
-                            self.machine
-                                .context
-                                .services
-                                .event_emitter
-                                .emit_status_change(
-                                    task_id_str,
-                                    "pending_merge",
-                                    "merge_incomplete",
-                                )
-                                .await;
-                        }
                     }
                 }
             } else {
@@ -4232,22 +4092,40 @@ impl<'a> super::TransitionHandler<'a> {
 
             if target_is_checked_out {
                 // Target branch (e.g., main) is checked out in the primary repo.
-                // Rebase and merge directly there (reuses Local rebase logic).
+                // Use checkout-free FF/merge to avoid disrupting working tree.
+                // FF is attempted first; falls back to merge commit if branches diverged.
                 tracing::info!(
                     task_id = task_id_str,
                     target_branch = %target_branch,
-                    "Target branch is checked out, using in-repo rebase and merge"
+                    "Target branch is checked out, using checkout-free fast-forward/merge"
                 );
 
-                let merge_result =
-                    GitService::try_rebase_and_merge(repo_path, &source_branch, &target_branch);
+                // Validate branches exist
+                if !GitService::branch_exists(repo_path, &source_branch) || !GitService::branch_exists(repo_path, &target_branch) {
+                    let missing = if !GitService::branch_exists(repo_path, &source_branch) { &source_branch } else { &target_branch };
+                    tracing::error!(task_id = task_id_str, "Branch '{}' does not exist", missing);
+                    task.metadata = Some(serde_json::json!({"error": format!("Branch '{}' does not exist", missing), "missing_branch": missing, "source_branch": source_branch, "target_branch": target_branch}).to_string());
+                    task.internal_status = InternalStatus::MergeIncomplete;
+                    task.touch();
+                    let _ = task_repo.update(&task).await;
+                    let _ = task_repo.persist_status_change(&task_id, InternalStatus::PendingMerge, InternalStatus::MergeIncomplete, "merge_incomplete").await;
+                    self.machine.context.services.event_emitter.emit_status_change(task_id_str, "pending_merge", "merge_incomplete").await;
+                    return;
+                }
 
-                match merge_result {
-                    Ok(MergeAttemptResult::Success { commit_sha }) => {
+                let cf_result = checkout_free::try_fast_forward_checkout_free(repo_path, &source_branch, &target_branch);
+
+                match cf_result {
+                    Ok(CheckoutFreeMergeResult::Success { commit_sha }) => {
+                        // Atomically sync working tree
+                        if let Err(e) = GitService::hard_reset_to_head(repo_path) {
+                            tracing::error!(error = %e, task_id = task_id_str, "Failed to sync working tree after checkout-free rebase merge");
+                        }
+
                         tracing::info!(
                             task_id = task_id_str,
                             commit_sha = %commit_sha,
-                            "Rebase and merge in-repo succeeded (fast path)"
+                            "Checkout-free rebase merge succeeded"
                         );
 
                         emit_merge_progress(
@@ -4259,265 +4137,75 @@ impl<'a> super::TransitionHandler<'a> {
                         );
 
                         if TEMP_SKIP_POST_MERGE_VALIDATION {
-                            tracing::warn!(
-                                task_id = task_id_str,
-                                "Post-merge validation temporarily disabled (global flag, worktree rebase in-repo)"
-                            );
+                            tracing::warn!(task_id = task_id_str, "Post-merge validation temporarily disabled (global flag, checkout-free rebase)");
                         } else {
                             let skip_validation = take_skip_validation_flag(&mut task);
                             let validation_mode = &project.merge_validation_mode;
                             if !skip_validation && *validation_mode != MergeValidationMode::Off {
-                                let source_sha =
-                                    GitService::get_branch_sha(repo_path, &source_branch).ok();
-                                let cached_log = source_sha
-                                    .as_deref()
-                                    .and_then(|sha| extract_cached_validation(&task, sha));
+                                let source_sha = GitService::get_branch_sha(repo_path, &source_branch).ok();
+                                let cached_log = source_sha.as_deref().and_then(|sha| extract_cached_validation(&task, sha));
                                 let app_handle_ref = self.machine.context.services.app_handle.as_ref();
-                                if let Some(validation) = run_validation_commands(
-                                    &project,
-                                    &task,
-                                    repo_path,
-                                    task_id_str,
-                                    app_handle_ref,
-                                    cached_log.as_deref(),
-                                )
-                                .await
-                                {
+                                if let Some(validation) = run_validation_commands(&project, &task, repo_path, task_id_str, app_handle_ref, cached_log.as_deref()).await {
                                     if !validation.all_passed {
                                         if *validation_mode == MergeValidationMode::Warn {
-                                            tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode (worktree rebase in-repo), proceeding");
-                                            task.metadata = Some(format_validation_warn_metadata(
-                                                &validation.log,
-                                                &source_branch,
-                                                &target_branch,
-                                            ));
+                                            tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode (checkout-free rebase), proceeding");
+                                            task.metadata = Some(format_validation_warn_metadata(&validation.log, &source_branch, &target_branch));
                                         } else {
-                                            self.handle_validation_failure(
-                                                &mut task,
-                                                &task_id,
-                                                task_id_str,
-                                                task_repo,
-                                                &validation.failures,
-                                                &validation.log,
-                                                &source_branch,
-                                                &target_branch,
-                                                repo_path,
-                                                "in-repo",
-                                                validation_mode,
-                                            )
-                                            .await;
+                                            self.handle_validation_failure(&mut task, &task_id, task_id_str, task_repo, &validation.failures, &validation.log, &source_branch, &target_branch, repo_path, "checkout-free", validation_mode).await;
                                             return;
                                         }
                                     } else {
-                                        task.metadata = Some(
-                                            serde_json::json!({
-                                                "validation_log": validation.log,
-                                                "validation_source_sha": source_sha,
-                                                "source_branch": source_branch,
-                                                "target_branch": target_branch,
-                                            })
-                                            .to_string(),
-                                        );
+                                        task.metadata = Some(serde_json::json!({"validation_log": validation.log, "validation_source_sha": source_sha, "source_branch": source_branch, "target_branch": target_branch}).to_string());
                                     }
                                 }
                             }
                         }
 
                         let app_handle = self.machine.context.services.app_handle.as_ref();
-                        if let Err(e) = complete_merge_internal(
-                            &mut task,
-                            &project,
-                            &commit_sha,
-                            task_repo,
-                            app_handle,
-                        )
-                        .await
-                        {
-                            tracing::error!(error = %e, task_id = task_id_str, "Failed to complete rebase merge in-repo");
-
-                            task.metadata = Some(
-                                serde_json::json!({
-                                    "error": format!("complete_merge_internal failed: {}", e),
-                                    "source_branch": source_branch,
-                                    "target_branch": target_branch,
-                                })
-                                .to_string(),
-                            );
+                        if let Err(e) = complete_merge_internal(&mut task, &project, &commit_sha, task_repo, app_handle).await {
+                            tracing::error!(error = %e, task_id = task_id_str, "Failed to complete checkout-free rebase merge");
+                            task.metadata = Some(serde_json::json!({"error": format!("complete_merge_internal failed: {}", e), "source_branch": source_branch, "target_branch": target_branch}).to_string());
                             task.internal_status = InternalStatus::MergeIncomplete;
                             task.touch();
-
                             let _ = task_repo.update(&task).await;
-                            let _ = task_repo
-                                .persist_status_change(
-                                    &task_id,
-                                    InternalStatus::PendingMerge,
-                                    InternalStatus::MergeIncomplete,
-                                    "merge_incomplete",
-                                )
-                                .await;
-
-                            self.machine
-                                .context
-                                .services
-                                .event_emitter
-                                .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
-                                .await;
+                            let _ = task_repo.persist_status_change(&task_id, InternalStatus::PendingMerge, InternalStatus::MergeIncomplete, "merge_incomplete").await;
+                            self.machine.context.services.event_emitter.emit_status_change(task_id_str, "pending_merge", "merge_incomplete").await;
                         } else {
-                            self.post_merge_cleanup(
-                                task_id_str,
-                                &task_id,
-                                repo_path,
-                                plan_branch_repo,
-                            )
-                            .await;
+                            self.post_merge_cleanup(task_id_str, &task_id, repo_path, plan_branch_repo).await;
                         }
                     }
-                    Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
-                        tracing::info!(
-                            task_id = task_id_str,
-                            conflict_count = conflict_files.len(),
-                            "Rebase and merge in-repo has conflicts, transitioning to Merging"
-                        );
+                    Ok(CheckoutFreeMergeResult::Conflict { files: conflict_files }) => {
+                        tracing::info!(task_id = task_id_str, conflict_count = conflict_files.len(), "Checkout-free rebase merge has conflicts, creating temp worktree");
+                        emit_merge_progress(self.machine.context.services.app_handle.as_ref(), task_id_str, MergePhase::ProgrammaticMerge, MergePhaseStatus::Failed, format!("Merge conflicts in {} files", conflict_files.len()));
 
-                        emit_merge_progress(
-                            self.machine.context.services.app_handle.as_ref(),
-                            task_id_str,
-                            MergePhase::ProgrammaticMerge,
-                            MergePhaseStatus::Failed,
-                            format!("Merge conflicts detected in {} files", conflict_files.len()),
-                        );
+                        let merge_wt_path = PathBuf::from(compute_merge_worktree_path(&project, task_id_str));
+                        let target_sha = GitService::get_branch_sha(repo_path, &target_branch).unwrap_or_default();
+                        let resolve_branch = format!("merge-resolve/{}", task_id_str);
+                        let _ = GitService::create_branch_at(repo_path, &resolve_branch, &target_sha);
+                        let _ = GitService::checkout_existing_branch_worktree(repo_path, &merge_wt_path, &resolve_branch);
+                        let _ = std::process::Command::new("git").args(["merge", &source_branch, "--no-edit"]).current_dir(&merge_wt_path).output();
 
                         task.internal_status = InternalStatus::Merging;
                         task.touch();
-
-                        if let Err(e) = task_repo.update(&task).await {
-                            tracing::error!(error = %e, "Failed to update task to Merging");
-                            return;
-                        }
-
-                        if let Err(e) = task_repo
-                            .persist_status_change(
-                                &task_id,
-                                InternalStatus::PendingMerge,
-                                InternalStatus::Merging,
-                                "merge_conflict",
-                            )
-                            .await
-                        {
-                            tracing::warn!(error = %e, "Failed to record merge conflict transition (non-fatal)");
-                        }
-
-                        self.machine
-                            .context
-                            .services
-                            .event_emitter
-                            .emit_status_change(task_id_str, "pending_merge", "merging")
-                            .await;
+                        let _ = task_repo.update(&task).await;
+                        let _ = task_repo.persist_status_change(&task_id, InternalStatus::PendingMerge, InternalStatus::Merging, "merge_conflict").await;
+                        self.machine.context.services.event_emitter.emit_status_change(task_id_str, "pending_merge", "merging").await;
 
                         let prompt = format!("Resolve merge conflicts for task: {}", task_id_str);
-                        let result = self
-                            .machine
-                            .context
-                            .services
-                            .chat_service
-                            .send_message(
-                                crate::domain::entities::ChatContextType::Merge,
-                                task_id_str,
-                                &prompt,
-                            )
-                            .await;
-
+                        let result = self.machine.context.services.chat_service.send_message(crate::domain::entities::ChatContextType::Merge, task_id_str, &prompt).await;
                         match &result {
-                            Ok(_) => tracing::info!(task_id = task_id_str, "Merger agent spawned successfully"),
+                            Ok(_) => tracing::info!(task_id = task_id_str, "Merger agent spawned"),
                             Err(e) => tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent"),
                         }
                     }
-                    Ok(MergeAttemptResult::BranchNotFound { branch }) => {
-                        tracing::error!(
-                            task_id = task_id_str,
-                            missing_branch = %branch,
-                            "Merge failed: branch '{}' does not exist", branch
-                        );
-
-                        task.metadata = Some(
-                            serde_json::json!({
-                                "error": format!("Branch '{}' does not exist", branch),
-                                "missing_branch": branch,
-                                "source_branch": source_branch,
-                                "target_branch": target_branch,
-                            })
-                            .to_string(),
-                        );
+                    Err(e) => {
+                        tracing::error!(task_id = task_id_str, error = %e, "Checkout-free rebase merge failed");
+                        task.metadata = Some(serde_json::json!({"error": e.to_string(), "source_branch": source_branch, "target_branch": target_branch}).to_string());
                         task.internal_status = InternalStatus::MergeIncomplete;
                         task.touch();
-
-                        if let Err(e) = task_repo.update(&task).await {
-                            tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
-                            return;
-                        }
-
-                        if let Err(e) = task_repo
-                            .persist_status_change(
-                                &task_id,
-                                InternalStatus::PendingMerge,
-                                InternalStatus::MergeIncomplete,
-                                "merge_incomplete",
-                            )
-                            .await
-                        {
-                            tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
-                        }
-
-                        self.machine
-                            .context
-                            .services
-                            .event_emitter
-                            .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
-                            .await;
-                    }
-                    Err(e) => {
-                        if GitService::is_branch_lock_error(&e) {
-                            tracing::warn!(
-                                task_id = task_id_str,
-                                error = %e,
-                                "Rebase merge in-repo failed due to branch lock, staying in PendingMerge"
-                            );
-                            // Task stays in PendingMerge for retry
-                        } else {
-                            tracing::error!(
-                                task_id = task_id_str,
-                                error = %e,
-                                "Rebase merge in-repo failed, transitioning to MergeIncomplete"
-                            );
-
-                            task.metadata = Some(
-                                serde_json::json!({
-                                    "error": e.to_string(),
-                                    "source_branch": source_branch,
-                                    "target_branch": target_branch,
-                                })
-                                .to_string(),
-                            );
-                            task.internal_status = InternalStatus::MergeIncomplete;
-                            task.touch();
-
-                            let _ = task_repo.update(&task).await;
-                            let _ = task_repo
-                                .persist_status_change(
-                                    &task_id,
-                                    InternalStatus::PendingMerge,
-                                    InternalStatus::MergeIncomplete,
-                                    "merge_incomplete",
-                                )
-                                .await;
-
-                            self.machine
-                                .context
-                                .services
-                                .event_emitter
-                                .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
-                                .await;
-                        }
+                        let _ = task_repo.update(&task).await;
+                        let _ = task_repo.persist_status_change(&task_id, InternalStatus::PendingMerge, InternalStatus::MergeIncomplete, "merge_incomplete").await;
+                        self.machine.context.services.event_emitter.emit_status_change(task_id_str, "pending_merge", "merge_incomplete").await;
                     }
                 }
             } else {
@@ -5152,12 +4840,32 @@ impl<'a> super::TransitionHandler<'a> {
             let target_is_checked_out = current_branch == target_branch;
 
             let merge_result = if target_is_checked_out {
+                // Use checkout-free squash merge to avoid disrupting working tree
                 tracing::info!(
                     task_id = task_id_str,
                     target_branch = %target_branch,
-                    "Target branch is checked out in primary repo, squash merging directly in-repo"
+                    "Target branch is checked out, using checkout-free squash merge"
                 );
-                GitService::try_squash_merge(repo_path, &source_branch, &target_branch, &squash_commit_msg)
+                // Validate branches exist
+                if !GitService::branch_exists(repo_path, &source_branch) {
+                    Ok(MergeAttemptResult::BranchNotFound { branch: source_branch.clone() })
+                } else if !GitService::branch_exists(repo_path, &target_branch) {
+                    Ok(MergeAttemptResult::BranchNotFound { branch: target_branch.clone() })
+                } else {
+                    match checkout_free::try_squash_merge_checkout_free(repo_path, &source_branch, &target_branch, &squash_commit_msg) {
+                        Ok(CheckoutFreeMergeResult::Success { commit_sha }) => {
+                            // Atomically sync working tree
+                            if let Err(e) = GitService::hard_reset_to_head(repo_path) {
+                                tracing::error!(error = %e, task_id = task_id_str, "Failed to sync working tree after checkout-free squash merge");
+                            }
+                            Ok(MergeAttemptResult::Success { commit_sha })
+                        }
+                        Ok(CheckoutFreeMergeResult::Conflict { files }) => {
+                            Ok(MergeAttemptResult::NeedsAgent { conflict_files: files })
+                        }
+                        Err(e) => Err(e),
+                    }
+                }
             } else {
                 let merge_wt_path = PathBuf::from(compute_merge_worktree_path(&project, task_id_str));
                 tracing::info!(
@@ -5744,25 +5452,40 @@ impl<'a> super::TransitionHandler<'a> {
             let target_is_checked_out = current_branch == target_branch;
 
             if target_is_checked_out {
-                // Target checked out in primary repo — rebase+squash in-repo
+                // Target checked out in primary repo — use checkout-free squash merge
+                // (skips rebase step to avoid worktree conflicts with source branch)
                 tracing::info!(
                     task_id = task_id_str,
                     target_branch = %target_branch,
-                    "Target branch is checked out, rebase+squash directly in-repo"
-                );
-                let merge_result = GitService::try_rebase_squash_merge(
-                    repo_path,
-                    &source_branch,
-                    &target_branch,
-                    &squash_commit_msg,
+                    "Target branch is checked out, using checkout-free squash merge"
                 );
 
-                match merge_result {
-                    Ok(MergeAttemptResult::Success { commit_sha }) => {
+                // Validate branches exist
+                if !GitService::branch_exists(repo_path, &source_branch) || !GitService::branch_exists(repo_path, &target_branch) {
+                    let missing = if !GitService::branch_exists(repo_path, &source_branch) { &source_branch } else { &target_branch };
+                    tracing::error!(task_id = task_id_str, "Branch '{}' does not exist", missing);
+                    task.metadata = Some(serde_json::json!({"error": format!("Branch '{}' does not exist", missing), "missing_branch": missing, "source_branch": source_branch, "target_branch": target_branch}).to_string());
+                    task.internal_status = InternalStatus::MergeIncomplete;
+                    task.touch();
+                    let _ = task_repo.update(&task).await;
+                    let _ = task_repo.persist_status_change(&task_id, InternalStatus::PendingMerge, InternalStatus::MergeIncomplete, "merge_incomplete").await;
+                    self.machine.context.services.event_emitter.emit_status_change(task_id_str, "pending_merge", "merge_incomplete").await;
+                    return;
+                }
+
+                let cf_result = checkout_free::try_squash_merge_checkout_free(repo_path, &source_branch, &target_branch, &squash_commit_msg);
+
+                match cf_result {
+                    Ok(CheckoutFreeMergeResult::Success { commit_sha }) => {
+                        // Atomically sync working tree
+                        if let Err(e) = GitService::hard_reset_to_head(repo_path) {
+                            tracing::error!(error = %e, task_id = task_id_str, "Failed to sync working tree after checkout-free rebase+squash");
+                        }
+
                         tracing::info!(
                             task_id = task_id_str,
                             commit_sha = %commit_sha,
-                            "Rebase+squash in-repo succeeded"
+                            "Checkout-free rebase+squash succeeded"
                         );
 
                         emit_merge_progress(
@@ -5774,244 +5497,75 @@ impl<'a> super::TransitionHandler<'a> {
                         );
 
                         if TEMP_SKIP_POST_MERGE_VALIDATION {
-                            tracing::warn!(task_id = task_id_str, "Post-merge validation temporarily disabled (global flag, worktree rebase+squash in-repo)");
+                            tracing::warn!(task_id = task_id_str, "Post-merge validation temporarily disabled (global flag, checkout-free rebase+squash)");
                         } else {
                             let skip_validation = take_skip_validation_flag(&mut task);
                             let validation_mode = &project.merge_validation_mode;
                             if !skip_validation && *validation_mode != MergeValidationMode::Off {
-                                let source_sha =
-                                    GitService::get_branch_sha(repo_path, &source_branch).ok();
-                                let cached_log = source_sha
-                                    .as_deref()
-                                    .and_then(|sha| extract_cached_validation(&task, sha));
+                                let source_sha = GitService::get_branch_sha(repo_path, &source_branch).ok();
+                                let cached_log = source_sha.as_deref().and_then(|sha| extract_cached_validation(&task, sha));
                                 let app_handle_ref = self.machine.context.services.app_handle.as_ref();
-                                if let Some(validation) = run_validation_commands(
-                                    &project,
-                                    &task,
-                                    repo_path,
-                                    task_id_str,
-                                    app_handle_ref,
-                                    cached_log.as_deref(),
-                                )
-                                .await
-                                {
+                                if let Some(validation) = run_validation_commands(&project, &task, repo_path, task_id_str, app_handle_ref, cached_log.as_deref()).await {
                                     if !validation.all_passed {
                                         if *validation_mode == MergeValidationMode::Warn {
-                                            tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode (worktree rebase+squash in-repo), proceeding");
-                                            task.metadata = Some(format_validation_warn_metadata(
-                                                &validation.log,
-                                                &source_branch,
-                                                &target_branch,
-                                            ));
+                                            tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode (checkout-free rebase+squash), proceeding");
+                                            task.metadata = Some(format_validation_warn_metadata(&validation.log, &source_branch, &target_branch));
                                         } else {
-                                            self.handle_validation_failure(
-                                                &mut task,
-                                                &task_id,
-                                                task_id_str,
-                                                task_repo,
-                                                &validation.failures,
-                                                &validation.log,
-                                                &source_branch,
-                                                &target_branch,
-                                                repo_path,
-                                                "worktree",
-                                                validation_mode,
-                                            )
-                                            .await;
+                                            self.handle_validation_failure(&mut task, &task_id, task_id_str, task_repo, &validation.failures, &validation.log, &source_branch, &target_branch, repo_path, "checkout-free", validation_mode).await;
                                             return;
                                         }
                                     } else {
-                                        task.metadata = Some(
-                                            serde_json::json!({
-                                                "validation_log": validation.log,
-                                                "validation_source_sha": source_sha,
-                                                "source_branch": source_branch,
-                                                "target_branch": target_branch,
-                                            })
-                                            .to_string(),
-                                        );
+                                        task.metadata = Some(serde_json::json!({"validation_log": validation.log, "validation_source_sha": source_sha, "source_branch": source_branch, "target_branch": target_branch}).to_string());
                                     }
                                 }
                             }
                         }
 
                         let app_handle = self.machine.context.services.app_handle.as_ref();
-                        if let Err(e) = complete_merge_internal(
-                            &mut task,
-                            &project,
-                            &commit_sha,
-                            task_repo,
-                            app_handle,
-                        )
-                        .await
-                        {
-                            tracing::error!(error = %e, task_id = task_id_str, "Failed to complete rebase+squash in-repo");
-
-                            task.metadata = Some(
-                                serde_json::json!({
-                                    "error": format!("complete_merge_internal failed: {}", e),
-                                    "source_branch": source_branch,
-                                    "target_branch": target_branch,
-                                })
-                                .to_string(),
-                            );
+                        if let Err(e) = complete_merge_internal(&mut task, &project, &commit_sha, task_repo, app_handle).await {
+                            tracing::error!(error = %e, task_id = task_id_str, "Failed to complete checkout-free rebase+squash");
+                            task.metadata = Some(serde_json::json!({"error": format!("complete_merge_internal failed: {}", e), "source_branch": source_branch, "target_branch": target_branch}).to_string());
                             task.internal_status = InternalStatus::MergeIncomplete;
                             task.touch();
-
                             let _ = task_repo.update(&task).await;
-                            let _ = task_repo
-                                .persist_status_change(
-                                    &task_id,
-                                    InternalStatus::PendingMerge,
-                                    InternalStatus::MergeIncomplete,
-                                    "merge_incomplete",
-                                )
-                                .await;
-
-                            self.machine
-                                .context
-                                .services
-                                .event_emitter
-                                .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
-                                .await;
+                            let _ = task_repo.persist_status_change(&task_id, InternalStatus::PendingMerge, InternalStatus::MergeIncomplete, "merge_incomplete").await;
+                            self.machine.context.services.event_emitter.emit_status_change(task_id_str, "pending_merge", "merge_incomplete").await;
                         } else {
-                            self.post_merge_cleanup(task_id_str, &task_id, repo_path, plan_branch_repo)
-                                .await;
+                            self.post_merge_cleanup(task_id_str, &task_id, repo_path, plan_branch_repo).await;
                         }
                     }
-                    Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
-                        tracing::info!(
-                            task_id = task_id_str,
-                            conflict_count = conflict_files.len(),
-                            "Rebase+squash in-repo: conflicts detected, transitioning to Merging"
-                        );
+                    Ok(CheckoutFreeMergeResult::Conflict { files: conflict_files }) => {
+                        tracing::info!(task_id = task_id_str, conflict_count = conflict_files.len(), "Checkout-free rebase+squash has conflicts, creating temp worktree");
+                        emit_merge_progress(self.machine.context.services.app_handle.as_ref(), task_id_str, MergePhase::ProgrammaticMerge, MergePhaseStatus::Failed, format!("Conflicts in {} files", conflict_files.len()));
 
-                        emit_merge_progress(
-                            self.machine.context.services.app_handle.as_ref(),
-                            task_id_str,
-                            MergePhase::ProgrammaticMerge,
-                            MergePhaseStatus::Failed,
-                            format!("Rebase conflicts detected in {} files", conflict_files.len()),
-                        );
+                        let merge_wt_path = PathBuf::from(compute_merge_worktree_path(&project, task_id_str));
+                        let target_sha = GitService::get_branch_sha(repo_path, &target_branch).unwrap_or_default();
+                        let resolve_branch = format!("merge-resolve/{}", task_id_str);
+                        let _ = GitService::create_branch_at(repo_path, &resolve_branch, &target_sha);
+                        let _ = GitService::checkout_existing_branch_worktree(repo_path, &merge_wt_path, &resolve_branch);
+                        let _ = std::process::Command::new("git").args(["merge", &source_branch, "--no-edit"]).current_dir(&merge_wt_path).output();
 
                         task.internal_status = InternalStatus::Merging;
                         task.touch();
+                        let _ = task_repo.update(&task).await;
+                        let _ = task_repo.persist_status_change(&task_id, InternalStatus::PendingMerge, InternalStatus::Merging, "merge_conflict").await;
+                        self.machine.context.services.event_emitter.emit_status_change(task_id_str, "pending_merge", "merging").await;
 
-                        if let Err(e) = task_repo.update(&task).await {
-                            tracing::error!(error = %e, "Failed to update task to Merging status");
-                            return;
-                        }
-
-                        if let Err(e) = task_repo
-                            .persist_status_change(
-                                &task_id,
-                                InternalStatus::PendingMerge,
-                                InternalStatus::Merging,
-                                "merge_conflict",
-                            )
-                            .await
-                        {
-                            tracing::warn!(error = %e, "Failed to record conflict transition (non-fatal)");
-                        }
-
-                        self.machine
-                            .context
-                            .services
-                            .event_emitter
-                            .emit_status_change(task_id_str, "pending_merge", "merging")
-                            .await;
-
-                        let prompt = format!("Resolve rebase conflicts for task: {}. After resolving each file, run `git add <file>` then `git rebase --continue`.", task_id_str);
-                        let result = self
-                            .machine
-                            .context
-                            .services
-                            .chat_service
-                            .send_message(
-                                crate::domain::entities::ChatContextType::Merge,
-                                task_id_str,
-                                &prompt,
-                            )
-                            .await;
-
+                        let prompt = format!("Resolve merge conflicts for task: {}", task_id_str);
+                        let result = self.machine.context.services.chat_service.send_message(crate::domain::entities::ChatContextType::Merge, task_id_str, &prompt).await;
                         match &result {
-                            Ok(_) => tracing::info!(task_id = task_id_str, "Merger agent spawned successfully"),
+                            Ok(_) => tracing::info!(task_id = task_id_str, "Merger agent spawned"),
                             Err(e) => tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent"),
                         }
                     }
-                    Ok(MergeAttemptResult::BranchNotFound { branch }) => {
-                        tracing::error!(
-                            task_id = task_id_str,
-                            missing_branch = %branch,
-                            "Merge failed: branch '{}' does not exist", branch
-                        );
-
-                        task.metadata = Some(
-                            serde_json::json!({
-                                "error": format!("Branch '{}' does not exist", branch),
-                                "missing_branch": branch,
-                                "source_branch": source_branch,
-                                "target_branch": target_branch,
-                            })
-                            .to_string(),
-                        );
-                        task.internal_status = InternalStatus::MergeIncomplete;
-                        task.touch();
-
-                        if let Err(e) = task_repo.update(&task).await {
-                            tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
-                            return;
-                        }
-
-                        if let Err(e) = task_repo
-                            .persist_status_change(
-                                &task_id,
-                                InternalStatus::PendingMerge,
-                                InternalStatus::MergeIncomplete,
-                                "merge_incomplete",
-                            )
-                            .await
-                        {
-                            tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
-                        }
-
-                        self.machine
-                            .context
-                            .services
-                            .event_emitter
-                            .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
-                            .await;
-                    }
                     Err(e) => {
-                        tracing::error!(task_id = task_id_str, error = %e, "Rebase+squash in-repo failed");
-
-                        task.metadata = Some(
-                            serde_json::json!({
-                                "error": e.to_string(),
-                                "source_branch": source_branch,
-                                "target_branch": target_branch,
-                            })
-                            .to_string(),
-                        );
+                        tracing::error!(task_id = task_id_str, error = %e, "Checkout-free rebase+squash failed");
+                        task.metadata = Some(serde_json::json!({"error": e.to_string(), "source_branch": source_branch, "target_branch": target_branch}).to_string());
                         task.internal_status = InternalStatus::MergeIncomplete;
                         task.touch();
-
                         let _ = task_repo.update(&task).await;
-                        let _ = task_repo
-                            .persist_status_change(
-                                &task_id,
-                                InternalStatus::PendingMerge,
-                                InternalStatus::MergeIncomplete,
-                                "merge_incomplete",
-                            )
-                            .await;
-
-                        self.machine
-                            .context
-                            .services
-                            .event_emitter
-                            .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
-                            .await;
+                        let _ = task_repo.persist_status_change(&task_id, InternalStatus::PendingMerge, InternalStatus::MergeIncomplete, "merge_incomplete").await;
+                        self.machine.context.services.event_emitter.emit_status_change(task_id_str, "pending_merge", "merge_incomplete").await;
                     }
                 }
             } else {

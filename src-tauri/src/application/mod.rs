@@ -37,6 +37,7 @@ pub use dependency_service::{DependencyAnalysis, DependencyService, ValidationRe
 pub use diff_service::{DiffService, FileChange, FileChangeStatus, FileDiff};
 pub use git_service::{
     CommitInfo, DiffStats, GitService, MergeAttemptResult, MergeResult, RebaseResult,
+    checkout_free::CheckoutFreeMergeResult,
 };
 pub use ideation_service::{
     CreateProposalOptions, IdeationService, SessionStats, SessionWithData, UpdateProposalOptions,
