@@ -10,15 +10,14 @@ import { useStepProgress } from "@/hooks/useTaskSteps";
 interface StepProgressBarProps {
   taskId: string;
   compact?: boolean;
-  isTerminalComplete?: boolean;
+  internalStatus?: string;
 }
 
 const COMPACT_DOT_CAP = 19;
 
 /**
  * Get background color class for step dot based on status
- * When isTerminalComplete is false, completed steps show as light gray instead of green
- * (for non-terminal states like approved/merged)
+ * @param isTerminalComplete - whether the task is in a terminal state (merged/approved)
  */
 function getStepDotColor(
   index: number,
@@ -35,7 +34,7 @@ function getStepDotColor(
   const inProgressEnd = inProgressStart + inProgress;
 
   if (index < completed) {
-    // Completed steps - green only if terminal complete (merged/approved), otherwise light gray
+    // Completed steps - green only when terminal, muted otherwise
     return isTerminalComplete ? "bg-status-success" : "bg-text-muted";
   } else if (index < completedAndSkipped) {
     // Skipped steps
@@ -68,7 +67,7 @@ function getStepDotColor(
  * <StepProgressBar taskId="task-123" />
  * ```
  */
-export function StepProgressBar({ taskId, compact = false, isTerminalComplete = true }: StepProgressBarProps) {
+export function StepProgressBar({ taskId, compact = false, internalStatus }: StepProgressBarProps) {
   const { data: progress, isLoading } = useStepProgress(taskId);
 
   // Don't render anything while loading, if no data, or if there are no steps
@@ -79,6 +78,9 @@ export function StepProgressBar({ taskId, compact = false, isTerminalComplete = 
   const { total, completed, skipped, failed, inProgress } = progress;
   const completedAndSkipped = completed + skipped;
   const percentComplete = Math.round((completedAndSkipped / total) * 100);
+
+  // Determine if task is in terminal state (merged or approved)
+  const isTerminalComplete = internalStatus === "merged" || internalStatus === "approved";
 
   // Compact mode: progress bar + percentage + dots for TaskCard
   if (compact) {
