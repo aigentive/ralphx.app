@@ -487,6 +487,222 @@ describe("ChatInput", () => {
   });
 
   // ============================================================================
+  // Agent Stop Button Tests
+  // ============================================================================
+
+  describe("agent stop button", () => {
+    it("shows Stop button when agent is running and no question mode", () => {
+      render(<ChatInput {...defaultProps} isAgentRunning={true} onStop={vi.fn()} />);
+      expect(screen.getByTestId("chat-input-stop")).toBeInTheDocument();
+    });
+
+    it("does not show Send button when agent is running and no question mode", () => {
+      render(<ChatInput {...defaultProps} isAgentRunning={true} onStop={vi.fn()} />);
+      expect(screen.queryByTestId("chat-input-send")).not.toBeInTheDocument();
+    });
+
+    it("calls onStop when Stop button clicked", async () => {
+      const user = userEvent.setup();
+      const onStop = vi.fn();
+      render(<ChatInput {...defaultProps} isAgentRunning={true} onStop={onStop} />);
+
+      await user.click(screen.getByTestId("chat-input-stop"));
+
+      expect(onStop).toHaveBeenCalled();
+    });
+  });
+
+  // ============================================================================
+  // Three-Branch Button Logic Tests (Agent + Question Mode)
+  // ============================================================================
+
+  describe("three-branch button logic (agent + question mode)", () => {
+    const questionModeProps = {
+      optionCount: 3,
+      multiSelect: false,
+      onMatchedOptions: vi.fn(),
+    };
+
+    it("shows Send button when agent running AND questionMode active", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          isAgentRunning={true}
+          questionMode={questionModeProps}
+        />
+      );
+      expect(screen.getByTestId("chat-input-send")).toBeInTheDocument();
+    });
+
+    it("shows secondary stop button when agent running AND questionMode active", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          isAgentRunning={true}
+          questionMode={questionModeProps}
+          onStop={vi.fn()}
+        />
+      );
+      expect(screen.getByTestId("chat-input-stop-secondary")).toBeInTheDocument();
+    });
+
+    it("does not show primary stop button when agent running AND questionMode active", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          isAgentRunning={true}
+          questionMode={questionModeProps}
+          onStop={vi.fn()}
+        />
+      );
+      expect(screen.queryByTestId("chat-input-stop")).not.toBeInTheDocument();
+    });
+
+    it("renders Send and secondary Stop buttons in a flex row", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          isAgentRunning={true}
+          questionMode={questionModeProps}
+          onStop={vi.fn()}
+        />
+      );
+
+      const sendButton = screen.getByTestId("chat-input-send");
+      const stopButton = screen.getByTestId("chat-input-stop-secondary");
+
+      // Both buttons should exist
+      expect(sendButton).toBeInTheDocument();
+      expect(stopButton).toBeInTheDocument();
+
+      // Verify they're in the same flex container
+      const sendParent = sendButton.parentElement;
+      const stopParent = stopButton.parentElement;
+      expect(sendParent).toBe(stopParent);
+      expect(sendParent).toHaveClass("flex");
+    });
+
+    it("secondary stop button calls onStop when clicked", async () => {
+      const user = userEvent.setup();
+      const onStop = vi.fn();
+      render(
+        <ChatInput
+          {...defaultProps}
+          isAgentRunning={true}
+          questionMode={questionModeProps}
+          onStop={onStop}
+        />
+      );
+
+      await user.click(screen.getByTestId("chat-input-stop-secondary"));
+
+      expect(onStop).toHaveBeenCalled();
+    });
+
+    it("Send button is enabled when input has content", async () => {
+      const user = userEvent.setup();
+      render(
+        <ChatInput
+          {...defaultProps}
+          isAgentRunning={true}
+          questionMode={questionModeProps}
+        />
+      );
+
+      const textarea = screen.getByTestId("chat-input-textarea");
+      await user.type(textarea, "answer");
+
+      const sendButton = screen.getByTestId("chat-input-send");
+      expect(sendButton).not.toBeDisabled();
+    });
+
+    it("Send button is disabled when input is empty", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          isAgentRunning={true}
+          questionMode={questionModeProps}
+        />
+      );
+
+      const sendButton = screen.getByTestId("chat-input-send");
+      expect(sendButton).toBeDisabled();
+    });
+
+    it("secondary stop button has correct styling", () => {
+      render(
+        <ChatInput
+          {...defaultProps}
+          isAgentRunning={true}
+          questionMode={questionModeProps}
+          onStop={vi.fn()}
+        />
+      );
+
+      const stopButton = screen.getByTestId("chat-input-stop-secondary");
+      // Check size
+      expect(stopButton).toHaveClass("w-[28px]");
+      expect(stopButton).toHaveClass("h-[28px]");
+    });
+
+    it("Send button in question mode has correct styling", async () => {
+      const user = userEvent.setup();
+      render(
+        <ChatInput
+          {...defaultProps}
+          isAgentRunning={true}
+          questionMode={questionModeProps}
+        />
+      );
+
+      const textarea = screen.getByTestId("chat-input-textarea");
+      await user.type(textarea, "answer");
+
+      const sendButton = screen.getByTestId("chat-input-send");
+      // Should have the orange accent color when enabled
+      expect(sendButton).toHaveStyle({ background: "hsl(14 100% 60%)" });
+    });
+
+    it("calls onSend when Send button clicked in question mode", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn().mockResolvedValue(undefined);
+      render(
+        <ChatInput
+          onSend={onSend}
+          isAgentRunning={true}
+          questionMode={questionModeProps}
+        />
+      );
+
+      const textarea = screen.getByTestId("chat-input-textarea");
+      await user.type(textarea, "answer");
+      await user.click(screen.getByTestId("chat-input-send"));
+
+      expect(onSend).toHaveBeenCalledWith("answer");
+    });
+
+    it("calls onQueue when Send button clicked in question mode with agent running", async () => {
+      const user = userEvent.setup();
+      const onQueue = vi.fn();
+      render(
+        <ChatInput
+          {...defaultProps}
+          isAgentRunning={true}
+          questionMode={questionModeProps}
+          onQueue={onQueue}
+        />
+      );
+
+      const textarea = screen.getByTestId("chat-input-textarea");
+      await user.type(textarea, "answer");
+      await user.click(screen.getByTestId("chat-input-send"));
+
+      // When agent is running, Send calls onQueue (queue mode)
+      expect(onQueue).toHaveBeenCalledWith("answer");
+    });
+  });
+
+  // ============================================================================
   // Question Mode Tests
   // ============================================================================
 
