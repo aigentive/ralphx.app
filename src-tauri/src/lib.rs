@@ -205,6 +205,7 @@ pub fn run() {
             let startup_project_repo = Arc::clone(&app_state.project_repo);
             let startup_task_dependency_repo = Arc::clone(&app_state.task_dependency_repo);
             let startup_plan_branch_repo = Arc::clone(&app_state.plan_branch_repo);
+            let startup_step_repo = Arc::clone(&app_state.task_step_repo);
             let startup_chat_message_repo = Arc::clone(&app_state.chat_message_repo);
             let startup_conversation_repo = Arc::clone(&app_state.chat_conversation_repo);
             let startup_agent_run_repo = Arc::clone(&app_state.agent_run_repo);
@@ -303,7 +304,8 @@ pub fn run() {
                     Some(startup_app_handle),
                 )
                 .with_task_scheduler(Arc::clone(&task_scheduler))
-                .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo)));
+                .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
+                .with_step_repo(Arc::clone(&startup_step_repo)));
 
                 let runner = StartupJobRunner::new(
                     startup_task_repo,
@@ -362,7 +364,8 @@ pub fn run() {
                         Some(reconcile_app_handle.clone()),
                     )
                     .with_task_scheduler(Arc::clone(&task_scheduler))
-                    .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo)));
+                    .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
+                    .with_step_repo(Arc::clone(&startup_step_repo)));
 
                 let reconcile_runner = ReconciliationRunner::new(
                     reconcile_task_repo,

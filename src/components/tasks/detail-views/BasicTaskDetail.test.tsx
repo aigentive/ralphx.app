@@ -185,6 +185,81 @@ describe("BasicTaskDetail", () => {
     expect(screen.getByText("No steps defined yet")).toBeInTheDocument();
   });
 
+  describe("failure reason display", () => {
+    it("displays failure reason when task is in failed state with metadata", () => {
+      const failureMetadata = JSON.stringify({
+        failure_error: "Connection timeout",
+        failure_details: "Task failed to connect to the server",
+        is_timeout: true,
+      });
+      const task = createTestTask({
+        internalStatus: "failed",
+        metadata: failureMetadata,
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByTestId("failure-reason-section")).toBeInTheDocument();
+      expect(screen.getByText("Failure Reason")).toBeInTheDocument();
+      expect(screen.getByText("Connection timeout")).toBeInTheDocument();
+      expect(screen.getByText("timeout")).toBeInTheDocument();
+      expect(screen.getByText("Task failed to connect to the server")).toBeInTheDocument();
+    });
+
+    it("hides failure reason section when task is not failed", () => {
+      const task = createTestTask({ internalStatus: "ready" });
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.queryByTestId("failure-reason-section")).not.toBeInTheDocument();
+    });
+
+    it("displays failure error without timeout badge when is_timeout is false", () => {
+      const failureMetadata = JSON.stringify({
+        failure_error: "Invalid input",
+        failure_details: null,
+        is_timeout: false,
+      });
+      const task = createTestTask({
+        internalStatus: "failed",
+        metadata: failureMetadata,
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByText("Invalid input")).toBeInTheDocument();
+      expect(screen.queryByText("timeout")).not.toBeInTheDocument();
+    });
+
+    it("displays error without details when failure_details is null", () => {
+      const failureMetadata = JSON.stringify({
+        failure_error: "Process error",
+        failure_details: null,
+        is_timeout: false,
+      });
+      const task = createTestTask({
+        internalStatus: "failed",
+        metadata: failureMetadata,
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByText("Process error")).toBeInTheDocument();
+      expect(screen.queryByText(/Task failed/)).not.toBeInTheDocument();
+    });
+
+    it("handles malformed JSON metadata gracefully", () => {
+      const task = createTestTask({
+        internalStatus: "failed",
+        metadata: "invalid json",
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.queryByTestId("failure-reason-section")).not.toBeInTheDocument();
+    });
+  });
+
+
   describe("restart action for terminal states", () => {
     beforeEach(() => {
       vi.clearAllMocks();

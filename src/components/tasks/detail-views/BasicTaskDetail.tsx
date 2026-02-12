@@ -112,11 +112,57 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
   const hasSteps = (steps?.length ?? 0) > 0;
   const isRestartable = RESTARTABLE_STATUSES.has(task.internalStatus);
 
+  // Parse failure info from task metadata when task is failed
+  let failureInfo: {
+    failure_error: string;
+    failure_details?: string;
+    is_timeout: boolean;
+  } | null = null;
+
+  if (task.internalStatus === "failed" && task.metadata) {
+    try {
+      const metadata = JSON.parse(task.metadata);
+      if (metadata.failure_error) {
+        failureInfo = {
+          failure_error: metadata.failure_error,
+          failure_details: metadata.failure_details,
+          is_timeout: metadata.is_timeout || false,
+        };
+      }
+    } catch {
+      // Ignore JSON parse errors
+    }
+  }
+
   return (
     <TwoColumnLayout
       description={task.description}
       testId="basic-task-detail"
     >
+      {/* Failure Reason Banner */}
+      {failureInfo && (
+        <section data-testid="failure-reason-section" className="space-y-2">
+          <SectionTitle>Failure Reason</SectionTitle>
+          <div className="rounded-md bg-red-500/10 p-3 text-[13px] text-red-400">
+            <div className="flex items-start gap-2">
+              <div className="flex-1">
+                {failureInfo.failure_error}
+                {failureInfo.is_timeout && (
+                  <span className="ml-2 inline-block text-[11px] bg-red-500/20 px-2 py-0.5 rounded">
+                    timeout
+                  </span>
+                )}
+              </div>
+            </div>
+            {failureInfo.failure_details && (
+              <p className="mt-2 text-[12px] text-red-400/70">
+                {failureInfo.failure_details}
+              </p>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* Steps Section */}
       {stepsLoading && (
         <div
