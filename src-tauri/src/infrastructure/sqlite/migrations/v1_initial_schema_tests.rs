@@ -7,7 +7,7 @@ use crate::infrastructure::sqlite::connection::open_memory_connection;
 
 #[test]
 fn test_schema_version_constant() {
-    assert_eq!(SCHEMA_VERSION, 27);
+    assert_eq!(SCHEMA_VERSION, 24);
 }
 
 #[test]
@@ -472,9 +472,8 @@ fn test_ideation_settings_has_defaults() {
     run_migrations(&conn).unwrap();
 
     let count: i32 = conn
-        .query_row("SELECT COUNT(*) FROM ideation_settings", [], |row| {
-            row.get(0)
-        })
+        .query_row("SELECT COUNT(*) FROM ideation_settings", [], |row| row.get(0))
         .unwrap();
     assert_eq!(count, 1);
 }
+

@@ -65,6 +65,7 @@ style={{ boxShadow: "none", outline: "none" }}
 
 ## Key Features
 - **Active Plan** — Project-scoped plan filtering for Graph/Kanban. User docs: `docs/features/active-plan.md` | API docs: `docs/architecture/active-plan-api.md`
+- **Session Recovery** — Automatic recovery of expired Claude sessions with conversation history preservation. User docs: `docs/features/session-recovery.md`
 
 ## Key Principles
 1. TDD mandatory (tests FIRST)

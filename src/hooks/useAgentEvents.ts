@@ -9,6 +9,7 @@
 
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { useEventBus } from "@/providers/EventProvider";
 import type { ChatMessageResponse } from "@/api/chat";
 import type { ChatConversation, ContextType } from "@/types/chat-conversation";
@@ -259,6 +260,19 @@ export function useAgentEvents(activeConversationId: string | null) {
         }
 
         // Error already propagated via agent state change and query invalidation
+      })
+    );
+
+    // Listen for session recovery events
+    unsubscribes.push(
+      bus.subscribe<{
+        conversation_id: string;
+        message: string;
+      }>("agent:session_recovered", (payload) => {
+        // Show non-blocking info toast
+        toast.info(payload.message, {
+          duration: 4000,
+        });
       })
     );
 

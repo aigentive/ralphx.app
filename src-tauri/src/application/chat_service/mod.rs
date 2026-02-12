@@ -12,9 +12,11 @@
 // - ExecutionChatService (task_execution context)
 
 mod chat_service_context;
+mod chat_service_errors;
 mod chat_service_helpers;
 mod chat_service_mock;
 mod chat_service_queue;
+mod chat_service_replay;
 mod chat_service_repository;
 mod chat_service_send_background;
 mod chat_service_streaming;
@@ -38,10 +40,12 @@ use tauri::{AppHandle, Emitter, Runtime};
 use which::which;
 
 // Re-exports from extracted modules
+pub use chat_service_errors::classify_agent_error;
 pub use chat_service_helpers::{get_agent_name, get_assistant_role};
 pub use chat_service_mock::{MockChatResponse, MockChatService};
-pub(crate) use chat_service_send_background::reconcile_merge_auto_complete;
+pub use chat_service_replay::{build_rehydration_prompt, ConversationReplay, ReplayBuilder, Turn};
 pub use chat_service_streaming::process_stream_background;
+pub(crate) use chat_service_send_background::reconcile_merge_auto_complete;
 pub use chat_service_types::{
     events, AgentChunkPayload, AgentErrorPayload, AgentHookPayload, AgentMessageCreatedPayload,
     AgentQueueSentPayload, AgentRunCompletedPayload, AgentRunStartedPayload,
@@ -590,6 +594,9 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         let plugin_dir = self.plugin_dir.clone();
         let working_directory_clone = working_directory;
         let stored_session_id_clone = stored_session_id;
+        let message_clone = message.to_string();
+        let conversation_clone = conversation.clone();
+        let project_id_clone = project_id.clone();
 
         // 9. Process stream in background (extracted to separate module)
         chat_service_send_background::spawn_send_message_background(
@@ -616,6 +623,10 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             question_state,
             plan_branch_repo,
             app_handle,
+            false, // is_retry_attempt
+            Some(message_clone),
+            Some(conversation_clone),
+            project_id_clone,
         );
         tracing::debug!(
             conversation_id = conversation_id.as_str(),
