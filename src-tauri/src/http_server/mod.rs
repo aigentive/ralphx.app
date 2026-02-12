@@ -132,6 +132,10 @@ pub async fn start_http_server(
         .route("/api/git/tasks/:id/commits", get(get_task_commits))
         .route("/api/git/tasks/:id/diff-stats", get(get_task_diff_stats))
         .route("/api/git/tasks/:id/merge-target", get(get_merge_target))
+        .route(
+            "/api/git/projects/:project_id/retry-pending-merges",
+            post(retry_pending_merges),
+        )
         // Project analysis endpoints (project-analyzer + worker/reviewer/merger agents)
         .route("/api/projects/:id/analysis", get(get_project_analysis))
         .route("/api/projects/:id/analysis", post(save_project_analysis))

@@ -1871,6 +1871,19 @@ impl GitService {
         }
     }
 
+    /// Check if a source branch is already merged into a target branch.
+    ///
+    /// This resolves `source_branch` to its tip SHA and verifies that commit is reachable
+    /// from `target_branch`.
+    pub fn is_branch_merged_into(
+        repo: &Path,
+        source_branch: &str,
+        target_branch: &str,
+    ) -> AppResult<bool> {
+        let source_sha = Self::get_branch_sha(repo, source_branch)?;
+        Self::is_commit_on_branch(repo, &source_sha, target_branch)
+    }
+
     /// Get commits on the current branch since it diverged from base
     ///
     /// # Arguments
@@ -2586,6 +2599,75 @@ mod tests {
         let result = GitService::is_commit_on_branch(repo, &feature_sha, &main_branch);
         assert!(result.is_ok());
         assert!(!result.unwrap());
+    }
+
+    #[test]
+    fn test_is_branch_merged_into_true_after_merge() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        std::fs::write(repo.join("base.txt"), "base").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "base"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        let _ = Command::new("git")
+            .args(["branch", "-M", "main"])
+            .current_dir(repo)
+            .output();
+
+        Command::new("git")
+            .args(["checkout", "-b", "feature/test"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        std::fs::write(repo.join("feature.txt"), "feature").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "feature"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["merge", "--no-ff", "feature/test", "-m", "merge feature"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        let merged = GitService::is_branch_merged_into(repo, "feature/test", "main").unwrap();
+        assert!(merged, "feature/test should be merged into main");
     }
 
     // =========================================================================

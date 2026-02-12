@@ -363,6 +363,48 @@ async fn task_targets_branch(
     resolved_target == target_branch
 }
 
+/// Check whether the task's resolved source branch is already merged into target_branch.
+async fn task_source_already_merged_into_target(
+    task: &Task,
+    project: &Project,
+    plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
+    repo_path: &Path,
+    target_branch: &str,
+) -> bool {
+    let (source_branch, resolved_target) = resolve_merge_branches(task, project, plan_branch_repo).await;
+    if source_branch.trim().is_empty() || resolved_target != target_branch {
+        return false;
+    }
+
+    match GitService::is_branch_merged_into(repo_path, &source_branch, target_branch) {
+        Ok(is_merged) => is_merged,
+        Err(e) => {
+            tracing::debug!(
+                task_id = task.id.as_str(),
+                source_branch = %source_branch,
+                target_branch = %target_branch,
+                error = %e,
+                "Failed to verify merged ancestry for task source branch"
+            );
+            false
+        }
+    }
+}
+
+/// Check whether the task's resolved source branch is missing in the local repository.
+async fn task_source_branch_missing(
+    task: &Task,
+    project: &Project,
+    plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
+    repo_path: &Path,
+) -> bool {
+    let (source_branch, _) = resolve_merge_branches(task, project, plan_branch_repo).await;
+    if source_branch.trim().is_empty() {
+        return true;
+    }
+    GitService::get_branch_sha(repo_path, &source_branch).is_err()
+}
+
 /// Parse a task's metadata JSON string into a `serde_json::Value`.
 ///
 /// Returns `None` if the task has no metadata or if parsing fails.
@@ -2263,6 +2305,57 @@ impl<'a> super::TransitionHandler<'a> {
 
         let repo_path = Path::new(&project.working_directory);
 
+        // Fast idempotence: if source is already on target, finalize as merged.
+        match GitService::is_branch_merged_into(repo_path, &source_branch, &target_branch) {
+            Ok(true) => {
+                tracing::info!(
+                    task_id = task_id_str,
+                    source_branch = %source_branch,
+                    target_branch = %target_branch,
+                    "Source branch already merged into target; completing merge idempotently"
+                );
+
+                let commit_sha = match GitService::get_branch_sha(repo_path, &source_branch) {
+                    Ok(sha) => sha,
+                    Err(e) => {
+                        tracing::warn!(
+                            task_id = task_id_str,
+                            source_branch = %source_branch,
+                            target_branch = %target_branch,
+                            error = %e,
+                            "Failed to resolve source branch SHA during idempotent completion"
+                        );
+                        GitService::get_branch_sha(repo_path, &target_branch)
+                            .unwrap_or_else(|_| "unknown".to_string())
+                    }
+                };
+
+                let app_handle = self.machine.context.services.app_handle.as_ref();
+                if let Err(e) =
+                    complete_merge_internal(&mut task, &project, &commit_sha, task_repo, app_handle).await
+                {
+                    tracing::error!(
+                        task_id = task_id_str,
+                        source_branch = %source_branch,
+                        target_branch = %target_branch,
+                        error = %e,
+                        "Idempotent merge completion failed"
+                    );
+                }
+                return;
+            }
+            Ok(false) => {}
+            Err(e) => {
+                tracing::debug!(
+                    task_id = task_id_str,
+                    source_branch = %source_branch,
+                    target_branch = %target_branch,
+                    error = %e,
+                    "Unable to verify whether source is already merged; continuing normal merge attempt"
+                );
+            }
+        }
+
         // Emit merge progress event
         emit_merge_progress(
             self.machine.context.services.app_handle.as_ref(),
@@ -2321,6 +2414,33 @@ impl<'a> super::TransitionHandler<'a> {
                     // Check if targeting the same branch
                     if !task_targets_branch(other, &project, plan_branch_repo, &target_branch).await
                     {
+                        continue;
+                    }
+                    // Skip stale blockers that can no longer merge because source branch is gone.
+                    if task_source_branch_missing(other, &project, plan_branch_repo, repo_path).await {
+                        tracing::info!(
+                            task_id = task_id_str,
+                            stale_blocker_task_id = other.id.as_str(),
+                            "Ignoring stale blocker: source branch is missing"
+                        );
+                        continue;
+                    }
+                    // Skip stale blockers whose source branch is already merged into target.
+                    if task_source_already_merged_into_target(
+                        other,
+                        &project,
+                        plan_branch_repo,
+                        repo_path,
+                        &target_branch,
+                    )
+                    .await
+                    {
+                        tracing::info!(
+                            task_id = task_id_str,
+                            stale_blocker_task_id = other.id.as_str(),
+                            target_branch = %target_branch,
+                            "Ignoring stale blocker: source branch already merged into target"
+                        );
                         continue;
                     }
 

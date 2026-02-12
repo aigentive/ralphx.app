@@ -79,6 +79,29 @@ pub struct MergeTargetResponse {
     pub target_branch: String,
 }
 
+/// Response for bulk retry of pending merge tasks.
+#[derive(Debug, serde::Serialize)]
+pub struct RetryPendingMergesResponse {
+    pub success: bool,
+    pub project_id: String,
+    pub attempted: usize,
+    pub retriggered_pending: usize,
+    pub retried_incomplete: usize,
+    pub failed: usize,
+    pub skipped: usize,
+    pub results: Vec<RetryPendingMergeTaskResult>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct RetryPendingMergeTaskResult {
+    pub task_id: String,
+    pub title: String,
+    pub from_status: String,
+    pub action: String,
+    pub ok: bool,
+    pub error: Option<String>,
+}
+
 // ============================================================================
 // Handlers
 // ============================================================================
@@ -691,6 +714,142 @@ pub async fn get_merge_target(
     Ok(Json(MergeTargetResponse {
         source_branch,
         target_branch,
+    }))
+}
+
+/// POST /api/git/projects/{project_id}/retry-pending-merges
+///
+/// Re-triggers merge flow for tasks currently blocked in merge queue states.
+/// - PendingMerge: re-executes entry actions (attempt_programmatic_merge)
+/// - MergeIncomplete: transitions back to PendingMerge (retry)
+pub async fn retry_pending_merges(
+    State(state): State<HttpServerState>,
+    Path(project_id): Path<String>,
+) -> Result<Json<RetryPendingMergesResponse>, JsonError> {
+    let project_id_obj = crate::domain::entities::ProjectId::from_string(project_id.clone());
+    let tasks = state
+        .app_state
+        .task_repo
+        .get_by_project(&project_id_obj)
+        .await
+        .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?;
+
+    let mut candidates = Vec::new();
+    for task in tasks {
+        if task.archived_at.is_some() {
+            continue;
+        }
+        if matches!(
+            task.internal_status,
+            InternalStatus::PendingMerge | InternalStatus::MergeIncomplete
+        ) {
+            candidates.push(task);
+        }
+    }
+
+    let scheduler_concrete = Arc::new(
+        TaskSchedulerService::new(
+            Arc::clone(&state.execution_state),
+            Arc::clone(&state.app_state.project_repo),
+            Arc::clone(&state.app_state.task_repo),
+            Arc::clone(&state.app_state.task_dependency_repo),
+            Arc::clone(&state.app_state.chat_message_repo),
+            Arc::clone(&state.app_state.chat_conversation_repo),
+            Arc::clone(&state.app_state.agent_run_repo),
+            Arc::clone(&state.app_state.ideation_session_repo),
+            Arc::clone(&state.app_state.activity_event_repo),
+            Arc::clone(&state.app_state.message_queue),
+            Arc::clone(&state.app_state.running_agent_registry),
+            state.app_state.app_handle.as_ref().cloned(),
+        )
+        .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo)),
+    );
+    scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
+    let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
+
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&state.app_state.task_repo),
+        Arc::clone(&state.app_state.task_dependency_repo),
+        Arc::clone(&state.app_state.project_repo),
+        Arc::clone(&state.app_state.chat_message_repo),
+        Arc::clone(&state.app_state.chat_conversation_repo),
+        Arc::clone(&state.app_state.agent_run_repo),
+        Arc::clone(&state.app_state.ideation_session_repo),
+        Arc::clone(&state.app_state.activity_event_repo),
+        Arc::clone(&state.app_state.message_queue),
+        Arc::clone(&state.app_state.running_agent_registry),
+        Arc::clone(&state.execution_state),
+        state.app_state.app_handle.as_ref().cloned(),
+    )
+    .with_task_scheduler(task_scheduler)
+    .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo));
+
+    let mut results = Vec::new();
+    let mut retriggered_pending = 0usize;
+    let mut retried_incomplete = 0usize;
+    let mut failed = 0usize;
+
+    for task in candidates {
+        let from_status = task.internal_status.as_str().to_string();
+        match task.internal_status {
+            InternalStatus::PendingMerge => {
+                transition_service
+                    .execute_entry_actions(&task.id, &task, InternalStatus::PendingMerge)
+                    .await;
+                retriggered_pending += 1;
+                results.push(RetryPendingMergeTaskResult {
+                    task_id: task.id.as_str().to_string(),
+                    title: task.title.clone(),
+                    from_status,
+                    action: "execute_entry_actions".to_string(),
+                    ok: true,
+                    error: None,
+                });
+            }
+            InternalStatus::MergeIncomplete => {
+                let transition_result = transition_service
+                    .transition_task(&task.id, InternalStatus::PendingMerge)
+                    .await;
+                match transition_result {
+                    Ok(_) => {
+                        retried_incomplete += 1;
+                        results.push(RetryPendingMergeTaskResult {
+                            task_id: task.id.as_str().to_string(),
+                            title: task.title.clone(),
+                            from_status,
+                            action: "transition_to_pending_merge".to_string(),
+                            ok: true,
+                            error: None,
+                        });
+                    }
+                    Err(e) => {
+                        failed += 1;
+                        results.push(RetryPendingMergeTaskResult {
+                            task_id: task.id.as_str().to_string(),
+                            title: task.title.clone(),
+                            from_status,
+                            action: "transition_to_pending_merge".to_string(),
+                            ok: false,
+                            error: Some(e.to_string()),
+                        });
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let attempted = retriggered_pending + retried_incomplete + failed;
+
+    Ok(Json(RetryPendingMergesResponse {
+        success: failed == 0,
+        project_id,
+        attempted,
+        retriggered_pending,
+        retried_incomplete,
+        failed,
+        skipped: 0,
+        results,
     }))
 }
 

@@ -4,9 +4,11 @@
 // and tasks needing attention (merge_conflict, merge_incomplete).
 
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use std::sync::Arc;
 use tauri::State;
 
+use crate::application::GitService;
 use crate::application::AppState;
 use crate::commands::execution_commands::ActiveProjectState;
 use crate::domain::entities::ProjectId;
@@ -136,6 +138,17 @@ pub async fn get_merge_pipeline(
             let (source_branch, target_branch) =
                 resolve_merge_branches(&task, project, &Some(Arc::clone(&state.plan_branch_repo)))
                     .await;
+
+            // UI truth should follow git ancestry, not stale task status.
+            // If source is already merged into target, this task is effectively completed.
+            if !source_branch.trim().is_empty() && !target_branch.trim().is_empty() {
+                let repo_path = Path::new(&project.working_directory);
+                if let Ok(true) =
+                    GitService::is_branch_merged_into(repo_path, &source_branch, &target_branch)
+                {
+                    continue;
+                }
+            }
 
             // Check if deferred
             let is_deferred = has_merge_deferred_metadata(&task);

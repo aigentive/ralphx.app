@@ -27,7 +27,11 @@ use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::transition_handler::{resolve_merge_branches, set_trigger_origin};
 use std::path::{Path, PathBuf};
 
+// Soft timeout for merge callback when no active merge run is observed.
 const MERGING_TIMEOUT_SECONDS: i64 = 60;
+// Hard safety timeout for merges that are still marked running in both
+// agent-run state and registry (guards against permanently stuck runs).
+const MERGING_HARD_TIMEOUT_SECONDS: i64 = 900;
 const MERGE_CONFLICT_RECHECK_SECONDS: i64 = 60;
 const PENDING_MERGE_STALE_MINUTES: i64 = 5;
 const QA_STALE_MINUTES: i64 = 5;
@@ -611,6 +615,13 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
+        if self
+            .transition_to_merged_if_already_merged(task, status)
+            .await
+        {
+            return true;
+        }
+
         let run = self
             .lookup_latest_run_for_task_context(task, ChatContextType::Merge)
             .await;
@@ -621,17 +632,24 @@ impl<R: Runtime> ReconciliationRunner<R> {
         let mut evidence = self
             .build_run_evidence(task, ChatContextType::Merge, run.as_ref())
             .await;
-        evidence.is_stale = age >= chrono::Duration::seconds(MERGING_TIMEOUT_SECONDS);
+        let active_merge_run =
+            evidence.run_status == Some(AgentRunStatus::Running) && evidence.registry_running;
 
-        if evidence.run_status == Some(AgentRunStatus::Running)
-            && evidence.registry_running
-            && !evidence.is_stale
-        {
-            return true;
-        }
-
-        if evidence.is_stale {
-            self.record_merge_timeout_event(task, age).await;
+        // Keep waiting while merge agent is actively running.
+        // Only force-timeout when the hard cap is exceeded.
+        if active_merge_run {
+            evidence.is_stale = age >= chrono::Duration::seconds(MERGING_HARD_TIMEOUT_SECONDS);
+            if !evidence.is_stale {
+                return true;
+            }
+            self.record_merge_timeout_event(task, age, MERGING_HARD_TIMEOUT_SECONDS)
+                .await;
+        } else {
+            evidence.is_stale = age >= chrono::Duration::seconds(MERGING_TIMEOUT_SECONDS);
+            if evidence.is_stale {
+                self.record_merge_timeout_event(task, age, MERGING_TIMEOUT_SECONDS)
+                    .await;
+            }
         }
 
         let decision = self
@@ -794,6 +812,13 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
+        if self
+            .transition_to_merged_if_already_merged(task, status)
+            .await
+        {
+            return true;
+        }
+
         let age = match self.latest_status_transition_age(task, status).await {
             Some(age) => age,
             None => return false,
@@ -843,6 +868,13 @@ impl<R: Runtime> ReconciliationRunner<R> {
     async fn reconcile_merge_incomplete_task(&self, task: &Task, status: InternalStatus) -> bool {
         if status != InternalStatus::MergeIncomplete {
             return false;
+        }
+
+        if self
+            .transition_to_merged_if_already_merged(task, status)
+            .await
+        {
+            return true;
         }
 
         if let Some(reason) = self.merge_incomplete_non_retryable_reason(task).await {
@@ -1213,9 +1245,94 @@ impl<R: Runtime> ReconciliationRunner<R> {
             })
     }
 
+    async fn branch_already_merged(
+        &self,
+        task: &Task,
+    ) -> Option<(String, String, String)> {
+        let project = match self.project_repo.get_by_id(&task.project_id).await {
+            Ok(Some(project)) => project,
+            _ => return None,
+        };
+
+        let (source_branch, target_branch) =
+            resolve_merge_branches(task, &project, &self.plan_branch_repo).await;
+        if source_branch.trim().is_empty() || target_branch.trim().is_empty() {
+            return None;
+        }
+
+        let repo_path = Path::new(&project.working_directory);
+        let source_sha = GitService::get_branch_sha(repo_path, &source_branch).ok()?;
+        match GitService::is_commit_on_branch(repo_path, &source_sha, &target_branch) {
+            Ok(true) => Some((source_branch, target_branch, source_sha)),
+            _ => None,
+        }
+    }
+
+    async fn branch_source_exists(&self, task: &Task) -> bool {
+        let project = match self.project_repo.get_by_id(&task.project_id).await {
+            Ok(Some(project)) => project,
+            _ => return true,
+        };
+
+        let (source_branch, _) = resolve_merge_branches(task, &project, &self.plan_branch_repo).await;
+        if source_branch.trim().is_empty() {
+            return false;
+        }
+
+        let repo_path = Path::new(&project.working_directory);
+        GitService::get_branch_sha(repo_path, &source_branch).is_ok()
+    }
+
+    async fn transition_to_merged_if_already_merged(
+        &self,
+        task: &Task,
+        status: InternalStatus,
+    ) -> bool {
+        let Some((source_branch, target_branch, source_sha)) = self.branch_already_merged(task).await
+        else {
+            return false;
+        };
+
+        match self
+            .transition_service
+            .transition_task(&task.id, InternalStatus::Merged)
+            .await
+        {
+            Ok(_) => {
+                tracing::info!(
+                    task_id = task.id.as_str(),
+                    previous_status = ?status,
+                    source_branch = %source_branch,
+                    target_branch = %target_branch,
+                    source_sha = %source_sha,
+                    "Reconciliation: source already merged into target, transitioned task to Merged"
+                );
+                true
+            }
+            Err(e) => {
+                warn!(
+                    task_id = task.id.as_str(),
+                    previous_status = ?status,
+                    source_branch = %source_branch,
+                    target_branch = %target_branch,
+                    source_sha = %source_sha,
+                    error = %e,
+                    "Reconciliation: failed to transition already-merged task to Merged"
+                );
+                false
+            }
+        }
+    }
+
     async fn deferred_blocker_is_active(&self, blocker_id: &TaskId) -> bool {
         match self.task_repo.get_by_id(blocker_id).await {
             Ok(Some(blocker)) => {
+                if self.branch_already_merged(&blocker).await.is_some() {
+                    return false;
+                }
+                if !self.branch_source_exists(&blocker).await {
+                    return false;
+                }
                 blocker.archived_at.is_none()
                     && matches!(
                         blocker.internal_status,
@@ -1491,7 +1608,12 @@ impl<R: Runtime> ReconciliationRunner<R> {
         }
     }
 
-    async fn record_merge_timeout_event(&self, task: &Task, age: chrono::Duration) {
+    async fn record_merge_timeout_event(
+        &self,
+        task: &Task,
+        age: chrono::Duration,
+        timeout_seconds: i64,
+    ) {
         let mut updated = task.clone();
 
         let mut recovery = MergeRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
@@ -1520,12 +1642,12 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 "error".to_string(),
                 serde_json::json!(format!(
                     "Merge timed out after {}s without complete_merge callback",
-                    MERGING_TIMEOUT_SECONDS
+                    timeout_seconds
                 )),
             );
             obj.insert(
                 "merge_timeout_seconds".to_string(),
-                serde_json::json!(MERGING_TIMEOUT_SECONDS),
+                serde_json::json!(timeout_seconds),
             );
             obj.insert(
                 "merge_timeout_at".to_string(),
