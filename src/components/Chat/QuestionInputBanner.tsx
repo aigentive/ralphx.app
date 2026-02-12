@@ -10,7 +10,7 @@
  */
 
 import { useState, useCallback, useEffect } from "react";
-import { Check, X } from "lucide-react";
+import { Check, X, Maximize2, Minimize2 } from "lucide-react";
 import type { AskUserQuestionPayload } from "@/types/ask-user-question";
 import { computeQuestionHeight } from "./QuestionInputBanner.utils";
 
@@ -121,6 +121,7 @@ export function QuestionInputBanner({
 }: QuestionInputBannerProps) {
   const [visible, setVisible] = useState(false);
   const [computedHeight, setComputedHeight] = useState(320);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   // Trigger slide-in on mount
   useEffect(() => {
@@ -130,10 +131,11 @@ export function QuestionInputBanner({
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // Compute height when question changes
+  // Compute height when question changes, and reset expanded state
   useEffect(() => {
     if (question) {
       setComputedHeight(computeQuestionHeight(question));
+      setIsExpanded(false); // Reset expanded state on new question
     }
   }, [question]); // Re-compute when question object changes
 
@@ -150,6 +152,7 @@ export function QuestionInputBanner({
   }, [onDismissAnswered]);
 
   const isAnswered = answeredValue !== undefined;
+  const showExpandButton = computedHeight >= 280;
 
   // Nothing to show: no active question and no answered state
   if (!question && !isAnswered) return null;
@@ -159,7 +162,13 @@ export function QuestionInputBanner({
       data-testid="question-input-banner"
       style={{
         overflow: "hidden",
-        maxHeight: !visible ? 0 : isAnswered ? 56 : computedHeight,
+        maxHeight: !visible
+          ? 0
+          : isAnswered
+            ? 56
+            : isExpanded
+              ? "60vh"
+              : computedHeight,
         opacity: visible ? 1 : 0,
         transition: `max-height 0.35s cubic-bezier(0.22, 1, 0.36, 1),
                      opacity 0.25s ease,
@@ -259,6 +268,31 @@ export function QuestionInputBanner({
                 {question.header ?? "Question from agent"}
               </span>
 
+              {/* Expand/collapse button - only shown when content is near clipping threshold */}
+              {showExpandButton && (
+                <button
+                  type="button"
+                  onClick={() => setIsExpanded(!isExpanded)}
+                  className="flex-shrink-0 flex items-center justify-center transition-colors"
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 4,
+                    border: "none",
+                    background: "transparent",
+                    color: "hsl(220 10% 45%)",
+                    cursor: "pointer",
+                  }}
+                  aria-label={isExpanded ? "Collapse question" : "Expand question"}
+                >
+                  {isExpanded ? (
+                    <Minimize2 size={16} />
+                  ) : (
+                    <Maximize2 size={16} />
+                  )}
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={handleDismiss}
@@ -279,7 +313,13 @@ export function QuestionInputBanner({
             </div>
 
             {/* Body: question text + chips */}
-            <div style={{ padding: "10px 12px 12px" }}>
+            <div
+              style={{
+                padding: "10px 12px 12px",
+                maxHeight: isExpanded ? "calc(60vh - 40px)" : undefined,
+                overflowY: isExpanded ? "auto" : undefined,
+              }}
+            >
               <p
                 className="text-[13px] font-medium leading-snug"
                 style={{

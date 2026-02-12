@@ -357,6 +357,235 @@ describe("QuestionInputBanner", () => {
     });
   });
 
+  describe("Expand/Collapse Toggle", () => {
+    it("does not render expand button when computed height < 280px", () => {
+      const smallQuestion: AskUserQuestionPayload = {
+        requestId: "req-small",
+        question: "Simple?",
+        options: [{ label: "Yes" }, { label: "No" }],
+        multiSelect: false,
+      };
+
+      render(
+        <QuestionInputBanner
+          {...defaultProps}
+          question={smallQuestion}
+        />
+      );
+
+      // Small question should have computed height < 280, so expand button should not be visible
+      expect(
+        screen.queryByRole("button", {
+          name: /expand question|collapse question/i,
+        })
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders expand button when computed height >= 280px", () => {
+      const largeQuestion: AskUserQuestionPayload = {
+        requestId: "req-large",
+        question: "This is a very long question that will take up significant space and cause the computed height to exceed 280 pixels threshold.",
+        options: Array.from({ length: 6 }, (_, i) => ({
+          label: `Option ${i + 1} with longer text`,
+        })),
+        multiSelect: false,
+      };
+
+      render(
+        <QuestionInputBanner
+          {...defaultProps}
+          question={largeQuestion}
+        />
+      );
+
+      // Large question should have computed height >= 280, so expand button should be visible
+      expect(
+        screen.getByRole("button", { name: "Expand question" })
+      ).toBeInTheDocument();
+    });
+
+    it("toggles expand state and icon when button is clicked", async () => {
+      const user = userEvent.setup();
+      const largeQuestion: AskUserQuestionPayload = {
+        requestId: "req-large",
+        question: "This is a very long question that will take up significant space and cause the computed height to exceed 280 pixels threshold.",
+        options: Array.from({ length: 6 }, (_, i) => ({
+          label: `Option ${i + 1} with longer text`,
+        })),
+        multiSelect: false,
+      };
+
+      render(
+        <QuestionInputBanner
+          {...defaultProps}
+          question={largeQuestion}
+        />
+      );
+
+      // Initially should show expand icon
+      expect(
+        screen.getByRole("button", { name: "Expand question" })
+      ).toBeInTheDocument();
+
+      // Click expand button
+      await user.click(
+        screen.getByRole("button", { name: "Expand question" })
+      );
+
+      // Should now show collapse icon
+      expect(
+        screen.getByRole("button", { name: "Collapse question" })
+      ).toBeInTheDocument();
+
+      // Click collapse button
+      await user.click(
+        screen.getByRole("button", { name: "Collapse question" })
+      );
+
+      // Should show expand icon again
+      expect(
+        screen.getByRole("button", { name: "Expand question" })
+      ).toBeInTheDocument();
+    });
+
+    it("updates container maxHeight to 60vh when expanded", async () => {
+      const user = userEvent.setup();
+      const largeQuestion: AskUserQuestionPayload = {
+        requestId: "req-large",
+        question: "This is a very long question that will take up significant space and cause the computed height to exceed 280 pixels threshold.",
+        options: Array.from({ length: 6 }, (_, i) => ({
+          label: `Option ${i + 1} with longer text`,
+        })),
+        multiSelect: false,
+      };
+
+      render(
+        <QuestionInputBanner
+          {...defaultProps}
+          question={largeQuestion}
+        />
+      );
+
+      const container = screen.getByTestId("question-input-banner");
+
+      // Click expand
+      await user.click(
+        screen.getByRole("button", { name: "Expand question" })
+      );
+
+      // After expansion, maxHeight should be 60vh
+      const expandedStyle = window.getComputedStyle(container);
+      expect(expandedStyle.maxHeight).toBe("60vh");
+    });
+
+    it("resets expand state when question changes (requestId changes)", async () => {
+      const user = userEvent.setup();
+      const largeQuestion1: AskUserQuestionPayload = {
+        requestId: "req-1",
+        question: "This is a very long question that will take up significant space and cause the computed height to exceed 280 pixels threshold when rendered with multiple options.",
+        options: Array.from({ length: 8 }, (_, i) => ({
+          label: `Option ${i + 1} with longer text`,
+        })),
+        multiSelect: false,
+      };
+
+      const largeQuestion2: AskUserQuestionPayload = {
+        requestId: "req-2",
+        question: "Another very long question that will also take up significant space and cause the computed height to exceed 280 pixels threshold when rendered with options.",
+        options: Array.from({ length: 8 }, (_, i) => ({
+          label: `Option ${i + 1} with longer text`,
+        })),
+        multiSelect: false,
+      };
+
+      const { rerender } = render(
+        <QuestionInputBanner
+          {...defaultProps}
+          question={largeQuestion1}
+        />
+      );
+
+      // Expand the question
+      await user.click(
+        screen.getByRole("button", { name: "Expand question" })
+      );
+
+      // Verify it's expanded (collapse button visible)
+      expect(
+        screen.getByRole("button", { name: "Collapse question" })
+      ).toBeInTheDocument();
+
+      // Change question
+      rerender(
+        <QuestionInputBanner
+          {...defaultProps}
+          question={largeQuestion2}
+        />
+      );
+
+      // After question change, should be collapsed again (expand button visible)
+      await vi.waitFor(
+        () => {
+          expect(
+            screen.getByRole("button", { name: "Expand question" })
+          ).toBeInTheDocument();
+        },
+        { timeout: 500 }
+      );
+      expect(
+        screen.queryByRole("button", { name: "Collapse question" })
+      ).not.toBeInTheDocument();
+    });
+
+    it("body has scrollable maxHeight when expanded", async () => {
+      const user = userEvent.setup();
+      const largeQuestion: AskUserQuestionPayload = {
+        requestId: "req-large",
+        question: "This is a very long question that will take up significant space and cause the computed height to exceed 280 pixels threshold.",
+        options: Array.from({ length: 6 }, (_, i) => ({
+          label: `Option ${i + 1} with longer text`,
+        })),
+        multiSelect: false,
+      };
+
+      render(
+        <QuestionInputBanner
+          {...defaultProps}
+          question={largeQuestion}
+        />
+      );
+
+      // Get the body div (contains question text and chips)
+      const bannerContent = screen.getByTestId("question-input-banner");
+      const bodyDivs = bannerContent.querySelectorAll("div");
+      // The body is the second main div (after header)
+      const bodyDiv = Array.from(bodyDivs).find(
+        (div) =>
+          div.textContent?.includes("This is a very long question") &&
+          div.style.padding === "10px 12px 12px"
+      );
+
+      expect(bodyDiv).toBeDefined();
+      if (bodyDiv) {
+        // Before expand, should not have overflow auto or restricted height
+        expect(bodyDiv.style.overflowY).not.toBe("auto");
+        expect(bodyDiv.style.maxHeight).not.toContain("60vh");
+      }
+
+      // Click expand
+      await user.click(
+        screen.getByRole("button", { name: "Expand question" })
+      );
+
+      // After expand, body should have scrollable overflow
+      if (bodyDiv) {
+        const expandedStyle = window.getComputedStyle(bodyDiv);
+        expect(expandedStyle.overflowY).toBe("auto");
+        expect(expandedStyle.maxHeight).toBe("calc(60vh - 40px)");
+      }
+    });
+  });
+
   describe("computeQuestionHeight function", () => {
     it("returns height between 120px and 320px bounds", () => {
       const question: AskUserQuestionPayload = {
