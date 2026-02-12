@@ -153,8 +153,21 @@ export function IntegratedChatPanel({
       context_id: string;
       conversation_id: string;
     }>("agent:run_started", (payload) => {
+      // Existing exact match
       if (
         payload.context_type === currentContextType &&
+        payload.context_id === currentContextId &&
+        payload.conversation_id
+      ) {
+        setActiveConversation(payload.conversation_id);
+        return;
+      }
+      // Handle retry scenario: task context watching a new execution starting
+      // When task is in failed/ready state, currentContextType is "task" but
+      // the new execution emits "task_execution". Accept if task ID matches.
+      if (
+        payload.context_type === "task_execution" &&
+        currentContextType === "task" &&
         payload.context_id === currentContextId &&
         payload.conversation_id
       ) {
@@ -218,7 +231,8 @@ export function IntegratedChatPanel({
   // Check if active conversation belongs to current context (needed by recovery effects below)
   const activeConversationContext = regularChatData.messages.data?.conversation;
   const isConversationInCurrentContext =
-    activeConversationContext?.contextType === currentContextType &&
+    (activeConversationContext?.contextType === currentContextType ||
+     (currentContextType === "task" && activeConversationContext?.contextType === "task_execution")) &&
     activeConversationContext?.contextId === currentContextId;
 
   // Fetch agent run status for the active conversation
