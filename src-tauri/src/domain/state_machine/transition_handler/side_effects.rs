@@ -2822,6 +2822,49 @@ impl<'a> super::TransitionHandler<'a> {
                             }
                         }
                     }
+                    Ok(MergeAttemptResult::BranchNotFound { branch }) => {
+                        tracing::error!(
+                            task_id = task_id_str,
+                            missing_branch = %branch,
+                            "Merge failed: branch '{}' does not exist", branch
+                        );
+
+                        task.metadata = Some(
+                            serde_json::json!({
+                                "error": format!("Branch '{}' does not exist", branch),
+                                "missing_branch": branch,
+                                "source_branch": source_branch,
+                                "target_branch": target_branch,
+                            })
+                            .to_string(),
+                        );
+                        task.internal_status = InternalStatus::MergeIncomplete;
+                        task.touch();
+
+                        if let Err(e) = task_repo.update(&task).await {
+                            tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
+                            return;
+                        }
+
+                        if let Err(e) = task_repo
+                            .persist_status_change(
+                                &task_id,
+                                InternalStatus::PendingMerge,
+                                InternalStatus::MergeIncomplete,
+                                "merge_incomplete",
+                            )
+                            .await
+                        {
+                            tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
+                        }
+
+                        self.machine
+                            .context
+                            .services
+                            .event_emitter
+                            .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                            .await;
+                    }
                     Err(e) => {
                         // Classify error: deferrable (branch lock) vs terminal (true failure)
                         if GitService::is_branch_lock_error(&e) {
@@ -3242,6 +3285,49 @@ impl<'a> super::TransitionHandler<'a> {
                             }
                         }
                     }
+                    Ok(MergeAttemptResult::BranchNotFound { branch }) => {
+                        tracing::error!(
+                            task_id = task_id_str,
+                            missing_branch = %branch,
+                            "Merge failed: branch '{}' does not exist", branch
+                        );
+
+                        task.metadata = Some(
+                            serde_json::json!({
+                                "error": format!("Branch '{}' does not exist", branch),
+                                "missing_branch": branch,
+                                "source_branch": source_branch,
+                                "target_branch": target_branch,
+                            })
+                            .to_string(),
+                        );
+                        task.internal_status = InternalStatus::MergeIncomplete;
+                        task.touch();
+
+                        if let Err(e) = task_repo.update(&task).await {
+                            tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
+                            return;
+                        }
+
+                        if let Err(e) = task_repo
+                            .persist_status_change(
+                                &task_id,
+                                InternalStatus::PendingMerge,
+                                InternalStatus::MergeIncomplete,
+                                "merge_incomplete",
+                            )
+                            .await
+                        {
+                            tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
+                        }
+
+                        self.machine
+                            .context
+                            .services
+                            .event_emitter
+                            .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                            .await;
+                    }
                     Err(e) => {
                         // Classify error: deferrable (branch lock) vs terminal (true failure)
                         if GitService::is_branch_lock_error(&e) {
@@ -3638,6 +3724,49 @@ impl<'a> super::TransitionHandler<'a> {
                         }
                     }
                 }
+                Ok(MergeAttemptResult::BranchNotFound { branch }) => {
+                    tracing::error!(
+                        task_id = task_id_str,
+                        missing_branch = %branch,
+                        "Merge failed: branch '{}' does not exist", branch
+                    );
+
+                    task.metadata = Some(
+                        serde_json::json!({
+                            "error": format!("Branch '{}' does not exist", branch),
+                            "missing_branch": branch,
+                            "source_branch": source_branch,
+                            "target_branch": target_branch,
+                        })
+                        .to_string(),
+                    );
+                    task.internal_status = InternalStatus::MergeIncomplete;
+                    task.touch();
+
+                    if let Err(e) = task_repo.update(&task).await {
+                        tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
+                        return;
+                    }
+
+                    if let Err(e) = task_repo
+                        .persist_status_change(
+                            &task_id,
+                            InternalStatus::PendingMerge,
+                            InternalStatus::MergeIncomplete,
+                            "merge_incomplete",
+                        )
+                        .await
+                    {
+                        tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
+                    }
+
+                    self.machine
+                        .context
+                        .services
+                        .event_emitter
+                        .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                        .await;
+                }
                 Err(e) => {
                     // Classify error: deferrable (branch lock) vs terminal (true failure)
                     if GitService::is_branch_lock_error(&e) {
@@ -4007,6 +4136,49 @@ impl<'a> super::TransitionHandler<'a> {
                         Err(e) => tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent"),
                     }
                 }
+                Ok(MergeAttemptResult::BranchNotFound { branch }) => {
+                    tracing::error!(
+                        task_id = task_id_str,
+                        missing_branch = %branch,
+                        "Merge failed: branch '{}' does not exist", branch
+                    );
+
+                    task.metadata = Some(
+                        serde_json::json!({
+                            "error": format!("Branch '{}' does not exist", branch),
+                            "missing_branch": branch,
+                            "source_branch": source_branch,
+                            "target_branch": target_branch,
+                        })
+                        .to_string(),
+                    );
+                    task.internal_status = InternalStatus::MergeIncomplete;
+                    task.touch();
+
+                    if let Err(e) = task_repo.update(&task).await {
+                        tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
+                        return;
+                    }
+
+                    if let Err(e) = task_repo
+                        .persist_status_change(
+                            &task_id,
+                            InternalStatus::PendingMerge,
+                            InternalStatus::MergeIncomplete,
+                            "merge_incomplete",
+                        )
+                        .await
+                    {
+                        tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
+                    }
+
+                    self.machine
+                        .context
+                        .services
+                        .event_emitter
+                        .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                        .await;
+                }
                 Err(e) => {
                     tracing::error!(
                         task_id = task_id_str,
@@ -4259,6 +4431,49 @@ impl<'a> super::TransitionHandler<'a> {
                             Ok(_) => tracing::info!(task_id = task_id_str, "Merger agent spawned successfully"),
                             Err(e) => tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent"),
                         }
+                    }
+                    Ok(MergeAttemptResult::BranchNotFound { branch }) => {
+                        tracing::error!(
+                            task_id = task_id_str,
+                            missing_branch = %branch,
+                            "Merge failed: branch '{}' does not exist", branch
+                        );
+
+                        task.metadata = Some(
+                            serde_json::json!({
+                                "error": format!("Branch '{}' does not exist", branch),
+                                "missing_branch": branch,
+                                "source_branch": source_branch,
+                                "target_branch": target_branch,
+                            })
+                            .to_string(),
+                        );
+                        task.internal_status = InternalStatus::MergeIncomplete;
+                        task.touch();
+
+                        if let Err(e) = task_repo.update(&task).await {
+                            tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
+                            return;
+                        }
+
+                        if let Err(e) = task_repo
+                            .persist_status_change(
+                                &task_id,
+                                InternalStatus::PendingMerge,
+                                InternalStatus::MergeIncomplete,
+                                "merge_incomplete",
+                            )
+                            .await
+                        {
+                            tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
+                        }
+
+                        self.machine
+                            .context
+                            .services
+                            .event_emitter
+                            .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                            .await;
                     }
                     Err(e) => {
                         if GitService::is_branch_lock_error(&e) {
@@ -4554,6 +4769,49 @@ impl<'a> super::TransitionHandler<'a> {
                             Err(e) => tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent"),
                         }
                     }
+                    Ok(MergeAttemptResult::BranchNotFound { branch }) => {
+                        tracing::error!(
+                            task_id = task_id_str,
+                            missing_branch = %branch,
+                            "Merge failed: branch '{}' does not exist", branch
+                        );
+
+                        task.metadata = Some(
+                            serde_json::json!({
+                                "error": format!("Branch '{}' does not exist", branch),
+                                "missing_branch": branch,
+                                "source_branch": source_branch,
+                                "target_branch": target_branch,
+                            })
+                            .to_string(),
+                        );
+                        task.internal_status = InternalStatus::MergeIncomplete;
+                        task.touch();
+
+                        if let Err(e) = task_repo.update(&task).await {
+                            tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
+                            return;
+                        }
+
+                        if let Err(e) = task_repo
+                            .persist_status_change(
+                                &task_id,
+                                InternalStatus::PendingMerge,
+                                InternalStatus::MergeIncomplete,
+                                "merge_incomplete",
+                            )
+                            .await
+                        {
+                            tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
+                        }
+
+                        self.machine
+                            .context
+                            .services
+                            .event_emitter
+                            .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                            .await;
+                    }
                     Err(e) => {
                         if GitService::is_branch_lock_error(&e) {
                             tracing::warn!(
@@ -4807,6 +5065,49 @@ impl<'a> super::TransitionHandler<'a> {
                         Ok(_) => tracing::info!(task_id = task_id_str, "Merger agent spawned successfully"),
                         Err(e) => tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent"),
                     }
+                }
+                Ok(MergeAttemptResult::BranchNotFound { branch }) => {
+                    tracing::error!(
+                        task_id = task_id_str,
+                        missing_branch = %branch,
+                        "Merge failed: branch '{}' does not exist", branch
+                    );
+
+                    task.metadata = Some(
+                        serde_json::json!({
+                            "error": format!("Branch '{}' does not exist", branch),
+                            "missing_branch": branch,
+                            "source_branch": source_branch,
+                            "target_branch": target_branch,
+                        })
+                        .to_string(),
+                    );
+                    task.internal_status = InternalStatus::MergeIncomplete;
+                    task.touch();
+
+                    if let Err(e) = task_repo.update(&task).await {
+                        tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
+                        return;
+                    }
+
+                    if let Err(e) = task_repo
+                        .persist_status_change(
+                            &task_id,
+                            InternalStatus::PendingMerge,
+                            InternalStatus::MergeIncomplete,
+                            "merge_incomplete",
+                        )
+                        .await
+                    {
+                        tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
+                    }
+
+                    self.machine
+                        .context
+                        .services
+                        .event_emitter
+                        .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                        .await;
                 }
                 Err(e) => {
                     tracing::error!(
@@ -5074,6 +5375,49 @@ impl<'a> super::TransitionHandler<'a> {
                         Err(e) => tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent"),
                     }
                 }
+                Ok(MergeAttemptResult::BranchNotFound { branch }) => {
+                    tracing::error!(
+                        task_id = task_id_str,
+                        missing_branch = %branch,
+                        "Merge failed: branch '{}' does not exist", branch
+                    );
+
+                    task.metadata = Some(
+                        serde_json::json!({
+                            "error": format!("Branch '{}' does not exist", branch),
+                            "missing_branch": branch,
+                            "source_branch": source_branch,
+                            "target_branch": target_branch,
+                        })
+                        .to_string(),
+                    );
+                    task.internal_status = InternalStatus::MergeIncomplete;
+                    task.touch();
+
+                    if let Err(e) = task_repo.update(&task).await {
+                        tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
+                        return;
+                    }
+
+                    if let Err(e) = task_repo
+                        .persist_status_change(
+                            &task_id,
+                            InternalStatus::PendingMerge,
+                            InternalStatus::MergeIncomplete,
+                            "merge_incomplete",
+                        )
+                        .await
+                    {
+                        tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
+                    }
+
+                    self.machine
+                        .context
+                        .services
+                        .event_emitter
+                        .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                        .await;
+                }
                 Err(e) => {
                     if GitService::is_branch_lock_error(&e) {
                         tracing::warn!(
@@ -5314,6 +5658,49 @@ impl<'a> super::TransitionHandler<'a> {
                         Err(e) => tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent"),
                     }
                 }
+                Ok(MergeAttemptResult::BranchNotFound { branch }) => {
+                    tracing::error!(
+                        task_id = task_id_str,
+                        missing_branch = %branch,
+                        "Merge failed: branch '{}' does not exist", branch
+                    );
+
+                    task.metadata = Some(
+                        serde_json::json!({
+                            "error": format!("Branch '{}' does not exist", branch),
+                            "missing_branch": branch,
+                            "source_branch": source_branch,
+                            "target_branch": target_branch,
+                        })
+                        .to_string(),
+                    );
+                    task.internal_status = InternalStatus::MergeIncomplete;
+                    task.touch();
+
+                    if let Err(e) = task_repo.update(&task).await {
+                        tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
+                        return;
+                    }
+
+                    if let Err(e) = task_repo
+                        .persist_status_change(
+                            &task_id,
+                            InternalStatus::PendingMerge,
+                            InternalStatus::MergeIncomplete,
+                            "merge_incomplete",
+                        )
+                        .await
+                    {
+                        tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
+                    }
+
+                    self.machine
+                        .context
+                        .services
+                        .event_emitter
+                        .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                        .await;
+                }
                 Err(e) => {
                     tracing::error!(
                         task_id = task_id_str,
@@ -5551,6 +5938,49 @@ impl<'a> super::TransitionHandler<'a> {
                             Ok(_) => tracing::info!(task_id = task_id_str, "Merger agent spawned successfully"),
                             Err(e) => tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent"),
                         }
+                    }
+                    Ok(MergeAttemptResult::BranchNotFound { branch }) => {
+                        tracing::error!(
+                            task_id = task_id_str,
+                            missing_branch = %branch,
+                            "Merge failed: branch '{}' does not exist", branch
+                        );
+
+                        task.metadata = Some(
+                            serde_json::json!({
+                                "error": format!("Branch '{}' does not exist", branch),
+                                "missing_branch": branch,
+                                "source_branch": source_branch,
+                                "target_branch": target_branch,
+                            })
+                            .to_string(),
+                        );
+                        task.internal_status = InternalStatus::MergeIncomplete;
+                        task.touch();
+
+                        if let Err(e) = task_repo.update(&task).await {
+                            tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
+                            return;
+                        }
+
+                        if let Err(e) = task_repo
+                            .persist_status_change(
+                                &task_id,
+                                InternalStatus::PendingMerge,
+                                InternalStatus::MergeIncomplete,
+                                "merge_incomplete",
+                            )
+                            .await
+                        {
+                            tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
+                        }
+
+                        self.machine
+                            .context
+                            .services
+                            .event_emitter
+                            .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                            .await;
                     }
                     Err(e) => {
                         tracing::error!(task_id = task_id_str, error = %e, "Rebase+squash in-repo failed");
@@ -5802,6 +6232,49 @@ impl<'a> super::TransitionHandler<'a> {
                             Ok(_) => tracing::info!(task_id = task_id_str, "Merger agent spawned successfully"),
                             Err(e) => tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent"),
                         }
+                    }
+                    Ok(MergeAttemptResult::BranchNotFound { branch }) => {
+                        tracing::error!(
+                            task_id = task_id_str,
+                            missing_branch = %branch,
+                            "Merge failed: branch '{}' does not exist", branch
+                        );
+
+                        task.metadata = Some(
+                            serde_json::json!({
+                                "error": format!("Branch '{}' does not exist", branch),
+                                "missing_branch": branch,
+                                "source_branch": source_branch,
+                                "target_branch": target_branch,
+                            })
+                            .to_string(),
+                        );
+                        task.internal_status = InternalStatus::MergeIncomplete;
+                        task.touch();
+
+                        if let Err(e) = task_repo.update(&task).await {
+                            tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
+                            return;
+                        }
+
+                        if let Err(e) = task_repo
+                            .persist_status_change(
+                                &task_id,
+                                InternalStatus::PendingMerge,
+                                InternalStatus::MergeIncomplete,
+                                "merge_incomplete",
+                            )
+                            .await
+                        {
+                            tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
+                        }
+
+                        self.machine
+                            .context
+                            .services
+                            .event_emitter
+                            .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                            .await;
                     }
                     Err(e) => {
                         if GitService::is_branch_lock_error(&e) {

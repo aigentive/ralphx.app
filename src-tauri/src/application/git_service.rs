@@ -43,6 +43,8 @@ pub enum MergeAttemptResult {
     Success { commit_sha: String },
     /// Conflict detected, needs agent resolution (Phase 2)
     NeedsAgent { conflict_files: Vec<PathBuf> },
+    /// Source or target branch does not exist
+    BranchNotFound { branch: String },
 }
 
 /// Information about a single commit
@@ -552,6 +554,40 @@ impl GitService {
         Ok(sha)
     }
 
+    /// Check if a branch (local or remote-tracking) exists in the repo.
+    pub fn branch_exists(repo: &Path, branch: &str) -> bool {
+        Command::new("git")
+            .args(["rev-parse", "--verify", branch])
+            .current_dir(repo)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
+
+    /// Validate that both source and target branches exist before merge.
+    /// Returns `Some(BranchNotFound)` if either is missing, `None` if both exist.
+    fn validate_merge_branches(
+        repo: &Path,
+        source_branch: &str,
+        target_branch: &str,
+    ) -> Option<MergeAttemptResult> {
+        if !Self::branch_exists(repo, source_branch) {
+            warn!("Source branch '{}' does not exist", source_branch);
+            return Some(MergeAttemptResult::BranchNotFound {
+                branch: source_branch.to_string(),
+            });
+        }
+        if !Self::branch_exists(repo, target_branch) {
+            warn!("Target branch '{}' does not exist", target_branch);
+            return Some(MergeAttemptResult::BranchNotFound {
+                branch: target_branch.to_string(),
+            });
+        }
+        None
+    }
+
     /// Check if two branches have identical content (tree-level diff).
     ///
     /// Uses `git diff --quiet` which exits 0 if identical, 1 if different.
@@ -887,6 +923,11 @@ impl GitService {
             Err(e) => debug!("Fetch from origin failed (non-fatal): {}", e),
         }
 
+        // Validate branches exist before attempting merge
+        if let Some(not_found) = Self::validate_merge_branches(repo, task_branch, base) {
+            return Ok(not_found);
+        }
+
         // Step 2: Check if base branch is empty (0 or 1 commits)
         // For first task on empty repo, rebase fails due to unrelated histories.
         // Skip rebase and directly merge - the task branch becomes the base history.
@@ -994,6 +1035,11 @@ impl GitService {
             Err(e) => debug!("Fetch from origin failed (non-fatal): {}", e),
         }
 
+        // Validate branches exist before attempting merge
+        if let Some(not_found) = Self::validate_merge_branches(repo, task_branch, base) {
+            return Ok(not_found);
+        }
+
         // Step 2: Checkout base branch
         debug!("Checking out base branch '{}' for merge", base);
         Self::checkout_branch(repo, base)?;
@@ -1069,6 +1115,12 @@ impl GitService {
             Err(e) => debug!("Fetch from origin failed (non-fatal): {}", e),
         }
 
+        // Validate branches exist before attempting merge
+        if let Some(not_found) = Self::validate_merge_branches(repo, source_branch, target_branch)
+        {
+            return Ok(not_found);
+        }
+
         // Step 2: Checkout target branch (no-op if already checked out)
         debug!(
             "Checking out target branch '{}' for in-repo merge",
@@ -1138,6 +1190,12 @@ impl GitService {
         match Self::fetch_origin(repo) {
             Ok(_) => debug!("Fetch from origin succeeded for {:?}", repo),
             Err(e) => debug!("Fetch from origin failed (non-fatal): {}", e),
+        }
+
+        // Validate branches exist before attempting merge
+        if let Some(not_found) = Self::validate_merge_branches(repo, source_branch, target_branch)
+        {
+            return Ok(not_found);
         }
 
         // Early return: if branches are already identical, skip merge entirely
@@ -1239,6 +1297,12 @@ impl GitService {
             "Attempting squash merge of '{}' into '{}' in worktree {:?}",
             source_branch, target_branch, merge_worktree_path
         );
+
+        // Validate branches exist before attempting merge
+        if let Some(not_found) = Self::validate_merge_branches(repo, source_branch, target_branch)
+        {
+            return Ok(not_found);
+        }
 
         // Early return: if branches are already identical, skip merge entirely
         if Self::branches_have_same_content(repo, source_branch, target_branch).unwrap_or(false) {
@@ -1343,6 +1407,12 @@ impl GitService {
         match Self::fetch_origin(repo) {
             Ok(_) => debug!("Fetch from origin succeeded for {:?}", repo),
             Err(e) => debug!("Fetch from origin failed (non-fatal): {}", e),
+        }
+
+        // Validate branches exist before attempting merge
+        if let Some(not_found) = Self::validate_merge_branches(repo, source_branch, target_branch)
+        {
+            return Ok(not_found);
         }
 
         // Early return: if branches are already identical, skip merge entirely
@@ -1461,6 +1531,12 @@ impl GitService {
         match Self::fetch_origin(repo) {
             Ok(_) => debug!("Fetch from origin succeeded"),
             Err(e) => debug!("Fetch from origin failed (non-fatal): {}", e),
+        }
+
+        // Validate branches exist before attempting merge
+        if let Some(not_found) = Self::validate_merge_branches(repo, source_branch, target_branch)
+        {
+            return Ok(not_found);
         }
 
         // Early return: if branches are already identical, skip merge entirely
@@ -1609,6 +1685,12 @@ impl GitService {
             source_branch, target_branch, merge_worktree_path
         );
 
+        // Validate branches exist before attempting merge
+        if let Some(not_found) = Self::validate_merge_branches(repo, source_branch, target_branch)
+        {
+            return Ok(not_found);
+        }
+
         // Step 1: Create merge worktree checking out the target branch
         Self::checkout_existing_branch_worktree(repo, merge_worktree_path, target_branch)?;
 
@@ -1680,6 +1762,12 @@ impl GitService {
         match Self::fetch_origin(repo) {
             Ok(_) => debug!("Fetch from origin succeeded for {:?}", repo),
             Err(e) => debug!("Fetch from origin failed (non-fatal): {}", e),
+        }
+
+        // Validate branches exist before attempting merge
+        if let Some(not_found) = Self::validate_merge_branches(repo, source_branch, target_branch)
+        {
+            return Ok(not_found);
         }
 
         // Step 2: Check if base branch is empty (0 or 1 commits)
@@ -2825,6 +2913,9 @@ mod tests {
             MergeAttemptResult::NeedsAgent { .. } => {
                 panic!("First task on empty repo should not need agent");
             }
+            MergeAttemptResult::BranchNotFound { branch } => {
+                panic!("Unexpected BranchNotFound: {}", branch);
+            }
         }
     }
 
@@ -2939,6 +3030,9 @@ mod tests {
             }
             MergeAttemptResult::NeedsAgent { .. } => {
                 panic!("Clean merge should not need agent");
+            }
+            MergeAttemptResult::BranchNotFound { branch } => {
+                panic!("Unexpected BranchNotFound: {}", branch);
             }
         }
     }
@@ -3602,6 +3696,9 @@ mod tests {
             MergeAttemptResult::NeedsAgent { .. } => {
                 panic!("Clean fast-forward merge should not need agent");
             }
+            MergeAttemptResult::BranchNotFound { branch } => {
+                panic!("Unexpected BranchNotFound: {}", branch);
+            }
         }
     }
 
@@ -3700,6 +3797,9 @@ mod tests {
             MergeAttemptResult::NeedsAgent { .. } => {
                 panic!("Non-conflicting diverged merge should not need agent");
             }
+            MergeAttemptResult::BranchNotFound { branch } => {
+                panic!("Unexpected BranchNotFound: {}", branch);
+            }
         }
     }
 
@@ -3797,6 +3897,9 @@ mod tests {
             }
             MergeAttemptResult::Success { .. } => {
                 panic!("Conflicting merge should need agent, not succeed");
+            }
+            MergeAttemptResult::BranchNotFound { branch } => {
+                panic!("Unexpected BranchNotFound: {}", branch);
             }
         }
     }
@@ -4041,6 +4144,9 @@ mod tests {
             MergeAttemptResult::NeedsAgent { .. } => {
                 panic!("Fast-forward merge should succeed, not need agent");
             }
+            MergeAttemptResult::BranchNotFound { branch } => {
+                panic!("Unexpected BranchNotFound: {}", branch);
+            }
         }
 
         // Merge worktree should still exist (caller responsible for cleanup)
@@ -4163,6 +4269,9 @@ mod tests {
             }
             MergeAttemptResult::Success { .. } => {
                 panic!("Conflicting merge should need agent, not succeed");
+            }
+            MergeAttemptResult::BranchNotFound { branch } => {
+                panic!("Unexpected BranchNotFound: {}", branch);
             }
         }
 
@@ -4461,5 +4570,168 @@ prunable gitdir file points to non-existent location
                 .to_string(),
         );
         assert!(!GitService::is_branch_lock_error(&error));
+    }
+
+    #[test]
+    fn test_branch_exists_returns_true_for_existing_branch() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create an initial commit so main/master exists
+        std::fs::write(repo.join("file.txt"), "hello").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Get the actual default branch name
+        let output = Command::new("git")
+            .args(["rev-parse", "--abbrev-ref", "HEAD"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        let branch_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+        assert!(GitService::branch_exists(repo, &branch_name));
+    }
+
+    #[test]
+    fn test_branch_exists_returns_false_for_nonexistent_branch() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        assert!(!GitService::branch_exists(repo, "nonexistent-branch"));
+    }
+
+    #[test]
+    fn test_try_squash_merge_source_branch_not_found() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        std::fs::write(repo.join("file.txt"), "hello").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        let result = GitService::try_squash_merge(
+            repo,
+            "nonexistent-source",
+            "main",
+            "squash commit",
+        )
+        .unwrap();
+
+        match result {
+            MergeAttemptResult::BranchNotFound { branch } => {
+                assert_eq!(branch, "nonexistent-source");
+            }
+            other => panic!("Expected BranchNotFound, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_try_squash_merge_target_branch_not_found() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        std::fs::write(repo.join("file.txt"), "hello").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Get the actual default branch name (the source that exists)
+        let output = Command::new("git")
+            .args(["rev-parse", "--abbrev-ref", "HEAD"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        let existing_branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+        let result = GitService::try_squash_merge(
+            repo,
+            &existing_branch,
+            "nonexistent-target",
+            "squash commit",
+        )
+        .unwrap();
+
+        match result {
+            MergeAttemptResult::BranchNotFound { branch } => {
+                assert_eq!(branch, "nonexistent-target");
+            }
+            other => panic!("Expected BranchNotFound, got {:?}", other),
+        }
     }
 }
