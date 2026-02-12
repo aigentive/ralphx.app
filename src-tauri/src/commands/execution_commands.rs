@@ -306,6 +306,17 @@ pub struct UpdateGlobalExecutionSettingsInput {
 // Quota Sync Helper
 // ========================================
 
+/// Result of syncing project quota
+/// Contains the resolved project ID and the max concurrent value that was applied
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct ProjectQuotaSync {
+    /// The resolved project ID (None if global/no project)
+    pub project_id: Option<ProjectId>,
+    /// The max concurrent tasks value that was synced to execution_state
+    pub max_concurrent: u32,
+}
+
 /// Syncs runtime ExecutionState max_concurrent with persisted project settings.
 /// Returns the resolved project ID and the effective max_concurrent value.
 ///
@@ -339,6 +350,29 @@ async fn sync_quota_from_project(
     execution_state.set_max_concurrent(settings.max_concurrent_tasks);
 
     Ok((effective_project_id, settings.max_concurrent_tasks))
+}
+
+/// Wrapper that returns a `ProjectQuotaSync` struct instead of a tuple.
+/// Delegates to `sync_quota_from_project` for the actual logic.
+#[allow(dead_code)]
+async fn sync_project_quota(
+    explicit_project_id: Option<ProjectId>,
+    active_project_state: &Arc<ActiveProjectState>,
+    execution_state: &Arc<ExecutionState>,
+    app_state: &AppState,
+) -> Result<ProjectQuotaSync, String> {
+    let (project_id, max_concurrent) = sync_quota_from_project(
+        explicit_project_id,
+        active_project_state,
+        execution_state,
+        app_state,
+    )
+    .await?;
+
+    Ok(ProjectQuotaSync {
+        project_id,
+        max_concurrent,
+    })
 }
 
 /// Get current execution status
@@ -1574,6 +1608,210 @@ mod tests {
         assert_eq!(input.max_concurrent_tasks, 5);
         assert!(!input.auto_commit);
         assert!(input.pause_on_failure);
+    }
+
+    // ========================================
+    // sync_project_quota Tests
+    // ========================================
+
+    #[tokio::test]
+    async fn test_sync_project_quota_explicit_project_priority() {
+        let app_state = AppState::new_test();
+        let execution_state = Arc::new(ExecutionState::new());
+        let active_project_state = Arc::new(ActiveProjectState::new());
+
+        // Create two projects with different quotas
+        let project1 = Project::new("Project 1".to_string(), "/path1".to_string());
+        let project2 = Project::new("Project 2".to_string(), "/path2".to_string());
+
+        app_state.project_repo.create(project1.clone()).await.unwrap();
+        app_state.project_repo.create(project2.clone()).await.unwrap();
+
+        // Set different quotas for each project
+        let settings1 = ExecutionSettings {
+            max_concurrent_tasks: 5,
+            auto_commit: true,
+            pause_on_failure: true,
+        };
+        let settings2 = ExecutionSettings {
+            max_concurrent_tasks: 10,
+            auto_commit: true,
+            pause_on_failure: true,
+        };
+
+        app_state.execution_settings_repo.update_settings(Some(&project1.id), &settings1).await.unwrap();
+        app_state.execution_settings_repo.update_settings(Some(&project2.id), &settings2).await.unwrap();
+
+        // Set project1 as active
+        active_project_state.set(Some(project1.id.clone())).await;
+
+        // Call sync with explicit project2 - should use project2, not active project1
+        let result = sync_project_quota(
+            Some(project2.id.clone()),
+            &active_project_state,
+            &execution_state,
+            &app_state,
+        ).await.unwrap();
+
+        // Should use explicit project2 (quota 10), not active project1 (quota 5)
+        assert_eq!(result.project_id, Some(project2.id));
+        assert_eq!(result.max_concurrent, 10);
+        assert_eq!(execution_state.max_concurrent(), 10);
+    }
+
+    #[tokio::test]
+    async fn test_sync_project_quota_active_project_fallback() {
+        let app_state = AppState::new_test();
+        let execution_state = Arc::new(ExecutionState::new());
+        let active_project_state = Arc::new(ActiveProjectState::new());
+
+        // Create project with custom quota
+        let project = Project::new("Active Project".to_string(), "/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        let settings = ExecutionSettings {
+            max_concurrent_tasks: 7,
+            auto_commit: true,
+            pause_on_failure: true,
+        };
+        app_state.execution_settings_repo.update_settings(Some(&project.id), &settings).await.unwrap();
+
+        // Set as active project
+        active_project_state.set(Some(project.id.clone())).await;
+
+        // Call sync without explicit project - should use active project
+        let result = sync_project_quota(
+            None,
+            &active_project_state,
+            &execution_state,
+            &app_state,
+        ).await.unwrap();
+
+        assert_eq!(result.project_id, Some(project.id));
+        assert_eq!(result.max_concurrent, 7);
+        assert_eq!(execution_state.max_concurrent(), 7);
+    }
+
+    #[tokio::test]
+    async fn test_sync_project_quota_none_fallback_to_global_default() {
+        let app_state = AppState::new_test();
+        let execution_state = Arc::new(ExecutionState::new());
+        let active_project_state = Arc::new(ActiveProjectState::new());
+
+        // No explicit project, no active project
+        // Should use global default (project_id = None)
+        let result = sync_project_quota(
+            None,
+            &active_project_state,
+            &execution_state,
+            &app_state,
+        ).await.unwrap();
+
+        assert_eq!(result.project_id, None);
+        // Default quota is 2 (from ExecutionSettings::default())
+        assert_eq!(result.max_concurrent, 2);
+        assert_eq!(execution_state.max_concurrent(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_sync_project_quota_updates_execution_state() {
+        let app_state = AppState::new_test();
+        let execution_state = Arc::new(ExecutionState::with_max_concurrent(99));
+        let active_project_state = Arc::new(ActiveProjectState::new());
+
+        let project = Project::new("Test Project".to_string(), "/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        let settings = ExecutionSettings {
+            max_concurrent_tasks: 15,
+            auto_commit: true,
+            pause_on_failure: true,
+        };
+        app_state.execution_settings_repo.update_settings(Some(&project.id), &settings).await.unwrap();
+
+        // Before sync, execution_state has old value
+        assert_eq!(execution_state.max_concurrent(), 99);
+
+        // Sync should update execution_state
+        sync_project_quota(
+            Some(project.id.clone()),
+            &active_project_state,
+            &execution_state,
+            &app_state,
+        ).await.unwrap();
+
+        // After sync, execution_state should have new value
+        assert_eq!(execution_state.max_concurrent(), 15);
+    }
+
+    #[tokio::test]
+    async fn test_sync_project_quota_multiple_calls_idempotent() {
+        let app_state = AppState::new_test();
+        let execution_state = Arc::new(ExecutionState::new());
+        let active_project_state = Arc::new(ActiveProjectState::new());
+
+        let project = Project::new("Test Project".to_string(), "/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        let settings = ExecutionSettings {
+            max_concurrent_tasks: 8,
+            auto_commit: true,
+            pause_on_failure: true,
+        };
+        app_state.execution_settings_repo.update_settings(Some(&project.id), &settings).await.unwrap();
+
+        // Call sync multiple times
+        for _ in 0..3 {
+            let result = sync_project_quota(
+                Some(project.id.clone()),
+                &active_project_state,
+                &execution_state,
+                &app_state,
+            ).await.unwrap();
+
+            assert_eq!(result.project_id, Some(project.id.clone()));
+            assert_eq!(result.max_concurrent, 8);
+            assert_eq!(execution_state.max_concurrent(), 8);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_sync_project_quota_switching_between_projects() {
+        let app_state = AppState::new_test();
+        let execution_state = Arc::new(ExecutionState::new());
+        let active_project_state = Arc::new(ActiveProjectState::new());
+
+        let project1 = Project::new("Project 1".to_string(), "/path1".to_string());
+        let project2 = Project::new("Project 2".to_string(), "/path2".to_string());
+
+        app_state.project_repo.create(project1.clone()).await.unwrap();
+        app_state.project_repo.create(project2.clone()).await.unwrap();
+
+        let settings1 = ExecutionSettings {
+            max_concurrent_tasks: 3,
+            auto_commit: true,
+            pause_on_failure: true,
+        };
+        let settings2 = ExecutionSettings {
+            max_concurrent_tasks: 12,
+            auto_commit: true,
+            pause_on_failure: true,
+        };
+
+        app_state.execution_settings_repo.update_settings(Some(&project1.id), &settings1).await.unwrap();
+        app_state.execution_settings_repo.update_settings(Some(&project2.id), &settings2).await.unwrap();
+
+        // Sync to project1
+        sync_project_quota(Some(project1.id.clone()), &active_project_state, &execution_state, &app_state).await.unwrap();
+        assert_eq!(execution_state.max_concurrent(), 3);
+
+        // Switch to project2
+        sync_project_quota(Some(project2.id.clone()), &active_project_state, &execution_state, &app_state).await.unwrap();
+        assert_eq!(execution_state.max_concurrent(), 12);
+
+        // Switch back to project1
+        sync_project_quota(Some(project1.id.clone()), &active_project_state, &execution_state, &app_state).await.unwrap();
+        assert_eq!(execution_state.max_concurrent(), 3);
     }
 
     // ========================================
