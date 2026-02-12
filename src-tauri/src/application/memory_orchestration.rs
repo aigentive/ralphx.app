@@ -276,8 +276,8 @@ async fn spawn_memory_maintainer(
 
     let prompt = format!(
         "Analyze and maintain memory rules for conversation_id='{}' in project_id='{}' (context: {}, {})",
-        &conv_id_str,
-        &proj_id_str,
+        conv_id_str,
+        proj_id_str,
         context_type,
         context_id
     );
@@ -330,8 +330,8 @@ async fn spawn_memory_capture(
 
     let prompt = format!(
         "Capture learning from conversation_id='{}' in project_id='{}' (context: {}, {})",
-        &conv_id_str,
-        &proj_id_str,
+        conv_id_str,
+        proj_id_str,
         context_type,
         context_id
     );

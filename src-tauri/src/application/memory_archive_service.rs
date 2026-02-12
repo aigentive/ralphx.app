@@ -12,13 +12,15 @@ use crate::domain::entities::{
     ArchiveJobPayload, MemoryEntry, MemorySnapshotPayload, RuleSnapshotPayload,
 };
 use crate::domain::entities::types::ProjectId;
-use crate::domain::repositories::{MemoryArchiveRepository, MemoryEntryRepository};
+use crate::domain::repositories::{MemoryArchiveRepository, MemoryEntryRepository, ProjectRepository};
 use crate::error::{AppError, AppResult};
 
 /// Memory Archive Service for generating deterministic snapshots
 pub struct MemoryArchiveService {
     archive_repo: Arc<dyn MemoryArchiveRepository>,
     entry_repo: Arc<dyn MemoryEntryRepository>,
+    project_repo: Arc<dyn ProjectRepository>,
+    #[allow(dead_code)]
     project_root: PathBuf,
 }
 
@@ -27,11 +29,13 @@ impl MemoryArchiveService {
     pub fn new(
         archive_repo: Arc<dyn MemoryArchiveRepository>,
         entry_repo: Arc<dyn MemoryEntryRepository>,
+        project_repo: Arc<dyn ProjectRepository>,
         project_root: PathBuf,
     ) -> Self {
         Self {
             archive_repo,
             entry_repo,
+            project_repo,
             project_root,
         }
     }
@@ -46,16 +50,28 @@ impl MemoryArchiveService {
             None => return Ok(false), // No jobs available
         };
 
+        // Look up the project to get its root path
+        let project = self
+            .project_repo
+            .get_by_id(&job.project_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!(
+                "Project {} not found for archive job",
+                job.project_id.as_str()
+            )))?;
+
+        let project_root = PathBuf::from(&project.working_directory);
+
         // Process the job based on type
         let result = match &job.payload {
             ArchiveJobPayload::MemorySnapshot(payload) => {
-                self.generate_memory_snapshot(&job.project_id, payload).await
+                self.generate_memory_snapshot(&job.project_id, payload, &project_root).await
             }
             ArchiveJobPayload::RuleSnapshot(payload) => {
-                self.generate_rule_snapshot(&job.project_id, payload).await
+                self.generate_rule_snapshot(&job.project_id, payload, &project_root).await
             }
             ArchiveJobPayload::FullRebuild(payload) => {
-                self.generate_full_rebuild(&job.project_id, payload.include_rule_snapshots)
+                self.generate_full_rebuild(&job.project_id, payload.include_rule_snapshots, &project_root)
                     .await
             }
         };
@@ -79,8 +95,9 @@ impl MemoryArchiveService {
     /// Generate a per-memory snapshot
     async fn generate_memory_snapshot(
         &self,
-        project_id: &ProjectId,
+        _project_id: &ProjectId,
         payload: &MemorySnapshotPayload,
+        project_root: &Path,
     ) -> AppResult<()> {
         // TODO(WP2): Check project_memory_settings.archive_enabled before generating
         // TODO(WP2): Respect custom archive_path from settings
@@ -95,7 +112,7 @@ impl MemoryArchiveService {
         let content = self.format_memory_snapshot(&entry)?;
 
         // Write to file: .claude/memory-archive/memories/<memory_id>.md
-        let output_path = self.get_memory_snapshot_path(project_id, &payload.memory_id)?;
+        let output_path = self.get_memory_snapshot_path(project_root, &payload.memory_id)?;
         self.write_snapshot_file(&output_path, &content)?;
 
         Ok(())
@@ -106,6 +123,7 @@ impl MemoryArchiveService {
         &self,
         project_id: &ProjectId,
         payload: &RuleSnapshotPayload,
+        project_root: &Path,
     ) -> AppResult<()> {
         // TODO(WP2): Check project_memory_settings.retain_rule_snapshots before generating
         // Get all memories linked to this rule file (scope_key represents the rule file path)
@@ -126,7 +144,7 @@ impl MemoryArchiveService {
 
         // Write to file: .claude/memory-archive/rules/<scope_key>/<timestamp>.md
         let timestamp = Utc::now().format("%Y%m%d_%H%M%S").to_string();
-        let output_path = self.get_rule_snapshot_path(project_id, &payload.scope_key, &timestamp)?;
+        let output_path = self.get_rule_snapshot_path(project_root, &payload.scope_key, &timestamp)?;
         self.write_snapshot_file(&output_path, &content)?;
 
         Ok(())
@@ -137,6 +155,7 @@ impl MemoryArchiveService {
         &self,
         project_id: &ProjectId,
         include_rule_snapshots: bool,
+        project_root: &Path,
     ) -> AppResult<()> {
         // TODO(WP2): Check project_memory_settings for archive_enabled, custom path
         // TODO(WP7): Add auto-commit logic if archive_auto_commit is true
@@ -155,7 +174,7 @@ impl MemoryArchiveService {
 
         // Write to file: .claude/memory-archive/projects/<project_id>/<timestamp>.md
         let timestamp = Utc::now().format("%Y%m%d_%H%M%S").to_string();
-        let output_path = self.get_project_snapshot_path(project_id, &timestamp)?;
+        let output_path = self.get_project_snapshot_path(project_root, project_id, &timestamp)?;
         self.write_snapshot_file(&output_path, &content)?;
 
         // Optionally generate rule snapshots too
@@ -174,7 +193,7 @@ impl MemoryArchiveService {
                 // Convert Vec<&MemoryEntry> to Vec<MemoryEntry>
                 let cloned_entries: Vec<MemoryEntry> = rule_entries.iter().map(|e| (*e).clone()).collect();
                 let content = self.format_rule_snapshot(&rule_file, &cloned_entries)?;
-                let output_path = self.get_rule_snapshot_path(project_id, &rule_file, &timestamp)?;
+                let output_path = self.get_rule_snapshot_path(project_root, &rule_file, &timestamp)?;
                 self.write_snapshot_file(&output_path, &content)?;
             }
         }
@@ -306,9 +325,8 @@ impl MemoryArchiveService {
     // ═══════════════════════════════════════════════════════════════════════
 
     /// Get the output path for a memory snapshot
-    fn get_memory_snapshot_path(&self, _project_id: &ProjectId, memory_id: &str) -> AppResult<PathBuf> {
-        let path = self
-            .project_root
+    fn get_memory_snapshot_path(&self, project_root: &Path, memory_id: &str) -> AppResult<PathBuf> {
+        let path = project_root
             .join(".claude/memory-archive/memories")
             .join(format!("{}.md", memory_id));
         Ok(path)
@@ -317,14 +335,13 @@ impl MemoryArchiveService {
     /// Get the output path for a rule snapshot
     fn get_rule_snapshot_path(
         &self,
-        _project_id: &ProjectId,
+        project_root: &Path,
         scope_key: &str,
         timestamp: &str,
     ) -> AppResult<PathBuf> {
         // Replace path separators in scope_key to create safe directory structure
         let safe_scope = scope_key.replace(['/', '\\'], "_");
-        let path = self
-            .project_root
+        let path = project_root
             .join(".claude/memory-archive/rules")
             .join(&safe_scope)
             .join(format!("{}.md", timestamp));
@@ -332,9 +349,8 @@ impl MemoryArchiveService {
     }
 
     /// Get the output path for a project snapshot
-    fn get_project_snapshot_path(&self, project_id: &ProjectId, timestamp: &str) -> AppResult<PathBuf> {
-        let path = self
-            .project_root
+    fn get_project_snapshot_path(&self, project_root: &Path, project_id: &ProjectId, timestamp: &str) -> AppResult<PathBuf> {
+        let path = project_root
             .join(".claude/memory-archive/projects")
             .join(project_id.as_str())
             .join(format!("{}.md", timestamp));
@@ -361,7 +377,40 @@ impl MemoryArchiveService {
 mod tests {
     use super::*;
     use crate::domain::entities::{MemoryBucket, MemoryEntry};
+    use crate::domain::repositories::ProjectRepository;
     use crate::infrastructure::sqlite::connection::open_memory_connection;
+    use async_trait::async_trait;
+    use crate::domain::entities::Project;
+
+    // Mock project repository for testing
+    struct MockProjectRepository;
+
+    #[async_trait]
+    impl ProjectRepository for MockProjectRepository {
+        async fn create(&self, project: Project) -> crate::error::AppResult<Project> {
+            Ok(project)
+        }
+
+        async fn get_by_id(&self, _id: &ProjectId) -> crate::error::AppResult<Option<Project>> {
+            Ok(None)
+        }
+
+        async fn get_all(&self) -> crate::error::AppResult<Vec<Project>> {
+            Ok(vec![])
+        }
+
+        async fn update(&self, _project: &Project) -> crate::error::AppResult<()> {
+            Ok(())
+        }
+
+        async fn delete(&self, _id: &ProjectId) -> crate::error::AppResult<()> {
+            Ok(())
+        }
+
+        async fn get_by_working_directory(&self, _path: &str) -> crate::error::AppResult<Option<Project>> {
+            Ok(None)
+        }
+    }
 
     #[test]
     fn test_format_memory_snapshot() {
@@ -384,6 +433,7 @@ mod tests {
         let service = MemoryArchiveService::new(
             Arc::new(crate::infrastructure::sqlite::SqliteMemoryArchiveRepository::new(conn1)),
             Arc::new(crate::infrastructure::sqlite::SqliteMemoryEntryRepository::new(conn2)),
+            Arc::new(MockProjectRepository),
             PathBuf::from("/tmp"),
         );
 
@@ -415,6 +465,7 @@ mod tests {
         let service = MemoryArchiveService::new(
             Arc::new(crate::infrastructure::sqlite::SqliteMemoryArchiveRepository::new(conn1)),
             Arc::new(crate::infrastructure::sqlite::SqliteMemoryEntryRepository::new(conn2)),
+            Arc::new(MockProjectRepository),
             PathBuf::from("/tmp"),
         );
 
@@ -461,6 +512,7 @@ mod tests {
         let service = MemoryArchiveService::new(
             Arc::new(crate::infrastructure::sqlite::SqliteMemoryArchiveRepository::new(conn1)),
             Arc::new(crate::infrastructure::sqlite::SqliteMemoryEntryRepository::new(conn2)),
+            Arc::new(MockProjectRepository),
             PathBuf::from("/tmp"),
         );
 
@@ -524,6 +576,7 @@ mod tests {
         let service = MemoryArchiveService::new(
             Arc::new(crate::infrastructure::sqlite::SqliteMemoryArchiveRepository::new(conn1)),
             Arc::new(crate::infrastructure::sqlite::SqliteMemoryEntryRepository::new(conn2)),
+            Arc::new(MockProjectRepository),
             PathBuf::from("/tmp"),
         );
 
