@@ -69,6 +69,8 @@ interface PlanningViewProps {
   onRemoveProposal: (proposalId: string) => void;
   onReorderProposals: (proposalIds: string[]) => void;
   onApply: (options: ApplyProposalsInput) => void;
+  /** Footer slot for execution controls — renders below left section */
+  footer?: React.ReactNode;
 }
 
 // Empty States extracted to separate files
@@ -100,6 +102,7 @@ export function PlanningView({
   onRemoveProposal,
   onReorderProposals,
   onApply,
+  footer,
 }: PlanningViewProps) {
   const [chatPanelWidth, setChatPanelWidth] = useState(CHAT_PANEL_DEFAULT_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
@@ -567,35 +570,34 @@ export function PlanningView({
       <div
         ref={containerRef}
         data-testid="ideation-view"
-        className="flex h-full relative"
+        className="flex flex-col h-full relative"
         style={{ background: "hsl(220 10% 8%)" }}
         role="main"
       >
-        {/* Plan Browser Sidebar */}
-        <PlanBrowser
-          plans={activePlans}
-          historyPlans={historyPlans}
-          currentPlanId={session?.id ?? null}
-          onSelectPlan={onSelectSession}
-          onNewPlan={onNewSession}
-          {...(onDeleteSession !== undefined && { onDeletePlan: onDeleteSession })}
-          onArchivePlan={onArchiveSession}
-          onReopenPlan={(planId) => {
-            onSelectSession(planId);
-            handleOpenReopenDialog("reopen");
-          }}
-          onResetReacceptPlan={(planId) => {
-            onSelectSession(planId);
-            handleOpenReopenDialog("reset");
-          }}
-        />
+        <div className="flex flex-1 overflow-hidden">
+          {/* Plan Browser Sidebar */}
+          <PlanBrowser
+            plans={activePlans}
+            historyPlans={historyPlans}
+            currentPlanId={session?.id ?? null}
+            onSelectPlan={onSelectSession}
+            onNewPlan={onNewSession}
+            {...(onDeleteSession !== undefined && { onDeletePlan: onDeleteSession })}
+            onArchivePlan={onArchiveSession}
+            onReopenPlan={(planId) => {
+              onSelectSession(planId);
+              handleOpenReopenDialog("reopen");
+            }}
+            onResetReacceptPlan={(planId) => {
+              onSelectSession(planId);
+              handleOpenReopenDialog("reset");
+            }}
+          />
 
-        {/* Main Content */}
-        {!session ? (
-          <StartSessionPanel onNewSession={onNewSession} />
-        ) : (
+          {/* Main Content - Column layout for session or no-session */}
           <div className="flex flex-col flex-1 overflow-hidden">
-            {/* Header */}
+            {/* Header - Only shown when session is active */}
+            {session && (
             <header
               data-testid="ideation-header"
               className="flex items-center justify-between h-11 px-4 border-b"
@@ -694,181 +696,201 @@ export function PlanningView({
                 )}
               </div>
             </header>
+          )}
 
-            {/* Split Layout - Proposals left, Conversation right (matching Kanban pattern) */}
-            <div data-testid="ideation-main-content" className="flex flex-1 overflow-hidden">
-              {/* Proposals Panel (Left) - takes remaining space */}
+          {/* Split Layout - Left section with footer support, Conversation right (matching Kanban pattern) */}
+          <div data-testid="ideation-main-content" className="flex flex-1 overflow-hidden">
+            {/* Left Section - Column layout with proposals content and optional footer */}
+            <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+              {/* Main Content Area - Session or No-Session */}
               <div
                 data-testid="proposals-panel"
-                className="flex flex-col relative flex-1 min-w-0"
+                className="flex flex-col relative flex-1 min-h-0"
                 style={{
                   minWidth: "360px",
                   borderRight: "1px solid hsla(220 10% 100% / 0.06)",
                   background: "hsl(220 10% 8%)",
                 }}
-                {...dropProps}
+                {...(session ? dropProps : {})}
               >
-                {/* Drop zone overlay - shown during drag */}
-                <DropZoneOverlay isVisible={isDragging} message="Drop to import plan" />
+                {/* Drop zone overlay - shown during drag (active session only) */}
+                {session && <DropZoneOverlay isVisible={isDragging} message="Drop to import plan" />}
 
-                {/* Proposals Toolbar (replaces panel header) */}
-                {proposals.length > 0 && (
-                  <ProposalsToolbar
-                    proposals={proposals}
-                    graph={dependencyGraph}
-                    isReadOnly={isReadOnly}
-                    onClearAll={handleClearAll}
-                    onAcceptPlan={handleAcceptPlan}
-                    onAnalyzeDependencies={handleReanalyzeDependencies}
-                    isAnalyzingDependencies={isAnalyzingDependencies}
-                  />
+                {/* No-Session State */}
+                {!session && (
+                  <StartSessionPanel onNewSession={onNewSession} />
                 )}
 
-                {/* Proposals List */}
-                <div ref={proposalsScrollRef} className="flex-1 overflow-y-auto p-4">
-                  {session.status === "accepted" && (
-                    <AcceptedSessionBanner
-                      projectId={session.projectId}
-                      proposals={proposals}
-                      convertedAt={session.convertedAt}
-                      onViewWork={handleViewWork}
-                    />
-                  )}
-
-                  {importStatus && (
-                    <div
-                      className="mb-4 p-4 rounded-xl"
-                      style={{
-                        background: importStatus.type === "success"
-                          ? "hsla(145 70% 40% / 0.1)"
-                          : "hsla(0 70% 50% / 0.1)",
-                        border: `1px solid ${importStatus.type === "success"
-                          ? "hsla(145 70% 40% / 0.3)"
-                          : "hsla(0 70% 50% / 0.3)"}`,
-                      }}
-                    >
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-medium" style={{ color: "hsl(220 10% 90%)" }}>{importStatus.message}</p>
-                        <Button variant="ghost" size="icon" onClick={() => setImportStatus(null)} className="h-7 w-7">×</Button>
-                      </div>
-                    </div>
-                  )}
-
-                  {syncNotification && (
-                    <ProactiveSyncNotificationBanner
-                      notification={syncNotification}
-                      onDismiss={handleDismissSync}
-                      onReview={handleReviewSync}
-                      onUndo={handleUndoSync}
-                    />
-                  )}
-
-                  {!planArtifact && proposals.length > 0 && (
-                    <Button
-                      variant="outline"
-                      onClick={handleImportPlan}
-                      className="w-full mb-4 gap-2 transition-colors duration-150"
-                      style={{
-                        border: "1px solid hsla(220 10% 100% / 0.1)",
-                        background: "transparent",
-                        color: "hsl(220 10% 70%)",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = "hsla(220 10% 100% / 0.2)";
-                        e.currentTarget.style.background = "hsla(220 10% 100% / 0.03)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = "hsla(220 10% 100% / 0.1)";
-                        e.currentTarget.style.background = "transparent";
-                      }}
-                      data-testid="import-plan-button"
-                    >
-                      <Upload className="w-4 h-4" />
-                      Import Implementation Plan
-                    </Button>
-                  )}
-
-                  {planArtifact && (
-                    <div className="mb-4">
-                      <PlanDisplay
-                        plan={planArtifact}
-                        showApprove={ideationSettings?.requirePlanApproval ?? false}
-                        linkedProposalsCount={proposals.filter((p) => p.planArtifactId === planArtifact.id).length}
-                        onEdit={() => {}}
-                        isExpanded={isPlanExpanded}
-                        onExpandedChange={handlePlanExpandedChange}
+                {/* Active-Session State */}
+                {session && (
+                  <>
+                    {/* Proposals Toolbar (replaces panel header) */}
+                    {proposals.length > 0 && (
+                      <ProposalsToolbar
+                        proposals={proposals}
+                        graph={dependencyGraph}
+                        isReadOnly={isReadOnly}
+                        onClearAll={handleClearAll}
+                        onAcceptPlan={handleAcceptPlan}
+                        onAnalyzeDependencies={handleReanalyzeDependencies}
+                        isAnalyzingDependencies={isAnalyzingDependencies}
                       />
-                    </div>
-                  )}
+                    )}
 
-                  {!planArtifact && ideationSettings?.planMode === "required" && proposals.length === 0 && (
-                    <div className="flex flex-col items-center justify-center h-full p-8">
-                      <div className="relative">
+                    {/* Proposals List */}
+                    <div ref={proposalsScrollRef} className="flex-1 overflow-y-auto p-4">
+                      {session.status === "accepted" && (
+                        <AcceptedSessionBanner
+                          projectId={session.projectId}
+                          proposals={proposals}
+                          convertedAt={session.convertedAt}
+                          onViewWork={handleViewWork}
+                        />
+                      )}
+
+                      {importStatus && (
                         <div
-                          className="relative p-8 rounded-2xl text-center"
+                          className="mb-4 p-4 rounded-xl"
                           style={{
-                            background: "hsla(220 10% 14% / 0.6)",
-                            border: "1px solid hsla(220 10% 100% / 0.06)",
+                            background: importStatus.type === "success"
+                              ? "hsla(145 70% 40% / 0.1)"
+                              : "hsla(0 70% 50% / 0.1)",
+                            border: `1px solid ${importStatus.type === "success"
+                              ? "hsla(145 70% 40% / 0.3)"
+                              : "hsla(0 70% 50% / 0.3)"}`,
                           }}
                         >
-                          <Loader2 className="w-10 h-10 mx-auto mb-4 animate-spin" style={{ color: "hsl(14 100% 60%)" }} />
-                          <p className="font-medium" style={{ color: "hsl(220 10% 70%)" }}>Waiting for implementation plan...</p>
-                          <p className="text-sm mt-1" style={{ color: "hsl(220 10% 50%)" }}>The orchestrator will create a plan first</p>
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-medium" style={{ color: "hsl(220 10% 90%)" }}>{importStatus.message}</p>
+                            <Button variant="ghost" size="icon" onClick={() => setImportStatus(null)} className="h-7 w-7">×</Button>
+                          </div>
                         </div>
-                      </div>
+                      )}
+
+                      {syncNotification && (
+                        <ProactiveSyncNotificationBanner
+                          notification={syncNotification}
+                          onDismiss={handleDismissSync}
+                          onReview={handleReviewSync}
+                          onUndo={handleUndoSync}
+                        />
+                      )}
+
+                      {!planArtifact && proposals.length > 0 && (
+                        <Button
+                          variant="outline"
+                          onClick={handleImportPlan}
+                          className="w-full mb-4 gap-2 transition-colors duration-150"
+                          style={{
+                            border: "1px solid hsla(220 10% 100% / 0.1)",
+                            background: "transparent",
+                            color: "hsl(220 10% 70%)",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor = "hsla(220 10% 100% / 0.2)";
+                            e.currentTarget.style.background = "hsla(220 10% 100% / 0.03)";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = "hsla(220 10% 100% / 0.1)";
+                            e.currentTarget.style.background = "transparent";
+                          }}
+                          data-testid="import-plan-button"
+                        >
+                          <Upload className="w-4 h-4" />
+                          Import Implementation Plan
+                        </Button>
+                      )}
+
+                      {planArtifact && (
+                        <div className="mb-4">
+                          <PlanDisplay
+                            plan={planArtifact}
+                            showApprove={ideationSettings?.requirePlanApproval ?? false}
+                            linkedProposalsCount={proposals.filter((p) => p.planArtifactId === planArtifact.id).length}
+                            onEdit={() => {}}
+                            isExpanded={isPlanExpanded}
+                            onExpandedChange={handlePlanExpandedChange}
+                          />
+                        </div>
+                      )}
+
+                      {!planArtifact && ideationSettings?.planMode === "required" && proposals.length === 0 && (
+                        <div className="flex flex-col items-center justify-center h-full p-8">
+                          <div className="relative">
+                            <div
+                              className="relative p-8 rounded-2xl text-center"
+                              style={{
+                                background: "hsla(220 10% 14% / 0.6)",
+                                border: "1px solid hsla(220 10% 100% / 0.06)",
+                              }}
+                            >
+                              <Loader2 className="w-10 h-10 mx-auto mb-4 animate-spin" style={{ color: "hsl(14 100% 60%)" }} />
+                              <p className="font-medium" style={{ color: "hsl(220 10% 70%)" }}>Waiting for implementation plan...</p>
+                              <p className="text-sm mt-1" style={{ color: "hsl(220 10% 50%)" }}>The orchestrator will create a plan first</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {proposals.length === 0 && !(!planArtifact && ideationSettings?.planMode === "required") && <ProposalsEmptyState onBrowse={handleImportPlan} />}
+
+                      {proposals.length > 0 && (
+                        <TieredProposalList
+                          proposals={proposals}
+                          dependencyGraph={dependencyGraph}
+                          highlightedIds={highlightedProposalIdsWithUpdates}
+                          criticalPathIds={criticalPathSet}
+                          onEdit={onEditProposal}
+                          onRemove={onRemoveProposal}
+                          {...(planArtifact?.metadata.version !== undefined && {
+                            currentPlanVersion: planArtifact.metadata.version,
+                          })}
+                          {...(isReadOnly && { isReadOnly })}
+                          onNavigateToTask={handleNavigateToTask}
+                        />
+                      )}
                     </div>
-                  )}
+                  </>
+                )}
+              </div>
 
-                  {proposals.length === 0 && !(!planArtifact && ideationSettings?.planMode === "required") && <ProposalsEmptyState onBrowse={handleImportPlan} />}
-
-                  {proposals.length > 0 && (
-                    <TieredProposalList
-                      proposals={proposals}
-                      dependencyGraph={dependencyGraph}
-                      highlightedIds={highlightedProposalIdsWithUpdates}
-                      criticalPathIds={criticalPathSet}
-                      onEdit={onEditProposal}
-                      onRemove={onRemoveProposal}
-                      {...(planArtifact?.metadata.version !== undefined && {
-                        currentPlanVersion: planArtifact.metadata.version,
-                      })}
-                      {...(isReadOnly && { isReadOnly })}
-                      onNavigateToTask={handleNavigateToTask}
-                    />
-                  )}
+              {/* Footer Region - renders footer when provided */}
+              {footer && (
+                <div className="flex-shrink-0" data-testid="ideation-footer">
+                  {footer}
                 </div>
+              )}
+            </div>
 
-              </div>
+            {/* Resize Handle */}
+            <ResizeHandle
+              isResizing={isResizing}
+              onMouseDown={handleResizeStart}
+              testId="ideation-resize-handle"
+            />
 
-              {/* Resize Handle */}
-              <ResizeHandle
-                isResizing={isResizing}
-                onMouseDown={handleResizeStart}
-                testId="ideation-resize-handle"
+            {/* Conversation Panel (Right) - Using IntegratedChatPanel */}
+            <div
+              data-testid="conversation-panel"
+              className="flex flex-col shrink-0"
+              style={{ width: `${chatPanelWidth}px` }}
+            >
+              <IntegratedChatPanel
+                projectId={session?.projectId || ""}
+                ideationSessionId={session?.id || ""}
+                emptyState={<ConversationEmptyState />}
+                showHelperTextAlways={true}
+                headerContent={
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <MessageSquare className="w-3.5 h-3.5 shrink-0" style={{ color: "hsl(220 10% 50%)" }} />
+                    <span className="text-[13px] font-medium" style={{ color: "hsl(220 10% 90%)" }}>Conversation</span>
+                  </div>
+                }
               />
-
-              {/* Conversation Panel (Right) - Using IntegratedChatPanel */}
-              <div
-                data-testid="conversation-panel"
-                className="flex flex-col shrink-0"
-                style={{ width: `${chatPanelWidth}px` }}
-              >
-                <IntegratedChatPanel
-                  projectId={session.projectId}
-                  ideationSessionId={session.id}
-                  emptyState={<ConversationEmptyState />}
-                  showHelperTextAlways={true}
-                  headerContent={
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <MessageSquare className="w-3.5 h-3.5 shrink-0" style={{ color: "hsl(220 10% 50%)" }} />
-                      <span className="text-[13px] font-medium" style={{ color: "hsl(220 10% 90%)" }}>Conversation</span>
-                    </div>
-                  }
-                />
-              </div>
             </div>
           </div>
-        )}
+          </div>
+        </div>
 
         <input
           ref={fileInputRef}
