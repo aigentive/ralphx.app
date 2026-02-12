@@ -15,6 +15,7 @@ pub mod execution_settings_repository;
 pub mod ideation_session_repository;
 pub mod ideation_settings_repository;
 pub mod memory_archive_job_repository;
+pub mod memory_archive_repository;
 pub mod memory_entry_repository;
 pub mod memory_event_repository;
 pub mod methodology_repo;
@@ -54,6 +55,7 @@ pub use execution_settings_repository::{
 pub use ideation_session_repository::IdeationSessionRepository;
 pub use ideation_settings_repository::IdeationSettingsRepository;
 pub use memory_archive_job_repository::MemoryArchiveJobRepository;
+pub use memory_archive_repository::MemoryArchiveRepository;
 pub use memory_entry_repository::MemoryEntryRepository;
 pub use memory_event_repository::MemoryEventRepository;
 pub use methodology_repo::MethodologyRepository;

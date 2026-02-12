@@ -1,20 +1,22 @@
-// SQLite implementation of MemoryArchiveJobRepository
+// SQLite implementation of MemoryArchiveJobRepository (legacy)
+// New code should use SqliteMemoryArchiveRepository
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rusqlite::Connection;
-use serde_json::Value as JsonValue;
 use tokio::sync::Mutex;
 
 use crate::domain::entities::{
-    MemoryArchiveJob, MemoryArchiveJobId, MemoryArchiveJobStatus, MemoryArchiveJobType, ProcessId,
+    ArchiveJobPayload, ArchiveJobStatus, ArchiveJobType,
+    MemoryArchiveJob, MemoryArchiveJobId,
 };
+use crate::domain::entities::types::ProjectId;
 use crate::domain::repositories::MemoryArchiveJobRepository;
 use crate::error::{AppError, AppResult};
 
-/// SQLite-backed memory archive job repository
+/// SQLite-backed memory archive job repository (legacy)
 pub struct SqliteMemoryArchiveJobRepository {
     conn: Arc<Mutex<Connection>>,
 }
@@ -35,7 +37,7 @@ impl SqliteMemoryArchiveJobRepository {
     /// Helper to parse a row into a MemoryArchiveJob
     fn row_to_memory_archive_job(row: &rusqlite::Row) -> rusqlite::Result<MemoryArchiveJob> {
         let job_type_str: String = row.get(2)?;
-        let job_type = job_type_str.parse::<MemoryArchiveJobType>()
+        let job_type = job_type_str.parse::<ArchiveJobType>()
             .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
                 2,
                 rusqlite::types::Type::Text,
@@ -43,15 +45,15 @@ impl SqliteMemoryArchiveJobRepository {
             ))?;
 
         let payload_json_str: String = row.get(3)?;
-        let payload: JsonValue = serde_json::from_str(&payload_json_str)
+        let payload = ArchiveJobPayload::from_json(&payload_json_str)
             .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
                 3,
                 rusqlite::types::Type::Text,
-                Box::new(e),
+                Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
             ))?;
 
         let status_str: String = row.get(4)?;
-        let status = status_str.parse::<MemoryArchiveJobStatus>()
+        let status = status_str.parse::<ArchiveJobStatus>()
             .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
                 4,
                 rusqlite::types::Type::Text,
@@ -85,8 +87,8 @@ impl SqliteMemoryArchiveJobRepository {
             .map(|dt| dt.with_timezone(&Utc));
 
         Ok(MemoryArchiveJob {
-            id: MemoryArchiveJobId::from_string(row.get::<_, String>(0)?),
-            project_id: ProcessId::from_string(row.get::<_, String>(1)?),
+            id: MemoryArchiveJobId::from(row.get::<_, String>(0)?),
+            project_id: ProjectId::from_string(row.get::<_, String>(1)?),
             job_type,
             payload,
             status,
@@ -104,8 +106,7 @@ impl MemoryArchiveJobRepository for SqliteMemoryArchiveJobRepository {
     async fn create(&self, job: MemoryArchiveJob) -> AppResult<MemoryArchiveJob> {
         let conn = self.conn.lock().await;
 
-        let payload_json = serde_json::to_string(&job.payload)
-            .map_err(|e| AppError::Database(format!("Failed to serialize payload: {}", e)))?;
+        let payload_json = job.payload.to_json()?;
 
         conn.execute(
             "INSERT INTO memory_archive_jobs (
@@ -113,7 +114,7 @@ impl MemoryArchiveJobRepository for SqliteMemoryArchiveJobRepository {
                 created_at, updated_at, started_at, completed_at
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             rusqlite::params![
-                job.id.as_str(),
+                job.id.0.as_str(),
                 job.project_id.as_str(),
                 job.job_type.to_string(),
                 payload_json,
@@ -137,7 +138,7 @@ impl MemoryArchiveJobRepository for SqliteMemoryArchiveJobRepository {
             "SELECT id, project_id, job_type, payload_json, status, error_message,
                     created_at, updated_at, started_at, completed_at
              FROM memory_archive_jobs WHERE id = ?1",
-            [id.as_str()],
+            [id.0.as_str()],
             Self::row_to_memory_archive_job,
         );
 
@@ -150,7 +151,7 @@ impl MemoryArchiveJobRepository for SqliteMemoryArchiveJobRepository {
 
     async fn get_pending_by_project(
         &self,
-        project_id: &ProcessId,
+        project_id: &ProjectId,
     ) -> AppResult<Vec<MemoryArchiveJob>> {
         let conn = self.conn.lock().await;
 
@@ -175,7 +176,7 @@ impl MemoryArchiveJobRepository for SqliteMemoryArchiveJobRepository {
     async fn update_status(
         &self,
         id: &MemoryArchiveJobId,
-        status: MemoryArchiveJobStatus,
+        status: ArchiveJobStatus,
         error_message: Option<String>,
     ) -> AppResult<()> {
         let conn = self.conn.lock().await;
@@ -184,11 +185,11 @@ impl MemoryArchiveJobRepository for SqliteMemoryArchiveJobRepository {
 
         // Build the update query based on status
         let (started_at, completed_at) = match status {
-            MemoryArchiveJobStatus::Running => (Some(now.clone()), None),
-            MemoryArchiveJobStatus::Done | MemoryArchiveJobStatus::Failed => {
+            ArchiveJobStatus::Running => (Some(now.clone()), None),
+            ArchiveJobStatus::Done | ArchiveJobStatus::Failed => {
                 (None, Some(now.clone()))
             }
-            MemoryArchiveJobStatus::Pending => (None, None),
+            ArchiveJobStatus::Pending => (None, None),
         };
 
         let affected = conn.execute(
@@ -205,7 +206,7 @@ impl MemoryArchiveJobRepository for SqliteMemoryArchiveJobRepository {
                 now,
                 started_at,
                 completed_at,
-                id.as_str(),
+                id.0.as_str(),
             ],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;

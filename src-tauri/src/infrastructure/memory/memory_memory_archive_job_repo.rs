@@ -8,8 +8,9 @@ use async_trait::async_trait;
 use chrono::Utc;
 
 use crate::domain::entities::{
-    MemoryArchiveJob, MemoryArchiveJobId, MemoryArchiveJobStatus, ProcessId,
+    ArchiveJobStatus, MemoryArchiveJob, MemoryArchiveJobId,
 };
+use crate::domain::entities::types::ProjectId;
 use crate::domain::repositories::MemoryArchiveJobRepository;
 use crate::error::{AppError, AppResult};
 
@@ -46,13 +47,13 @@ impl MemoryArchiveJobRepository for InMemoryMemoryArchiveJobRepository {
 
     async fn get_pending_by_project(
         &self,
-        project_id: &ProcessId,
+        project_id: &ProjectId,
     ) -> AppResult<Vec<MemoryArchiveJob>> {
         let jobs = self.jobs.read().await;
         let mut result: Vec<_> = jobs
             .values()
             .filter(|j| {
-                j.project_id == *project_id && j.status == MemoryArchiveJobStatus::Pending
+                j.project_id == *project_id && j.status == ArchiveJobStatus::Pending
             })
             .cloned()
             .collect();
@@ -63,7 +64,7 @@ impl MemoryArchiveJobRepository for InMemoryMemoryArchiveJobRepository {
     async fn update_status(
         &self,
         id: &MemoryArchiveJobId,
-        status: MemoryArchiveJobStatus,
+        status: ArchiveJobStatus,
         error_message: Option<String>,
     ) -> AppResult<()> {
         let mut jobs = self.jobs.write().await;
@@ -71,17 +72,17 @@ impl MemoryArchiveJobRepository for InMemoryMemoryArchiveJobRepository {
             Some(job) => {
                 let now = Utc::now();
                 match status {
-                    MemoryArchiveJobStatus::Running => {
+                    ArchiveJobStatus::Running => {
                         if job.started_at.is_none() {
                             job.started_at = Some(now);
                         }
                     }
-                    MemoryArchiveJobStatus::Done | MemoryArchiveJobStatus::Failed => {
+                    ArchiveJobStatus::Done | ArchiveJobStatus::Failed => {
                         if job.completed_at.is_none() {
                             job.completed_at = Some(now);
                         }
                     }
-                    MemoryArchiveJobStatus::Pending => {}
+                    ArchiveJobStatus::Pending => {}
                 }
                 job.status = status;
                 job.error_message = error_message;

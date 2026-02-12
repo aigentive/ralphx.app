@@ -7,7 +7,8 @@ use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 use tokio::sync::Mutex;
 
-use crate::domain::entities::{MemoryBucket, MemoryEntry, MemoryEntryId, MemoryStatus, ProcessId};
+use crate::domain::entities::{MemoryBucket, MemoryEntry, MemoryEntryId, MemoryStatus};
+use crate::domain::entities::types::ProjectId;
 use crate::domain::repositories::MemoryEntryRepository;
 use crate::error::{AppError, AppResult};
 
@@ -71,7 +72,7 @@ impl SqliteMemoryEntryRepository {
 
         Ok(MemoryEntry {
             id: MemoryEntryId::from_string(row.get::<_, String>(0)?),
-            project_id: ProcessId::from_string(row.get::<_, String>(1)?),
+            project_id: ProjectId::from_string(row.get::<_, String>(1)?),
             bucket,
             title: row.get(3)?,
             summary: row.get(4)?,
@@ -151,7 +152,7 @@ impl MemoryEntryRepository for SqliteMemoryEntryRepository {
 
     async fn find_by_content_hash(
         &self,
-        project_id: &ProcessId,
+        project_id: &ProjectId,
         bucket: &MemoryBucket,
         content_hash: &str,
     ) -> AppResult<Option<MemoryEntry>> {
@@ -179,7 +180,7 @@ impl MemoryEntryRepository for SqliteMemoryEntryRepository {
         }
     }
 
-    async fn get_by_project(&self, project_id: &ProcessId) -> AppResult<Vec<MemoryEntry>> {
+    async fn get_by_project(&self, project_id: &ProjectId) -> AppResult<Vec<MemoryEntry>> {
         let conn = self.conn.lock().await;
 
         let mut stmt = conn.prepare(
@@ -204,7 +205,7 @@ impl MemoryEntryRepository for SqliteMemoryEntryRepository {
 
     async fn get_by_project_and_bucket(
         &self,
-        project_id: &ProcessId,
+        project_id: &ProjectId,
         bucket: &MemoryBucket,
     ) -> AppResult<Vec<MemoryEntry>> {
         let conn = self.conn.lock().await;
@@ -306,7 +307,7 @@ impl MemoryEntryRepository for SqliteMemoryEntryRepository {
 
     async fn get_by_paths(
         &self,
-        project_id: &ProcessId,
+        project_id: &ProjectId,
         paths: &[String],
     ) -> AppResult<Vec<MemoryEntry>> {
         let conn = self.conn.lock().await;

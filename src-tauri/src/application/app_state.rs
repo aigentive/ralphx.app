@@ -18,9 +18,10 @@ use crate::domain::repositories::{
     AppStateRepository, ArtifactBucketRepository, ArtifactFlowRepository, ArtifactRepository,
     ChatConversationRepository, ChatMessageRepository, ExecutionSettingsRepository,
     GlobalExecutionSettingsRepository, IdeationSessionRepository, IdeationSettingsRepository,
-    MemoryArchiveJobRepository, MemoryEntryRepository, MemoryEventRepository,
-    MethodologyRepository, PlanBranchRepository, PlanSelectionStatsRepository, ProcessRepository,
-    ProjectRepository, ProposalDependencyRepository, ReviewRepository, ReviewSettingsRepository,
+    MemoryArchiveRepository, MemoryEntryRepository,
+    MemoryEventRepository, MethodologyRepository, PlanBranchRepository,
+    PlanSelectionStatsRepository, ProcessRepository, ProjectRepository,
+    ProposalDependencyRepository, ReviewRepository, ReviewSettingsRepository,
     TaskDependencyRepository, TaskProposalRepository, TaskQARepository, TaskRepository,
     TaskStepRepository, WorkflowRepository,
 };
@@ -38,7 +39,7 @@ use crate::infrastructure::memory::{
     MemoryReviewIssueRepository, MemoryReviewRepository, MemoryReviewSettingsRepository,
     MemoryTaskDependencyRepository, MemoryTaskProposalRepository, MemoryTaskQARepository,
     MemoryTaskRepository, MemoryTaskStepRepository, MemoryWorkflowRepository,
-    InMemoryMemoryEntryRepository, InMemoryMemoryEventRepository, InMemoryMemoryArchiveJobRepository,
+    InMemoryMemoryEntryRepository, InMemoryMemoryEventRepository,
 };
 use crate::infrastructure::sqlite::{
     get_app_data_db_path, get_default_db_path, open_connection, run_migrations,
@@ -47,13 +48,14 @@ use crate::infrastructure::sqlite::{
     SqliteArtifactFlowRepository, SqliteArtifactRepository, SqliteChatConversationRepository,
     SqliteChatMessageRepository, SqliteExecutionSettingsRepository,
     SqliteGlobalExecutionSettingsRepository, SqliteIdeationSessionRepository,
-    SqliteIdeationSettingsRepository, SqliteMethodologyRepository, SqlitePermissionRepository,
-    SqlitePlanBranchRepository, SqlitePlanSelectionStatsRepository, SqliteProcessRepository,
-    SqliteProjectRepository, SqliteProposalDependencyRepository, SqliteQuestionRepository,
-    SqliteReviewIssueRepository, SqliteReviewRepository, SqliteReviewSettingsRepository,
-    SqliteRunningAgentRegistry, SqliteTaskDependencyRepository, SqliteTaskProposalRepository,
-    SqliteTaskQARepository, SqliteTaskRepository, SqliteTaskStepRepository, SqliteWorkflowRepository,
-    SqliteMemoryEntryRepository, SqliteMemoryEventRepository, SqliteMemoryArchiveJobRepository,
+    SqliteIdeationSettingsRepository,
+    SqliteMemoryArchiveRepository, SqliteMemoryEntryRepository, SqliteMemoryEventRepository,
+    SqliteMethodologyRepository, SqlitePermissionRepository, SqlitePlanBranchRepository,
+    SqlitePlanSelectionStatsRepository, SqliteProcessRepository, SqliteProjectRepository,
+    SqliteProposalDependencyRepository, SqliteQuestionRepository, SqliteReviewIssueRepository,
+    SqliteReviewRepository, SqliteReviewSettingsRepository, SqliteRunningAgentRegistry,
+    SqliteTaskDependencyRepository, SqliteTaskProposalRepository, SqliteTaskQARepository,
+    SqliteTaskRepository, SqliteTaskStepRepository, SqliteWorkflowRepository,
 };
 use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
 
@@ -139,8 +141,8 @@ pub struct AppState {
     pub memory_entry_repo: Arc<dyn MemoryEntryRepository>,
     /// Memory event repository for audit trail
     pub memory_event_repo: Arc<dyn MemoryEventRepository>,
-    /// Memory archive job repository for background snapshot jobs
-    pub memory_archive_job_repo: Arc<dyn MemoryArchiveJobRepository>,
+    /// Memory archive repository for snapshot generation job queue
+    pub memory_archive_repo: Arc<dyn MemoryArchiveRepository>,
     /// Tauri app handle for emitting events to frontend (None in tests)
     pub app_handle: Option<AppHandle>,
 }
@@ -247,7 +249,7 @@ impl AppState {
             active_plan_repo: Arc::new(SqliteActivePlanRepository::from_shared(Arc::clone(&shared_conn))),
             memory_entry_repo: Arc::new(SqliteMemoryEntryRepository::from_shared(Arc::clone(&shared_conn))),
             memory_event_repo: Arc::new(SqliteMemoryEventRepository::from_shared(Arc::clone(&shared_conn))),
-            memory_archive_job_repo: Arc::new(SqliteMemoryArchiveJobRepository::from_shared(Arc::clone(&shared_conn))),
+            memory_archive_repo: Arc::new(SqliteMemoryArchiveRepository::from_shared(Arc::clone(&shared_conn))),
             permission_state: Arc::new(PermissionState::with_repo(
                 Arc::new(SqlitePermissionRepository::from_shared(Arc::clone(&shared_conn)))
             )),
@@ -356,7 +358,7 @@ impl AppState {
             active_plan_repo: Arc::new(SqliteActivePlanRepository::from_shared(Arc::clone(&shared_conn))),
             memory_entry_repo: Arc::new(SqliteMemoryEntryRepository::from_shared(Arc::clone(&shared_conn))),
             memory_event_repo: Arc::new(SqliteMemoryEventRepository::from_shared(Arc::clone(&shared_conn))),
-            memory_archive_job_repo: Arc::new(SqliteMemoryArchiveJobRepository::from_shared(Arc::clone(&shared_conn))),
+            memory_archive_repo: Arc::new(SqliteMemoryArchiveRepository::from_shared(Arc::clone(&shared_conn))),
             permission_state: Arc::new(PermissionState::with_repo(
                 Arc::new(SqlitePermissionRepository::from_shared(Arc::clone(&shared_conn)))
             )),
@@ -413,7 +415,9 @@ impl AppState {
             active_plan_repo: Arc::new(MemoryActivePlanRepository::new()),
             memory_entry_repo: Arc::new(InMemoryMemoryEntryRepository::new()),
             memory_event_repo: Arc::new(InMemoryMemoryEventRepository::new()),
-            memory_archive_job_repo: Arc::new(InMemoryMemoryArchiveJobRepository::new()),
+            memory_archive_repo: Arc::new(SqliteMemoryArchiveRepository::new(
+                open_connection(&PathBuf::from(":memory:")).expect("Failed to create in-memory connection")
+            )),
             permission_state: Arc::new(PermissionState::with_repo(
                 Arc::new(MemoryPermissionRepository::new())
             )),
@@ -472,7 +476,9 @@ impl AppState {
             active_plan_repo: Arc::new(MemoryActivePlanRepository::new()),
             memory_entry_repo: Arc::new(InMemoryMemoryEntryRepository::new()),
             memory_event_repo: Arc::new(InMemoryMemoryEventRepository::new()),
-            memory_archive_job_repo: Arc::new(InMemoryMemoryArchiveJobRepository::new()),
+            memory_archive_repo: Arc::new(SqliteMemoryArchiveRepository::new(
+                open_connection(&PathBuf::from(":memory:")).expect("Failed to create in-memory connection")
+            )),
             permission_state: Arc::new(PermissionState::with_repo(
                 Arc::new(MemoryPermissionRepository::new())
             )),
