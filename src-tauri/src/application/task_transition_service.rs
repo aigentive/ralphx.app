@@ -17,6 +17,7 @@ use tauri::{AppHandle, Emitter, Runtime};
 use crate::application::{ChatService, ClaudeChatService};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{InternalStatus, Task, TaskId};
+use crate::domain::state_machine::transition_handler::set_trigger_origin;
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
     IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
@@ -27,7 +28,6 @@ use crate::domain::state_machine::services::{
     AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStartResult, ReviewStarter,
     TaskScheduler,
 };
-use crate::domain::state_machine::transition_handler::set_trigger_origin;
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::agents::spawner::AgenticClientSpawner;
 use crate::infrastructure::ClaudeCodeClient;

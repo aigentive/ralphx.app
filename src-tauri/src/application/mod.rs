@@ -9,6 +9,8 @@ pub mod dependency_service;
 pub mod diff_service;
 pub mod git_service;
 pub mod ideation_service;
+pub mod memory_archive_service;
+pub mod memory_orchestration;
 pub mod permission_state;
 pub mod plan_ranking;
 pub mod priority_service;
@@ -39,6 +41,7 @@ pub use git_service::{
 pub use ideation_service::{
     CreateProposalOptions, IdeationService, SessionStats, SessionWithData, UpdateProposalOptions,
 };
+pub use memory_archive_service::MemoryArchiveService;
 pub use permission_state::{PendingPermissionInfo, PermissionDecision, PermissionState};
 pub use plan_ranking::{
     compute_activity_score, compute_final_score, compute_final_score_with_breakdown,

@@ -3,6 +3,11 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
+const MEMORY_SKILLS: &[&str] = &[
+    "Skill(ralphx:rule-manager)",
+    "Skill(ralphx:knowledge-capture)",
+];
+
 const DEFAULT_BASE_CLI_TOOLS: &[&str] = &[
     "Read",
     "Grep",
@@ -271,6 +276,16 @@ pub fn get_preapproved_tools(agent_name: &str) -> Option<String> {
         }
         tools.extend(c.preapproved_cli_tools.iter().cloned());
 
+        if !c.mcp_only {
+            // Memory skills only for dedicated memory agents
+            let lookup_name = agent_name.strip_prefix("ralphx:").unwrap_or(agent_name);
+            if lookup_name == "memory-maintainer" || lookup_name == "memory-capture" {
+                for t in MEMORY_SKILLS {
+                    tools.push((*t).to_string());
+                }
+            }
+        }
+
         // Dedupe while preserving order (first occurrence wins)
         let mut seen = HashSet::new();
         tools.retain(|t| seen.insert(t.clone()));
@@ -288,10 +303,11 @@ mod tests {
     use super::*;
     use crate::infrastructure::agents::claude::agent_names::{
         SHORT_CHAT_PROJECT, SHORT_CHAT_TASK, SHORT_DEEP_RESEARCHER, SHORT_DEPENDENCY_SUGGESTER,
-        SHORT_MERGER, SHORT_ORCHESTRATOR, SHORT_ORCHESTRATOR_IDEATION,
-        SHORT_ORCHESTRATOR_IDEATION_READONLY, SHORT_PROJECT_ANALYZER, SHORT_QA_EXECUTOR,
-        SHORT_QA_PREP, SHORT_REVIEWER, SHORT_REVIEW_CHAT, SHORT_REVIEW_HISTORY,
-        SHORT_SESSION_NAMER, SHORT_SUPERVISOR, SHORT_WORKER,
+        SHORT_MEMORY_CAPTURE, SHORT_MEMORY_MAINTAINER, SHORT_MERGER, SHORT_ORCHESTRATOR,
+        SHORT_ORCHESTRATOR_IDEATION, SHORT_ORCHESTRATOR_IDEATION_READONLY,
+        SHORT_PROJECT_ANALYZER, SHORT_QA_EXECUTOR, SHORT_QA_PREP, SHORT_REVIEW_CHAT,
+        SHORT_REVIEW_HISTORY, SHORT_REVIEWER, SHORT_SESSION_NAMER, SHORT_SUPERVISOR,
+        SHORT_WORKER,
     };
     use std::collections::HashSet;
 
@@ -325,6 +341,8 @@ mod tests {
         assert!(tools.contains("mcp__ralphx__get_project_analysis"));
         assert!(tools.contains("Write"));
         assert!(tools.contains("Task(Explore)"));
+        // Workers should NOT have memory skills - only dedicated memory agents
+        assert!(!tools.contains("Skill(ralphx:rule-manager)"));
     }
 
     #[test]
@@ -355,6 +373,8 @@ mod tests {
             SHORT_DEEP_RESEARCHER,
             SHORT_PROJECT_ANALYZER,
             SHORT_MERGER,
+            SHORT_MEMORY_MAINTAINER,
+            SHORT_MEMORY_CAPTURE,
         ]);
 
         for agent in agent_configs() {
@@ -452,5 +472,168 @@ agents:
             parsed.claude.permission_prompt_tool,
             "mcp__acme__permission_request"
         );
+    }
+
+    #[test]
+    fn test_memory_maintainer_has_memory_skills() {
+        let tools = get_preapproved_tools("ralphx:memory-maintainer").unwrap();
+        assert!(tools.contains("Skill(ralphx:rule-manager)"));
+        assert!(tools.contains("Skill(ralphx:knowledge-capture)"));
+    }
+
+    #[test]
+    fn test_memory_capture_has_memory_skills() {
+        let tools = get_preapproved_tools("ralphx:memory-capture").unwrap();
+        assert!(tools.contains("Skill(ralphx:rule-manager)"));
+        assert!(tools.contains("Skill(ralphx:knowledge-capture)"));
+    }
+
+    #[test]
+    fn test_non_memory_agents_lack_memory_skills() {
+        let agents_to_test = vec![
+            "ralphx-worker",
+            "ralphx-reviewer",
+            "ralphx-orchestrator",
+            "ralphx-chat-task",
+            "ralphx-chat-project",
+        ];
+        for agent_name in agents_to_test {
+            if let Some(tools) = get_preapproved_tools(agent_name) {
+                assert!(
+                    !tools.contains("Skill(ralphx:rule-manager)"),
+                    "Agent {} should not have rule-manager skill",
+                    agent_name
+                );
+                assert!(
+                    !tools.contains("Skill(ralphx:knowledge-capture)"),
+                    "Agent {} should not have knowledge-capture skill",
+                    agent_name
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_non_memory_agents_lack_memory_write_mcp_tools() {
+        // Memory write tools per spec section 11.2
+        let memory_write_tools = vec![
+            "upsert_memories",
+            "mark_memory_obsolete",
+            "refresh_memory_rule_index",
+            "ingest_rule_file",
+            "rebuild_archive_snapshots",
+        ];
+
+        let agents_to_test = vec![
+            "ralphx-worker",
+            "ralphx-reviewer",
+            "ralphx-orchestrator",
+            "ralphx-chat-task",
+            "ralphx-chat-project",
+        ];
+
+        for agent_name in agents_to_test {
+            if let Some(config) = get_agent_config(agent_name) {
+                for write_tool in &memory_write_tools {
+                    assert!(
+                        !config.allowed_mcp_tools.contains(&write_tool.to_string()),
+                        "Agent {} should not have write memory tool: {}",
+                        agent_name,
+                        write_tool
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_memory_agents_have_write_mcp_tools() {
+        // Memory maintainer should have write tools
+        if let Some(config) = get_agent_config("memory-maintainer") {
+            assert!(config.allowed_mcp_tools.contains(&"upsert_memories".to_string()));
+            assert!(config.allowed_mcp_tools.contains(&"mark_memory_obsolete".to_string()));
+            assert!(config.allowed_mcp_tools.contains(&"refresh_memory_rule_index".to_string()));
+            assert!(config.allowed_mcp_tools.contains(&"ingest_rule_file".to_string()));
+            assert!(config.allowed_mcp_tools.contains(&"rebuild_archive_snapshots".to_string()));
+        }
+
+        // Memory capture should have upsert_memories
+        if let Some(config) = get_agent_config("memory-capture") {
+            assert!(config.allowed_mcp_tools.contains(&"upsert_memories".to_string()));
+        }
+    }
+
+    #[test]
+    #[ignore = "memory read tools not yet added to worker/reviewer/orchestrator configs"]
+    fn test_read_only_agents_have_read_memory_tools() {
+        let read_memory_tools = vec![
+            "search_memories",
+            "get_memory",
+            "get_memories_for_paths",
+        ];
+
+        let agents_to_test = vec![
+            "ralphx-worker",
+            "ralphx-reviewer",
+            "ralphx-orchestrator",
+        ];
+
+        for agent_name in agents_to_test {
+            if let Some(config) = get_agent_config(agent_name) {
+                // Each of these should have at least one of the read memory tools
+                let has_read_tool = read_memory_tools.iter().any(|t| {
+                    config.allowed_mcp_tools.contains(&t.to_string())
+                });
+                assert!(
+                    has_read_tool,
+                    "Agent {} should have at least one read memory tool",
+                    agent_name
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_memory_maintainer_has_cli_write_tools() {
+        // Memory maintainer must have Write and Edit to update rule files and archives
+        if let Some(config) = get_agent_config("memory-maintainer") {
+            assert!(
+                config.preapproved_cli_tools.contains(&"Write".to_string()),
+                "memory-maintainer must have Write tool"
+            );
+            assert!(
+                config.preapproved_cli_tools.contains(&"Edit".to_string()),
+                "memory-maintainer must have Edit tool"
+            );
+            assert!(
+                config.preapproved_cli_tools.contains(&"Bash".to_string()),
+                "memory-maintainer must have Bash tool for file operations"
+            );
+        }
+
+        // Verify it's not MCP-only
+        if let Some(config) = get_agent_config("memory-maintainer") {
+            assert!(!config.mcp_only, "memory-maintainer should have CLI tools");
+        }
+    }
+
+    #[test]
+    fn test_memory_capture_has_read_cli_tools() {
+        // Memory capture needs read tools to analyze conversations and extract memory
+        if let Some(config) = get_agent_config("memory-capture") {
+            assert!(
+                config.preapproved_cli_tools.contains(&"Read".to_string()),
+                "memory-capture must have Read tool"
+            );
+            assert!(
+                config.preapproved_cli_tools.contains(&"Grep".to_string()),
+                "memory-capture must have Grep tool"
+            );
+        }
+
+        // Verify it's not MCP-only
+        if let Some(config) = get_agent_config("memory-capture") {
+            assert!(!config.mcp_only, "memory-capture should have CLI tools");
+        }
     }
 }

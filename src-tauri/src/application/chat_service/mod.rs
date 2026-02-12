@@ -597,6 +597,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         let message_clone = message.to_string();
         let conversation_clone = conversation.clone();
         let project_id_clone = project_id.clone();
+        let resolved_agent_name = chat_service_helpers::resolve_agent(&context_type, entity_status.as_deref()).to_string();
 
         // 9. Process stream in background (extracted to separate module)
         chat_service_send_background::spawn_send_message_background(
@@ -627,6 +628,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             Some(message_clone),
             Some(conversation_clone),
             project_id_clone,
+            Some(resolved_agent_name),
         );
         tracing::debug!(
             conversation_id = conversation_id.as_str(),

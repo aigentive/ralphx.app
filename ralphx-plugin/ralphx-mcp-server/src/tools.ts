@@ -23,6 +23,10 @@ import {
   SUPERVISOR,
   QA_PREP,
   QA_TESTER,
+  ORCHESTRATOR,
+  DEEP_RESEARCHER,
+  MEMORY_MAINTAINER,
+  MEMORY_CAPTURE,
 } from "./agentNames.js";
 
 /**
@@ -678,6 +682,152 @@ export const ALL_TOOLS: Tool[] = [
   ...ISSUE_TOOLS,
 
   // ========================================================================
+  // MEMORY WRITE TOOLS (memory agents only - restricted via allowlist)
+  // ========================================================================
+  {
+    name: "upsert_memories",
+    description:
+      "Batch upsert memory entries to SQLite canonical storage. " +
+      "Performs content-hash deduplication to prevent duplicates. " +
+      "WRITE-ONLY tool restricted to memory-maintainer and memory-capture agents.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        project_id: {
+          type: "string",
+          description: "The project ID (from RALPHX_PROJECT_ID env var)",
+        },
+        memories: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              bucket: {
+                type: "string",
+                enum: ["architecture_patterns", "implementation_discoveries", "operational_playbooks"],
+                description: "Memory bucket classification",
+              },
+              title: {
+                type: "string",
+                description: "Concise title for this memory (50-80 chars)",
+              },
+              summary: {
+                type: "string",
+                description: "Brief summary suitable for rule index files (1-3 sentences)",
+              },
+              details_markdown: {
+                type: "string",
+                description: "Full markdown details with examples, context, and rationale",
+              },
+              scope_paths: {
+                type: "array",
+                items: { type: "string" },
+                description: "Glob patterns for path scoping (e.g., ['src/domain/**', 'src-tauri/src/application/**'])",
+              },
+              source_context_type: {
+                type: "string",
+                description: "Optional: context type (e.g., 'task_execution', 'planning', 'review')",
+              },
+              source_context_id: {
+                type: "string",
+                description: "Optional: source context ID (e.g., task_id, session_id)",
+              },
+              source_conversation_id: {
+                type: "string",
+                description: "Optional: conversation ID for traceability",
+              },
+              quality_score: {
+                type: "number",
+                description: "Optional: quality score 0-1 (higher = more valuable)",
+              },
+            },
+            required: ["bucket", "title", "summary", "details_markdown", "scope_paths"],
+          },
+          description: "Array of memory entries to upsert",
+        },
+      },
+      required: ["project_id", "memories"],
+    },
+  },
+  {
+    name: "mark_memory_obsolete",
+    description:
+      "Mark a memory entry as obsolete (soft delete). " +
+      "The memory remains in DB but is excluded from index generation and searches. " +
+      "WRITE-ONLY tool restricted to memory-maintainer agent.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        memory_id: {
+          type: "string",
+          description: "The memory entry ID to mark obsolete",
+        },
+      },
+      required: ["memory_id"],
+    },
+  },
+  {
+    name: "refresh_memory_rule_index",
+    description:
+      "Regenerate .claude/rules/ index files from DB canonical state. " +
+      "Reads memory entries for project, groups by scope_key, and writes index files with summaries + memory IDs. " +
+      "WRITE-ONLY tool restricted to memory-maintainer agent.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        project_id: {
+          type: "string",
+          description: "The project ID",
+        },
+        scope_key: {
+          type: "string",
+          description: "Optional: specific scope_key to refresh. If omitted, refreshes all rule indexes for project.",
+        },
+      },
+      required: ["project_id"],
+    },
+  },
+  {
+    name: "ingest_rule_file",
+    description:
+      "Ingest a .claude/rules/*.md file into canonical memory DB. " +
+      "Parses content into chunks, classifies buckets, upserts to memory_entries, " +
+      "rewrites file to index format, and enqueues archive jobs. " +
+      "WRITE-ONLY tool restricted to memory-maintainer agent.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        project_id: {
+          type: "string",
+          description: "The project ID",
+        },
+        rule_file_path: {
+          type: "string",
+          description: "Path to rule file relative to project root (e.g., '.claude/rules/task-state-machine.md')",
+        },
+      },
+      required: ["project_id", "rule_file_path"],
+    },
+  },
+  {
+    name: "rebuild_archive_snapshots",
+    description:
+      "Enqueue full rebuild of archive snapshots from DB canonical state. " +
+      "Generates .claude/memory-archive/ snapshots for disaster recovery. " +
+      "WRITE-ONLY tool restricted to memory-maintainer agent.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        project_id: {
+          type: "string",
+          description: "The project ID",
+        },
+      },
+      required: ["project_id"],
+    },
+  },
+
+  // ========================================================================
   // PROJECT ANALYSIS TOOLS (worker/reviewer/merger + project-analyzer agents)
   // ========================================================================
   {
@@ -770,9 +920,28 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "link_proposals_to_plan",
     "get_session_plan",
     "ask_user_question",
+    // memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
   ],
-  [CHAT_TASK]: ["update_task", "add_task_note", "get_task_details"],
-  [CHAT_PROJECT]: ["suggest_task", "list_tasks"],
+  [CHAT_TASK]: [
+    "update_task",
+    "add_task_note",
+    "get_task_details",
+    // memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
+  ],
+  [CHAT_PROJECT]: [
+    "suggest_task",
+    "list_tasks",
+    // memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
+  ],
   [REVIEWER]: [
     // specific review tools
     "complete_review",
@@ -790,6 +959,10 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "search_project_artifacts",
     "get_review_notes",
     "get_task_steps",
+    // memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
   ],
   // Post-review chat agent - helps user discuss review findings and take action
   [REVIEW_CHAT]: [
@@ -805,6 +978,10 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "search_project_artifacts",
     "get_review_notes",
     "get_task_steps",
+    // memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
   ],
   // Historical review discussion agent - read-only, no mutation tools (approved tasks)
   [REVIEW_HISTORY]: [
@@ -818,6 +995,10 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_artifact_version",
     "get_related_artifacts",
     "search_project_artifacts",
+    // memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
   ],
   [WORKER]: [
     // step management tools
@@ -841,6 +1022,10 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "search_project_artifacts",
     "get_review_notes",
     "get_task_steps",
+    // memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
   ],
   // Session naming agent - generates titles for IDA sessions
   [SESSION_NAMER]: ["update_session_title"],
@@ -857,6 +1042,24 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_project_analysis",
     // common context tools
     "get_task_context",
+    // memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
+  ],
+  // Orchestrator agent - plans and coordinates complex tasks
+  [ORCHESTRATOR]: [
+    // memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
+  ],
+  // Deep researcher agent - conducts thorough research and analysis
+  [DEEP_RESEARCHER]: [
+    // memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
   ],
   // Project analyzer agent - detects build/validation commands
   [PROJECT_ANALYZER]: [
@@ -867,6 +1070,28 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
   [SUPERVISOR]: [],
   [QA_PREP]: [],
   [QA_TESTER]: [],
+  // Memory agents - write-only memory tools (RESTRICTED - do not grant to other agents)
+  [MEMORY_MAINTAINER]: [
+    // Memory write tools (exclusive to memory agents)
+    "upsert_memories",
+    "mark_memory_obsolete",
+    "refresh_memory_rule_index",
+    "ingest_rule_file",
+    "rebuild_archive_snapshots",
+    // Read tools for context
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
+  ],
+  [MEMORY_CAPTURE]: [
+    // Memory write tools (exclusive to memory agents)
+    "upsert_memories",
+    // Read tools for deduplication and context
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
+    "get_conversation_transcript",
+  ],
   // Debug mode: shows ALL tools (use RALPHX_AGENT_TYPE=debug)
   debug: ALL_TOOLS.map((t) => t.name),
 };

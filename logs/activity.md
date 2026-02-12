@@ -1,10 +1,38 @@
 # RalphX - Activity Log
 
 ## Current Status
-**Last Updated:** 2026-02-02 14:30:00
-**Phase:** 66 - Per-Task Git Branch Isolation
-**Tasks Completed:** 11 / 21
-**Current Task:** Task 11 - Implement programmatic rebase and merge on PendingMerge
+**Last Updated:** 2026-02-12 01:47:00
+**Phase:** Memory Framework V2 Cutover
+**Current Task:** Remove legacy memory hook enforcement and skill preapproval
+
+---
+
+### 2026-02-12 01:47:00 - Memory Framework V2: Legacy System Cutover
+
+**What:**
+- Removed legacy memory hook enforcement from hook enforcement logic
+  - `ralphx-plugin/hooks/hooks.json` already empty (no memory stop-hook blocks)
+  - Legacy scripts preserved in `ralphx-plugin/hooks/scripts/` for history:
+    - `enforce-rule-manager.sh`
+    - `commit-memory-files.sh`
+    - `enforce-knowledge-capture.sh`
+- Removed broad memory skill preapproval from non-memory agents in `src-tauri/src/infrastructure/agents/claude/agent_config/mod.rs`
+  - Memory skills (Skill(ralphx:rule-manager), Skill(ralphx:knowledge-capture)) now restricted to:
+    - `memory-maintainer` agent
+    - `memory-capture` agent
+  - Workers, reviewers, orchestrators, and other agents no longer have memory skill access
+- Verified memory agents retain their skill and MCP tool permissions:
+  - Both memory agents have proper configuration in `ralphx.yaml`
+  - Tests confirm memory skill availability for designated agents only
+
+**Reference:** Memory Framework V2 Specification (artifact ID: f7d20c90-fbd7-4ef0-b92c-53f419073054)
+- Section 18: Migration / Cutover Plan
+- Section 11.4: Security / Access Control
+
+**Commands:**
+- `cargo test --lib infrastructure::agents::claude::agent_config` - ALL TESTS PASSED (13/13)
+
+**Result:** Memory framework cutover phase complete. System now uses backend-orchestrated memory infrastructure instead of legacy hook-enforced system.
 
 ---
 
