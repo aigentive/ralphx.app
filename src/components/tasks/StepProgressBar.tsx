@@ -10,19 +10,23 @@ import { useStepProgress } from "@/hooks/useTaskSteps";
 interface StepProgressBarProps {
   taskId: string;
   compact?: boolean;
+  isTerminalComplete?: boolean;
 }
 
 const COMPACT_DOT_CAP = 19;
 
 /**
  * Get background color class for step dot based on status
+ * When isTerminalComplete is false, completed steps show as light gray instead of green
+ * (for non-terminal states like approved/merged)
  */
 function getStepDotColor(
   index: number,
   completed: number,
   skipped: number,
   failed: number,
-  inProgress: number
+  inProgress: number,
+  isTerminalComplete: boolean = true
 ): string {
   const completedAndSkipped = completed + skipped;
   const failedStart = completedAndSkipped;
@@ -31,8 +35,8 @@ function getStepDotColor(
   const inProgressEnd = inProgressStart + inProgress;
 
   if (index < completed) {
-    // Completed steps
-    return "bg-status-success";
+    // Completed steps - green only if terminal complete (merged/approved), otherwise light gray
+    return isTerminalComplete ? "bg-status-success" : "bg-text-muted";
   } else if (index < completedAndSkipped) {
     // Skipped steps
     return "bg-text-muted";
@@ -64,7 +68,7 @@ function getStepDotColor(
  * <StepProgressBar taskId="task-123" />
  * ```
  */
-export function StepProgressBar({ taskId, compact = false }: StepProgressBarProps) {
+export function StepProgressBar({ taskId, compact = false, isTerminalComplete = true }: StepProgressBarProps) {
   const { data: progress, isLoading } = useStepProgress(taskId);
 
   // Don't render anything while loading, if no data, or if there are no steps
@@ -113,7 +117,8 @@ export function StepProgressBar({ taskId, compact = false }: StepProgressBarProp
                 completed,
                 skipped,
                 failed,
-                inProgress
+                inProgress,
+                isTerminalComplete
               )}`}
               aria-hidden="true"
             />
@@ -145,7 +150,8 @@ export function StepProgressBar({ taskId, compact = false }: StepProgressBarProp
               completed,
               skipped,
               failed,
-              inProgress
+              inProgress,
+              isTerminalComplete
             )}`}
             aria-hidden="true"
           />

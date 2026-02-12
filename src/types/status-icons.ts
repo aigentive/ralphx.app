@@ -259,10 +259,15 @@ export function shouldAnimateIcon(status: InternalStatus | string): boolean {
 }
 
 /**
- * Get status color for left border stripe
+ * Get status color for left border stripe (50% opacity)
  * Used by both Kanban TaskCard and Graph TaskNode for visual consistency
+ * Returns color with / 0.5 alpha channel for semi-transparent effect
  */
 export function getStatusBorderColor(status: InternalStatus | string, isArchived = false): string {
-  if (isArchived) return ARCHIVED_ICON_CONFIG.color;
-  return getStatusIconConfig(status).color;
+  if (isArchived) {
+    const color = ARCHIVED_ICON_CONFIG.color;
+    return `${color} / 0.5`;
+  }
+  const color = getStatusIconConfig(status).color;
+  return `${color} / 0.5`;
 }
