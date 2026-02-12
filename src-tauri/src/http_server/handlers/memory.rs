@@ -14,9 +14,11 @@ use tracing::{error, info};
 
 use super::*;
 use crate::domain::entities::{
-    MemoryActorType, MemoryArchiveJob, MemoryArchiveJobType, MemoryBucket, MemoryEntry,
+    ArchiveJobPayload, ArchiveJobType,
+    MemoryActorType, MemoryArchiveJob, MemoryBucket, MemoryEntry,
     MemoryEntryId, MemoryEvent, MemoryStatus, ProcessId,
 };
+use crate::domain::entities::types::ProjectId;
 use crate::domain::services::RuleIngestionService;
 
 // ============================================================================
@@ -27,7 +29,7 @@ pub async fn upsert_memories(
     State(state): State<HttpServerState>,
     Json(req): Json<UpsertMemoriesRequest>,
 ) -> Result<Json<UpsertMemoriesResponse>, StatusCode> {
-    let project_id = ProcessId::from_string(&req.project_id);
+    let project_id = ProjectId::from_string(req.project_id.clone());
     let mut inserted = 0;
     let mut skipped = 0;
     let mut failed = 0;
@@ -71,6 +73,7 @@ pub async fn upsert_memories(
             input.summary.clone(),
             input.details_markdown.clone(),
             input.scope_paths.clone(),
+            content_hash,
         );
         entry.source_context_type = input.source_context_type.clone();
         entry.source_context_id = input.source_context_id.clone();
@@ -140,7 +143,7 @@ pub async fn mark_memory_obsolete(
 
     // Record audit event
     let event = MemoryEvent::new(
-        entry.project_id.clone(),
+        ProcessId::from_string(entry.project_id.0.clone()),
         "memory_obsoleted",
         MemoryActorType::System,
         json!({
@@ -180,12 +183,12 @@ pub async fn ingest_rule_file(
     State(state): State<HttpServerState>,
     Json(req): Json<IngestRuleFileRequest>,
 ) -> Result<Json<IngestRuleFileResponse>, StatusCode> {
-    let project_id = ProcessId::from_string(&req.project_id);
+    let project_id = ProjectId::from_string(req.project_id.clone());
 
     let service = RuleIngestionService::new(
         Arc::clone(&state.app_state.memory_entry_repo),
         Arc::clone(&state.app_state.memory_event_repo),
-        Arc::clone(&state.app_state.memory_archive_job_repo),
+        Arc::clone(&state.app_state.memory_archive_repo),
     );
 
     let result = service
@@ -220,18 +223,19 @@ pub async fn rebuild_archive_snapshots(
     State(state): State<HttpServerState>,
     Json(req): Json<RebuildArchiveSnapshotsRequest>,
 ) -> Result<Json<RebuildArchiveSnapshotsResponse>, StatusCode> {
-    let project_id = ProcessId::from_string(&req.project_id);
+    let project_id = ProjectId::from_string(req.project_id.clone());
 
+    let payload = ArchiveJobPayload::full_rebuild(false);
     let job = MemoryArchiveJob::new(
         project_id,
-        MemoryArchiveJobType::FullRebuild,
-        json!({ "trigger": "manual" }),
+        ArchiveJobType::FullRebuild,
+        payload,
     );
-    let job_id = job.id.as_str().to_string();
+    let job_id = job.id.to_string();
 
     state
         .app_state
-        .memory_archive_job_repo
+        .memory_archive_repo
         .create(job)
         .await
         .map_err(|e| {

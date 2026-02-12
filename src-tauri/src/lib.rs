@@ -215,6 +215,8 @@ pub fn run() {
             let startup_execution_state = app.state::<Arc<commands::ExecutionState>>().inner().clone();
             let startup_active_project_state = app.state::<Arc<commands::ActiveProjectState>>().inner().clone();
             let startup_app_state_repo = Arc::clone(&app_state.app_state_repo);
+            let startup_memory_archive_repo = Arc::clone(&app_state.memory_archive_repo);
+            let startup_memory_entry_repo = Arc::clone(&app_state.memory_entry_repo);
             // Clone app handle to enable event emission in startup tasks
             let startup_app_handle = app.handle().clone();
 
@@ -317,6 +319,41 @@ pub fn run() {
                 .with_app_handle(startup_runner_app_handle);
 
                 runner.run().await;
+
+                // Recover pending/failed memory archive jobs from previous session
+                // Process any jobs that were interrupted by app shutdown
+                info!("Recovering pending memory archive jobs...");
+                let archive_service = Arc::new(application::MemoryArchiveService::new(
+                    Arc::clone(&startup_memory_archive_repo),
+                    Arc::clone(&startup_memory_entry_repo),
+                    std::path::PathBuf::from("."), // Use current working directory as project root
+                ));
+
+                // Process all pending/failed jobs on startup
+                let recovered_count = match startup_memory_archive_repo.count_claimable().await {
+                    Ok(count) => {
+                        info!(pending_jobs = count, "Found memory archive jobs to recover");
+                        let mut processed = 0;
+                        while processed < count {
+                            match archive_service.process_next_job().await {
+                                Ok(true) => processed += 1,
+                                Ok(false) => break, // No more jobs
+                                Err(e) => {
+                                    tracing::warn!(error = %e, "Failed to process archive job during recovery");
+                                    break;
+                                }
+                            }
+                        }
+                        processed
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Failed to count claimable archive jobs");
+                        0
+                    }
+                };
+                if recovered_count > 0 {
+                    info!(recovered = recovered_count, "Completed memory archive job recovery");
+                }
 
                 // Resume interrupted chat conversations (Ideation, Task, Project, TaskExecution, Review)
                 // This runs after StartupJobRunner to avoid duplicate resumption of task-based chats

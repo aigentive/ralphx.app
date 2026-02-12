@@ -1,12 +1,17 @@
-// Memory entry entity for Memory Framework V2
+// Memory entry entities - canonical memory storage
+//
+// This module defines the entities for memory entries, which are the
+// canonical source of truth for project memory in the Memory Framework V2.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::str::FromStr;
 
-use super::ProcessId;
+use crate::domain::entities::types::ProjectId;
+use crate::error::{AppError, AppResult};
 
-/// Unique identifier for a memory entry
+/// Unique identifier for memory entries
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MemoryEntryId(pub String);
 
@@ -19,11 +24,6 @@ impl MemoryEntryId {
     /// Creates a MemoryEntryId from an existing string
     pub fn from_string(s: impl Into<String>) -> Self {
         Self(s.into())
-    }
-
-    /// Returns the inner string value
-    pub fn as_str(&self) -> &str {
-        &self.0
     }
 }
 
@@ -39,7 +39,25 @@ impl fmt::Display for MemoryEntryId {
     }
 }
 
-/// Memory bucket taxonomy
+impl From<String> for MemoryEntryId {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<&str> for MemoryEntryId {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl MemoryEntryId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// Memory bucket taxonomy - exactly three buckets
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MemoryBucket {
@@ -54,106 +72,80 @@ pub enum MemoryBucket {
 impl fmt::Display for MemoryBucket {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MemoryBucket::ArchitecturePatterns => write!(f, "architecture_patterns"),
-            MemoryBucket::ImplementationDiscoveries => write!(f, "implementation_discoveries"),
-            MemoryBucket::OperationalPlaybooks => write!(f, "operational_playbooks"),
+            Self::ArchitecturePatterns => write!(f, "architecture_patterns"),
+            Self::ImplementationDiscoveries => write!(f, "implementation_discoveries"),
+            Self::OperationalPlaybooks => write!(f, "operational_playbooks"),
         }
     }
 }
 
-impl std::str::FromStr for MemoryBucket {
-    type Err = ParseMemoryBucketError;
+impl FromStr for MemoryBucket {
+    type Err = AppError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "architecture_patterns" => Ok(MemoryBucket::ArchitecturePatterns),
-            "implementation_discoveries" => Ok(MemoryBucket::ImplementationDiscoveries),
-            "operational_playbooks" => Ok(MemoryBucket::OperationalPlaybooks),
-            _ => Err(ParseMemoryBucketError(s.to_string())),
+            "architecture_patterns" => Ok(Self::ArchitecturePatterns),
+            "implementation_discoveries" => Ok(Self::ImplementationDiscoveries),
+            "operational_playbooks" => Ok(Self::OperationalPlaybooks),
+            _ => Err(AppError::Validation(format!("Invalid memory bucket: {}", s))),
         }
     }
 }
-
-#[derive(Debug, Clone)]
-pub struct ParseMemoryBucketError(String);
-
-impl fmt::Display for ParseMemoryBucketError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Invalid memory bucket: {}", self.0)
-    }
-}
-
-impl std::error::Error for ParseMemoryBucketError {}
 
 /// Memory entry status
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MemoryStatus {
-    /// Active memory entry
+    /// Active and current memory
     Active,
-    /// Marked as obsolete (soft delete)
+    /// Superseded by newer information
     Obsolete,
-    /// Archived to filesystem
+    /// Moved to archive
     Archived,
 }
 
 impl fmt::Display for MemoryStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MemoryStatus::Active => write!(f, "active"),
-            MemoryStatus::Obsolete => write!(f, "obsolete"),
-            MemoryStatus::Archived => write!(f, "archived"),
+            Self::Active => write!(f, "active"),
+            Self::Obsolete => write!(f, "obsolete"),
+            Self::Archived => write!(f, "archived"),
         }
     }
 }
 
-impl std::str::FromStr for MemoryStatus {
-    type Err = ParseMemoryStatusError;
+impl FromStr for MemoryStatus {
+    type Err = AppError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "active" => Ok(MemoryStatus::Active),
-            "obsolete" => Ok(MemoryStatus::Obsolete),
-            "archived" => Ok(MemoryStatus::Archived),
-            _ => Err(ParseMemoryStatusError(s.to_string())),
+            "active" => Ok(Self::Active),
+            "obsolete" => Ok(Self::Obsolete),
+            "archived" => Ok(Self::Archived),
+            _ => Err(AppError::Validation(format!(
+                "Invalid memory status: {}",
+                s
+            ))),
         }
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ParseMemoryStatusError(String);
-
-impl fmt::Display for ParseMemoryStatusError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Invalid memory status: {}", self.0)
-    }
-}
-
-impl std::error::Error for ParseMemoryStatusError {}
-
-/// Canonical memory entry
+/// Memory entry entity - canonical memory storage
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryEntry {
     pub id: MemoryEntryId,
-    pub project_id: ProcessId,
+    pub project_id: ProjectId,
     pub bucket: MemoryBucket,
     pub title: String,
     pub summary: String,
     pub details_markdown: String,
-    /// Glob patterns for path scoping (e.g., ["src/domain/**", "src-tauri/src/application/**"])
     pub scope_paths: Vec<String>,
-    /// Context type (e.g., "task_execution", "ideation", "review")
     pub source_context_type: Option<String>,
-    /// Context ID (e.g., task_id, session_id)
     pub source_context_id: Option<String>,
-    /// Conversation ID for traceability
     pub source_conversation_id: Option<String>,
-    /// Rule file path if ingested from a rule file
     pub source_rule_file: Option<String>,
-    /// Quality score (0.0-1.0)
     pub quality_score: Option<f64>,
     pub status: MemoryStatus,
-    /// Content hash for deduplication (SHA-256 of title + summary + details_markdown)
     pub content_hash: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -172,16 +164,15 @@ impl MemoryEntry {
 
     /// Create a new memory entry
     pub fn new(
-        project_id: ProcessId,
+        project_id: ProjectId,
         bucket: MemoryBucket,
         title: String,
         summary: String,
         details_markdown: String,
         scope_paths: Vec<String>,
+        content_hash: String,
     ) -> Self {
-        let content_hash = Self::compute_content_hash(&title, &summary, &details_markdown);
         let now = Utc::now();
-
         Self {
             id: MemoryEntryId::new(),
             project_id,
@@ -200,5 +191,129 @@ impl MemoryEntry {
             created_at: now,
             updated_at: now,
         }
+    }
+
+    /// Mark memory as obsolete
+    pub fn mark_obsolete(&mut self) {
+        self.status = MemoryStatus::Obsolete;
+        self.updated_at = Utc::now();
+    }
+
+    /// Mark memory as archived
+    pub fn mark_archived(&mut self) {
+        self.status = MemoryStatus::Archived;
+        self.updated_at = Utc::now();
+    }
+
+    /// Serialize scope_paths to JSON for database storage
+    pub fn scope_paths_to_json(&self) -> AppResult<String> {
+        serde_json::to_string(&self.scope_paths).map_err(|e| AppError::Infrastructure(format!("JSON serialization error: {}", e)))
+    }
+
+    /// Deserialize scope_paths from JSON
+    pub fn scope_paths_from_json(json: &str) -> AppResult<Vec<String>> {
+        serde_json::from_str(json).map_err(|e| AppError::Infrastructure(format!("JSON deserialization error: {}", e)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_memory_bucket_serialization() {
+        assert_eq!(
+            MemoryBucket::ArchitecturePatterns.to_string(),
+            "architecture_patterns"
+        );
+        assert_eq!(
+            MemoryBucket::ImplementationDiscoveries.to_string(),
+            "implementation_discoveries"
+        );
+        assert_eq!(
+            MemoryBucket::OperationalPlaybooks.to_string(),
+            "operational_playbooks"
+        );
+    }
+
+    #[test]
+    fn test_memory_bucket_parsing() {
+        assert_eq!(
+            "architecture_patterns".parse::<MemoryBucket>().unwrap(),
+            MemoryBucket::ArchitecturePatterns
+        );
+        assert_eq!(
+            "implementation_discoveries"
+                .parse::<MemoryBucket>()
+                .unwrap(),
+            MemoryBucket::ImplementationDiscoveries
+        );
+        assert_eq!(
+            "operational_playbooks".parse::<MemoryBucket>().unwrap(),
+            MemoryBucket::OperationalPlaybooks
+        );
+        assert!("invalid".parse::<MemoryBucket>().is_err());
+    }
+
+    #[test]
+    fn test_memory_status_serialization() {
+        assert_eq!(MemoryStatus::Active.to_string(), "active");
+        assert_eq!(MemoryStatus::Obsolete.to_string(), "obsolete");
+        assert_eq!(MemoryStatus::Archived.to_string(), "archived");
+    }
+
+    #[test]
+    fn test_memory_status_parsing() {
+        assert_eq!("active".parse::<MemoryStatus>().unwrap(), MemoryStatus::Active);
+        assert_eq!(
+            "obsolete".parse::<MemoryStatus>().unwrap(),
+            MemoryStatus::Obsolete
+        );
+        assert_eq!(
+            "archived".parse::<MemoryStatus>().unwrap(),
+            MemoryStatus::Archived
+        );
+        assert!("invalid".parse::<MemoryStatus>().is_err());
+    }
+
+    #[test]
+    fn test_memory_entry_lifecycle() {
+        let project_id = ProjectId::from_string("test-project".to_string());
+        let mut entry = MemoryEntry::new(
+            project_id,
+            MemoryBucket::ImplementationDiscoveries,
+            "Test Memory".to_string(),
+            "Brief summary".to_string(),
+            "# Full Details\n\nMore info here".to_string(),
+            vec!["src/**/*.rs".to_string()],
+            "hash123".to_string(),
+        );
+
+        assert_eq!(entry.status, MemoryStatus::Active);
+
+        entry.mark_obsolete();
+        assert_eq!(entry.status, MemoryStatus::Obsolete);
+
+        entry.mark_archived();
+        assert_eq!(entry.status, MemoryStatus::Archived);
+    }
+
+    #[test]
+    fn test_scope_paths_json_roundtrip() {
+        let project_id = ProjectId::from_string("test-project".to_string());
+        let entry = MemoryEntry::new(
+            project_id,
+            MemoryBucket::ArchitecturePatterns,
+            "Test".to_string(),
+            "Summary".to_string(),
+            "Details".to_string(),
+            vec!["src/**/*.rs".to_string(), "tests/**/*.rs".to_string()],
+            "hash".to_string(),
+        );
+
+        let json = entry.scope_paths_to_json().unwrap();
+        let parsed = MemoryEntry::scope_paths_from_json(&json).unwrap();
+
+        assert_eq!(entry.scope_paths, parsed);
     }
 }

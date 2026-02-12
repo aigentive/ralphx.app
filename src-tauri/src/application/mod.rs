@@ -9,6 +9,7 @@ pub mod dependency_service;
 pub mod diff_service;
 pub mod git_service;
 pub mod ideation_service;
+pub mod memory_archive_service;
 pub mod permission_state;
 pub mod plan_ranking;
 pub mod question_state;
@@ -38,6 +39,7 @@ pub use git_service::{
 pub use ideation_service::{
     CreateProposalOptions, IdeationService, SessionStats, SessionWithData, UpdateProposalOptions,
 };
+pub use memory_archive_service::MemoryArchiveService;
 pub use priority_service::PriorityService;
 pub use qa_service::{QAPrepStatus, QAService, TaskQAState};
 pub use review_issue_service::{CreateIssueInput, ReviewIssueService};

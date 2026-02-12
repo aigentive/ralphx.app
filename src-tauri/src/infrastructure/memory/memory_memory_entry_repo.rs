@@ -6,7 +6,8 @@ use tokio::sync::RwLock;
 
 use async_trait::async_trait;
 
-use crate::domain::entities::{MemoryBucket, MemoryEntry, MemoryEntryId, MemoryStatus, ProcessId};
+use crate::domain::entities::{MemoryBucket, MemoryEntry, MemoryEntryId, MemoryStatus};
+use crate::domain::entities::types::ProjectId;
 use crate::domain::repositories::MemoryEntryRepository;
 use crate::error::{AppError, AppResult};
 
@@ -43,7 +44,7 @@ impl MemoryEntryRepository for InMemoryMemoryEntryRepository {
 
     async fn find_by_content_hash(
         &self,
-        project_id: &ProcessId,
+        project_id: &ProjectId,
         bucket: &MemoryBucket,
         content_hash: &str,
     ) -> AppResult<Option<MemoryEntry>> {
@@ -59,7 +60,7 @@ impl MemoryEntryRepository for InMemoryMemoryEntryRepository {
             .cloned())
     }
 
-    async fn get_by_project(&self, project_id: &ProcessId) -> AppResult<Vec<MemoryEntry>> {
+    async fn get_by_project(&self, project_id: &ProjectId) -> AppResult<Vec<MemoryEntry>> {
         let entries = self.entries.read().await;
         Ok(entries
             .values()
@@ -68,19 +69,57 @@ impl MemoryEntryRepository for InMemoryMemoryEntryRepository {
             .collect())
     }
 
+    async fn get_by_project_and_status(
+        &self,
+        project_id: &ProjectId,
+        status: MemoryStatus,
+    ) -> AppResult<Vec<MemoryEntry>> {
+        let entries = self.entries.read().await;
+        Ok(entries
+            .values()
+            .filter(|e| e.project_id == *project_id && e.status == status)
+            .cloned()
+            .collect())
+    }
+
     async fn get_by_project_and_bucket(
         &self,
-        project_id: &ProcessId,
-        bucket: &MemoryBucket,
+        project_id: &ProjectId,
+        bucket: MemoryBucket,
     ) -> AppResult<Vec<MemoryEntry>> {
         let entries = self.entries.read().await;
         Ok(entries
             .values()
             .filter(|e| {
                 e.project_id == *project_id
-                    && e.bucket == *bucket
+                    && e.bucket == bucket
                     && e.status == MemoryStatus::Active
             })
+            .cloned()
+            .collect())
+    }
+
+    async fn get_by_rule_file(
+        &self,
+        project_id: &ProjectId,
+        rule_file: &str,
+    ) -> AppResult<Vec<MemoryEntry>> {
+        let entries = self.entries.read().await;
+        Ok(entries
+            .values()
+            .filter(|e| {
+                e.project_id == *project_id
+                    && e.source_rule_file.as_deref() == Some(rule_file)
+            })
+            .cloned()
+            .collect())
+    }
+
+    async fn get_by_content_hash(&self, content_hash: &str) -> AppResult<Vec<MemoryEntry>> {
+        let entries = self.entries.read().await;
+        Ok(entries
+            .values()
+            .filter(|e| e.content_hash == content_hash)
             .cloned()
             .collect())
     }
@@ -121,7 +160,7 @@ impl MemoryEntryRepository for InMemoryMemoryEntryRepository {
 
     async fn get_by_paths(
         &self,
-        project_id: &ProcessId,
+        project_id: &ProjectId,
         paths: &[String],
     ) -> AppResult<Vec<MemoryEntry>> {
         let entries = self.entries.read().await;

@@ -6,10 +6,12 @@ use std::sync::Arc;
 use serde_json::json;
 
 use crate::domain::entities::{
-    MemoryActorType, MemoryArchiveJob, MemoryArchiveJobType, MemoryEntry, MemoryEvent, ProcessId,
+    ArchiveJobPayload, ArchiveJobType,
+    MemoryActorType, MemoryArchiveJob, MemoryEntry, MemoryEvent,
 };
+use crate::domain::entities::types::ProjectId;
 use crate::domain::repositories::{
-    MemoryArchiveJobRepository, MemoryEntryRepository, MemoryEventRepository,
+    MemoryArchiveRepository, MemoryEntryRepository, MemoryEventRepository,
 };
 use crate::domain::services::{BucketClassifier, IndexRewriter, RuleParser};
 use crate::error::{AppResult};
@@ -27,7 +29,7 @@ pub struct IngestionResult {
 pub struct RuleIngestionService {
     memory_entry_repo: Arc<dyn MemoryEntryRepository>,
     memory_event_repo: Arc<dyn MemoryEventRepository>,
-    memory_archive_job_repo: Arc<dyn MemoryArchiveJobRepository>,
+    memory_archive_repo: Arc<dyn MemoryArchiveRepository>,
 }
 
 impl RuleIngestionService {
@@ -35,12 +37,12 @@ impl RuleIngestionService {
     pub fn new(
         memory_entry_repo: Arc<dyn MemoryEntryRepository>,
         memory_event_repo: Arc<dyn MemoryEventRepository>,
-        memory_archive_job_repo: Arc<dyn MemoryArchiveJobRepository>,
+        memory_archive_repo: Arc<dyn MemoryArchiveRepository>,
     ) -> Self {
         Self {
             memory_entry_repo,
             memory_event_repo,
-            memory_archive_job_repo,
+            memory_archive_repo,
         }
     }
 
@@ -55,7 +57,7 @@ impl RuleIngestionService {
     /// 6. Enqueue archive jobs for affected memories
     pub async fn ingest_rule_file(
         &self,
-        project_id: ProcessId,
+        project_id: ProjectId,
         rule_file_path: impl AsRef<Path>,
     ) -> AppResult<IngestionResult> {
         let rule_file_path = rule_file_path.as_ref();
@@ -114,6 +116,7 @@ impl RuleIngestionService {
                 summary,
                 details,
                 parsed.frontmatter.paths.clone(),
+                content_hash,
             );
 
             // Set source metadata
@@ -211,12 +214,13 @@ impl RuleIngestionService {
     /// Emit a memory event
     async fn emit_event(
         &self,
-        project_id: &ProcessId,
+        project_id: &ProjectId,
         event_type: &str,
         details: serde_json::Value,
     ) -> AppResult<()> {
+        use crate::domain::entities::ProcessId;
         let event = MemoryEvent::new(
-            project_id.clone(),
+            ProcessId::from_string(project_id.0.clone()),
             event_type,
             MemoryActorType::MemoryMaintainer,
             details,
@@ -227,14 +231,15 @@ impl RuleIngestionService {
     }
 
     /// Enqueue an archive job for a memory
-    async fn enqueue_archive_job(&self, project_id: &ProcessId, memory_id: &str) -> AppResult<()> {
+    async fn enqueue_archive_job(&self, project_id: &ProjectId, memory_id: &str) -> AppResult<()> {
+        let payload = ArchiveJobPayload::memory_snapshot(memory_id);
         let job = MemoryArchiveJob::new(
             project_id.clone(),
-            MemoryArchiveJobType::MemorySnapshot,
-            json!({ "memory_id": memory_id }),
+            ArchiveJobType::MemorySnapshot,
+            payload,
         );
 
-        self.memory_archive_job_repo.create(job).await?;
+        self.memory_archive_repo.create(job).await?;
         Ok(())
     }
 }
@@ -242,8 +247,9 @@ impl RuleIngestionService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::entities::types::ProjectId;
     use crate::infrastructure::sqlite::{
-        run_migrations, SqliteMemoryArchiveJobRepository,
+        run_migrations, SqliteMemoryArchiveRepository,
         SqliteMemoryEntryRepository, SqliteMemoryEventRepository,
     };
     use rusqlite::Connection;
@@ -280,21 +286,21 @@ mod tests {
         let memory_event_repo = Arc::new(SqliteMemoryEventRepository::new(conn2))
             as Arc<dyn MemoryEventRepository>;
 
-        let memory_archive_job_repo = Arc::new(SqliteMemoryArchiveJobRepository::new(conn3))
-            as Arc<dyn MemoryArchiveJobRepository>;
+        let memory_archive_repo = Arc::new(SqliteMemoryArchiveRepository::new(conn3))
+            as Arc<dyn MemoryArchiveRepository>;
 
         let service = RuleIngestionService::new(
             memory_entry_repo,
             memory_event_repo,
-            memory_archive_job_repo,
+            memory_archive_repo,
         );
 
         (service, temp_dir)
     }
 
     /// Helper to create test project
-    fn create_test_project() -> ProcessId {
-        ProcessId::from_string("test-project-123")
+    fn create_test_project() -> ProjectId {
+        ProjectId::from_string("test-project-123".to_string())
     }
 
     #[tokio::test]
