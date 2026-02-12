@@ -11,7 +11,7 @@ use super::services::{
 use super::types::Blocker;
 use crate::application::ChatService;
 use crate::commands::ExecutionState;
-use crate::domain::repositories::{PlanBranchRepository, ProjectRepository, TaskRepository};
+use crate::domain::repositories::{PlanBranchRepository, ProjectRepository, TaskRepository, TaskStepRepository};
 use std::any::Any;
 use std::sync::Arc;
 use tauri::{AppHandle, Runtime, Wry};
@@ -63,6 +63,10 @@ pub struct TaskServices {
     /// Plan branch repository for resolving feature branch targets during state transitions.
     /// Used by TransitionHandler to check if a task belongs to a plan with a feature branch.
     pub plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
+
+    /// Task step repository for updating step statuses during state transitions.
+    /// Used by TransitionHandler to fail in-progress steps when task fails.
+    pub step_repo: Option<Arc<dyn TaskStepRepository>>,
 }
 
 impl TaskServices {
@@ -88,6 +92,7 @@ impl TaskServices {
             task_repo: None,
             project_repo: None,
             plan_branch_repo: None,
+            step_repo: None,
         }
     }
 
@@ -139,6 +144,12 @@ impl TaskServices {
         self
     }
 
+    /// Set the step repository (builder pattern)
+    pub fn with_step_repo(mut self, repo: Arc<dyn TaskStepRepository>) -> Self {
+        self.step_repo = Some(repo);
+        self
+    }
+
     /// Creates a TaskServices with all mock implementations for testing
     pub fn new_mock() -> Self {
         use crate::application::MockChatService;
@@ -156,6 +167,7 @@ impl TaskServices {
             task_repo: None,
             project_repo: None,
             plan_branch_repo: None,
+            step_repo: None,
         }
     }
 }
