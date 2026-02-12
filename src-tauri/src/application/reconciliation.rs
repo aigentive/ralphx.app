@@ -24,10 +24,11 @@ use crate::domain::repositories::{
     TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
-use crate::domain::state_machine::transition_handler::set_trigger_origin;
-use std::path::Path;
+use crate::domain::state_machine::transition_handler::{resolve_merge_branches, set_trigger_origin};
+use std::path::{Path, PathBuf};
 
 const MERGING_TIMEOUT_SECONDS: i64 = 60;
+const MERGE_CONFLICT_RECHECK_SECONDS: i64 = 60;
 const PENDING_MERGE_STALE_MINUTES: i64 = 5;
 const QA_STALE_MINUTES: i64 = 5;
 const MERGE_INCOMPLETE_AUTO_RETRY_BASE_SECONDS: i64 = 30;
@@ -379,6 +380,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 InternalStatus::ReExecuting,
                 InternalStatus::Reviewing,
                 InternalStatus::Merging,
+                InternalStatus::MergeConflict,
                 InternalStatus::PendingMerge,
                 InternalStatus::MergeIncomplete,
                 InternalStatus::QaRefining,
@@ -526,6 +528,9 @@ impl<R: Runtime> ReconciliationRunner<R> {
             }
             InternalStatus::Reviewing => self.reconcile_reviewing_task(task, status).await,
             InternalStatus::Merging => self.reconcile_merging_task(task, status).await,
+            InternalStatus::MergeConflict => {
+                self.reconcile_merge_conflict_task(task, status).await
+            }
             InternalStatus::PendingMerge => self.reconcile_pending_merge_task(task, status).await,
             InternalStatus::MergeIncomplete => {
                 self.reconcile_merge_incomplete_task(task, status).await
@@ -615,6 +620,123 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
         self.apply_recovery_decision(task, status, RecoveryContext::Merge, decision)
             .await
+    }
+
+    async fn reconcile_merge_conflict_task(&self, task: &Task, status: InternalStatus) -> bool {
+        if status != InternalStatus::MergeConflict {
+            return false;
+        }
+
+        let age = match self.latest_status_transition_age(task, status).await {
+            Some(age) => age,
+            None => return false,
+        };
+        if age < chrono::Duration::seconds(MERGE_CONFLICT_RECHECK_SECONDS) {
+            return false;
+        }
+
+        let project = match self.project_repo.get_by_id(&task.project_id).await {
+            Ok(Some(project)) => project,
+            Ok(None) => {
+                warn!(
+                    task_id = task.id.as_str(),
+                    project_id = task.project_id.as_str(),
+                    "MergeConflict watchdog: project not found"
+                );
+                return false;
+            }
+            Err(e) => {
+                warn!(
+                    task_id = task.id.as_str(),
+                    error = %e,
+                    "MergeConflict watchdog: failed to load project"
+                );
+                return false;
+            }
+        };
+
+        let worktree_path = task
+            .worktree_path
+            .as_ref()
+            .map(PathBuf::from)
+            .filter(|path| path.exists())
+            .unwrap_or_else(|| PathBuf::from(&project.working_directory));
+        let worktree = Path::new(&worktree_path);
+
+        // Still mid-rebase/merge, keep waiting for user or agent action.
+        if GitService::is_rebase_in_progress(worktree) || GitService::is_merge_in_progress(worktree) {
+            return false;
+        }
+
+        let has_conflict_markers = match GitService::has_conflict_markers(worktree) {
+            Ok(found) => found,
+            Err(e) => {
+                warn!(
+                    task_id = task.id.as_str(),
+                    error = %e,
+                    "MergeConflict watchdog: conflict marker check failed"
+                );
+                return false;
+            }
+        };
+        if has_conflict_markers {
+            return false;
+        }
+
+        let (source_branch, target_branch) =
+            resolve_merge_branches(task, &project, &self.plan_branch_repo).await;
+
+        if source_branch.trim().is_empty() {
+            let message =
+                "Auto-recovery blocked: source branch could not be resolved for merge.".to_string();
+            self.record_merge_conflict_watchdog_metadata(
+                task,
+                "source_branch_unresolved",
+                &message,
+                Some(""),
+                Some(&target_branch),
+            )
+            .await;
+            return self
+                .transition_merge_conflict_to_merge_incomplete(task, &message)
+                .await;
+        }
+
+        let repo_path = Path::new(&project.working_directory);
+        if GitService::get_branch_sha(repo_path, &source_branch).is_err() {
+            let message = format!(
+                "Auto-recovery blocked: source branch '{}' is missing.",
+                source_branch
+            );
+            self.record_merge_conflict_watchdog_metadata(
+                task,
+                "missing_source_branch",
+                &message,
+                Some(&source_branch),
+                Some(&target_branch),
+            )
+            .await;
+            return self
+                .transition_merge_conflict_to_merge_incomplete(task, &message)
+                .await;
+        }
+
+        self.clear_merge_conflict_watchdog_metadata(task).await;
+        match self
+            .transition_service
+            .transition_task(&task.id, InternalStatus::PendingMerge)
+            .await
+        {
+            Ok(_) => true,
+            Err(e) => {
+                warn!(
+                    task_id = task.id.as_str(),
+                    error = %e,
+                    "MergeConflict watchdog: failed to transition to PendingMerge"
+                );
+                false
+            }
+        }
     }
 
     async fn reconcile_qa_task(&self, task: &Task, status: InternalStatus) -> bool {
@@ -1115,6 +1237,122 @@ impl<R: Runtime> ReconciliationRunner<R> {
         updated.touch();
 
         self.task_repo.update(&updated).await.map_err(|e| e.to_string())
+    }
+
+    async fn transition_merge_conflict_to_merge_incomplete(
+        &self,
+        task: &Task,
+        reason: &str,
+    ) -> bool {
+        match self
+            .transition_service
+            .transition_task(&task.id, InternalStatus::MergeIncomplete)
+            .await
+        {
+            Ok(_) => true,
+            Err(e) => {
+                warn!(
+                    task_id = task.id.as_str(),
+                    error = %e,
+                    reason = reason,
+                    "MergeConflict watchdog: failed to transition to MergeIncomplete"
+                );
+                false
+            }
+        }
+    }
+
+    async fn record_merge_conflict_watchdog_metadata(
+        &self,
+        task: &Task,
+        reason: &str,
+        error_message: &str,
+        source_branch: Option<&str>,
+        target_branch: Option<&str>,
+    ) {
+        let mut updated = task.clone();
+        let mut metadata = updated
+            .metadata
+            .as_ref()
+            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        let Some(obj) = metadata.as_object_mut() else {
+            return;
+        };
+
+        obj.insert("error".to_string(), serde_json::json!(error_message));
+        obj.insert(
+            "merge_recovery_reason".to_string(),
+            serde_json::json!(reason),
+        );
+        obj.insert(
+            "merge_conflict_watchdog_at".to_string(),
+            serde_json::json!(chrono::Utc::now().to_rfc3339()),
+        );
+        if reason == "missing_source_branch" || reason == "source_branch_unresolved" {
+            obj.insert("auto_retry_disabled".to_string(), serde_json::json!(true));
+            obj.insert(
+                "auto_retry_disabled_reason".to_string(),
+                serde_json::json!(error_message),
+            );
+        }
+
+        if let Some(source_branch) = source_branch.filter(|s| !s.is_empty()) {
+            obj.insert("source_branch".to_string(), serde_json::json!(source_branch));
+        }
+        if let Some(target_branch) = target_branch.filter(|s| !s.is_empty()) {
+            obj.insert("target_branch".to_string(), serde_json::json!(target_branch));
+        }
+
+        updated.metadata = Some(metadata.to_string());
+        updated.touch();
+        if let Err(e) = self.task_repo.update(&updated).await {
+            warn!(
+                task_id = task.id.as_str(),
+                error = %e,
+                "MergeConflict watchdog: failed to persist metadata"
+            );
+        }
+    }
+
+    async fn clear_merge_conflict_watchdog_metadata(&self, task: &Task) {
+        let Some(existing_metadata) = task.metadata.as_ref() else {
+            return;
+        };
+        let Ok(mut metadata) = serde_json::from_str::<serde_json::Value>(existing_metadata) else {
+            return;
+        };
+        let Some(obj) = metadata.as_object_mut() else {
+            return;
+        };
+
+        let mut changed = false;
+        for key in [
+            "auto_retry_disabled",
+            "auto_retry_disabled_reason",
+            "merge_recovery_reason",
+            "merge_conflict_watchdog_at",
+        ] {
+            if obj.remove(key).is_some() {
+                changed = true;
+            }
+        }
+
+        if !changed {
+            return;
+        }
+
+        let mut updated = task.clone();
+        updated.metadata = Some(metadata.to_string());
+        updated.touch();
+        if let Err(e) = self.task_repo.update(&updated).await {
+            warn!(
+                task_id = task.id.as_str(),
+                error = %e,
+                "MergeConflict watchdog: failed to clear stale watchdog metadata"
+            );
+        }
     }
 
     fn merge_incomplete_non_retryable_reason_from_error(task: &Task) -> Option<String> {

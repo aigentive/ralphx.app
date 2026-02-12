@@ -390,6 +390,30 @@ fn merge_incomplete_non_retryable_reason_detects_missing_source_branch_reason_co
 }
 
 #[test]
+fn merge_incomplete_non_retryable_reason_detects_unresolved_source_branch_reason_code() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Merge Incomplete".to_string(),
+    );
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_recovery_reason": "source_branch_unresolved"
+        })
+        .to_string(),
+    );
+
+    let reason =
+        ReconciliationRunner::<tauri::Wry>::merge_incomplete_non_retryable_reason_from_error(&task);
+    assert!(reason.is_some());
+    assert!(
+        reason
+            .unwrap()
+            .contains("could not be resolved"),
+        "expected unresolved source branch reason"
+    );
+}
+
+#[test]
 fn latest_deferred_blocker_id_reads_latest_blocker_from_metadata() {
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
