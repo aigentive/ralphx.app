@@ -38,6 +38,7 @@ vi.mock("@/stores/planStore", () => ({
   usePlanStore: (() => {
     const state = {
       activePlanByProject: { "p1": "session-1" },
+      activePlanLoadedByProject: { "p1": true },
       planCandidates: [],
       isLoading: false,
       error: null,
