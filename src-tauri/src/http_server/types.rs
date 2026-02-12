@@ -733,6 +733,59 @@ pub struct RebuildArchiveSnapshotsResponse {
 }
 
 // ============================================================================
+// Request/Response Types - Session Linking
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct CreateChildSessionRequest {
+    pub parent_session_id: String,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    #[serde(default = "default_inherit_context")]
+    pub inherit_context: bool,
+}
+
+fn default_inherit_context() -> bool {
+    true
+}
+
+#[derive(Debug, Serialize)]
+pub struct CreateChildSessionResponse {
+    pub session_id: String,
+    pub parent_session_id: String,
+    pub title: String,
+    pub status: String,
+    pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_context: Option<ParentContextResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ParentSessionSummary {
+    pub id: String,
+    pub title: String,
+    pub status: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ParentProposalSummary {
+    pub id: String,
+    pub title: String,
+    pub category: String,
+    pub priority: String,
+    pub status: String,
+    pub acceptance_criteria: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ParentContextResponse {
+    pub parent_session: ParentSessionSummary,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_content: Option<String>,
+    pub proposals: Vec<ParentProposalSummary>,
+}
+
+// ============================================================================
 // Common Response Types
 // ============================================================================
 

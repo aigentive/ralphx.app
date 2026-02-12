@@ -29,6 +29,7 @@ export const IdeationSessionSchema = z.object({
   status: IdeationSessionStatusSchema,
   planArtifactId: z.string().nullable(),
   seedTaskId: z.string().nullish(),
+  parentSessionId: z.string().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   archivedAt: z.string().datetime().nullable(),
@@ -231,6 +232,56 @@ export const ApplyProposalsResultSchema = z.object({
 });
 
 export type ApplyProposalsResult = z.infer<typeof ApplyProposalsResultSchema>;
+
+// ============================================================================
+// Session Linking
+// ============================================================================
+
+/**
+ * Enum for session relationship types
+ */
+export const SESSION_RELATIONSHIP_VALUES = ["follow_on", "alternative", "dependency"] as const;
+
+export const SessionRelationshipSchema = z.enum(SESSION_RELATIONSHIP_VALUES);
+export type SessionRelationship = z.infer<typeof SessionRelationshipSchema>;
+
+/**
+ * Session link schema representing relationship between parent and child sessions
+ */
+export const SessionLinkSchema = z.object({
+  id: z.string().min(1),
+  parentSessionId: z.string().min(1),
+  childSessionId: z.string().min(1),
+  relationship: SessionRelationshipSchema,
+  notes: z.string().nullable(),
+  createdAt: z.string().datetime(),
+});
+
+export type SessionLink = z.infer<typeof SessionLinkSchema>;
+
+/**
+ * Parent session context returned when querying parent context from child session
+ */
+export const ParentSessionContextSchema = z.object({
+  parentSession: z.object({
+    id: z.string().min(1),
+    title: z.string().nullable(),
+    status: IdeationSessionStatusSchema,
+  }),
+  planContent: z.string().nullable(),
+  proposals: z.array(
+    z.object({
+      id: z.string().min(1),
+      title: z.string().min(1),
+      category: z.string().min(1),
+      priority: PrioritySchema.nullable(),
+      status: ProposalStatusSchema,
+      acceptanceCriteria: z.array(z.string()),
+    })
+  ),
+});
+
+export type ParentSessionContext = z.infer<typeof ParentSessionContextSchema>;
 
 // ============================================================================
 // Input Schemas (for API calls)

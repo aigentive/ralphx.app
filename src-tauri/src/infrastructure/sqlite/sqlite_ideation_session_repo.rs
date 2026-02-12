@@ -40,8 +40,8 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         let conn = self.conn.lock().await;
 
         conn.execute(
-            "INSERT INTO ideation_sessions (id, project_id, title, status, plan_artifact_id, seed_task_id, created_at, updated_at, archived_at, converted_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            "INSERT INTO ideation_sessions (id, project_id, title, status, plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             rusqlite::params![
                 session.id.as_str(),
                 session.project_id.as_str(),
@@ -49,6 +49,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                 session.status.to_string(),
                 session.plan_artifact_id.as_ref().map(|id| id.as_str()),
                 session.seed_task_id.as_ref().map(|id| id.as_str()),
+                session.parent_session_id.as_ref().map(|id| id.as_str()),
                 session.created_at.to_rfc3339(),
                 session.updated_at.to_rfc3339(),
                 session.archived_at.map(|dt| dt.to_rfc3339()),
@@ -64,7 +65,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         let conn = self.conn.lock().await;
 
         let result = conn.query_row(
-            "SELECT id, project_id, title, status, plan_artifact_id, seed_task_id, created_at, updated_at, archived_at, converted_at
+            "SELECT id, project_id, title, status, plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at
              FROM ideation_sessions WHERE id = ?1",
             [id.as_str()],
             |row| IdeationSession::from_row(row),
@@ -82,7 +83,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, project_id, title, status, plan_artifact_id, seed_task_id, created_at, updated_at, archived_at, converted_at
+                "SELECT id, project_id, title, status, plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at
                  FROM ideation_sessions WHERE project_id = ?1 ORDER BY updated_at DESC",
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -193,7 +194,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, project_id, title, status, plan_artifact_id, seed_task_id, created_at, updated_at, archived_at, converted_at
+                "SELECT id, project_id, title, status, plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at
                  FROM ideation_sessions
                  WHERE project_id = ?1 AND status = 'active'
                  ORDER BY updated_at DESC",
@@ -235,7 +236,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, project_id, title, status, plan_artifact_id, seed_task_id, created_at, updated_at, archived_at, converted_at
+                "SELECT id, project_id, title, status, plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at
                  FROM ideation_sessions WHERE plan_artifact_id = ?1",
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -247,6 +248,101 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         Ok(sessions)
+    }
+
+    async fn get_children(&self, parent_id: &IdeationSessionId) -> AppResult<Vec<IdeationSession>> {
+        let conn = self.conn.lock().await;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, project_id, title, status, plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at
+                 FROM ideation_sessions WHERE parent_session_id = ?1 ORDER BY created_at DESC",
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        let sessions = stmt
+            .query_map([parent_id.as_str()], IdeationSession::from_row)
+            .map_err(|e| AppError::Database(e.to_string()))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(sessions)
+    }
+
+    async fn get_ancestor_chain(&self, session_id: &IdeationSessionId) -> AppResult<Vec<IdeationSession>> {
+        let conn = self.conn.lock().await;
+
+        let mut chain = Vec::new();
+        let mut current_id = session_id.clone();
+
+        // Walk up the parent chain iteratively
+        loop {
+            let result = conn.query_row(
+                "SELECT id, project_id, title, status, plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at
+                 FROM ideation_sessions WHERE id = ?1",
+                [current_id.as_str()],
+                |row| IdeationSession::from_row(row),
+            );
+
+            match result {
+                Ok(session) => {
+                    if let Some(parent_id) = &session.parent_session_id {
+                        current_id = parent_id.clone();
+                        // Fetch parent and add to chain
+                        match conn.query_row(
+                            "SELECT id, project_id, title, status, plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at
+                             FROM ideation_sessions WHERE id = ?1",
+                            [parent_id.as_str()],
+                            |row| IdeationSession::from_row(row),
+                        ) {
+                            Ok(parent) => {
+                                chain.push(parent);
+                            }
+                            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                                // Parent doesn't exist, stop here
+                                break;
+                            }
+                            Err(e) => {
+                                return Err(AppError::Database(e.to_string()));
+                            }
+                        }
+                    } else {
+                        // No parent, end of chain
+                        break;
+                    }
+                }
+                Err(rusqlite::Error::QueryReturnedNoRows) => {
+                    // Session doesn't exist, empty chain
+                    break;
+                }
+                Err(e) => {
+                    return Err(AppError::Database(e.to_string()));
+                }
+            }
+        }
+
+        Ok(chain)
+    }
+
+    async fn set_parent(
+        &self,
+        id: &IdeationSessionId,
+        parent_id: Option<&IdeationSessionId>,
+    ) -> AppResult<()> {
+        let conn = self.conn.lock().await;
+        let now = Utc::now();
+
+        conn.execute(
+            "UPDATE ideation_sessions SET parent_session_id = ?2, updated_at = ?3 WHERE id = ?1",
+            rusqlite::params![
+                id.as_str(),
+                parent_id.map(|p| p.as_str()),
+                now.to_rfc3339(),
+            ],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(())
     }
 }
 
@@ -854,5 +950,192 @@ mod tests {
 
         let found = repo.get_by_id(&session.id).await.unwrap();
         assert!(found.is_some());
+    }
+
+    // ==================== GET CHILDREN TESTS ====================
+
+    #[tokio::test]
+    async fn test_get_children_returns_all_direct_children() {
+        let conn = setup_test_db();
+        let project_id = ProjectId::new();
+        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+
+        let repo = SqliteIdeationSessionRepository::new(conn);
+
+        let parent = create_test_session(&project_id, Some("Parent"));
+        let mut child1 = create_test_session(&project_id, Some("Child 1"));
+        child1.parent_session_id = Some(parent.id.clone());
+        let mut child2 = create_test_session(&project_id, Some("Child 2"));
+        child2.parent_session_id = Some(parent.id.clone());
+
+        repo.create(parent.clone()).await.unwrap();
+        repo.create(child1.clone()).await.unwrap();
+        repo.create(child2.clone()).await.unwrap();
+
+        let children = repo.get_children(&parent.id).await.unwrap();
+        assert_eq!(children.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_children_returns_empty_for_sessions_without_children() {
+        let conn = setup_test_db();
+        let project_id = ProjectId::new();
+        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+
+        let repo = SqliteIdeationSessionRepository::new(conn);
+
+        let session = create_test_session(&project_id, Some("No Children"));
+        repo.create(session.clone()).await.unwrap();
+
+        let children = repo.get_children(&session.id).await.unwrap();
+        assert!(children.is_empty());
+    }
+
+    // ==================== GET ANCESTOR CHAIN TESTS ====================
+
+    #[tokio::test]
+    async fn test_get_ancestor_chain_three_levels_deep() {
+        let conn = setup_test_db();
+        let project_id = ProjectId::new();
+        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+
+        let repo = SqliteIdeationSessionRepository::new(conn);
+
+        let level1 = create_test_session(&project_id, Some("Level 1"));
+        let mut level2 = create_test_session(&project_id, Some("Level 2"));
+        level2.parent_session_id = Some(level1.id.clone());
+        let mut level3 = create_test_session(&project_id, Some("Level 3"));
+        level3.parent_session_id = Some(level2.id.clone());
+
+        repo.create(level1.clone()).await.unwrap();
+        repo.create(level2.clone()).await.unwrap();
+        repo.create(level3.clone()).await.unwrap();
+
+        let chain = repo.get_ancestor_chain(&level3.id).await.unwrap();
+        // Should return: [level2, level1] (direct parent to root)
+        assert_eq!(chain.len(), 2);
+        assert_eq!(chain[0].id, level2.id);
+        assert_eq!(chain[1].id, level1.id);
+    }
+
+    #[tokio::test]
+    async fn test_get_ancestor_chain_single_parent() {
+        let conn = setup_test_db();
+        let project_id = ProjectId::new();
+        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+
+        let repo = SqliteIdeationSessionRepository::new(conn);
+
+        let parent = create_test_session(&project_id, Some("Parent"));
+        let mut child = create_test_session(&project_id, Some("Child"));
+        child.parent_session_id = Some(parent.id.clone());
+
+        repo.create(parent.clone()).await.unwrap();
+        repo.create(child.clone()).await.unwrap();
+
+        let chain = repo.get_ancestor_chain(&child.id).await.unwrap();
+        assert_eq!(chain.len(), 1);
+        assert_eq!(chain[0].id, parent.id);
+    }
+
+    #[tokio::test]
+    async fn test_get_ancestor_chain_no_parent() {
+        let conn = setup_test_db();
+        let project_id = ProjectId::new();
+        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+
+        let repo = SqliteIdeationSessionRepository::new(conn);
+
+        let session = create_test_session(&project_id, Some("Root Session"));
+        repo.create(session.clone()).await.unwrap();
+
+        let chain = repo.get_ancestor_chain(&session.id).await.unwrap();
+        assert!(chain.is_empty());
+    }
+
+    // ==================== SET PARENT TESTS ====================
+
+    #[tokio::test]
+    async fn test_set_parent_establishes_parent_child_relationship() {
+        let conn = setup_test_db();
+        let project_id = ProjectId::new();
+        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+
+        let repo = SqliteIdeationSessionRepository::new(conn);
+
+        let parent = create_test_session(&project_id, Some("Parent"));
+        let child = create_test_session(&project_id, Some("Child"));
+
+        repo.create(parent.clone()).await.unwrap();
+        repo.create(child.clone()).await.unwrap();
+
+        repo.set_parent(&child.id, Some(&parent.id))
+            .await
+            .unwrap();
+
+        let updated_child = repo
+            .get_by_id(&child.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            updated_child.parent_session_id,
+            Some(parent.id.clone())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_parent_with_null_clears_parent() {
+        let conn = setup_test_db();
+        let project_id = ProjectId::new();
+        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+
+        let repo = SqliteIdeationSessionRepository::new(conn);
+
+        let parent = create_test_session(&project_id, Some("Parent"));
+        let mut child = create_test_session(&project_id, Some("Child"));
+        child.parent_session_id = Some(parent.id.clone());
+
+        repo.create(parent.clone()).await.unwrap();
+        repo.create(child.clone()).await.unwrap();
+
+        // Clear the parent
+        repo.set_parent(&child.id, None).await.unwrap();
+
+        let updated_child = repo
+            .get_by_id(&child.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(updated_child.parent_session_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_set_parent_updates_updated_at() {
+        let conn = setup_test_db();
+        let project_id = ProjectId::new();
+        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+
+        let repo = SqliteIdeationSessionRepository::new(conn);
+
+        let parent = create_test_session(&project_id, Some("Parent"));
+        let child = create_test_session(&project_id, Some("Child"));
+        let original_updated_at = child.updated_at;
+
+        repo.create(parent.clone()).await.unwrap();
+        repo.create(child.clone()).await.unwrap();
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        repo.set_parent(&child.id, Some(&parent.id))
+            .await
+            .unwrap();
+
+        let updated_child = repo
+            .get_by_id(&child.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(updated_child.updated_at >= original_updated_at);
     }
 }

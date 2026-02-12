@@ -9,6 +9,7 @@ export interface IdeationSessionResponse {
   status: IdeationSessionStatus;
   planArtifactId: string | null;
   seedTaskId?: string | null;
+  parentSessionId: string | null;
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
@@ -121,4 +122,39 @@ export interface ApplyProposalsInput {
   targetColumn: string;
   preserveDependencies: boolean;
   useFeatureBranch?: boolean;
+}
+
+// Session linking response types
+
+export interface CreateChildSessionResponse {
+  sessionId: string;
+  parentSessionId: string;
+  title: string | null;
+  status: string;
+  createdAt: string;
+  parentContext: ParentSessionContextResponse | undefined;
+}
+
+export interface ParentSessionContextResponse {
+  parentSession: {
+    id: string;
+    title: string | null;
+    status: string;
+  };
+  planContent: string | null;
+  proposals: Array<{
+    id: string;
+    title: string;
+    category: string;
+    priority: string | null;
+    status: string;
+    acceptanceCriteria: string[];
+  }>;
+}
+
+export interface CreateChildSessionInput {
+  parentSessionId: string;
+  title?: string;
+  description?: string;
+  inheritContext?: boolean;
 }

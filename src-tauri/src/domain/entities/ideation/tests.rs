@@ -403,6 +403,7 @@ fn setup_test_db() -> Connection {
                 status TEXT NOT NULL DEFAULT 'active',
                 plan_artifact_id TEXT,
                 seed_task_id TEXT,
+                parent_session_id TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 archived_at TEXT,

@@ -153,6 +153,60 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
             .cloned()
             .collect())
     }
+
+    async fn get_children(&self, parent_id: &IdeationSessionId) -> AppResult<Vec<IdeationSession>> {
+        let mut children: Vec<_> = self
+            .sessions
+            .read()
+            .unwrap()
+            .values()
+            .filter(|s| s.parent_session_id.as_ref() == Some(parent_id))
+            .cloned()
+            .collect();
+        children.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        Ok(children)
+    }
+
+    async fn get_ancestor_chain(&self, session_id: &IdeationSessionId) -> AppResult<Vec<IdeationSession>> {
+        let mut chain = Vec::new();
+        let sessions_lock = self.sessions.read().unwrap();
+        let mut current_id = session_id.clone();
+
+        // Walk up the parent chain
+        loop {
+            if let Some(session) = sessions_lock.get(&current_id.to_string()) {
+                if let Some(parent_id) = &session.parent_session_id {
+                    current_id = parent_id.clone();
+                    if let Some(parent) = sessions_lock.get(&current_id.to_string()) {
+                        chain.push(parent.clone());
+                    } else {
+                        // Parent doesn't exist, stop here
+                        break;
+                    }
+                } else {
+                    // No parent, end of chain
+                    break;
+                }
+            } else {
+                // Session doesn't exist, stop
+                break;
+            }
+        }
+
+        Ok(chain)
+    }
+
+    async fn set_parent(
+        &self,
+        id: &IdeationSessionId,
+        parent_id: Option<&IdeationSessionId>,
+    ) -> AppResult<()> {
+        if let Some(session) = self.sessions.write().unwrap().get_mut(&id.to_string()) {
+            session.parent_session_id = parent_id.cloned();
+            session.updated_at = Utc::now();
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -213,5 +267,135 @@ mod tests {
 
         let result = repo.get_by_id(&session_id).await.unwrap();
         assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_children() {
+        let repo = MemoryIdeationSessionRepository::new();
+        let project_id = ProjectId::new();
+
+        let parent = IdeationSession::new(project_id.clone());
+        let mut child1 = IdeationSession::new(project_id.clone());
+        child1.parent_session_id = Some(parent.id.clone());
+        let mut child2 = IdeationSession::new(project_id.clone());
+        child2.parent_session_id = Some(parent.id.clone());
+
+        repo.create(parent.clone()).await.unwrap();
+        repo.create(child1.clone()).await.unwrap();
+        repo.create(child2.clone()).await.unwrap();
+
+        let children = repo.get_children(&parent.id).await.unwrap();
+        assert_eq!(children.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_children_returns_empty_for_sessions_without_children() {
+        let repo = MemoryIdeationSessionRepository::new();
+        let project_id = ProjectId::new();
+
+        let session = IdeationSession::new(project_id.clone());
+        repo.create(session.clone()).await.unwrap();
+
+        let children = repo.get_children(&session.id).await.unwrap();
+        assert!(children.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_ancestor_chain_three_levels_deep() {
+        let repo = MemoryIdeationSessionRepository::new();
+        let project_id = ProjectId::new();
+
+        let level1 = IdeationSession::new(project_id.clone());
+        let mut level2 = IdeationSession::new(project_id.clone());
+        level2.parent_session_id = Some(level1.id.clone());
+        let mut level3 = IdeationSession::new(project_id.clone());
+        level3.parent_session_id = Some(level2.id.clone());
+
+        repo.create(level1.clone()).await.unwrap();
+        repo.create(level2.clone()).await.unwrap();
+        repo.create(level3.clone()).await.unwrap();
+
+        let chain = repo.get_ancestor_chain(&level3.id).await.unwrap();
+        // Should return: [level2, level1] (direct parent to root)
+        assert_eq!(chain.len(), 2);
+        assert_eq!(chain[0].id, level2.id);
+        assert_eq!(chain[1].id, level1.id);
+    }
+
+    #[tokio::test]
+    async fn test_get_ancestor_chain_single_parent() {
+        let repo = MemoryIdeationSessionRepository::new();
+        let project_id = ProjectId::new();
+
+        let parent = IdeationSession::new(project_id.clone());
+        let mut child = IdeationSession::new(project_id.clone());
+        child.parent_session_id = Some(parent.id.clone());
+
+        repo.create(parent.clone()).await.unwrap();
+        repo.create(child.clone()).await.unwrap();
+
+        let chain = repo.get_ancestor_chain(&child.id).await.unwrap();
+        assert_eq!(chain.len(), 1);
+        assert_eq!(chain[0].id, parent.id);
+    }
+
+    #[tokio::test]
+    async fn test_get_ancestor_chain_no_parent() {
+        let repo = MemoryIdeationSessionRepository::new();
+        let project_id = ProjectId::new();
+
+        let session = IdeationSession::new(project_id.clone());
+        repo.create(session.clone()).await.unwrap();
+
+        let chain = repo.get_ancestor_chain(&session.id).await.unwrap();
+        assert!(chain.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_set_parent() {
+        let repo = MemoryIdeationSessionRepository::new();
+        let project_id = ProjectId::new();
+
+        let parent = IdeationSession::new(project_id.clone());
+        let child = IdeationSession::new(project_id.clone());
+
+        repo.create(parent.clone()).await.unwrap();
+        repo.create(child.clone()).await.unwrap();
+
+        repo.set_parent(&child.id, Some(&parent.id))
+            .await
+            .unwrap();
+
+        let updated_child = repo
+            .get_by_id(&child.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            updated_child.parent_session_id,
+            Some(parent.id.clone())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_parent_with_null() {
+        let repo = MemoryIdeationSessionRepository::new();
+        let project_id = ProjectId::new();
+
+        let parent = IdeationSession::new(project_id.clone());
+        let mut child = IdeationSession::new(project_id.clone());
+        child.parent_session_id = Some(parent.id.clone());
+
+        repo.create(parent.clone()).await.unwrap();
+        repo.create(child.clone()).await.unwrap();
+
+        repo.set_parent(&child.id, None).await.unwrap();
+
+        let updated_child = repo
+            .get_by_id(&child.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(updated_child.parent_session_id.is_none());
     }
 }

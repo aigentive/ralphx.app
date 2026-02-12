@@ -43,6 +43,11 @@ pub struct TaskStepId(pub String);
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ReviewIssueId(pub String);
 
+/// A unique identifier for a SessionLink
+/// Uses newtype pattern to prevent accidentally using other IDs where SessionLinkId is expected
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SessionLinkId(pub String);
+
 impl TaskId {
     /// Creates a new TaskId with a random UUID v4
     pub fn new() -> Self {
@@ -278,6 +283,36 @@ impl Default for ReviewIssueId {
 }
 
 impl std::fmt::Display for ReviewIssueId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl SessionLinkId {
+    /// Creates a new SessionLinkId with a random UUID v4
+    pub fn new() -> Self {
+        Self(uuid::Uuid::new_v4().to_string())
+    }
+
+    /// Creates a SessionLinkId from an existing string
+    /// Useful for database deserialization
+    pub fn from_string(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    /// Returns the inner string value
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Default for SessionLinkId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Display for SessionLinkId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
@@ -930,6 +965,96 @@ mod tests {
     #[test]
     fn review_issue_id_default_creates_new() {
         let id = ReviewIssueId::default();
+        assert!(uuid::Uuid::parse_str(id.as_str()).is_ok());
+    }
+
+    // ===== SessionLinkId Tests =====
+
+    #[test]
+    fn session_link_id_new_generates_valid_uuid() {
+        let id = SessionLinkId::new();
+        assert_eq!(id.as_str().len(), 36);
+        assert!(id.as_str().chars().filter(|c| *c == '-').count() == 4);
+        assert!(uuid::Uuid::parse_str(id.as_str()).is_ok());
+    }
+
+    #[test]
+    fn session_link_id_new_generates_unique_ids() {
+        let ids: HashSet<String> = (0..100).map(|_| SessionLinkId::new().0).collect();
+        assert_eq!(
+            ids.len(),
+            100,
+            "All generated SessionLinkIds should be unique"
+        );
+    }
+
+    #[test]
+    fn session_link_id_from_string_preserves_value() {
+        let id = SessionLinkId::from_string("link-custom-id");
+        assert_eq!(id.as_str(), "link-custom-id");
+    }
+
+    #[test]
+    fn session_link_id_from_string_takes_owned() {
+        let id = SessionLinkId::from_string("link-owned".to_string());
+        assert_eq!(id.as_str(), "link-owned");
+    }
+
+    #[test]
+    fn session_link_id_equality_works() {
+        let id1 = SessionLinkId::from_string("link-abc");
+        let id2 = SessionLinkId::from_string("link-abc");
+        let id3 = SessionLinkId::from_string("link-xyz");
+
+        assert_eq!(id1, id2);
+        assert_ne!(id1, id3);
+    }
+
+    #[test]
+    fn session_link_id_clone_works() {
+        let id1 = SessionLinkId::new();
+        let id2 = id1.clone();
+        assert_eq!(id1, id2);
+    }
+
+    #[test]
+    fn session_link_id_hash_works() {
+        let id = SessionLinkId::from_string("link-hash-test");
+        let mut set = HashSet::new();
+        set.insert(id.clone());
+        assert!(set.contains(&id));
+    }
+
+    #[test]
+    fn session_link_id_display_works() {
+        let id = SessionLinkId::from_string("link-display");
+        assert_eq!(format!("{}", id), "link-display");
+    }
+
+    #[test]
+    fn session_link_id_debug_works() {
+        let id = SessionLinkId::from_string("link-debug");
+        let debug_str = format!("{:?}", id);
+        assert!(debug_str.contains("link-debug"));
+    }
+
+    #[test]
+    fn session_link_id_serializes_to_json() {
+        let id = SessionLinkId::from_string("link-serialize");
+        let json = serde_json::to_string(&id).expect("Should serialize");
+        assert_eq!(json, "\"link-serialize\"");
+    }
+
+    #[test]
+    fn session_link_id_deserializes_from_json() {
+        let json = "\"link-deserialize\"";
+        let id: SessionLinkId = serde_json::from_str(json).expect("Should deserialize");
+        assert_eq!(id.as_str(), "link-deserialize");
+    }
+
+    #[test]
+    fn session_link_id_default_creates_new() {
+        let id = SessionLinkId::default();
         assert!(uuid::Uuid::parse_str(id.as_str()).is_ok());
     }
 }

@@ -48,6 +48,7 @@ mod v25_update_max_concurrent_default;
 mod v26_merge_strategy;
 mod v27_default_rebase_squash;
 mod v28_repair_schema_drift;
+mod v31_session_linking;
 mod v2_add_dependency_reason;
 mod v3_add_activity_events;
 mod v4_add_blocked_reason;
@@ -96,6 +97,8 @@ mod v25_running_agent_worktree_tests;
 #[cfg(test)]
 mod v26_merge_strategy_tests;
 #[cfg(test)]
+mod v31_session_linking_tests;
+#[cfg(test)]
 mod v2_add_dependency_reason_tests;
 #[cfg(test)]
 mod v3_add_activity_events_tests;
@@ -111,7 +114,7 @@ mod v8_task_git_fields_tests;
 mod v9_project_git_fields_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 30;
+pub const SCHEMA_VERSION: i32 = 31;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -275,6 +278,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 30,
         name: "update_max_concurrent_default",
         migrate: v25_update_max_concurrent_default::migrate,
+    },
+    Migration {
+        version: 31,
+        name: "session_linking",
+        migrate: v31_session_linking::migrate,
     },
 ];
 

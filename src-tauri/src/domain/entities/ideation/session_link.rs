@@ -1,0 +1,214 @@
+//! SessionLink entity for linking ideation sessions
+
+use chrono::{DateTime, Utc};
+use rusqlite::Row;
+use serde::{Deserialize, Serialize};
+use std::str::FromStr;
+
+use super::types::parse_datetime_helper;
+use crate::domain::entities::types::{IdeationSessionId, SessionLinkId};
+
+/// Relationship type between parent and child sessions
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionRelationship {
+    /// Follow-on session to address gaps or extend the parent plan
+    FollowOn,
+    /// Alternative approach to the same problem
+    Alternative,
+    /// Dependency relationship (child is prerequisite for parent)
+    Dependency,
+}
+
+impl Default for SessionRelationship {
+    fn default() -> Self {
+        Self::FollowOn
+    }
+}
+
+impl FromStr for SessionRelationship {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "follow_on" => Ok(Self::FollowOn),
+            "alternative" => Ok(Self::Alternative),
+            "dependency" => Ok(Self::Dependency),
+            _ => Err(format!("Unknown session relationship: {}", s)),
+        }
+    }
+}
+
+impl std::fmt::Display for SessionRelationship {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::FollowOn => "follow_on",
+            Self::Alternative => "alternative",
+            Self::Dependency => "dependency",
+        };
+        write!(f, "{}", s)
+    }
+}
+
+/// Link between a parent session and a child session
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionLink {
+    /// Unique identifier for this link
+    pub id: SessionLinkId,
+    /// Parent session ID
+    pub parent_session_id: IdeationSessionId,
+    /// Child session ID
+    pub child_session_id: IdeationSessionId,
+    /// Type of relationship
+    pub relationship: SessionRelationship,
+    /// Optional notes about why this link was created
+    pub notes: Option<String>,
+    /// When the link was created
+    pub created_at: DateTime<Utc>,
+}
+
+impl SessionLink {
+    /// Creates a new session link
+    pub fn new(
+        parent_session_id: IdeationSessionId,
+        child_session_id: IdeationSessionId,
+        relationship: SessionRelationship,
+    ) -> Self {
+        Self {
+            id: SessionLinkId::new(),
+            parent_session_id,
+            child_session_id,
+            relationship,
+            notes: None,
+            created_at: Utc::now(),
+        }
+    }
+
+    /// Creates a new session link with notes
+    pub fn with_notes(
+        parent_session_id: IdeationSessionId,
+        child_session_id: IdeationSessionId,
+        relationship: SessionRelationship,
+        notes: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: SessionLinkId::new(),
+            parent_session_id,
+            child_session_id,
+            relationship,
+            notes: Some(notes.into()),
+            created_at: Utc::now(),
+        }
+    }
+
+    /// Deserialize a SessionLink from a SQLite row
+    pub fn from_row(row: &Row) -> rusqlite::Result<Self> {
+        Ok(Self {
+            id: SessionLinkId::from_string(row.get::<_, String>("id")?),
+            parent_session_id: IdeationSessionId::from_string(
+                row.get::<_, String>("parent_session_id")?,
+            ),
+            child_session_id: IdeationSessionId::from_string(
+                row.get::<_, String>("child_session_id")?,
+            ),
+            relationship: row
+                .get::<_, String>("relationship")?
+                .parse()
+                .unwrap_or(SessionRelationship::FollowOn),
+            notes: row.get("notes")?,
+            created_at: parse_datetime_helper(row.get("created_at")?),
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn session_relationship_default_is_follow_on() {
+        assert_eq!(SessionRelationship::default(), SessionRelationship::FollowOn);
+    }
+
+    #[test]
+    fn session_relationship_from_str_parses_all_variants() {
+        assert_eq!(
+            "follow_on".parse::<SessionRelationship>().unwrap(),
+            SessionRelationship::FollowOn
+        );
+        assert_eq!(
+            "alternative".parse::<SessionRelationship>().unwrap(),
+            SessionRelationship::Alternative
+        );
+        assert_eq!(
+            "dependency".parse::<SessionRelationship>().unwrap(),
+            SessionRelationship::Dependency
+        );
+    }
+
+    #[test]
+    fn session_relationship_from_str_returns_error_for_unknown() {
+        let result = "unknown".parse::<SessionRelationship>();
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "Unknown session relationship: unknown"
+        );
+    }
+
+    #[test]
+    fn session_relationship_display_formats_correctly() {
+        assert_eq!(SessionRelationship::FollowOn.to_string(), "follow_on");
+        assert_eq!(SessionRelationship::Alternative.to_string(), "alternative");
+        assert_eq!(SessionRelationship::Dependency.to_string(), "dependency");
+    }
+
+    #[test]
+    fn session_link_new_creates_with_defaults() {
+        let parent = IdeationSessionId::from_string("parent-123");
+        let child = IdeationSessionId::from_string("child-456");
+        let link = SessionLink::new(
+            parent.clone(),
+            child.clone(),
+            SessionRelationship::FollowOn,
+        );
+
+        assert_eq!(link.parent_session_id, parent);
+        assert_eq!(link.child_session_id, child);
+        assert_eq!(link.relationship, SessionRelationship::FollowOn);
+        assert!(link.notes.is_none());
+        assert!(link.created_at <= Utc::now());
+    }
+
+    #[test]
+    fn session_link_with_notes_includes_notes() {
+        let parent = IdeationSessionId::from_string("parent-123");
+        let child = IdeationSessionId::from_string("child-456");
+        let link = SessionLink::with_notes(
+            parent.clone(),
+            child.clone(),
+            SessionRelationship::Alternative,
+            "Exploring different approach",
+        );
+
+        assert_eq!(link.parent_session_id, parent);
+        assert_eq!(link.child_session_id, child);
+        assert_eq!(link.relationship, SessionRelationship::Alternative);
+        assert_eq!(
+            link.notes.as_deref(),
+            Some("Exploring different approach")
+        );
+    }
+
+    #[test]
+    fn session_link_serializes_to_json() {
+        let parent = IdeationSessionId::from_string("parent-123");
+        let child = IdeationSessionId::from_string("child-456");
+        let link = SessionLink::new(parent, child, SessionRelationship::FollowOn);
+
+        let json = serde_json::to_value(&link).expect("Should serialize");
+        assert_eq!(json["relationship"], "follow_on");
+        assert_eq!(json["parent_session_id"], "parent-123");
+        assert_eq!(json["child_session_id"], "child-456");
+    }
+}

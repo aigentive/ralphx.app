@@ -150,6 +150,29 @@ impl IdeationSessionRepository for MockSessionRepository {
             .cloned()
             .collect())
     }
+
+    async fn get_children(&self, parent_id: &IdeationSessionId) -> AppResult<Vec<IdeationSession>> {
+        Ok(self
+            .sessions
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|s| s.parent_session_id.as_ref() == Some(parent_id))
+            .cloned()
+            .collect())
+    }
+
+    async fn get_ancestor_chain(&self, _session_id: &IdeationSessionId) -> AppResult<Vec<IdeationSession>> {
+        Ok(Vec::new())
+    }
+
+    async fn set_parent(
+        &self,
+        _id: &IdeationSessionId,
+        _parent_id: Option<&IdeationSessionId>,
+    ) -> AppResult<()> {
+        Ok(())
+    }
 }
 
 struct MockProposalRepository {
