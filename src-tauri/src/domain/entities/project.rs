@@ -70,13 +70,13 @@ fn default_use_feature_branches() -> bool {
 #[serde(rename_all = "snake_case")]
 pub enum MergeStrategy {
     /// Rebase source onto target, then fast-forward merge (linear history)
-    #[default]
     Rebase,
     /// Direct merge commit (non-linear)
     Merge,
     /// Squash all commits into a single commit on target (clean linear history)
     Squash,
     /// Rebase first (resolve conflicts), then squash into single commit (cleanest history)
+    #[default]
     RebaseSquash,
 }
 
@@ -894,8 +894,8 @@ mod tests {
     // ===== MergeStrategy Tests =====
 
     #[test]
-    fn merge_strategy_default_is_rebase() {
-        assert_eq!(MergeStrategy::default(), MergeStrategy::Rebase);
+    fn merge_strategy_default_is_rebase_squash() {
+        assert_eq!(MergeStrategy::default(), MergeStrategy::RebaseSquash);
     }
 
     #[test]

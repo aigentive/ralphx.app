@@ -219,7 +219,7 @@ pub async fn update_project(
         project.merge_validation_mode = mode_str.parse().unwrap_or(MergeValidationMode::Block);
     }
     if let Some(strategy_str) = input.merge_strategy {
-        project.merge_strategy = strategy_str.parse().unwrap_or(MergeStrategy::Rebase);
+        project.merge_strategy = strategy_str.parse().unwrap_or(MergeStrategy::RebaseSquash);
     }
 
     project.touch();
