@@ -37,6 +37,8 @@ pub struct ClaudeRuntimeConfig {
     pub permission_prompt_tool: String,
     pub use_append_system_prompt_file: bool,
     pub setting_sources: Option<Vec<String>>,
+    /// JSON object passed to claude CLI via --settings (path or JSON string).
+    pub settings: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -70,6 +72,8 @@ struct ClaudeRuntimeConfigRaw {
     dangerously_skip_permissions: bool,
     permission_prompt_tool: String,
     append_system_prompt_file: bool,
+    /// Optional settings passed to claude CLI via --settings (see docs/claude-code/settings.md).
+    settings: Option<serde_json::Value>,
 }
 
 impl Default for ClaudeRuntimeConfigRaw {
@@ -81,6 +85,7 @@ impl Default for ClaudeRuntimeConfigRaw {
             dangerously_skip_permissions: false,
             permission_prompt_tool: "permission_request".to_string(),
             append_system_prompt_file: true,
+            settings: None,
         }
     }
 }
@@ -188,6 +193,7 @@ fn parse_config(yaml: &str) -> Option<LoadedConfig> {
             &parsed.claude.mcp_server_name,
         ),
         use_append_system_prompt_file: parsed.claude.append_system_prompt_file,
+        settings: parsed.claude.settings,
     };
 
     Some(LoadedConfig {
@@ -224,6 +230,7 @@ fn load_config() -> LoadedConfig {
             dangerously_skip_permissions: false,
             permission_prompt_tool: "mcp__ralphx__permission_request".to_string(),
             use_append_system_prompt_file: true,
+            settings: None,
         },
     })
 }

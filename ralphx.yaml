@@ -54,6 +54,10 @@
 # - append_system_prompt_file:
 #   If true, pass `--append-system-prompt-file <path>` using `system_prompt_file`.
 #   If false, inline prompt content via `--append-system-prompt`.
+# - settings:
+#   Optional Claude Code settings passed via `--settings` (JSON). Merged with
+#   user/project/local settings per docs/claude-code/settings.md. Example:
+#   sandbox.enabled: false to disable bash sandboxing for spawned agents.
 #
 # Notes:
 # - Unknown attributes are ignored by the current parser.
@@ -69,6 +73,10 @@ claude:
   dangerously_skip_permissions: false
   permission_prompt_tool: permission_request
   append_system_prompt_file: true
+  # Passed to claude CLI via --settings (JSON). See docs/claude-code/settings.md.
+  settings:
+    sandbox:
+      enabled: false
 
 agents:
   - name: orchestrator-ideation

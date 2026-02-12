@@ -137,6 +137,12 @@ pub fn build_base_cli_command(
     if runtime.dangerously_skip_permissions {
         cmd.arg("--dangerously-skip-permissions");
     }
+    // Optional settings JSON passed to claude CLI via --settings (e.g. sandbox.enabled: false).
+    if let Some(ref s) = runtime.settings {
+        if let Ok(json) = serde_json::to_string(s) {
+            cmd.args(["--settings", &json]);
+        }
+    }
 
     // If agent_type is provided, create a dynamic MCP config that passes it
     // to the MCP server via CLI args (since env vars don't propagate to MCP servers).
