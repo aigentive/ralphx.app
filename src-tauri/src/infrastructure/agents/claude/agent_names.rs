@@ -30,6 +30,8 @@ pub const SHORT_SUPERVISOR: &str = "ralphx-supervisor";
 pub const SHORT_DEEP_RESEARCHER: &str = "ralphx-deep-researcher";
 pub const SHORT_PROJECT_ANALYZER: &str = "project-analyzer";
 pub const SHORT_MERGER: &str = "ralphx-merger";
+pub const SHORT_MEMORY_MAINTAINER: &str = "memory-maintainer";
+pub const SHORT_MEMORY_CAPTURE: &str = "memory-capture";
 
 // ── ChatService agents (resolve_agent → build_command → --agent flag) ─────
 

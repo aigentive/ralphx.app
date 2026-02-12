@@ -651,7 +651,7 @@ mod tests {
         let conn = setup_test_db();
         let repo = SqliteArtifactRepository::new(conn);
 
-        // prd-library bucket is seeded by migration v24
+        // prd-library bucket is seeded by v25 migration
         let artifact = create_test_artifact()
             .with_bucket(ArtifactBucketId::from_string("prd-library"));
 
@@ -768,7 +768,7 @@ mod tests {
         let conn = setup_test_db();
         let repo = SqliteArtifactRepository::new(conn);
 
-        // prd-library bucket is seeded by migration v24
+        // prd-library bucket is seeded by v25 migration
         let bucket_id = ArtifactBucketId::from_string("prd-library");
 
         // Create artifacts in bucket

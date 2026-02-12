@@ -67,7 +67,7 @@ fn create_prd_library_bucket() -> ArtifactBucket {
         .with_writer("user")
 }
 
-/// Helper to ensure a bucket exists (idempotent — skips if already seeded by migration)
+/// Helper to ensure a bucket exists (idempotent -- skips if already seeded by migration)
 async fn ensure_bucket(state: &AppState, bucket: ArtifactBucket) {
     if !state.artifact_bucket_repo.exists(&bucket.id).await.unwrap() {
         state.artifact_bucket_repo.create(bucket).await.unwrap();
@@ -613,7 +613,7 @@ async fn test_system_buckets_flagged(state: &AppState) {
 
     // Create a custom bucket
     let custom = ArtifactBucket::new("Custom Bucket").accepts(ArtifactType::Prd);
-    state.artifact_bucket_repo.create(custom).await.unwrap();
+    ensure_bucket(state, custom).await;
 
     // System buckets should still be 4
     let system_buckets = state

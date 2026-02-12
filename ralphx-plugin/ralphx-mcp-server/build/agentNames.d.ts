@@ -16,4 +16,6 @@ export declare const PROJECT_ANALYZER = "project-analyzer";
 export declare const SUPERVISOR = "supervisor";
 export declare const QA_PREP = "qa-prep";
 export declare const QA_TESTER = "qa-tester";
+export declare const MEMORY_MAINTAINER = "memory-maintainer";
+export declare const MEMORY_CAPTURE = "memory-capture";
 //# sourceMappingURL=agentNames.d.ts.map

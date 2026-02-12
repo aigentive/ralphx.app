@@ -158,10 +158,14 @@ Quick reference:
 - Use `helpers::add_column_if_not_exists()` for ALTER TABLE
 
 ## Commands
-When using Claude/automation: run **only** `cargo test --lib`; **do not run** `cargo check` or full `cargo test` (they hang). No `--nocapture`/verbose.
+When using Claude/automation: run **only** `cargo test --lib`; **do not run** `cargo check` or full `cargo test` (they hang). No `--nocapture`/verbose. `cargo test --lib` can take 5–8+ min; use **10 min timeout** and `tail` so the run finishes before chat/stream limits (~300s); or doesn’t time out, or run a focused subset (e.g. by module).
 ```bash
 cargo build                    # build
-cargo test --lib                # unit tests only (use in automation; full cargo test hangs)
+# Unit tests: can take 5–8+ min. From repo root use 10m timeout + tail (accommodates slow runs):
+#   timeout 10m cargo test --lib --manifest-path src-tauri/Cargo.toml 2>&1 | tail -40
+# Or run only tests for the area you changed (faster):
+#   cd src-tauri && cargo test --lib <module_or_test_name>
+cargo test --lib                # unit tests only (full run; full cargo test hangs)
 # Do NOT run cargo check in automation — it hangs
 cargo fmt                      # format
 cargo clippy --all-targets --all-features -- -D warnings  # lint (REQUIRED before commit)

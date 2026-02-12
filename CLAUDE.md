@@ -74,7 +74,7 @@ style={{ boxShadow: "none", outline: "none" }}
 4. Type safety (strict TS, newtype IDs in Rust)
 5. Full timestamps in activity log
 6. **USE TransitionHandler for status changes** — NEVER direct DB update
-7. **Lint before commit** (only for what you modified): `src-tauri/` → cargo clippy, `src/` → npm run lint. When using Claude/automation: run **only** `cargo test --lib` and **do not run** `cargo check` or full `cargo test` (they hang). No `--nocapture`/verbose.
+7. **Lint before commit** (only for what you modified): `src-tauri/` → cargo clippy, `src/` → npm run lint. When using Claude/automation: run **only** `cargo test --lib` and **do not run** `cargo check` or full `cargo test` (they hang). `cargo test --lib` can take 5–8+ min — use **10 min timeout**: `timeout 10m cargo test --lib --manifest-path src-tauri/Cargo.toml 2>&1 | tail -40`, or a focused test (e.g. `cargo test --lib module_name`). No `--nocapture`/verbose.
 8. **NEVER start/stop dev server** — User manages manually
 9. **Multi-stream workflow** — Use `./ralph-streams.sh <stream>` for focused work: features (PRD+P0), refactor (P1), polish (P2/P3), verify (gaps), hygiene (backlog maintenance). See `.claude/rules/stream-*.md`
 10. **Document patterns inline** — When introducing a new architectural pattern, add a one-liner to the relevant CLAUDE.md (`src/` or `src-tauri/`). Pattern name + rule only, not implementation lists.

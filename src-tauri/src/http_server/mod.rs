@@ -141,6 +141,12 @@ pub async fn start_http_server(
             "/api/execution/global-settings",
             post(update_global_settings),
         )
+        // Memory tools (memory agents only - write access restricted via MCP allowlist)
+        .route("/api/upsert_memories", post(upsert_memories))
+        .route("/api/mark_memory_obsolete", post(mark_memory_obsolete))
+        .route("/api/refresh_memory_rule_index", post(refresh_memory_rule_index))
+        .route("/api/ingest_rule_file", post(ingest_rule_file))
+        .route("/api/rebuild_archive_snapshots", post(rebuild_archive_snapshots))
         .with_state(state)
         .layer(
             CorsLayer::new()

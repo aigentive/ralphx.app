@@ -573,6 +573,86 @@ pub struct ResolveQuestionInput {
 }
 
 // ============================================================================
+// Request/Response Types - Memory (write tools - memory agents only)
+// ============================================================================
+
+/// Single memory entry to upsert
+#[derive(Debug, Deserialize)]
+pub struct MemoryEntryInput {
+    pub bucket: String, // architecture_patterns | implementation_discoveries | operational_playbooks
+    pub title: String,
+    pub summary: String,
+    pub details_markdown: String,
+    pub scope_paths: Vec<String>, // glob patterns for path scoping
+    pub source_context_type: Option<String>,
+    pub source_context_id: Option<String>,
+    pub source_conversation_id: Option<String>,
+    pub quality_score: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpsertMemoriesRequest {
+    pub project_id: String,
+    pub memories: Vec<MemoryEntryInput>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UpsertMemoriesResponse {
+    pub inserted: usize,
+    pub skipped: usize,
+    pub failed: usize,
+    pub message: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MarkMemoryObsoleteRequest {
+    pub memory_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MarkMemoryObsoleteResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RefreshMemoryRuleIndexRequest {
+    pub project_id: String,
+    pub scope_key: Option<String>, // if None, refresh all
+}
+
+#[derive(Debug, Serialize)]
+pub struct RefreshMemoryRuleIndexResponse {
+    pub files_refreshed: usize,
+    pub message: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IngestRuleFileRequest {
+    pub project_id: String,
+    pub rule_file_path: String, // relative to project root (e.g., ".claude/rules/task-state-machine.md")
+}
+
+#[derive(Debug, Serialize)]
+pub struct IngestRuleFileResponse {
+    pub memories_created: usize,
+    pub memories_updated: usize,
+    pub file_rewritten: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RebuildArchiveSnapshotsRequest {
+    pub project_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RebuildArchiveSnapshotsResponse {
+    pub job_id: String,
+    pub message: String,
+}
+
+// ============================================================================
 // Common Response Types
 // ============================================================================
 

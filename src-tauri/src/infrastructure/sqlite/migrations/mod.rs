@@ -41,7 +41,8 @@ mod v20_merge_validation_mode;
 mod v21_questions_permissions;
 mod v22_project_active_plan;
 mod v23_plan_selection_stats;
-mod v24_seed_artifact_buckets;
+mod v24_memory_framework;
+mod v25_seed_artifact_buckets;
 mod v25_running_agent_worktree;
 mod v26_merge_strategy;
 mod v27_default_rebase_squash;
@@ -87,6 +88,8 @@ mod v22_project_active_plan_tests;
 #[cfg(test)]
 mod v23_plan_selection_stats_tests;
 #[cfg(test)]
+mod v24_memory_framework_tests;
+#[cfg(test)]
 mod v25_running_agent_worktree_tests;
 #[cfg(test)]
 mod v26_merge_strategy_tests;
@@ -106,7 +109,7 @@ mod v8_task_git_fields_tests;
 mod v9_project_git_fields_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 27;
+pub const SCHEMA_VERSION: i32 = 28;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -238,21 +241,26 @@ const MIGRATIONS: &[Migration] = &[
     },
     Migration {
         version: 24,
-        name: "seed_artifact_buckets",
-        migrate: v24_seed_artifact_buckets::migrate,
+        name: "memory_framework",
+        migrate: v24_memory_framework::migrate,
     },
     Migration {
         version: 25,
+        name: "seed_artifact_buckets",
+        migrate: v25_seed_artifact_buckets::migrate,
+    },
+    Migration {
+        version: 26,
         name: "running_agent_worktree",
         migrate: v25_running_agent_worktree::migrate,
     },
     Migration {
-        version: 26,
+        version: 27,
         name: "merge_strategy",
         migrate: v26_merge_strategy::migrate,
     },
     Migration {
-        version: 27,
+        version: 28,
         name: "default_rebase_squash",
         migrate: v27_default_rebase_squash::migrate,
     },
