@@ -17,6 +17,7 @@ use super::chat_service_types::{
 };
 use super::{event_context, has_meaningful_output, EventContextPayload};
 use crate::application::git_service::GitService;
+use crate::application::question_state::QuestionState;
 use crate::application::task_scheduler_service::TaskSchedulerService;
 use crate::application::task_transition_service::TaskTransitionService;
 use crate::commands::ExecutionState;
@@ -97,6 +98,7 @@ async fn finalize_assistant_message<R: Runtime>(
 /// - `message_queue`: Message queue
 /// - `running_agent_registry`: Running agent registry
 /// - `execution_state`: Execution state (for task transitions)
+/// - `question_state`: Question state for checking pending questions (optional)
 /// - `app_handle`: Tauri app handle (for events)
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_send_message_background<R: Runtime>(
@@ -120,6 +122,7 @@ pub fn spawn_send_message_background<R: Runtime>(
     message_queue: Arc<MessageQueue>,
     running_agent_registry: Arc<dyn RunningAgentRegistry>,
     execution_state: Option<Arc<ExecutionState>>,
+    question_state: Option<Arc<QuestionState>>,
     plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
     app_handle: Option<AppHandle<R>>,
 ) {
@@ -170,6 +173,7 @@ pub fn spawn_send_message_background<R: Runtime>(
             Some(Arc::clone(&task_repo)),
             Some(Arc::clone(&chat_message_repo)),
             Some(pre_assistant_msg_id.clone()),
+            question_state.clone(),
         )
         .await;
 
@@ -564,6 +568,7 @@ pub fn spawn_send_message_background<R: Runtime>(
                                         Some(Arc::clone(&task_repo)),
                                         Some(Arc::clone(&chat_message_repo)),
                                         Some(queue_assistant_msg_id.clone()),
+                                        question_state.clone(),
                                     )
                                     .await
                                     {

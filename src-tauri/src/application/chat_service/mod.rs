@@ -20,6 +20,7 @@ mod chat_service_send_background;
 mod chat_service_streaming;
 mod chat_service_types;
 
+use crate::application::question_state::QuestionState;
 use crate::domain::entities::{
     AgentRun, ChatContextType, ChatConversation, ChatConversationId, IdeationSessionId, TaskId,
 };
@@ -205,6 +206,7 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     running_agent_registry: Arc<dyn RunningAgentRegistry>,
     app_handle: Option<AppHandle<R>>,
     execution_state: Option<Arc<crate::commands::ExecutionState>>,
+    question_state: Option<Arc<QuestionState>>,
     plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
     model: String,
 }
@@ -244,6 +246,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             running_agent_registry,
             app_handle: None,
             execution_state: None,
+            question_state: None,
             plan_branch_repo: None,
             model: "sonnet".to_string(),
         }
@@ -251,6 +254,11 @@ impl<R: Runtime> ClaudeChatService<R> {
 
     pub fn with_execution_state(mut self, state: Arc<crate::commands::ExecutionState>) -> Self {
         self.execution_state = Some(state);
+        self
+    }
+
+    pub fn with_question_state(mut self, state: Arc<QuestionState>) -> Self {
+        self.question_state = Some(state);
         self
     }
 
@@ -575,6 +583,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         let message_queue = Arc::clone(&self.message_queue);
         let running_agent_registry = Arc::clone(&self.running_agent_registry);
         let execution_state = self.execution_state.clone();
+        let question_state = self.question_state.clone();
         let plan_branch_repo = self.plan_branch_repo.clone();
         let app_handle = self.app_handle.clone();
         let cli_path = self.cli_path.clone();
@@ -604,6 +613,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             message_queue,
             running_agent_registry,
             execution_state,
+            question_state,
             plan_branch_repo,
             app_handle,
         );

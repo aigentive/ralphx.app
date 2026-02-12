@@ -163,6 +163,15 @@ impl QuestionState {
             }
         }
     }
+
+    /// Check if there's a pending question for the given session_id
+    /// Used to suppress stream monitor timeout kills while agent is waiting for user input
+    pub async fn has_pending_for_session(&self, session_id: &str) -> bool {
+        let pending = self.pending.lock().await;
+        pending
+            .values()
+            .any(|q| q.info.session_id == session_id)
+    }
 }
 
 impl Default for QuestionState {
@@ -361,6 +370,54 @@ mod tests {
             )
             .await;
         assert!(!resolved);
+    }
+
+    #[tokio::test]
+    async fn test_has_pending_for_session() {
+        let state = QuestionState::new();
+
+        // No pending questions initially
+        assert!(!state.has_pending_for_session("session-1").await);
+        assert!(!state.has_pending_for_session("session-2").await);
+
+        // Register a question for session-1
+        state
+            .register(
+                "req-1".to_string(),
+                "session-1".to_string(),
+                "Question 1?".to_string(),
+                None,
+                vec![],
+                false,
+            )
+            .await;
+
+        // Now session-1 should have a pending question
+        assert!(state.has_pending_for_session("session-1").await);
+        assert!(!state.has_pending_for_session("session-2").await);
+
+        // Register another question for session-2
+        state
+            .register(
+                "req-2".to_string(),
+                "session-2".to_string(),
+                "Question 2?".to_string(),
+                None,
+                vec![],
+                false,
+            )
+            .await;
+
+        // Both should now have pending questions
+        assert!(state.has_pending_for_session("session-1").await);
+        assert!(state.has_pending_for_session("session-2").await);
+
+        // Remove from session-1
+        state.remove("req-1").await;
+
+        // Now only session-2 should have pending
+        assert!(!state.has_pending_for_session("session-1").await);
+        assert!(state.has_pending_for_session("session-2").await);
     }
 
     // --- Tests with repo persistence ---

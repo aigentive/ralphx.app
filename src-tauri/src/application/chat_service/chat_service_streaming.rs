@@ -23,6 +23,7 @@ use crate::domain::repositories::{ActivityEventRepository, ChatMessageRepository
 use crate::infrastructure::agents::claude::{
     ContentBlockItem, DiffContext, StreamEvent, StreamProcessor, ToolCall,
 };
+use crate::application::question_state::QuestionState;
 
 use super::{
     event_context, events, has_meaningful_output, AgentChunkPayload, AgentHookPayload,
@@ -59,6 +60,7 @@ impl StreamOutcome {
 /// * `task_repo` - Task repository for fetching current status (optional)
 /// * `chat_message_repo` - Chat message repository for incremental persistence (optional)
 /// * `assistant_message_id` - Pre-created assistant message ID for incremental updates (optional)
+/// * `question_state` - QuestionState for checking pending questions (optional)
 pub async fn process_stream_background<R: Runtime>(
     mut child: tokio::process::Child,
     context_type: ChatContextType,
@@ -69,6 +71,7 @@ pub async fn process_stream_background<R: Runtime>(
     task_repo: Option<Arc<dyn TaskRepository>>,
     chat_message_repo: Option<Arc<dyn ChatMessageRepository>>,
     assistant_message_id: Option<String>,
+    question_state: Option<Arc<QuestionState>>,
 ) -> Result<StreamOutcome, String> {
     tracing::debug!(
         conversation_id = conversation_id.as_str(),
@@ -147,6 +150,19 @@ pub async fn process_stream_background<R: Runtime>(
             }
             Err(_) => {
                 // Timeout — no output for LINE_READ_TIMEOUT seconds
+                // Check if agent is waiting for user input on a pending question
+                if let Some(ref qs) = question_state {
+                    if qs.has_pending_for_session(context_id).await {
+                        tracing::info!(
+                            conversation_id = %conversation_id_str,
+                            context_id,
+                            lines_seen,
+                            "Stream no output but pending question exists, resetting timeout"
+                        );
+                        continue;
+                    }
+                }
+
                 tracing::warn!(
                     conversation_id = %conversation_id_str,
                     lines_seen,
@@ -574,31 +590,71 @@ pub async fn process_stream_background<R: Runtime>(
                 }
             }
         } else if lines_seen > 0 && last_parsed_at.elapsed() >= PARSE_STALL_TIMEOUT {
-            let sample = debug_lines
-                .iter()
-                .rev()
-                .take(5)
-                .cloned()
-                .collect::<Vec<_>>()
-                .into_iter()
-                .rev()
-                .collect::<Vec<_>>()
-                .join("\n");
-            tracing::warn!(
-                conversation_id = %conversation_id_str,
-                lines_seen,
-                lines_parsed,
-                stall_secs = PARSE_STALL_TIMEOUT.as_secs(),
-                "Stream parse stall: received stdout but no parseable events, killing agent"
-            );
-            let _ = child.kill().await;
-            return Err(format!(
-                "Agent stream stalled: {}s without parseable events (lines_seen={}, lines_parsed={}). Sample:\n{}",
-                PARSE_STALL_TIMEOUT.as_secs(),
-                lines_seen,
-                lines_parsed,
-                sample
-            ));
+            // Check if agent is waiting for user input on a pending question
+            if let Some(ref qs) = question_state {
+                if qs.has_pending_for_session(context_id).await {
+                    tracing::info!(
+                        conversation_id = %conversation_id_str,
+                        context_id,
+                        lines_seen,
+                        "Stream parse stall but pending question exists, resetting stall timer"
+                    );
+                    last_parsed_at = std::time::Instant::now();
+                    // Continue processing — the next timeout will be reset
+                } else {
+                    let sample = debug_lines
+                        .iter()
+                        .rev()
+                        .take(5)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .rev()
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    tracing::warn!(
+                        conversation_id = %conversation_id_str,
+                        lines_seen,
+                        lines_parsed,
+                        stall_secs = PARSE_STALL_TIMEOUT.as_secs(),
+                        "Stream parse stall: received stdout but no parseable events, killing agent"
+                    );
+                    let _ = child.kill().await;
+                    return Err(format!(
+                        "Agent stream stalled: {}s without parseable events (lines_seen={}, lines_parsed={}). Sample:\n{}",
+                        PARSE_STALL_TIMEOUT.as_secs(),
+                        lines_seen,
+                        lines_parsed,
+                        sample
+                    ));
+                }
+            } else {
+                let sample = debug_lines
+                    .iter()
+                    .rev()
+                    .take(5)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                tracing::warn!(
+                    conversation_id = %conversation_id_str,
+                    lines_seen,
+                    lines_parsed,
+                    stall_secs = PARSE_STALL_TIMEOUT.as_secs(),
+                    "Stream parse stall: received stdout but no parseable events, killing agent"
+                );
+                let _ = child.kill().await;
+                return Err(format!(
+                    "Agent stream stalled: {}s without parseable events (lines_seen={}, lines_parsed={}). Sample:\n{}",
+                    PARSE_STALL_TIMEOUT.as_secs(),
+                    lines_seen,
+                    lines_parsed,
+                    sample
+                ));
+            }
         }
 
         // Debounced flush: persist accumulated content every 2s for crash recovery
