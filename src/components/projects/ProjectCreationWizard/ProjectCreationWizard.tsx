@@ -43,7 +43,6 @@ import { cn } from "@/lib/utils";
 import { RadioOption } from "./ProjectCreationWizard.components";
 import {
   type FormState,
-  generateBranchName,
   generateWorktreePath,
   extractFolderName,
   validateForm,
@@ -89,12 +88,11 @@ export function ProjectCreationWizard({
   error = null,
   isFirstRun = false,
 }: ProjectCreationWizardProps) {
-  // Form state - Worktree mode is default (recommended for concurrent tasks)
+  // Form state
   const [form, setForm] = useState<FormState>({
     name: "",
     workingDirectory: "",
-    gitMode: "worktree",
-    worktreeBranch: "ralphx/feature",
+    gitMode: "local",
     baseBranch: "main",
     worktreeParentDirectory: "",
   });
@@ -126,16 +124,6 @@ export function ProjectCreationWizard({
 
   // Track advanced settings visibility
   const [showAdvanced, setShowAdvanced] = useState(false);
-
-  // Update branch name when project name changes
-  useEffect(() => {
-    if (form.name && form.gitMode === "worktree") {
-      setForm((prev) => ({
-        ...prev,
-        worktreeBranch: generateBranchName(prev.name),
-      }));
-    }
-  }, [form.name, form.gitMode]);
 
   // Fetch branches and detect default branch when working directory changes
   useEffect(() => {
@@ -183,8 +171,7 @@ export function ProjectCreationWizard({
       setForm({
         name: "",
         workingDirectory: "",
-        gitMode: "worktree",
-        worktreeBranch: "ralphx/feature",
+        gitMode: "local",
         baseBranch: "main",
         worktreeParentDirectory: "",
       });
@@ -238,7 +225,6 @@ export function ProjectCreationWizard({
     setTouched({
       name: true,
       workingDirectory: true,
-      worktreeBranch: true,
       baseBranch: true,
     });
 
@@ -257,9 +243,7 @@ export function ProjectCreationWizard({
     };
 
     if (form.gitMode === "worktree") {
-      project.worktreeBranch = form.worktreeBranch.trim();
       project.baseBranch = form.baseBranch.trim();
-      project.worktreePath = worktreePath;
       // Only include custom parent directory if user provided one
       if (form.worktreeParentDirectory.trim()) {
         project.worktreeParentDirectory = form.worktreeParentDirectory.trim();
@@ -267,7 +251,7 @@ export function ProjectCreationWizard({
     }
 
     onCreate(project);
-  }, [form, onCreate, worktreePath]);
+  }, [form, onCreate]);
 
   // Handle dialog close - disabled in first-run mode
   const handleOpenChange = useCallback((open: boolean) => {
@@ -406,41 +390,6 @@ export function ProjectCreationWizard({
             >
               {/* Worktree-specific fields */}
               <div className="space-y-3 animate-in slide-in-from-top-2 fade-in duration-200">
-                <div className="space-y-1.5">
-                  <Label
-                    htmlFor="worktree-branch-input"
-                    className="text-sm font-medium text-[var(--text-secondary)]"
-                  >
-                    Branch name
-                  </Label>
-                  <Input
-                    id="worktree-branch-input"
-                    data-testid="worktree-branch-input"
-                    type="text"
-                    value={form.worktreeBranch}
-                    onChange={(e) =>
-                      setForm((prev) => ({ ...prev, worktreeBranch: e.target.value }))
-                    }
-                    placeholder="ralphx/feature-name"
-                    disabled={isCreating}
-                    className={cn(
-                      "h-10 px-3 py-2 rounded-lg text-sm bg-[var(--bg-base)] border text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)]",
-                      (touched.worktreeBranch || submitted) && errors.worktreeBranch
-                        ? "border-[var(--status-error)]"
-                        : "border-[var(--border-subtle)]",
-                      isCreating && "opacity-50"
-                    )}
-                  />
-                  {(touched.worktreeBranch || submitted) && errors.worktreeBranch && (
-                    <p
-                      data-testid="worktree-branch-input-error"
-                      className="text-xs text-[var(--status-error)]"
-                    >
-                      {errors.worktreeBranch}
-                    </p>
-                  )}
-                </div>
-
                 <div className="space-y-1.5">
                   <Label
                     htmlFor="base-branch-select"

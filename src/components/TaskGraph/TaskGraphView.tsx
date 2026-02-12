@@ -472,6 +472,7 @@ function TaskGraphViewInner({
     || grouping.byTier !== prevTierCollapseInputs.byTier
     || grouping.showUncategorized !== prevTierCollapseInputs.showUncategorized;
 
+  let expandedPlanHasTiers = false;
   if (tierInputsChanged) {
     // Detect if grouping mode changed (not just a data refresh).
     // On mode change, clear all user tracking refs — fresh heuristic.
@@ -576,6 +577,7 @@ function TaskGraphViewInner({
         if (expandedPlanId && tiersByPlanLocal.has(expandedPlanId)) {
           tierAutoCenterCandidate = expandedPlanId;
         }
+        expandedPlanHasTiers = tiersByPlanLocal.has(expandedPlanId ?? "");
       }
     }
   }
@@ -593,6 +595,19 @@ function TaskGraphViewInner({
 
   /* eslint-enable react-hooks/refs */
   // ---- End synchronous collapsed-state derivation ----------------------------
+
+  // Auto-center on expanded plan group when tier collapse inputs change.
+  // Moved out of synchronous block to avoid accessing refs during render.
+  useEffect(() => {
+    if (
+      initialFitDoneRef.current &&
+      expandedPlanId &&
+      expandedPlanHasTiers &&
+      expandedPlanId !== lastAutoCenteredPlanRef.current
+    ) {
+      pendingTierAutoCenterRef.current = expandedPlanId;
+    }
+  }, [expandedPlanId, expandedPlanHasTiers, tierInputsChanged]);
 
   useEffect(() => {
     if (!isNavCompact) {

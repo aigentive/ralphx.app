@@ -109,7 +109,6 @@ describe("ProjectCreationWizard", () => {
 
       await user.click(screen.getByTestId("git-mode-worktree"));
 
-      expect(screen.getByTestId("worktree-branch-input")).toBeInTheDocument();
       expect(screen.getByTestId("base-branch-select")).toBeInTheDocument();
       expect(screen.getByTestId("worktree-path-display")).toBeInTheDocument();
     });
@@ -120,18 +119,18 @@ describe("ProjectCreationWizard", () => {
 
       // First select worktree mode
       await user.click(screen.getByTestId("git-mode-worktree"));
-      expect(screen.getByTestId("worktree-branch-input")).toBeInTheDocument();
+      expect(screen.getByTestId("base-branch-select")).toBeInTheDocument();
 
       // Then select local mode
       await user.click(screen.getByTestId("git-mode-local"));
-      expect(screen.queryByTestId("worktree-branch-input")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("base-branch-select")).not.toBeInTheDocument();
     });
 
-    it("displays warning for local mode", async () => {
-      const user = userEvent.setup();
+    it("displays warning for local mode", () => {
       renderWizard();
-      await user.click(screen.getByTestId("git-mode-local"));
-      expect(screen.getByText(/uncommitted changes may be affected/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/Your uncommitted changes may be affected/i)
+      ).toBeInTheDocument();
     });
 
     it("updates git mode selection visually", async () => {
@@ -152,42 +151,6 @@ describe("ProjectCreationWizard", () => {
   });
 
   // ==========================================================================
-  // Worktree Mode Tests
-  // ==========================================================================
-
-  describe("worktree mode", () => {
-    it("generates branch name from project name", async () => {
-      const user = userEvent.setup();
-      renderWizard();
-
-      // Select worktree mode
-      await user.click(screen.getByTestId("git-mode-worktree"));
-
-      // Enter project name
-      await user.type(screen.getByTestId("project-name-input"), "My Test Project");
-
-      // Check branch name was generated
-      const branchInput = screen.getByTestId("worktree-branch-input");
-      expect(branchInput).toHaveValue("ralphx/my-test-project");
-    });
-
-    it("allows custom branch name", async () => {
-      const user = userEvent.setup();
-      renderWizard();
-
-      // Select worktree mode
-      await user.click(screen.getByTestId("git-mode-worktree"));
-
-      // Clear and enter custom branch name
-      const branchInput = screen.getByTestId("worktree-branch-input");
-      await user.clear(branchInput);
-      await user.type(branchInput, "feature/custom-branch");
-
-      expect(branchInput).toHaveValue("feature/custom-branch");
-    });
-  });
-
-  // ==========================================================================
   // Validation Tests
   // ==========================================================================
 
@@ -204,63 +167,6 @@ describe("ProjectCreationWizard", () => {
         expect(screen.getByTestId("folder-input-error")).toBeInTheDocument();
       });
       expect(screen.getByText("Location is required")).toBeInTheDocument();
-    });
-
-    it("shows error when worktree branch is empty in worktree mode", async () => {
-      const user = userEvent.setup();
-      const mockBrowse = vi.fn().mockResolvedValue("/Users/dev/my-app");
-      renderWizard({ onBrowseFolder: mockBrowse });
-
-      // Browse for folder (this auto-fills name)
-      await user.click(screen.getByTestId("browse-button"));
-      await waitFor(() => {
-        expect(screen.getByTestId("folder-input")).toHaveValue("/Users/dev/my-app");
-      });
-
-      // Select worktree mode
-      await user.click(screen.getByTestId("git-mode-worktree"));
-
-      // Clear branch name
-      const branchInput = screen.getByTestId("worktree-branch-input");
-      await user.clear(branchInput);
-
-      // Try to submit
-      await user.click(screen.getByTestId("create-button"));
-
-      // Wait for error to appear after state update
-      await waitFor(() => {
-        expect(screen.getByTestId("worktree-branch-input-error")).toBeInTheDocument();
-      });
-      expect(screen.getByText("Branch name is required")).toBeInTheDocument();
-    });
-
-    it("shows error for invalid branch name characters", async () => {
-      const user = userEvent.setup();
-      const mockBrowse = vi.fn().mockResolvedValue("/Users/dev/my-app");
-      renderWizard({ onBrowseFolder: mockBrowse });
-
-      // Browse for folder
-      await user.click(screen.getByTestId("browse-button"));
-      await waitFor(() => {
-        expect(screen.getByTestId("folder-input")).toHaveValue("/Users/dev/my-app");
-      });
-
-      // Select worktree mode
-      await user.click(screen.getByTestId("git-mode-worktree"));
-
-      // Enter invalid branch name
-      const branchInput = screen.getByTestId("worktree-branch-input");
-      await user.clear(branchInput);
-      await user.type(branchInput, "my branch with spaces");
-
-      // Try to submit
-      await user.click(screen.getByTestId("create-button"));
-
-      // Wait for error to appear after state update
-      await waitFor(() => {
-        expect(screen.getByTestId("worktree-branch-input-error")).toBeInTheDocument();
-      });
-      expect(screen.getByText("Branch name contains invalid characters")).toBeInTheDocument();
     });
 
     it("does not call onCreate when form has errors", async () => {
@@ -360,9 +266,7 @@ describe("ProjectCreationWizard", () => {
         name: "My Project",
         workingDirectory: "/Users/dev/my-app",
         gitMode: "worktree",
-        worktreeBranch: "ralphx/my-project",
         baseBranch: "main",
-        worktreePath: "~/ralphx-worktrees/my-app",
       };
 
       expect(mockOnCreate).toHaveBeenCalledWith(expectedProject);
