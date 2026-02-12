@@ -850,6 +850,14 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
+        // If this task was deferred behind an actively merging blocker, don't auto-retry yet.
+        // This prevents retry churn while the same target branch is still busy.
+        if let Some(blocker_id) = self.latest_deferred_blocker_id(task) {
+            if self.deferred_blocker_is_active(&blocker_id).await {
+                return false;
+            }
+        }
+
         let age = match self.latest_status_transition_age(task, status).await {
             Some(age) => age,
             None => return false,

@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -963,10 +964,11 @@ function TaskGraphViewInner({
   // Handler for marking merge conflict as resolved
   const handleMarkResolved = useCallback(async (taskId: string) => {
     try {
-      await api.tasks.move(taskId, "pending_merge");
-      toast.success("Conflict marked as resolved");
+      await invoke("retry_merge", { taskId });
+      await invoke("drain_merge_recovery_now");
+      toast.success("Merge retry queued");
     } catch (err) {
-      toast.error(`Failed to mark resolved: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(`Failed to retry merge: ${err instanceof Error ? err.message : String(err)}`);
     }
   }, []);
 

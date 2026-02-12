@@ -6,7 +6,8 @@
  */
 
 import { useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Loader2, RotateCw } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 import {
   Popover,
   PopoverContent,
@@ -20,6 +21,7 @@ import { api } from "@/lib/tauri";
 import { useUiStore } from "@/stores/uiStore";
 import { cn } from "@/lib/utils";
 import { getStatusIconConfig } from "@/types/status-icons";
+import { toast } from "sonner";
 
 interface MergePipelinePopoverProps {
   /** Tasks currently being merged */
@@ -85,6 +87,7 @@ export function MergePipelinePopover({
     waiting: true,
     attention: true,
   });
+  const [isRetryingAllAttention, setIsRetryingAllAttention] = useState(false);
 
   const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
 
@@ -102,10 +105,50 @@ export function MergePipelinePopover({
 
   const handleRetryMerge = async (taskId: string) => {
     try {
-      await api.tasks.move(taskId, "pending_merge");
+      await invoke("retry_merge", { taskId });
+      await invoke("drain_merge_recovery_now");
     } catch (error) {
       console.error("Failed to retry merge:", error);
     }
+  };
+
+  const handleRetryAllAttention = async () => {
+    if (isRetryingAllAttention || needsAttention.length === 0) {
+      return;
+    }
+
+    setIsRetryingAllAttention(true);
+    let successCount = 0;
+    let failedCount = 0;
+
+    for (const task of needsAttention) {
+      try {
+        await invoke("retry_merge", { taskId: task.taskId });
+        successCount += 1;
+      } catch (error) {
+        failedCount += 1;
+        console.error("Failed to retry merge task:", task.taskId, error);
+      }
+    }
+
+    try {
+      await invoke("drain_merge_recovery_now");
+    } catch (error) {
+      console.error("Failed to trigger manual merge reconciliation drain:", error);
+    }
+
+    if (successCount > 0) {
+      toast.success(
+        `Queued ${successCount} merge retry${successCount === 1 ? "" : "ies"}.`
+      );
+    }
+    if (failedCount > 0) {
+      toast.error(
+        `${failedCount} merge retr${failedCount === 1 ? "y" : "ies"} failed to queue.`
+      );
+    }
+
+    setIsRetryingAllAttention(false);
   };
 
   const toggleSection = (key: "active" | "waiting" | "attention") => {
@@ -203,6 +246,33 @@ export function MergePipelinePopover({
                 onToggle={() => toggleSection("attention")}
                 highlight
               />
+              {sections.attention && needsAttention.length > 1 && (
+                <div className="px-2 pb-1">
+                  <button
+                    onClick={handleRetryAllAttention}
+                    disabled={isRetryingAllAttention}
+                    className={cn(
+                      "h-7 px-2.5 rounded-md text-[11px] font-medium inline-flex items-center gap-1.5",
+                      "transition-colors",
+                      isRetryingAllAttention
+                        ? "opacity-70 cursor-not-allowed"
+                        : "hover:bg-white/[0.08]"
+                    )}
+                    style={{
+                      color: getStatusIconConfig("pending_merge").color,
+                      backgroundColor: "hsl(220 10% 15%)",
+                    }}
+                    title="Retry all tasks in Needs Attention using merge retry flow"
+                  >
+                    {isRetryingAllAttention ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <RotateCw className="w-3 h-3" />
+                    )}
+                    Retry All
+                  </button>
+                </div>
+              )}
               {sections.attention &&
                 needsAttention.map((task) => (
                   <AttentionMergeCard
