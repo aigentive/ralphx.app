@@ -47,7 +47,7 @@ function createWrapper() {
 const mockStatus: ExecutionStatusResponse = {
   isPaused: false,
   runningCount: 0,
-  maxConcurrent: 2,
+  maxConcurrent: 10,
   queuedCount: 0,
   canStartTask: true,
 };
@@ -74,7 +74,7 @@ describe("useExecutionStatus", () => {
       executionStatus: {
         isPaused: false,
         runningCount: 0,
-        maxConcurrent: 2,
+        maxConcurrent: 10,
         queuedCount: 0,
         canStartTask: true,
       },
@@ -104,7 +104,7 @@ describe("useExecutionStatus", () => {
     const pausedStatus: ExecutionStatusResponse = {
       isPaused: true,
       runningCount: 1,
-      maxConcurrent: 2,
+      maxConcurrent: 10,
       queuedCount: 3,
       canStartTask: false,
     };
@@ -216,7 +216,7 @@ describe("usePauseExecution", () => {
       executionStatus: {
         isPaused: false,
         runningCount: 0,
-        maxConcurrent: 2,
+        maxConcurrent: 10,
         queuedCount: 0,
         canStartTask: true,
       },
@@ -381,7 +381,7 @@ describe("useStopExecution", () => {
       executionStatus: {
         isPaused: false,
         runningCount: 1,
-        maxConcurrent: 2,
+        maxConcurrent: 10,
         queuedCount: 2,
         canStartTask: true,
       },
@@ -419,7 +419,7 @@ describe("useStopExecution", () => {
     const stoppedStatus: ExecutionStatusResponse = {
       isPaused: true,
       runningCount: 0,
-      maxConcurrent: 2,
+      maxConcurrent: 10,
       queuedCount: 2,
       canStartTask: false,
     };

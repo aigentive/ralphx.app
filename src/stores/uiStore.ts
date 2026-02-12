@@ -309,7 +309,7 @@ export const useUiStore = create<UiState & UiActions>()(
     executionStatus: {
       isPaused: false,
       runningCount: 0,
-      maxConcurrent: 2,
+      maxConcurrent: 10,
       globalMaxConcurrent: 20,
       queuedCount: 0,
       canStartTask: true,

@@ -50,6 +50,7 @@ mod v21_questions_permissions;
 mod v22_project_active_plan;
 mod v23_plan_selection_stats;
 mod v24_seed_artifact_buckets;
+mod v25_update_max_concurrent_default;
 
 #[cfg(test)]
 mod tests;
@@ -99,7 +100,7 @@ mod v22_project_active_plan_tests;
 mod v23_plan_selection_stats_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 24;
+pub const SCHEMA_VERSION: i32 = 25;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -233,6 +234,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 24,
         name: "seed_artifact_buckets",
         migrate: v24_seed_artifact_buckets::migrate,
+    },
+    Migration {
+        version: 25,
+        name: "update_max_concurrent_default",
+        migrate: v25_update_max_concurrent_default::migrate,
     },
 ];
 

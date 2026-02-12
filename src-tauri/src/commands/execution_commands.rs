@@ -2496,7 +2496,7 @@ mod tests {
             .expect("Failed to get execution settings");
 
         // Default values
-        assert_eq!(settings.max_concurrent_tasks, 2);
+        assert_eq!(settings.max_concurrent_tasks, 10);
         assert!(settings.auto_commit);
         assert!(settings.pause_on_failure);
     }

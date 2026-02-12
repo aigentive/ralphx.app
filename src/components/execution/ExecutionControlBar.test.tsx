@@ -12,7 +12,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={3}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -26,21 +26,21 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={3}
           isPaused={false}
           onPauseToggle={vi.fn()}
           onStop={vi.fn()}
         />
       );
-      expect(screen.getByTestId("running-count")).toHaveTextContent("Running: 1/2");
+      expect(screen.getByTestId("running-count")).toHaveTextContent("Running: 1/10");
     });
 
     it("displays queued tasks count", () => {
       render(
         <ExecutionControlBar
           runningCount={0}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={5}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -54,7 +54,7 @@ describe("ExecutionControlBar", () => {
       const { rerender } = render(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={3}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -67,7 +67,7 @@ describe("ExecutionControlBar", () => {
       rerender(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={3}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -85,7 +85,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={3}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -105,7 +105,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={3}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -120,7 +120,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={0}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={3}
           isPaused={true}
           onPauseToggle={vi.fn()}
@@ -136,7 +136,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={3}
           isPaused={false}
           onPauseToggle={onPauseToggle}
@@ -151,7 +151,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={3}
           isPaused={false}
           isLoading={true}
@@ -168,7 +168,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={3}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -183,7 +183,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={3}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -198,7 +198,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={0}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -212,7 +212,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -226,7 +226,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={3}
           isPaused={false}
           isLoading={true}
@@ -243,7 +243,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={0}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={true}
           onPauseToggle={vi.fn()}
@@ -257,7 +257,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={2}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -271,7 +271,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={0}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           isLoading={true}
@@ -286,7 +286,7 @@ describe("ExecutionControlBar", () => {
       const { rerender } = render(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -298,7 +298,7 @@ describe("ExecutionControlBar", () => {
       rerender(
         <ExecutionControlBar
           runningCount={0}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={true}
           onPauseToggle={vi.fn()}
@@ -310,7 +310,7 @@ describe("ExecutionControlBar", () => {
       rerender(
         <ExecutionControlBar
           runningCount={0}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -326,7 +326,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={0}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -341,7 +341,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={0}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -358,7 +358,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={0}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -376,7 +376,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -391,7 +391,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={0}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={3}
           isPaused={true}
           onPauseToggle={vi.fn()}
@@ -406,7 +406,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={0}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -421,7 +421,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -436,7 +436,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={0}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={true}
           onPauseToggle={vi.fn()}
@@ -453,7 +453,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -470,7 +470,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={0}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={true}
           onPauseToggle={vi.fn()}
@@ -487,7 +487,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           isLoading={true}
@@ -507,7 +507,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -524,7 +524,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={0}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -541,7 +541,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -560,7 +560,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={0}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={3}
           isPaused={true}
           onPauseToggle={vi.fn()}
@@ -576,7 +576,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -593,7 +593,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           currentTaskName="Implementing auth feature"
@@ -609,7 +609,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={0}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={3}
           isPaused={true}
           currentTaskName="Implementing auth feature"
@@ -624,7 +624,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={0}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           currentTaskName="Implementing auth feature"
@@ -639,7 +639,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -653,7 +653,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           currentTaskName="Building components"
@@ -671,7 +671,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           currentTaskName="Building components"
@@ -689,7 +689,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={0}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -704,7 +704,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={0}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -719,7 +719,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           onPauseToggle={vi.fn()}
@@ -734,7 +734,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={0}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={true}
           onPauseToggle={vi.fn()}
@@ -749,7 +749,7 @@ describe("ExecutionControlBar", () => {
       render(
         <ExecutionControlBar
           runningCount={1}
-          maxConcurrent={2}
+          maxConcurrent={10}
           queuedCount={0}
           isPaused={false}
           onPauseToggle={vi.fn()}

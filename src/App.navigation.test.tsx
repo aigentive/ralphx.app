@@ -32,7 +32,7 @@ function resetStores() {
     executionStatus: {
       isPaused: false,
       runningCount: 0,
-      maxConcurrent: 2,
+      maxConcurrent: 10,
       queuedCount: 0,
       canStartTask: true,
     },
