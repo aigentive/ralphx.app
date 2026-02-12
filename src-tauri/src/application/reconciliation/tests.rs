@@ -3,6 +3,7 @@ use crate::application::{AppState, TaskTransitionService};
 use crate::commands::execution_commands::ExecutionState;
 use crate::domain::entities::{
     AgentRun, AgentRunId, AgentRunStatus, ChatConversationId, InternalStatus, Project, Task,
+    TaskId,
 };
 use crate::domain::services::RunningAgentKey;
 use std::sync::Arc;
@@ -121,6 +122,24 @@ fn merge_policy_verifies_on_completed_run() {
     assert_eq!(
         decision.action,
         RecoveryActionKind::AttemptMergeAutoComplete
+    );
+}
+
+#[test]
+fn merge_policy_times_out_when_stale() {
+    let policy = RecoveryPolicy;
+    let evidence = RecoveryEvidence {
+        run_status: Some(AgentRunStatus::Running),
+        registry_running: true,
+        can_start: true,
+        is_stale: true,
+        is_deferred: false,
+    };
+
+    let decision = policy.decide_reconciliation(RecoveryContext::Merge, evidence);
+    assert_eq!(
+        decision.action,
+        RecoveryActionKind::Transition(InternalStatus::MergeIncomplete)
     );
 }
 
@@ -260,6 +279,148 @@ fn pending_merge_deferred_waits_when_not_stale() {
 
     let decision = policy.decide_reconciliation(RecoveryContext::PendingMerge, evidence);
     assert_eq!(decision.action, RecoveryActionKind::None);
+}
+
+#[test]
+fn merge_incomplete_retry_delay_uses_exponential_backoff_and_cap() {
+    assert_eq!(
+        ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(0),
+        chrono::Duration::seconds(30)
+    );
+    assert_eq!(
+        ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(1),
+        chrono::Duration::seconds(60)
+    );
+    assert_eq!(
+        ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(2),
+        chrono::Duration::seconds(120)
+    );
+    assert_eq!(
+        ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(10),
+        chrono::Duration::seconds(300)
+    );
+}
+
+#[test]
+fn merge_incomplete_retry_count_reads_auto_retry_events() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Retry Count Task".to_string(),
+    );
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_recovery": {
+                "version": 1,
+                "events": [
+                    {
+                        "at": "2026-02-10T00:00:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "git_error",
+                        "message": "retry 1"
+                    },
+                    {
+                        "at": "2026-02-10T00:01:00Z",
+                        "kind": "manual_retry",
+                        "source": "user",
+                        "reason_code": "git_error",
+                        "message": "manual"
+                    },
+                    {
+                        "at": "2026-02-10T00:02:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "git_error",
+                        "message": "retry 2"
+                    }
+                ],
+                "last_state": "retrying"
+            }
+        })
+        .to_string(),
+    );
+
+    assert_eq!(
+        ReconciliationRunner::<tauri::Wry>::merge_incomplete_auto_retry_count(&task),
+        2
+    );
+}
+
+#[test]
+fn latest_deferred_blocker_id_reads_latest_blocker_from_metadata() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let blocker_1 = TaskId::new();
+    let blocker_2 = TaskId::new();
+
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Deferred Task".to_string(),
+    );
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_recovery": {
+                "version": 1,
+                "events": [
+                    {
+                        "at": "2026-02-10T00:00:00Z",
+                        "kind": "deferred",
+                        "source": "system",
+                        "reason_code": "target_branch_busy",
+                        "message": "deferred 1",
+                        "blocking_task_id": blocker_1.as_str()
+                    },
+                    {
+                        "at": "2026-02-10T00:01:00Z",
+                        "kind": "deferred",
+                        "source": "system",
+                        "reason_code": "target_branch_busy",
+                        "message": "deferred 2",
+                        "blocking_task_id": blocker_2.as_str()
+                    }
+                ],
+                "last_state": "deferred"
+            }
+        })
+        .to_string(),
+    );
+
+    assert_eq!(
+        reconciler.latest_deferred_blocker_id(&task),
+        Some(blocker_2)
+    );
+}
+
+#[tokio::test]
+async fn latest_status_transition_age_falls_back_to_updated_at_when_history_missing() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "No History".to_string());
+    task.internal_status = InternalStatus::MergeIncomplete;
+    task.updated_at = chrono::Utc::now() - chrono::Duration::minutes(12);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let age = reconciler
+        .latest_status_transition_age(&task, InternalStatus::MergeIncomplete)
+        .await
+        .expect("age should be available via fallback");
+
+    assert!(
+        age >= chrono::Duration::minutes(11),
+        "expected fallback age from updated_at, got {:?}",
+        age
+    );
 }
 
 #[tokio::test]
