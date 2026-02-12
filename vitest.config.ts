@@ -8,6 +8,9 @@ export default defineConfig({
     __UI_DEBUG__: JSON.stringify(false),
   },
   plugins: [react()],
+  define: {
+    __UI_DEBUG__: JSON.stringify(false),
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

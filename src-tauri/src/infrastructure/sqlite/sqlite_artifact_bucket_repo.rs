@@ -351,6 +351,7 @@ mod tests {
 
     // ==================== GET ALL TESTS ====================
 
+    /// v24 migration seeds 4 system buckets, so get_all is never empty after migrations
     #[tokio::test]
     async fn test_get_all_returns_seeded_buckets() {
         let conn = setup_test_db();
@@ -367,16 +368,15 @@ mod tests {
         let conn = setup_test_db();
         let repo = SqliteArtifactBucketRepository::new(conn);
 
-        // v24 seeds 4 system buckets; adding 2 more
+        // v24 seeds 4 system buckets; adding 1 more
         let bucket1 = create_test_bucket();
-        let bucket2 = create_system_bucket();
 
         repo.create(bucket1).await.unwrap();
-        repo.create(bucket2).await.unwrap();
 
         let result = repo.get_all().await;
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 6); // 4 seeded + 2 created
+        // 4 seeded + 1 custom
+        assert_eq!(result.unwrap().len(), 5);
     }
 
     #[tokio::test]

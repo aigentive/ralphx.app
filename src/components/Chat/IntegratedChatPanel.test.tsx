@@ -1,0 +1,381 @@
+/**
+ * Tests for IntegratedChatPanel
+ *
+ * Covers:
+ * - Stop button visibility follows isAgentRunning (live run state only)
+ * - Stop button hidden in execution mode without live agent run
+ * - Status badge "Agent responding..." reflects live run state, not workflow status
+ * - History mode disables stop button and status badge
+ */
+
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { act } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { IntegratedChatPanel } from "./IntegratedChatPanel";
+import { useChatStore } from "@/stores/chatStore";
+import { useUiStore } from "@/stores/uiStore";
+
+// ============================================================================
+// Mocks
+// ============================================================================
+
+// Mock Tauri event system (already in setup.ts but ensure coverage)
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(() => Promise.resolve(() => {})),
+  emit: vi.fn(),
+}));
+
+// Mock the event bus provider
+const mockSubscribe = vi.fn(() => () => {});
+vi.mock("@/providers/EventProvider", () => ({
+  useEventBus: () => ({
+    subscribe: mockSubscribe,
+    emit: vi.fn(),
+  }),
+  EventProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
+// Mock useChat hook
+vi.mock("@/hooks/useChat", () => ({
+  useChat: () => ({
+    messages: { data: { messages: [], conversation: null }, isLoading: false },
+    sendMessage: { mutateAsync: vi.fn(), isPending: false },
+    conversations: { data: [], isLoading: false },
+    switchConversation: vi.fn(),
+    createConversation: vi.fn(),
+  }),
+  chatKeys: {
+    all: ["chat"],
+    conversationList: (type: string, id: string) => ["chat", "conversations", type, id],
+    conversation: (id: string) => ["chat", "conversation", id],
+    agentRun: (id: string) => ["chat", "agentRun", id],
+  },
+}));
+
+// Mock useTasks - mutable so tests can override returned tasks
+let mockTasks: Array<{ id: string; internalStatus: string }> = [];
+vi.mock("@/hooks/useTasks", () => ({
+  useTasks: () => ({ data: mockTasks }),
+  taskKeys: {
+    list: (projectId: string) => ["tasks", projectId],
+    detail: (taskId: string) => ["task", taskId],
+  },
+}));
+
+// Mock useChatPanelContext
+const mockChatPanelContext = {
+  chatContext: { view: "kanban" as const, projectId: "project-1" },
+  storeContextKey: "task:task-1",
+  currentContextType: "task" as const,
+  currentContextId: "task-1",
+  activeConversationId: null as string | null,
+  streamingToolCalls: [] as unknown[],
+  setStreamingToolCalls: vi.fn(),
+  streamingText: "",
+  setStreamingText: vi.fn(),
+  streamingTasks: new Map(),
+  setStreamingTasks: vi.fn(),
+  autoSelectConversation: vi.fn(),
+};
+
+vi.mock("@/hooks/useChatPanelContext", () => ({
+  useChatPanelContext: () => mockChatPanelContext,
+}));
+
+// Mock useIntegratedChatHandlers
+vi.mock("@/hooks/useIntegratedChatHandlers", () => ({
+  useIntegratedChatHandlers: () => ({
+    handleSend: vi.fn(),
+    handleQueue: vi.fn(),
+    handleEditLastQueued: vi.fn(),
+    handleDeleteQueuedMessage: vi.fn(),
+    handleEditQueuedMessage: vi.fn(),
+    handleStopAgent: vi.fn(),
+  }),
+}));
+
+// Mock useIntegratedChatEvents
+vi.mock("@/hooks/useIntegratedChatEvents", () => ({
+  useIntegratedChatEvents: vi.fn(),
+}));
+
+// Mock useAgentEvents
+vi.mock("@/hooks/useAgentEvents", () => ({
+  useAgentEvents: vi.fn(),
+}));
+
+// Mock useAskUserQuestion
+vi.mock("@/hooks/useAskUserQuestion", () => ({
+  useAskUserQuestion: () => ({
+    activeQuestion: null,
+    answeredQuestion: undefined,
+    submitAnswer: vi.fn(),
+    dismissQuestion: vi.fn(),
+    clearAnswered: vi.fn(),
+    isLoading: false,
+  }),
+}));
+
+// Mock useQuestionInput
+vi.mock("@/hooks/useQuestionInput", () => ({
+  useQuestionInput: () => ({
+    selectedOptions: new Set(),
+    questionInputValue: "",
+    setQuestionInputValue: vi.fn(),
+    handleChipClick: vi.fn(),
+    handleMatchedOptions: vi.fn(),
+    handleQuestionSend: vi.fn(),
+  }),
+}));
+
+// Mock chat API for useQuery calls
+vi.mock("@/api/chat", () => ({
+  chatApi: {
+    listConversations: vi.fn().mockResolvedValue([]),
+    getAgentRunStatus: vi.fn().mockResolvedValue(null),
+    sendAgentMessage: vi.fn().mockResolvedValue({ conversationId: "conv-1" }),
+  },
+  stopAgent: vi.fn().mockResolvedValue(true),
+}));
+
+// Mock recovery components
+vi.mock("@/components/recovery/RecoveryPromptDialog", () => ({
+  RecoveryPromptDialog: () => null,
+}));
+
+// ============================================================================
+// Test Wrapper
+// ============================================================================
+
+function createTestQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0, staleTime: 0 },
+      mutations: { retry: false },
+    },
+  });
+}
+
+function TestWrapper({ children }: { children: React.ReactNode }) {
+  const queryClient = createTestQueryClient();
+  return (
+    <QueryClientProvider client={queryClient}>
+      {children}
+    </QueryClientProvider>
+  );
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+describe("IntegratedChatPanel", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockTasks = [];
+
+    // Reset stores
+    act(() => {
+      useChatStore.setState({
+        messages: {},
+        context: null,
+        width: 320,
+        isLoading: false,
+        activeConversationId: null,
+        queuedMessages: {},
+        isAgentRunning: {},
+        isSending: {},
+      });
+    });
+
+    act(() => {
+      useUiStore.setState({
+        selectedTaskId: "task-1",
+        taskHistoryState: null,
+      });
+    });
+
+    // Reset mock context to defaults
+    mockChatPanelContext.storeContextKey = "task:task-1";
+    mockChatPanelContext.currentContextType = "task";
+    mockChatPanelContext.currentContextId = "task-1";
+    mockChatPanelContext.activeConversationId = null;
+  });
+
+  describe("Stop button visibility", () => {
+    it("shows Stop button when isAgentRunning is true via store", () => {
+      // Set agent as running in the store
+      act(() => {
+        useChatStore.getState().setAgentRunning("task:task-1", true);
+      });
+
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel projectId="project-1" />
+        </TestWrapper>
+      );
+
+      expect(screen.getByTestId("chat-input-stop")).toBeInTheDocument();
+    });
+
+    it("hides Stop button in execution mode when no live agent run is active", () => {
+      // Provide a task with "executing" status so isExecutionMode becomes true
+      mockTasks = [{ id: "task-1", internalStatus: "executing" }];
+
+      // After fix: isAgentRunning prop uses live run state only, not isExecutionMode
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel projectId="project-1" />
+        </TestWrapper>
+      );
+
+      // Stop button should NOT show without a live agent run
+      expect(screen.queryByTestId("chat-input-stop")).not.toBeInTheDocument();
+    });
+
+    it("hides Stop button when agent is not running and not in execution mode", () => {
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel projectId="project-1" />
+        </TestWrapper>
+      );
+
+      expect(screen.queryByTestId("chat-input-stop")).not.toBeInTheDocument();
+      expect(screen.getByTestId("chat-input-send")).toBeInTheDocument();
+    });
+
+    it("hides Stop button in history mode even if agent running state is stale", () => {
+      // Simulate stale agent running state
+      act(() => {
+        useChatStore.getState().setAgentRunning("task:task-1", true);
+      });
+
+      // Set history mode
+      act(() => {
+        useUiStore.setState({
+          taskHistoryState: {
+            status: "approved",
+            conversationId: "conv-1",
+            agentRunId: null,
+            timestamp: null,
+          },
+        });
+      });
+
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel projectId="project-1" />
+        </TestWrapper>
+      );
+
+      // History mode makes input read-only, so stop button should be hidden
+      expect(screen.queryByTestId("chat-input-stop")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("Status badge - agent activity", () => {
+    it("does not show active agent badge when no agent is running", () => {
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel projectId="project-1" />
+        </TestWrapper>
+      );
+
+      // "Agent responding..." should NOT appear
+      expect(screen.queryByText("Agent responding...")).not.toBeInTheDocument();
+      expect(screen.queryByText("Worker running...")).not.toBeInTheDocument();
+      expect(screen.queryByText("Reviewing...")).not.toBeInTheDocument();
+    });
+
+    it("shows 'Agent responding...' when agent is running via store (non-execution)", () => {
+      act(() => {
+        useChatStore.getState().setAgentRunning("task:task-1", true);
+      });
+
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel projectId="project-1" />
+        </TestWrapper>
+      );
+
+      expect(screen.getByText("Agent responding...")).toBeInTheDocument();
+    });
+
+    it("shows 'Agent responding...' when isSending is true", () => {
+      act(() => {
+        useChatStore.getState().setSending("task:task-1", true);
+      });
+
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel projectId="project-1" />
+        </TestWrapper>
+      );
+
+      expect(screen.getByText("Agent responding...")).toBeInTheDocument();
+    });
+
+    it("does not show active badge in history mode", () => {
+      act(() => {
+        useChatStore.getState().setAgentRunning("task:task-1", true);
+        useUiStore.setState({
+          taskHistoryState: {
+            status: "approved",
+            conversationId: "conv-1",
+            agentRunId: null,
+            timestamp: null,
+          },
+        });
+      });
+
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel projectId="project-1" />
+        </TestWrapper>
+      );
+
+      // History mode disables agent activity
+      expect(screen.queryByText("Agent responding...")).not.toBeInTheDocument();
+      expect(screen.queryByText("Worker running...")).not.toBeInTheDocument();
+    });
+
+    it("does not show 'Worker running...' in execution mode without live agent run", () => {
+      // Provide a task with "executing" status so isExecutionMode becomes true
+      mockTasks = [{ id: "task-1", internalStatus: "executing" }];
+      // Do NOT set isAgentRunning - no live agent run
+
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel projectId="project-1" />
+        </TestWrapper>
+      );
+
+      // After fix: isAgentActive only uses isSending || isAgentRunning (live run state)
+      // isExecutionMode no longer used as activity signal
+      expect(screen.queryByText("Worker running...")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("Rendering basics", () => {
+    it("renders the chat panel container", () => {
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel projectId="project-1" />
+        </TestWrapper>
+      );
+
+      expect(screen.getByTestId("integrated-chat-panel")).toBeInTheDocument();
+    });
+
+    it("renders the chat input", () => {
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel projectId="project-1" />
+        </TestWrapper>
+      );
+
+      expect(screen.getByTestId("chat-input")).toBeInTheDocument();
+    });
+  });
+});

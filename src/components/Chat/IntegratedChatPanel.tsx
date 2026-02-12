@@ -453,6 +453,7 @@ export function IntegratedChatPanel({
   } = useIntegratedChatHandlers({
     isExecutionMode,
     isReviewMode,
+    isMergeMode,
     selectedTaskId: selectedTaskId ?? undefined,
     projectId,
     ideationSessionId,
@@ -535,7 +536,8 @@ export function IntegratedChatPanel({
   const isLoading = isConversationsLoading || isActiveConversationLoading;
 
   // Status badge helpers - disabled in history mode (no live agent)
-  const isAgentActive = !isHistoryMode && (isSending || isAgentRunning || isExecutionMode);
+  // Only show active state when an agent run is actually happening (not based on workflow status)
+  const isAgentActive = !isHistoryMode && (isSending || isAgentRunning);
   const agentType: AgentType = isHistoryMode
     ? "idle"
     : isExecutionMode
@@ -692,7 +694,7 @@ export function IntegratedChatPanel({
                 onSend={activeQuestion ? handleQuestionSend : handleSend}
                 onQueue={handleQueue}
                 onStop={handleStopAgentWrapper}
-                isAgentRunning={isExecutionMode || isAgentRunning}
+                isAgentRunning={isAgentRunning}
                 isSending={isSending || isSubmittingAnswer}
                 hasQueuedMessages={queuedMessages.length > 0}
                 onEditLastQueued={handleEditLastQueuedWrapper}
