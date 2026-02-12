@@ -248,6 +248,9 @@ impl TaskStateMachine {
         match event {
             TaskEvent::MergeComplete => Response::Transition(State::Merged),
             TaskEvent::MergeConflict => Response::Transition(State::Merging),
+            TaskEvent::Pause => Response::Transition(State::Paused),
+            TaskEvent::Stop => Response::Transition(State::Stopped),
+            TaskEvent::Cancel => Response::Transition(State::Cancelled),
             _ => Response::NotHandled,
         }
     }
@@ -261,6 +264,7 @@ impl TaskStateMachine {
             TaskEvent::Retry => Response::Transition(State::PendingMerge),
             TaskEvent::Pause => Response::Transition(State::Paused),
             TaskEvent::Stop => Response::Transition(State::Stopped),
+            TaskEvent::Cancel => Response::Transition(State::Cancelled),
             _ => Response::NotHandled,
         }
     }
@@ -272,6 +276,9 @@ impl TaskStateMachine {
             TaskEvent::MergeConflict => Response::Transition(State::Merging),
             TaskEvent::ConflictResolved => Response::Transition(State::Merged),
             TaskEvent::Retry => Response::Transition(State::PendingMerge),
+            TaskEvent::Pause => Response::Transition(State::Paused),
+            TaskEvent::Stop => Response::Transition(State::Stopped),
+            TaskEvent::Cancel => Response::Transition(State::Cancelled),
             _ => Response::NotHandled,
         }
     }
@@ -280,6 +287,9 @@ impl TaskStateMachine {
     pub fn merge_conflict(&mut self, event: &TaskEvent) -> Response {
         match event {
             TaskEvent::ConflictResolved => Response::Transition(State::Merged),
+            TaskEvent::Pause => Response::Transition(State::Paused),
+            TaskEvent::Stop => Response::Transition(State::Stopped),
+            TaskEvent::Cancel => Response::Transition(State::Cancelled),
             _ => Response::NotHandled,
         }
     }

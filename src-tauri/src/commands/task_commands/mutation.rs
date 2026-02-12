@@ -1020,3 +1020,120 @@ pub async fn stop_task(
 
     Ok(TaskResponse::from(updated_task))
 }
+
+/// Cancel all tasks in a group (group_kind: "status" | "session" | "uncategorized")
+///
+/// Transitions all non-terminal tasks in the group to Cancelled status.
+/// This is a non-destructive alternative to cleanup_tasks_in_group.
+/// Returns count of cancelled tasks.
+#[tauri::command]
+pub async fn cancel_tasks_in_group(
+    group_kind: String,
+    group_id: String,
+    project_id: String,
+    state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
+    app: tauri::AppHandle,
+) -> Result<super::types::BulkCancelResponse, String> {
+    use crate::application::TaskTransitionService;
+
+    let project_id_obj = ProjectId::from_string(project_id.clone());
+
+    // Determine the group and fetch tasks
+    let tasks = match group_kind.as_str() {
+        "status" => {
+            let internal_status: InternalStatus = group_id.parse().map_err(|_| format!("Invalid status: {}", group_id))?;
+            state
+                .task_repo
+                .get_by_status(&project_id_obj, internal_status)
+                .await
+                .map_err(|e| e.to_string())?
+        }
+        "session" => {
+            let session_id = crate::domain::entities::IdeationSessionId::from_string(group_id);
+            state
+                .task_repo
+                .get_by_ideation_session(&session_id)
+                .await
+                .map_err(|e| e.to_string())?
+        }
+        "uncategorized" => {
+            let all_tasks = state
+                .task_repo
+                .get_by_project(&project_id_obj)
+                .await
+                .map_err(|e| e.to_string())?;
+            all_tasks
+                .into_iter()
+                .filter(|t| t.ideation_session_id.is_none())
+                .collect()
+        }
+        _ => {
+            return Err(format!(
+                "Invalid group_kind: {}. Expected 'status', 'session', or 'uncategorized'",
+                group_kind
+            ))
+        }
+    };
+
+    // Build transition service
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.task_dependency_repo),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.chat_message_repo),
+        Arc::clone(&state.chat_conversation_repo),
+        Arc::clone(&state.agent_run_repo),
+        Arc::clone(&state.ideation_session_repo),
+        Arc::clone(&state.activity_event_repo),
+        Arc::clone(&state.message_queue),
+        Arc::clone(&state.running_agent_registry),
+        Arc::clone(&execution_state),
+        Some(app.clone()),
+    )
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
+
+    let mut cancelled_count = 0;
+
+    // Cancel each non-terminal task
+    for task in tasks {
+        if task.internal_status.is_terminal() {
+            continue; // Skip already-terminal tasks
+        }
+
+        match transition_service
+            .transition_task(&task.id, InternalStatus::Cancelled)
+            .await
+        {
+            Ok(cancelled_task) => {
+                emit_task_lifecycle_event(
+                    &app,
+                    "task:cancelled",
+                    cancelled_task.id.as_str(),
+                    cancelled_task.project_id.as_str(),
+                );
+                cancelled_count += 1;
+            }
+            Err(e) => {
+                tracing::warn!(
+                    task_id = %task.id,
+                    error = %e,
+                    "Failed to cancel task in group"
+                );
+                // Continue with next task rather than failing completely
+            }
+        }
+    }
+
+    // Emit task:list_changed for UI refresh
+    let _ = app.emit(
+        "task:list_changed",
+        serde_json::json!({
+            "projectId": project_id,
+        }),
+    );
+
+    Ok(super::types::BulkCancelResponse {
+        cancelled_count,
+    })
+}

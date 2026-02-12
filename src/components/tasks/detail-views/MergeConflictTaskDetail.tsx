@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   GitMerge,
   Loader2,
+  Ban,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { extractErrorMessage } from "@/lib/errors";
@@ -26,6 +27,8 @@ import {
 import type { Task } from "@/types/task";
 import { useQueryClient } from "@tanstack/react-query";
 import { taskKeys } from "@/hooks/useTasks";
+import { useConfirmation } from "@/hooks/useConfirmation";
+import { api } from "@/lib/tauri";
 
 interface MergeConflictTaskDetailProps {
   task: Task;
@@ -96,14 +99,16 @@ function ResolutionInstructions({ branchName }: { branchName: string }) {
 function ActionButtonsCard({
   onResolve,
   onRetry,
+  onCancel,
   isProcessing,
 }: {
   onResolve: () => void;
   onRetry: () => void;
+  onCancel: () => void;
   isProcessing: boolean;
 }) {
   return (
-    <div className="flex gap-2 justify-end">
+    <div className="flex gap-2 justify-end flex-wrap">
       <Button
         data-testid="retry-merge-button"
         onClick={onRetry}
@@ -135,6 +140,23 @@ function ActionButtonsCard({
         )}
         Conflicts Resolved
       </Button>
+      <Button
+        data-testid="cancel-task-button"
+        onClick={onCancel}
+        disabled={isProcessing}
+        className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
+        style={{
+          color: "white",
+          backgroundColor: "#ff4545",
+        }}
+      >
+        {isProcessing ? (
+          <Loader2 className="w-4 h-4 animate-spin" />
+        ) : (
+          <Ban className="w-4 h-4" />
+        )}
+        Cancel
+      </Button>
     </div>
   );
 }
@@ -143,6 +165,7 @@ export function MergeConflictTaskDetail({ task, isHistorical = false }: MergeCon
   const queryClient = useQueryClient();
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { confirm } = useConfirmation();
 
   // Parse conflict files from task metadata if available
   const conflictFiles: string[] = (() => {
@@ -188,6 +211,30 @@ export function MergeConflictTaskDetail({ task, isHistorical = false }: MergeCon
       setIsProcessing(false);
     }
   }, [task.id, task.projectId, queryClient]);
+
+  const handleCancel = useCallback(async () => {
+    const confirmed = await confirm({
+      title: "Cancel task?",
+      description: "This will transition the task to Cancelled status. This action cannot be undone.",
+      confirmText: "Cancel",
+      variant: "destructive",
+    });
+
+    if (!confirmed) return;
+
+    setIsProcessing(true);
+    setError(null);
+    try {
+      await api.tasks.move(task.id, "cancelled");
+      await queryClient.invalidateQueries({
+        queryKey: taskKeys.list(task.projectId),
+      });
+    } catch (err) {
+      setError(extractErrorMessage(err, "Failed to cancel task"));
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [task.id, task.projectId, queryClient, confirm]);
 
   return (
     <TwoColumnLayout
@@ -247,6 +294,7 @@ export function MergeConflictTaskDetail({ task, isHistorical = false }: MergeCon
           <ActionButtonsCard
             onResolve={handleResolveConflicts}
             onRetry={handleRetryMerge}
+            onCancel={handleCancel}
             isProcessing={isProcessing}
           />
         </section>

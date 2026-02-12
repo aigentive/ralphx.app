@@ -648,3 +648,77 @@ fn test_parse_state_error_clone_and_eq() {
     let err2 = err1.clone();
     assert_eq!(err1, err2);
 }
+
+// ==================
+// Merge State Tests
+// ==================
+
+#[test]
+fn test_pending_merge_handles_stop() {
+    let mut machine = create_machine();
+    let response = machine.pending_merge(&TaskEvent::Stop);
+    assert_eq!(response, Response::Transition(State::Stopped));
+}
+
+#[test]
+fn test_pending_merge_handles_pause() {
+    let mut machine = create_machine();
+    let response = machine.pending_merge(&TaskEvent::Pause);
+    assert_eq!(response, Response::Transition(State::Paused));
+}
+
+#[test]
+fn test_pending_merge_handles_cancel() {
+    let mut machine = create_machine();
+    let response = machine.pending_merge(&TaskEvent::Cancel);
+    assert_eq!(response, Response::Transition(State::Cancelled));
+}
+
+#[test]
+fn test_merge_incomplete_handles_stop() {
+    let mut machine = create_machine();
+    let response = machine.merge_incomplete(&TaskEvent::Stop);
+    assert_eq!(response, Response::Transition(State::Stopped));
+}
+
+#[test]
+fn test_merge_incomplete_handles_pause() {
+    let mut machine = create_machine();
+    let response = machine.merge_incomplete(&TaskEvent::Pause);
+    assert_eq!(response, Response::Transition(State::Paused));
+}
+
+#[test]
+fn test_merge_incomplete_handles_cancel() {
+    let mut machine = create_machine();
+    let response = machine.merge_incomplete(&TaskEvent::Cancel);
+    assert_eq!(response, Response::Transition(State::Cancelled));
+}
+
+#[test]
+fn test_merge_conflict_handles_stop() {
+    let mut machine = create_machine();
+    let response = machine.merge_conflict(&TaskEvent::Stop);
+    assert_eq!(response, Response::Transition(State::Stopped));
+}
+
+#[test]
+fn test_merge_conflict_handles_pause() {
+    let mut machine = create_machine();
+    let response = machine.merge_conflict(&TaskEvent::Pause);
+    assert_eq!(response, Response::Transition(State::Paused));
+}
+
+#[test]
+fn test_merge_conflict_handles_cancel() {
+    let mut machine = create_machine();
+    let response = machine.merge_conflict(&TaskEvent::Cancel);
+    assert_eq!(response, Response::Transition(State::Cancelled));
+}
+
+#[test]
+fn test_merging_handles_cancel() {
+    let mut machine = create_machine();
+    let response = machine.merging(&TaskEvent::Cancel);
+    assert_eq!(response, Response::Transition(State::Cancelled));
+}

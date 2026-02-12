@@ -918,6 +918,7 @@ function TaskGraphViewInner({
     blockMutation,
     unblockMutation,
     cleanupTasksInGroupMutation,
+    cancelTasksInGroupMutation,
   } = useTaskMutation(projectId);
 
   // ============================================================================
@@ -1088,6 +1089,23 @@ function TaskGraphViewInner({
     [cleanupTasksInGroupMutation, projectId, queryClient]
   );
 
+  const handleCancelAllInGroup = useCallback(
+    async (sessionId: string) => {
+      try {
+        const isUncategorized = sessionId === "";
+        await cancelTasksInGroupMutation.mutateAsync({
+          groupKind: isUncategorized ? "uncategorized" : "session",
+          groupId: isUncategorized ? "" : sessionId,
+          projectId,
+        });
+        queryClient.invalidateQueries({ queryKey: taskGraphKeys.graphPrefix(projectId) });
+      } catch {
+        // Error toast is handled by the mutation's onError
+      }
+    },
+    [cancelTasksInGroupMutation, projectId, queryClient]
+  );
+
   // Task deletion handler (Delete key on task node)
   const handleDeleteTask = useCallback(
     async (taskId: string) => {
@@ -1131,7 +1149,8 @@ function TaskGraphViewInner({
     projectId,
     handleViewDetails,
     handleDeletePlan,
-    handleRemoveAllInGroup
+    handleRemoveAllInGroup,
+    handleCancelAllInGroup
   );
 
   useEffect(() => {
@@ -1241,11 +1260,12 @@ function TaskGraphViewInner({
           groupId: isUncategorized ? "" : sessionId,
           projectId,
           onRemoveAll: () => handleRemoveAllInGroup(isUncategorized ? "" : sessionId),
+          onCancelAll: () => handleCancelAllInGroup(isUncategorized ? "" : sessionId),
         });
       }
     }
     return map;
-  }, [filteredGraphData?.planGroups, projectId, handleRemoveAllInGroup]);
+  }, [filteredGraphData?.planGroups, projectId, handleRemoveAllInGroup, handleCancelAllInGroup]);
 
   const prevNodesRef = useRef<Node[]>([]);
   const prevEdgesRef = useRef<Edge[]>([]);

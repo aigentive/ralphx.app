@@ -13,6 +13,7 @@ mod tests;
 pub use types::{
     AnswerUserQuestionInput,
     AnswerUserQuestionResponse,
+    BulkCancelResponse,
     CleanupReportResponse,
     CreateTaskInput,
     InjectTaskInput,
@@ -57,6 +58,7 @@ pub use mutation::{
     permanently_delete_task,
     cleanup_task,
     cleanup_tasks_in_group,
+    cancel_tasks_in_group,
     pause_task,
     stop_task,
 };

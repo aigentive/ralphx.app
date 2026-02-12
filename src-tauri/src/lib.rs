@@ -459,6 +459,7 @@ pub fn run() {
             commands::task_commands::mutation::unblock_task,
             commands::task_commands::mutation::cleanup_task,
             commands::task_commands::mutation::cleanup_tasks_in_group,
+            commands::task_commands::mutation::cancel_tasks_in_group,
             commands::task_commands::mutation::pause_task,
             commands::task_commands::mutation::stop_task,
             commands::task_commands::query::get_archived_count,

@@ -173,7 +173,8 @@ function createGroupNodes(
   projectId?: string,
   onNavigateToTask?: (taskId: string) => void,
   onDeletePlan?: (planArtifactId: string) => void,
-  onRemoveAll?: (sessionId: string) => void
+  onRemoveAll?: (sessionId: string) => void,
+  onCancelAll?: (sessionId: string) => void
 ): PlanGroupNode[] {
   const args = {
     taskNodes,
@@ -192,6 +193,7 @@ function createGroupNodes(
     ...(onNavigateToTask && { onNavigateToTask }),
     ...(onDeletePlan && { onDeletePlan }),
     ...(onRemoveAll && { onRemoveAll }),
+    ...(onCancelAll && { onCancelAll }),
   };
   return buildPlanGroupNodes(args);
 }
@@ -465,7 +467,8 @@ function computeLayoutWithCache(
   projectId?: string,
   onNavigateToTask?: (taskId: string) => void,
   onDeletePlan?: (planArtifactId: string) => void,
-  onRemoveAll?: (sessionId: string) => void
+  onRemoveAll?: (sessionId: string) => void,
+  onCancelAll?: (sessionId: string) => void
 ): LayoutResult {
   // Helper to get per-node dimensions from the mode lookup
   const getNodeDimensions = (nodeId: string) => {
@@ -758,7 +761,8 @@ function computeLayoutWithCache(
     projectId,
     onNavigateToTask,
     onDeletePlan,
-    onRemoveAll
+    onRemoveAll,
+    onCancelAll
   );
 
   const planGroupBounds = new Map<string, { position: { x: number; y: number }; width: number }>();
@@ -1062,7 +1066,8 @@ export function useTaskGraphLayout(
   projectId?: string,
   onNavigateToTask?: (taskId: string) => void,
   onDeletePlan?: (planArtifactId: string) => void,
-  onRemoveAll?: (sessionId: string) => void
+  onRemoveAll?: (sessionId: string) => void,
+  onCancelAll?: (sessionId: string) => void
 ): LayoutResult {
   // Merge with default config
   const fullConfig = useMemo(
@@ -1094,7 +1099,8 @@ export function useTaskGraphLayout(
       projectId,
       onNavigateToTask,
       onDeletePlan,
-      onRemoveAll
+      onRemoveAll,
+      onCancelAll
     );
   }, [
     graphNodes,
@@ -1112,6 +1118,7 @@ export function useTaskGraphLayout(
     onNavigateToTask,
     onDeletePlan,
     onRemoveAll,
+    onCancelAll,
   ]);
 
   return layout;

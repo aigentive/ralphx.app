@@ -95,10 +95,10 @@ impl InternalStatus {
             Approved => &[PendingMerge, Ready],
 
             // Merge states
-            PendingMerge => &[Merged, Merging, MergeIncomplete], // Success → Merged, Conflict → Merging (agent), Error → MergeIncomplete
-            Merging => &[Merged, MergeConflict, MergeIncomplete, Stopped, Paused], // Agent success → Merged, Agent failure → MergeConflict, Non-conflict error → MergeIncomplete
-            MergeIncomplete => &[PendingMerge, Merging, Merged], // Retry → PendingMerge (re-attempt programmatic merge), Agent spawn → Merging, Manual resolution → Merged
-            MergeConflict => &[Merged],                          // Manual resolution → Merged
+            PendingMerge => &[Merged, Merging, MergeIncomplete, Stopped, Paused, Cancelled], // Success → Merged, Conflict → Merging (agent), Error → MergeIncomplete
+            Merging => &[Merged, MergeConflict, MergeIncomplete, Stopped, Paused, Cancelled], // Agent success → Merged, Agent failure → MergeConflict, Non-conflict error → MergeIncomplete
+            MergeIncomplete => &[PendingMerge, Merging, Merged, Stopped, Paused, Cancelled], // Retry → PendingMerge (re-attempt programmatic merge), Agent spawn → Merging, Manual resolution → Merged
+            MergeConflict => &[Merged, Stopped, Paused, Cancelled],                          // Manual resolution → Merged
 
             // Terminal states (can be re-opened)
             Merged => &[Ready],
@@ -750,7 +750,7 @@ mod tests {
     fn pending_merge_transitions() {
         use InternalStatus::*;
         let transitions = PendingMerge.valid_transitions();
-        assert_eq!(transitions, &[Merged, Merging, MergeIncomplete]);
+        assert_eq!(transitions, &[Merged, Merging, MergeIncomplete, Stopped, Paused, Cancelled]);
     }
 
     #[test]
@@ -773,7 +773,7 @@ mod tests {
         let transitions = Merging.valid_transitions();
         assert_eq!(
             transitions,
-            &[Merged, MergeConflict, MergeIncomplete, Stopped, Paused]
+            &[Merged, MergeConflict, MergeIncomplete, Stopped, Paused, Cancelled]
         );
     }
 
@@ -802,7 +802,7 @@ mod tests {
     fn merge_incomplete_transitions() {
         use InternalStatus::*;
         let transitions = MergeIncomplete.valid_transitions();
-        assert_eq!(transitions, &[PendingMerge, Merging, Merged]);
+        assert_eq!(transitions, &[PendingMerge, Merging, Merged, Stopped, Paused, Cancelled]);
     }
 
     #[test]
@@ -836,7 +836,7 @@ mod tests {
     fn merge_conflict_transitions() {
         use InternalStatus::*;
         let transitions = MergeConflict.valid_transitions();
-        assert_eq!(transitions, &[Merged]);
+        assert_eq!(transitions, &[Merged, Stopped, Paused, Cancelled]);
     }
 
     #[test]

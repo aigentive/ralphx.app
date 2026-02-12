@@ -23,6 +23,7 @@ pub(crate) use side_effects::run_validation_commands;
 // Re-export merge deferred metadata helpers for scheduler retry (concurrent merge guard)
 pub(crate) use side_effects::clear_merge_deferred_metadata;
 pub(crate) use side_effects::has_merge_deferred_metadata;
+pub(crate) use side_effects::has_branch_missing_metadata;
 
 // Re-export trigger origin metadata helpers for execution tracking
 pub(crate) use side_effects::clear_trigger_origin;

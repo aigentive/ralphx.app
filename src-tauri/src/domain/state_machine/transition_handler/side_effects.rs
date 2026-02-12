@@ -380,6 +380,13 @@ pub(crate) fn has_merge_deferred_metadata(task: &Task) -> bool {
         .unwrap_or(false)
 }
 
+/// Check if a task has the `branch_missing` flag set in its metadata.
+pub(crate) fn has_branch_missing_metadata(task: &Task) -> bool {
+    parse_metadata(task)
+        .and_then(|v| v.get("branch_missing")?.as_bool())
+        .unwrap_or(false)
+}
+
 /// Clear the `merge_deferred` and `merge_deferred_at` fields from a task's metadata.
 ///
 /// Mutates the task in-place. If the metadata becomes an empty object after removal,
@@ -2606,7 +2613,58 @@ impl<'a> super::TransitionHandler<'a> {
                 // Validate branches exist before merge
                 if !GitService::branch_exists(repo_path, &source_branch) {
                     tracing::error!(task_id = task_id_str, "Source branch '{}' does not exist", source_branch);
-                    task.metadata = Some(serde_json::json!({"error": format!("Branch '{}' does not exist", source_branch), "missing_branch": source_branch, "source_branch": source_branch, "target_branch": target_branch}).to_string());
+
+                    // Record merge recovery event for retry tracking
+                    let mut recovery =
+                        MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+                            .unwrap_or(None)
+                            .unwrap_or_else(MergeRecoveryMetadata::new);
+
+                    // Count existing AutoRetryTriggered events
+                    let attempt_count = recovery
+                        .events
+                        .iter()
+                        .filter(|e| matches!(e.kind, MergeRecoveryEventKind::AutoRetryTriggered))
+                        .count() as u32
+                        + 1;
+
+                    // Create AutoRetryTriggered event
+                    let event = MergeRecoveryEvent::new(
+                        MergeRecoveryEventKind::AutoRetryTriggered,
+                        MergeRecoverySource::Auto,
+                        MergeRecoveryReasonCode::BranchNotFound,
+                        format!("Source branch '{}' does not exist", source_branch),
+                    )
+                    .with_target_branch(&target_branch)
+                    .with_source_branch(&source_branch)
+                    .with_attempt(attempt_count);
+
+                    recovery.append_event(event);
+
+                    // Update task metadata with recovery events and branch_missing flag
+                    match recovery.update_task_metadata(task.metadata.as_deref()) {
+                        Ok(updated_json) => {
+                            // Add branch_missing flag to metadata
+                            if let Ok(mut metadata_obj) = serde_json::from_str::<serde_json::Value>(&updated_json) {
+                                if let Some(obj) = metadata_obj.as_object_mut() {
+                                    obj.insert("branch_missing".to_string(), serde_json::json!(true));
+                                }
+                                task.metadata = Some(metadata_obj.to_string());
+                            } else {
+                                task.metadata = Some(updated_json);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                task_id = task_id_str,
+                                error = %e,
+                                "Failed to serialize merge recovery metadata, using legacy format"
+                            );
+                            // Fallback to legacy metadata
+                            task.metadata = Some(serde_json::json!({"error": format!("Branch '{}' does not exist", source_branch), "missing_branch": source_branch, "source_branch": source_branch, "target_branch": target_branch, "branch_missing": true}).to_string());
+                        }
+                    }
+
                     task.internal_status = InternalStatus::MergeIncomplete;
                     task.touch();
                     let _ = task_repo.update(&task).await;
@@ -2616,7 +2674,58 @@ impl<'a> super::TransitionHandler<'a> {
                 }
                 if !GitService::branch_exists(repo_path, &target_branch) {
                     tracing::error!(task_id = task_id_str, "Target branch '{}' does not exist", target_branch);
-                    task.metadata = Some(serde_json::json!({"error": format!("Branch '{}' does not exist", target_branch), "missing_branch": target_branch, "source_branch": source_branch, "target_branch": target_branch}).to_string());
+
+                    // Record merge recovery event for retry tracking
+                    let mut recovery =
+                        MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+                            .unwrap_or(None)
+                            .unwrap_or_else(MergeRecoveryMetadata::new);
+
+                    // Count existing AutoRetryTriggered events
+                    let attempt_count = recovery
+                        .events
+                        .iter()
+                        .filter(|e| matches!(e.kind, MergeRecoveryEventKind::AutoRetryTriggered))
+                        .count() as u32
+                        + 1;
+
+                    // Create AutoRetryTriggered event
+                    let event = MergeRecoveryEvent::new(
+                        MergeRecoveryEventKind::AutoRetryTriggered,
+                        MergeRecoverySource::Auto,
+                        MergeRecoveryReasonCode::BranchNotFound,
+                        format!("Target branch '{}' does not exist", target_branch),
+                    )
+                    .with_target_branch(&target_branch)
+                    .with_source_branch(&source_branch)
+                    .with_attempt(attempt_count);
+
+                    recovery.append_event(event);
+
+                    // Update task metadata with recovery events and branch_missing flag
+                    match recovery.update_task_metadata(task.metadata.as_deref()) {
+                        Ok(updated_json) => {
+                            // Add branch_missing flag to metadata
+                            if let Ok(mut metadata_obj) = serde_json::from_str::<serde_json::Value>(&updated_json) {
+                                if let Some(obj) = metadata_obj.as_object_mut() {
+                                    obj.insert("branch_missing".to_string(), serde_json::json!(true));
+                                }
+                                task.metadata = Some(metadata_obj.to_string());
+                            } else {
+                                task.metadata = Some(updated_json);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                task_id = task_id_str,
+                                error = %e,
+                                "Failed to serialize merge recovery metadata, using legacy format"
+                            );
+                            // Fallback to legacy metadata
+                            task.metadata = Some(serde_json::json!({"error": format!("Branch '{}' does not exist", target_branch), "missing_branch": target_branch, "source_branch": source_branch, "target_branch": target_branch, "branch_missing": true}).to_string());
+                        }
+                    }
+
                     task.internal_status = InternalStatus::MergeIncomplete;
                     task.touch();
                     let _ = task_repo.update(&task).await;
@@ -4104,7 +4213,58 @@ impl<'a> super::TransitionHandler<'a> {
                 if !GitService::branch_exists(repo_path, &source_branch) || !GitService::branch_exists(repo_path, &target_branch) {
                     let missing = if !GitService::branch_exists(repo_path, &source_branch) { &source_branch } else { &target_branch };
                     tracing::error!(task_id = task_id_str, "Branch '{}' does not exist", missing);
-                    task.metadata = Some(serde_json::json!({"error": format!("Branch '{}' does not exist", missing), "missing_branch": missing, "source_branch": source_branch, "target_branch": target_branch}).to_string());
+
+                    // Record merge recovery event for retry tracking
+                    let mut recovery =
+                        MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+                            .unwrap_or(None)
+                            .unwrap_or_else(MergeRecoveryMetadata::new);
+
+                    // Count existing AutoRetryTriggered events
+                    let attempt_count = recovery
+                        .events
+                        .iter()
+                        .filter(|e| matches!(e.kind, MergeRecoveryEventKind::AutoRetryTriggered))
+                        .count() as u32
+                        + 1;
+
+                    // Create AutoRetryTriggered event
+                    let event = MergeRecoveryEvent::new(
+                        MergeRecoveryEventKind::AutoRetryTriggered,
+                        MergeRecoverySource::Auto,
+                        MergeRecoveryReasonCode::BranchNotFound,
+                        format!("Branch '{}' does not exist", missing),
+                    )
+                    .with_target_branch(&target_branch)
+                    .with_source_branch(&source_branch)
+                    .with_attempt(attempt_count);
+
+                    recovery.append_event(event);
+
+                    // Update task metadata with recovery events and branch_missing flag
+                    match recovery.update_task_metadata(task.metadata.as_deref()) {
+                        Ok(updated_json) => {
+                            // Add branch_missing flag to metadata
+                            if let Ok(mut metadata_obj) = serde_json::from_str::<serde_json::Value>(&updated_json) {
+                                if let Some(obj) = metadata_obj.as_object_mut() {
+                                    obj.insert("branch_missing".to_string(), serde_json::json!(true));
+                                }
+                                task.metadata = Some(metadata_obj.to_string());
+                            } else {
+                                task.metadata = Some(updated_json);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                task_id = task_id_str,
+                                error = %e,
+                                "Failed to serialize merge recovery metadata, using legacy format"
+                            );
+                            // Fallback to legacy metadata
+                            task.metadata = Some(serde_json::json!({"error": format!("Branch '{}' does not exist", missing), "missing_branch": missing, "source_branch": source_branch, "target_branch": target_branch, "branch_missing": true}).to_string());
+                        }
+                    }
+
                     task.internal_status = InternalStatus::MergeIncomplete;
                     task.touch();
                     let _ = task_repo.update(&task).await;
@@ -5090,15 +5250,66 @@ impl<'a> super::TransitionHandler<'a> {
                         "Merge failed: branch '{}' does not exist", branch
                     );
 
-                    task.metadata = Some(
-                        serde_json::json!({
-                            "error": format!("Branch '{}' does not exist", branch),
-                            "missing_branch": branch,
-                            "source_branch": source_branch,
-                            "target_branch": target_branch,
-                        })
-                        .to_string(),
-                    );
+                    // Record merge recovery event for retry tracking
+                    let mut recovery =
+                        MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+                            .unwrap_or(None)
+                            .unwrap_or_else(MergeRecoveryMetadata::new);
+
+                    // Count existing AutoRetryTriggered events
+                    let attempt_count = recovery
+                        .events
+                        .iter()
+                        .filter(|e| matches!(e.kind, MergeRecoveryEventKind::AutoRetryTriggered))
+                        .count() as u32
+                        + 1;
+
+                    // Create AutoRetryTriggered event
+                    let event = MergeRecoveryEvent::new(
+                        MergeRecoveryEventKind::AutoRetryTriggered,
+                        MergeRecoverySource::Auto,
+                        MergeRecoveryReasonCode::BranchNotFound,
+                        format!("Branch '{}' does not exist", branch),
+                    )
+                    .with_target_branch(&target_branch)
+                    .with_source_branch(&source_branch)
+                    .with_attempt(attempt_count);
+
+                    recovery.append_event(event);
+
+                    // Update task metadata with recovery events and branch_missing flag
+                    match recovery.update_task_metadata(task.metadata.as_deref()) {
+                        Ok(updated_json) => {
+                            // Add branch_missing flag to metadata
+                            if let Ok(mut metadata_obj) = serde_json::from_str::<serde_json::Value>(&updated_json) {
+                                if let Some(obj) = metadata_obj.as_object_mut() {
+                                    obj.insert("branch_missing".to_string(), serde_json::json!(true));
+                                }
+                                task.metadata = Some(metadata_obj.to_string());
+                            } else {
+                                task.metadata = Some(updated_json);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                task_id = task_id_str,
+                                error = %e,
+                                "Failed to serialize merge recovery metadata, using legacy format"
+                            );
+                            // Fallback to legacy metadata
+                            task.metadata = Some(
+                                serde_json::json!({
+                                    "error": format!("Branch '{}' does not exist", branch),
+                                    "missing_branch": branch,
+                                    "source_branch": source_branch,
+                                    "target_branch": target_branch,
+                                    "branch_missing": true
+                                })
+                                .to_string(),
+                            );
+                        }
+                    }
+
                     task.internal_status = InternalStatus::MergeIncomplete;
                     task.touch();
 
@@ -5464,7 +5675,58 @@ impl<'a> super::TransitionHandler<'a> {
                 if !GitService::branch_exists(repo_path, &source_branch) || !GitService::branch_exists(repo_path, &target_branch) {
                     let missing = if !GitService::branch_exists(repo_path, &source_branch) { &source_branch } else { &target_branch };
                     tracing::error!(task_id = task_id_str, "Branch '{}' does not exist", missing);
-                    task.metadata = Some(serde_json::json!({"error": format!("Branch '{}' does not exist", missing), "missing_branch": missing, "source_branch": source_branch, "target_branch": target_branch}).to_string());
+
+                    // Record merge recovery event for retry tracking
+                    let mut recovery =
+                        MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+                            .unwrap_or(None)
+                            .unwrap_or_else(MergeRecoveryMetadata::new);
+
+                    // Count existing AutoRetryTriggered events
+                    let attempt_count = recovery
+                        .events
+                        .iter()
+                        .filter(|e| matches!(e.kind, MergeRecoveryEventKind::AutoRetryTriggered))
+                        .count() as u32
+                        + 1;
+
+                    // Create AutoRetryTriggered event
+                    let event = MergeRecoveryEvent::new(
+                        MergeRecoveryEventKind::AutoRetryTriggered,
+                        MergeRecoverySource::Auto,
+                        MergeRecoveryReasonCode::BranchNotFound,
+                        format!("Branch '{}' does not exist", missing),
+                    )
+                    .with_target_branch(&target_branch)
+                    .with_source_branch(&source_branch)
+                    .with_attempt(attempt_count);
+
+                    recovery.append_event(event);
+
+                    // Update task metadata with recovery events and branch_missing flag
+                    match recovery.update_task_metadata(task.metadata.as_deref()) {
+                        Ok(updated_json) => {
+                            // Add branch_missing flag to metadata
+                            if let Ok(mut metadata_obj) = serde_json::from_str::<serde_json::Value>(&updated_json) {
+                                if let Some(obj) = metadata_obj.as_object_mut() {
+                                    obj.insert("branch_missing".to_string(), serde_json::json!(true));
+                                }
+                                task.metadata = Some(metadata_obj.to_string());
+                            } else {
+                                task.metadata = Some(updated_json);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                task_id = task_id_str,
+                                error = %e,
+                                "Failed to serialize merge recovery metadata, using legacy format"
+                            );
+                            // Fallback to legacy metadata
+                            task.metadata = Some(serde_json::json!({"error": format!("Branch '{}' does not exist", missing), "missing_branch": missing, "source_branch": source_branch, "target_branch": target_branch, "branch_missing": true}).to_string());
+                        }
+                    }
+
                     task.internal_status = InternalStatus::MergeIncomplete;
                     task.touch();
                     let _ = task_repo.update(&task).await;
@@ -7231,5 +7493,100 @@ mod tests {
             "Earlier timestamp should be less than later"
         );
         assert_eq!(earlier, earlier, "Same timestamps should be equal");
+    }
+
+    /// Test: Branch missing sets metadata correctly with AutoRetryTriggered event
+    ///
+    /// Verifies that when a branch validation fails during programmatic merge,
+    /// the code records an AutoRetryTriggered event in MergeRecoveryMetadata
+    /// and sets the branch_missing flag in the task metadata JSON.
+    #[test]
+    fn test_branch_missing_metadata_with_auto_retry_event() {
+        // Create initial recovery metadata
+        let mut recovery = MergeRecoveryMetadata::new();
+
+        // Verify it starts empty
+        assert_eq!(recovery.events.len(), 0);
+
+        // Count existing AutoRetryTriggered events (should be 0)
+        let attempt_count = recovery
+            .events
+            .iter()
+            .filter(|e| matches!(e.kind, MergeRecoveryEventKind::AutoRetryTriggered))
+            .count() as u32
+            + 1;
+
+        assert_eq!(attempt_count, 1, "First attempt should be 1");
+
+        // Create AutoRetryTriggered event with BranchNotFound reason
+        let event = MergeRecoveryEvent::new(
+            MergeRecoveryEventKind::AutoRetryTriggered,
+            MergeRecoverySource::Auto,
+            MergeRecoveryReasonCode::BranchNotFound,
+            "Source branch 'feature/missing' does not exist".to_string(),
+        )
+        .with_target_branch("main")
+        .with_source_branch("feature/missing")
+        .with_attempt(attempt_count);
+
+        // Verify event was created correctly
+        assert_eq!(event.kind, MergeRecoveryEventKind::AutoRetryTriggered);
+        assert_eq!(event.reason_code, MergeRecoveryReasonCode::BranchNotFound);
+        assert_eq!(event.source, MergeRecoverySource::Auto);
+
+        // Append event
+        recovery.append_event(event);
+        assert_eq!(recovery.events.len(), 1);
+
+        // Update task metadata with recovery events
+        let updated_json = recovery.update_task_metadata(None).unwrap();
+
+        // Parse and verify the JSON contains merge_recovery
+        let metadata: serde_json::Value = serde_json::from_str(&updated_json).unwrap();
+        assert!(metadata.get("merge_recovery").is_some(), "Should contain merge_recovery field");
+
+        // Verify merge_recovery structure
+        let merge_recovery = &metadata["merge_recovery"];
+        assert_eq!(merge_recovery["version"], 1);
+        assert_eq!(merge_recovery["events"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            merge_recovery["events"][0]["kind"],
+            "auto_retry_triggered",
+            "Event kind should be AutoRetryTriggered"
+        );
+        assert_eq!(
+            merge_recovery["events"][0]["reason_code"],
+            "branch_not_found",
+            "Event reason_code should be BranchNotFound"
+        );
+
+        // Now add branch_missing flag to metadata (simulating what side_effects.rs does)
+        let mut metadata_obj = metadata;
+        if let Some(obj) = metadata_obj.as_object_mut() {
+            obj.insert("branch_missing".to_string(), serde_json::json!(true));
+        }
+        let final_json = metadata_obj.to_string();
+
+        // Parse again and verify branch_missing flag is set
+        let final_metadata: serde_json::Value = serde_json::from_str(&final_json).unwrap();
+        assert_eq!(
+            final_metadata.get("branch_missing"),
+            Some(&serde_json::json!(true)),
+            "Should have branch_missing flag set to true"
+        );
+
+        // Verify retry count increments on subsequent attempts
+        let recovery2 = MergeRecoveryMetadata::from_task_metadata(Some(&final_json))
+            .unwrap_or(None)
+            .unwrap_or_else(MergeRecoveryMetadata::new);
+
+        let attempt_count2 = recovery2
+            .events
+            .iter()
+            .filter(|e| matches!(e.kind, MergeRecoveryEventKind::AutoRetryTriggered))
+            .count() as u32
+            + 1;
+
+        assert_eq!(attempt_count2, 2, "Second attempt should be 2, confirming retry count increments");
     }
 }
