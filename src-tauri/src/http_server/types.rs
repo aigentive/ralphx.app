@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::application::AppState;
 use crate::commands::ExecutionState;
-use crate::domain::entities::{Artifact, ArtifactContent, TaskProposal, TaskStep};
+use crate::domain::entities::{Artifact, ArtifactContent, MemoryEntry, TaskProposal, TaskStep};
 
 // ============================================================================
 // HTTP Server State
@@ -573,8 +573,88 @@ pub struct ResolveQuestionInput {
 }
 
 // ============================================================================
-// Request/Response Types - Memory (write tools - memory agents only)
+// Request/Response Types - Memory (read + write tools)
 // ============================================================================
+
+#[derive(Debug, Serialize)]
+pub struct MemoryEntryResponse {
+    pub id: String,
+    pub project_id: String,
+    pub bucket: String,
+    pub title: String,
+    pub summary: String,
+    pub details_markdown: String,
+    pub scope_paths: Vec<String>,
+    pub source_context_type: Option<String>,
+    pub source_context_id: Option<String>,
+    pub source_conversation_id: Option<String>,
+    pub source_rule_file: Option<String>,
+    pub quality_score: Option<f64>,
+    pub status: String,
+    pub content_hash: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl From<MemoryEntry> for MemoryEntryResponse {
+    fn from(entry: MemoryEntry) -> Self {
+        Self {
+            id: entry.id.to_string(),
+            project_id: entry.project_id.to_string(),
+            bucket: entry.bucket.to_string(),
+            title: entry.title,
+            summary: entry.summary,
+            details_markdown: entry.details_markdown,
+            scope_paths: entry.scope_paths,
+            source_context_type: entry.source_context_type,
+            source_context_id: entry.source_context_id,
+            source_conversation_id: entry.source_conversation_id,
+            source_rule_file: entry.source_rule_file,
+            quality_score: entry.quality_score,
+            status: entry.status.to_string(),
+            content_hash: entry.content_hash,
+            created_at: entry.created_at.to_rfc3339(),
+            updated_at: entry.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SearchMemoriesRequest {
+    pub project_id: String,
+    pub query: Option<String>,
+    pub bucket: Option<String>,
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SearchMemoriesResponse {
+    pub memories: Vec<MemoryEntryResponse>,
+    pub count: usize,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GetMemoryRequest {
+    pub memory_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GetMemoryResponse {
+    pub memory: Option<MemoryEntryResponse>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GetMemoriesForPathsRequest {
+    pub project_id: String,
+    pub paths: Vec<String>,
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GetMemoriesForPathsResponse {
+    pub memories: Vec<MemoryEntryResponse>,
+    pub count: usize,
+}
 
 /// Single memory entry to upsert
 #[derive(Debug, Deserialize)]

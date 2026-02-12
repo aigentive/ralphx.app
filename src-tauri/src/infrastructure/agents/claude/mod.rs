@@ -327,13 +327,82 @@ pub fn create_mcp_config(plugin_dir: &Path, agent_type: &str) -> Option<PathBuf>
     let short_name = mcp_agent_type(agent_type);
     let mcp_server_name = &claude_runtime_config().mcp_server_name;
 
-    let mcp_config = serde_json::json!({
-        "mcpServers": {
-            mcp_server_name: {
+    // Start from ralphx-plugin/.mcp.json when available, then inject agent scoping args.
+    // This preserves server fields (env, headers, etc.) while still enforcing per-agent tools.
+    let mcp_json_path = plugin_dir.join(".mcp.json");
+    let mut server_cfg = std::fs::read_to_string(&mcp_json_path)
+        .ok()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .and_then(|v| {
+            v.get("mcpServers")
+                .and_then(|servers| servers.get(mcp_server_name))
+                .cloned()
+        })
+        .unwrap_or_else(|| {
+            serde_json::json!({
                 "type": "stdio",
                 "command": node_command,
-                "args": [mcp_server_path_str, "--agent-type", short_name]
+                "args": [mcp_server_path_str],
+            })
+        });
+
+    // Ensure server config is an object; otherwise fall back to sane defaults.
+    if !server_cfg.is_object() {
+        server_cfg = serde_json::json!({
+            "type": "stdio",
+            "command": node_command,
+            "args": [mcp_server_path_str]
+        });
+    }
+
+    if let Some(server_obj) = server_cfg.as_object_mut() {
+        if !server_obj.contains_key("type") {
+            server_obj.insert("type".to_string(), serde_json::Value::String("stdio".to_string()));
+        }
+        if !server_obj.contains_key("command") {
+            server_obj.insert("command".to_string(), serde_json::Value::String(node_command));
+        }
+
+        let mut args_vec: Vec<String> = server_obj
+            .get("args")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        if args_vec.is_empty() {
+            args_vec.push(mcp_server_path_str);
+        }
+
+        // Always pass/override --agent-type for MCP-side tool filtering.
+        if let Some(idx) = args_vec.iter().position(|a| a == "--agent-type") {
+            if idx + 1 < args_vec.len() {
+                args_vec[idx + 1] = short_name.to_string();
+            } else {
+                args_vec.push(short_name.to_string());
             }
+        } else {
+            args_vec.push("--agent-type".to_string());
+            args_vec.push(short_name.to_string());
+        }
+
+        server_obj.insert(
+            "args".to_string(),
+            serde_json::Value::Array(
+                args_vec
+                    .into_iter()
+                    .map(serde_json::Value::String)
+                    .collect(),
+            ),
+        );
+    }
+
+    let mcp_config = serde_json::json!({
+        "mcpServers": {
+            mcp_server_name: server_cfg
         }
     });
 

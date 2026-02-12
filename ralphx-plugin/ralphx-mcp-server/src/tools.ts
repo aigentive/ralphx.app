@@ -462,6 +462,79 @@ export const ALL_TOOLS: Tool[] = [
       required: ["project_id"],
     },
   },
+  {
+    name: "search_memories",
+    description:
+      "Search project memories by optional text query and bucket filter. " +
+      "Use this to retrieve relevant learned context before planning or answering questions.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        project_id: {
+          type: "string",
+          description: "The project ID",
+        },
+        query: {
+          type: "string",
+          description: "Optional text query matched against title/summary/details",
+        },
+        bucket: {
+          type: "string",
+          enum: [
+            "architecture_patterns",
+            "implementation_discoveries",
+            "operational_playbooks",
+          ],
+          description: "Optional memory bucket filter",
+        },
+        limit: {
+          type: "number",
+          description: "Optional max number of results",
+        },
+      },
+      required: ["project_id"],
+    },
+  },
+  {
+    name: "get_memory",
+    description:
+      "Get a single memory entry by ID. Use after search_memories when you need full details.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        memory_id: {
+          type: "string",
+          description: "The memory entry ID",
+        },
+      },
+      required: ["memory_id"],
+    },
+  },
+  {
+    name: "get_memories_for_paths",
+    description:
+      "Get memories relevant to one or more file paths using scope path matching. " +
+      "Use this before editing specific files to load related historical context.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        project_id: {
+          type: "string",
+          description: "The project ID",
+        },
+        paths: {
+          type: "array",
+          items: { type: "string" },
+          description: "File paths to match against memory scope paths",
+        },
+        limit: {
+          type: "number",
+          description: "Optional max number of results",
+        },
+      },
+      required: ["project_id", "paths"],
+    },
+  },
 
   // ========================================================================
   // MERGE TOOLS (merger agent)

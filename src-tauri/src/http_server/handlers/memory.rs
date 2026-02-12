@@ -22,6 +22,112 @@ use crate::domain::entities::types::ProjectId;
 use crate::domain::services::RuleIngestionService;
 
 // ============================================================================
+// Handler: search_memories
+// ============================================================================
+
+pub async fn search_memories(
+    State(state): State<HttpServerState>,
+    Json(req): Json<SearchMemoriesRequest>,
+) -> Result<Json<SearchMemoriesResponse>, StatusCode> {
+    let project_id = ProjectId::from_string(req.project_id);
+    let mut entries = if let Some(bucket_str) = req.bucket.as_deref() {
+        let bucket = bucket_str.parse::<MemoryBucket>().map_err(|_| {
+            error!("Invalid memory bucket filter: {}", bucket_str);
+            StatusCode::BAD_REQUEST
+        })?;
+        state
+            .app_state
+            .memory_entry_repo
+            .get_by_project_and_bucket(&project_id, bucket)
+            .await
+            .map_err(|e| {
+                error!("Failed to fetch memories by bucket: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
+    } else {
+        state
+            .app_state
+            .memory_entry_repo
+            .get_by_project_and_status(&project_id, MemoryStatus::Active)
+            .await
+            .map_err(|e| {
+                error!("Failed to fetch active memories: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
+    };
+
+    if let Some(query) = req.query.as_deref().map(str::trim).filter(|q| !q.is_empty()) {
+        let q = query.to_lowercase();
+        entries.retain(|entry| {
+            entry.title.to_lowercase().contains(&q)
+                || entry.summary.to_lowercase().contains(&q)
+                || entry.details_markdown.to_lowercase().contains(&q)
+        });
+    }
+
+    if let Some(limit) = req.limit {
+        entries.truncate(limit);
+    }
+
+    let memories: Vec<MemoryEntryResponse> = entries.into_iter().map(Into::into).collect();
+    let count = memories.len();
+
+    Ok(Json(SearchMemoriesResponse { memories, count }))
+}
+
+// ============================================================================
+// Handler: get_memory
+// ============================================================================
+
+pub async fn get_memory(
+    State(state): State<HttpServerState>,
+    Json(req): Json<GetMemoryRequest>,
+) -> Result<Json<GetMemoryResponse>, StatusCode> {
+    let memory_id = MemoryEntryId::from_string(req.memory_id);
+    let memory = state
+        .app_state
+        .memory_entry_repo
+        .get_by_id(&memory_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to fetch memory by id: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .map(Into::into);
+
+    Ok(Json(GetMemoryResponse { memory }))
+}
+
+// ============================================================================
+// Handler: get_memories_for_paths
+// ============================================================================
+
+pub async fn get_memories_for_paths(
+    State(state): State<HttpServerState>,
+    Json(req): Json<GetMemoriesForPathsRequest>,
+) -> Result<Json<GetMemoriesForPathsResponse>, StatusCode> {
+    let project_id = ProjectId::from_string(req.project_id);
+    let mut entries = state
+        .app_state
+        .memory_entry_repo
+        .get_by_paths(&project_id, &req.paths)
+        .await
+        .map_err(|e| {
+            error!("Failed to fetch memories for paths: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    if let Some(limit) = req.limit {
+        entries.truncate(limit);
+    }
+
+    let memories: Vec<MemoryEntryResponse> = entries.into_iter().map(Into::into).collect();
+    let count = memories.len();
+
+    Ok(Json(GetMemoriesForPathsResponse { memories, count }))
+}
+
+// ============================================================================
 // Handler: upsert_memories
 // ============================================================================
 
