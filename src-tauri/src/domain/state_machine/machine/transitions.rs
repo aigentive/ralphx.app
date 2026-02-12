@@ -258,6 +258,7 @@ impl TaskStateMachine {
             TaskEvent::MergeComplete => Response::Transition(State::Merged),
             TaskEvent::MergeAgentFailed => Response::Transition(State::MergeConflict),
             TaskEvent::MergeAgentError => Response::Transition(State::MergeIncomplete),
+            TaskEvent::Retry => Response::Transition(State::PendingMerge),
             TaskEvent::Pause => Response::Transition(State::Paused),
             TaskEvent::Stop => Response::Transition(State::Stopped),
             _ => Response::NotHandled,
