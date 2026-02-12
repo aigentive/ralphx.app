@@ -266,8 +266,10 @@ export function shouldAnimateIcon(status: InternalStatus | string): boolean {
 export function getStatusBorderColor(status: InternalStatus | string, isArchived = false): string {
   if (isArchived) {
     const color = ARCHIVED_ICON_CONFIG.color;
-    return `${color} / 0.5`;
+    // Insert alpha channel inside parentheses: hsl(h s% l% / 0.5)
+    return color.replace(")", " / 0.5)");
   }
   const color = getStatusIconConfig(status).color;
-  return `${color} / 0.5`;
+  // Insert alpha channel inside parentheses: hsl(h s% l% / 0.5)
+  return color.replace(")", " / 0.5)");
 }
