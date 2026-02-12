@@ -140,7 +140,15 @@ agents:
     system_prompt_file: ralphx-plugin/agents/chat-project.md
     model: sonnet
     tools: { extends: base_tools, include: [Task] }
-    mcp_tools: [suggest_task, list_tasks]
+    mcp_tools:
+      [
+        suggest_task,
+        list_tasks,
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
+        get_conversation_transcript,
+      ]
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
   - name: ralphx-review-chat
@@ -315,7 +323,8 @@ agents:
         ingest_rule_file,
         rebuild_archive_snapshots,
       ]
-    preapproved_cli_tools: [Read, Grep, Glob, WebFetch, WebSearch, Bash, Write, Edit]
+    preapproved_cli_tools:
+      [Read, Grep, Glob, WebFetch, WebSearch, Bash, Write, Edit]
 
   - name: memory-capture
     system_prompt_file: ralphx-plugin/agents/memory-capture.md
@@ -330,4 +339,5 @@ agents:
         upsert_memories,
         mark_memory_obsolete,
       ]
-    preapproved_cli_tools: [Read, Grep, Glob, WebFetch, WebSearch, Bash, Write, Edit]
+    preapproved_cli_tools:
+      [Read, Grep, Glob, WebFetch, WebSearch, Bash, Write, Edit]

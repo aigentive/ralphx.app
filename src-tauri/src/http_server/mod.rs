@@ -141,7 +141,10 @@ pub async fn start_http_server(
             "/api/execution/global-settings",
             post(update_global_settings),
         )
-        // Memory tools (memory agents only - write access restricted via MCP allowlist)
+        // Memory tools (read + write; access restricted via MCP allowlist)
+        .route("/api/search_memories", post(search_memories))
+        .route("/api/get_memory", post(get_memory))
+        .route("/api/get_memories_for_paths", post(get_memories_for_paths))
         .route("/api/upsert_memories", post(upsert_memories))
         .route("/api/mark_memory_obsolete", post(mark_memory_obsolete))
         .route("/api/refresh_memory_rule_index", post(refresh_memory_rule_index))

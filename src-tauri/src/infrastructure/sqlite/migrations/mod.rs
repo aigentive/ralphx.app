@@ -46,6 +46,7 @@ mod v25_seed_artifact_buckets;
 mod v25_running_agent_worktree;
 mod v26_merge_strategy;
 mod v27_default_rebase_squash;
+mod v28_repair_schema_drift;
 mod v2_add_dependency_reason;
 mod v3_add_activity_events;
 mod v4_add_blocked_reason;
@@ -109,7 +110,7 @@ mod v8_task_git_fields_tests;
 mod v9_project_git_fields_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 28;
+pub const SCHEMA_VERSION: i32 = 29;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -263,6 +264,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 28,
         name: "default_rebase_squash",
         migrate: v27_default_rebase_squash::migrate,
+    },
+    Migration {
+        version: 29,
+        name: "repair_schema_drift",
+        migrate: v28_repair_schema_drift::migrate,
     },
 ];
 
