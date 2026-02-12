@@ -25,11 +25,11 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
         ),
     ];
 
-    for (id, name, config) in buckets {
+    for (id, name, config_json) in buckets {
         conn.execute(
             "INSERT OR IGNORE INTO artifact_buckets (id, name, config_json, is_system)
              VALUES (?1, ?2, ?3, 1)",
-            rusqlite::params![id, name, config],
+            rusqlite::params![id, name, config_json],
         )
         .map_err(|e| crate::error::AppError::Database(e.to_string()))?;
     }

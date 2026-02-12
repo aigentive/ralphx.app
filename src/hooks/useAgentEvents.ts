@@ -204,6 +204,33 @@ export function useAgentEvents(activeConversationId: string | null) {
       })
     );
 
+    // Listen for agent stopped - defensive cleanup if agent:run_completed emission regresses.
+    // Backend emits agent:stopped immediately on SIGTERM, before agent:run_completed.
+    // This ensures running state clears even if the subsequent run_completed is lost.
+    unsubscribes.push(
+      bus.subscribe<{
+        context_type: string;
+        context_id: string;
+        conversation_id: string;
+        agent_run_id: string;
+      }>("agent:stopped", (payload) => {
+        const { conversation_id, context_type, context_id: eventContextId } = payload;
+
+        const eventContextKey = buildContextKey(context_type as ContextType, eventContextId);
+
+        setAgentRunning(eventContextKey, false);
+
+        if (conversation_id === activeConversationId) {
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.agentRun(activeConversationId),
+          });
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.conversation(activeConversationId),
+          });
+        }
+      })
+    );
+
     // Listen for agent errors
     // Unified event: agent:error
     unsubscribes.push(
