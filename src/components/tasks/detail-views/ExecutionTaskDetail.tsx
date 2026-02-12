@@ -5,11 +5,12 @@
  * and revision context when re-executing.
  */
 
+import { useCallback, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
-import { Loader2, Radio, AlertTriangle, Bot, User, Zap } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { Loader2, Radio, AlertTriangle, Bot, User, Zap, MoreVertical, Square, Ban } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { StepList } from "../StepList";
 import {
   SectionTitle,
@@ -23,12 +24,144 @@ import { useTaskSteps, useStepProgress } from "@/hooks/useTaskSteps";
 import { useTaskStateHistory } from "@/hooks/useReviews";
 import { reviewIssuesApi } from "@/api/review-issues";
 import { IssueList } from "@/components/reviews/IssueList";
+import { useConfirmation } from "@/hooks/useConfirmation";
+import { api } from "@/lib/tauri";
+import { taskKeys } from "@/hooks/useTasks";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 import type { Task } from "@/types/task";
 import type { ReviewNoteResponse } from "@/lib/tauri";
 
 interface ExecutionTaskDetailProps {
   task: Task;
   isHistorical?: boolean;
+}
+
+/**
+ * ActionButtonsCard - Stop/Cancel actions for stuck execution tasks
+ */
+function ActionButtonsCard({
+  taskId,
+  isProcessing,
+  onActionSuccess,
+}: {
+  taskId: string;
+  isProcessing: boolean;
+  onActionSuccess?: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
+  const [error, setError] = useState<string | null>(null);
+
+  const stopMutation = useMutation({
+    mutationFn: async () => {
+      await api.tasks.stop(taskId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      onActionSuccess?.();
+      setError(null);
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : "Failed to stop task");
+    },
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: async () => {
+      await api.tasks.move(taskId, "cancelled");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      onActionSuccess?.();
+      setError(null);
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : "Failed to cancel task");
+    },
+  });
+
+  const handleStop = useCallback(async () => {
+    const confirmed = await confirm({
+      title: "Stop this task?",
+      description:
+        "This will permanently stop the task. You can restart it from the Ready state.",
+      confirmText: "Stop Task",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
+    stopMutation.mutate();
+  }, [confirm, stopMutation]);
+
+  const handleCancel = useCallback(async () => {
+    const confirmed = await confirm({
+      title: "Cancel this task?",
+      description: "This will cancel the task and move it to the Cancelled state.",
+      confirmText: "Cancel Task",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
+    cancelMutation.mutate();
+  }, [confirm, cancelMutation]);
+
+  const isLoading = isProcessing || stopMutation.isPending || cancelMutation.isPending;
+
+  return (
+    <>
+      <DetailCard>
+        <div className="flex items-center justify-between">
+          <span
+            className="text-[11px] font-semibold uppercase tracking-wider"
+            style={{ color: "hsl(220 10% 50%)" }}
+          >
+            Actions
+          </span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                data-testid="action-dropdown-trigger"
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+              >
+                <MoreVertical className="w-4 h-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                data-testid="stop-action"
+                onClick={handleStop}
+                disabled={isLoading}
+              >
+                <Square className="w-4 h-4 mr-2" />
+                <span>Stop</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                data-testid="cancel-action"
+                onClick={handleCancel}
+                disabled={isLoading}
+              >
+                <Ban className="w-4 h-4 mr-2" />
+                <span>Cancel</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        {error && (
+          <p className="mt-3 text-[12px]" style={{ color: "#ff453a" }}>
+            {error}
+          </p>
+        )}
+      </DetailCard>
+      <ConfirmationDialog {...confirmationDialogProps} />
+    </>
+  );
 }
 
 /**
@@ -213,6 +346,16 @@ export function ExecutionTaskDetail({ task, isHistorical }: ExecutionTaskDetailP
         <section data-testid="execution-steps-section">
           <SectionTitle>Steps</SectionTitle>
           <StepList taskId={task.id} editable={false} />
+        </section>
+      )}
+
+      {/* Action Buttons (hidden in historical mode) */}
+      {!isHistorical && (
+        <section data-testid="action-buttons-section">
+          <ActionButtonsCard
+            taskId={task.id}
+            isProcessing={false}
+          />
         </section>
       )}
     </TwoColumnLayout>
