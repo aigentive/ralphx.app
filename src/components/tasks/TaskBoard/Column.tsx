@@ -273,7 +273,7 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
 
   // Confirmation dialog for column context menu
   const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
-  const { cleanupTasksInGroupMutation } = useTaskMutation(projectId);
+  const { cleanupTasksInGroupMutation, cancelTasksInGroupMutation } = useTaskMutation(projectId);
 
   // Handler for "Remove all" group action
   // Note: For multi-state columns, this only removes tasks matching the primary status (column.mapsTo)
@@ -281,6 +281,13 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
     const { groupKind, groupId } = resolveGroupCleanupParams("column", column.mapsTo);
     cleanupTasksInGroupMutation.mutate({ groupKind, groupId, projectId });
   }, [column.mapsTo, projectId, cleanupTasksInGroupMutation]);
+
+  // Handler for "Cancel all" group action
+  // Note: For multi-state columns, this only cancels tasks matching the primary status (column.mapsTo)
+  const handleCancelAll = useCallback(() => {
+    const { groupKind, groupId } = resolveGroupCleanupParams("column", column.mapsTo);
+    cancelTasksInGroupMutation.mutate({ groupKind, groupId, projectId });
+  }, [column.mapsTo, projectId, cancelTasksInGroupMutation]);
 
   // Group info for task-level context menus (shows column group actions)
   const columnGroupInfo: GroupInfo = useMemo(() => ({
@@ -290,7 +297,8 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
     groupId: column.mapsTo,
     projectId,
     onRemoveAll: handleRemoveAll,
-  }), [column.name, column.mapsTo, tasks.length, projectId, handleRemoveAll]);
+    onCancelAll: handleCancelAll,
+  }), [column.name, column.mapsTo, tasks.length, projectId, handleRemoveAll, handleCancelAll]);
 
   // Determine if this column should show InlineTaskAdd
   // Always visible in draft/backlog columns (not during drag)
@@ -446,6 +454,7 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
             projectId={projectId}
             groupId={column.mapsTo}
             onRemoveAll={handleRemoveAll}
+            onCancelAll={handleCancelAll}
             confirm={confirm}
           />
         </ContextMenuContent>

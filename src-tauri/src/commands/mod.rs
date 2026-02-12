@@ -100,10 +100,11 @@ pub use review_commands::{
     reject_fix_task, reject_review, request_changes, request_task_changes_for_review,
 };
 pub use task_commands::{
-    answer_user_question, archive_task, create_task, delete_task, emit_queue_changed,
-    get_archived_count, get_task, get_task_state_transitions, get_valid_transitions, inject_task,
-    list_tasks, move_task, pause_task, permanently_delete_task, restore_task, search_tasks,
-    stop_task, update_task, StateTransitionResponse,
+    answer_user_question, archive_task, cancel_tasks_in_group, create_task, delete_task,
+    emit_queue_changed, get_archived_count, get_task, get_task_state_transitions,
+    get_valid_transitions, inject_task, list_tasks, move_task, pause_task,
+    permanently_delete_task, restore_task, search_tasks, stop_task, update_task,
+    StateTransitionResponse,
 };
 pub use task_context_commands::{
     get_artifact_full, get_artifact_version, get_related_artifacts, get_task_context,

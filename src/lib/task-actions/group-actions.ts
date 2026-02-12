@@ -4,7 +4,7 @@
  * and Graph uncategorized containers.
  */
 
-import { Trash2 } from "lucide-react";
+import { Trash2, Ban } from "lucide-react";
 import type { ConfirmConfig } from "./types";
 
 /** Which kind of task group this is */
@@ -18,6 +18,7 @@ export interface GroupInfo {
   groupId: string;
   projectId: string;
   onRemoveAll: () => void;
+  onCancelAll?: () => void;
 }
 
 /** A group-level action definition */
@@ -30,7 +31,7 @@ export interface GroupAction {
 }
 
 /** Available group actions */
-export const GROUP_ACTIONS: { removeAll: GroupAction } = {
+export const GROUP_ACTIONS: { removeAll: GroupAction; cancelAll: GroupAction } = {
   removeAll: {
     id: "removeAll",
     label: "Remove all",
@@ -39,6 +40,17 @@ export const GROUP_ACTIONS: { removeAll: GroupAction } = {
     confirmConfig: (groupLabel: string, taskCount: number) => ({
       title: `Remove all ${groupLabel}?`,
       description: `This will permanently remove ${taskCount} task${taskCount === 1 ? "" : "s"}. This action cannot be undone.`,
+      variant: "destructive",
+    }),
+  },
+  cancelAll: {
+    id: "cancelAll",
+    label: "Cancel all",
+    icon: Ban,
+    variant: "destructive",
+    confirmConfig: (groupLabel: string, taskCount: number) => ({
+      title: `Cancel all ${groupLabel}?`,
+      description: `This will cancel ${taskCount} task${taskCount === 1 ? "" : "s"}.`,
       variant: "destructive",
     }),
   },
@@ -57,6 +69,22 @@ export function getRemoveAllLabel(groupKind: GroupKind, groupLabel: string): str
       return `Remove all from ${groupLabel}`;
     case "uncategorized":
       return "Remove all Uncategorized";
+  }
+}
+
+/**
+ * Get the display label for a "Cancel all" action given the group context.
+ * Produces explicit labels like "Cancel all Ready", "Cancel all in Plan Name",
+ * "Cancel all Uncategorized".
+ */
+export function getCancelAllLabel(groupKind: GroupKind, groupLabel: string): string {
+  switch (groupKind) {
+    case "column":
+      return `Cancel all ${groupLabel}`;
+    case "plan":
+      return `Cancel all in ${groupLabel}`;
+    case "uncategorized":
+      return "Cancel all Uncategorized";
   }
 }
 

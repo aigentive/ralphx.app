@@ -1,8 +1,26 @@
 // Transform functions for converting snake_case tasks API responses to camelCase frontend types
 
 import { z } from "zod";
-import { CleanupReportResponseSchemaRaw, InjectTaskResponseSchemaRaw, StateTransitionResponseSchemaRaw } from "./tasks.schemas";
+import { BulkCancelResponseSchemaRaw, CleanupReportResponseSchemaRaw, InjectTaskResponseSchemaRaw, StateTransitionResponseSchemaRaw } from "./tasks.schemas";
 import { transformTask, type Task, type InternalStatus } from "@/types/task";
+
+/**
+ * Frontend BulkCancelResponse type (camelCase)
+ */
+export interface BulkCancelResponse {
+  cancelledCount: number;
+}
+
+/**
+ * Transform BulkCancelResponseSchemaRaw to BulkCancelResponse
+ */
+export function transformBulkCancelResponse(
+  raw: z.infer<typeof BulkCancelResponseSchemaRaw>
+): BulkCancelResponse {
+  return {
+    cancelledCount: raw.cancelled_count,
+  };
+}
 
 /**
  * Frontend CleanupReport type (camelCase)

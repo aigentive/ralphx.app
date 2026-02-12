@@ -25,6 +25,14 @@ export const CleanupReportResponseSchemaRaw = z.object({
 });
 
 /**
+ * Bulk cancel response schema from Rust (snake_case)
+ * Returned by cancel_tasks_in_group command.
+ */
+export const BulkCancelResponseSchemaRaw = z.object({
+  cancelled_count: z.number().int(),
+});
+
+/**
  * State transition response schema from Rust (snake_case)
  * Used by StateTimelineNav for displaying task state history.
  */

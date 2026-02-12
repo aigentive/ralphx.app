@@ -24,7 +24,7 @@ use crate::domain::repositories::{
     TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
-use crate::domain::state_machine::transition_handler::set_trigger_origin;
+use crate::domain::state_machine::transition_handler::{has_branch_missing_metadata, set_trigger_origin};
 
 const MERGING_TIMEOUT_SECONDS: i64 = 60;
 const PENDING_MERGE_STALE_MINUTES: i64 = 5;
@@ -699,6 +699,11 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
     async fn reconcile_merge_incomplete_task(&self, task: &Task, status: InternalStatus) -> bool {
         if status != InternalStatus::MergeIncomplete {
+            return false;
+        }
+
+        // Skip retry when branch_missing flag is set - surface to user instead
+        if has_branch_missing_metadata(task) {
             return false;
         }
 

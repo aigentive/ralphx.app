@@ -175,6 +175,26 @@ export function useTaskMutation(projectId: string) {
     },
   });
 
+  const cancelTasksInGroupMutation = useMutation({
+    mutationFn: ({
+      groupKind,
+      groupId,
+      projectId: pid,
+    }: {
+      groupKind: string;
+      groupId: string;
+      projectId: string;
+    }) => api.tasks.cancelTasksInGroup(groupKind, groupId, pid),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.list(projectId) });
+      queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
+      toast.success(`Cancelled ${data.cancelledCount} task${data.cancelledCount === 1 ? "" : "s"}`);
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to cancel tasks: ${error.message}`);
+    },
+  });
+
   return {
     createMutation,
     updateMutation,
@@ -187,6 +207,7 @@ export function useTaskMutation(projectId: string) {
     unblockMutation,
     cleanupTaskMutation,
     cleanupTasksInGroupMutation,
+    cancelTasksInGroupMutation,
     isArchiving: archiveMutation.isPending,
     isRestoring: restoreMutation.isPending,
     isPermanentlyDeleting: permanentlyDeleteMutation.isPending,
@@ -194,5 +215,6 @@ export function useTaskMutation(projectId: string) {
     isUnblocking: unblockMutation.isPending,
     isCleaningTask: cleanupTaskMutation.isPending,
     isCleaningGroup: cleanupTasksInGroupMutation.isPending,
+    isCancellingGroup: cancelTasksInGroupMutation.isPending,
   };
 }

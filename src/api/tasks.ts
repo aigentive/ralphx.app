@@ -22,24 +22,26 @@ import {
   type TaskStep,
   type StepProgressSummary,
 } from "@/types/task-step";
-import { CleanupReportResponseSchemaRaw, InjectTaskResponseSchemaRaw, StateTransitionResponseSchemaRaw } from "./tasks.schemas";
+import { BulkCancelResponseSchemaRaw, CleanupReportResponseSchemaRaw, InjectTaskResponseSchemaRaw, StateTransitionResponseSchemaRaw } from "./tasks.schemas";
 import {
+  transformBulkCancelResponse,
   transformCleanupReport,
   transformInjectTaskResponse,
   transformStateTransition,
+  type BulkCancelResponse,
   type CleanupReport,
   type InjectTaskResponse,
   type StateTransition,
 } from "./tasks.transforms";
 
 // Re-export types for convenience
-export type { CleanupReport, InjectTaskResponse, StateTransition } from "./tasks.transforms";
+export type { BulkCancelResponse, CleanupReport, InjectTaskResponse, StateTransition } from "./tasks.transforms";
 
 // Re-export schemas for consumers that need validation
-export { CleanupReportResponseSchemaRaw, InjectTaskResponseSchemaRaw, StateTransitionResponseSchemaRaw } from "./tasks.schemas";
+export { BulkCancelResponseSchemaRaw, CleanupReportResponseSchemaRaw, InjectTaskResponseSchemaRaw, StateTransitionResponseSchemaRaw } from "./tasks.schemas";
 
 // Re-export transforms for consumers that need manual transformation
-export { transformCleanupReport, transformInjectTaskResponse, transformStateTransition } from "./tasks.transforms";
+export { transformBulkCancelResponse, transformCleanupReport, transformInjectTaskResponse, transformStateTransition } from "./tasks.transforms";
 
 // ============================================================================
 // Input Types
@@ -333,6 +335,25 @@ export const tasksApi = {
       { groupKind, groupId, projectId },
       CleanupReportResponseSchemaRaw,
       transformCleanupReport
+    ),
+
+  /**
+   * Cancel all tasks in a group (non-destructive alternative to cleanup)
+   * @param groupKind "status" | "session" | "uncategorized"
+   * @param groupId The status name or session ID
+   * @param projectId The project ID
+   * @returns Bulk cancel report with count of cancelled tasks
+   */
+  cancelTasksInGroup: (
+    groupKind: string,
+    groupId: string,
+    projectId: string
+  ): Promise<BulkCancelResponse> =>
+    typedInvokeWithTransform(
+      "cancel_tasks_in_group",
+      { groupKind, groupId, projectId },
+      BulkCancelResponseSchemaRaw,
+      transformBulkCancelResponse
     ),
 } as const;
 

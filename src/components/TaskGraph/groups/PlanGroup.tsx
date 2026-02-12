@@ -70,6 +70,8 @@ export interface PlanGroupData extends Record<string, unknown> {
   onDeletePlan?: (planArtifactId: string) => void;
   /** Remove all tasks in this group (bulk cleanup) */
   onRemoveAll?: (sessionId: string) => void;
+  /** Cancel all tasks in this group (non-destructive alternative) */
+  onCancelAll?: (sessionId: string) => void;
 }
 
 export type PlanGroupNode = Node<PlanGroupData, "planGroup">;
@@ -129,6 +131,7 @@ export const PlanGroup = memo(function PlanGroup({
     onNavigateToTask,
     onDeletePlan,
     onRemoveAll,
+    onCancelAll,
   } = data;
   const hasTierControls = Boolean(
     tierGroupIds && tierGroupIds.length > 0 && onToggleAllTiers
@@ -236,6 +239,7 @@ export const PlanGroup = memo(function PlanGroup({
             projectId={projectId!}
             groupId={isUncategorized ? "" : sessionId}
             onRemoveAll={() => onRemoveAll!(sessionId)}
+            {...(onCancelAll && { onCancelAll: () => onCancelAll(sessionId) })}
             confirm={confirm}
           />
         </ContextMenuContent>
@@ -282,7 +286,8 @@ export function createPlanGroupNode(
   projectId?: string,
   onNavigateToTask?: (taskId: string) => void,
   onDeletePlan?: (planArtifactId: string) => void,
-  onRemoveAll?: (sessionId: string) => void
+  onRemoveAll?: (sessionId: string) => void,
+  onCancelAll?: (sessionId: string) => void
 ): PlanGroupNode {
   return {
     id: getPlanGroupNodeId(planArtifactId),
@@ -308,6 +313,7 @@ export function createPlanGroupNode(
       ...(onNavigateToTask && { onNavigateToTask }),
       ...(onDeletePlan && { onDeletePlan }),
       ...(onRemoveAll && { onRemoveAll }),
+      ...(onCancelAll && { onCancelAll }),
     },
     // Group node properties
     style: {

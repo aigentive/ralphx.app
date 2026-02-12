@@ -123,6 +123,20 @@ function getKanbanActions(status: InternalStatus): TaskAction[] {
         },
       ];
 
+    case "pending_merge":
+    case "merge_incomplete":
+    case "merge_conflict":
+      return [
+        {
+          id: "cancel",
+          label: "Cancel",
+          icon: X,
+          handlerKey: "onStatusChange",
+          variant: "destructive",
+          confirmConfig: CONFIRMATION_CONFIGS.cancelled,
+        },
+      ];
+
     default:
       return [];
   }
@@ -245,6 +259,19 @@ function getGraphActions(status: InternalStatus): TaskAction[] {
         },
       ];
 
+    case "pending_merge":
+    case "merge_incomplete":
+      return [
+        {
+          id: "cancel",
+          label: "Cancel",
+          icon: X,
+          handlerKey: "onStatusChange",
+          variant: "destructive",
+          confirmConfig: CONFIRMATION_CONFIGS.cancelled,
+        },
+      ];
+
     case "merge_conflict":
       return [
         {
@@ -260,6 +287,14 @@ function getGraphActions(status: InternalStatus): TaskAction[] {
           icon: Check,
           handlerKey: "onMarkResolved",
           confirmConfig: CONFIRMATION_CONFIGS["mark-resolved"],
+        },
+        {
+          id: "cancel",
+          label: "Cancel",
+          icon: X,
+          handlerKey: "onStatusChange",
+          variant: "destructive",
+          confirmConfig: CONFIRMATION_CONFIGS.cancelled,
         },
       ];
 

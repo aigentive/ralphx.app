@@ -133,6 +133,12 @@ pub struct CleanupReportResponse {
     pub stopped_agents: usize,
 }
 
+/// Response for bulk cancel operations
+#[derive(Debug, Serialize)]
+pub struct BulkCancelResponse {
+    pub cancelled_count: usize,
+}
+
 /// Response for paginated task list
 #[derive(Debug, Serialize)]
 pub struct TaskListResponse {

@@ -32,6 +32,7 @@ import {
   type GroupKind,
   GROUP_ACTIONS,
   getRemoveAllLabel,
+  getCancelAllLabel,
 } from "@/lib/task-actions";
 
 export interface GroupContextMenuItemsProps {
@@ -47,6 +48,8 @@ export interface GroupContextMenuItemsProps {
   groupId: string;
   /** Handler called after user confirms removal */
   onRemoveAll: () => void;
+  /** Optional handler called after user confirms cancellation */
+  onCancelAll?: () => void;
   /** Confirm function from useConfirmation hook */
   confirm: (opts: {
     title: string;
@@ -61,10 +64,13 @@ export function GroupContextMenuItems({
   groupKind,
   taskCount,
   onRemoveAll,
+  onCancelAll,
   confirm,
 }: GroupContextMenuItemsProps) {
   const removeAction = GROUP_ACTIONS.removeAll;
-  const label = getRemoveAllLabel(groupKind, groupLabel);
+  const cancelAction = GROUP_ACTIONS.cancelAll;
+  const removeLabel = getRemoveAllLabel(groupKind, groupLabel);
+  const cancelLabel = getCancelAllLabel(groupKind, groupLabel);
 
   const handleRemoveAll = useCallback(async () => {
     if (taskCount === 0) return;
@@ -82,18 +88,47 @@ export function GroupContextMenuItems({
     }
   }, [taskCount, removeAction, groupLabel, confirm, onRemoveAll]);
 
+  const handleCancelAll = useCallback(async () => {
+    if (taskCount === 0 || !onCancelAll) return;
+
+    const config = cancelAction.confirmConfig(groupLabel, taskCount);
+    const confirmed = await confirm({
+      title: config.title,
+      description: config.description,
+      confirmText: "Cancel",
+      variant: config.variant,
+    });
+
+    if (confirmed) {
+      onCancelAll();
+    }
+  }, [taskCount, cancelAction, groupLabel, confirm, onCancelAll]);
+
   if (taskCount === 0) return null;
 
-  const Icon = removeAction.icon;
+  const RemoveIcon = removeAction.icon;
+  const CancelIcon = cancelAction.icon;
 
   return (
-    <ContextMenuItem
-      onClick={handleRemoveAll}
-      className="text-destructive"
-      data-testid="remove-all-action"
-    >
-      <Icon className="w-4 h-4 mr-2" />
-      {label}
-    </ContextMenuItem>
+    <>
+      <ContextMenuItem
+        onClick={handleRemoveAll}
+        className="text-destructive"
+        data-testid="remove-all-action"
+      >
+        <RemoveIcon className="w-4 h-4 mr-2" />
+        {removeLabel}
+      </ContextMenuItem>
+      {onCancelAll && (
+        <ContextMenuItem
+          onClick={handleCancelAll}
+          className="text-destructive"
+          data-testid="cancel-all-action"
+        >
+          <CancelIcon className="w-4 h-4 mr-2" />
+          {cancelLabel}
+        </ContextMenuItem>
+      )}
+    </>
   );
 }

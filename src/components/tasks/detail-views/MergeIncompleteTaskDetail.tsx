@@ -17,6 +17,7 @@ import {
   PlayCircle,
   XCircle,
   CheckCircle,
+  Ban,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { taskKeys } from "@/hooks/useTasks";
 import { extractErrorMessage } from "@/lib/errors";
 import { useUiStore } from "@/stores/uiStore";
+import { useConfirmation } from "@/hooks/useConfirmation";
+import { api } from "@/lib/tauri";
 
 interface MergeIncompleteTaskDetailProps {
   task: Task;
@@ -417,17 +420,19 @@ function RecoveryBadges({
 }
 
 /**
- * ActionButtons - Retry Merge (primary) + Mark Resolved (green)
+ * ActionButtons - Retry Merge (primary) + Mark Resolved (green) + Cancel (red)
  */
 function ActionButtons({
   onRetry,
   onRetrySkipValidation,
   onResolve,
+  onCancel,
   isProcessing,
 }: {
   onRetry: () => void;
   onRetrySkipValidation?: (() => void) | undefined;
   onResolve: () => void;
+  onCancel: () => void;
   isProcessing: boolean;
 }) {
   return (
@@ -485,6 +490,23 @@ function ActionButtons({
         )}
         Mark Resolved
       </Button>
+      <Button
+        data-testid="cancel-task-button"
+        onClick={onCancel}
+        disabled={isProcessing}
+        className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
+        style={{
+          color: "white",
+          backgroundColor: "#ff4545",
+        }}
+      >
+        {isProcessing ? (
+          <Loader2 className="w-4 h-4 animate-spin" />
+        ) : (
+          <Ban className="w-4 h-4" />
+        )}
+        Cancel
+      </Button>
     </div>
   );
 }
@@ -497,6 +519,7 @@ export function MergeIncompleteTaskDetail({
   const setHistoryState = useUiStore((state) => state.setTaskHistoryState);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { confirm } = useConfirmation();
 
   const mergeError = parseMergeError(task.metadata);
   const branchName = mergeError?.sourceBranch ?? task.taskBranch ?? "task branch";
@@ -589,6 +612,30 @@ export function MergeIncompleteTaskDetail({
       setIsProcessing(false);
     }
   }, [task.id, task.projectId, queryClient]);
+
+  const handleCancel = useCallback(async () => {
+    const confirmed = await confirm({
+      title: "Cancel task?",
+      description: "This will transition the task to Cancelled status. This action cannot be undone.",
+      confirmText: "Cancel",
+      variant: "destructive",
+    });
+
+    if (!confirmed) return;
+
+    setIsProcessing(true);
+    setError(null);
+    try {
+      await api.tasks.move(task.id, "cancelled");
+      await queryClient.invalidateQueries({
+        queryKey: taskKeys.list(task.projectId),
+      });
+    } catch (err) {
+      setError(extractErrorMessage(err, "Failed to cancel task"));
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [task.id, task.projectId, queryClient, confirm]);
 
   return (
     <TwoColumnLayout
@@ -691,6 +738,7 @@ export function MergeIncompleteTaskDetail({
             onRetry={handleRetryMerge}
             onRetrySkipValidation={mergeError?.hasValidationFailures ? handleRetrySkipValidation : undefined}
             onResolve={handleMarkResolved}
+            onCancel={handleCancel}
             isProcessing={isProcessing}
           />
         </section>

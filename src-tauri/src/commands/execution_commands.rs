@@ -34,7 +34,8 @@ pub const AGENT_ACTIVE_STATUSES: &[InternalStatus] = &[
     InternalStatus::QaTesting,
     InternalStatus::Reviewing,
     InternalStatus::ReExecuting,
-    InternalStatus::Merging, // spawns merger agent
+    InternalStatus::Merging,       // spawns merger agent
+    InternalStatus::PendingMerge,  // runs attempt_programmatic_merge async side effect
 ];
 
 /// States that have automatic transitions on entry.
