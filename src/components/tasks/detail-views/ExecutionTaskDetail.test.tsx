@@ -3,7 +3,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ExecutionTaskDetail } from "./ExecutionTaskDetail";
 import type { Task } from "@/types/task";
@@ -24,6 +25,25 @@ vi.mock("@/api/review-issues", () => ({
   },
 }));
 
+const mockConfirmation = {
+  confirm: vi.fn(async () => true),
+  confirmationDialogProps: {},
+  ConfirmationDialog: () => null,
+};
+
+vi.mock("@/hooks/useConfirmation", () => ({
+  useConfirmation: vi.fn(() => mockConfirmation),
+}));
+
+vi.mock("@/lib/tauri", () => ({
+  api: {
+    tasks: {
+      stop: vi.fn(async () => ({})),
+      move: vi.fn(async () => ({})),
+    },
+  },
+}));
+
 const mockStepList = vi.fn(({ taskId, editable }) => (
   <div data-testid="mock-step-list" data-task-id={taskId} data-editable={String(editable)} />
 ));
@@ -34,10 +54,13 @@ vi.mock("../StepList", () => ({
 
 import { useTaskSteps, useStepProgress } from "@/hooks/useTaskSteps";
 import { useTaskStateHistory } from "@/hooks/useReviews";
+import { api } from "@/lib/tauri";
 
 const mockUseTaskSteps = vi.mocked(useTaskSteps);
 const mockUseStepProgress = vi.mocked(useStepProgress);
 const mockUseTaskStateHistory = vi.mocked(useTaskStateHistory);
+const mockApiTasksStop = vi.mocked(api.tasks.stop);
+const mockApiTasksMove = vi.mocked(api.tasks.move);
 
 function createTestTask(overrides?: Partial<Task>): Task {
   return {
@@ -220,5 +243,93 @@ describe("ExecutionTaskDetail", () => {
     render(<ExecutionTaskDetail task={task} />, { wrapper: TestWrapper });
 
     expect(screen.getByTestId("execution-steps-loading")).toBeInTheDocument();
+  });
+
+  describe("action buttons dropdown", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      mockConfirmation.confirm = vi.fn(async () => true);
+    });
+
+    it("renders action buttons section when task is executing", () => {
+      const task = createTestTask({ internalStatus: "executing" });
+      render(<ExecutionTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByTestId("action-buttons-section")).toBeInTheDocument();
+      expect(screen.getByTestId("action-dropdown-trigger")).toBeInTheDocument();
+    });
+
+    it("does not render action buttons when isHistorical is true", () => {
+      const task = createTestTask({ internalStatus: "executing" });
+      render(<ExecutionTaskDetail task={task} isHistorical={true} />, {
+        wrapper: TestWrapper,
+      });
+
+      expect(screen.queryByTestId("action-buttons-section")).not.toBeInTheDocument();
+    });
+
+    it("displays stop and cancel options in dropdown menu", async () => {
+      const user = userEvent.setup();
+      const task = createTestTask({ internalStatus: "executing" });
+      render(<ExecutionTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      const trigger = screen.getByTestId("action-dropdown-trigger");
+      await user.click(trigger);
+
+      expect(screen.getByTestId("stop-action")).toBeInTheDocument();
+      expect(screen.getByTestId("cancel-action")).toBeInTheDocument();
+    });
+
+    it("calls api.tasks.stop when stop action is clicked", async () => {
+      const user = userEvent.setup();
+      const task = createTestTask({ internalStatus: "executing" });
+      mockConfirmation.confirm = vi.fn(async () => true);
+
+      render(<ExecutionTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      const trigger = screen.getByTestId("action-dropdown-trigger");
+      await user.click(trigger);
+
+      const stopAction = screen.getByTestId("stop-action");
+      await user.click(stopAction);
+
+      await waitFor(() => {
+        expect(mockApiTasksStop).toHaveBeenCalledWith(task.id);
+      });
+    });
+
+    it("calls api.tasks.move with cancelled when cancel action is clicked", async () => {
+      const user = userEvent.setup();
+      const task = createTestTask({ internalStatus: "executing" });
+      mockConfirmation.confirm = vi.fn(async () => true);
+
+      render(<ExecutionTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      const trigger = screen.getByTestId("action-dropdown-trigger");
+      await user.click(trigger);
+
+      const cancelAction = screen.getByTestId("cancel-action");
+      await user.click(cancelAction);
+
+      await waitFor(() => {
+        expect(mockApiTasksMove).toHaveBeenCalledWith(task.id, "cancelled");
+      });
+    });
+
+    it("does not call api when confirmation is cancelled", async () => {
+      const user = userEvent.setup();
+      const task = createTestTask({ internalStatus: "executing" });
+      mockConfirmation.confirm = vi.fn(async () => false);
+
+      render(<ExecutionTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      const trigger = screen.getByTestId("action-dropdown-trigger");
+      await user.click(trigger);
+
+      const stopAction = screen.getByTestId("stop-action");
+      await user.click(stopAction);
+
+      expect(mockApiTasksStop).not.toHaveBeenCalled();
+    });
   });
 });
