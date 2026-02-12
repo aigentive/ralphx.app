@@ -7,6 +7,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QuestionInputBanner } from "./QuestionInputBanner";
+import { computeQuestionHeight } from "./QuestionInputBanner.utils";
 import type { AskUserQuestionPayload } from "@/types/ask-user-question";
 
 // ============================================================================
@@ -353,6 +354,168 @@ describe("QuestionInputBanner", () => {
       // In single-select, only the dismiss X button should have an SVG
       const svgs = banner.querySelectorAll("svg");
       expect(svgs.length).toBe(1); // Only the X dismiss button
+    });
+  });
+
+  describe("computeQuestionHeight function", () => {
+    it("returns height between 120px and 320px bounds", () => {
+      const question: AskUserQuestionPayload = {
+        requestId: "req-small",
+        question: "Simple?",
+        options: [{ label: "Yes" }, { label: "No" }],
+        multiSelect: false,
+      };
+
+      const height = computeQuestionHeight(question);
+      expect(height).toBeGreaterThanOrEqual(120);
+      expect(height).toBeLessThanOrEqual(320);
+    });
+
+    it("returns smaller height for 2 short options (target ~160px)", () => {
+      const question: AskUserQuestionPayload = {
+        requestId: "req-small",
+        question: "Pick one",
+        options: [{ label: "Yes" }, { label: "No" }],
+        multiSelect: false,
+      };
+
+      const height = computeQuestionHeight(question);
+      // Should be relatively small - short question, few short options
+      expect(height).toBeLessThan(180);
+    });
+
+    it("returns medium height for 4 medium options (target ~140-200px)", () => {
+      const question: AskUserQuestionPayload = {
+        requestId: "req-medium",
+        question: "Select the environment for deployment",
+        options: [
+          { label: "Development" },
+          { label: "Staging" },
+          { label: "Production" },
+          { label: "Testing" },
+        ],
+        multiSelect: false,
+      };
+
+      const height = computeQuestionHeight(question);
+      // Should be medium-sized - longer question and more options
+      expect(height).toBeGreaterThan(130);
+      expect(height).toBeLessThan(280);
+    });
+
+    it("returns maximum height for many options (capped at 320px)", () => {
+      const question: AskUserQuestionPayload = {
+        requestId: "req-large",
+        question: "This is a longer question that should wrap across multiple lines when displayed in the component.",
+        options: Array.from({ length: 8 }, (_, i) => ({
+          label: `Option ${i + 1} with some text`,
+        })),
+        multiSelect: false,
+      };
+
+      const height = computeQuestionHeight(question);
+      // Should hit the 320px cap
+      expect(height).toBe(320);
+    });
+
+    it("accounts for question text length in height estimation", () => {
+      const shortQuestion: AskUserQuestionPayload = {
+        requestId: "req-1",
+        question: "Pick",
+        options: [{ label: "A" }, { label: "B" }],
+        multiSelect: false,
+      };
+
+      const longQuestion: AskUserQuestionPayload = {
+        requestId: "req-2",
+        question: "This is a much longer question that will wrap across multiple lines when rendered at the default font size and width constraints of the component.",
+        options: [{ label: "A" }, { label: "B" }],
+        multiSelect: false,
+      };
+
+      const shortHeight = computeQuestionHeight(shortQuestion);
+      const longHeight = computeQuestionHeight(longQuestion);
+
+      // Longer question should result in taller height
+      expect(longHeight).toBeGreaterThan(shortHeight);
+    });
+
+    it("accounts for label lengths in chip width estimation", () => {
+      const shortLabels: AskUserQuestionPayload = {
+        requestId: "req-1",
+        question: "Pick one",
+        options: [{ label: "Yes" }, { label: "No" }],
+        multiSelect: false,
+      };
+
+      const longLabels: AskUserQuestionPayload = {
+        requestId: "req-2",
+        question: "Pick one",
+        options: [
+          { label: "Implementation" },
+          { label: "Investigation" },
+          { label: "Documentation" },
+        ],
+        multiSelect: false,
+      };
+
+      const shortHeight = computeQuestionHeight(shortLabels);
+      const longHeight = computeQuestionHeight(longLabels);
+
+      // Longer labels should result in more wrapping and taller height
+      expect(longHeight).toBeGreaterThan(shortHeight);
+    });
+
+    it("accounts for many options causing multiple chip rows", () => {
+      const fewOptions: AskUserQuestionPayload = {
+        requestId: "req-1",
+        question: "Pick",
+        options: [{ label: "A" }, { label: "B" }],
+        multiSelect: false,
+      };
+
+      const manyOptions: AskUserQuestionPayload = {
+        requestId: "req-2",
+        question: "Pick",
+        options: Array.from({ length: 6 }, (_, i) => ({
+          label: `Option ${i + 1}`,
+        })),
+        multiSelect: false,
+      };
+
+      const fewHeight = computeQuestionHeight(fewOptions);
+      const manyHeight = computeQuestionHeight(manyOptions);
+
+      // More options should generally result in taller height
+      expect(manyHeight).toBeGreaterThan(fewHeight);
+    });
+
+    it("respects minimum height of 120px", () => {
+      // Even with empty or minimal content, should not go below 120px
+      const minimalQuestion: AskUserQuestionPayload = {
+        requestId: "req-minimal",
+        question: "Q?",
+        options: [],
+        multiSelect: false,
+      };
+
+      const height = computeQuestionHeight(minimalQuestion);
+      expect(height).toBeGreaterThanOrEqual(120);
+    });
+
+    it("respects maximum height of 320px", () => {
+      // Even with large content, should not exceed 320px
+      const hugeQuestion: AskUserQuestionPayload = {
+        requestId: "req-huge",
+        question: Array(500).fill("Lorem ipsum dolor sit amet. ").join(""),
+        options: Array.from({ length: 20 }, (_, i) => ({
+          label: `Very long option label number ${i + 1} with additional text`,
+        })),
+        multiSelect: false,
+      };
+
+      const height = computeQuestionHeight(hugeQuestion);
+      expect(height).toBeLessThanOrEqual(320);
     });
   });
 });

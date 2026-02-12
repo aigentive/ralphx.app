@@ -12,6 +12,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { Check, X } from "lucide-react";
 import type { AskUserQuestionPayload } from "@/types/ask-user-question";
+import { computeQuestionHeight } from "./QuestionInputBanner.utils";
 
 // ============================================================================
 // Types
@@ -119,6 +120,7 @@ export function QuestionInputBanner({
   onDismissAnswered,
 }: QuestionInputBannerProps) {
   const [visible, setVisible] = useState(false);
+  const [computedHeight, setComputedHeight] = useState(320);
 
   // Trigger slide-in on mount
   useEffect(() => {
@@ -127,6 +129,13 @@ export function QuestionInputBanner({
     });
     return () => cancelAnimationFrame(raf);
   }, []);
+
+  // Compute height when question changes
+  useEffect(() => {
+    if (question) {
+      setComputedHeight(computeQuestionHeight(question));
+    }
+  }, [question]); // Re-compute when question object changes
 
   const handleDismiss = useCallback(() => {
     setVisible(false);
@@ -150,7 +159,7 @@ export function QuestionInputBanner({
       data-testid="question-input-banner"
       style={{
         overflow: "hidden",
-        maxHeight: !visible ? 0 : isAnswered ? 56 : 320,
+        maxHeight: !visible ? 0 : isAnswered ? 56 : computedHeight,
         opacity: visible ? 1 : 0,
         transition: `max-height 0.35s cubic-bezier(0.22, 1, 0.36, 1),
                      opacity 0.25s ease,
