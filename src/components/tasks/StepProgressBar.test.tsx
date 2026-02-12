@@ -281,6 +281,81 @@ describe("StepProgressBar", () => {
     });
   });
 
+  describe("isTerminalComplete Parameter", () => {
+    it("when true, completed dots use green (bg-status-success)", async () => {
+      mockApi.steps.getProgress.mockResolvedValue(mockProgress);
+
+      const { container } = render(
+        <StepProgressBar taskId="task-1" isTerminalComplete={true} />,
+        {
+          wrapper: createWrapper(),
+        }
+      );
+
+      await vi.waitFor(() => {
+        const dots = container.querySelectorAll(".h-1\\.5.w-1\\.5.rounded-full");
+
+        // First 2 completed should be green
+        expect(dots[0].className).toContain("bg-status-success");
+        expect(dots[1].className).toContain("bg-status-success");
+      });
+    });
+
+    it("when false, completed dots use gray (bg-text-muted)", async () => {
+      mockApi.steps.getProgress.mockResolvedValue(mockProgress);
+
+      const { container } = render(
+        <StepProgressBar taskId="task-1" isTerminalComplete={false} />,
+        {
+          wrapper: createWrapper(),
+        }
+      );
+
+      await vi.waitFor(() => {
+        const dots = container.querySelectorAll(".h-1\\.5.w-1\\.5.rounded-full");
+
+        // First 2 completed should be gray when not terminal complete
+        expect(dots[0].className).toContain("bg-text-muted");
+        expect(dots[1].className).toContain("bg-text-muted");
+      });
+    });
+
+    it("compact mode respects isTerminalComplete parameter", async () => {
+      mockApi.steps.getProgress.mockResolvedValue(mockProgress);
+
+      const { container } = render(
+        <StepProgressBar taskId="task-1" compact isTerminalComplete={false} />,
+        {
+          wrapper: createWrapper(),
+        }
+      );
+
+      await vi.waitFor(() => {
+        const dots = container.querySelectorAll(".h-1\\.5.w-1\\.5.rounded-full");
+
+        // First 2 completed should be gray in compact mode when not terminal complete
+        expect(dots[0].className).toContain("bg-text-muted");
+        expect(dots[1].className).toContain("bg-text-muted");
+      });
+    });
+
+    it("defaults to true when isTerminalComplete not provided", async () => {
+      mockApi.steps.getProgress.mockResolvedValue(mockProgress);
+
+      const { container } = render(<StepProgressBar taskId="task-1" />, {
+        wrapper: createWrapper(),
+      });
+
+      await vi.waitFor(() => {
+        const dots = container.querySelectorAll(".h-1\\.5.w-1\\.5.rounded-full");
+
+        // Default behavior should show green (terminal complete)
+        expect(dots[0].className).toContain("bg-status-success");
+        expect(dots[1].className).toContain("bg-status-success");
+      });
+    });
+  });
+
   describe("Integration", () => {
     it("works with all completed steps", async () => {
       const allCompleted: StepProgressSummary = {
