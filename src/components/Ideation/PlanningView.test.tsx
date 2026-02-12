@@ -448,4 +448,46 @@ describe("PlanningView", () => {
     // Verify clearActivePlan was NOT called
     expect(mockClearActivePlan).not.toHaveBeenCalled();
   });
+
+  it("renders footer when footer prop is provided with active session", () => {
+    const footer = <div data-testid="test-footer-content">Footer Content</div>;
+    render(<PlanningView {...defaultProps} footer={footer} />);
+
+    // The component wraps the footer in a div with data-testid="ideation-footer"
+    expect(screen.getByTestId("ideation-footer")).toBeInTheDocument();
+    expect(screen.getByTestId("test-footer-content")).toBeInTheDocument();
+    expect(screen.getByText("Footer Content")).toBeInTheDocument();
+    // Verify proposals panel still renders alongside footer
+    expect(screen.getByTestId("proposals-panel")).toBeInTheDocument();
+  });
+
+  it("renders StartSessionPanel and footer with no session when footer is provided", () => {
+    // With the refactored layout, footer now renders at top level (outside session conditional)
+    // so it appears in both active and no-session states
+    const footer = <div data-testid="test-exec-bar">Execution Bar</div>;
+    render(
+      <PlanningView
+        {...defaultProps}
+        session={null}
+        sessions={[]}
+        footer={footer}
+      />
+    );
+
+    // StartSessionPanel should render
+    expect(screen.getByTestId("start-session-panel")).toBeInTheDocument();
+    // Footer should now be visible at the top level
+    expect(screen.getByTestId("ideation-footer")).toBeInTheDocument();
+    expect(screen.getByTestId("test-exec-bar")).toBeInTheDocument();
+    expect(screen.getByText("Execution Bar")).toBeInTheDocument();
+  });
+
+  it("does not render footer when footer prop is not provided (backward compatible)", () => {
+    render(<PlanningView {...defaultProps} />);
+
+    expect(screen.queryByTestId("ideation-footer")).not.toBeInTheDocument();
+    // Verify the view still renders normally
+    expect(screen.getByTestId("ideation-view")).toBeInTheDocument();
+    expect(screen.getByTestId("proposals-panel")).toBeInTheDocument();
+  });
 });

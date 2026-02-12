@@ -1009,6 +1009,26 @@ function AppContent() {
                   onRemoveProposal={handleRemoveProposal}
                   onReorderProposals={handleReorderProposals}
                   onApply={handleApplyProposals}
+                  footer={
+                    <ExecutionControlBar
+                      projectId={currentProjectId}
+                      runningCount={executionStatus.runningCount}
+                      maxConcurrent={executionStatus.maxConcurrent}
+                      queuedCount={executionStatus.queuedCount}
+                      mergingCount={mergingCount}
+                      hasAttentionMerges={hasAttentionMerges}
+                      mergePipelineData={mergePipelineData ?? null}
+                      isPaused={executionStatus.isPaused}
+                      isLoading={isExecutionLoading}
+                      onPauseToggle={handlePauseToggle}
+                      onStop={handleStop}
+                      showBattleModeToggle={false}
+                      runningProcesses={runningProcessesData?.processes ?? []}
+                      onPauseProcess={handlePauseProcess}
+                      onStopProcess={handleStopProcess}
+                      onOpenSettings={handleOpenSettings}
+                    />
+                  }
                 />
               )}
               {currentView === "extensibility" && <ExtensibilityView />}

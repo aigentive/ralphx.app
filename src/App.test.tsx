@@ -44,7 +44,12 @@ vi.mock("@/components/Ideation", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/components/Ideation")>();
   return {
     ...actual,
-    IdeationView: () => <div data-testid="ideation-view-mock">Ideation View</div>,
+    IdeationView: ({ footer }: { footer?: React.ReactNode }) => (
+      <div data-testid="ideation-view-mock">
+        Ideation View
+        {footer && <div data-testid="ideation-footer-mock">{footer}</div>}
+      </div>
+    ),
   };
 });
 
@@ -268,6 +273,16 @@ describe("App", () => {
       expect(screen.getByTestId("nav-ideation")).toHaveAttribute("aria-current", "page");
       expect(screen.getByTestId("ideation-view-mock")).toBeInTheDocument();
       expect(screen.queryByTestId("task-board-mock")).not.toBeInTheDocument();
+    });
+
+    it("should pass footer with ExecutionControlBar to Ideation view", async () => {
+      const user = userEvent.setup();
+      render(<App />);
+
+      await user.click(screen.getByTestId("nav-ideation"));
+
+      // Verify footer is rendered in the ideation view mock
+      expect(screen.getByTestId("ideation-footer-mock")).toBeInTheDocument();
     });
 
     it("should switch to Extensibility view when clicked", async () => {
