@@ -58,7 +58,7 @@ pub use methodology::{
 };
 pub use plan_branch::{ParsePlanBranchStatusError, PlanBranch, PlanBranchId, PlanBranchStatus};
 pub use plan_selection_stats::{PlanSelectionStats, SelectionSource};
-pub use project::{GitMode, MergeValidationMode, Project};
+pub use project::{GitMode, MergeStrategy, MergeValidationMode, Project};
 pub use research::{
     CustomDepth, ParseResearchDepthPresetError, ParseResearchProcessStatusError, ResearchBrief,
     ResearchDepth, ResearchDepthPreset, ResearchOutput, ResearchPresets, ResearchProcess,

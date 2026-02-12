@@ -1163,6 +1163,130 @@ impl GitService {
         )))
     }
 
+    /// Attempt a rebase-then-merge in isolated worktrees (for Worktree+Rebase strategy)
+    ///
+    /// 1. Create a worktree on the source branch at `rebase_worktree_path`
+    /// 2. Rebase onto target branch in that worktree
+    /// 3. On success: delete rebase worktree, create merge worktree on target, fast-forward merge
+    /// 4. On conflict: leave rebase worktree in place for agent resolution
+    ///
+    /// # Arguments
+    /// * `repo` - Path to the main git repository
+    /// * `source_branch` - Branch to rebase and merge from (e.g., task branch)
+    /// * `target_branch` - Branch to merge into (e.g., plan feature branch or main)
+    /// * `rebase_worktree_path` - Path for the temporary rebase worktree
+    /// * `merge_worktree_path` - Path for the temporary merge worktree
+    pub fn try_rebase_and_merge_in_worktree(
+        repo: &Path,
+        source_branch: &str,
+        target_branch: &str,
+        rebase_worktree_path: &Path,
+        merge_worktree_path: &Path,
+    ) -> AppResult<MergeAttemptResult> {
+        debug!(
+            "Attempting rebase-and-merge of '{}' onto '{}' in worktrees (rebase: {:?}, merge: {:?})",
+            source_branch, target_branch, rebase_worktree_path, merge_worktree_path
+        );
+
+        // Step 1: Fetch latest from origin (non-fatal)
+        match Self::fetch_origin(repo) {
+            Ok(_) => debug!("Fetch from origin succeeded for {:?}", repo),
+            Err(e) => debug!("Fetch from origin failed (non-fatal): {}", e),
+        }
+
+        // Step 2: Check if base branch is empty (0 or 1 commits)
+        // For first task on empty repo, rebase fails. Skip rebase and merge directly.
+        let base_commit_count = Self::get_commit_count(repo, target_branch).unwrap_or(0);
+        if base_commit_count <= 1 {
+            debug!(
+                "Target branch '{}' has {} commit(s), falling back to direct worktree merge",
+                target_branch, base_commit_count
+            );
+            return Self::try_merge_in_worktree(
+                repo,
+                source_branch,
+                target_branch,
+                merge_worktree_path,
+            );
+        }
+
+        // Step 3: Create rebase worktree on source branch
+        Self::checkout_existing_branch_worktree(repo, rebase_worktree_path, source_branch)?;
+
+        // Step 4: Rebase source onto target in the rebase worktree
+        let rebase_result = Self::rebase_onto(rebase_worktree_path, target_branch)?;
+        debug!(
+            "Rebase result for '{}' onto '{}' in worktree: {:?}",
+            source_branch, target_branch, rebase_result
+        );
+
+        match rebase_result {
+            RebaseResult::Success => {
+                // Step 5: Rebase succeeded — delete rebase worktree, then merge
+                let _ = Self::delete_worktree(repo, rebase_worktree_path);
+
+                // Step 6: Create merge worktree on target branch and fast-forward
+                Self::checkout_existing_branch_worktree(
+                    repo,
+                    merge_worktree_path,
+                    target_branch,
+                )?;
+
+                let output = Command::new("git")
+                    .args(["merge", source_branch, "--no-edit"])
+                    .current_dir(merge_worktree_path)
+                    .output()
+                    .map_err(|e| {
+                        let _ = Self::delete_worktree(repo, merge_worktree_path);
+                        AppError::GitOperation(format!("Failed to run git merge: {}", e))
+                    })?;
+
+                if output.status.success() {
+                    let commit_sha = Self::get_head_sha(merge_worktree_path)?;
+                    debug!(
+                        "Rebase-and-merge in worktree succeeded, SHA: {}",
+                        commit_sha
+                    );
+                    return Ok(MergeAttemptResult::Success { commit_sha });
+                }
+
+                // Check for conflict (shouldn't happen after successful rebase, but handle it)
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                if stdout.contains("CONFLICT")
+                    || stderr.contains("CONFLICT")
+                    || stdout.contains("conflict")
+                    || stderr.contains("conflict")
+                {
+                    let conflict_files = Self::get_conflict_files(merge_worktree_path)?;
+                    debug!(
+                        "Post-rebase merge conflict in worktree (unexpected), files: {:?}",
+                        conflict_files
+                    );
+                    // Leave merge worktree in conflict state for agent
+                    return Ok(MergeAttemptResult::NeedsAgent { conflict_files });
+                }
+
+                // Unexpected error — clean up merge worktree
+                let _ = Self::delete_worktree(repo, merge_worktree_path);
+                Err(AppError::GitOperation(format!(
+                    "Post-rebase merge of '{}' into '{}' in worktree failed: {}{}",
+                    source_branch, target_branch, stderr, stdout
+                )))
+            }
+            RebaseResult::Conflict { files } => {
+                // Rebase conflict — leave rebase worktree in place for agent resolution
+                debug!(
+                    "Rebase conflict in worktree, files: {:?}",
+                    files
+                );
+                Ok(MergeAttemptResult::NeedsAgent {
+                    conflict_files: files,
+                })
+            }
+        }
+    }
+
     /// Classify a git merge error to determine if it's deferrable (branch/worktree contention)
     /// or terminal (true merge failure).
     ///

@@ -65,6 +65,38 @@ fn default_use_feature_branches() -> bool {
     true
 }
 
+/// Merge strategy for combining branches
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum MergeStrategy {
+    /// Rebase source onto target, then fast-forward merge (linear history)
+    #[default]
+    Rebase,
+    /// Direct merge commit (non-linear)
+    Merge,
+}
+
+impl std::fmt::Display for MergeStrategy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MergeStrategy::Rebase => write!(f, "rebase"),
+            MergeStrategy::Merge => write!(f, "merge"),
+        }
+    }
+}
+
+impl FromStr for MergeStrategy {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "rebase" => Ok(MergeStrategy::Rebase),
+            "merge" => Ok(MergeStrategy::Merge),
+            _ => Err(format!("unknown merge strategy: '{}'", s)),
+        }
+    }
+}
+
 /// Merge validation behavior mode
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -130,6 +162,9 @@ pub struct Project {
     /// Merge validation behavior mode (block/warn/off)
     #[serde(default)]
     pub merge_validation_mode: MergeValidationMode,
+    /// Merge strategy (rebase for linear history, merge for merge commits)
+    #[serde(default)]
+    pub merge_strategy: MergeStrategy,
     /// Auto-detected analysis commands (JSON array, written by analyzer agent)
     pub detected_analysis: Option<String>,
     /// User-overridden analysis commands (JSON array, written by user via Settings UI)
@@ -158,6 +193,7 @@ impl Project {
             worktree_parent_directory: None,
             use_feature_branches: true,
             merge_validation_mode: MergeValidationMode::default(),
+            merge_strategy: MergeStrategy::default(),
             detected_analysis: None,
             custom_analysis: None,
             analyzed_at: None,
@@ -186,6 +222,7 @@ impl Project {
             worktree_parent_directory: None,
             use_feature_branches: true,
             merge_validation_mode: MergeValidationMode::default(),
+            merge_strategy: MergeStrategy::default(),
             detected_analysis: None,
             custom_analysis: None,
             analyzed_at: None,
@@ -239,6 +276,11 @@ impl Project {
             use_feature_branches: row.get::<_, i64>("use_feature_branches").unwrap_or(1) != 0,
             merge_validation_mode: row
                 .get::<_, String>("merge_validation_mode")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or_default(),
+            merge_strategy: row
+                .get::<_, String>("merge_strategy")
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or_default(),
@@ -708,6 +750,7 @@ mod tests {
                 worktree_parent_directory TEXT,
                 use_feature_branches INTEGER NOT NULL DEFAULT 1,
                 merge_validation_mode TEXT NOT NULL DEFAULT 'block',
+                merge_strategy TEXT NOT NULL DEFAULT 'rebase',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )"#,
@@ -838,5 +881,51 @@ mod tests {
 
         assert!(project.base_branch.is_none());
         assert_eq!(project.worktree_path, Some("/wt".to_string()));
+    }
+
+    // ===== MergeStrategy Tests =====
+
+    #[test]
+    fn merge_strategy_default_is_rebase() {
+        assert_eq!(MergeStrategy::default(), MergeStrategy::Rebase);
+    }
+
+    #[test]
+    fn merge_strategy_serializes() {
+        assert_eq!(
+            serde_json::to_string(&MergeStrategy::Rebase).unwrap(),
+            "\"rebase\""
+        );
+        assert_eq!(
+            serde_json::to_string(&MergeStrategy::Merge).unwrap(),
+            "\"merge\""
+        );
+    }
+
+    #[test]
+    fn merge_strategy_deserializes() {
+        let rebase: MergeStrategy = serde_json::from_str("\"rebase\"").unwrap();
+        let merge: MergeStrategy = serde_json::from_str("\"merge\"").unwrap();
+        assert_eq!(rebase, MergeStrategy::Rebase);
+        assert_eq!(merge, MergeStrategy::Merge);
+    }
+
+    #[test]
+    fn merge_strategy_from_str() {
+        assert_eq!(
+            "rebase".parse::<MergeStrategy>().unwrap(),
+            MergeStrategy::Rebase
+        );
+        assert_eq!(
+            "merge".parse::<MergeStrategy>().unwrap(),
+            MergeStrategy::Merge
+        );
+        assert!("invalid".parse::<MergeStrategy>().is_err());
+    }
+
+    #[test]
+    fn merge_strategy_display() {
+        assert_eq!(format!("{}", MergeStrategy::Rebase), "rebase");
+        assert_eq!(format!("{}", MergeStrategy::Merge), "merge");
     }
 }
