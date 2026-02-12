@@ -179,6 +179,88 @@ impl GitService {
         Ok(())
     }
 
+    /// Ensure a clean working tree by resetting tracked files and removing untracked files/dirs.
+    ///
+    /// This method:
+    /// 1. Checks `git status --porcelain` — early return if already clean
+    /// 2. Runs `hard_reset_to_head()` to reset tracked files to HEAD state
+    /// 3. Runs `git clean -fd` to remove untracked files and directories
+    ///    (not `-fdx` — preserves .gitignore'd files like node_modules and src-tauri/target)
+    /// 4. Logs dirty entries before cleaning (capped at 20 lines)
+    ///
+    /// # Arguments
+    /// * `repo` - Path to the git repository
+    pub fn clean_working_tree(repo: &Path) -> AppResult<()> {
+        debug!("Cleaning working tree in {:?}", repo);
+
+        // Check if already clean (early return optimization)
+        let status_output = Command::new("git")
+            .args(["status", "--porcelain"])
+            .current_dir(repo)
+            .output()
+            .map_err(|e| {
+                AppError::GitOperation(format!("Failed to run git status: {}", e))
+            })?;
+
+        if !status_output.status.success() {
+            let stderr = String::from_utf8_lossy(&status_output.stderr);
+            return Err(AppError::GitOperation(format!(
+                "git status --porcelain failed: {}",
+                stderr
+            )));
+        }
+
+        let status_output_str = String::from_utf8_lossy(&status_output.stdout);
+
+        // Early return if working tree is already clean
+        if status_output_str.trim().is_empty() {
+            debug!("Working tree is already clean");
+            return Ok(());
+        }
+
+        // Log dirty entries (capped at 20 lines)
+        let dirty_entries: Vec<&str> = status_output_str.lines().collect();
+        let to_log: Vec<&&str> = if dirty_entries.len() > 20 {
+            dirty_entries.iter().take(20).collect()
+        } else {
+            dirty_entries.iter().collect()
+        };
+
+        for entry in to_log {
+            warn!("Dirty entry: {}", entry);
+        }
+
+        if dirty_entries.len() > 20 {
+            warn!(
+                "... and {} more dirty entries (total: {})",
+                dirty_entries.len() - 20,
+                dirty_entries.len()
+            );
+        }
+
+        // Reset tracked files to HEAD state
+        Self::hard_reset_to_head(repo)?;
+
+        // Remove untracked files and directories
+        // Using -fd (not -fdx) to preserve .gitignore'd files
+        let clean_output = Command::new("git")
+            .args(["clean", "-fd"])
+            .current_dir(repo)
+            .output()
+            .map_err(|e| AppError::GitOperation(format!("Failed to run git clean -fd: {}", e)))?;
+
+        if !clean_output.status.success() {
+            let stderr = String::from_utf8_lossy(&clean_output.stderr);
+            return Err(AppError::GitOperation(format!(
+                "git clean -fd failed: {}",
+                stderr
+            )));
+        }
+
+        debug!("Working tree cleaned successfully");
+        Ok(())
+    }
+
     /// Checkout an existing branch
     ///
     /// # Arguments
@@ -485,17 +567,10 @@ impl GitService {
         );
 
         // Stage all changes
-        // Guard against accidentally staging local environment artifacts if ignore
-        // rules drift on a branch (e.g., tracked symlink placeholders).
+        // git add -A respects .gitignore, so node_modules and src-tauri/target
+        // are automatically excluded without needing pathspec guards.
         let add_output = Command::new("git")
-            .args([
-                "add",
-                "-A",
-                "--",
-                ".",
-                ":(exclude)node_modules",
-                ":(exclude)src-tauri/target",
-            ])
+            .args(["add", "-A"])
             .current_dir(path)
             .output()
             .map_err(|e| AppError::GitOperation(format!("Failed to run git add: {}", e)))?;
@@ -2461,6 +2536,9 @@ mod tests {
             .output()
             .unwrap();
 
+        // Create .gitignore with environment artifact patterns
+        std::fs::write(repo.join(".gitignore"), "node_modules\nsrc-tauri/target\n").unwrap();
+
         std::fs::write(repo.join("tracked.txt"), "initial").unwrap();
         Command::new("git")
             .args(["add", "."])
@@ -2472,6 +2550,9 @@ mod tests {
             .current_dir(repo)
             .output()
             .unwrap();
+
+        // Create .gitignore to exclude environment artifacts
+        std::fs::write(repo.join(".gitignore"), "node_modules\nsrc-tauri/target\n").unwrap();
 
         std::fs::write(repo.join("tracked.txt"), "updated").unwrap();
         std::fs::write(repo.join("node_modules"), "placeholder").unwrap();
@@ -2493,6 +2574,225 @@ mod tests {
         assert!(tracked_files.contains("tracked.txt"));
         assert!(!tracked_files.contains("node_modules"));
         assert!(!tracked_files.contains("src-tauri/target"));
+    }
+
+    // =========================================================================
+    // clean_working_tree Tests
+    // =========================================================================
+
+    #[test]
+    fn test_clean_working_tree_removes_untracked_files() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Initialize repo
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create initial commit
+        std::fs::write(repo.join("tracked.txt"), "initial").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create untracked files and directories
+        std::fs::write(repo.join("untracked.txt"), "untracked").unwrap();
+        std::fs::create_dir(repo.join("untracked_dir")).unwrap();
+        std::fs::write(repo.join("untracked_dir/file.txt"), "content").unwrap();
+
+        // Verify untracked files exist
+        assert!(repo.join("untracked.txt").exists());
+        assert!(repo.join("untracked_dir").exists());
+
+        // Clean working tree
+        GitService::clean_working_tree(repo).unwrap();
+
+        // Verify untracked files are removed
+        assert!(!repo.join("untracked.txt").exists());
+        assert!(!repo.join("untracked_dir").exists());
+
+        // Verify tracked files are preserved
+        assert!(repo.join("tracked.txt").exists());
+    }
+
+    #[test]
+    fn test_clean_working_tree_resets_modified_tracked_files() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Initialize repo
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create initial commit
+        std::fs::write(repo.join("tracked.txt"), "initial").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Modify tracked file
+        std::fs::write(repo.join("tracked.txt"), "modified").unwrap();
+
+        // Verify file is modified
+        let content = std::fs::read_to_string(repo.join("tracked.txt")).unwrap();
+        assert_eq!(content, "modified");
+
+        // Clean working tree
+        GitService::clean_working_tree(repo).unwrap();
+
+        // Verify file is reset to HEAD
+        let content = std::fs::read_to_string(repo.join("tracked.txt")).unwrap();
+        assert_eq!(content, "initial");
+    }
+
+    #[test]
+    fn test_clean_working_tree_noop_when_clean() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Initialize repo
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create initial commit
+        std::fs::write(repo.join("tracked.txt"), "content").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Working tree is clean, should be no-op
+        let result = GitService::clean_working_tree(repo);
+
+        // Should succeed without error
+        assert!(result.is_ok());
+
+        // Verify file still exists and is unchanged
+        let content = std::fs::read_to_string(repo.join("tracked.txt")).unwrap();
+        assert_eq!(content, "content");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_clean_working_tree_handles_symlinks() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Create a separate temp directory for the target file
+        // so it doesn't get deleted when the repo temp_dir is dropped
+        let target_temp = tempfile::tempdir().unwrap();
+        let target_file = target_temp.path().join("target_file.txt");
+        std::fs::write(&target_file, "target content").unwrap();
+
+        // Initialize repo
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create initial commit
+        std::fs::write(repo.join("tracked.txt"), "initial").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create a symlink in the repo pointing to the target file
+        let symlink_path = repo.join("symlink.txt");
+        std::os::unix::fs::symlink(&target_file, &symlink_path).unwrap();
+
+        // Verify symlink exists
+        assert!(symlink_path.exists());
+
+        // Clean working tree
+        GitService::clean_working_tree(repo).unwrap();
+
+        // Verify symlink is removed
+        assert!(!symlink_path.exists());
+
+        // Verify target file is NOT removed (symlink was the link, not the target)
+        assert!(target_file.exists());
+        let content = std::fs::read_to_string(&target_file).unwrap();
+        assert_eq!(content, "target content");
+
+        // Keep target_temp alive until the end of the test
+        drop(target_temp);
     }
 
     // =========================================================================
