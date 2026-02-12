@@ -313,7 +313,7 @@ pub fn run() {
                 let runner = StartupJobRunner::new(
                     startup_task_repo,
                     startup_runner_task_dep_repo,
-                    startup_project_repo,
+                    Arc::clone(&startup_project_repo),
                     startup_conversation_repo.clone(),
                     startup_runner_chat_message_repo,
                     startup_runner_ideation_session_repo,
@@ -338,6 +338,7 @@ pub fn run() {
                 let archive_service = Arc::new(application::MemoryArchiveService::new(
                     Arc::clone(&startup_memory_archive_repo),
                     Arc::clone(&startup_memory_entry_repo),
+                    Arc::clone(&startup_project_repo),
                     std::path::PathBuf::from("."), // Use current working directory as project root
                 ));
 
@@ -430,6 +431,54 @@ pub fn run() {
                     loop {
                         tokio::time::sleep(interval).await;
                         reconcile_runner.reconcile_stuck_tasks().await;
+                    }
+                });
+
+                // Spawn memory archive job background processing loop
+                // Clone required repositories for the archive job processor
+                let archive_job_memory_archive_repo = Arc::clone(&startup_memory_archive_repo);
+                let archive_job_memory_entry_repo = Arc::clone(&startup_memory_entry_repo);
+                let archive_job_project_repo = Arc::clone(&startup_project_repo);
+
+                tauri::async_runtime::spawn(async move {
+                    let archive_service = Arc::new(application::MemoryArchiveService::new(
+                        archive_job_memory_archive_repo,
+                        archive_job_memory_entry_repo,
+                        archive_job_project_repo,
+                        std::path::PathBuf::from("."),
+                    ));
+
+                    let mut backoff_duration = Duration::from_secs(0);
+
+                    loop {
+                        if !backoff_duration.is_zero() {
+                            tracing::debug!(
+                                backoff_secs = backoff_duration.as_secs(),
+                                "Memory archive job processor backing off after error"
+                            );
+                            tokio::time::sleep(backoff_duration).await;
+                            backoff_duration = Duration::from_secs(0);
+                        }
+
+                        match archive_service.process_next_job().await {
+                            Ok(true) => {
+                                // Job processed successfully, immediately check for more without sleeping
+                                tracing::debug!("Memory archive job processed, checking for more");
+                                backoff_duration = Duration::from_secs(0);
+                                // Loop back immediately without sleep
+                            }
+                            Ok(false) => {
+                                // No jobs available, sleep 30s before next poll
+                                tracing::debug!("No memory archive jobs available, sleeping");
+                                tokio::time::sleep(Duration::from_secs(30)).await;
+                            }
+                            Err(e) => {
+                                tracing::error!(error = %e, "Failed to process memory archive job");
+                                // Back off for 60s on error
+                                backoff_duration = Duration::from_secs(60);
+                                tokio::time::sleep(backoff_duration).await;
+                            }
+                        }
                     }
                 });
             });
