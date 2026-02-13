@@ -15,7 +15,7 @@
  * - Disableable for history time-travel mode
  */
 
-import { useRef, useCallback, useState } from "react";
+import { useRef, useCallback, useState, useEffect } from "react";
 import type { VirtuosoHandle } from "react-virtuoso";
 
 // ============================================================================
@@ -93,7 +93,9 @@ export function useChatAutoScroll({
   // messageCount changes. Without this, every new message creates a new
   // scrollToBottom → busts virtuosoComponents useMemo → Virtuoso re-mounts.
   const messageCountRef = useRef(messageCount);
-  messageCountRef.current = messageCount;
+  useEffect(() => {
+    messageCountRef.current = messageCount;
+  }, [messageCount]);
 
   // Manual scroll-to-bottom
   // Routes through Virtuoso scrollToIndex when available, falls back to DOM marker
