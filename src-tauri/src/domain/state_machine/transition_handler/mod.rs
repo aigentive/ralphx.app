@@ -11,6 +11,7 @@ use std::sync::Arc;
 mod merge_completion;
 mod merge_helpers;
 mod merge_validation;
+mod on_enter_states;
 mod side_effects;
 #[cfg(test)]
 mod tests;
