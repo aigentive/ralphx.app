@@ -6,7 +6,7 @@ import { PLAN_TOOLS } from "./plan-tools.js";
 import { WORKER_CONTEXT_TOOLS } from "./worker-context-tools.js";
 import { STEP_TOOLS } from "./step-tools.js";
 import { ISSUE_TOOLS } from "./issue-tools.js";
-import { ORCHESTRATOR_IDEATION, CHAT_TASK, CHAT_PROJECT, REVIEWER, REVIEW_CHAT, REVIEW_HISTORY, WORKER, SESSION_NAMER, DEPENDENCY_SUGGESTER, MERGER, PROJECT_ANALYZER, SUPERVISOR, QA_PREP, QA_TESTER, ORCHESTRATOR, DEEP_RESEARCHER, MEMORY_MAINTAINER, MEMORY_CAPTURE, } from "./agentNames.js";
+import { ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, CHAT_TASK, CHAT_PROJECT, REVIEWER, REVIEW_CHAT, REVIEW_HISTORY, WORKER, SESSION_NAMER, DEPENDENCY_SUGGESTER, MERGER, PROJECT_ANALYZER, SUPERVISOR, QA_PREP, QA_TESTER, ORCHESTRATOR, DEEP_RESEARCHER, MEMORY_MAINTAINER, MEMORY_CAPTURE, } from "./agentNames.js";
 /**
  * All available MCP tools
  * Tools are filtered based on RALPHX_AGENT_TYPE environment variable
@@ -982,6 +982,17 @@ export const TOOL_ALLOWLIST = {
         "ask_user_question",
         // session linking tools
         "create_child_session",
+        "get_parent_session_context",
+        // memory read tools
+        "search_memories",
+        "get_memory",
+        "get_memories_for_paths",
+    ],
+    [ORCHESTRATOR_IDEATION_READONLY]: [
+        "list_session_proposals",
+        "get_proposal",
+        "get_plan_artifact",
+        "get_session_plan",
         "get_parent_session_context",
         // memory read tools
         "search_memories",

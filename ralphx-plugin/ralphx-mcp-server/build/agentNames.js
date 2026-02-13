@@ -3,6 +3,7 @@
  * These match the `name:` field in each agent's frontmatter (ralphx-plugin/agents/*.md).
  */
 export const ORCHESTRATOR_IDEATION = "orchestrator-ideation";
+export const ORCHESTRATOR_IDEATION_READONLY = "orchestrator-ideation-readonly";
 export const CHAT_TASK = "chat-task";
 export const CHAT_PROJECT = "chat-project";
 export const REVIEWER = "ralphx-reviewer";
