@@ -103,6 +103,7 @@ export function TaskBoard({
     projectId,
     showArchived,
     ideationSessionId,
+    showMergeTasks,
   );
   const { isCollapsed, toggleCollapse, expandColumn } = useColumnCollapse(
     defaultWorkflow.columns,
@@ -208,6 +209,16 @@ export function TaskBoard({
     // Only show columns with search results
     return columns.filter((col) => searchTasksByColumn.has(col.id));
   }, [columns, isSearchActive, searchTasksByColumn]);
+
+  // Force-expand collapsed columns that have search results when search is active
+  useEffect(() => {
+    if (!isSearchActive) return;
+    for (const [columnId] of searchTasksByColumn) {
+      if (isCollapsed(columnId)) {
+        expandColumn(columnId);
+      }
+    }
+  }, [isSearchActive, searchTasksByColumn, isCollapsed, expandColumn]);
 
   // Clear movingTaskId after a short delay to allow optimistic update to settle
   useEffect(() => {

@@ -18,15 +18,14 @@ describe("TaskBoardSkeleton", () => {
     expect(columns).toHaveLength(5);
   });
 
-  it("should render column headers", () => {
+  it("should render headers only for expanded columns (first 3)", () => {
     render(<TaskBoardSkeleton />);
     const headers = screen.getAllByTestId(/skeleton-header-/);
-    expect(headers).toHaveLength(5);
+    expect(headers).toHaveLength(3);
   });
 
-  it("should render card placeholders in each column", () => {
+  it("should render card placeholders in expanded columns", () => {
     render(<TaskBoardSkeleton />);
-    // Each column should have some card placeholders
     const cards = screen.getAllByTestId(/skeleton-card-/);
     expect(cards.length).toBeGreaterThan(0);
   });
@@ -34,16 +33,29 @@ describe("TaskBoardSkeleton", () => {
   it("should apply animate-pulse class for loading animation", () => {
     render(<TaskBoardSkeleton />);
     const skeleton = screen.getByTestId("task-board-skeleton");
-    // Check that there are elements with pulse animation
     const pulsingElements = skeleton.querySelectorAll(".animate-pulse");
     expect(pulsingElements.length).toBeGreaterThan(0);
   });
 
-  it("should use current skeleton color palette", () => {
+  it("should render first 3 columns as expanded (280px) and last 2 as collapsed (44px)", () => {
+    render(<TaskBoardSkeleton />);
+
+    // First 3 columns: expanded
+    for (let i = 0; i < 3; i++) {
+      const col = screen.getByTestId(`skeleton-column-${i}`);
+      expect(col.style.width).toBe("280px");
+    }
+
+    // Last 2 columns: collapsed
+    for (let i = 3; i < 5; i++) {
+      const col = screen.getByTestId(`skeleton-column-${i}`);
+      expect(col.style.width).toBe("44px");
+    }
+  });
+
+  it("should use correct background color", () => {
     render(<TaskBoardSkeleton />);
     const skeleton = screen.getByTestId("task-board-skeleton");
     expect(skeleton.style.background).toBe("rgb(18, 20, 22)");
-    const column = screen.getByTestId("skeleton-column-0");
-    expect(column.style.width).toBe("280px");
   });
 });

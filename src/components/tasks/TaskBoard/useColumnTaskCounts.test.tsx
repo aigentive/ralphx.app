@@ -164,6 +164,60 @@ describe("useColumnTaskCounts", () => {
     expect(result.current.get("draft")).toBe(5);
   });
 
+  it("excludes merge tasks when showMergeTasks is false", () => {
+    const key = infiniteTaskKeys.list({
+      projectId: PROJECT_ID,
+      statuses: ["backlog"],
+      includeArchived: false,
+      ideationSessionId: SESSION_ID,
+    });
+
+    const tasks = [
+      createMockTask({ id: "t1", internalStatus: "backlog", category: "feature" }),
+      createMockTask({ id: "t2", internalStatus: "backlog", category: "plan_merge" }),
+      createMockTask({ id: "t3", internalStatus: "backlog", category: "feature" }),
+    ];
+    const data: InfiniteData<TaskListResponse> = {
+      pages: [{ tasks, total: 3, hasMore: false, offset: 0 }],
+      pageParams: [0],
+    };
+    queryClient.setQueryData(key, data);
+
+    const { result } = renderHook(
+      () => useColumnTaskCounts(simpleColumns, PROJECT_ID, false, SESSION_ID, false),
+      { wrapper: createWrapper() },
+    );
+
+    // Only non-merge tasks counted
+    expect(result.current.get("draft")).toBe(2);
+  });
+
+  it("includes merge tasks when showMergeTasks is true", () => {
+    const key = infiniteTaskKeys.list({
+      projectId: PROJECT_ID,
+      statuses: ["backlog"],
+      includeArchived: false,
+      ideationSessionId: SESSION_ID,
+    });
+
+    const tasks = [
+      createMockTask({ id: "t1", internalStatus: "backlog", category: "feature" }),
+      createMockTask({ id: "t2", internalStatus: "backlog", category: "plan_merge" }),
+    ];
+    const data: InfiniteData<TaskListResponse> = {
+      pages: [{ tasks, total: 2, hasMore: false, offset: 0 }],
+      pageParams: [0],
+    };
+    queryClient.setQueryData(key, data);
+
+    const { result } = renderHook(
+      () => useColumnTaskCounts(simpleColumns, PROJECT_ID, false, SESSION_ID, true),
+      { wrapper: createWrapper() },
+    );
+
+    expect(result.current.get("draft")).toBe(2);
+  });
+
   it("sums across multiple pages", () => {
     const key = infiniteTaskKeys.list({
       projectId: PROJECT_ID,

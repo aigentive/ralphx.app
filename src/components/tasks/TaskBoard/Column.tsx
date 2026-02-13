@@ -225,6 +225,7 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
   }, [groups, tasksByGroup, column.mapsTo, column.id]);
 
   // Infinite scroll with IntersectionObserver
+  // Re-run when isCollapsed changes so observer reconnects after expand
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
@@ -254,7 +255,7 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
     return () => {
       observer.disconnect();
     };
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage, isCollapsed]);
 
   // Drop zone styles (macOS Tahoe - clean, flat)
   const getDropZoneStyles = (): React.CSSProperties => {
