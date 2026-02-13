@@ -11,6 +11,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useChatStore, selectActiveConversationId, getContextKey } from "@/stores/chatStore";
+import { buildStoreKey } from "@/lib/chat-context-registry";
 import { chatKeys } from "@/hooks/useChat";
 import type { ChatContext } from "@/types/chat";
 import type { ContextType } from "@/types/chat-conversation";
@@ -92,16 +93,16 @@ export function useChatPanelContext({
   }, [selectedTaskId, projectId, ideationSessionId]);
 
   // Compute store context key for queue/agent state operations
-  // Uses context-aware keys: "task_execution:id", "review:id", "merge:id", or standard keys
+  // Uses context-aware keys via registry: "task_execution:id", "review:id", "merge:id", or standard keys
   const storeContextKey = useMemo(() => {
     if (isMergeMode && selectedTaskId) {
-      return `merge:${selectedTaskId}`;
+      return buildStoreKey("merge", selectedTaskId);
     }
     if (isExecutionMode && selectedTaskId) {
-      return `task_execution:${selectedTaskId}`;
+      return buildStoreKey("task_execution", selectedTaskId);
     }
     if (isReviewMode && selectedTaskId) {
-      return `review:${selectedTaskId}`;
+      return buildStoreKey("review", selectedTaskId);
     }
     return getContextKey(chatContext);
   }, [isMergeMode, isExecutionMode, isReviewMode, selectedTaskId, chatContext]);

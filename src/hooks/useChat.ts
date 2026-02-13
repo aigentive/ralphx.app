@@ -11,28 +11,9 @@ import { chatApi, type ChatMessageResponse, type SendAgentMessageResult } from "
 import type { ChatContext } from "@/types/chat";
 import type { ChatConversation, AgentRun, ContextType } from "@/types/chat-conversation";
 import { useChatStore } from "@/stores/chatStore";
+import { buildStoreKey } from "@/lib/chat-context-registry";
 import { ideationKeys } from "./useIdeation";
 import { useAgentEvents } from "./useAgentEvents";
-
-/**
- * Build a context key string from context type and ID
- * This matches the getContextKey format in chatStore
- */
-function buildContextKey(contextType: ContextType, contextId: string): string {
-  switch (contextType) {
-    case "ideation":
-      return `session:${contextId}`;
-    case "task":
-    case "task_execution":
-      return `task:${contextId}`;
-    case "review":
-      return `review:${contextId}`;
-    case "project":
-      return `project:${contextId}`;
-    default:
-      return `project:${contextId}`;
-  }
-}
 
 /**
  * Query key factory for chat
@@ -172,7 +153,7 @@ export function useAgentRunStatus(conversationId: string | null) {
 export function useChat(context: ChatContext) {
   const queryClient = useQueryClient();
   const { contextType, contextId } = getContextTypeAndId(context);
-  const contextKey = buildContextKey(contextType, contextId);
+  const contextKey = buildStoreKey(contextType, contextId);
 
   const {
     activeConversationId,
