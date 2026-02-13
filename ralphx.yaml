@@ -84,8 +84,7 @@ agents:
     system_prompt_file: ralphx-plugin/agents/orchestrator-ideation.md
     model: opus
     tools: { extends: base_tools, include: [Task] }
-    mcp_tools:
-      [
+    mcp_tools: [
         create_task_proposal,
         update_task_proposal,
         delete_task_proposal,
@@ -100,6 +99,10 @@ agents:
         ask_user_question,
         create_child_session,
         get_parent_session_context,
+        # memory read tools
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
       ]
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
@@ -107,13 +110,16 @@ agents:
     system_prompt_file: ralphx-plugin/agents/orchestrator-ideation.md
     model: sonnet
     tools: { extends: base_tools, include: [Task] }
-    mcp_tools:
-      [
+    mcp_tools: [
         list_session_proposals,
         get_proposal,
         get_plan_artifact,
         get_session_plan,
         get_parent_session_context,
+        # memory read tools
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
       ]
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
@@ -136,17 +142,25 @@ agents:
     system_prompt_file: ralphx-plugin/agents/chat-task.md
     model: sonnet
     tools: { extends: base_tools, include: [Task] }
-    mcp_tools: [update_task, add_task_note, get_task_details]
+    mcp_tools: [
+        update_task,
+        add_task_note,
+        get_task_details,
+        # memory read tools
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
+      ]
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
   - name: chat-project
     system_prompt_file: ralphx-plugin/agents/chat-project.md
     model: sonnet
     tools: { extends: base_tools, include: [Task] }
-    mcp_tools:
-      [
+    mcp_tools: [
         suggest_task,
         list_tasks,
+        # memory read tools
         search_memories,
         get_memory,
         get_memories_for_paths,
@@ -158,8 +172,7 @@ agents:
     system_prompt_file: ralphx-plugin/agents/review-chat.md
     model: sonnet
     tools: { extends: base_tools, include: [Task] }
-    mcp_tools:
-      [
+    mcp_tools: [
         approve_task,
         request_task_changes,
         get_review_notes,
@@ -169,6 +182,10 @@ agents:
         get_related_artifacts,
         search_project_artifacts,
         get_task_steps,
+        # memory read tools
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
       ]
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
@@ -176,8 +193,7 @@ agents:
     system_prompt_file: ralphx-plugin/agents/review-history.md
     model: sonnet
     tools: { extends: base_tools, include: [Task] }
-    mcp_tools:
-      [
+    mcp_tools: [
         get_review_notes,
         get_task_context,
         get_task_issues,
@@ -188,6 +204,10 @@ agents:
         get_artifact_version,
         get_related_artifacts,
         search_project_artifacts,
+        # memory read tools
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
       ]
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
@@ -195,14 +215,15 @@ agents:
     system_prompt_file: ralphx-plugin/agents/worker.md
     model: opus
     tools: { extends: base_tools, include: [Write, Edit, Task] }
-    mcp_tools:
-      [
+    mcp_tools: [
+        # step management tools
         start_step,
         complete_step,
         skip_step,
         fail_step,
         add_step,
         get_step_progress,
+        # task read tools
         get_task_context,
         get_artifact,
         get_artifact_version,
@@ -214,6 +235,10 @@ agents:
         mark_issue_in_progress,
         mark_issue_addressed,
         get_project_analysis,
+        # memory read tools
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
       ]
     preapproved_cli_tools:
       [
@@ -235,9 +260,10 @@ agents:
     system_prompt_file: ralphx-plugin/agents/reviewer.md
     model: opus
     tools: { extends: base_tools, include: [Task] }
-    mcp_tools:
-      [
+    mcp_tools: [
+        # review tools
         complete_review,
+        # task read tools
         get_task_context,
         get_artifact,
         get_artifact_version,
@@ -249,6 +275,10 @@ agents:
         get_step_progress,
         get_issue_progress,
         get_project_analysis,
+        # memory read tools
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
       ]
     preapproved_cli_tools: [Bash, Task(Explore), Task(Plan)]
 
@@ -299,14 +329,18 @@ agents:
     system_prompt_file: ralphx-plugin/agents/merger.md
     model: opus
     tools: { extends: base_tools, include: [Edit, Task] }
-    mcp_tools:
-      [
+    mcp_tools: [
+        # merge tools
         complete_merge,
         report_conflict,
         report_incomplete,
         get_merge_target,
         get_task_context,
         get_project_analysis,
+        # memory read tools
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
       ]
     preapproved_cli_tools: [Read, Edit, Bash, Task(Explore), Task(Plan)]
 
@@ -314,12 +348,13 @@ agents:
     system_prompt_file: ralphx-plugin/agents/memory-maintainer.md
     model: haiku
     tools: { extends: base_tools, include: [Write, Edit] }
-    mcp_tools:
-      [
+    mcp_tools: [
+        # memory read tools
         search_memories,
         get_memory,
         get_memories_for_paths,
         get_conversation_transcript,
+        # memory write tools
         upsert_memories,
         mark_memory_obsolete,
         refresh_memory_rule_index,
@@ -333,12 +368,13 @@ agents:
     system_prompt_file: ralphx-plugin/agents/memory-capture.md
     model: haiku
     tools: { extends: base_tools, include: [Write, Edit] }
-    mcp_tools:
-      [
+    mcp_tools: [
+        # memory read tools
         search_memories,
         get_memory,
         get_memories_for_paths,
         get_conversation_transcript,
+        # memory write tools
         upsert_memories,
         mark_memory_obsolete,
       ]
