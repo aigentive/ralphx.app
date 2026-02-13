@@ -233,12 +233,18 @@ pub async fn resolve_merge_conflict(
         GitMode::Local => PathBuf::from(&project.working_directory),
     };
 
-    // Reject if conflict markers are still present
-    if GitService::has_conflict_markers(&working_path).unwrap_or(true) {
-        return Err(
-            "Conflict markers still present in tracked files. Please resolve all conflicts before marking as complete."
-                .to_string(),
-        );
+    // Only enforce marker checks while merge/rebase is still in progress.
+    // If git history is already complete, marker-like literals in unrelated files
+    // should not block manual completion.
+    let merge_in_progress = GitService::is_merge_in_progress(&working_path);
+    let rebase_in_progress = GitService::is_rebase_in_progress(&working_path);
+    if merge_in_progress || rebase_in_progress {
+        if GitService::has_conflict_markers(&working_path).unwrap_or(true) {
+            return Err(
+                "Conflict markers still present in merge-related changed files. Please resolve all conflicts before marking as complete."
+                    .to_string(),
+            );
+        }
     }
 
     // Commit the resolved merge
