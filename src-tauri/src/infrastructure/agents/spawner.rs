@@ -163,7 +163,15 @@ impl AgenticClientSpawner {
                             .worktree_path
                             .as_ref()
                             .map(|p| PathBuf::from(p))
-                            .unwrap_or_else(|| PathBuf::from(&project.working_directory)),
+                            .unwrap_or_else(|| {
+                                tracing::error!(
+                                    task_id = %task.id.0,
+                                    "Safety net: Worktree mode but worktree_path is None — \
+                                     refusing to use project directory (main branch). \
+                                     Falling back to spawner default."
+                                );
+                                self.working_directory.clone()
+                            }),
                         _ => PathBuf::from(&project.working_directory),
                     };
                 }

@@ -1470,10 +1470,9 @@ impl<'a> super::TransitionHandler<'a> {
                             let base_branch = resolved_base.as_str();
                             let repo_path = Path::new(&project.working_directory);
 
-                            // Attempt branch/worktree setup. Only ExecutionBlocked errors
-                            // should prevent task execution (uncommitted changes in Local mode).
-                            // Other git errors (missing repo, invalid path) are logged but
-                            // don't block - the agent can still work in the project directory.
+                            // Attempt branch/worktree setup. Git isolation failures MUST
+                            // block execution to prevent agents from writing to main branch.
+                            // All git errors return ExecutionBlocked to fail the task.
                             let git_result: AppResult<Option<(String, Option<String>)>> =
                                 match project.git_mode {
                                     GitMode::Local => {
@@ -1497,22 +1496,16 @@ impl<'a> super::TransitionHandler<'a> {
                                                 }) {
                                                     Ok(_) => Ok(Some((branch.clone(), None))),
                                                     Err(e) => {
-                                                        tracing::warn!(
-                                                            error = %e,
-                                                            task_id = task_id_str,
-                                                            "Failed to create/checkout task branch (Local mode), continuing without isolation"
-                                                        );
-                                                        Ok(None)
+                                                        return Err(AppError::ExecutionBlocked(
+                                                            format!("Git isolation failed: could not create/checkout branch '{}': {}", branch, e)
+                                                        ));
                                                     }
                                                 }
                                             }
                                             Err(e) => {
-                                                tracing::warn!(
-                                                    error = %e,
-                                                    task_id = task_id_str,
-                                                    "Failed to check uncommitted changes, continuing without isolation"
-                                                );
-                                                Ok(None)
+                                                return Err(AppError::ExecutionBlocked(
+                                                    format!("Git isolation failed: could not check working directory for uncommitted changes: {}", e)
+                                                ));
                                             }
                                         }
                                     }
@@ -1544,12 +1537,9 @@ impl<'a> super::TransitionHandler<'a> {
                                                 Ok(Some((branch.clone(), Some(worktree_path))))
                                             }
                                             Err(e) => {
-                                                tracing::warn!(
-                                                    error = %e,
-                                                    task_id = task_id_str,
-                                                    "Failed to create worktree (Worktree mode), continuing without isolation"
-                                                );
-                                                Ok(None)
+                                                return Err(AppError::ExecutionBlocked(
+                                                    format!("Git isolation failed: could not create worktree at '{}': {}", worktree_path, e)
+                                                ));
                                             }
                                         }
                                     }
