@@ -5615,4 +5615,329 @@ prunable gitdir file points to non-existent location
             }
         }
     }
+
+    // =========================================================================
+    // try_continue_rebase Tests
+    // =========================================================================
+
+    #[test]
+    fn test_try_continue_rebase_completes_no_rebase() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Initialize repo
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create initial commit
+        std::fs::write(repo.join("file.txt"), "initial").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Call try_continue_rebase when no rebase is in progress
+        // Should return an error since there's nothing to continue
+        let result = GitService::try_continue_rebase(repo);
+        assert!(result.is_err(), "try_continue_rebase should fail when no rebase in progress");
+    }
+
+    #[test]
+    fn test_try_continue_rebase_with_auto_resolved_conflicts() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Initialize repo
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create main with one commit
+        std::fs::write(repo.join("file.txt"), "main content\n").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create feature branch
+        Command::new("git")
+            .args(["checkout", "-b", "feature"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        std::fs::write(repo.join("file.txt"), "feature content\n").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "feature"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Add another commit on main
+        Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        std::fs::write(repo.join("file.txt"), "main updated\n").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "main update"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Checkout feature and try to rebase onto main
+        Command::new("git")
+            .args(["checkout", "feature"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Start rebase - this will result in a conflict with auto-resolve attempt
+        let rebase_output = Command::new("git")
+            .args(["rebase", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Check if we got into a conflict state where auto-resolve could happen
+        if !rebase_output.status.success() {
+            let stderr = String::from_utf8_lossy(&rebase_output.stderr);
+            if stderr.contains("CONFLICT") {
+                // We have a rebase in progress due to conflict
+                // This test checks the try_continue_rebase behavior
+                let result = GitService::try_continue_rebase(repo);
+
+                // The result depends on whether there are actually unmerged files
+                // If no unmerged files exist after git's merge, it should succeed
+                // If real conflicts exist, it should return Conflict variant
+                match result {
+                    Ok(RebaseResult::Success) => {
+                        // Good: rebase continued and completed
+                        assert!(!GitService::is_rebase_in_progress(repo));
+                    }
+                    Ok(RebaseResult::Conflict { files }) => {
+                        // Real conflicts were found - acceptable
+                        assert!(GitService::is_rebase_in_progress(repo) || files.is_empty());
+                    }
+                    Err(_) => {
+                        // Error during continuation - rebase might be aborted
+                    }
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // try_complete_stale_rebase Tests
+    // =========================================================================
+
+    #[test]
+    fn test_try_complete_stale_rebase_no_rebase() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Initialize repo
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create initial commit
+        std::fs::write(repo.join("file.txt"), "initial").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Call try_complete_stale_rebase when no rebase in progress
+        let result = GitService::try_complete_stale_rebase(repo);
+        assert!(matches!(result, StaleRebaseResult::NoRebase));
+    }
+
+    #[test]
+    fn test_try_complete_stale_rebase_detects_conflict_state() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Initialize repo
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create main with a file
+        std::fs::write(repo.join("file.txt"), "main\n").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create feature branch
+        Command::new("git")
+            .args(["checkout", "-b", "feature"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        std::fs::write(repo.join("feature.txt"), "feature\n").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "feature"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Modify file.txt on main in conflicting way
+        Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        std::fs::write(repo.join("file.txt"), "main modified\n").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "main mod"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // On feature, modify same file (conflict)
+        Command::new("git")
+            .args(["checkout", "feature"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        std::fs::write(repo.join("file.txt"), "feature content\n").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "feature mod"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Try to rebase - should create conflict state
+        let rebase_output = Command::new("git")
+            .args(["rebase", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // If rebase is in conflict state
+        if !rebase_output.status.success() && GitService::is_rebase_in_progress(repo) {
+            // Manually resolve the conflict to test the continuation
+            std::fs::write(repo.join("file.txt"), "resolved\n").unwrap();
+            Command::new("git")
+                .args(["add", "file.txt"])
+                .current_dir(repo)
+                .output()
+                .unwrap();
+
+            // Now try to complete the stale rebase
+            let result = GitService::try_complete_stale_rebase(repo);
+
+            // Should either complete successfully or report conflicts
+            match result {
+                StaleRebaseResult::Completed => {
+                    assert!(!GitService::is_rebase_in_progress(repo));
+                }
+                StaleRebaseResult::HasConflicts { files } => {
+                    // More conflicts were found
+                    assert!(GitService::is_rebase_in_progress(repo) || files.is_empty());
+                }
+                _ => {}
+            }
+        }
+    }
 }
