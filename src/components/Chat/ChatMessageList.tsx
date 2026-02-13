@@ -12,6 +12,7 @@ import React, { forwardRef, useEffect, useMemo, useRef, useImperativeHandle } fr
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { MessageItem } from "./MessageItem";
 import { StreamingToolIndicator } from "./StreamingToolIndicator";
+import { HookEventMessage } from "./HookEventMessage";
 import {
   TypingIndicator,
   FailedRunBanner,
@@ -19,6 +20,7 @@ import {
 import type { ToolCall } from "./ToolCallIndicator";
 import type { StreamingTask } from "@/types/streaming-task";
 import type { ContentBlockItem } from "./MessageItem";
+import type { HookEvent, HookStartedEvent } from "@/types/hook-event";
 import { isDiffToolCall } from "./DiffToolCallView.utils";
 import { DiffToolCallView } from "./DiffToolCallView";
 import { TaskSubagentCard } from "./TaskSubagentCard";
@@ -53,6 +55,11 @@ export interface ChatMessageData {
   contentBlocks?: ContentBlockItem[] | null;
 }
 
+/** Discriminated union for timeline items when hook events are interleaved */
+type TimelineItem =
+  | { kind: "message"; data: ChatMessageData; sortTime: number }
+  | { kind: "hook"; data: HookEvent | HookStartedEvent; sortTime: number };
+
 interface ChatMessageListProps {
   messages: ChatMessageData[];
   /** Conversation ID - used as key to force remount on conversation switch */
@@ -72,6 +79,10 @@ interface ChatMessageListProps {
   streamingText?: string;
   /** Optional timestamp to scroll to (for history mode) - scrolls to first message at or after this time */
   scrollToTimestamp?: string | null;
+  /** Resolved hook events (completed + blocks) — optional, interleaved chronologically */
+  hookEvents?: HookEvent[];
+  /** Currently running hooks — optional, interleaved chronologically */
+  activeHooks?: HookStartedEvent[];
 }
 
 // ============================================================================
@@ -91,6 +102,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       streamingTasks,
       streamingText,
       scrollToTimestamp,
+      hookEvents = [],
+      activeHooks = [],
     },
     ref
   ) {
@@ -160,6 +173,34 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       return undefined;
     }, [scrollToTimestamp, messages]);
 
+    // Build timeline data for Virtuoso. Always wraps messages as TimelineItem
+    // for consistent typing. When hook events exist, they're interleaved and sorted.
+    const hasHookEvents = hookEvents.length > 0 || activeHooks.length > 0;
+
+    const timeline = useMemo((): TimelineItem[] => {
+      const items: TimelineItem[] = [];
+
+      for (const msg of messages) {
+        items.push({
+          kind: "message",
+          data: msg,
+          sortTime: new Date(msg.createdAt).getTime(),
+        });
+      }
+
+      if (hasHookEvents) {
+        for (const ev of hookEvents) {
+          items.push({ kind: "hook", data: ev, sortTime: ev.timestamp });
+        }
+        for (const ev of activeHooks) {
+          items.push({ kind: "hook", data: ev, sortTime: ev.timestamp });
+        }
+        items.sort((a, b) => a.sortTime - b.sortTime);
+      }
+
+      return items;
+    }, [messages, hookEvents, activeHooks, hasHookEvents]);
+
     if (isTestEnv) {
       return (
         <div className="flex-1 overflow-hidden" data-testid="integrated-chat-messages">
@@ -172,15 +213,19 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             )}
           </div>
 
-          {messages.map((msg) => (
-            <div key={msg.id} className="px-3 w-full" style={contentContainerStyle}>
-              <MessageItem
-                role={msg.role}
-                content={msg.content}
-                createdAt={msg.createdAt}
-                toolCalls={msg.toolCalls ?? null}
-                contentBlocks={msg.contentBlocks ?? null}
-              />
+          {timeline.map((item, index) => (
+            <div key={`${item.kind}-${item.sortTime}-${index}`} className="px-3 w-full" style={contentContainerStyle}>
+              {item.kind === "hook" ? (
+                <HookEventMessage event={item.data} />
+              ) : (
+                <MessageItem
+                  role={item.data.role}
+                  content={item.data.content}
+                  createdAt={item.data.createdAt}
+                  toolCalls={item.data.toolCalls ?? null}
+                  contentBlocks={item.data.contentBlocks ?? null}
+                />
+              )}
             </div>
           ))}
 
@@ -221,10 +266,10 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
           // Key forces complete remount when conversation changes - prevents scroll animation conflicts
           key={conversationId ?? "empty"}
           ref={virtuosoRef}
-          data={messages}
+          data={timeline}
           context={footerContentHash}
-          // Start at the last message on mount
-          initialTopMostItemIndex={messages.length > 0 ? messages.length - 1 : 0}
+          // Start at the last item on mount
+          initialTopMostItemIndex={timeline.length > 0 ? timeline.length - 1 : 0}
           followOutput={handleFollowOutput}
           atBottomStateChange={handleAtBottomStateChange}
           atBottomThreshold={150}
@@ -309,18 +354,27 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
               );
             },
           }}
-          itemContent={(_, msg) => (
-            <div className="px-3 w-full" style={contentContainerStyle}>
-              <MessageItem
-                key={msg.id}
-                role={msg.role}
-                content={msg.content}
-                createdAt={msg.createdAt}
-                toolCalls={msg.toolCalls ?? null}
-                contentBlocks={msg.contentBlocks ?? null}
-              />
-            </div>
-          )}
+          itemContent={(_, item) => {
+            if (item.kind === "hook") {
+              return (
+                <div className="px-3 w-full" style={contentContainerStyle}>
+                  <HookEventMessage event={item.data} />
+                </div>
+              );
+            }
+            const msg = item.data;
+            return (
+              <div className="px-3 w-full" style={contentContainerStyle}>
+                <MessageItem
+                  role={msg.role}
+                  content={msg.content}
+                  createdAt={msg.createdAt}
+                  toolCalls={msg.toolCalls ?? null}
+                  contentBlocks={msg.contentBlocks ?? null}
+                />
+              </div>
+            );
+          }}
         />
       </div>
     );
