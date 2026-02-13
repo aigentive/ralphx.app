@@ -8,6 +8,7 @@
 
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
+import { enableMapSet } from "immer";
 import type { AskUserQuestionPayload } from "@/types/ask-user-question";
 import type { ExecutionStatusResponse } from "@/lib/tauri";
 import type { RecoveryPromptEvent } from "@/types/events";
@@ -17,6 +18,8 @@ import {
   loadCollapsedColumns,
   saveCollapsedColumns,
 } from "@/components/tasks/TaskBoard/Column.utils";
+
+enableMapSet();
 
 export type GraphSelection =
   | { kind: "task"; id: string }
