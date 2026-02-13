@@ -27,11 +27,14 @@ paths:
 1. If `re_executing` → fetch `get_review_notes()` + `get_task_issues(status: "open")` first
 2. `get_task_context(task_id)` → task details, proposal, plan, dependencies
 3. If blocked → STOP
-4. Read plan artifact if exists
-5. `start_step()` → work → `complete_step()` (per step)
-6. For re-execution: `mark_issue_in_progress()` / `mark_issue_addressed()` per issue
+4. Read plan artifact + `docs/architecture/system-card-orchestration-pattern.md`
+5. Decompose task into sub-scopes, build dependency graph, schedule waves
+6. Delegate to `ralphx-coder` instances (max 3 concurrent, no overlapping write files)
+7. Apply wave gates (validate each wave before starting next)
+8. `start_step()` → work → `complete_step()` (per step)
+9. For re-execution: `mark_issue_in_progress()` / `mark_issue_addressed()` per issue
 
-**Key MCP tools:** `start_step`, `complete_step`, `skip_step`, `fail_step`, `add_step`, `get_task_context`, `get_review_notes`, `get_task_issues`, `mark_issue_in_progress`, `mark_issue_addressed`
+**Key MCP tools:** `start_step`, `complete_step`, `skip_step`, `fail_step`, `add_step`, `get_task_context`, `get_review_notes`, `get_task_issues`, `mark_issue_in_progress`, `mark_issue_addressed` (+ `Task` tool for coder delegation)
 
 ## Reviewer (`ralphx-reviewer`)
 
