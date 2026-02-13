@@ -125,8 +125,8 @@ export function IntegratedChatPanel({
     activeConversationId,
     streamingToolCalls,
     setStreamingToolCalls,
-    streamingText,
-    setStreamingText,
+    streamingContentBlocks,
+    setStreamingContentBlocks,
     streamingTasks,
     setStreamingTasks,
     autoSelectConversation,
@@ -320,16 +320,16 @@ export function IntegratedChatPanel({
   const handleStopAgentWrapper = useCallback(async () => {
     await handleStopAgent();
     setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
-    setStreamingText("");
+    setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
     setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
-  }, [handleStopAgent, setStreamingToolCalls, setStreamingText, setStreamingTasks]);
+  }, [handleStopAgent, setStreamingToolCalls, setStreamingContentBlocks, setStreamingTasks]);
 
   useChatEvents({
     activeConversationId,
     contextId: currentContextId,
     contextType: currentContextType,
     setStreamingToolCalls,
-    setStreamingText,
+    setStreamingContentBlocks,
     setStreamingTasks,
   });
 
@@ -513,7 +513,7 @@ export function IntegratedChatPanel({
               isAgentRunning={isAgentRunning}
               streamingToolCalls={streamingToolCalls}
               streamingTasks={streamingTasks}
-              streamingText={streamingText}
+              streamingContentBlocks={streamingContentBlocks}
               scrollToTimestamp={isHistoryMode ? taskHistoryState?.timestamp : null}
             />
           )}

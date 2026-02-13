@@ -16,7 +16,7 @@ import { chatKeys } from "@/hooks/useChat";
 import type { ChatContext } from "@/types/chat";
 import type { ContextType } from "@/types/chat-conversation";
 import type { ToolCall } from "@/components/Chat/ToolCallIndicator";
-import type { StreamingTask } from "@/types/streaming-task";
+import type { StreamingTask, StreamingContentBlock } from "@/types/streaming-task";
 
 interface UseChatPanelContextProps {
   projectId: string;
@@ -64,8 +64,8 @@ export function useChatPanelContext({
   // Streaming tool calls - accumulated during agent execution
   const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCall[]>([]);
 
-  // Streaming text - accumulated from agent:chunk events for real-time display
-  const [streamingText, setStreamingText] = useState<string>("");
+  // Streaming content blocks - text and tool calls interleaved in order for real-time display
+  const [streamingContentBlocks, setStreamingContentBlocks] = useState<StreamingContentBlock[]>([]);
 
   // Streaming tasks - subagent Task tool calls during agent execution
   const [streamingTasks, setStreamingTasks] = useState<Map<string, StreamingTask>>(new Map());
@@ -133,7 +133,7 @@ export function useChatPanelContext({
 
       // Clear streaming state (functional updaters to avoid new-ref re-renders when already empty)
       setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
-      setStreamingText("");
+      setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
       setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
 
       // Cancel and remove the old conversation's agent run query to prevent
@@ -315,8 +315,8 @@ export function useChatPanelContext({
     activeConversationId,
     streamingToolCalls,
     setStreamingToolCalls,
-    streamingText,
-    setStreamingText,
+    streamingContentBlocks,
+    setStreamingContentBlocks,
     streamingTasks,
     setStreamingTasks,
     autoSelectConversation,

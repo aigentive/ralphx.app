@@ -22,7 +22,7 @@ import { chatKeys } from "@/hooks/useChat";
 import { getContextConfig } from "@/lib/chat-context-registry";
 import type { ContextType } from "@/types/chat-conversation";
 import type { ToolCall } from "@/components/Chat/ToolCallIndicator";
-import type { StreamingTask } from "@/types/streaming-task";
+import type { StreamingTask, StreamingContentBlock } from "@/types/streaming-task";
 import type { Unsubscribe } from "@/lib/event-bus";
 
 // ============================================================================
@@ -34,7 +34,7 @@ interface UseChatEventsProps {
   contextId: string | null;
   contextType: ContextType | null;
   setStreamingToolCalls: Dispatch<SetStateAction<ToolCall[]>>;
-  setStreamingText: Dispatch<SetStateAction<string>>;
+  setStreamingContentBlocks: Dispatch<SetStateAction<StreamingContentBlock[]>>;
   setStreamingTasks: Dispatch<SetStateAction<Map<string, StreamingTask>>>;
 }
 
@@ -47,7 +47,7 @@ export function useChatEvents({
   contextId,
   contextType,
   setStreamingToolCalls,
-  setStreamingText,
+  setStreamingContentBlocks,
   setStreamingTasks,
 }: UseChatEventsProps) {
   const bus = useEventBus();
@@ -164,6 +164,31 @@ export function useChatEvents({
             }
             return [...prev, entry];
           });
+
+          // Also push to streamingContentBlocks (skip Task tool, which has its own rendering)
+          if (tool_name.toLowerCase() !== "task") {
+            setStreamingContentBlocks((prev) => {
+              const existing = prev.find((block) => block.type === "tool_use" && block.toolCall.id === id);
+              if (existing) {
+                // Update existing tool_use block
+                return prev.map((block) => {
+                  if (block.type !== "tool_use" || block.toolCall.id !== id) return block;
+                  const updated: ToolCall = {
+                    ...block.toolCall,
+                    name: tool_name,
+                    arguments: args ?? block.toolCall.arguments,
+                    result: result ?? block.toolCall.result,
+                  };
+                  if (diffContext) {
+                    updated.diffContext = diffContext;
+                  }
+                  return { type: "tool_use", toolCall: updated };
+                });
+              }
+              // New tool_use block — append
+              return [...prev, { type: "tool_use", toolCall: entry }];
+            });
+          }
         }
 
         queryClient.invalidateQueries({
@@ -250,7 +275,16 @@ export function useChatEvents({
         bus.subscribe<{ text: string; conversation_id: string; context_id?: string; context_type?: string }>(
           "agent:chunk", (payload) => {
             if (!isRelevant(payload)) return;
-            setStreamingText((prev) => prev + payload.text);
+            setStreamingContentBlocks((prev) => {
+              const lastBlock = prev[prev.length - 1];
+              // If last block is text, append to it; otherwise create new text block
+              if (lastBlock?.type === "text") {
+                const updated = [...prev];
+                updated[updated.length - 1] = { type: "text", text: lastBlock.text + payload.text };
+                return updated;
+              }
+              return [...prev, { type: "text", text: payload.text }];
+            });
           }
         )
       );
@@ -269,7 +303,7 @@ export function useChatEvents({
         if (!isRelevant(payload)) return;
 
         if (payload.role === "assistant") {
-          setStreamingText("");
+          setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
           setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
           setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
         }
@@ -291,7 +325,7 @@ export function useChatEvents({
         if (!isRelevant(payload)) return;
 
         setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
-        setStreamingText("");
+        setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
         setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
         queryClient.invalidateQueries({
           queryKey: chatKeys.conversation(payload.conversation_id),
@@ -320,13 +354,13 @@ export function useChatEvents({
     // ── Cleanup ──────────────────────────────────────────────────────
     return () => {
       setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
-      setStreamingText("");
+      setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
       setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
       unsubscribes.forEach((unsub) => unsub());
     };
   }, [
     bus, queryClient, activeConversationId, contextId, contextType,
     supportsStreamingText, supportsSubagentTasks,
-    setStreamingToolCalls, setStreamingText, setStreamingTasks,
+    setStreamingToolCalls, setStreamingContentBlocks, setStreamingTasks,
   ]);
 }
