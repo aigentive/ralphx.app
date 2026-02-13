@@ -131,10 +131,10 @@ export function useChatPanelContext({
       // DO NOT clear active conversation here - let autoSelectConversation handle
       // the transition atomically to avoid transient empty state
 
-      // Clear streaming state
-      setStreamingToolCalls([]);
+      // Clear streaming state (functional updaters to avoid new-ref re-renders when already empty)
+      setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
       setStreamingText("");
-      setStreamingTasks(new Map());
+      setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
 
       // Cancel and remove the old conversation's agent run query to prevent
       // stale cached data from triggering recovery effects in the new context
@@ -229,11 +229,16 @@ export function useChatPanelContext({
       return;
     }
 
+    // Read activeConversationId from store snapshot at call-time (not from closure)
+    // to avoid including it in useCallback deps — which would cause self-invalidation
+    // when autoSelectConversation calls setActiveConversation.
+    const currentActiveId = useChatStore.getState().activeConversationId;
+
     // CRITICAL: Check for stale activeConversationId FIRST, before checking hasAutoSelectedRef.
     // If current conversation is stale but new context has conversations, directly select replacement.
-    if (activeConversationId && conversations.data) {
+    if (currentActiveId && conversations.data) {
       const belongsToContext = conversations.data.length > 0
-        ? conversations.data.some(c => c.id === activeConversationId)
+        ? conversations.data.some(c => c.id === currentActiveId)
         : false;
 
       if (!belongsToContext) {
@@ -268,7 +273,7 @@ export function useChatPanelContext({
         return new Date(bTime).getTime() - new Date(aTime).getTime();
       });
       const mostRecent = sorted[0];
-      if (mostRecent && mostRecent.id !== activeConversationId) {
+      if (mostRecent && mostRecent.id !== currentActiveId) {
         hasAutoSelectedRef.current = true;
         setActiveConversation(mostRecent.id);
         return;
@@ -276,7 +281,7 @@ export function useChatPanelContext({
     }
 
     // Reset the flag if we're in execution/review mode but have no active conversation
-    if (!activeConversationId && hasAutoSelectedRef.current) {
+    if (!currentActiveId && hasAutoSelectedRef.current) {
       hasAutoSelectedRef.current = false;
     }
 
@@ -285,7 +290,7 @@ export function useChatPanelContext({
       return;
     }
 
-    if (!activeConversationId && conversations.data && conversations.data.length > 0) {
+    if (!currentActiveId && conversations.data && conversations.data.length > 0) {
       // Sort by most recent activity
       const sorted = [...conversations.data].sort((a, b) => {
         const aTime = a.lastMessageAt || a.createdAt;
@@ -299,7 +304,7 @@ export function useChatPanelContext({
         setActiveConversation(mostRecent.id);
       }
     }
-  }, [activeConversationId, isMergeMode, isExecutionMode, isReviewMode, isHistoryMode, overrideConversationId, setActiveConversation]);
+  }, [isMergeMode, isExecutionMode, isReviewMode, isHistoryMode, overrideConversationId, setActiveConversation]);
 
   return {
     chatContext,

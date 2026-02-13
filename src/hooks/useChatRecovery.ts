@@ -71,7 +71,10 @@ export function useChatRecovery({
   // Recovery fallback: clear stuck "running" state when backend says run finished
   useEffect(() => {
     if (!activeConversationId || !isConversationInCurrentContext) return;
-    if (!agentRunStatus || agentRunStatus !== "running") {
+    // Wait for agentRunStatus to resolve before clearing — prevents
+    // thrashing during mount when status is still undefined (loading).
+    if (agentRunStatus === undefined) return;
+    if (agentRunStatus !== "running") {
       setAgentRunning(storeContextKey, false);
     }
   }, [activeConversationId, agentRunStatus, isConversationInCurrentContext, setAgentRunning, storeContextKey]);

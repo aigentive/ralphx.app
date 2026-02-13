@@ -320,6 +320,30 @@ describe("chatStore", () => {
       const state = useChatStore.getState();
       expect(state.activeConversationId).toBeNull();
     });
+
+    it("is no-op when setting same conversation ID", () => {
+      useChatStore.getState().setActiveConversation("conv-123");
+
+      // Get state reference after first set
+      const stateBefore = useChatStore.getState();
+
+      // Call with same value — should be a no-op
+      useChatStore.getState().setActiveConversation("conv-123");
+
+      const stateAfter = useChatStore.getState();
+      // State object reference should be unchanged (no new immer draft)
+      expect(stateAfter).toBe(stateBefore);
+    });
+
+    it("is no-op when setting null and already null", () => {
+      // Initial state has null activeConversationId
+      const stateBefore = useChatStore.getState();
+
+      useChatStore.getState().setActiveConversation(null);
+
+      const stateAfter = useChatStore.getState();
+      expect(stateAfter).toBe(stateBefore);
+    });
   });
 
   describe("setAgentRunning", () => {

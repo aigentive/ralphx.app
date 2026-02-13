@@ -333,12 +333,21 @@ describe("useChatEvents", () => {
       });
 
       expect(props.setStreamingText).toHaveBeenCalledWith("");
-      expect(props.setStreamingToolCalls).toHaveBeenCalledWith([]);
-      // setStreamingTasks is called with a new Map
+      // Tool calls and tasks use functional updaters now
+      expect(props.setStreamingToolCalls).toHaveBeenCalledTimes(1);
       expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
-      const taskArg = props.setStreamingTasks.mock.calls[0][0];
-      expect(taskArg).toBeInstanceOf(Map);
-      expect(taskArg.size).toBe(0);
+
+      // Verify functional updater returns empty when prev has items
+      const toolCallResult = executeUpdater<ToolCall[]>(props.setStreamingToolCalls, [
+        { id: "tc1", name: "Read", arguments: {} },
+      ]);
+      expect(toolCallResult).toEqual([]);
+
+      const taskResult = executeUpdater<Map<string, StreamingTask>>(
+        props.setStreamingTasks,
+        new Map([["t1", { toolUseId: "t1", description: "", subagentType: "", model: "", status: "running" as const, startedAt: 0, childToolCalls: [] }]]),
+      );
+      expect(taskResult.size).toBe(0);
     });
 
     it("should NOT clear streaming state on user message", () => {
@@ -378,12 +387,16 @@ describe("useChatEvents", () => {
         });
       });
 
-      expect(props.setStreamingToolCalls).toHaveBeenCalledWith([]);
+      // Tool calls and tasks use functional updaters
+      expect(props.setStreamingToolCalls).toHaveBeenCalledTimes(1);
       expect(props.setStreamingText).toHaveBeenCalledWith("");
       expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
-      const taskArg = props.setStreamingTasks.mock.calls[0][0];
-      expect(taskArg).toBeInstanceOf(Map);
-      expect(taskArg.size).toBe(0);
+
+      // Verify updaters clear non-empty state
+      const toolCallResult = executeUpdater<ToolCall[]>(props.setStreamingToolCalls, [
+        { id: "tc1", name: "Read", arguments: {} },
+      ]);
+      expect(toolCallResult).toEqual([]);
       expect(mockInvalidateQueries).toHaveBeenCalled();
     });
   });
@@ -404,7 +417,12 @@ describe("useChatEvents", () => {
         });
       });
 
-      expect(props.setStreamingToolCalls).toHaveBeenCalledWith([]);
+      // Tool calls use functional updater
+      expect(props.setStreamingToolCalls).toHaveBeenCalledTimes(1);
+      const result = executeUpdater<ToolCall[]>(props.setStreamingToolCalls, [
+        { id: "tc1", name: "Read", arguments: {} },
+      ]);
+      expect(result).toEqual([]);
       expect(mockInvalidateQueries).toHaveBeenCalled();
       // Note: agent:error only clears tool calls, not text or tasks
       expect(props.setStreamingText).not.toHaveBeenCalled();
@@ -588,15 +606,39 @@ describe("useChatEvents", () => {
 
       unmount();
 
-      // Cleanup sets values directly (not updater functions)
-      expect(props.setStreamingToolCalls).toHaveBeenCalledWith([]);
+      // Cleanup uses functional updaters for tool calls and tasks
+      expect(props.setStreamingToolCalls).toHaveBeenCalled();
       expect(props.setStreamingText).toHaveBeenCalledWith("");
-      expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
+      expect(props.setStreamingTasks).toHaveBeenCalled();
 
       // All subscriptions should be removed
       for (const [, handlers] of subscriptions) {
         expect(handlers).toHaveLength(0);
       }
+    });
+
+    it("should return same reference when streaming state is already empty (no-op)", () => {
+      const props = makeProps();
+      const { unmount } = renderHook(() => useChatEvents(props));
+
+      unmount();
+
+      // Verify functional updaters return same ref when already empty
+      const emptyToolCalls: ToolCall[] = [];
+      const toolCallResult = executeUpdater<ToolCall[]>(
+        props.setStreamingToolCalls,
+        emptyToolCalls,
+        props.setStreamingToolCalls.mock.calls.length - 1,
+      );
+      expect(toolCallResult).toBe(emptyToolCalls); // Same reference!
+
+      const emptyTasks = new Map<string, StreamingTask>();
+      const taskResult = executeUpdater<Map<string, StreamingTask>>(
+        props.setStreamingTasks,
+        emptyTasks,
+        props.setStreamingTasks.mock.calls.length - 1,
+      );
+      expect(taskResult).toBe(emptyTasks); // Same reference!
     });
   });
 });
