@@ -11,7 +11,7 @@ import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { infiniteTaskKeys } from "@/hooks/useInfiniteTasksQuery";
 import type { WorkflowColumn } from "@/types/workflow";
 import type { InternalStatus } from "@/types/status";
-import type { TaskListResponse } from "@/types/task";
+import type { Task, TaskListResponse } from "@/types/task";
 
 /**
  * Extract all statuses for a column, handling groups
@@ -49,6 +49,7 @@ function mapsEqual(a: Map<string, number>, b: Map<string, number>): boolean {
  * @param projectId - Current project ID
  * @param showArchived - Whether archived tasks are included
  * @param ideationSessionId - Optional plan filter
+ * @param showMergeTasks - Whether merge tasks are included in counts
  * @returns Map from column ID to task count
  */
 export function useColumnTaskCounts(
@@ -56,6 +57,7 @@ export function useColumnTaskCounts(
   projectId: string,
   showArchived: boolean,
   ideationSessionId?: string | null,
+  showMergeTasks: boolean = true,
 ): Map<string, number> {
   const queryClient = useQueryClient();
   const prevRef = useRef<Map<string, number>>(new Map());
@@ -74,7 +76,11 @@ export function useColumnTaskCounts(
       let count = 0;
       if (data?.pages) {
         for (const page of data.pages) {
-          count += page.tasks.length;
+          if (showMergeTasks) {
+            count += page.tasks.length;
+          } else {
+            count += page.tasks.filter((t: Task) => t.category !== "plan_merge").length;
+          }
         }
       }
       next.set(col.id, count);
@@ -86,7 +92,7 @@ export function useColumnTaskCounts(
     }
     prevRef.current = next;
     return next;
-  }, [columns, projectId, showArchived, ideationSessionId, queryClient]);
+  }, [columns, projectId, showArchived, ideationSessionId, showMergeTasks, queryClient]);
 
   const subscribe = useCallback(
     (onStoreChange: () => void) => queryClient.getQueryCache().subscribe(onStoreChange),

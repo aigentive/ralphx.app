@@ -9,7 +9,7 @@
  */
 
 import { useDroppable, useDndContext } from "@dnd-kit/core";
-import { Inbox, XCircle, Loader2 } from "lucide-react";
+import { Inbox, XCircle, Loader2, Plus } from "lucide-react";
 import { useRef, useEffect, useState, useMemo, useCallback } from "react";
 import type { WorkflowColumnResponse } from "@/lib/api/workflows";
 import type { StateGroup } from "@/types/workflow";
@@ -19,6 +19,11 @@ import { TaskCard } from "./TaskCard";
 import { ColumnGroup } from "./ColumnGroup";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InlineTaskAdd } from "../InlineTaskAdd";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -224,6 +229,7 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
   }, [groups, tasksByGroup, column.mapsTo, column.id]);
 
   // Infinite scroll with IntersectionObserver
+  // Re-run when isCollapsed changes so observer reconnects after expand
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
@@ -253,7 +259,7 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
     return () => {
       observer.disconnect();
     };
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage, isCollapsed]);
 
   // Drop zone styles (macOS Tahoe - clean, flat)
   const getDropZoneStyles = (): React.CSSProperties => {
@@ -303,6 +309,9 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
     onRemoveAll: handleRemoveAll,
     onCancelAll: handleCancelAll,
   }), [column.name, column.mapsTo, tasks.length, projectId, handleRemoveAll, handleCancelAll]);
+
+  // Popover state for collapsed Draft quick-add
+  const [draftPopoverOpen, setDraftPopoverOpen] = useState(false);
 
   // Determine if this column should show InlineTaskAdd
   // Always visible in draft/backlog columns (not during drag)
@@ -387,6 +396,60 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
         >
           {tasks.length}
         </span>
+
+        {/* Draft "+" quick-add button */}
+        {column.id === "draft" && (
+          <Popover open={draftPopoverOpen} onOpenChange={setDraftPopoverOpen}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                aria-label="Add task to Draft"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDraftPopoverOpen(true);
+                }}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                }}
+                className="mt-3 flex items-center justify-center rounded transition-colors"
+                style={{
+                  width: "28px",
+                  height: "28px",
+                  border: "1px dashed hsl(220 10% 30%)",
+                  color: "hsl(220 10% 45%)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "hsl(14 100% 60%)";
+                  e.currentTarget.style.color = "hsl(14 100% 60%)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "hsl(220 10% 30%)";
+                  e.currentTarget.style.color = "hsl(220 10% 45%)";
+                }}
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              side="right"
+              sideOffset={8}
+              className="w-72 p-0"
+              style={{
+                background: "hsl(220 10% 11%)",
+                border: "1px solid hsl(220 10% 18%)",
+              }}
+              onOpenAutoFocus={(e) => e.preventDefault()}
+            >
+              <div className="p-2">
+                <InlineTaskAdd
+                  projectId={projectId}
+                  columnId="draft"
+                  onCreated={() => setDraftPopoverOpen(false)}
+                />
+              </div>
+            </PopoverContent>
+          </Popover>
+        )}
       </div>
     );
   }
