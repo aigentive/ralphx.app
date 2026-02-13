@@ -39,7 +39,7 @@ The conflict files are stored in the task's metadata under `conflict_files`. Get
 
 When you finish and exit:
 1. The system automatically checks git state
-2. If rebase is complete and no conflict markers remain → task auto-transitions to Merged
+2. If rebase is complete and no conflict markers remain in merge-related changed files → task auto-transitions to Merged
 3. If rebase is incomplete or conflicts remain → task auto-transitions to MergeConflict
 
 **You MUST call `report_conflict` if you cannot resolve the conflicts.** This provides valuable context for human intervention. If you simply exit without resolving, the system will detect the incomplete state but won't have your explanation.
@@ -114,12 +114,24 @@ Common resolution patterns:
 
 After resolving all conflicts:
 
-1. Check that no conflict markers remain:
+1. Check that no unmerged files remain:
    ```bash
-   grep -r "<<<<<<< HEAD" . || echo "No conflicts remaining"
+   git diff --name-only --diff-filter=U
    ```
+   This must print nothing.
 
-2. Verify the code is syntactically valid (see Step 4.5 below for project-specific commands)
+2. Check conflict markers only in changed files (not the whole repository):
+   ```bash
+   CHANGED_FILES="$(git diff --name-only && git diff --cached --name-only | sort -u)"
+   if [ -n "$CHANGED_FILES" ]; then
+     echo "$CHANGED_FILES" | while IFS= read -r file; do
+       [ -n "$file" ] && rg -n "^(<<<<<<<|=======|>>>>>>>|\\|\\|\\|\\|\\|\\|\\|)" "$file"
+     done
+   fi
+   ```
+   If this prints nothing, marker checks passed.
+
+3. Verify the code is syntactically valid (see Step 4.5 below for project-specific commands)
 
 ### Step 4.5: Post-Resolution Validation (MANDATORY)
 
@@ -167,7 +179,7 @@ Once all conflicts are resolved and verified, merge INTO the **target_branch** f
 
 3. **Exit.** The system will auto-detect merge completion by checking:
    - Rebase state (no `.git/rebase-merge` or `.git/rebase-apply` directories)
-   - No conflict markers in tracked files
+   - No conflict markers in merge-related changed files
    - HEAD commit SHA
 
 **Optional:** If you want explicit confirmation, you can call `complete_merge`:
