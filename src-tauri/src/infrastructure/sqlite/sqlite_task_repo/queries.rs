@@ -43,3 +43,13 @@ pub(super) const GET_OLDEST_READY_TASKS: &str =
        AND archived_at IS NULL
      ORDER BY created_at ASC
      LIMIT ?1";
+
+/// Clear FK references to a task before deletion (defense-in-depth)
+/// Sets created_task_id to NULL in task_proposals table
+pub(super) const CLEAR_TASK_PROPOSAL_REFERENCES: &str =
+    "UPDATE task_proposals SET created_task_id = NULL WHERE created_task_id = ?1";
+
+/// Clear FK references to a task before deletion (defense-in-depth)
+/// Sets task_id to NULL in artifacts table
+pub(super) const CLEAR_ARTIFACT_REFERENCES: &str =
+    "UPDATE artifacts SET task_id = NULL WHERE task_id = ?1";

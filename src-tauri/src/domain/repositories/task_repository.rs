@@ -42,6 +42,12 @@ pub trait TaskRepository: Send + Sync {
     /// Delete a task
     async fn delete(&self, id: &TaskId) -> AppResult<()>;
 
+    /// Clear all FK references to a task before deletion (defense-in-depth)
+    /// Sets NULL on task_proposals.created_task_id and artifacts.task_id
+    /// where they reference the given task_id. This prevents FK constraint
+    /// failures if a new FK without ON DELETE SET NULL is added in the future.
+    async fn clear_task_references(&self, id: &TaskId) -> AppResult<()>;
+
     // ═══════════════════════════════════════════════════════════════════════
     // Status Operations (Phase 3 will add full state machine integration)
     // ═══════════════════════════════════════════════════════════════════════
@@ -305,6 +311,10 @@ mod tests {
         }
 
         async fn delete(&self, _id: &TaskId) -> AppResult<()> {
+            Ok(())
+        }
+
+        async fn clear_task_references(&self, _id: &TaskId) -> AppResult<()> {
             Ok(())
         }
 

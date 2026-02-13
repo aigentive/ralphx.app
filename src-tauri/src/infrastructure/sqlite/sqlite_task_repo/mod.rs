@@ -162,6 +162,20 @@ impl TaskRepository for SqliteTaskRepository {
         Ok(())
     }
 
+    async fn clear_task_references(&self, id: &TaskId) -> AppResult<()> {
+        let conn = self.conn.lock().await;
+
+        // Clear task_proposals.created_task_id
+        conn.execute(queries::CLEAR_TASK_PROPOSAL_REFERENCES, [id.as_str()])
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        // Clear artifacts.task_id
+        conn.execute(queries::CLEAR_ARTIFACT_REFERENCES, [id.as_str()])
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(())
+    }
+
     async fn get_by_status(
         &self,
         project_id: &ProjectId,

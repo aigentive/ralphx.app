@@ -31,6 +31,9 @@ impl TaskRepository for MockTaskRepoForSpawner {
     async fn delete(&self, _: &TaskId) -> AppResult<()> {
         Ok(())
     }
+    async fn clear_task_references(&self, _: &TaskId) -> AppResult<()> {
+        Ok(())
+    }
     async fn get_by_status(
         &self,
         _: &ProjectId,
