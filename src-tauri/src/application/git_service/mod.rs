@@ -1324,7 +1324,7 @@ impl GitService {
     pub fn has_conflict_markers(worktree: &Path) -> AppResult<bool> {
         let candidate_files = Self::collect_conflict_scan_candidates(worktree)?;
         for file in candidate_files {
-            let file_path = worktree.join(file);
+            let file_path = worktree.join(&file);
 
             // Skip if file doesn't exist (could be deleted in working tree)
             if !file_path.exists() {
