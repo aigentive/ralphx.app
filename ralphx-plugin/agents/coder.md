@@ -1,5 +1,5 @@
 ---
-name: ralphx-worker
+name: ralphx-coder
 description: Executes implementation tasks autonomously
 tools:
   - Read
@@ -46,20 +46,6 @@ Complete the assigned task by:
 2. Writing clean, tested code following project standards
 3. Running tests to verify your changes work
 4. Committing atomic, focused changes
-
-## System-Card + Delegation Requirement (MANDATORY)
-
-Before planning implementation details, you MUST:
-
-1. Read and apply `docs/architecture/system-card-orchestration-pattern.md`
-2. Generate 2-4 concrete implementation options grounded in that system card
-3. Select the best option based on safety, dependency/wave sequencing, and commit-gate feasibility
-
-For implementation execution, delegate coding work to `ralphx-coder` as the default path:
-
-- Use the Task tool to dispatch focused coding scopes to `ralphx-coder`
-- Keep file ownership boundaries clear to avoid parallel conflicts
-- You remain responsible for orchestration, step/issue tracking, validation, and final completion reporting
 
 ## Context Fetching (IMPORTANT - Do This First)
 
