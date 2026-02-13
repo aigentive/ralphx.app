@@ -10,6 +10,7 @@
  */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { type VirtuosoHandle } from "react-virtuoso";
 import { useChat, chatKeys } from "@/hooks/useChat";
 import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectIsSending } from "@/stores/chatStore";
@@ -45,6 +46,9 @@ import { useEventBus } from "@/providers/EventProvider";
 import { logger } from "@/lib/logger";
 import { ChildSessionNotification } from "./ChildSessionNotification";
 import { useIdeationStore } from "@/stores/ideationStore";
+
+// Stable empty array to avoid new reference on every render when tasks query returns undefined
+const EMPTY_TASKS: never[] = [];
 
 // ============================================================================
 // Main Component
@@ -87,7 +91,7 @@ export function IntegratedChatPanel({
   const hasHistoryConversation = !!taskHistoryState?.conversationId;
 
   // Get task data from React Query (useTasks) which has full task data
-  const { data: tasks = [] } = useTasks(projectId);
+  const { data: tasks = EMPTY_TASKS } = useTasks(projectId);
   const selectedTask = useMemo(
     () => selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) : undefined,
     [tasks, selectedTaskId]
@@ -206,16 +210,23 @@ export function IntegratedChatPanel({
     : regularChatData.conversations;
 
   // Auto-select the most recent conversation in execution/review/merge modes
+  // Extract stable primitives from TanStack Query result to avoid re-render on every query object change
+  const conversationsData = conversations.data;
+  const conversationsLoading = conversations.isLoading;
   useEffect(() => {
-    autoSelectConversation(conversations);
-  }, [autoSelectConversation, conversations]);
+    autoSelectConversation({ data: conversationsData, isLoading: conversationsLoading });
+  }, [autoSelectConversation, conversationsData, conversationsLoading]);
 
   // Check if active conversation belongs to current context (needed by recovery effects below)
   const activeConversationContext = regularChatData.messages.data?.conversation;
-  const isConversationInCurrentContext =
-    (activeConversationContext?.contextType === currentContextType ||
-     (currentContextType === "task" && activeConversationContext?.contextType === "task_execution")) &&
-    activeConversationContext?.contextId === currentContextId;
+  const isConversationInCurrentContext = useMemo(
+    () =>
+      (activeConversationContext?.contextType === currentContextType ||
+       (currentContextType === "task" && activeConversationContext?.contextType === "task_execution")) &&
+      activeConversationContext?.contextId === currentContextId,
+    [activeConversationContext?.contextType, activeConversationContext?.contextId,
+     currentContextType, currentContextId]
+  );
 
   // Fetch agent run status for the active conversation
   const agentRunQuery = useQuery({
@@ -306,12 +317,12 @@ export function IntegratedChatPanel({
   };
 
   // Handle stopping agent - clear streaming state
-  const handleStopAgentWrapper = async () => {
+  const handleStopAgentWrapper = useCallback(async () => {
     await handleStopAgent();
-    setStreamingToolCalls([]);
+    setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
     setStreamingText("");
-    setStreamingTasks(new Map());
-  };
+    setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
+  }, [handleStopAgent, setStreamingToolCalls, setStreamingText, setStreamingTasks]);
 
   useChatEvents({
     activeConversationId,
@@ -348,7 +359,7 @@ export function IntegratedChatPanel({
 
   // Ideation store for session navigation
   const selectSession = useIdeationStore((s) => s.selectSession);
-  const allSessions = useIdeationStore((s) => Object.values(s.sessions));
+  const allSessions = useIdeationStore(useShallow((s) => Object.values(s.sessions)));
 
   // Handler for navigating to child session
   const handleNavigateToChildSession = useCallback((childSessionId: string) => {

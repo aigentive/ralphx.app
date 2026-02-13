@@ -29,7 +29,9 @@ import type { Unsubscribe } from "@/lib/event-bus";
 export function useAgentEvents(activeConversationId: string | null) {
   const bus = useEventBus();
   const queryClient = useQueryClient();
-  const { setAgentRunning, deleteQueuedMessage, setActiveConversation } = useChatStore();
+  const setAgentRunning = useChatStore((s) => s.setAgentRunning);
+  const deleteQueuedMessage = useChatStore((s) => s.deleteQueuedMessage);
+  const setActiveConversation = useChatStore((s) => s.setActiveConversation);
 
   useEffect(() => {
     const unsubscribes: Unsubscribe[] = [];

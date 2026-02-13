@@ -43,6 +43,7 @@ describe("chatStore", () => {
       activeConversationId: null,
       queuedMessages: {},
       isAgentRunning: {},
+      isSending: {},
     });
   });
 
@@ -406,6 +407,45 @@ describe("chatStore", () => {
     });
   });
 
+  describe("setSending", () => {
+    const contextKey = "task:test-task";
+
+    it("sets isSending to true for context", () => {
+      useChatStore.getState().setSending(contextKey, true);
+
+      const state = useChatStore.getState();
+      expect(state.isSending[contextKey]).toBe(true);
+    });
+
+    it("removes context when set to false", () => {
+      useChatStore.getState().setSending(contextKey, true);
+      useChatStore.getState().setSending(contextKey, false);
+
+      const state = useChatStore.getState();
+      expect(state.isSending[contextKey]).toBeUndefined();
+    });
+
+    it("is no-op when setting true and key is already true", () => {
+      useChatStore.getState().setSending(contextKey, true);
+
+      const stateBefore = useChatStore.getState();
+
+      useChatStore.getState().setSending(contextKey, true);
+
+      const stateAfter = useChatStore.getState();
+      expect(stateAfter).toBe(stateBefore);
+    });
+
+    it("is no-op when setting false and key is already absent", () => {
+      const stateBefore = useChatStore.getState();
+
+      useChatStore.getState().setSending("nonexistent:key", false);
+
+      const stateAfter = useChatStore.getState();
+      expect(stateAfter).toBe(stateBefore);
+    });
+  });
+
   describe("queueMessage", () => {
     const contextKey = "task:test-task";
 
@@ -723,6 +763,7 @@ describe("selectors", () => {
       activeConversationId: null,
       queuedMessages: {},
       isAgentRunning: {},
+      isSending: {},
     });
   });
 

@@ -155,12 +155,10 @@ export function useChat(context: ChatContext) {
   const { contextType, contextId } = getContextTypeAndId(context);
   const contextKey = buildStoreKey(contextType, contextId);
 
-  const {
-    activeConversationId,
-    setActiveConversation,
-    setAgentRunning,
-    setSending,
-  } = useChatStore();
+  const activeConversationId = useChatStore((s) => s.activeConversationId);
+  const setActiveConversation = useChatStore((s) => s.setActiveConversation);
+  const setAgentRunning = useChatStore((s) => s.setAgentRunning);
+  const setSending = useChatStore((s) => s.setSending);
 
   // Fetch conversations for this context
   const conversations = useConversations(context);

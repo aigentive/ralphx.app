@@ -56,13 +56,11 @@ export function useChatActions({
   messageCount = 0,
 }: UseChatActionsProps) {
   const queryClient = useQueryClient();
-  const {
-    queueMessage,
-    deleteQueuedMessage,
-    startEditingQueuedMessage,
-    setActiveConversation,
-    setAgentRunning,
-  } = useChatStore();
+  const queueMessage = useChatStore((s) => s.queueMessage);
+  const deleteQueuedMessage = useChatStore((s) => s.deleteQueuedMessage);
+  const startEditingQueuedMessage = useChatStore((s) => s.startEditingQueuedMessage);
+  const setActiveConversation = useChatStore((s) => s.setActiveConversation);
+  const setAgentRunning = useChatStore((s) => s.setAgentRunning);
 
   // Generate a unique ID for queued messages (shared between frontend + backend)
   const generateQueuedMessageId = useCallback(() => {
