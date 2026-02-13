@@ -99,6 +99,7 @@ impl AgenticClientSpawner {
     fn role_from_string(agent_type: &str) -> AgentRole {
         match agent_type {
             "worker" => AgentRole::Worker,
+            "coder" | "ralphx-coder" => AgentRole::Worker,
             "qa-prep" => AgentRole::QaPrep,
             "qa-refiner" => AgentRole::QaRefiner,
             "qa-tester" => AgentRole::QaTester,

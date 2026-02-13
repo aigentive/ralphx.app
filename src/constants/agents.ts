@@ -2,6 +2,7 @@
 // Single source of truth for all agent name strings used in the frontend.
 
 export const AGENT_WORKER = "worker" as const;
+export const AGENT_CODER = "coder" as const;
 export const AGENT_REVIEWER = "reviewer" as const;
 export const AGENT_ORCHESTRATOR = "orchestrator" as const;
 export const AGENT_MERGER = "merger" as const;
