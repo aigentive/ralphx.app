@@ -10,7 +10,7 @@
 
 import React, { useState, useMemo } from "react";
 import { Wrench, ChevronDown, ChevronRight, FileText, Terminal, FileEdit, Search, FolderSearch } from "lucide-react";
-import { createSummary, formatValue } from "./ToolCallIndicator.helpers";
+import { createSummary, formatValue, getToolVerb } from "./ToolCallIndicator.helpers";
 import { isDiffToolCall, isTaskToolCall } from "./DiffToolCallView.utils";
 import { DiffToolCallView } from "./DiffToolCallView";
 import { TaskToolCallCard } from "./TaskToolCallCard";
@@ -62,6 +62,7 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
   // Hooks must be called unconditionally (React rules-of-hooks)
   const [isExpanded, setIsExpanded] = useState(false);
   const summary = useMemo(() => createSummary(toolCall), [toolCall]);
+  const verb = useMemo(() => getToolVerb(toolCall.name), [toolCall.name]);
   const hasError = Boolean(toolCall.error);
 
   // Delegate Edit/Write to DiffToolCallView for inline diff rendering
@@ -102,73 +103,97 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
       <button
         data-testid="tool-call-toggle"
         onClick={() => setIsExpanded(!isExpanded)}
-        className={`w-full flex items-center gap-2 ${compact ? "px-2 py-1.5" : "px-3 py-2"} text-left hover:opacity-80 transition-opacity`}
+        className={`w-full ${compact ? "px-2 py-1.5" : "px-3 py-2"} text-left hover:opacity-80 transition-opacity`}
         aria-expanded={isExpanded}
         aria-label={`Tool call: ${toolCall.name}. Click to ${isExpanded ? "collapse" : "expand"} details.`}
       >
-        {/* Expand/collapse icon */}
-        {isExpanded ? (
-          <ChevronDown
-            size={chevronSize}
-            className="flex-shrink-0"
-            style={{ color: "hsl(220 10% 45%)" }}
-          />
-        ) : (
-          <ChevronRight
-            size={chevronSize}
-            className="flex-shrink-0"
-            style={{ color: "hsl(220 10% 45%)" }}
-          />
-        )}
+        {/* Line 1: Chevron + Icon + Tool name badge + Verb + Error indicator */}
+        <div className="flex items-center gap-2">
+          {/* Expand/collapse icon */}
+          {isExpanded ? (
+            <ChevronDown
+              size={chevronSize}
+              className="flex-shrink-0"
+              style={{ color: "hsl(220 10% 45%)" }}
+            />
+          ) : (
+            <ChevronRight
+              size={chevronSize}
+              className="flex-shrink-0"
+              style={{ color: "hsl(220 10% 45%)" }}
+            />
+          )}
 
-        {/* Tool icon */}
-        <ToolIcon name={toolCall.name} hasError={hasError} size={iconSize} />
+          {/* Tool icon */}
+          <ToolIcon name={toolCall.name} hasError={hasError} size={iconSize} />
 
-        {/* Tool name badge - macOS Tahoe flat style */}
-        <span
-          className={`${compact ? "text-[9px]" : "text-[10px]"} px-1.5 py-0.5 rounded flex-shrink-0`}
-          style={{
-            /* macOS Tahoe: subtle solid background */
-            backgroundColor: hasError ? "hsla(0 0% 0% / 0.2)" : "hsl(220 10% 10%)",
-            color: hasError ? "hsl(220 10% 90%)" : "hsl(220 10% 55%)",
-            fontFamily: "var(--font-mono)",
-          }}
-        >
-          {toolCall.name}
-        </span>
-
-        {/* Summary text */}
-        <div className="flex-1 min-w-0 flex flex-col">
+          {/* Tool name badge - macOS Tahoe flat style */}
           <span
-            className={`${compact ? "text-[11px]" : "text-xs"} truncate font-mono`}
+            className={`${compact ? "text-[9px]" : "text-[10px]"} px-1.5 py-0.5 rounded flex-shrink-0`}
             style={{
-              color: hasError ? "hsl(0 70% 75%)" : "hsl(220 10% 75%)",
+              /* macOS Tahoe: subtle solid background */
+              backgroundColor: hasError ? "hsla(0 0% 0% / 0.2)" : "hsl(220 10% 10%)",
+              color: hasError ? "hsl(220 10% 90%)" : "hsl(220 10% 55%)",
+              fontFamily: "var(--font-mono)",
             }}
           >
-            {summary.title}
+            {toolCall.name}
           </span>
-          {summary.subtitle && (
+
+          {/* Verb */}
+          <span
+            className={`${compact ? "text-[11px]" : "text-xs"} font-medium`}
+            style={{ color: "hsl(220 10% 75%)" }}
+          >
+            {verb}
+          </span>
+
+          {/* Error indicator */}
+          {hasError && (
             <span
-              className={`${compact ? "text-[9px]" : "text-[10px]"} truncate`}
-              style={{ color: "hsl(220 10% 50%)" }}
+              className={`${compact ? "text-[9px]" : "text-[10px]"} font-medium px-1.5 py-0.5 rounded ml-auto`}
+              style={{
+                /* macOS Tahoe: subtle error background */
+                backgroundColor: "hsla(0 70% 50% / 0.2)",
+                color: "hsl(0 70% 70%)",
+              }}
             >
-              {summary.subtitle}
+              Failed
             </span>
           )}
         </div>
 
-        {/* Error indicator */}
-        {hasError && (
+        {/* Line 2: File path/summary (indented to align with verb, monospace, break-all) */}
+        <div className="flex gap-2 mt-0.5">
+          {/* Spacer to align with verb (chevron + icon + badge widths) */}
+          <div className="flex gap-2 flex-shrink-0">
+            <span style={{ width: `${chevronSize}px` }} />
+            <span style={{ width: `${iconSize}px` }} />
+          </div>
           <span
-            className={`${compact ? "text-[9px]" : "text-[10px]"} font-medium px-1.5 py-0.5 rounded`}
+            className={`${compact ? "text-[10px]" : "text-[11px]"} font-mono break-all`}
             style={{
-              /* macOS Tahoe: subtle error background */
-              backgroundColor: "hsla(0 70% 50% / 0.2)",
-              color: "hsl(0 70% 70%)",
+              color: hasError ? "hsl(0 70% 75%)" : "hsl(220 10% 65%)",
             }}
           >
-            Failed
+            {summary.title}
           </span>
+        </div>
+
+        {/* Line 3: Subtitle (if present) */}
+        {summary.subtitle && (
+          <div className="flex gap-2 mt-0.5">
+            <div className="flex gap-2 flex-shrink-0">
+              <span style={{ width: `${chevronSize}px` }} />
+              <span style={{ width: `${iconSize}px` }} />
+            </div>
+            <span
+              className={`${compact ? "text-[9px]" : "text-[10px]"}`}
+              style={{ color: "hsl(220 10% 50%)" }}
+            >
+              {summary.subtitle}
+            </span>
+          </div>
         )}
       </button>
 
