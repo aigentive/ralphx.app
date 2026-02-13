@@ -1,11 +1,9 @@
 // Proposal-to-task conversion and task dependency commands
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{Manager, State};
 
-use crate::application::git_service::GitService;
 use crate::application::{AppState, TaskSchedulerService};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
@@ -222,16 +220,14 @@ pub async fn apply_proposals_to_kanban(
                 .unwrap_or_else(|| ArtifactId::from_string(session_id.as_str().to_string()));
 
             let base_branch = project.base_branch.as_deref().unwrap_or("main").to_string();
-            let repo_path = PathBuf::from(&project.working_directory);
 
             // Generate branch name: ralphx/{project-slug}/plan-{short-id}
             let project_slug = slug_from_name(&project.name);
             let short_id = &effective_plan_id.as_str()[..8.min(effective_plan_id.as_str().len())];
             let branch_name = format!("ralphx/{}/plan-{}", project_slug, short_id);
 
-            // Create git feature branch from base branch
-            GitService::create_feature_branch(&repo_path, &branch_name, &base_branch)
-                .map_err(|e| format!("Failed to create feature branch: {}", e))?;
+            // Git branch creation is deferred to first task execution
+            // (see resolve_task_base_branch in side_effects.rs)
 
             // Insert plan_branches DB record
             let plan_branch = PlanBranch::new(
