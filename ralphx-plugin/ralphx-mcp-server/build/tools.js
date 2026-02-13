@@ -1004,6 +1004,7 @@ export const TOOL_ALLOWLIST = {
         "search_memories",
         "get_memory",
         "get_memories_for_paths",
+        "get_conversation_transcript",
     ],
     [REVIEWER]: [
         // specific review tools
@@ -1145,6 +1146,7 @@ export const TOOL_ALLOWLIST = {
         "search_memories",
         "get_memory",
         "get_memories_for_paths",
+        "get_conversation_transcript",
     ],
     [MEMORY_CAPTURE]: [
         // Memory write tools (exclusive to memory agents)
