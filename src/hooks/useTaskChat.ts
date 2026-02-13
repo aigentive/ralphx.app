@@ -67,11 +67,9 @@ export function useTaskChat(taskId: string, contextType: TaskContextType, histor
   // Fetch state transitions for historical message filtering
   const stateTransitions = useTaskStateTransitions(isHistoricalMode ? taskId : undefined);
 
-  const {
-    activeConversationId,
-    setActiveConversation,
-    setAgentRunning,
-  } = useChatStore();
+  const activeConversationId = useChatStore((s) => s.activeConversationId);
+  const setActiveConversation = useChatStore((s) => s.setActiveConversation);
+  const setAgentRunning = useChatStore((s) => s.setAgentRunning);
 
   // Fetch conversations for this specific context type and task
   const conversations = useQuery<ChatConversation[], Error>({

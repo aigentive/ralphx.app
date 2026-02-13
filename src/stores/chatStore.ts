@@ -174,8 +174,10 @@ export const useChatStore = create<ChatState & ChatActions>()(
     setSending: (contextKey, isSending) =>
       set((state) => {
         if (isSending) {
+          if (state.isSending[contextKey]) return; // already true — no-op
           state.isSending[contextKey] = true;
         } else {
+          if (!(contextKey in state.isSending)) return; // already absent — no-op
           delete state.isSending[contextKey];
         }
       }),
