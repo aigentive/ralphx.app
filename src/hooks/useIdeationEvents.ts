@@ -64,6 +64,15 @@ const DependencySuggestionsAppliedEventSchema = z.object({
 });
 
 /**
+ * Schema for child session created event payload
+ */
+const ChildSessionCreatedEventSchema = z.object({
+  sessionId: z.string(),
+  parentSessionId: z.string(),
+  title: z.string(),
+});
+
+/**
  * Hook to listen for ideation events from the backend
  *
  * Listens to 'ideation:session_title_updated' events and updates the
@@ -206,6 +215,26 @@ export function useIdeationEvents() {
 
         // Invalidate dependency graph query to show new dependencies
         queryClient.invalidateQueries({ queryKey: dependencyKeys.graphs() });
+      })
+    );
+
+    // Listen for child session created (follow-up delegation)
+    unsubscribes.push(
+      bus.subscribe<unknown>("ideation:child_session_created", (payload) => {
+        logger.debug("[IdeationEvents] Received ideation:child_session_created:", payload);
+        const parsed = ChildSessionCreatedEventSchema.safeParse(payload);
+
+        if (!parsed.success) {
+          console.error("Invalid ideation:child_session_created event:", parsed.error.message);
+          return;
+        }
+
+        // Emit a local event for UI components to handle
+        // This allows the PlanningView to show a "View Follow-up" link
+        bus.emit("ideation:child_session_created:local", parsed.data);
+
+        // Invalidate sessions query to refresh the session list
+        queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() });
       })
     );
 
