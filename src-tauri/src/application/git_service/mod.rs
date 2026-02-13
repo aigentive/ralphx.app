@@ -12,6 +12,7 @@ pub mod checkout_free;
 
 use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tracing::{debug, warn};
@@ -1254,37 +1255,75 @@ impl GitService {
         git_dir.join("MERGE_HEAD").exists()
     }
 
-    /// Check for conflict markers in tracked files
+    /// Collect changed file paths that are relevant for conflict-marker checks.
     ///
-    /// Scans all tracked files for the standard git conflict marker `<<<<<<<`.
+    /// We intentionally scope marker scanning to files involved in current index/worktree
+    /// changes instead of all tracked files. This avoids false positives from committed
+    /// docs/tests that intentionally contain marker-like strings.
+    fn collect_conflict_scan_candidates(worktree: &Path) -> AppResult<Vec<String>> {
+        let mut seen = HashSet::new();
+        let mut files = Vec::new();
+
+        let commands: [&[&str]; 3] = [
+            &["diff", "--name-only"],
+            &["diff", "--cached", "--name-only"],
+            &["diff", "--name-only", "--diff-filter=U"],
+        ];
+
+        for args in commands {
+            let output = Command::new("git")
+                .args(args)
+                .current_dir(worktree)
+                .output()
+                .map_err(|e| {
+                    AppError::GitOperation(format!(
+                        "Failed to run git {}: {}",
+                        args.join(" "),
+                        e
+                    ))
+                })?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(AppError::GitOperation(format!(
+                    "Failed to list changed files via git {}: {}",
+                    args.join(" "),
+                    stderr
+                )));
+            }
+
+            for line in String::from_utf8_lossy(&output.stdout).lines() {
+                let file = line.trim();
+                if file.is_empty() {
+                    continue;
+                }
+                if seen.insert(file.to_string()) {
+                    files.push(file.to_string());
+                }
+            }
+        }
+
+        Ok(files)
+    }
+
+    /// Check if a line is a git conflict-marker line.
+    fn is_conflict_marker_line(line: &str) -> bool {
+        line.starts_with("<<<<<<<")
+            || line.starts_with(">>>>>>>")
+            || line.starts_with("|||||||")
+            || line == "======="
+    }
+
+    /// Check for conflict markers in changed files.
+    ///
+    /// Scans only changed files (unstaged/staged/unmerged) for git conflict markers.
     /// Returns true if any conflict markers are found.
     ///
     /// # Arguments
     /// * `worktree` - Path to the git worktree or repository
     pub fn has_conflict_markers(worktree: &Path) -> AppResult<bool> {
-        // Get list of tracked files
-        let output = Command::new("git")
-            .args(["ls-files"])
-            .current_dir(worktree)
-            .output()
-            .map_err(|e| AppError::GitOperation(format!("Failed to run git ls-files: {}", e)))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(AppError::GitOperation(format!(
-                "Failed to list tracked files: {}",
-                stderr
-            )));
-        }
-
-        let tracked_files = String::from_utf8_lossy(&output.stdout);
-
-        // Check each tracked file for conflict markers
-        for file in tracked_files.lines() {
-            if file.is_empty() {
-                continue;
-            }
-
+        let candidate_files = Self::collect_conflict_scan_candidates(worktree)?;
+        for file in candidate_files {
             let file_path = worktree.join(file);
 
             // Skip if file doesn't exist (could be deleted in working tree)
@@ -1294,7 +1333,7 @@ impl GitService {
 
             // Skip binary files - only check text files
             if let Ok(content) = std::fs::read_to_string(&file_path) {
-                if content.contains("<<<<<<<") {
+                if content.lines().any(Self::is_conflict_marker_line) {
                     debug!("Found conflict marker in file: {}", file);
                     return Ok(true);
                 }
@@ -5950,6 +5989,64 @@ prunable gitdir file points to non-existent location
             .current_dir(dir)
             .output()
             .unwrap();
+    }
+
+    #[test]
+    fn test_has_conflict_markers_ignores_committed_marker_literals() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+        init_test_repo(repo);
+
+        // Commit a file that intentionally contains marker-like content.
+        std::fs::write(
+            repo.join("fixture.txt"),
+            "this literal is intentional: <<<<<<< HEAD\n",
+        )
+        .unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "add fixture"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        let has_markers = GitService::has_conflict_markers(repo).unwrap();
+        assert!(
+            !has_markers,
+            "Committed marker literals in unchanged files should not block merge completion"
+        );
+    }
+
+    #[test]
+    fn test_has_conflict_markers_detects_unstaged_markers() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+        init_test_repo(repo);
+
+        std::fs::write(repo.join("file.txt"), "line one\nline two\n").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        std::fs::write(repo.join("file.txt"), "<<<<<<< ours\nline\n=======\nline\n>>>>>>> theirs\n")
+            .unwrap();
+
+        let has_markers = GitService::has_conflict_markers(repo).unwrap();
+        assert!(
+            has_markers,
+            "Unstaged conflict markers in changed files should be detected"
+        );
     }
 
     #[test]
