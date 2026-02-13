@@ -98,7 +98,7 @@ impl InternalStatus {
             PendingMerge => &[Merged, Merging, MergeIncomplete, Stopped, Paused, Cancelled], // Success → Merged, Conflict → Merging (agent), Error → MergeIncomplete
             Merging => &[Merged, MergeConflict, MergeIncomplete, Stopped, Paused, Cancelled], // Agent success → Merged, Agent failure → MergeConflict, Non-conflict error → MergeIncomplete
             MergeIncomplete => &[PendingMerge, Merging, Merged, Stopped, Paused, Cancelled], // Retry → PendingMerge (re-attempt programmatic merge), Agent spawn → Merging, Manual resolution → Merged
-            MergeConflict => &[Merged, Stopped, Paused, Cancelled],                          // Manual resolution → Merged
+            MergeConflict => &[PendingMerge, Merging, Merged, Stopped, Paused, Cancelled],      // Retry → PendingMerge, Agent spawn → Merging, Manual resolution → Merged
 
             // Terminal states (can be re-opened)
             Merged => &[Ready],
@@ -836,7 +836,7 @@ mod tests {
     fn merge_conflict_transitions() {
         use InternalStatus::*;
         let transitions = MergeConflict.valid_transitions();
-        assert_eq!(transitions, &[Merged, Stopped, Paused, Cancelled]);
+        assert_eq!(transitions, &[PendingMerge, Merging, Merged, Stopped, Paused, Cancelled]);
     }
 
     #[test]
@@ -885,6 +885,16 @@ mod tests {
         assert!(PendingMerge.can_transition_to(Merging));
         assert!(Merging.can_transition_to(MergeConflict));
         assert!(MergeConflict.can_transition_to(Merged));
+    }
+
+    #[test]
+    fn merge_conflict_retry_workflow() {
+        use InternalStatus::*;
+        // MergeConflict -> PendingMerge (retry) -> Merging -> Merged
+        assert!(MergeConflict.can_transition_to(PendingMerge));
+        assert!(MergeConflict.can_transition_to(Merging));
+        assert!(PendingMerge.can_transition_to(Merging));
+        assert!(Merging.can_transition_to(Merged));
     }
 
     #[test]
