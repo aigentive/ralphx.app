@@ -490,8 +490,9 @@ async fn resolve_task_base_branch(
                             tracing::warn!(
                                 error = %e,
                                 branch = %pb.branch_name,
-                                "Failed to create deferred plan branch, proceeding anyway"
+                                "Failed to create deferred plan branch, falling back to project base"
                             );
+                            return default;
                         }
                     }
                 }
@@ -2306,6 +2307,47 @@ impl<'a> super::TransitionHandler<'a> {
         }
 
         let repo_path = Path::new(&project.working_directory);
+
+        // Ensure plan branch exists as git ref (lazy creation for merge target).
+        // Handles the case where the plan branch DB record exists but the git branch
+        // was never created (e.g., lazy creation failed at execution time).
+        if let Some(ref session_id) = task.ideation_session_id {
+            if let Some(ref pb_repo) = plan_branch_repo {
+                if let Ok(Some(pb)) = pb_repo.get_by_session_id(session_id).await {
+                    if pb.status == PlanBranchStatus::Active
+                        && pb.branch_name == target_branch
+                        && !GitService::branch_exists(repo_path, &target_branch)
+                    {
+                        match GitService::create_feature_branch(
+                            repo_path,
+                            &pb.branch_name,
+                            &pb.source_branch,
+                        ) {
+                            Ok(_) => {
+                                tracing::info!(
+                                    task_id = task_id_str,
+                                    branch = %pb.branch_name,
+                                    source = %pb.source_branch,
+                                    "Lazily created plan branch for merge target"
+                                );
+                            }
+                            Err(e) if GitService::branch_exists(repo_path, &pb.branch_name) => {
+                                // Race: concurrent task created it between check and create
+                                let _ = e;
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    task_id = task_id_str,
+                                    error = %e,
+                                    branch = %pb.branch_name,
+                                    "Failed to lazily create plan branch for merge"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         // --- "Already merged" early exit ---
         // If the source branch is already an ancestor of the target branch, the merge
@@ -6617,8 +6659,52 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resolve_task_base_branch_returns_feature_branch_when_active() {
+    async fn resolve_task_base_branch_falls_back_when_branch_creation_fails() {
+        // Project points to /tmp/test which is not a real git repo,
+        // so lazy branch creation will fail → should fall back to "main"
         let project = make_project(Some("main"));
+        let task = make_task_with_session(Some("art-1"), None, Some("sess-1"));
+
+        let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
+        let pb = make_plan_branch(
+            "art-1",
+            "ralphx/test/plan-abc123",
+            PlanBranchStatus::Active,
+            None,
+        );
+        mem_repo.create(pb).await.unwrap();
+
+        let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
+        let result = resolve_task_base_branch(&task, &project, &repo).await;
+        assert_eq!(result, "main");
+    }
+
+    #[tokio::test]
+    async fn resolve_task_base_branch_returns_feature_branch_when_branch_exists() {
+        // Set up a real git repo with the plan branch already created
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_path = tmp.path();
+
+        // Init git repo with an initial commit (needed for branch creation)
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "--allow-empty", "-m", "init"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        // Create the plan branch
+        std::process::Command::new("git")
+            .args(["branch", "ralphx/test/plan-abc123"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
+        let mut project = make_project(Some("main"));
+        project.working_directory = repo_path.to_string_lossy().to_string();
         let task = make_task_with_session(Some("art-1"), None, Some("sess-1"));
 
         let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
