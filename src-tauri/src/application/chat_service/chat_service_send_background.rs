@@ -3,45 +3,82 @@
 // Extracted from chat_service/mod.rs to reduce file size.
 // Handles stream processing, task transitions, queue processing, and event emissions.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 use tokio::process::Child;
+use tracing::Instrument;
 
-use crate::application::git_service::{GitService, StaleRebaseResult};
 use crate::application::question_state::QuestionState;
 use crate::application::memory_orchestration::trigger_memory_pipelines;
-use crate::application::task_transition_service::TaskTransitionService;
-use crate::application::task_scheduler_service::TaskSchedulerService;
-use crate::domain::state_machine::services::TaskScheduler;
-use crate::domain::state_machine::resolve_merge_branches;
-use crate::domain::state_machine::transition_handler::complete_merge_internal;
-use crate::domain::state_machine::transition_handler::{
-    format_validation_error_metadata, run_validation_commands,
-};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
-    AgentRunId, ChatConversationId, ChatContextType, InternalStatus, TaskId,
+    AgentRunId, ChatConversationId, ChatContextType,
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
     IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentKey, RunningAgentRegistry};
+use tokio_util::sync::CancellationToken;
 use super::chat_service_context;
-use super::chat_service_errors::classify_agent_error;
 use super::chat_service_helpers::get_assistant_role;
-use super::chat_service_replay::{build_rehydration_prompt, ReplayBuilder};
 use super::chat_service_streaming::process_stream_background;
 use super::chat_service_types::{
-    AgentErrorPayload, AgentMessageCreatedPayload, AgentQueueSentPayload,
-    AgentRunCompletedPayload, AgentRunStartedPayload,
+    AgentMessageCreatedPayload, AgentRunCompletedPayload,
 };
 use super::{event_context, has_meaningful_output, EventContextPayload};
 use crate::domain::entities::ChatConversation;
-use crate::error::{AppError, AppResult};
 
-async fn finalize_assistant_message<R: Runtime>(
+/// All repository and service dependencies grouped together.
+pub(super) struct BackgroundRunRepos {
+    pub chat_message_repo: Arc<dyn ChatMessageRepository>,
+    pub conversation_repo: Arc<dyn ChatConversationRepository>,
+    pub agent_run_repo: Arc<dyn AgentRunRepository>,
+    pub task_repo: Arc<dyn TaskRepository>,
+    pub task_dependency_repo: Arc<dyn TaskDependencyRepository>,
+    pub project_repo: Arc<dyn ProjectRepository>,
+    pub ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    pub activity_event_repo: Arc<dyn ActivityEventRepository>,
+    pub memory_event_repo: Arc<dyn MemoryEventRepository>,
+    pub message_queue: Arc<MessageQueue>,
+    pub running_agent_registry: Arc<dyn RunningAgentRegistry>,
+}
+
+/// Full context for a background agent run, replacing 29 individual parameters.
+pub(super) struct BackgroundRunContext<R: Runtime> {
+    // Process
+    pub child: Child,
+    // Context identification
+    pub context_type: ChatContextType,
+    pub context_id: String,
+    pub conversation_id: ChatConversationId,
+    pub agent_run_id: String,
+    pub stored_session_id: Option<String>,
+    // Paths
+    pub working_directory: PathBuf,
+    pub cli_path: PathBuf,
+    pub plugin_dir: PathBuf,
+    // Repositories and services
+    pub repos: BackgroundRunRepos,
+    // State
+    pub execution_state: Option<Arc<ExecutionState>>,
+    pub question_state: Option<Arc<QuestionState>>,
+    pub plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
+    // Tauri handle
+    pub app_handle: Option<AppHandle<R>>,
+    // Run chain correlation
+    pub run_chain_id: Option<String>,
+    // Run metadata
+    pub is_retry_attempt: bool,
+    pub user_message_content: Option<String>,
+    pub conversation: Option<ChatConversation>,
+    pub agent_name: Option<String>,
+    // Cancellation
+    pub cancellation_token: CancellationToken,
+}
+
+pub(super) async fn finalize_assistant_message<R: Runtime>(
     chat_message_repo: &Arc<dyn ChatMessageRepository>,
     app_handle: Option<&AppHandle<R>>,
     event_ctx: &EventContextPayload,
@@ -75,227 +112,59 @@ async fn finalize_assistant_message<R: Runtime>(
     }
 }
 
-/// Attempt to recover from a stale Claude session by rebuilding conversation history
-/// and spawning a fresh session.
-///
-/// # Arguments
-/// - `conversation_id`: The conversation ID
-/// - `conversation`: The conversation entity with stale session
-/// - `context_type`: The chat context type
-/// - `context_id`: The context ID
-/// - `new_message`: The user message that triggered the recovery
-/// - `cli_path`: Path to Claude CLI
-/// - `plugin_dir`: Path to plugin directory
-/// - `working_directory`: Working directory for spawned commands
-/// - `resolved_project_id`: Optional project ID for RALPHX_PROJECT_ID
-/// - `chat_message_repo`: Message repository
-/// - `conversation_repo`: Conversation repository
-///
-/// # Returns
-/// - `Ok(new_session_id)`: Recovery succeeded, new session ID
-/// - `Err(AppError)`: Recovery failed
-#[allow(clippy::too_many_arguments)]
-async fn attempt_session_recovery(
-    conversation_id: &ChatConversationId,
-    conversation: &ChatConversation,
-    context_type: ChatContextType,
-    context_id: &str,
-    new_message: &str,
-    cli_path: &Path,
-    plugin_dir: &Path,
-    working_directory: &Path,
-    _resolved_project_id: Option<String>,
-    chat_message_repo: Arc<dyn ChatMessageRepository>,
-    conversation_repo: Arc<dyn ChatConversationRepository>,
-    old_session_id: &str,
-) -> AppResult<String> {
-    let recovery_start = std::time::Instant::now();
-
-    // Helper closure to log failure with duration
-    let log_failure = |error: &AppError| {
-        tracing::error!(
-            event = "rehydrate_failure",
-            conversation_id = conversation_id.as_str(),
-            error = %error,
-            duration_ms = recovery_start.elapsed().as_millis(),
-            "Session recovery failed"
-        );
-    };
-
-    // 1. Build replay from history
-    let replay_builder = ReplayBuilder::new(100_000); // 100K token budget
-    let replay = match replay_builder
-        .build_replay(&chat_message_repo, conversation_id)
-        .await
-    {
-        Ok(r) => r,
-        Err(e) => {
-            log_failure(&e);
-            return Err(e);
-        }
-    };
-
-    tracing::debug!(
-        conversation_id = conversation_id.as_str(),
-        turns = replay.turns.len(),
-        estimated_tokens = replay.total_tokens,
-        truncated = replay.is_truncated,
-        "Built conversation replay for rehydration"
-    );
-
-    // 2. Generate rehydration prompt
-    let bootstrap_prompt = build_rehydration_prompt(&replay, context_type, context_id, new_message);
-
-    // 3. Spawn fresh Claude session with history
-    let spawnable = match chat_service_context::build_command(
-        cli_path,
-        plugin_dir,
-        conversation,
-        &bootstrap_prompt,
-        working_directory,
-        None, // entity_status
-        _resolved_project_id.as_deref(),
-    ) {
-        Ok(s) => s,
-        Err(e) => {
-            let err = AppError::Infrastructure(format!("Failed to build recovery command: {}", e));
-            log_failure(&err);
-            return Err(err);
-        }
-    };
-
-    let child = match spawnable.spawn().await {
-        Ok(c) => c,
-        Err(e) => {
-            let err = AppError::Infrastructure(format!("Failed to spawn recovery session: {}", e));
-            log_failure(&err);
-            return Err(err);
-        }
-    };
-
-    // 4. Process stream to capture new session ID
-    let outcome = match process_stream_background::<tauri::Wry>(
-        child,
-        context_type,
-        context_id,
-        conversation_id,
-        None, // no app_handle, silent recovery
-        None, // no activity persistence
-        None, // no task repo
-        None, // no incremental message update
-        None, // no assistant message ID
-        None, // no question state
-    )
-    .await
-    {
-        Ok(o) => o,
-        Err(e) => {
-            let err = AppError::Infrastructure(format!("Recovery stream processing failed: {}", e));
-            log_failure(&err);
-            return Err(err);
-        }
-    };
-
-    let new_session_id = match outcome.session_id {
-        Some(id) => id,
-        None => {
-            let err = AppError::Infrastructure("Recovery failed: no session ID captured".into());
-            log_failure(&err);
-            return Err(err);
-        }
-    };
-
-    // 5. Update conversation with new session ID
-    if let Err(e) = conversation_repo
-        .update_claude_session_id(conversation_id, &new_session_id)
-        .await
-    {
-        let err = AppError::Database(format!("Failed to update session ID: {}", e));
-        log_failure(&err);
-        return Err(err);
-    }
-
-    // 6. Log telemetry
-    tracing::info!(
-        event = "rehydrate_success",
-        conversation_id = conversation_id.as_str(),
-        old_session_id = old_session_id,
-        new_session_id = %new_session_id,
-        replay_turns = replay.turns.len(),
-        estimated_tokens = replay.total_tokens,
-        duration_ms = recovery_start.elapsed().as_millis(),
-    );
-
-    Ok(new_session_id)
-}
-
 /// Spawn background task to process agent run, handle stream, transitions, and queue.
 ///
 /// This function encapsulates the entire tokio::spawn background logic from send_message.
 /// It processes the agent run stream, handles task state transitions (for TaskExecution),
 /// and processes any queued messages using --resume.
-///
-/// # Arguments
-/// - `child`: The spawned Claude CLI process
-/// - `context_type`: The chat context type
-/// - `context_id`: The context ID (task_id, project_id, etc.)
-/// - `conversation_id`: The conversation ID
-/// - `agent_run_id`: The agent run ID
-/// - `stored_session_id`: Optional claude_session_id from conversation (for queue processing)
-/// - `working_directory`: Working directory for spawned commands
-/// - `cli_path`: Path to Claude CLI
-/// - `plugin_dir`: Path to plugin directory
-/// - `chat_message_repo`: Message repository
-/// - `conversation_repo`: Conversation repository
-/// - `agent_run_repo`: Agent run repository
-/// - `task_repo`: Task repository
-/// - `task_dependency_repo`: Task dependency repository (for auto-unblocking)
-/// - `project_repo`: Project repository
-/// - `ideation_session_repo`: Ideation session repository
-/// - `activity_event_repo`: Activity event repository (for persistence)
-/// - `message_queue`: Message queue
-/// - `running_agent_registry`: Running agent registry
-/// - `execution_state`: Execution state (for task transitions)
-/// - `app_handle`: Tauri app handle (for events)
-#[allow(clippy::too_many_arguments)]
-pub fn spawn_send_message_background<R: Runtime>(
-    child: Child,
-    context_type: ChatContextType,
-    context_id: String,
-    conversation_id: ChatConversationId,
-    agent_run_id: String,
-    stored_session_id: Option<String>,
-    working_directory: PathBuf,
-    cli_path: PathBuf,
-    plugin_dir: PathBuf,
-    chat_message_repo: Arc<dyn ChatMessageRepository>,
-    conversation_repo: Arc<dyn ChatConversationRepository>,
-    agent_run_repo: Arc<dyn AgentRunRepository>,
-    task_repo: Arc<dyn TaskRepository>,
-    task_dependency_repo: Arc<dyn TaskDependencyRepository>,
-    project_repo: Arc<dyn ProjectRepository>,
-    ideation_session_repo: Arc<dyn IdeationSessionRepository>,
-    activity_event_repo: Arc<dyn ActivityEventRepository>,
-    message_queue: Arc<MessageQueue>,
-    running_agent_registry: Arc<dyn RunningAgentRegistry>,
-    execution_state: Option<Arc<ExecutionState>>,
-    question_state: Option<Arc<QuestionState>>,
-    plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
-    app_handle: Option<AppHandle<R>>,
-    is_retry_attempt: bool,
-    user_message_content: Option<String>,
-    conversation: Option<ChatConversation>,
-    _resolved_project_id: Option<String>,
-    agent_name: Option<String>,
-    memory_event_repo: Arc<dyn MemoryEventRepository>,
-) {
+pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
+    let span = tracing::info_span!(
+        "agent_run",
+        agent_run_id = %ctx.agent_run_id,
+        run_chain_id = ctx.run_chain_id.as_deref().unwrap_or("none"),
+        %ctx.context_type,
+        context_id = %ctx.context_id,
+        conversation_id = ctx.conversation_id.as_str(),
+    );
+
     tokio::spawn(async move {
-        tracing::debug!(
-            %context_type,
-            context_id = %context_id,
-            conversation_id = conversation_id.as_str(),
-            "send_background start"
-        );
+        let BackgroundRunContext {
+            child,
+            context_type,
+            context_id,
+            conversation_id,
+            agent_run_id,
+            stored_session_id,
+            working_directory,
+            cli_path,
+            plugin_dir,
+            repos,
+            execution_state,
+            question_state,
+            plan_branch_repo,
+            app_handle,
+            run_chain_id,
+            is_retry_attempt,
+            user_message_content,
+            conversation,
+            agent_name,
+            cancellation_token,
+        } = ctx;
+        let BackgroundRunRepos {
+            chat_message_repo,
+            conversation_repo,
+            agent_run_repo,
+            task_repo,
+            task_dependency_repo,
+            project_repo,
+            ideation_session_repo,
+            activity_event_repo,
+            memory_event_repo,
+            message_queue,
+            running_agent_registry,
+        } = repos;
+
+        tracing::debug!("send_background start");
         let event_ctx = event_context(&conversation_id, &context_type, &context_id);
 
         // Resolve project ID for RALPHX_PROJECT_ID env var (used in queue processing)
@@ -333,6 +202,7 @@ pub fn spawn_send_message_background<R: Runtime>(
             Some(Arc::clone(&chat_message_repo)),
             Some(pre_assistant_msg_id.clone()),
             question_state.clone(),
+            cancellation_token.clone(),
         )
         .await;
 
@@ -416,126 +286,27 @@ pub fn spawn_send_message_background<R: Runtime>(
                         .await;
                 }
 
-                // Handle task state transition (only for TaskExecution)
-                // Use TaskTransitionService for proper entry/exit actions
-                // Requires execution_state for proper running count tracking
-                if context_type == ChatContextType::TaskExecution {
-                    if let Some(ref exec_state) = execution_state {
-                        let task_id = TaskId::from_string(context_id.clone());
-                        if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await {
-                            // Handle both first execution (Executing) and re-execution (ReExecuting)
-                            if task.internal_status == InternalStatus::Executing
-                                || task.internal_status == InternalStatus::ReExecuting
-                            {
-                                // Create scheduler for auto-scheduling next Ready task
-                                let mut scheduler_svc = TaskSchedulerService::new(
-                                    Arc::clone(exec_state),
-                                    Arc::clone(&project_repo),
-                                    Arc::clone(&task_repo),
-                                    Arc::clone(&task_dependency_repo),
-                                    Arc::clone(&chat_message_repo),
-                                    Arc::clone(&conversation_repo),
-                                    Arc::clone(&agent_run_repo),
-                                    Arc::clone(&ideation_session_repo),
-                                    Arc::clone(&activity_event_repo),
-                                    Arc::clone(&message_queue),
-                                    Arc::clone(&running_agent_registry),
-                                    Arc::clone(&memory_event_repo),
-                                    app_handle.clone(),
-                                );
-                                if let Some(ref repo) = plan_branch_repo {
-                                    scheduler_svc = scheduler_svc.with_plan_branch_repo(Arc::clone(repo));
-                                }
-                                let scheduler_concrete = Arc::new(scheduler_svc);
-                                scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
-                                let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
-
-                                let transition_service = TaskTransitionService::new(
-                                    Arc::clone(&task_repo),
-                                    Arc::clone(&task_dependency_repo),
-                                    Arc::clone(&project_repo),
-                                    Arc::clone(&chat_message_repo),
-                                    Arc::clone(&conversation_repo),
-                                    Arc::clone(&agent_run_repo),
-                                    Arc::clone(&ideation_session_repo),
-                                    Arc::clone(&activity_event_repo),
-                                    Arc::clone(&message_queue),
-                                    Arc::clone(&running_agent_registry),
-                                    Arc::clone(exec_state),
-                                    app_handle.clone(),
-                                    Arc::clone(&memory_event_repo),
-                                )
-                                .with_task_scheduler(task_scheduler);
-                                let transition_service = if let Some(ref repo) = plan_branch_repo {
-                                    transition_service.with_plan_branch_repo(Arc::clone(repo))
-                                } else {
-                                    transition_service
-                                };
-                                if has_output {
-                                    if let Err(e) = transition_service
-                                        .transition_task(&task_id, InternalStatus::PendingReview)
-                                        .await
-                                    {
-                                        tracing::error!(
-                                            "Failed to transition task {} to PendingReview: {}",
-                                            task_id.as_str(),
-                                            e
-                                        );
-                                    }
-                                } else if let Err(e) = transition_service
-                                    .transition_task(&task_id, InternalStatus::Failed)
-                                    .await
-                                {
-                                    tracing::error!(
-                                        "Failed to transition empty-output task {} to Failed: {}",
-                                        task_id.as_str(),
-                                        e
-                                    );
-                                } else {
-                                    tracing::warn!(
-                                        task_id = task_id.as_str(),
-                                        "Task execution produced no output; transitioned to Failed"
-                                    );
-                                }
-                            }
-                        }
-                    } else {
-                        tracing::warn!(
-                            "Cannot transition task {} - no execution_state available",
-                            context_id
-                        );
-                    }
-                }
-
-                // Handle merge auto-completion (only for Merge context)
-                // When merger agent exits, check git state to determine if merge succeeded
-                if context_type == ChatContextType::Merge {
-                    if let Some(ref exec_state) = execution_state {
-                        attempt_merge_auto_complete(
-                            &context_id,
-                            &task_repo,
-                            &task_dependency_repo,
-                            &project_repo,
-                            &chat_message_repo,
-                            &conversation_repo,
-                            &agent_run_repo,
-                            &ideation_session_repo,
-                            &activity_event_repo,
-                            &message_queue,
-                            &running_agent_registry,
-                            &memory_event_repo,
-                            exec_state,
-                            &plan_branch_repo,
-                            app_handle.as_ref(),
-                        )
-                        .await;
-                    } else {
-                        tracing::warn!(
-                            "Cannot auto-complete merge for task {} - no execution_state available",
-                            context_id
-                        );
-                    }
-                }
+                // Handle task state transitions and merge auto-completion
+                super::chat_service_handlers::handle_stream_success(
+                    context_type,
+                    &context_id,
+                    has_output,
+                    &execution_state,
+                    &task_repo,
+                    &task_dependency_repo,
+                    &project_repo,
+                    &chat_message_repo,
+                    &conversation_repo,
+                    &agent_run_repo,
+                    &ideation_session_repo,
+                    &activity_event_repo,
+                    &message_queue,
+                    &running_agent_registry,
+                    &memory_event_repo,
+                    &plan_branch_repo,
+                    &app_handle,
+                )
+                .await;
 
                 // Check if there are queued messages to process
                 // If yes, DON'T emit run_completed yet - emit it after queue processing
@@ -562,13 +333,12 @@ pub fn spawn_send_message_background<R: Runtime>(
                                 context_type: context_type.to_string(),
                                 context_id: context_id.clone(),
                                 claude_session_id: effective_session_id.clone(),
+                                run_chain_id: run_chain_id.clone(),
                             },
                         );
-
                     }
 
                     // Trigger memory pipelines (no queue processing path)
-                    // TODO: Load settings from project_memory_settings table for per-project enable/disable
                     trigger_memory_pipelines(
                         context_type,
                         &context_id,
@@ -589,211 +359,30 @@ pub fn spawn_send_message_background<R: Runtime>(
                     );
                 }
 
-                // Process queued messages with retry loop to handle race conditions
-                // Messages can be queued while we're processing, so we keep checking until empty
+                // Process queued messages via extracted function
                 if let Some(ref sess_id) = effective_session_id {
-                    let mut total_processed = 0u32;
-
-                    // Outer loop: keep processing until queue is stable-empty
-                    loop {
-                        let queue_count = message_queue.get_queued(context_type, &context_id).len();
-
-                        if queue_count == 0 {
-                            // Queue is empty, wait briefly then check once more for race condition
-                            if total_processed > 0 {
-                                // We processed messages, give a small window for late arrivals
-                                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-                                let final_count = message_queue.get_queued(context_type, &context_id).len();
-                                if final_count == 0 {
-                                    tracing::info!("[QUEUE] Queue processing complete: {} total messages processed", total_processed);
-                                    break;
-                                }
-                                tracing::info!("[QUEUE] Found {} late-arriving messages, continuing...", final_count);
-                            } else {
-                                tracing::info!("[QUEUE] No queued messages to process");
-                                break;
-                            }
-                        }
-
-                        tracing::info!(
-                            "[QUEUE] Processing queue: session_id={}, context={}/{}, pending={}",
-                            sess_id, context_type, context_id, queue_count
-                        );
-
-                        // Inner loop: process all currently queued messages
-                        while let Some(queued_msg) =
-                            message_queue.pop(context_type, &context_id)
-                        {
-                            total_processed += 1;
-                        tracing::info!("[QUEUE] Processing queued message id={}, content_len={}", queued_msg.id, queued_msg.content.len());
-
-                        // Emit queue sent event (removes from frontend optimistic UI)
-                        if let Some(ref handle) = app_handle {
-                            let _ = handle.emit(
-                                "agent:queue_sent",
-                                AgentQueueSentPayload {
-                                    message_id: queued_msg.id.clone(),
-                                    conversation_id: conversation_id.as_str().to_string(),
-                                    context_type: context_type.to_string(),
-                                    context_id: context_id.clone(),
-                                },
-                            );
-                        }
-
-                        // Emit run_started for the queued message (so frontend shows activity)
-                        let queued_run_id = uuid::Uuid::new_v4().to_string();
-                        if let Some(ref handle) = app_handle {
-                            let _ = handle.emit(
-                                "agent:run_started",
-                                AgentRunStartedPayload {
-                                    run_id: queued_run_id.clone(),
-                                    conversation_id: conversation_id.as_str().to_string(),
-                                    context_type: context_type.to_string(),
-                                    context_id: context_id.clone(),
-                                },
-                            );
-                        }
-
-                        // Persist user message
-                        let user_msg = chat_service_context::create_user_message(
-                            context_type,
-                            &context_id,
-                            &queued_msg.content,
-                            conversation_id,
-                        );
-                        let user_msg_id = user_msg.id.as_str().to_string();
-                        let _ = chat_message_repo.create(user_msg).await;
-
-                        // Emit user message created
-                        if let Some(ref handle) = app_handle {
-                            let _ = handle.emit(
-                                "agent:message_created",
-                                AgentMessageCreatedPayload {
-                                    message_id: user_msg_id,
-                                    conversation_id: conversation_id.as_str().to_string(),
-                                    context_type: context_type.to_string(),
-                                    context_id: context_id.clone(),
-                                    role: "user".to_string(),
-                                    content: queued_msg.content.clone(),
-                                },
-                            );
-                        }
-
-                        // Build and spawn resume command
-                        let spawnable = match chat_service_context::build_resume_command(
-                            cli_path.as_path(),
-                            plugin_dir.as_path(),
-                            context_type,
-                            &context_id,
-                            &queued_msg.content,
-                            &working_directory,
-                            sess_id,
-                            resolved_project_id.as_deref(),
-                        ) {
-                            Ok(cmd) => cmd,
-                            Err(err) => {
-                                tracing::warn!(
-                                    error = %err,
-                                    %context_type,
-                                    context_id = %context_id,
-                                    "send_background spawn blocked"
-                                );
-                                return;
-                            }
-                        };
-
-                        tracing::info!(cmd = ?spawnable, "Spawning CLI agent (queue resume)");
-                        match spawnable.spawn().await {
-                            Ok(child) => {
-                                // Create empty assistant message before queue stream
-                                let queue_assistant_msg = chat_service_context::create_assistant_message(
-                                    context_type, &context_id, "", conversation_id, &[], &[],
-                                );
-                                let queue_assistant_msg_id = queue_assistant_msg.id.as_str().to_string();
-                                let _ = chat_message_repo.create(queue_assistant_msg).await;
-
-                                match process_stream_background(
-                                    child,
-                                    context_type,
-                                    &context_id,
-                                    &conversation_id,
-                                    app_handle.clone(),
-                                    Some(Arc::clone(&activity_event_repo)),
-                                    Some(Arc::clone(&task_repo)),
-                                    Some(Arc::clone(&chat_message_repo)),
-                                    Some(queue_assistant_msg_id.clone()),
-                                    question_state.clone(),
-                                )
-                                .await
-                                {
-                                    Ok(outcome) => {
-                                        let response = outcome.response_text;
-                                        let tools = outcome.tool_calls;
-                                        let blocks = outcome.content_blocks;
-                                        if has_meaningful_output(&response, tools.len()) {
-                                            let tool_calls_json = serde_json::to_string(&tools).ok();
-                                            let content_blocks_json = serde_json::to_string(&blocks).ok();
-                                            finalize_assistant_message(
-                                                &chat_message_repo,
-                                                app_handle.as_ref(),
-                                                &event_ctx,
-                                                &queue_assistant_msg_id,
-                                                &get_assistant_role(&context_type).to_string(),
-                                                &response,
-                                                tool_calls_json.as_deref(),
-                                                content_blocks_json.as_deref(),
-                                            )
-                                            .await;
-                                        }
-
-                                        // NOTE: Don't emit run_completed here for each queued message.
-                                        // We emit a single run_completed after ALL queue processing is done,
-                                        // to prevent UI flickering between messages.
-                                    }
-                                    Err(e) => {
-                                        tracing::error!(
-                                            "Failed to process queued message stream: {}",
-                                            e
-                                        );
-                                        // Emit error event
-                                        if let Some(ref handle) = app_handle {
-                                            let _ = handle.emit(
-                                                "agent:error",
-                                                AgentErrorPayload {
-                                                    conversation_id: Some(conversation_id.as_str().to_string()),
-                                                    context_type: context_type.to_string(),
-                                                    context_id: context_id.clone(),
-                                                    error: e.clone(),
-                                                    stderr: Some(e),
-                                                },
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                tracing::error!("Failed to spawn queued message command: {}", e);
-                                // Emit error event
-                                if let Some(ref handle) = app_handle {
-                                    let _ = handle.emit(
-                                        "agent:error",
-                                        AgentErrorPayload {
-                                            conversation_id: Some(conversation_id.as_str().to_string()),
-                                            context_type: context_type.to_string(),
-                                            context_id: context_id.clone(),
-                                            error: e.to_string(),
-                                            stderr: None,
-                                        },
-                                    );
-                                }
-                            }
-                        }
-                    }
-                    // End of inner while loop, outer loop continues to check for more
-                    }
+                    let total_processed = super::chat_service_queue::process_queued_messages(
+                        context_type,
+                        &context_id,
+                        conversation_id,
+                        sess_id,
+                        &message_queue,
+                        &chat_message_repo,
+                        &activity_event_repo,
+                        &task_repo,
+                        &cli_path,
+                        &plugin_dir,
+                        &working_directory,
+                        question_state.clone(),
+                        app_handle.clone(),
+                        resolved_project_id.as_deref(),
+                        cancellation_token.clone(),
+                        run_chain_id.as_deref(),
+                        Some(&agent_run_id),
+                    )
+                    .await;
 
                     // After ALL queue processing is done, emit the final run_completed
-                    // This prevents UI flickering between individual queued messages
                     if total_processed > 0 {
                         tracing::info!("[QUEUE] Emitting final run_completed after processing {} queued messages", total_processed);
                         if let Some(ref handle) = app_handle {
@@ -804,14 +393,13 @@ pub fn spawn_send_message_background<R: Runtime>(
                                     context_type: context_type.to_string(),
                                     context_id: context_id.clone(),
                                     claude_session_id: Some(sess_id.clone()),
+                                    run_chain_id: run_chain_id.clone(),
                                 },
                             );
-
                         }
                     }
 
                     // Trigger memory pipelines after queue processing completes
-                    // TODO: Load settings from project_memory_settings table for per-project enable/disable
                     trigger_memory_pipelines(
                         context_type,
                         &context_id,
@@ -837,999 +425,47 @@ pub fn spawn_send_message_background<R: Runtime>(
                 }
             }
             Err(e) => {
-                // Classify error to detect stale session
-                let classified_error = classify_agent_error(
-                    &e,
-                    &conversation_id,
-                    stored_session_id.as_deref(),
-                );
-
-                match classified_error {
-                    AppError::StaleSession { session_id, .. } => {
-                        tracing::warn!(
-                            event = "stale_session_detected",
-                            session_id = %session_id,
-                            conversation_id = conversation_id.as_str(),
-                            context_type = %context_type,
-                            context_id = %context_id,
-                            "Detected stale Claude session"
-                        );
-
-                        // Feature flag check
-                        let recovery_enabled = std::env::var("ENABLE_SESSION_RECOVERY")
-                            .map(|v| v.to_lowercase() == "true")
-                            .unwrap_or(false);
-
-                        // Check retry flag (prevent infinite loop)
-                        if is_retry_attempt {
-                            tracing::error!(
-                                conversation_id = conversation_id.as_str(),
-                                "Session recovery failed on retry, aborting"
-                            );
-                            // Fall through to normal error handling below
-                        } else if !recovery_enabled {
-                            tracing::info!(
-                                "Session recovery disabled by ENABLE_SESSION_RECOVERY flag, falling back to clear"
-                            );
-                            // Fall through to clear session
-                        } else if let (Some(msg), Some(conv)) =
-                            (user_message_content.as_ref(), conversation.as_ref())
-                        {
-                            // Attempt recovery
-                            match attempt_session_recovery(
-                                &conversation_id,
-                                conv,
-                                context_type,
-                                &context_id,
-                                msg,
-                                &cli_path,
-                                &plugin_dir,
-                                &working_directory,
-                                resolved_project_id.clone(),
-                                Arc::clone(&chat_message_repo),
-                                Arc::clone(&conversation_repo),
-                                &session_id,
-                            )
-                            .await
-                            {
-                                Ok(new_session_id) => {
-                                    tracing::info!(
-                                        event = "rehydrate_success",
-                                        old_session = %session_id,
-                                        new_session = %new_session_id,
-                                        "Session recovery successful, retrying send"
-                                    );
-
-                                    // Emit non-blocking banner event
-                                    if let Some(ref handle) = app_handle {
-                                        let _ = handle.emit(
-                                            "agent:session_recovered",
-                                            serde_json::json!({
-                                                "conversation_id": conversation_id.as_str(),
-                                                "message": "Session restored from local history"
-                                            }),
-                                        );
-                                    }
-
-                                    // Retry send with fresh session (set is_retry=true)
-                                    // Need to spawn a new command with the updated conversation
-                                    let mut retry_conv = conv.clone();
-                                    retry_conv.claude_session_id = Some(new_session_id.clone());
-
-                                    // Build command for retry
-                                    if let Ok(spawnable) = chat_service_context::build_command(
-                                        &cli_path,
-                                        &plugin_dir,
-                                        &retry_conv,
-                                        msg,
-                                        &working_directory,
-                                        None,
-                                        resolved_project_id.as_deref(),
-                                    ) {
-                                        if let Ok(retry_child) = spawnable.spawn().await {
-                                            // Recursive call with is_retry_attempt=true
-                                            spawn_send_message_background(
-                                                retry_child,
-                                                context_type,
-                                                context_id.clone(),
-                                                conversation_id,
-                                                agent_run_id.clone(),
-                                                Some(new_session_id),
-                                                working_directory.clone(),
-                                                cli_path.clone(),
-                                                plugin_dir.clone(),
-                                                Arc::clone(&chat_message_repo),
-                                                Arc::clone(&conversation_repo),
-                                                Arc::clone(&agent_run_repo),
-                                                Arc::clone(&task_repo),
-                                                Arc::clone(&task_dependency_repo),
-                                                Arc::clone(&project_repo),
-                                                Arc::clone(&ideation_session_repo),
-                                                Arc::clone(&activity_event_repo),
-                                                Arc::clone(&message_queue),
-                                                Arc::clone(&running_agent_registry),
-                                                execution_state.clone(),
-                                                question_state.clone(),
-                                                plan_branch_repo.clone(),
-                                                app_handle.clone(),
-                                                true, // is_retry_attempt
-                                                user_message_content.clone(),
-                                                Some(retry_conv),
-                                                resolved_project_id.clone(),
-                                                agent_name.clone(),
-                                                Arc::clone(&memory_event_repo),
-                                            );
-                                            return; // Exit early, retry is now handling it
-                                        }
-                                    }
-
-                                    tracing::error!("Failed to spawn retry after recovery");
-                                    // Fall through to error handling
-                                }
-                                Err(recovery_err) => {
-                                    tracing::error!(
-                                        error = %recovery_err,
-                                        "Session recovery failed, falling back to clear"
-                                    );
-                                    // Fall through to normal error handling
-                                }
-                            }
-                        }
-
-                        // Clear stale session ID as fallback
-                        let _ = conversation_repo
-                            .clear_claude_session_id(&conversation_id)
-                            .await;
-                    }
-                    _ => {
-                        // Non-stale-session errors: proceed with normal error handling
-                    }
-                }
-
-                // Standard error handling (reached if recovery not attempted or failed)
-                // Fail the agent run
-                let _ = agent_run_repo
-                    .fail(&AgentRunId::from_string(&agent_run_id), &e)
-                    .await;
-
-                // Update pre-created message with error so UI doesn't show "..." forever
-                let error_note = format!("[Agent error: {}]", e);
-                finalize_assistant_message(
-                    &chat_message_repo,
-                    app_handle.as_ref(),
-                    &event_ctx,
+                // Delegate to error handler: classify, attempt recovery, fail run, emit events.
+                // Returns true if recovery spawned a retry (no further action needed here
+                // since the Err arm is the last statement in the async block).
+                let error_string = e.to_string();
+                let _recovery_spawned = super::chat_service_handlers::handle_stream_error(
+                    &error_string,
+                    Some(&e),
+                    context_type,
+                    &context_id,
+                    conversation_id,
+                    &agent_run_id,
                     &pre_assistant_msg_id,
-                    &get_assistant_role(&context_type).to_string(),
-                    &error_note,
-                    None,
-                    None,
+                    &event_ctx,
+                    stored_session_id.as_deref(),
+                    is_retry_attempt,
+                    user_message_content.as_deref(),
+                    conversation.as_ref(),
+                    resolved_project_id.clone(),
+                    &cli_path,
+                    &plugin_dir,
+                    &working_directory,
+                    &chat_message_repo,
+                    &conversation_repo,
+                    &agent_run_repo,
+                    &task_repo,
+                    &task_dependency_repo,
+                    &project_repo,
+                    &ideation_session_repo,
+                    &activity_event_repo,
+                    &message_queue,
+                    &running_agent_registry,
+                    &memory_event_repo,
+                    &execution_state,
+                    &question_state,
+                    &plan_branch_repo,
+                    &app_handle,
+                    agent_name.as_deref(),
+                    run_chain_id.clone(),
                 )
                 .await;
-
-                // Emit error event
-                if let Some(ref handle) = app_handle {
-                    let _ = handle.emit(
-                        "agent:error",
-                        AgentErrorPayload {
-                            conversation_id: Some(conversation_id.as_str().to_string()),
-                            context_type: context_type.to_string(),
-                            context_id: context_id.clone(),
-                            error: e.clone(),
-                            stderr: Some(e.clone()),
-                        },
-                    );
-                }
-
-                // For worker execution failures, transition task out of active execution
-                // so it does not remain stuck in Executing/ReExecuting.
-                if context_type == ChatContextType::TaskExecution {
-                    if let Some(ref exec_state) = execution_state {
-                        let task_id = TaskId::from_string(context_id.clone());
-                        match task_repo.get_by_id(&task_id).await {
-                            Ok(Some(task))
-                                if task.internal_status == InternalStatus::Executing
-                                    || task.internal_status == InternalStatus::ReExecuting =>
-                            {
-                                let transition_service = TaskTransitionService::new(
-                                    Arc::clone(&task_repo),
-                                    Arc::clone(&task_dependency_repo),
-                                    Arc::clone(&project_repo),
-                                    Arc::clone(&chat_message_repo),
-                                    Arc::clone(&conversation_repo),
-                                    Arc::clone(&agent_run_repo),
-                                    Arc::clone(&ideation_session_repo),
-                                    Arc::clone(&activity_event_repo),
-                                    Arc::clone(&message_queue),
-                                    Arc::clone(&running_agent_registry),
-                                    Arc::clone(exec_state),
-                                    app_handle.clone(),
-                                    Arc::clone(&memory_event_repo),
-                                );
-                                let transition_service = if let Some(ref repo) = plan_branch_repo {
-                                    transition_service.with_plan_branch_repo(Arc::clone(repo))
-                                } else {
-                                    transition_service
-                                };
-
-                                if let Err(transition_err) = transition_service
-                                    .transition_task(&task_id, InternalStatus::Failed)
-                                    .await
-                                {
-                                    tracing::error!(
-                                        task_id = task_id.as_str(),
-                                        original_error = %e,
-                                        transition_error = %transition_err,
-                                        "Worker failed and fallback transition to Failed also failed"
-                                    );
-                                } else {
-                                    tracing::warn!(
-                                        task_id = task_id.as_str(),
-                                        error = %e,
-                                        "Worker failed; transitioned task to Failed"
-                                    );
-                                }
-                            }
-                            Ok(Some(_)) => {}
-                            Ok(None) => {
-                                tracing::warn!(
-                                    task_id = context_id,
-                                    error = %e,
-                                    "Worker failed but task was not found for fallback transition"
-                                );
-                            }
-                            Err(repo_err) => {
-                                tracing::error!(
-                                    task_id = context_id,
-                                    error = %e,
-                                    repo_error = %repo_err,
-                                    "Worker failed and task lookup failed for fallback transition"
-                                );
-                            }
-                        }
-                    } else {
-                        tracing::warn!(
-                            task_id = context_id,
-                            error = %e,
-                            "Worker failed but no execution_state available for fallback transition"
-                        );
-                    }
-                }
-
-                // Handle merge auto-completion even on agent error
-                // The agent may have crashed after completing the merge in git
-                if context_type == ChatContextType::Merge {
-                    if let Some(ref exec_state) = execution_state {
-                        attempt_merge_auto_complete(
-                            &context_id,
-                            &task_repo,
-                            &task_dependency_repo,
-                            &project_repo,
-                            &chat_message_repo,
-                            &conversation_repo,
-                            &agent_run_repo,
-                            &ideation_session_repo,
-                            &activity_event_repo,
-                            &message_queue,
-                            &running_agent_registry,
-                            &memory_event_repo,
-                            exec_state,
-                            &plan_branch_repo,
-                            app_handle.as_ref(),
-                        )
-                        .await;
-                    } else {
-                        tracing::warn!(
-                            "Cannot auto-complete merge for task {} on error - no execution_state available",
-                            context_id
-                        );
-                    }
-                }
             }
         }
-    });
-}
-
-/// Attempt to auto-complete a merge when the merger agent exits.
-///
-/// Called after process_stream_background returns for ChatContextType::Merge.
-/// Checks if the task is still in Merging state (agent didn't explicitly transition)
-/// and determines the appropriate transition based on git state:
-/// - Rebase complete + no conflict markers → transition to Merged
-/// - Rebase in progress or conflict markers → transition to MergeConflict
-///
-/// This enables "fire and forget" merge agents that don't need to call complete_merge.
-#[allow(clippy::too_many_arguments)]
-async fn attempt_merge_auto_complete<R: Runtime>(
-    task_id_str: &str,
-    task_repo: &Arc<dyn TaskRepository>,
-    task_dependency_repo: &Arc<dyn TaskDependencyRepository>,
-    project_repo: &Arc<dyn ProjectRepository>,
-    chat_message_repo: &Arc<dyn ChatMessageRepository>,
-    conversation_repo: &Arc<dyn ChatConversationRepository>,
-    agent_run_repo: &Arc<dyn AgentRunRepository>,
-    ideation_session_repo: &Arc<dyn IdeationSessionRepository>,
-    activity_event_repo: &Arc<dyn ActivityEventRepository>,
-    message_queue: &Arc<MessageQueue>,
-    running_agent_registry: &Arc<dyn RunningAgentRegistry>,
-    memory_event_repo: &Arc<dyn MemoryEventRepository>,
-    execution_state: &Arc<ExecutionState>,
-    plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
-    app_handle: Option<&AppHandle<R>>,
-) {
-    let task_id = TaskId::from_string(task_id_str.to_string());
-
-    // 1. Get task - if not in Merging state, agent already handled it
-    let mut task = match task_repo.get_by_id(&task_id).await {
-        Ok(Some(task)) => task,
-        Ok(None) => {
-            tracing::warn!(
-                task_id = task_id_str,
-                "attempt_merge_auto_complete: task not found"
-            );
-            return;
-        }
-        Err(e) => {
-            tracing::error!(
-                task_id = task_id_str,
-                error = %e,
-                "attempt_merge_auto_complete: failed to get task"
-            );
-            return;
-        }
-    };
-
-    // If task is not in Merging state, agent already transitioned (called complete_merge or report_conflict)
-    if task.internal_status != InternalStatus::Merging {
-        tracing::info!(
-            task_id = task_id_str,
-            status = ?task.internal_status,
-            "attempt_merge_auto_complete: task already transitioned, skipping"
-        );
-        return;
-    }
-
-    // 2. Get project for resolving working path
-    let project = match project_repo.get_by_id(&task.project_id).await {
-        Ok(Some(project)) => project,
-        Ok(None) => {
-            tracing::error!(
-                task_id = task_id_str,
-                project_id = task.project_id.as_str(),
-                "attempt_merge_auto_complete: project not found"
-            );
-            return;
-        }
-        Err(e) => {
-            tracing::error!(
-                task_id = task_id_str,
-                error = %e,
-                "attempt_merge_auto_complete: failed to get project"
-            );
-            return;
-        }
-    };
-
-    // Resolve working path: prefer worktree if it exists, else fall back to project repo
-    let worktree_path = task
-        .worktree_path
-        .as_ref()
-        .map(PathBuf::from)
-        .filter(|path| path.exists())
-        .unwrap_or_else(|| PathBuf::from(&project.working_directory));
-
-    let worktree = Path::new(&worktree_path);
-
-    // 3. Check git state - try to complete stale rebase first
-    match GitService::try_complete_stale_rebase(worktree) {
-        StaleRebaseResult::Completed => {
-            tracing::info!(
-                task_id = task_id_str,
-                "attempt_merge_auto_complete: stale rebase completed successfully, continuing verification"
-            );
-            // Continue to remaining merge verification steps below
-        }
-        StaleRebaseResult::HasConflicts { files } => {
-            tracing::info!(
-                task_id = task_id_str,
-                conflict_count = files.len(),
-                "attempt_merge_auto_complete: stale rebase has real conflicts, transitioning to MergeConflict"
-            );
-            transition_to_merge_conflict(
-                &task_id,
-                "Stale rebase has unresolved conflicts",
-                task_repo,
-                task_dependency_repo,
-                project_repo,
-                chat_message_repo,
-                conversation_repo,
-                agent_run_repo,
-                ideation_session_repo,
-                activity_event_repo,
-                message_queue,
-                running_agent_registry,
-                memory_event_repo,
-                execution_state,
-                plan_branch_repo,
-                app_handle,
-            )
-            .await;
-            return;
-        }
-        StaleRebaseResult::Failed { reason } => {
-            tracing::info!(
-                task_id = task_id_str,
-                reason = &reason,
-                "attempt_merge_auto_complete: stale rebase recovery failed, transitioning to MergeConflict"
-            );
-            transition_to_merge_conflict(
-                &task_id,
-                &format!("Stale rebase recovery failed: {}", reason),
-                task_repo,
-                task_dependency_repo,
-                project_repo,
-                chat_message_repo,
-                conversation_repo,
-                agent_run_repo,
-                ideation_session_repo,
-                activity_event_repo,
-                message_queue,
-                running_agent_registry,
-                memory_event_repo,
-                execution_state,
-                plan_branch_repo,
-                app_handle,
-            )
-            .await;
-            return;
-        }
-        StaleRebaseResult::NoRebase => {
-            // No rebase in progress, continue to next checks
-        }
-    }
-
-    // Safety net: check if rebase is somehow still in progress after recovery attempt
-    if GitService::is_rebase_in_progress(worktree) {
-        tracing::info!(
-            task_id = task_id_str,
-            "attempt_merge_auto_complete: rebase still in progress after recovery attempt, transitioning to MergeConflict"
-        );
-        transition_to_merge_conflict(
-            &task_id,
-            "Rebase still in progress after recovery attempt",
-            task_repo,
-            task_dependency_repo,
-            project_repo,
-            chat_message_repo,
-            conversation_repo,
-            agent_run_repo,
-            ideation_session_repo,
-            activity_event_repo,
-            message_queue,
-            running_agent_registry,
-            memory_event_repo,
-            execution_state,
-            plan_branch_repo,
-            app_handle,
-        )
-        .await;
-        return;
-    }
-
-    if GitService::is_merge_in_progress(worktree) {
-        tracing::info!(
-            task_id = task_id_str,
-            "attempt_merge_auto_complete: merge in progress (MERGE_HEAD exists), transitioning to MergeConflict"
-        );
-        transition_to_merge_conflict(
-            &task_id,
-            "Agent exited with incomplete merge (MERGE_HEAD exists)",
-            task_repo,
-            task_dependency_repo,
-            project_repo,
-            chat_message_repo,
-            conversation_repo,
-            agent_run_repo,
-            ideation_session_repo,
-            activity_event_repo,
-            message_queue,
-            running_agent_registry,
-            memory_event_repo,
-            execution_state,
-            plan_branch_repo,
-            app_handle,
-        )
-        .await;
-        return;
-    }
-
-    match GitService::has_conflict_markers(worktree) {
-        Ok(true) => {
-            tracing::info!(
-                task_id = task_id_str,
-                "attempt_merge_auto_complete: conflict markers found, transitioning to MergeConflict"
-            );
-            transition_to_merge_conflict(
-                &task_id,
-                "Agent exited with unresolved conflict markers",
-                task_repo,
-                task_dependency_repo,
-                project_repo,
-                chat_message_repo,
-                conversation_repo,
-                agent_run_repo,
-                ideation_session_repo,
-                activity_event_repo,
-                message_queue,
-                running_agent_registry,
-                memory_event_repo,
-                execution_state,
-                plan_branch_repo,
-                app_handle,
-            )
-            .await;
-            return;
-        }
-        Ok(false) => {
-            // No conflicts - merge succeeded!
-        }
-        Err(e) => {
-            tracing::error!(
-                task_id = task_id_str,
-                error = %e,
-                "attempt_merge_auto_complete: failed to check conflict markers, transitioning to MergeIncomplete"
-            );
-            transition_to_merge_incomplete(
-                &task_id,
-                &format!("Auto-complete failed: {}", e),
-                task_repo,
-                task_dependency_repo,
-                project_repo,
-                chat_message_repo,
-                conversation_repo,
-                agent_run_repo,
-                ideation_session_repo,
-                activity_event_repo,
-                message_queue,
-                running_agent_registry,
-                memory_event_repo,
-                execution_state,
-                plan_branch_repo,
-                app_handle,
-            )
-            .await;
-            return;
-        }
-    }
-
-    // 3b. If this was a validation recovery (AutoFix mode), re-run validation before completing.
-    // The agent may have fixed code and committed, but we must verify validation passes.
-    let is_validation_recovery = task
-        .metadata
-        .as_ref()
-        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-        .and_then(|v| v.get("validation_recovery")?.as_bool())
-        .unwrap_or(false);
-
-    if is_validation_recovery {
-        tracing::info!(
-            task_id = task_id_str,
-            "attempt_merge_auto_complete: validation recovery mode — re-running validation"
-        );
-
-        // Re-run validation commands on the merge path
-        match run_validation_commands(&project, &task, worktree, task_id_str, None, None).await {
-            Some(result) if !result.all_passed => {
-                // Agent didn't fix it — revert and fall back to MergeIncomplete
-                tracing::warn!(
-                    task_id = task_id_str,
-                    failure_count = result.failures.len(),
-                    "attempt_merge_auto_complete: re-validation failed, reverting merge"
-                );
-
-                if let Err(e) = GitService::reset_hard(worktree, "HEAD~1") {
-                    tracing::error!(
-                        task_id = task_id_str,
-                        error = %e,
-                        "attempt_merge_auto_complete: failed to revert merge after validation failure"
-                    );
-                }
-
-                // Update task metadata with validation failure details
-                let (source_branch, target_branch) =
-                    resolve_merge_branches(&task, &project, plan_branch_repo).await;
-                task.metadata = Some(format_validation_error_metadata(
-                    &result.failures,
-                    &result.log,
-                    &source_branch,
-                    &target_branch,
-                ));
-                task.touch();
-                let _ = task_repo.update(&task).await;
-
-                transition_to_merge_incomplete(
-                    &task_id,
-                    "Validation re-check failed after agent fix attempt",
-                    task_repo,
-                    task_dependency_repo,
-                    project_repo,
-                    chat_message_repo,
-                    conversation_repo,
-                    agent_run_repo,
-                    ideation_session_repo,
-                    activity_event_repo,
-                    message_queue,
-                    running_agent_registry,
-                    memory_event_repo,
-                    execution_state,
-                    plan_branch_repo,
-                    app_handle,
-                )
-                .await;
-                return;
-            }
-            Some(_) => {
-                tracing::info!(
-                    task_id = task_id_str,
-                    "attempt_merge_auto_complete: re-validation passed — proceeding to complete merge"
-                );
-            }
-            None => {
-                // No validation commands configured — proceed normally
-                tracing::info!(
-                    task_id = task_id_str,
-                    "attempt_merge_auto_complete: no validation commands found, proceeding"
-                );
-            }
-        }
-    }
-
-    // 4. Verify merge actually happened on main branch
-    // Get the task branch HEAD SHA from worktree
-    let task_branch_head = match GitService::get_head_sha(worktree) {
-        Ok(sha) => sha,
-        Err(e) => {
-            tracing::error!(
-                task_id = task_id_str,
-                error = %e,
-                "attempt_merge_auto_complete: failed to get task branch HEAD SHA"
-            );
-            transition_to_merge_incomplete(
-                &task_id,
-                &format!("Auto-complete failed: could not get task branch HEAD SHA: {}", e),
-                task_repo,
-                task_dependency_repo,
-                project_repo,
-                chat_message_repo,
-                conversation_repo,
-                agent_run_repo,
-                ideation_session_repo,
-                activity_event_repo,
-                message_queue,
-                running_agent_registry,
-                memory_event_repo,
-                execution_state,
-                plan_branch_repo,
-                app_handle,
-            )
-            .await;
-            return;
-        }
-    };
-
-    // Get main repo path and resolve correct merge target (plan branch or base branch)
-    let main_repo_path = PathBuf::from(&project.working_directory);
-    let (_, target_branch) = resolve_merge_branches(&task, &project, plan_branch_repo).await;
-
-    // Verify task branch commit is merged into target branch
-    match GitService::is_commit_on_branch(&main_repo_path, &task_branch_head, &target_branch) {
-        Ok(true) => {
-            // Task branch is merged - good to proceed
-        }
-        Ok(false) => {
-            tracing::warn!(
-                task_id = task_id_str,
-                task_branch_head = %task_branch_head,
-                target_branch = %target_branch,
-                "attempt_merge_auto_complete: task branch not merged to target, transitioning to MergeIncomplete"
-            );
-            transition_to_merge_incomplete(
-                &task_id,
-                &format!("Agent exited but task branch {} not merged to {}", task_branch_head, target_branch),
-                task_repo,
-                task_dependency_repo,
-                project_repo,
-                chat_message_repo,
-                conversation_repo,
-                agent_run_repo,
-                ideation_session_repo,
-                activity_event_repo,
-                message_queue,
-                running_agent_registry,
-                memory_event_repo,
-                execution_state,
-                plan_branch_repo,
-                app_handle,
-            )
-            .await;
-            return;
-        }
-        Err(e) => {
-            tracing::error!(
-                task_id = task_id_str,
-                error = %e,
-                "attempt_merge_auto_complete: failed to verify merge on target branch"
-            );
-            transition_to_merge_incomplete(
-                &task_id,
-                &format!("Auto-complete failed: could not verify merge: {}", e),
-                task_repo,
-                task_dependency_repo,
-                project_repo,
-                chat_message_repo,
-                conversation_repo,
-                agent_run_repo,
-                ideation_session_repo,
-                activity_event_repo,
-                message_queue,
-                running_agent_registry,
-                memory_event_repo,
-                execution_state,
-                plan_branch_repo,
-                app_handle,
-            )
-            .await;
-            return;
-        }
-    }
-
-    // 6. Get merge commit SHA from main branch HEAD (not worktree)
-    let commit_sha = match GitService::get_head_sha(&main_repo_path) {
-        Ok(sha) => sha,
-        Err(e) => {
-            tracing::error!(
-                task_id = task_id_str,
-                error = %e,
-                "attempt_merge_auto_complete: failed to get main branch HEAD SHA"
-            );
-            transition_to_merge_incomplete(
-                &task_id,
-                &format!("Auto-complete failed: could not get main branch HEAD SHA: {}", e),
-                task_repo,
-                task_dependency_repo,
-                project_repo,
-                chat_message_repo,
-                conversation_repo,
-                agent_run_repo,
-                ideation_session_repo,
-                activity_event_repo,
-                message_queue,
-                running_agent_registry,
-                memory_event_repo,
-                execution_state,
-                plan_branch_repo,
-                app_handle,
-            )
-            .await;
-            return;
-        }
-    };
-
-    // 7. Complete the merge using shared logic
-    tracing::info!(
-        task_id = task_id_str,
-        commit_sha = %commit_sha,
-        "attempt_merge_auto_complete: merge verified on target branch, completing"
-    );
-
-    if let Err(e) = complete_merge_internal(
-        &mut task,
-        &project,
-        &commit_sha,
-        task_repo,
-        app_handle,
-    )
-    .await
-    {
-        tracing::error!(
-            task_id = task_id_str,
-            error = %e,
-            "attempt_merge_auto_complete: complete_merge_internal failed"
-        );
-    } else {
-        // Auto-unblock tasks that were waiting on this task
-        // (auto-complete merge path - on_enter(Merged) won't be triggered)
-        use crate::application::task_transition_service::RepoBackedDependencyManager;
-        use crate::domain::state_machine::services::DependencyManager;
-
-        let dependency_manager = RepoBackedDependencyManager::new(
-            Arc::clone(task_dependency_repo),
-            Arc::clone(task_repo),
-            app_handle.cloned(),
-        );
-        dependency_manager.unblock_dependents(task_id_str).await;
-
-        // Schedule newly-unblocked tasks (e.g. plan_merge tasks that just became Ready)
-        let scheduler = TaskSchedulerService::new(
-            Arc::clone(execution_state),
-            Arc::clone(project_repo),
-            Arc::clone(task_repo),
-            Arc::clone(task_dependency_repo),
-            Arc::clone(chat_message_repo),
-            Arc::clone(conversation_repo),
-            Arc::clone(agent_run_repo),
-            Arc::clone(ideation_session_repo),
-            Arc::clone(activity_event_repo),
-            Arc::clone(message_queue),
-            Arc::clone(running_agent_registry),
-            Arc::clone(memory_event_repo),
-            app_handle.cloned(),
-        );
-        let scheduler = if let Some(ref repo) = plan_branch_repo {
-            scheduler.with_plan_branch_repo(Arc::clone(repo))
-        } else {
-            scheduler
-        };
-        let scheduler = Arc::new(scheduler);
-        scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
-        tokio::spawn(async move {
-            tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
-            scheduler.try_schedule_ready_tasks().await;
-        });
-    }
-}
-
-/// Reconcile merge state when agent run finished but status is still Merging.
-pub(crate) async fn reconcile_merge_auto_complete<R: Runtime>(
-    task_id_str: &str,
-    task_repo: &Arc<dyn TaskRepository>,
-    task_dependency_repo: &Arc<dyn TaskDependencyRepository>,
-    project_repo: &Arc<dyn ProjectRepository>,
-    chat_message_repo: &Arc<dyn ChatMessageRepository>,
-    conversation_repo: &Arc<dyn ChatConversationRepository>,
-    agent_run_repo: &Arc<dyn AgentRunRepository>,
-    ideation_session_repo: &Arc<dyn IdeationSessionRepository>,
-    activity_event_repo: &Arc<dyn ActivityEventRepository>,
-    message_queue: &Arc<MessageQueue>,
-    running_agent_registry: &Arc<dyn RunningAgentRegistry>,
-    memory_event_repo: &Arc<dyn MemoryEventRepository>,
-    execution_state: &Arc<ExecutionState>,
-    plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
-    app_handle: Option<&AppHandle<R>>,
-) {
-    attempt_merge_auto_complete(
-        task_id_str,
-        task_repo,
-        task_dependency_repo,
-        project_repo,
-        chat_message_repo,
-        conversation_repo,
-        agent_run_repo,
-        ideation_session_repo,
-        activity_event_repo,
-        message_queue,
-        running_agent_registry,
-        memory_event_repo,
-        execution_state,
-        plan_branch_repo,
-        app_handle,
-    )
-    .await;
-}
-
-/// Helper to transition task to MergeConflict state
-#[allow(clippy::too_many_arguments)]
-async fn transition_to_merge_conflict<R: Runtime>(
-    task_id: &TaskId,
-    reason: &str,
-    task_repo: &Arc<dyn TaskRepository>,
-    task_dependency_repo: &Arc<dyn TaskDependencyRepository>,
-    project_repo: &Arc<dyn ProjectRepository>,
-    chat_message_repo: &Arc<dyn ChatMessageRepository>,
-    conversation_repo: &Arc<dyn ChatConversationRepository>,
-    agent_run_repo: &Arc<dyn AgentRunRepository>,
-    ideation_session_repo: &Arc<dyn IdeationSessionRepository>,
-    activity_event_repo: &Arc<dyn ActivityEventRepository>,
-    message_queue: &Arc<MessageQueue>,
-    running_agent_registry: &Arc<dyn RunningAgentRegistry>,
-    memory_event_repo: &Arc<dyn MemoryEventRepository>,
-    execution_state: &Arc<ExecutionState>,
-    plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
-    app_handle: Option<&AppHandle<R>>,
-) {
-    tracing::info!(
-        task_id = task_id.as_str(),
-        reason = reason,
-        "transition_to_merge_conflict: transitioning task"
-    );
-
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(task_repo),
-        Arc::clone(task_dependency_repo),
-        Arc::clone(project_repo),
-        Arc::clone(chat_message_repo),
-        Arc::clone(conversation_repo),
-        Arc::clone(agent_run_repo),
-        Arc::clone(ideation_session_repo),
-        Arc::clone(activity_event_repo),
-        Arc::clone(message_queue),
-        Arc::clone(running_agent_registry),
-        Arc::clone(execution_state),
-        app_handle.cloned(),
-        Arc::clone(memory_event_repo),
-    );
-    let transition_service = if let Some(ref repo) = plan_branch_repo {
-        transition_service.with_plan_branch_repo(Arc::clone(repo))
-    } else {
-        transition_service
-    };
-
-    if let Err(e) = transition_service
-        .transition_task(task_id, InternalStatus::MergeConflict)
-        .await
-    {
-        tracing::error!(
-            task_id = task_id.as_str(),
-            error = %e,
-            "transition_to_merge_conflict: failed to transition"
-        );
-    }
-}
-
-/// Helper to transition task to MergeIncomplete state (non-conflict failures)
-#[allow(clippy::too_many_arguments)]
-async fn transition_to_merge_incomplete<R: Runtime>(
-    task_id: &TaskId,
-    reason: &str,
-    task_repo: &Arc<dyn TaskRepository>,
-    task_dependency_repo: &Arc<dyn TaskDependencyRepository>,
-    project_repo: &Arc<dyn ProjectRepository>,
-    chat_message_repo: &Arc<dyn ChatMessageRepository>,
-    conversation_repo: &Arc<dyn ChatConversationRepository>,
-    agent_run_repo: &Arc<dyn AgentRunRepository>,
-    ideation_session_repo: &Arc<dyn IdeationSessionRepository>,
-    activity_event_repo: &Arc<dyn ActivityEventRepository>,
-    message_queue: &Arc<MessageQueue>,
-    running_agent_registry: &Arc<dyn RunningAgentRegistry>,
-    memory_event_repo: &Arc<dyn MemoryEventRepository>,
-    execution_state: &Arc<ExecutionState>,
-    plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
-    app_handle: Option<&AppHandle<R>>,
-) {
-    tracing::info!(
-        task_id = task_id.as_str(),
-        reason = reason,
-        "transition_to_merge_incomplete: transitioning task"
-    );
-
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(task_repo),
-        Arc::clone(task_dependency_repo),
-        Arc::clone(project_repo),
-        Arc::clone(chat_message_repo),
-        Arc::clone(conversation_repo),
-        Arc::clone(agent_run_repo),
-        Arc::clone(ideation_session_repo),
-        Arc::clone(activity_event_repo),
-        Arc::clone(message_queue),
-        Arc::clone(running_agent_registry),
-        Arc::clone(execution_state),
-        app_handle.cloned(),
-        Arc::clone(memory_event_repo),
-    );
-    let transition_service = if let Some(ref repo) = plan_branch_repo {
-        transition_service.with_plan_branch_repo(Arc::clone(repo))
-    } else {
-        transition_service
-    };
-
-    if let Err(e) = transition_service
-        .transition_task(task_id, InternalStatus::MergeIncomplete)
-        .await
-    {
-        tracing::error!(
-            task_id = task_id.as_str(),
-            error = %e,
-            "transition_to_merge_incomplete: failed to transition"
-        );
-    }
+    }.instrument(span));
 }

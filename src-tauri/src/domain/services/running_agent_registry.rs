@@ -10,6 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
 
 /// Key for identifying a running agent by context
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
@@ -40,6 +41,8 @@ pub struct RunningAgentInfo {
     pub started_at: chrono::DateTime<chrono::Utc>,
     /// Optional worktree path used as the agent's working directory
     pub worktree_path: Option<String>,
+    /// Token for cooperative cancellation of the background async task
+    pub cancellation_token: Option<CancellationToken>,
 }
 
 /// Trait for tracking running agent processes.
@@ -56,6 +59,7 @@ pub trait RunningAgentRegistry: Send + Sync {
         conversation_id: String,
         agent_run_id: String,
         worktree_path: Option<String>,
+        cancellation_token: Option<CancellationToken>,
     );
 
     /// Unregister a running agent (called when agent completes or is stopped)
@@ -249,6 +253,7 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
         conversation_id: String,
         agent_run_id: String,
         worktree_path: Option<String>,
+        cancellation_token: Option<CancellationToken>,
     ) {
         let info = RunningAgentInfo {
             pid,
@@ -256,6 +261,7 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
             agent_run_id,
             started_at: chrono::Utc::now(),
             worktree_path,
+            cancellation_token,
         };
         let mut agents = self.agents.lock().await;
         agents.insert(key, info);
@@ -280,6 +286,10 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
         let info = self.unregister(key).await;
 
         if let Some(ref agent_info) = info {
+            // Cancel the async task before killing the process
+            if let Some(ref token) = agent_info.cancellation_token {
+                token.cancel();
+            }
             kill_process(agent_info.pid);
         }
 
@@ -323,6 +333,7 @@ mod tests {
                 "conv-abc".to_string(),
                 "run-xyz".to_string(),
                 None,
+                None,
             )
             .await;
 
@@ -332,6 +343,32 @@ mod tests {
         assert_eq!(info.pid, 12345);
         assert_eq!(info.conversation_id, "conv-abc");
         assert_eq!(info.agent_run_id, "run-xyz");
+    }
+
+    #[tokio::test]
+    async fn test_register_with_cancellation_token() {
+        let registry = MemoryRunningAgentRegistry::new();
+        let key = RunningAgentKey::new("task", "task-cancel");
+        let token = CancellationToken::new();
+
+        registry
+            .register(
+                key.clone(),
+                99999,
+                "conv-ct".to_string(),
+                "run-ct".to_string(),
+                None,
+                Some(token.clone()),
+            )
+            .await;
+
+        let info = registry.get(&key).await.unwrap();
+        assert!(info.cancellation_token.is_some());
+        assert!(!token.is_cancelled());
+
+        // Stop should cancel token
+        let _ = registry.stop(&key).await;
+        assert!(token.is_cancelled());
     }
 
     #[tokio::test]
@@ -347,6 +384,7 @@ mod tests {
                 12345,
                 "conv-abc".to_string(),
                 "run-xyz".to_string(),
+                None,
                 None,
             )
             .await;
@@ -365,6 +403,7 @@ mod tests {
                 12345,
                 "conv-abc".to_string(),
                 "run-xyz".to_string(),
+                None,
                 None,
             )
             .await;
@@ -390,6 +429,7 @@ mod tests {
                 "conv-1".to_string(),
                 "run-1".to_string(),
                 None,
+                None,
             )
             .await;
 
@@ -399,6 +439,7 @@ mod tests {
                 222,
                 "conv-2".to_string(),
                 "run-2".to_string(),
+                None,
                 None,
             )
             .await;
