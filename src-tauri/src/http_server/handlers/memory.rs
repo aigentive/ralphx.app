@@ -16,10 +16,10 @@ use super::*;
 use crate::domain::entities::{
     ArchiveJobPayload, ArchiveJobType,
     MemoryActorType, MemoryArchiveJob, MemoryBucket, MemoryEntry,
-    MemoryEntryId, MemoryEvent, MemoryStatus, ProcessId,
+    MemoryEntryId, MemoryEvent, MemoryStatus,
 };
 use crate::domain::entities::types::ProjectId;
-use crate::domain::services::RuleIngestionService;
+use crate::domain::services::{IndexRewriter, RuleIngestionService};
 
 // ============================================================================
 // Handler: search_memories
@@ -249,7 +249,7 @@ pub async fn mark_memory_obsolete(
 
     // Record audit event
     let event = MemoryEvent::new(
-        ProcessId::from_string(entry.project_id.0.clone()),
+        ProjectId::from_string(entry.project_id.0.clone()),
         "memory_obsoleted",
         MemoryActorType::System,
         json!({
@@ -270,14 +270,71 @@ pub async fn mark_memory_obsolete(
 // ============================================================================
 
 pub async fn refresh_memory_rule_index(
-    State(_state): State<HttpServerState>,
-    Json(_req): Json<RefreshMemoryRuleIndexRequest>,
+    State(state): State<HttpServerState>,
+    Json(req): Json<RefreshMemoryRuleIndexRequest>,
 ) -> Result<Json<RefreshMemoryRuleIndexResponse>, StatusCode> {
-    // This handler requires memory_rule_bindings which is not yet part of the
-    // repository layer. Return a stub response for now.
+    let project_id = ProjectId::from_string(req.project_id);
+
+    // Get all active memories for the project
+    let all_memories = state
+        .app_state
+        .memory_entry_repo
+        .get_by_project_and_status(&project_id, MemoryStatus::Active)
+        .await
+        .map_err(|e| {
+            error!("Failed to fetch active memories: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // Group memories by source_rule_file
+    let mut memories_by_rule_file: std::collections::HashMap<String, Vec<MemoryEntry>> =
+        std::collections::HashMap::new();
+
+    for memory in all_memories {
+        if let Some(rule_file) = memory.source_rule_file.clone() {
+            memories_by_rule_file.entry(rule_file).or_insert_with(Vec::new).push(memory);
+        }
+    }
+
+    // Filter by scope_key if provided
+    let memories_by_rule_file: std::collections::HashMap<String, Vec<MemoryEntry>> =
+        if let Some(scope_key) = req.scope_key.as_deref() {
+            memories_by_rule_file
+                .into_iter()
+                .filter(|(rule_file, _)| rule_file.contains(scope_key))
+                .collect()
+        } else {
+            memories_by_rule_file
+        };
+
+    let index_rewriter = IndexRewriter::new();
+    let mut files_refreshed = 0;
+
+    // For each rule file, regenerate its index and write to filesystem
+    for (rule_file, memories) in memories_by_rule_file {
+        // Get the paths from the first memory (they should all have the same source paths)
+        let paths = memories.first()
+            .map(|m| m.scope_paths.clone())
+            .unwrap_or_default();
+
+        // Rewrite the rule file
+        match index_rewriter.rewrite_rule_file(&rule_file, paths, &memories) {
+            Ok(_) => {
+                files_refreshed += 1;
+                info!("Refreshed rule index for: {}", rule_file);
+            }
+            Err(e) => {
+                error!("Failed to refresh rule index for '{}': {}", rule_file, e);
+                // Continue with next file instead of failing completely
+            }
+        }
+    }
+
+    info!("refresh_memory_rule_index: refreshed {} rule index files", files_refreshed);
+
     Ok(Json(RefreshMemoryRuleIndexResponse {
-        files_refreshed: 0,
-        message: "Rule binding refresh not yet implemented - requires memory_rule_binding repository".to_string(),
+        files_refreshed,
+        message: format!("Refreshed {} rule index files", files_refreshed),
     }))
 }
 
@@ -354,5 +411,44 @@ pub async fn rebuild_archive_snapshots(
     Ok(Json(RebuildArchiveSnapshotsResponse {
         job_id,
         message: "Full archive rebuild job enqueued".to_string(),
+    }))
+}
+
+// ============================================================================
+// Handler: get_conversation_transcript
+// ============================================================================
+
+pub async fn get_conversation_transcript(
+    State(state): State<HttpServerState>,
+    Json(req): Json<GetConversationTranscriptRequest>,
+) -> Result<Json<GetConversationTranscriptResponse>, StatusCode> {
+    use crate::domain::entities::ChatConversationId;
+
+    let conversation_id = ChatConversationId::from_string(req.conversation_id.clone());
+    let messages = state
+        .app_state
+        .chat_message_repo
+        .get_by_conversation(&conversation_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to fetch conversation transcript: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let transcript_messages: Vec<TranscriptMessage> = messages
+        .into_iter()
+        .map(|msg| TranscriptMessage {
+            role: msg.role.to_string(),
+            content: msg.content,
+            created_at: msg.created_at.to_rfc3339(),
+        })
+        .collect();
+
+    let message_count = transcript_messages.len();
+
+    Ok(Json(GetConversationTranscriptResponse {
+        conversation_id: req.conversation_id,
+        messages: transcript_messages,
+        message_count,
     }))
 }

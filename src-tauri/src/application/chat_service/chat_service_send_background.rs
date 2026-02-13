@@ -25,7 +25,7 @@ use crate::domain::entities::{
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
+    IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentKey, RunningAgentRegistry};
 use super::chat_service_context;
@@ -287,6 +287,7 @@ pub fn spawn_send_message_background<R: Runtime>(
     conversation: Option<ChatConversation>,
     _resolved_project_id: Option<String>,
     agent_name: Option<String>,
+    memory_event_repo: Arc<dyn MemoryEventRepository>,
 ) {
     tokio::spawn(async move {
         tracing::debug!(
@@ -439,6 +440,7 @@ pub fn spawn_send_message_background<R: Runtime>(
                                     Arc::clone(&activity_event_repo),
                                     Arc::clone(&message_queue),
                                     Arc::clone(&running_agent_registry),
+                                    Arc::clone(&memory_event_repo),
                                     app_handle.clone(),
                                 );
                                 if let Some(ref repo) = plan_branch_repo {
@@ -461,6 +463,7 @@ pub fn spawn_send_message_background<R: Runtime>(
                                     Arc::clone(&running_agent_registry),
                                     Arc::clone(exec_state),
                                     app_handle.clone(),
+                                    Arc::clone(&memory_event_repo),
                                 )
                                 .with_task_scheduler(task_scheduler);
                                 let transition_service = if let Some(ref repo) = plan_branch_repo {
@@ -520,6 +523,7 @@ pub fn spawn_send_message_background<R: Runtime>(
                             &activity_event_repo,
                             &message_queue,
                             &running_agent_registry,
+                            &memory_event_repo,
                             exec_state,
                             &plan_branch_repo,
                             app_handle.as_ref(),
@@ -564,6 +568,7 @@ pub fn spawn_send_message_background<R: Runtime>(
                     }
 
                     // Trigger memory pipelines (no queue processing path)
+                    // TODO: Load settings from project_memory_settings table for per-project enable/disable
                     trigger_memory_pipelines(
                         context_type,
                         &context_id,
@@ -573,6 +578,8 @@ pub fn spawn_send_message_background<R: Runtime>(
                         &cli_path,
                         &plugin_dir,
                         &working_directory,
+                        None,
+                        Some(Arc::clone(&memory_event_repo)),
                     )
                     .await;
                 } else {
@@ -804,6 +811,7 @@ pub fn spawn_send_message_background<R: Runtime>(
                     }
 
                     // Trigger memory pipelines after queue processing completes
+                    // TODO: Load settings from project_memory_settings table for per-project enable/disable
                     trigger_memory_pipelines(
                         context_type,
                         &context_id,
@@ -813,6 +821,8 @@ pub fn spawn_send_message_background<R: Runtime>(
                         &cli_path,
                         &plugin_dir,
                         &working_directory,
+                        None,
+                        Some(Arc::clone(&memory_event_repo)),
                     )
                     .await;
                 } else {
@@ -947,6 +957,7 @@ pub fn spawn_send_message_background<R: Runtime>(
                                                 Some(retry_conv),
                                                 resolved_project_id.clone(),
                                                 agent_name.clone(),
+                                                Arc::clone(&memory_event_repo),
                                             );
                                             return; // Exit early, retry is now handling it
                                         }
@@ -1032,6 +1043,7 @@ pub fn spawn_send_message_background<R: Runtime>(
                                     Arc::clone(&running_agent_registry),
                                     Arc::clone(exec_state),
                                     app_handle.clone(),
+                                    Arc::clone(&memory_event_repo),
                                 );
                                 let transition_service = if let Some(ref repo) = plan_branch_repo {
                                     transition_service.with_plan_branch_repo(Arc::clone(repo))
@@ -1099,6 +1111,7 @@ pub fn spawn_send_message_background<R: Runtime>(
                             &activity_event_repo,
                             &message_queue,
                             &running_agent_registry,
+                            &memory_event_repo,
                             exec_state,
                             &plan_branch_repo,
                             app_handle.as_ref(),
@@ -1138,6 +1151,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
     activity_event_repo: &Arc<dyn ActivityEventRepository>,
     message_queue: &Arc<MessageQueue>,
     running_agent_registry: &Arc<dyn RunningAgentRegistry>,
+    memory_event_repo: &Arc<dyn MemoryEventRepository>,
     execution_state: &Arc<ExecutionState>,
     plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
     app_handle: Option<&AppHandle<R>>,
@@ -1224,6 +1238,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
             activity_event_repo,
             message_queue,
             running_agent_registry,
+            memory_event_repo,
             execution_state,
             plan_branch_repo,
             app_handle,
@@ -1250,6 +1265,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
             activity_event_repo,
             message_queue,
             running_agent_registry,
+            memory_event_repo,
             execution_state,
             plan_branch_repo,
             app_handle,
@@ -1277,6 +1293,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
                 activity_event_repo,
                 message_queue,
                 running_agent_registry,
+                memory_event_repo,
                 execution_state,
                 plan_branch_repo,
                 app_handle,
@@ -1306,6 +1323,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
                 activity_event_repo,
                 message_queue,
                 running_agent_registry,
+                memory_event_repo,
                 execution_state,
                 plan_branch_repo,
                 app_handle,
@@ -1373,6 +1391,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
                     activity_event_repo,
                     message_queue,
                     running_agent_registry,
+                    memory_event_repo,
                     execution_state,
                     plan_branch_repo,
                     app_handle,
@@ -1419,6 +1438,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
                 activity_event_repo,
                 message_queue,
                 running_agent_registry,
+                memory_event_repo,
                 execution_state,
                 plan_branch_repo,
                 app_handle,
@@ -1457,6 +1477,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
                 activity_event_repo,
                 message_queue,
                 running_agent_registry,
+                memory_event_repo,
                 execution_state,
                 plan_branch_repo,
                 app_handle,
@@ -1483,6 +1504,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
                 activity_event_repo,
                 message_queue,
                 running_agent_registry,
+                memory_event_repo,
                 execution_state,
                 plan_branch_repo,
                 app_handle,
@@ -1514,6 +1536,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
                 activity_event_repo,
                 message_queue,
                 running_agent_registry,
+                memory_event_repo,
                 execution_state,
                 plan_branch_repo,
                 app_handle,
@@ -1570,6 +1593,7 @@ async fn attempt_merge_auto_complete<R: Runtime>(
             Arc::clone(activity_event_repo),
             Arc::clone(message_queue),
             Arc::clone(running_agent_registry),
+            Arc::clone(memory_event_repo),
             app_handle.cloned(),
         );
         let scheduler = if let Some(ref repo) = plan_branch_repo {
@@ -1599,6 +1623,7 @@ pub(crate) async fn reconcile_merge_auto_complete<R: Runtime>(
     activity_event_repo: &Arc<dyn ActivityEventRepository>,
     message_queue: &Arc<MessageQueue>,
     running_agent_registry: &Arc<dyn RunningAgentRegistry>,
+    memory_event_repo: &Arc<dyn MemoryEventRepository>,
     execution_state: &Arc<ExecutionState>,
     plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
     app_handle: Option<&AppHandle<R>>,
@@ -1615,6 +1640,7 @@ pub(crate) async fn reconcile_merge_auto_complete<R: Runtime>(
         activity_event_repo,
         message_queue,
         running_agent_registry,
+        memory_event_repo,
         execution_state,
         plan_branch_repo,
         app_handle,
@@ -1637,6 +1663,7 @@ async fn transition_to_merge_conflict<R: Runtime>(
     activity_event_repo: &Arc<dyn ActivityEventRepository>,
     message_queue: &Arc<MessageQueue>,
     running_agent_registry: &Arc<dyn RunningAgentRegistry>,
+    memory_event_repo: &Arc<dyn MemoryEventRepository>,
     execution_state: &Arc<ExecutionState>,
     plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
     app_handle: Option<&AppHandle<R>>,
@@ -1660,6 +1687,7 @@ async fn transition_to_merge_conflict<R: Runtime>(
         Arc::clone(running_agent_registry),
         Arc::clone(execution_state),
         app_handle.cloned(),
+        Arc::clone(memory_event_repo),
     );
     let transition_service = if let Some(ref repo) = plan_branch_repo {
         transition_service.with_plan_branch_repo(Arc::clone(repo))
@@ -1694,6 +1722,7 @@ async fn transition_to_merge_incomplete<R: Runtime>(
     activity_event_repo: &Arc<dyn ActivityEventRepository>,
     message_queue: &Arc<MessageQueue>,
     running_agent_registry: &Arc<dyn RunningAgentRegistry>,
+    memory_event_repo: &Arc<dyn MemoryEventRepository>,
     execution_state: &Arc<ExecutionState>,
     plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
     app_handle: Option<&AppHandle<R>>,
@@ -1717,6 +1746,7 @@ async fn transition_to_merge_incomplete<R: Runtime>(
         Arc::clone(running_agent_registry),
         Arc::clone(execution_state),
         app_handle.cloned(),
+        Arc::clone(memory_event_repo),
     );
     let transition_service = if let Some(ref repo) = plan_branch_repo {
         transition_service.with_plan_branch_repo(Arc::clone(repo))

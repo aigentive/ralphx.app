@@ -218,9 +218,8 @@ impl RuleIngestionService {
         event_type: &str,
         details: serde_json::Value,
     ) -> AppResult<()> {
-        use crate::domain::entities::ProcessId;
         let event = MemoryEvent::new(
-            ProcessId::from_string(project_id.0.clone()),
+            project_id.clone(),
             event_type,
             MemoryActorType::MemoryMaintainer,
             details,
