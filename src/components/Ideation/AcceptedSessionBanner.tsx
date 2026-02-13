@@ -9,37 +9,13 @@ import { useMemo } from "react";
 import { CheckCircle2, ArrowRight, Clock, Zap, CircleCheck } from "lucide-react";
 import { useTasks } from "@/hooks/useTasks";
 import type { TaskProposal } from "@/types/ideation";
-import type { Task } from "@/types/task";
-import { IDLE_STATUSES, TERMINAL_STATUSES } from "@/types/status";
-import type { InternalStatus } from "@/types/status";
+import { getStatusCounts } from "@/types/status";
 
 interface AcceptedSessionBannerProps {
   projectId: string;
   proposals: TaskProposal[];
   convertedAt: string | null;
   onViewWork: () => void;
-}
-
-interface StatusCounts {
-  idle: number;
-  active: number;
-  done: number;
-  total: number;
-}
-
-function categorizeStatus(status: InternalStatus): "idle" | "active" | "done" {
-  if ((IDLE_STATUSES as readonly string[]).includes(status)) return "idle";
-  if ((TERMINAL_STATUSES as readonly string[]).includes(status)) return "done";
-  return "active";
-}
-
-function getStatusCounts(tasks: Task[]): StatusCounts {
-  const counts: StatusCounts = { idle: 0, active: 0, done: 0, total: tasks.length };
-  for (const task of tasks) {
-    const category = categorizeStatus(task.internalStatus);
-    counts[category]++;
-  }
-  return counts;
 }
 
 function formatTimestamp(iso: string): string {
