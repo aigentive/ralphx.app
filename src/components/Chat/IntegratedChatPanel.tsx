@@ -14,9 +14,9 @@ import { type VirtuosoHandle } from "react-virtuoso";
 import { useChat, chatKeys } from "@/hooks/useChat";
 import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectIsSending } from "@/stores/chatStore";
 import { useUiStore } from "@/stores/uiStore";
-import { useTasks, taskKeys } from "@/hooks/useTasks";
+import { useTasks } from "@/hooks/useTasks";
 import { useChatPanelContext } from "@/hooks/useChatPanelContext";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
 import type { ContextType } from "@/types/chat-conversation";
 import { ALL_REVIEW_STATUSES, EXECUTION_STATUSES, MERGE_STATUSES } from "@/types/status";
@@ -33,8 +33,9 @@ import {
   animationStyles,
   HistoryEmptyState,
 } from "./IntegratedChatPanel.components";
-import { useIntegratedChatHandlers } from "@/hooks/useIntegratedChatHandlers";
-import { useIntegratedChatEvents } from "@/hooks/useIntegratedChatEvents";
+import { useChatActions } from "@/hooks/useChatActions";
+import { useChatEvents } from "@/hooks/useChatEvents";
+import { useChatRecovery } from "@/hooks/useChatRecovery";
 import { useAgentEvents } from "@/hooks/useAgentEvents";
 import { useAskUserQuestion } from "@/hooks/useAskUserQuestion";
 import { useQuestionInput } from "@/hooks/useQuestionInput";
@@ -78,7 +79,6 @@ export function IntegratedChatPanel({
   onClose,
   autoFocusInput = true,
 }: IntegratedChatPanelProps) {
-  const queryClient = useQueryClient();
   const bus = useEventBus();
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   // History state from store - shared with TaskDetailOverlay for time-travel feature
@@ -226,136 +226,22 @@ export function IntegratedChatPanel({
     staleTime: 5000,
   });
 
-  // Recovery fallback: if agent is running but events were missed, reflect it in UI
-  // Guard: only apply if conversation belongs to current context (prevents cross-context pollution)
-  useEffect(() => {
-    if (agentRunQuery.data?.status === "running" && isConversationInCurrentContext) {
-      setAgentRunning(storeContextKey, true);
-    }
-  }, [agentRunQuery.data?.status, isConversationInCurrentContext, setAgentRunning, storeContextKey]);
-
-  // Recovery fallback: clear stuck "running" state when backend says run finished
-  // Guard: only clear if conversation is in current context OR no active conversation
-  useEffect(() => {
-    if (!activeConversationId) {
-      return;
-    }
-    if (!isConversationInCurrentContext) {
-      return;
-    }
-    if (!agentRunQuery.data || agentRunQuery.data.status !== "running") {
-      setAgentRunning(storeContextKey, false);
-    }
-  }, [activeConversationId, agentRunQuery.data, isConversationInCurrentContext, setAgentRunning, storeContextKey]);
-
-  // Recovery fallback: poll conversation while agent is running to show live updates
-  useEffect(() => {
-    if (!activeConversationId || agentRunQuery.data?.status !== "running") {
-      return undefined;
-    }
-
-    const intervalId = setInterval(() => {
-      queryClient.invalidateQueries({
-        queryKey: chatKeys.conversation(activeConversationId),
-      });
-    }, 2000);
-
-    return () => clearInterval(intervalId);
-  }, [activeConversationId, agentRunQuery.data?.status, queryClient]);
-
-  // Recovery fallback: keep conversation list fresh while agent is running
-  useEffect(() => {
-    if (isHistoryMode || !(isExecutionMode || isReviewMode || isMergeMode)) {
-      return undefined;
-    }
-    if (!isAgentRunning || !selectedTaskId) {
-      return undefined;
-    }
-
-    const intervalId = setInterval(() => {
-      queryClient.invalidateQueries({
-        queryKey: chatKeys.conversationList(currentContextType, selectedTaskId),
-      });
-    }, 2000);
-
-    return () => clearInterval(intervalId);
-  }, [
-    currentContextType,
-    isAgentRunning,
-    isExecutionMode,
-    isHistoryMode,
-    isMergeMode,
-    isReviewMode,
-    queryClient,
-    selectedTaskId,
-  ]);
-
-  // Live updates: poll active conversation while agent is running (store state)
-  useEffect(() => {
-    if (!activeConversationId || !isAgentRunning) {
-      return undefined;
-    }
-
-    const intervalId = setInterval(() => {
-      queryClient.invalidateQueries({
-        queryKey: chatKeys.conversation(activeConversationId),
-      });
-    }, 2000);
-
-    return () => clearInterval(intervalId);
-  }, [activeConversationId, isAgentRunning, queryClient]);
-
-  // If a run is active but no conversation is selected, keep refreshing the list
-  useEffect(() => {
-    if (ideationSessionId || !selectedTaskId) {
-      return undefined;
-    }
-
-    if (!isAgentRunning || activeConversationId) {
-      return undefined;
-    }
-
-    if (!isExecutionMode && !isReviewMode && !isMergeMode) {
-      return undefined;
-    }
-
-    const intervalId = setInterval(() => {
-      queryClient.invalidateQueries({
-        queryKey: chatKeys.conversationList(currentContextType, selectedTaskId),
-      });
-    }, 2000);
-
-    return () => clearInterval(intervalId);
-  }, [
+  // Recovery and polling effects (extracted to hook)
+  useChatRecovery({
     activeConversationId,
+    storeContextKey,
     currentContextType,
-    ideationSessionId,
+    isHistoryMode,
+    isAgentContext,
     isAgentRunning,
-    isExecutionMode,
-    isMergeMode,
-    isReviewMode,
+    isConversationInCurrentContext,
+    agentRunStatus: agentRunQuery.data?.status ?? undefined,
+    setAgentRunning,
+    selectedTaskId: selectedTaskId ?? undefined,
+    ideationSessionId,
     projectId,
-    queryClient,
-    selectedTaskId,
-  ]);
-
-  // Merge watchdog: keep polling task status while in merge flow
-  useEffect(() => {
-    if (ideationSessionId || !selectedTaskId) {
-      return undefined;
-    }
-
-    if (!effectiveStatus || !(MERGE_STATUSES as readonly string[]).includes(effectiveStatus)) {
-      return undefined;
-    }
-
-    const intervalId = setInterval(() => {
-      queryClient.invalidateQueries({ queryKey: taskKeys.list(projectId) });
-      queryClient.invalidateQueries({ queryKey: taskKeys.detail(selectedTaskId) });
-    }, 2000);
-
-    return () => clearInterval(intervalId);
-  }, [effectiveStatus, ideationSessionId, projectId, queryClient, selectedTaskId]);
+    effectiveStatus,
+  });
 
   // Track dismissed error banners by run ID
   const [dismissedErrorId, setDismissedErrorId] = useState<string | null>(null);
@@ -370,55 +256,6 @@ export function IntegratedChatPanel({
   } = regularChatData;
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
-
-  // Recovery window: brief polling on startup for agent contexts
-  useEffect(() => {
-    if (ideationSessionId) {
-      return undefined;
-    }
-
-    if (!selectedTaskId || !(isExecutionMode || isReviewMode || isMergeMode)) {
-      return undefined;
-    }
-
-    const intervalId = setInterval(() => {
-      queryClient.invalidateQueries({
-        queryKey: taskKeys.list(projectId),
-      });
-      if (selectedTaskId) {
-        queryClient.invalidateQueries({
-          queryKey: taskKeys.detail(selectedTaskId),
-        });
-      }
-      queryClient.invalidateQueries({
-        queryKey: chatKeys.conversationList(currentContextType, selectedTaskId),
-      });
-      if (activeConversationId) {
-        queryClient.invalidateQueries({
-          queryKey: chatKeys.conversation(activeConversationId),
-        });
-      }
-    }, 2000);
-
-    const timeoutId = setTimeout(() => {
-      clearInterval(intervalId);
-    }, 10000);
-
-    return () => {
-      clearInterval(intervalId);
-      clearTimeout(timeoutId);
-    };
-  }, [
-    activeConversationId,
-    currentContextType,
-    ideationSessionId,
-    isExecutionMode,
-    isMergeMode,
-    isReviewMode,
-    projectId,
-    queryClient,
-    selectedTaskId,
-  ]);
 
 
   // Memoize messagesData to avoid dependency chain issues in useEffect hooks
@@ -447,14 +284,12 @@ export function IntegratedChatPanel({
     handleDeleteQueuedMessage,
     handleEditQueuedMessage,
     handleStopAgent,
-  } = useIntegratedChatHandlers({
-    isExecutionMode,
-    isReviewMode,
-    isMergeMode,
-    selectedTaskId: selectedTaskId ?? undefined,
-    projectId,
-    ideationSessionId,
+  } = useChatActions({
+    contextType: currentContextType,
+    contextId: currentContextId,
     storeContextKey,
+    selectedTaskId: selectedTaskId ?? undefined,
+    ideationSessionId,
     sendMessage,
     messageCount: messagesData.length,
   });
@@ -472,7 +307,7 @@ export function IntegratedChatPanel({
     setStreamingTasks(new Map());
   };
 
-  useIntegratedChatEvents({
+  useChatEvents({
     activeConversationId,
     contextId: currentContextId,
     contextType: currentContextType,
