@@ -371,7 +371,7 @@ pub async fn spawn_session_namer(
         .map(|cwd| cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd))
         .unwrap_or_else(|_| PathBuf::from("."));
 
-    let plugin_dir = working_directory.join("ralphx-plugin");
+    let plugin_dir = crate::infrastructure::agents::claude::resolve_plugin_dir(&working_directory);
 
     // Set RALPHX_AGENT_TYPE so MCP server grants access to update_session_title tool
     let mut env = std::collections::HashMap::new();
@@ -503,7 +503,7 @@ pub async fn spawn_dependency_suggester(
         .map(|cwd| cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd))
         .unwrap_or_else(|_| PathBuf::from("."));
 
-    let plugin_dir = working_directory.join("ralphx-plugin");
+    let plugin_dir = crate::infrastructure::agents::claude::resolve_plugin_dir(&working_directory);
 
     // Set RALPHX_AGENT_TYPE so MCP server grants access to apply_proposal_dependencies tool
     let mut env = std::collections::HashMap::new();

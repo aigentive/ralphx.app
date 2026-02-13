@@ -237,8 +237,14 @@ impl<R: Runtime> ClaudeChatService<R> {
         let cli_path = crate::infrastructure::agents::claude::find_claude_cli()
             .unwrap_or_else(|| PathBuf::from("claude"));
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        let default_working_directory = cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd);
-        let plugin_dir = default_working_directory.join("ralphx-plugin");
+        let default_working_directory = if cwd.file_name().is_some_and(|name| name == "src-tauri") {
+            cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd)
+        } else {
+            cwd
+        };
+        let plugin_dir = crate::infrastructure::agents::claude::resolve_plugin_dir(
+            &default_working_directory,
+        );
 
         Self {
             cli_path,
