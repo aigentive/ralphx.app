@@ -352,6 +352,34 @@ describe("chatStore", () => {
       expect(state.isAgentRunning[taskKey]).toBeUndefined();
       expect(state.isAgentRunning[execKey]).toBe(true);
     });
+
+    it("is no-op when setting false and key is already absent", () => {
+      // Get state reference before the call
+      const stateBefore = useChatStore.getState();
+      const isAgentRunningBefore = stateBefore.isAgentRunning;
+
+      // Call setAgentRunning(false) when key doesn't exist — should be a no-op
+      useChatStore.getState().setAgentRunning("nonexistent:key", false);
+
+      const stateAfter = useChatStore.getState();
+      // State object reference should be unchanged (no new immer draft)
+      expect(stateAfter.isAgentRunning).toBe(isAgentRunningBefore);
+    });
+
+    it("is no-op when setting true and key is already true", () => {
+      useChatStore.getState().setAgentRunning(contextKey, true);
+
+      // Get state reference after first set
+      const stateBefore = useChatStore.getState();
+      const isAgentRunningBefore = stateBefore.isAgentRunning;
+
+      // Call setAgentRunning(true) again — should be a no-op
+      useChatStore.getState().setAgentRunning(contextKey, true);
+
+      const stateAfter = useChatStore.getState();
+      // State object reference should be unchanged (no new immer draft)
+      expect(stateAfter.isAgentRunning).toBe(isAgentRunningBefore);
+    });
   });
 
   describe("queueMessage", () => {
