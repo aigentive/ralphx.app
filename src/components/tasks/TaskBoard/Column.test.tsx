@@ -183,6 +183,67 @@ describe("Column", () => {
     });
   });
 
+  describe("collapsed state", () => {
+    it("should render as 44px strip when collapsed", () => {
+      const column = createMockColumn({ id: "ready", name: "Ready" });
+      render(
+        <Column column={column} projectId="p1" showArchived={false} showMergeTasks isCollapsed onToggleCollapse={vi.fn()} />,
+        { wrapper: DndWrapper },
+      );
+      const el = screen.getByTestId("column-ready");
+      expect(el.style.width).toBe("44px");
+      expect(el).toHaveAttribute("role", "button");
+      expect(el).toHaveAttribute("aria-expanded", "false");
+    });
+
+    it("should show vertical column name when collapsed", () => {
+      const column = createMockColumn({ id: "ready", name: "Ready" });
+      render(
+        <Column column={column} projectId="p1" showArchived={false} showMergeTasks isCollapsed onToggleCollapse={vi.fn()} />,
+        { wrapper: DndWrapper },
+      );
+      expect(screen.getByText("Ready")).toBeInTheDocument();
+    });
+
+    it("should show Draft '+' quick-add button when draft column is collapsed", () => {
+      const column = createMockColumn({ id: "draft", name: "Draft" });
+      render(
+        <Column column={column} projectId="p1" showArchived={false} showMergeTasks isCollapsed onToggleCollapse={vi.fn()} />,
+        { wrapper: DndWrapper },
+      );
+      expect(screen.getByLabelText("Add task to Draft")).toBeInTheDocument();
+    });
+
+    it("should NOT show '+' button on non-draft collapsed columns", () => {
+      const column = createMockColumn({ id: "done", name: "Done" });
+      render(
+        <Column column={column} projectId="p1" showArchived={false} showMergeTasks isCollapsed onToggleCollapse={vi.fn()} />,
+        { wrapper: DndWrapper },
+      );
+      expect(screen.queryByLabelText("Add task to Draft")).not.toBeInTheDocument();
+    });
+
+    it("should not render sentinel element when collapsed (no infinite scroll)", () => {
+      const column = createMockColumn({ id: "ready", name: "Ready" });
+      const { container } = render(
+        <Column column={column} projectId="p1" showArchived={false} showMergeTasks isCollapsed onToggleCollapse={vi.fn()} />,
+        { wrapper: DndWrapper },
+      );
+      // Collapsed view has no drop zone or sentinel
+      expect(container.querySelector("[data-testid='drop-zone-ready']")).not.toBeInTheDocument();
+    });
+
+    it("should render sentinel element when expanded (infinite scroll active)", () => {
+      const column = createMockColumn({ id: "ready", name: "Ready" });
+      render(
+        <Column column={column} projectId="p1" showArchived={false} showMergeTasks isCollapsed={false} onToggleCollapse={vi.fn()} />,
+        { wrapper: DndWrapper },
+      );
+      // Expanded view has the drop zone with sentinel
+      expect(screen.getByTestId("drop-zone-ready")).toBeInTheDocument();
+    });
+  });
+
   describe("loading state", () => {
     it("should show skeleton cards when loading", () => {
       vi.mocked(useInfiniteTasksQuery).mockReturnValue({
