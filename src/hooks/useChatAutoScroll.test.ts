@@ -675,6 +675,94 @@ describe("useChatAutoScroll", () => {
     });
   });
 
+  describe("FIX-F1: handleAtBottomStateChange dedup guard", () => {
+    it("should skip re-render when called with same value", () => {
+      const { result } = renderHook(() =>
+        useChatAutoScroll({ messageCount: 0 })
+      );
+
+      // isAtBottom starts true
+      expect(result.current.isAtBottom).toBe(true);
+
+      // Capture initial reference — if no re-render, reference stays stable
+      const initialRef = result.current.scrollToBottom;
+
+      act(() => {
+        result.current.handleAtBottomStateChange(true);
+      });
+
+      // No state change → no re-render → same references
+      expect(result.current.scrollToBottom).toBe(initialRef);
+    });
+
+    it("should re-render when called with different value", () => {
+      const { result } = renderHook(() =>
+        useChatAutoScroll({ messageCount: 0 })
+      );
+
+      expect(result.current.isAtBottom).toBe(true);
+
+      act(() => {
+        result.current.handleAtBottomStateChange(false);
+      });
+
+      expect(result.current.isAtBottom).toBe(false);
+
+      act(() => {
+        result.current.handleAtBottomStateChange(false);
+      });
+
+      // Same value again → dedup guard → no change
+      expect(result.current.isAtBottom).toBe(false);
+    });
+
+    it("should track alternating values correctly", () => {
+      const { result } = renderHook(() =>
+        useChatAutoScroll({ messageCount: 0 })
+      );
+
+      act(() => { result.current.handleAtBottomStateChange(false); });
+      expect(result.current.isAtBottom).toBe(false);
+
+      act(() => { result.current.handleAtBottomStateChange(true); });
+      expect(result.current.isAtBottom).toBe(true);
+
+      act(() => { result.current.handleAtBottomStateChange(false); });
+      expect(result.current.isAtBottom).toBe(false);
+    });
+  });
+
+  describe("FIX-F3: scrollToBottom identity stability", () => {
+    it("should be stable across multiple messageCount changes", () => {
+      const mockScrollToIndex = vi.fn();
+      const virtuosoRef = {
+        current: { scrollToIndex: mockScrollToIndex } as unknown as VirtuosoHandle,
+      };
+
+      const { result, rerender } = renderHook(
+        (props) => useChatAutoScroll(props),
+        {
+          initialProps: { messageCount: 1, virtuosoRef },
+        }
+      );
+
+      const ref1 = result.current.scrollToBottom;
+
+      for (let i = 2; i <= 20; i++) {
+        rerender({ messageCount: i, virtuosoRef });
+      }
+
+      // Same identity after 19 messageCount changes
+      expect(result.current.scrollToBottom).toBe(ref1);
+
+      // But uses latest count
+      act(() => { result.current.scrollToBottom(); });
+      expect(mockScrollToIndex).toHaveBeenCalledWith(
+        expect.objectContaining({ index: 19 })
+      );
+    });
+  });
+
   describe("edge cases", () => {
     it("should handle messagesEndRef being null", () => {
       const { result, rerender } = renderHook(
