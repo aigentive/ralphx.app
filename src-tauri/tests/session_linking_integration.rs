@@ -107,7 +107,7 @@ async fn create_session_with_plan_and_proposals(
             selected: false,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
-            sort_order: i as i32,
+            sort_order: i,
         };
         proposal_ids.push(proposal.id.to_string());
         state.task_proposal_repo.create(proposal).await.unwrap();

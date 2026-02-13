@@ -589,3 +589,99 @@ async fn reconcile_merge_incomplete_retries_normally_without_branch_missing() {
         "Task should either retry or stay in MergeIncomplete (not blocked by branch_missing check)"
     );
 }
+
+// ── Merging state retry cap tests (Gap 1) ──
+
+#[test]
+fn merging_timeout_is_300_seconds() {
+    assert_eq!(super::MERGING_TIMEOUT_SECONDS, 300);
+}
+
+#[test]
+fn merging_max_auto_retries_is_3() {
+    assert_eq!(super::MERGING_MAX_AUTO_RETRIES, 3);
+}
+
+#[test]
+fn merging_auto_retry_count_counts_attempt_failed_events() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Retry Count Task".to_string(),
+    );
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_recovery": {
+                "version": 1,
+                "events": [
+                    {
+                        "at": "2026-02-10T00:00:00Z",
+                        "kind": "attempt_failed",
+                        "source": "system",
+                        "reason_code": "git_error",
+                        "message": "timeout 1"
+                    },
+                    {
+                        "at": "2026-02-10T00:05:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "git_error",
+                        "message": "unrelated event"
+                    },
+                    {
+                        "at": "2026-02-10T00:10:00Z",
+                        "kind": "attempt_failed",
+                        "source": "system",
+                        "reason_code": "git_error",
+                        "message": "timeout 2"
+                    }
+                ],
+                "last_state": "failed"
+            }
+        })
+        .to_string(),
+    );
+    assert_eq!(
+        ReconciliationRunner::<tauri::Wry>::merging_auto_retry_count(&task),
+        2
+    );
+}
+
+#[test]
+fn merging_auto_retry_count_returns_zero_for_no_metadata() {
+    let task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "No Metadata Task".to_string(),
+    );
+    assert_eq!(
+        ReconciliationRunner::<tauri::Wry>::merging_auto_retry_count(&task),
+        0
+    );
+}
+
+#[test]
+fn merge_policy_restarts_when_run_missing_and_can_start() {
+    let policy = RecoveryPolicy;
+    let evidence = RecoveryEvidence {
+        run_status: None,
+        registry_running: false,
+        can_start: true,
+        is_stale: false,
+        is_deferred: false,
+    };
+    let decision = policy.decide_reconciliation(RecoveryContext::Merge, evidence);
+    assert_eq!(decision.action, RecoveryActionKind::ExecuteEntryActions);
+}
+
+#[test]
+fn merge_policy_prompts_when_run_missing_and_cannot_start() {
+    let policy = RecoveryPolicy;
+    let evidence = RecoveryEvidence {
+        run_status: None,
+        registry_running: false,
+        can_start: false,
+        is_stale: false,
+        is_deferred: false,
+    };
+    let decision = policy.decide_reconciliation(RecoveryContext::Merge, evidence);
+    assert_eq!(decision.action, RecoveryActionKind::Prompt);
+}

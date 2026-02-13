@@ -2006,9 +2006,9 @@ mod tests {
         ).await.unwrap();
 
         assert_eq!(result.project_id, None);
-        // Default quota is 2 (from ExecutionSettings::default())
-        assert_eq!(result.max_concurrent, 2);
-        assert_eq!(execution_state.max_concurrent(), 2);
+        // Default quota is 10 (from ExecutionSettings::default())
+        assert_eq!(result.max_concurrent, 10);
+        assert_eq!(execution_state.max_concurrent(), 10);
     }
 
     #[tokio::test]

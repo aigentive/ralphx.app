@@ -1956,6 +1956,64 @@ impl<'a> super::TransitionHandler<'a> {
                 // OR when AutoFix validation mode detected validation failures (Phase 113)
                 let task_id = &self.machine.context.task_id;
 
+                // Gap 5: Clean up worktree before re-spawning merger agent on recovery
+                if let (Some(ref task_repo), Some(ref project_repo)) = (
+                    &self.machine.context.services.task_repo,
+                    &self.machine.context.services.project_repo,
+                ) {
+                    let tid = TaskId::from_string(task_id.clone());
+                    if let Ok(Some(task)) = task_repo.get_by_id(&tid).await {
+                        let is_recovery = get_trigger_origin(&task)
+                            .map(|o| o == "recovery")
+                            .unwrap_or(false);
+                        if is_recovery {
+                            // Compute merge worktree path and clean up stale git state
+                            let project_id = ProjectId::from_string(
+                                self.machine.context.project_id.clone(),
+                            );
+                            if let Ok(Some(project)) = project_repo.get_by_id(&project_id).await {
+                                let wt_path = PathBuf::from(
+                                    compute_merge_worktree_path(&project, task_id),
+                                );
+                                if wt_path.exists() {
+                                    // Abort stale rebase/merge so new agent gets clean worktree
+                                    if GitService::is_rebase_in_progress(&wt_path) {
+                                        tracing::info!(
+                                            task_id = task_id,
+                                            "on_enter(Merging): Aborting stale rebase before recovery re-spawn"
+                                        );
+                                        let _ = GitService::abort_rebase(&wt_path);
+                                    }
+                                    if GitService::is_merge_in_progress(&wt_path) {
+                                        tracing::info!(
+                                            task_id = task_id,
+                                            "on_enter(Merging): Aborting stale merge before recovery re-spawn"
+                                        );
+                                        let _ = GitService::abort_merge(&wt_path);
+                                    }
+                                    // Remove worktree symlinks that cause false conflicts
+                                    // These match the project's worktree_setup `ln -s` commands
+                                    for rel in &[
+                                        "node_modules",
+                                        "src-tauri/target",
+                                        "ralphx-plugin/ralphx-mcp-server/node_modules",
+                                    ] {
+                                        let sym = wt_path.join(rel);
+                                        if sym.is_symlink() {
+                                            tracing::info!(
+                                                task_id = task_id,
+                                                path = %sym.display(),
+                                                "on_enter(Merging): Removing worktree symlink"
+                                            );
+                                            let _ = std::fs::remove_file(&sym);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Check task metadata for validation_recovery flag (Phase 113: AutoFix mode)
                 let is_validation_recovery =
                     if let Some(ref task_repo) = self.machine.context.services.task_repo {
