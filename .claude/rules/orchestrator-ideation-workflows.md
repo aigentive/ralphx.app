@@ -81,12 +81,13 @@ Recognize user intent from phrase patterns and route appropriately:
 
 ## Child Sessions: Spawning & Context Inheritance
 
-**Spawn:** Call `create_child_session(parent_session_id, title, description, inherit_context=true)`
+**Spawn:** Call `create_child_session(parent_session_id, title, description, initial_prompt, inherit_context=true)`
+- `initial_prompt` is **required** for auto-spawn — without it, no agent is triggered on the child session
 
 **Behavior:**
-- Backend auto-spawns background `orchestrator-ideation` agent on child
+- Backend auto-spawns background `orchestrator-ideation` agent on child (triggered by `initial_prompt`)
 - Child loads parent plan + proposals as baseline context
-- Child processes user's original request (from session description) through workflow phases (Phase 0 → Phase 1 → ...)
+- Child processes user's original request (from `initial_prompt`) through workflow phases (Phase 0 → Phase 1 → ...)
 - Child can mutate independently without affecting parent
 
 **Mandatory steps in child session:**
