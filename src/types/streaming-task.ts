@@ -3,11 +3,24 @@
  *
  * Links child tool calls (via parentToolUseId) to a parent Task invocation.
  * Used to group subagent work in the streaming chat UI.
+ *
+ * StreamingContentBlock - Represents a discrete chunk of content during streaming.
+ * Used to preserve the natural interleaving of text and tool calls — when the
+ * assistant writes text → calls a tool → writes more text, each segment renders
+ * as a separate content block in the correct order.
  */
 
 import type { ToolCall } from "@/components/Chat/ToolCallIndicator";
 
 export type StreamingTaskStatus = "running" | "completed" | "failed";
+
+/**
+ * StreamingContentBlock - Discriminated union representing chunks of streaming content.
+ * Allows text and tool calls to be interleaved in the order they arrive from the agent.
+ */
+export type StreamingContentBlock =
+  | { type: "text"; text: string }
+  | { type: "tool_use"; toolCall: ToolCall };
 
 export interface StreamingTask {
   /** The Task tool_use.id — links child tool calls via parentToolUseId */

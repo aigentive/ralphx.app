@@ -33,7 +33,7 @@ import { useChatActions } from "@/hooks/useChatActions";
 import { useChatEvents } from "@/hooks/useChatEvents";
 import { resolveContextType, buildStoreKey } from "@/lib/chat-context-registry";
 import type { ToolCall } from "./ToolCallIndicator";
-import type { StreamingTask } from "@/types/streaming-task";
+import type { StreamingTask, StreamingContentBlock } from "@/types/streaming-task";
 import { useAskUserQuestion } from "@/hooks/useAskUserQuestion";
 import { useQuestionInput } from "@/hooks/useQuestionInput";
 import { useAgentHookEvents, useHookEventsStore } from "@/hooks/useAgentHookEvents";
@@ -279,7 +279,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
 
   // Streaming state for real-time event display
   const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCall[]>([]);
-  const [streamingText, setStreamingText] = useState("");
+  const [streamingContentBlocks, setStreamingContentBlocks] = useState<StreamingContentBlock[]>([]);
   const [streamingTasks, setStreamingTasks] = useState<Map<string, StreamingTask>>(new Map());
 
   // Unified actions hook (replaces useChatPanelHandlers action logic)
@@ -309,7 +309,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   const handleStopAgentWrapper = useCallback(async () => {
     await handleStopAgent();
     setStreamingToolCalls([]);
-    setStreamingText("");
+    setStreamingContentBlocks([]);
     setStreamingTasks(new Map());
   }, [handleStopAgent]);
 
@@ -319,7 +319,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     contextId,
     contextType,
     setStreamingToolCalls,
-    setStreamingText,
+    setStreamingContentBlocks,
     setStreamingTasks,
   });
 
@@ -479,7 +479,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
               isAgentRunning={isAgentRunning}
               streamingToolCalls={streamingToolCalls}
               streamingTasks={streamingTasks}
-              streamingText={streamingText}
+              streamingContentBlocks={streamingContentBlocks}
               hookEvents={hookEvents}
               activeHooks={activeHooksList}
             />

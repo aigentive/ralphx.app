@@ -18,7 +18,7 @@ import {
   FailedRunBanner,
 } from "./IntegratedChatPanel.components";
 import type { ToolCall } from "./ToolCallIndicator";
-import type { StreamingTask } from "@/types/streaming-task";
+import type { StreamingTask, StreamingContentBlock } from "@/types/streaming-task";
 import type { ContentBlockItem } from "./MessageItem";
 import type { HookEvent, HookStartedEvent } from "@/types/hook-event";
 import { isDiffToolCall } from "./DiffToolCallView.utils";
@@ -79,8 +79,8 @@ interface ChatMessageListProps {
   streamingToolCalls: ToolCall[];
   /** Streaming subagent tasks — Map keyed by tool_use_id */
   streamingTasks?: Map<string, StreamingTask>;
-  /** Streaming assistant text from agent:chunk events */
-  streamingText?: string;
+  /** Streaming content blocks (text and tool calls interleaved) */
+  streamingContentBlocks?: StreamingContentBlock[];
   /** Optional timestamp to scroll to (for history mode) - scrolls to first message at or after this time */
   scrollToTimestamp?: string | null;
   /** Resolved hook events (completed + blocks) — optional, interleaved chronologically */
@@ -104,7 +104,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       isAgentRunning,
       streamingToolCalls,
       streamingTasks,
-      streamingText,
+      streamingContentBlocks,
       scrollToTimestamp,
       hookEvents = EMPTY_HOOK_EVENTS,
       activeHooks = EMPTY_ACTIVE_HOOKS,
@@ -134,8 +134,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       toolCallCount: streamingToolCalls.length,
       childCallCount: totalChildCalls,
       taskCount: streamingTasks?.size ?? 0,
-      hasText: !!streamingText,
-    }), [streamingToolCalls.length, totalChildCalls, streamingTasks?.size, streamingText]);
+      contentBlockCount: streamingContentBlocks?.length ?? 0,
+    }), [streamingToolCalls.length, totalChildCalls, streamingTasks?.size, streamingContentBlocks?.length]);
 
     // Unified auto-scroll hook — Virtuoso followOutput is the single scroll path.
     // No isStreaming/streamingHash needed: Virtuoso re-evaluates followOutput
@@ -222,31 +222,41 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       ),
       Footer: () => {
         // Filter out Task tool calls — they're already represented by TaskSubagentCard
-        const topLevelToolCalls = streamingToolCalls.filter(
-          (tc) => tc.name.toLowerCase() !== "task"
-        );
-
-        // Split Edit/Write tool calls (with arguments) for individual diff rendering
-        const diffToolCalls = topLevelToolCalls.filter(
-          (tc) => isDiffToolCall(tc.name) && tc.arguments != null
-        );
-        const otherToolCalls = topLevelToolCalls.filter(
-          (tc) => !isDiffToolCall(tc.name) || tc.arguments == null
+        // Also filter out diff tool calls (Edit/Write) — they're rendered in streamingContentBlocks
+        const otherToolCalls = streamingToolCalls.filter(
+          (tc) => tc.name.toLowerCase() !== "task" &&
+                  (!isDiffToolCall(tc.name) || tc.arguments == null)
         );
 
         return (
           <div className="px-3 pb-3 w-full relative" style={contentContainerStyle}>
-            {/* Show streaming assistant text from agent:chunk events */}
-            {streamingText && (
-              <MessageItem
-                key="streaming-assistant"
-                role="assistant"
-                content={streamingText}
-                createdAt={new Date().toISOString()}
-                toolCalls={null}
-                contentBlocks={null}
-              />
-            )}
+            {/* Render streaming content blocks in order — text and tool calls interleaved */}
+            {streamingContentBlocks && streamingContentBlocks.map((block, idx) => {
+              if (block.type === "text") {
+                return (
+                  <MessageItem
+                    key={`streaming-text-${idx}`}
+                    role="assistant"
+                    content={block.text}
+                    createdAt={new Date().toISOString()}
+                    toolCalls={null}
+                    contentBlocks={null}
+                  />
+                );
+              }
+              // tool_use block — render as diff view if it's Edit/Write, otherwise skip (handled by StreamingToolIndicator)
+              if (isDiffToolCall(block.toolCall.name) && block.toolCall.arguments != null) {
+                return (
+                  <DiffToolCallView
+                    key={`streaming-tool-${idx}`}
+                    toolCall={block.toolCall}
+                    isStreaming
+                    className="mb-2"
+                  />
+                );
+              }
+              return null;
+            })}
 
             {/* Task subagent cards — above everything else */}
             {streamingTasks && streamingTasks.size > 0 &&
@@ -255,16 +265,11 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
               ))
             }
 
-            {/* Diff views for Edit/Write — shown as individual cards */}
-            {diffToolCalls.map((tc) => (
-              <DiffToolCallView key={tc.id} toolCall={tc} isStreaming className="mb-2" />
-            ))}
-
             {/* Aggregated indicator for remaining tools, or typing indicator */}
             {(isSending || isAgentRunning) && (
               otherToolCalls.length > 0 ? (
                 <StreamingToolIndicator toolCalls={otherToolCalls} isActive={true} />
-              ) : !streamingText && diffToolCalls.length === 0 ? (
+              ) : (!streamingContentBlocks || streamingContentBlocks.length === 0) ? (
                 <TypingIndicator />
               ) : null
             )}
@@ -274,7 +279,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       },
     }), [
       failedRun, onDismissFailedRun,
-      streamingToolCalls, streamingTasks, streamingText,
+      streamingToolCalls, streamingTasks, streamingContentBlocks,
       isSending, isAgentRunning,
     ]);
 
@@ -331,16 +336,33 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
           ))}
 
           <div className="px-3 pb-3 w-full" style={contentContainerStyle}>
-            {streamingText && (
-              <MessageItem
-                key="streaming-assistant"
-                role="assistant"
-                content={streamingText}
-                createdAt={new Date().toISOString()}
-                toolCalls={null}
-                contentBlocks={null}
-              />
-            )}
+            {/* Render streaming content blocks in order — text and tool calls interleaved */}
+            {streamingContentBlocks && streamingContentBlocks.map((block, idx) => {
+              if (block.type === "text") {
+                return (
+                  <MessageItem
+                    key={`streaming-text-${idx}`}
+                    role="assistant"
+                    content={block.text}
+                    createdAt={new Date().toISOString()}
+                    toolCalls={null}
+                    contentBlocks={null}
+                  />
+                );
+              }
+              // tool_use block — render as diff view if it's Edit/Write
+              if (isDiffToolCall(block.toolCall.name) && block.toolCall.arguments != null) {
+                return (
+                  <DiffToolCallView
+                    key={`streaming-tool-${idx}`}
+                    toolCall={block.toolCall}
+                    isStreaming
+                    className="mb-2"
+                  />
+                );
+              }
+              return null;
+            })}
 
             {streamingTasks && streamingTasks.size > 0 &&
               Array.from(streamingTasks.values()).map((task: StreamingTask) => (
@@ -351,7 +373,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             {(isSending || isAgentRunning) && (
               streamingToolCalls.length > 0 ? (
                 <StreamingToolIndicator toolCalls={streamingToolCalls} isActive={true} />
-              ) : !streamingText ? (
+              ) : (!streamingContentBlocks || streamingContentBlocks.length === 0) ? (
                 <TypingIndicator />
               ) : null
             )}
