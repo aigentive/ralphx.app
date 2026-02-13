@@ -22,6 +22,39 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(() => Promise.resolve(() => {})), // Returns unlisten function
 }));
 
+// Mock unified hooks (ChatPanel uses these after Phase 6 migration)
+vi.mock("@/hooks/useChatActions", () => ({
+  useChatActions: () => ({
+    handleSend: vi.fn(),
+    handleQueue: vi.fn(),
+    handleStopAgent: vi.fn(),
+    handleDeleteQueuedMessage: vi.fn(),
+    handleEditQueuedMessage: vi.fn(),
+    handleEditLastQueued: vi.fn(),
+  }),
+}));
+
+vi.mock("@/hooks/useChatEvents", () => ({
+  useChatEvents: vi.fn(),
+}));
+
+// Mock chat context registry
+vi.mock("@/lib/chat-context-registry", () => ({
+  resolveContextType: vi.fn(() => "ideation"),
+  buildStoreKey: vi.fn(() => "session:session-1"),
+  getContextConfig: vi.fn(() => ({
+    storeKeyPrefix: "session",
+    placeholder: "Send a message...",
+    label: "Ideation",
+    agentType: "ideation",
+    supportsStreamingText: true,
+    supportsSubagentTasks: true,
+    supportsDiffViews: false,
+    supportsHookEvents: false,
+    supportsQueue: true,
+  })),
+}));
+
 // Create mock functions outside vi.mock for persistence
 const mockToggleChatVisible = vi.fn();
 const mockSetWidth = vi.fn();
@@ -98,7 +131,6 @@ vi.mock("@/stores/chatStore", () => ({
   selectQueuedMessages: vi.fn(() => () => []),
   selectIsAgentRunning: vi.fn(() => () => false),
   selectActiveConversationId: vi.fn((state: typeof mockChatStoreState) => state.activeConversationId || null),
-  getContextKey: vi.fn(() => "project:test"),
 }));
 
 vi.mock("@/stores/uiStore", () => ({

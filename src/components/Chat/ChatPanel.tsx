@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useChat, chatKeys } from "@/hooks/useChat";
-import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, getContextKey } from "@/stores/chatStore";
+import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId } from "@/stores/chatStore";
 import { useUiStore } from "@/stores/uiStore";
 import type { ChatContext } from "@/types/chat";
 
@@ -25,11 +25,15 @@ import { StatusActivityBadge, type AgentType } from "./StatusActivityBadge";
 import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { ChatInput } from "./ChatInput";
-import { ChatMessages } from "./ChatMessages";
+import { ChatMessageList } from "./ChatMessageList";
 import { QuestionInputBanner } from "./QuestionInputBanner";
 import { ResizeablePanel } from "./ResizeablePanel";
 import { useResizePanel } from "./useResizePanel";
-import { useChatPanelHandlers } from "@/hooks/useChatPanelHandlers";
+import { useChatActions } from "@/hooks/useChatActions";
+import { useChatEvents } from "@/hooks/useChatEvents";
+import { resolveContextType, buildStoreKey } from "@/lib/chat-context-registry";
+import type { ToolCall } from "./ToolCallIndicator";
+import type { StreamingTask } from "@/types/streaming-task";
 import { useAskUserQuestion } from "@/hooks/useAskUserQuestion";
 import { useQuestionInput } from "@/hooks/useQuestionInput";
 import { useAgentHookEvents, useHookEventsStore } from "@/hooks/useAgentHookEvents";
@@ -173,20 +177,26 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   const toggleChatVisible = useUiStore((s) => s.toggleChatVisible);
   const activeConversationId = useChatStore(selectActiveConversationId);
 
-  // Detect execution mode: if task is executing, switch to task_execution context
+  // Detect task status for context type resolution
   const selectedTask = useTaskStore((state) =>
     context.selectedTaskId ? state.tasks[context.selectedTaskId] : undefined
   );
-  const isExecutionMode = selectedTask?.internalStatus === "executing";
 
-  // Compute context key for queue/agent state operations
-  // Uses context-aware keys: "task_execution:id" for execution mode, otherwise standard keys
-  const contextKey = useMemo(() => {
-    if (isExecutionMode && context.selectedTaskId) {
-      return `task_execution:${context.selectedTaskId}`;
-    }
-    return getContextKey(context);
-  }, [isExecutionMode, context]);
+  // Derive context type and store key using registry (replaces manual ternary chains)
+  const contextType = useMemo(
+    () => resolveContextType(
+      selectedTask?.internalStatus,
+      context.ideationSessionId,
+      context.selectedTaskId,
+    ),
+    [selectedTask?.internalStatus, context.ideationSessionId, context.selectedTaskId]
+  );
+  const contextId = context.ideationSessionId ?? context.selectedTaskId ?? context.projectId;
+  const contextKey = useMemo(
+    () => buildStoreKey(contextType, contextId),
+    [contextType, contextId]
+  );
+  const isExecutionMode = contextType === "task_execution";
 
   // Use context-aware selectors - unified queue works for all modes
   const queuedMessagesSelector = useMemo(() => selectQueuedMessages(contextKey), [contextKey]);
@@ -263,26 +273,54 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     }
   }, [isCollapsed]);
 
-  // Extract loading states early for use in hooks
+  // Extract loading/sending states
   const isLoading = activeConversation.isLoading;
   const isSending = sendMessage.isPending;
 
-  // Use extracted handlers hook - unified queue with context-aware keys
+  // Streaming state for real-time event display
+  const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCall[]>([]);
+  const [streamingText, setStreamingText] = useState("");
+  const [streamingTasks, setStreamingTasks] = useState<Map<string, StreamingTask>>(new Map());
+
+  // Unified actions hook (replaces useChatPanelHandlers action logic)
   const {
-    streamingToolCalls,
     handleSend,
     handleQueue,
     handleStopAgent,
     handleDeleteQueuedMessage,
     handleEditQueuedMessage,
     handleEditLastQueued,
-  } = useChatPanelHandlers({
-    context,
-    isExecutionMode,
-    contextKey,
-    activeConversationId,
+  } = useChatActions({
+    contextType,
+    contextId,
+    storeContextKey: contextKey,
+    selectedTaskId: context.selectedTaskId,
+    ideationSessionId: context.ideationSessionId,
     sendMessage,
-    queuedMessages,
+    messageCount: messagesData.length,
+  });
+
+  // Wrapper for handleEditLastQueued that provides the queued messages
+  const handleEditLastQueuedWrapper = useCallback(() => {
+    handleEditLastQueued(queuedMessages);
+  }, [handleEditLastQueued, queuedMessages]);
+
+  // Wrapper for stop that clears streaming state
+  const handleStopAgentWrapper = useCallback(async () => {
+    await handleStopAgent();
+    setStreamingToolCalls([]);
+    setStreamingText("");
+    setStreamingTasks(new Map());
+  }, [handleStopAgent]);
+
+  // Unified event subscriptions (replaces useChatPanelHandlers event logic)
+  useChatEvents({
+    activeConversationId,
+    contextId,
+    contextType,
+    setStreamingToolCalls,
+    setStreamingText,
+    setStreamingTasks,
   });
 
   // Hook events — listen for agent:hook Tauri events scoped to active conversation
@@ -369,7 +407,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
 
           {/* Unified status + activity badge */}
           <StatusActivityBadge
-            isAgentActive={isSending || isAgentRunning || isExecutionMode}
+            isAgentActive={isSending || isAgentRunning}
             agentType={
               isExecutionMode
                 ? AGENT_WORKER
@@ -388,20 +426,8 @@ function ChatPanelContent({ context }: ChatPanelProps) {
           <div className="flex items-center gap-1 shrink-0">
             {/* Conversation Selector */}
             <ConversationSelector
-              contextType={
-                isExecutionMode
-                  ? "task_execution"
-                  : context.view === "ideation"
-                    ? "ideation"
-                    : context.view === "task_detail"
-                      ? "task"
-                      : "project"
-              }
-              contextId={
-                context.view === "ideation" && context.ideationSessionId
-                  ? context.ideationSessionId
-                  : context.selectedTaskId || context.projectId
-              }
+              contextType={contextType}
+              contextId={contextId}
               conversations={conversations.data ?? []}
               activeConversationId={activeConversationId}
               onSelectConversation={handleSelectConversation}
@@ -429,17 +455,36 @@ function ChatPanelContent({ context }: ChatPanelProps) {
         </div>
 
         {/* Messages Area */}
-        <ChatMessages
-          messages={messagesData}
-          isLoading={isLoading}
-          isSending={isSending}
-          isAgentRunning={isAgentRunning}
-          streamingToolCalls={streamingToolCalls}
-          failedErrorMessage={showFailedBanner && failedRun?.errorMessage ? failedRun.errorMessage : undefined}
-          onDismissError={failedRun ? () => setDismissedErrorId(failedRun.id) : undefined}
-          hookEvents={hookEvents}
-          activeHooks={activeHooksList}
-        />
+        {isLoading ? (
+          <div data-testid="chat-panel-messages" className="flex-1 flex items-center justify-center">
+            <div data-testid="chat-panel-loading" className="flex flex-col items-center gap-2">
+              <div className="typing-dot w-2 h-2 rounded-full" style={{ backgroundColor: "var(--text-muted)" }} />
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>Loading messages...</span>
+            </div>
+          </div>
+        ) : messagesData.length === 0 ? (
+          <div data-testid="chat-panel-messages" className="flex-1 flex items-center justify-center">
+            <div data-testid="chat-panel-empty" className="text-center px-6">
+              <span className="text-sm" style={{ color: "var(--text-muted)" }}>Start a conversation</span>
+            </div>
+          </div>
+        ) : (
+          <div data-testid="chat-panel-messages" className="flex-1 overflow-hidden">
+            <ChatMessageList
+              messages={messagesData}
+              conversationId={activeConversationId}
+              failedRun={showFailedBanner && failedRun ? { id: failedRun.id, errorMessage: failedRun.errorMessage! } : null}
+              onDismissFailedRun={setDismissedErrorId}
+              isSending={isSending}
+              isAgentRunning={isAgentRunning}
+              streamingToolCalls={streamingToolCalls}
+              streamingTasks={streamingTasks}
+              streamingText={streamingText}
+              hookEvents={hookEvents}
+              activeHooks={activeHooksList}
+            />
+          </div>
+        )}
 
         {/* Input Area */}
         <div className="border-t" style={{ borderColor: "var(--border-subtle)" }}>
@@ -471,11 +516,11 @@ function ChatPanelContent({ context }: ChatPanelProps) {
             <ChatInput
               onSend={activeQuestion ? handleQuestionSend : handleSend}
               onQueue={handleQueue}
-              onStop={handleStopAgent}
-              isAgentRunning={isExecutionMode || isAgentRunning}
+              onStop={handleStopAgentWrapper}
+              isAgentRunning={isAgentRunning}
               isSending={isSending || isSubmittingAnswer}
               hasQueuedMessages={queuedMessages.length > 0}
-              onEditLastQueued={handleEditLastQueued}
+              onEditLastQueued={handleEditLastQueuedWrapper}
               placeholder={
                 isExecutionMode
                   ? "Message worker... (will be sent when current response completes)"
