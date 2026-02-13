@@ -233,3 +233,37 @@ export function isNonDraggableStatus(status: InternalStatus): boolean {
 export function isMergeStatus(status: InternalStatus): boolean {
   return (MERGE_STATUSES as readonly string[]).includes(status);
 }
+
+// ============================================================================
+// Status Counting Utilities
+// ============================================================================
+
+export interface StatusCounts {
+  idle: number;
+  active: number;
+  done: number;
+  total: number;
+}
+
+/**
+ * Categorize a status into idle/active/done buckets.
+ * Idle = IDLE_STATUSES, done = TERMINAL_STATUSES, everything else = active.
+ */
+export function categorizeStatus(status: InternalStatus): "idle" | "active" | "done" {
+  if ((IDLE_STATUSES as readonly string[]).includes(status)) return "idle";
+  if ((TERMINAL_STATUSES as readonly string[]).includes(status)) return "done";
+  return "active";
+}
+
+/**
+ * Count tasks by status category (idle/active/done).
+ * Accepts any array of objects with an `internalStatus` field.
+ */
+export function getStatusCounts(tasks: { internalStatus: InternalStatus }[]): StatusCounts {
+  const counts: StatusCounts = { idle: 0, active: 0, done: 0, total: tasks.length };
+  for (const task of tasks) {
+    const category = categorizeStatus(task.internalStatus);
+    counts[category]++;
+  }
+  return counts;
+}

@@ -8,6 +8,9 @@ use crate::application::GitService;
 use crate::domain::entities::{GitMode, ProjectId, TaskId};
 use std::sync::Arc;
 
+mod merge_completion;
+mod merge_helpers;
+mod merge_validation;
 mod side_effects;
 #[cfg(test)]
 mod tests;

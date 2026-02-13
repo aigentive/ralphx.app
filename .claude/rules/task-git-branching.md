@@ -228,3 +228,58 @@ IdeationSession (has plan proposals)
 | `is_rebase_in_progress(worktree)` | `.git/rebase-merge` or `.git/rebase-apply` dirs |
 | `has_conflict_markers(worktree)` | Scans tracked files for `<<<<<<<` |
 | `is_commit_on_branch(repo, sha, branch)` | `git merge-base --is-ancestor` |
+
+---
+
+## Conflict Resolution Patterns
+
+### Duplicate Migrations
+
+**Pattern:** Task branch and plan branch both add migration version N (same table name, same structure).
+
+**Root cause:** Task created off main before plan branch integrated earlier migration work. On rebase, both try to add v33.
+
+**Resolution:**
+1. Check plan branch `MIGRATIONS` array in `migrations_impl.rs` for canonical version
+2. Keep plan branch (HEAD) migration file as-is
+3. Remove task branch's redundant version from `MIGRATIONS` array
+4. Adapt task-branch-specific entity/repo methods to the plan branch's type definitions (don't change types mid-rebase)
+
+**File:** `src-tauri/src/domain/repositories/migrations_impl.rs`
+
+### Type Definition Conflicts (IDs, Entities)
+
+**Pattern:** Task branch uses String-based ID (e.g., `ChatAttachmentId(String)` in types.rs) but plan branch uses Uuid-based newtype in entities/.
+
+**Root cause:** Competing approaches to type safety. Plan branch integrates domain types first, task branch adds surface-layer types.
+
+**Resolution:**
+1. Keep plan branch's type definition (it's already deployed)
+2. Adapt task branch's new methods to use the plan branch's type
+3. Never change types during rebase — preserve both approaches:
+   - Domain layer: Uuid newtypes in `entities/`
+   - User-facing: String newtypes in `types.rs`
+4. Conversion happens only at API boundaries (HTTP handlers)
+
+**Files:** `src-tauri/src/domain/entities/`, `src-tauri/src/domain/types.rs`, `src-tauri/src/domain/repositories/`
+
+### Multi-Commit Rebase Strategy
+
+**Pattern:** Task branch has 2+ commits. First commit creates conflicts (e.g., migrations), second commit has entity/repo conflicts.
+
+**Strategy:**
+1. Resolve first commit's conflicts in isolation (read all conflicted files for that commit)
+2. `git add <file> && git rebase --continue` → rebase moves to next commit
+3. Repeat for each commit until completion
+4. Later commits may rebase cleanly if they don't conflict
+
+**Commands:**
+```bash
+git rebase <target-branch>
+# Conflict 1
+git add <resolved-files>
+git rebase --continue
+# Conflict 2 (if any)
+git add <resolved-files>
+git rebase --continue
+```

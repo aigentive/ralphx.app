@@ -561,9 +561,6 @@ export function PlanningView({
     return updated;
   }, [highlightedProposalIds, recentlyUpdatedProposalId]);
 
-  const activePlans = useMemo(() => sessions.filter((s) => s.status === "active"), [sessions]);
-  const historyPlans = useMemo(() => sessions.filter((s) => s.status !== "active"), [sessions]);
-
   return (
     <>
       <style>{animationStyles}</style>
@@ -577,8 +574,8 @@ export function PlanningView({
         <div className="flex flex-1 overflow-hidden">
           {/* Plan Browser Sidebar */}
           <PlanBrowser
-            plans={activePlans}
-            historyPlans={historyPlans}
+            sessions={sessions}
+            projectId={activeProjectId || session?.projectId || ""}
             currentPlanId={session?.id ?? null}
             onSelectPlan={onSelectSession}
             onNewPlan={onNewSession}
