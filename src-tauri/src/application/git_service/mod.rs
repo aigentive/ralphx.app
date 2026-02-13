@@ -502,8 +502,12 @@ impl GitService {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            // Log warning but don't fail - worktree might not exist or be already removed
             warn!("Failed to delete worktree at {:?}: {}", worktree, stderr);
+            return Err(AppError::GitOperation(format!(
+                "Failed to delete worktree at '{}': {}",
+                worktree.to_string_lossy(),
+                stderr.trim()
+            )));
         }
 
         Ok(())
@@ -2828,6 +2832,11 @@ impl GitService {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             warn!("Failed to prune worktrees in {:?}: {}", repo, stderr);
+            return Err(AppError::GitOperation(format!(
+                "Failed to prune worktrees in '{}': {}",
+                repo.to_string_lossy(),
+                stderr.trim()
+            )));
         }
 
         Ok(())

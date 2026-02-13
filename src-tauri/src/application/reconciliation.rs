@@ -33,6 +33,12 @@ const QA_STALE_MINUTES: i64 = 5;
 const MERGE_INCOMPLETE_AUTO_RETRY_BASE_SECONDS: i64 = 30;
 const MERGE_INCOMPLETE_AUTO_RETRY_MAX_SECONDS: i64 = 300;
 const MERGE_INCOMPLETE_MAX_AUTO_RETRIES: u32 = 5;
+const EXECUTING_MAX_AUTO_RETRIES: u32 = 5;
+const REVIEWING_MAX_AUTO_RETRIES: u32 = 3;
+const QA_MAX_AUTO_RETRIES: u32 = 3;
+const EXECUTING_MAX_WALL_CLOCK_MINUTES: i64 = 60;
+const REVIEWING_MAX_WALL_CLOCK_MINUTES: i64 = 30;
+const QA_MAX_WALL_CLOCK_MINUTES: i64 = 15;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RecoveryContext {
@@ -553,9 +559,68 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return true;
         }
 
+        // C5: Wall-clock timeout for long-running executions
+        if let Some(age) = self.latest_status_transition_age(task, status).await {
+            let max_minutes = EXECUTING_MAX_WALL_CLOCK_MINUTES;
+            if age >= chrono::Duration::minutes(max_minutes) {
+                warn!(
+                    task_id = task.id.as_str(),
+                    age_minutes = age.num_minutes(),
+                    max_minutes = max_minutes,
+                    "Execution wall-clock timeout exceeded"
+                );
+                return self
+                    .apply_recovery_decision(
+                        task,
+                        status,
+                        RecoveryContext::Execution,
+                        RecoveryDecision {
+                            action: RecoveryActionKind::Transition(InternalStatus::Failed),
+                            reason: Some(format!(
+                                "Execution timed out after {} minutes (wall-clock limit: {}m)",
+                                age.num_minutes(),
+                                max_minutes
+                            )),
+                        },
+                    )
+                    .await;
+            }
+        }
+
         let decision = self
             .policy
             .decide_reconciliation(RecoveryContext::Execution, evidence);
+
+        // E7: Enforce retry limit for execution re-spawns
+        if decision.action == RecoveryActionKind::ExecuteEntryActions {
+            let retry_count = Self::auto_retry_count_for_status(task, status);
+            if retry_count >= EXECUTING_MAX_AUTO_RETRIES {
+                warn!(
+                    task_id = task.id.as_str(),
+                    retry_count = retry_count,
+                    max = EXECUTING_MAX_AUTO_RETRIES,
+                    "Execution retry limit reached — escalating to Failed"
+                );
+                return self
+                    .apply_recovery_decision(
+                        task,
+                        status,
+                        RecoveryContext::Execution,
+                        RecoveryDecision {
+                            action: RecoveryActionKind::Transition(InternalStatus::Failed),
+                            reason: Some(format!(
+                                "Execution failed {} times — escalating to Failed",
+                                retry_count
+                            )),
+                        },
+                    )
+                    .await;
+            }
+            // Record the retry attempt
+            if let Err(e) = self.record_auto_retry_metadata(task, status, retry_count + 1).await {
+                warn!(task_id = task.id.as_str(), error = %e, "Failed to record execution retry metadata");
+            }
+        }
 
         self.apply_recovery_decision(task, status, RecoveryContext::Execution, decision)
             .await
@@ -576,9 +641,67 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return true;
         }
 
+        // C5: Wall-clock timeout for long-running reviews
+        if let Some(age) = self.latest_status_transition_age(task, status).await {
+            let max_minutes = REVIEWING_MAX_WALL_CLOCK_MINUTES;
+            if age >= chrono::Duration::minutes(max_minutes) {
+                warn!(
+                    task_id = task.id.as_str(),
+                    age_minutes = age.num_minutes(),
+                    max_minutes = max_minutes,
+                    "Review wall-clock timeout exceeded"
+                );
+                return self
+                    .apply_recovery_decision(
+                        task,
+                        status,
+                        RecoveryContext::Review,
+                        RecoveryDecision {
+                            action: RecoveryActionKind::Transition(InternalStatus::Escalated),
+                            reason: Some(format!(
+                                "Review timed out after {} minutes (wall-clock limit: {}m)",
+                                age.num_minutes(),
+                                max_minutes
+                            )),
+                        },
+                    )
+                    .await;
+            }
+        }
+
         let decision = self
             .policy
             .decide_reconciliation(RecoveryContext::Review, evidence);
+
+        // E7: Enforce retry limit for review re-spawns
+        if decision.action == RecoveryActionKind::ExecuteEntryActions {
+            let retry_count = Self::auto_retry_count_for_status(task, status);
+            if retry_count >= REVIEWING_MAX_AUTO_RETRIES {
+                warn!(
+                    task_id = task.id.as_str(),
+                    retry_count = retry_count,
+                    max = REVIEWING_MAX_AUTO_RETRIES,
+                    "Review retry limit reached — escalating to Escalated"
+                );
+                return self
+                    .apply_recovery_decision(
+                        task,
+                        status,
+                        RecoveryContext::Review,
+                        RecoveryDecision {
+                            action: RecoveryActionKind::Transition(InternalStatus::Escalated),
+                            reason: Some(format!(
+                                "Review failed {} times — escalating for manual review",
+                                retry_count
+                            )),
+                        },
+                    )
+                    .await;
+            }
+            if let Err(e) = self.record_auto_retry_metadata(task, status, retry_count + 1).await {
+                warn!(task_id = task.id.as_str(), error = %e, "Failed to record review retry metadata");
+            }
+        }
 
         self.apply_recovery_decision(task, status, RecoveryContext::Review, decision)
             .await
@@ -692,6 +815,38 @@ impl<R: Runtime> ReconciliationRunner<R> {
             None => return false,
         };
 
+        let context = if status == InternalStatus::QaRefining {
+            RecoveryContext::QaRefining
+        } else {
+            RecoveryContext::QaTesting
+        };
+
+        // C5: Wall-clock timeout for long-running QA
+        let max_qa_minutes = QA_MAX_WALL_CLOCK_MINUTES;
+        if age >= chrono::Duration::minutes(max_qa_minutes) {
+            warn!(
+                task_id = task.id.as_str(),
+                age_minutes = age.num_minutes(),
+                max_minutes = max_qa_minutes,
+                "QA wall-clock timeout exceeded"
+            );
+            return self
+                .apply_recovery_decision(
+                    task,
+                    status,
+                    context,
+                    RecoveryDecision {
+                        action: RecoveryActionKind::Transition(InternalStatus::QaFailed),
+                        reason: Some(format!(
+                            "QA timed out after {} minutes (wall-clock limit: {}m)",
+                            age.num_minutes(),
+                            max_qa_minutes
+                        )),
+                    },
+                )
+                .await;
+        }
+
         let evidence = RecoveryEvidence {
             run_status: None,
             registry_running: false,
@@ -699,12 +854,37 @@ impl<R: Runtime> ReconciliationRunner<R> {
             is_stale: age >= chrono::Duration::minutes(QA_STALE_MINUTES),
             is_deferred: false,
         };
-        let context = if status == InternalStatus::QaRefining {
-            RecoveryContext::QaRefining
-        } else {
-            RecoveryContext::QaTesting
-        };
         let decision = self.policy.decide_reconciliation(context, evidence);
+
+        // E7: Enforce retry limit for QA re-spawns
+        if decision.action == RecoveryActionKind::ExecuteEntryActions {
+            let retry_count = Self::auto_retry_count_for_status(task, status);
+            if retry_count >= QA_MAX_AUTO_RETRIES {
+                warn!(
+                    task_id = task.id.as_str(),
+                    retry_count = retry_count,
+                    max = QA_MAX_AUTO_RETRIES,
+                    "QA retry limit reached — escalating to QaFailed"
+                );
+                return self
+                    .apply_recovery_decision(
+                        task,
+                        status,
+                        context,
+                        RecoveryDecision {
+                            action: RecoveryActionKind::Transition(InternalStatus::QaFailed),
+                            reason: Some(format!(
+                                "QA failed {} times — escalating to QaFailed",
+                                retry_count
+                            )),
+                        },
+                    )
+                    .await;
+            }
+            if let Err(e) = self.record_auto_retry_metadata(task, status, retry_count + 1).await {
+                warn!(task_id = task.id.as_str(), error = %e, "Failed to record QA retry metadata");
+            }
+        }
 
         self.apply_recovery_decision(task, status, context, decision)
             .await
@@ -1110,6 +1290,48 @@ impl<R: Runtime> ReconciliationRunner<R> {
                     .count() as u32
             })
             .unwrap_or(0)
+    }
+
+    /// Count auto-retry events for a given status in task metadata.
+    /// Uses a metadata key like "auto_retry_count_{status}" to track retries.
+    fn auto_retry_count_for_status(task: &Task, status: InternalStatus) -> u32 {
+        let metadata = match task.metadata.as_deref() {
+            Some(m) => m,
+            None => return 0,
+        };
+        let json: serde_json::Value = match serde_json::from_str(metadata) {
+            Ok(v) => v,
+            Err(_) => return 0,
+        };
+        let key = format!("auto_retry_count_{}", status);
+        json.get(&key).and_then(|v| v.as_u64()).unwrap_or(0) as u32
+    }
+
+    /// Record an auto-retry attempt in task metadata.
+    async fn record_auto_retry_metadata(
+        &self,
+        task: &Task,
+        status: InternalStatus,
+        attempt: u32,
+    ) -> Result<(), String> {
+        let mut updated = task.clone();
+        let mut json: serde_json::Value = updated
+            .metadata
+            .as_deref()
+            .and_then(|m| serde_json::from_str(m).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        let key = format!("auto_retry_count_{}", status);
+        if let Some(obj) = json.as_object_mut() {
+            obj.insert(key, serde_json::json!(attempt));
+        }
+
+        updated.metadata = Some(json.to_string());
+        updated.touch();
+        self.task_repo
+            .update(&updated)
+            .await
+            .map_err(|e| e.to_string())
     }
 
     fn merge_incomplete_auto_retry_count(task: &Task) -> u32 {

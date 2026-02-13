@@ -1586,7 +1586,7 @@ impl<'a> super::TransitionHandler<'a> {
                 // 3. Spawning Claude CLI with --agent worker
                 // 4. Persisting stream output to chat_messages
                 // 5. Processing queued messages on completion
-                let _ = self
+                if let Err(e) = self
                     .machine
                     .context
                     .services
@@ -1596,7 +1596,17 @@ impl<'a> super::TransitionHandler<'a> {
                         task_id_str,
                         &prompt,
                     )
-                    .await;
+                    .await
+                {
+                    tracing::error!(
+                        task_id = task_id_str,
+                        error = %e,
+                        "Failed to send task execution message — agent not started"
+                    );
+                    return Err(AppError::ExecutionBlocked(
+                        format!("Failed to start agent: {}", e)
+                    ));
+                }
             }
             State::QaRefining => {
                 // Set trigger_origin="qa" for QA cycle
@@ -1820,7 +1830,7 @@ impl<'a> super::TransitionHandler<'a> {
                 let task_id = &self.machine.context.task_id;
                 let prompt = format!("Re-execute task (revision): {}", task_id);
 
-                let _ = self
+                if let Err(e) = self
                     .machine
                     .context
                     .services
@@ -1830,7 +1840,17 @@ impl<'a> super::TransitionHandler<'a> {
                         task_id,
                         &prompt,
                     )
-                    .await;
+                    .await
+                {
+                    tracing::error!(
+                        task_id = task_id,
+                        error = %e,
+                        "Failed to send re-execution message — agent not started"
+                    );
+                    return Err(AppError::ExecutionBlocked(
+                        format!("Failed to start agent: {}", e)
+                    ));
+                }
             }
             State::RevisionNeeded => {
                 // Auto-transition to ReExecuting will be handled by check_auto_transition

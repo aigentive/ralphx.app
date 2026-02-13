@@ -500,13 +500,39 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                         .transition_task(&task_id, target_status)
                         .await
                     {
-                        tracing::error!(
+                        tracing::warn!(
                             task_id = task_id.as_str(),
                             original_error = %error,
                             transition_error = %transition_err,
                             target_status = %target_status,
-                            "Worker failed and fallback transition also failed"
+                            "Worker failed and fallback transition also failed — retrying after 500ms"
                         );
+                        // D4: Retry once after 500ms delay
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        if let Err(retry_err) = transition_service
+                            .transition_task(&task_id, target_status)
+                            .await
+                        {
+                            tracing::error!(
+                                task_id = task_id.as_str(),
+                                original_error = %error,
+                                retry_error = %retry_err,
+                                target_status = %target_status,
+                                "Worker failed and fallback transition retry also failed — task may be stuck"
+                            );
+                            // Emit event so reconciliation can pick it up
+                            if let Some(ref handle) = app_handle {
+                                let _ = handle.emit(
+                                    "task:recovery_failed",
+                                    serde_json::json!({
+                                        "task_id": task_id.as_str(),
+                                        "original_error": error,
+                                        "transition_error": retry_err.to_string(),
+                                        "target_status": target_status.to_string(),
+                                    }),
+                                );
+                            }
+                        }
                     } else {
                         tracing::warn!(
                             task_id = task_id.as_str(),
