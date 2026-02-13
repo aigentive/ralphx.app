@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 use tokio::process::Child;
 
-use crate::application::git_service::GitService;
+use crate::application::git_service::{GitService, StaleRebaseResult};
 use crate::application::question_state::QuestionState;
 use crate::application::memory_orchestration::trigger_memory_pipelines;
 use crate::application::task_transition_service::TaskTransitionService;
@@ -1205,15 +1205,81 @@ async fn attempt_merge_auto_complete<R: Runtime>(
 
     let worktree = Path::new(&worktree_path);
 
-    // 3. Check git state
+    // 3. Check git state - try to complete stale rebase first
+    match GitService::try_complete_stale_rebase(worktree) {
+        StaleRebaseResult::Completed => {
+            tracing::info!(
+                task_id = task_id_str,
+                "attempt_merge_auto_complete: stale rebase completed successfully, continuing verification"
+            );
+            // Continue to remaining merge verification steps below
+        }
+        StaleRebaseResult::HasConflicts { files } => {
+            tracing::info!(
+                task_id = task_id_str,
+                conflict_count = files.len(),
+                "attempt_merge_auto_complete: stale rebase has real conflicts, transitioning to MergeConflict"
+            );
+            transition_to_merge_conflict(
+                &task_id,
+                "Stale rebase has unresolved conflicts",
+                task_repo,
+                task_dependency_repo,
+                project_repo,
+                chat_message_repo,
+                conversation_repo,
+                agent_run_repo,
+                ideation_session_repo,
+                activity_event_repo,
+                message_queue,
+                running_agent_registry,
+                execution_state,
+                plan_branch_repo,
+                app_handle,
+            )
+            .await;
+            return;
+        }
+        StaleRebaseResult::Failed { reason } => {
+            tracing::info!(
+                task_id = task_id_str,
+                reason = &reason,
+                "attempt_merge_auto_complete: stale rebase recovery failed, transitioning to MergeConflict"
+            );
+            transition_to_merge_conflict(
+                &task_id,
+                &format!("Stale rebase recovery failed: {}", reason),
+                task_repo,
+                task_dependency_repo,
+                project_repo,
+                chat_message_repo,
+                conversation_repo,
+                agent_run_repo,
+                ideation_session_repo,
+                activity_event_repo,
+                message_queue,
+                running_agent_registry,
+                execution_state,
+                plan_branch_repo,
+                app_handle,
+            )
+            .await;
+            return;
+        }
+        StaleRebaseResult::NoRebase => {
+            // No rebase in progress, continue to next checks
+        }
+    }
+
+    // Safety net: check if rebase is somehow still in progress after recovery attempt
     if GitService::is_rebase_in_progress(worktree) {
         tracing::info!(
             task_id = task_id_str,
-            "attempt_merge_auto_complete: rebase still in progress, transitioning to MergeConflict"
+            "attempt_merge_auto_complete: rebase still in progress after recovery attempt, transitioning to MergeConflict"
         );
         transition_to_merge_conflict(
             &task_id,
-            "Agent exited with incomplete rebase",
+            "Rebase still in progress after recovery attempt",
             task_repo,
             task_dependency_repo,
             project_repo,

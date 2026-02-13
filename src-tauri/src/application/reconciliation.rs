@@ -26,7 +26,7 @@ use crate::domain::repositories::{
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::transition_handler::{has_branch_missing_metadata, set_trigger_origin};
 
-const MERGING_TIMEOUT_SECONDS: i64 = 60;
+const MERGING_TIMEOUT_SECONDS: i64 = 180;
 const PENDING_MERGE_STALE_MINUTES: i64 = 5;
 const QA_STALE_MINUTES: i64 = 5;
 const MERGE_INCOMPLETE_AUTO_RETRY_BASE_SECONDS: i64 = 30;
@@ -173,9 +173,9 @@ impl RecoveryPolicy {
                 }
                 if evidence.is_stale {
                     return RecoveryDecision {
-                        action: RecoveryActionKind::Transition(InternalStatus::MergeIncomplete),
+                        action: RecoveryActionKind::AttemptMergeAutoComplete,
                         reason: Some(
-                            "Merge timed out without completion signal — moving to MergeIncomplete."
+                            "Merge timed out — attempting auto-complete before escalating."
                                 .to_string(),
                         ),
                     };
