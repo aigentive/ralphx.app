@@ -26,7 +26,8 @@ use crate::domain::repositories::{
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::transition_handler::{has_branch_missing_metadata, set_trigger_origin};
 
-const MERGING_TIMEOUT_SECONDS: i64 = 180;
+const MERGING_TIMEOUT_SECONDS: i64 = 300;
+const MERGING_MAX_AUTO_RETRIES: u32 = 3;
 const PENDING_MERGE_STALE_MINUTES: i64 = 5;
 const QA_STALE_MINUTES: i64 = 5;
 const MERGE_INCOMPLETE_AUTO_RETRY_BASE_SECONDS: i64 = 30;
@@ -597,6 +598,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .await;
         evidence.is_stale = age >= chrono::Duration::seconds(MERGING_TIMEOUT_SECONDS);
 
+        // Agent is running, registered, and not stale — let it work
         if evidence.run_status == Some(AgentRunStatus::Running)
             && evidence.registry_running
             && !evidence.is_stale
@@ -608,11 +610,72 @@ impl<R: Runtime> ReconciliationRunner<R> {
             self.record_merge_timeout_event(task, age).await;
         }
 
+        // Gap 1: Check retry count — escalate to MergeConflict after max retries.
+        // Re-read task to get updated metadata after record_merge_timeout_event.
+        let updated_task = match self.task_repo.get_by_id(&task.id).await {
+            Ok(Some(t)) => t,
+            Ok(None) => return false,
+            Err(_) => return false,
+        };
+        let retry_count = Self::merging_auto_retry_count(&updated_task);
+        if retry_count >= MERGING_MAX_AUTO_RETRIES {
+            warn!(
+                task_id = task.id.as_str(),
+                retry_count = retry_count,
+                max = MERGING_MAX_AUTO_RETRIES,
+                "Merging retry limit reached — escalating to MergeConflict"
+            );
+            return self
+                .apply_recovery_decision(
+                    &updated_task,
+                    status,
+                    RecoveryContext::Merge,
+                    RecoveryDecision {
+                        action: RecoveryActionKind::Transition(InternalStatus::MergeConflict),
+                        reason: Some(format!(
+                            "Merge failed {} times — escalating to MergeConflict for manual resolution",
+                            retry_count
+                        )),
+                    },
+                )
+                .await;
+        }
+
         let decision = self
             .policy
             .decide_reconciliation(RecoveryContext::Merge, evidence);
 
-        self.apply_recovery_decision(task, status, RecoveryContext::Merge, decision)
+        // Gap 2: Don't re-spawn agent if one is still running in registry
+        if decision.action == RecoveryActionKind::ExecuteEntryActions && evidence.registry_running {
+            warn!(
+                task_id = task.id.as_str(),
+                "Skipping merger agent re-spawn — agent still running in registry"
+            );
+            return false;
+        }
+
+        // Gap 3: After auto-complete, check if task is still stuck in Merging
+        if decision.action == RecoveryActionKind::AttemptMergeAutoComplete {
+            self.apply_recovery_decision(
+                &updated_task,
+                status,
+                RecoveryContext::Merge,
+                decision,
+            )
+            .await;
+            // Re-read to see if auto-complete transitioned the task
+            if let Ok(Some(post_task)) = self.task_repo.get_by_id(&task.id).await {
+                if post_task.internal_status == InternalStatus::Merging {
+                    warn!(
+                        task_id = task.id.as_str(),
+                        "Auto-complete did not transition task out of Merging — will escalate on next timeout"
+                    );
+                }
+            }
+            return true;
+        }
+
+        self.apply_recovery_decision(&updated_task, status, RecoveryContext::Merge, decision)
             .await
     }
 
@@ -1029,6 +1092,20 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
         // Fallback for manually-edited tasks (status changed without status history row).
         Some(chrono::Utc::now() - task.updated_at)
+    }
+
+    /// Count `AttemptFailed` events in merge recovery metadata (Merging state retries).
+    fn merging_auto_retry_count(task: &Task) -> u32 {
+        MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+            .ok()
+            .flatten()
+            .map(|meta| {
+                meta.events
+                    .iter()
+                    .filter(|e| matches!(e.kind, MergeRecoveryEventKind::AttemptFailed))
+                    .count() as u32
+            })
+            .unwrap_or(0)
     }
 
     fn merge_incomplete_auto_retry_count(task: &Task) -> u32 {
