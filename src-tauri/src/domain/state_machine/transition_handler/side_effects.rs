@@ -464,6 +464,38 @@ async fn resolve_task_base_branch(
 
     match plan_branch_repo.get_by_session_id(session_id).await {
         Ok(Some(pb)) if pb.status == PlanBranchStatus::Active => {
+            let repo_path = Path::new(&project.working_directory);
+            // Lazily create git branch on first task execution
+            if !GitService::branch_exists(repo_path, &pb.branch_name) {
+                match GitService::create_feature_branch(
+                    repo_path,
+                    &pb.branch_name,
+                    &pb.source_branch,
+                ) {
+                    Ok(_) => {
+                        tracing::info!(
+                            branch = %pb.branch_name,
+                            source = %pb.source_branch,
+                            "Created deferred plan branch"
+                        );
+                    }
+                    Err(e) => {
+                        // Race condition: another task may have created it concurrently
+                        if GitService::branch_exists(repo_path, &pb.branch_name) {
+                            tracing::info!(
+                                branch = %pb.branch_name,
+                                "Deferred plan branch created by concurrent task"
+                            );
+                        } else {
+                            tracing::warn!(
+                                error = %e,
+                                branch = %pb.branch_name,
+                                "Failed to create deferred plan branch, proceeding anyway"
+                            );
+                        }
+                    }
+                }
+            }
             tracing::info!(
                 task_id = task.id.as_str(),
                 feature_branch = %pb.branch_name,
