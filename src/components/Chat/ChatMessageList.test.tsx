@@ -510,6 +510,77 @@ describe("ChatMessageList - Scroll Behavior", () => {
     });
   });
 
+  describe("FIX-F1+F2: scroll button renders outside Virtuoso", () => {
+    it("should show scroll button when not at bottom with >5 messages", () => {
+      mockIsAtBottom = false;
+
+      render(<ChatMessageList {...defaultProps} messages={createMessages(10)} />);
+
+      // Button is now rendered outside Virtuoso (in the component wrapper)
+      expect(screen.getByText(/Scroll to bottom/i)).toBeInTheDocument();
+    });
+
+    it("should hide scroll button when at bottom", () => {
+      mockIsAtBottom = true;
+
+      render(<ChatMessageList {...defaultProps} messages={createMessages(10)} />);
+
+      expect(screen.queryByText(/Scroll to bottom/i)).not.toBeInTheDocument();
+    });
+
+    it("should hide scroll button with <=5 messages even when scrolled up", () => {
+      mockIsAtBottom = false;
+
+      render(<ChatMessageList {...defaultProps} messages={createMessages(3)} />);
+
+      expect(screen.queryByText(/Scroll to bottom/i)).not.toBeInTheDocument();
+    });
+
+    it("should call scrollToBottom when button is clicked", async () => {
+      mockIsAtBottom = false;
+      const user = userEvent.setup();
+
+      render(<ChatMessageList {...defaultProps} messages={createMessages(10)} />);
+
+      const button = screen.getByText(/Scroll to bottom/i);
+      await user.click(button);
+
+      expect(mockScrollToBottom).toHaveBeenCalled();
+    });
+
+    it("should not cause cascading re-renders on isAtBottom toggle", () => {
+      mockIsAtBottom = true;
+      const { rerender } = render(<ChatMessageList {...defaultProps} />);
+
+      const callsAfterMount = mockUseChatAutoScroll.mock.calls.length;
+
+      // Toggle isAtBottom back and forth
+      mockIsAtBottom = false;
+      rerender(<ChatMessageList {...defaultProps} />);
+      mockIsAtBottom = true;
+      rerender(<ChatMessageList {...defaultProps} />);
+
+      // Exactly 2 additional renders (1 per rerender), no cascade
+      expect(mockUseChatAutoScroll.mock.calls.length).toBe(callsAfterMount + 2);
+    });
+  });
+
+  describe("FIX-F4: virtuosoComponents useMemo deps exclude scroll state", () => {
+    it("should not cascade re-renders when only isAtBottom changes", () => {
+      mockIsAtBottom = true;
+      const { rerender } = render(<ChatMessageList {...defaultProps} />);
+
+      const callsAfterMount = mockUseChatAutoScroll.mock.calls.length;
+
+      // Rerender with toggled isAtBottom — should NOT bust virtuosoComponents
+      mockIsAtBottom = false;
+      rerender(<ChatMessageList {...defaultProps} />);
+
+      // Only 1 rerender, not a cascade
+      expect(mockUseChatAutoScroll.mock.calls.length).toBe(callsAfterMount + 1);
+    });
+  });
+
   describe("footer content hash for streaming", () => {
     it("computes hash based on tool calls count", () => {
       const streamingToolCalls: ToolCall[] = [
