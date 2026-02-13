@@ -463,36 +463,6 @@ async fn execute_merge_retry_background(
     .with_task_scheduler(task_scheduler)
     .with_plan_branch_repo(Arc::clone(&plan_branch_repo));
 
-    // Check for conflict markers in worktree before retrying
-    let has_markers = {
-        let task = task_repo.get_by_id(&task_id).await.ok().flatten();
-        let project_id = task.as_ref().map(|t| t.project_id.clone());
-        let project = match project_id {
-            Some(pid) => project_repo.get_by_id(&pid).await.ok().flatten(),
-            None => None,
-        };
-        match (task.as_ref(), project.as_ref()) {
-            (Some(t), Some(p)) => {
-                let wt = t.worktree_path.as_ref()
-                    .map(PathBuf::from)
-                    .filter(|path| path.exists())
-                    .unwrap_or_else(|| PathBuf::from(&p.working_directory));
-                GitService::has_conflict_markers(&wt).unwrap_or(false)
-            }
-            _ => false,
-        }
-    };
-    if has_markers {
-        tracing::warn!(
-            task_id = task_id.as_str(),
-            "Conflict markers still present in worktree — aborting retry merge"
-        );
-        // Clear the in-flight guard since we're bailing
-        let _ = clear_merge_retry_guard(&task_id, &task_repo).await;
-        // Transition back to MergeConflict (or stay there) so the user sees the error
-        return;
-    }
-
     let result = transition_service
         .transition_task(&task_id, InternalStatus::PendingMerge)
         .await;

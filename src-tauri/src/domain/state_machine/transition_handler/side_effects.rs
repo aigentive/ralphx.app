@@ -2004,25 +2004,14 @@ impl<'a> super::TransitionHandler<'a> {
                             compute_merge_worktree_path(&project, task_id),
                         );
                         if wt_path.exists() {
-                            // Recovery-only: abort stale rebase/merge from prior attempt
-                            let tid = TaskId::from_string(task_id.clone());
-                            let is_recovery = if let Ok(Some(task)) = task_repo.get_by_id(&tid).await {
-                                get_trigger_origin(&task)
-                                    .map(|o| o == "recovery")
-                                    .unwrap_or(false)
-                            } else {
-                                false
-                            };
-
-                            if is_recovery {
-                                if GitService::is_rebase_in_progress(&wt_path) {
-                                    tracing::info!(task_id = task_id, "on_enter(Merging): Aborting stale rebase before recovery re-spawn");
-                                    let _ = GitService::abort_rebase(&wt_path);
-                                }
-                                if GitService::is_merge_in_progress(&wt_path) {
-                                    tracing::info!(task_id = task_id, "on_enter(Merging): Aborting stale merge before recovery re-spawn");
-                                    let _ = GitService::abort_merge(&wt_path);
-                                }
+                            // Abort stale rebase/merge from prior attempt (recovery or retry)
+                            if GitService::is_rebase_in_progress(&wt_path) {
+                                tracing::info!(task_id = task_id, "on_enter(Merging): Aborting stale rebase before agent spawn");
+                                let _ = GitService::abort_rebase(&wt_path);
+                            }
+                            if GitService::is_merge_in_progress(&wt_path) {
+                                tracing::info!(task_id = task_id, "on_enter(Merging): Aborting stale merge before agent spawn");
+                                let _ = GitService::abort_merge(&wt_path);
                             }
 
                             // Always: remove worktree symlinks that cause false conflicts.
@@ -2760,6 +2749,19 @@ impl<'a> super::TransitionHandler<'a> {
                         );
                     }
                 }
+            }
+        }
+
+        // Abort stale rebase/merge from prior failed attempts (Local mode only —
+        // Worktree mode already deletes and recreates isolated worktrees above)
+        if project.git_mode == GitMode::Local {
+            if GitService::is_rebase_in_progress(repo_path) {
+                tracing::info!(task_id = task_id_str, "Aborting stale rebase before programmatic merge retry");
+                let _ = GitService::abort_rebase(repo_path);
+            }
+            if GitService::is_merge_in_progress(repo_path) {
+                tracing::info!(task_id = task_id_str, "Aborting stale merge before programmatic merge retry");
+                let _ = GitService::abort_merge(repo_path);
             }
         }
 
