@@ -38,3 +38,51 @@ Universal code quality patterns for production-grade data loading and state mana
 | Ordering | Deterministic sort (e.g., `created_at DESC, id DESC`) to prevent duplicates across pages. |
 
 ## Cache Invalidation Hierarchy
+
+## React Hooks: Multi-Effect State Machines
+
+Complex hooks managing multiple interdependent effects should use **separate effects for separate concerns**, each tracking its own dimension via refs:
+
+| Concern | Tracking Ref | Dependencies | Triggers |
+|---------|--------------|--------------|----------|
+| **Plan Change** | `prevSessionRef` | `ideationSessionId` | Wholesale state reset (clear user intent, recalculate auto-behavior) |
+| **Count Transitions** | `prevCountsRef` | `taskCounts` | Detect 0→N changes; auto-expand unless user-blocked |
+| **Initialization** | `initializedRef` | (gates other effects) | Skip spurious fires on mount; enable after init |
+| **User Intent** | `userExpandedRef`, `userCollapsedRef` | (manual callbacks) | Track what user did to prevent auto-undo |
+
+**Key pattern:** Session = plan scope; use for wholesale resets. Within same session, respect user choices.
+
+**Example:** `useColumnCollapse` (src/components/tasks/TaskBoard/useColumnCollapse.ts)
+- Effect 1 (ideationSessionId): Detect plan changes; auto-collapse empty on init/plan-change; preserve user-expanded within plan (lines 53–84)
+- Effect 2 (taskCounts): Detect 0→N; auto-expand unless user-collapsed (lines 86–106)
+- Callbacks: toggleCollapse, expandColumn track intent via refs (lines 113–138)
+
+## External Store Subscriptions: useSyncExternalStore
+
+For derived state computed from external store (e.g., React Query cache), use `useSyncExternalStore` with ref-based memoization:
+
+```tsx
+const subscribe = useCallback(
+  (onStoreChange: () => void) => queryClient.getQueryCache().subscribe(onStoreChange),
+  [queryClient],
+);
+
+const getSnapshot = useCallback((): Map<string, number> => {
+  const next = new Map<string, number>();
+  // Compute derived state from cache
+  for (const col of columns) {
+    const data = queryClient.getQueryData(cacheKey);
+    // ... populate next
+  }
+  // Memoize: return prev ref if values unchanged (prevents Map instance churn)
+  if (mapsEqual(prevRef.current, next)) return prevRef.current;
+  prevRef.current = next;
+  return next;
+}, [...]);
+
+return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+```
+
+**Benefits:** Immediate reactivity to cache mutations (e.g., optimistic updates); no polling; prevents unnecessary parent re-renders via ref memoization.
+
+**Example:** `useColumnTaskCounts` (src/components/tasks/TaskBoard/useColumnTaskCounts.ts) subscribes to queryClient cache, returns stable Map reference via ref-based equality (lines 63–96).
