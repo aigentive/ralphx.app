@@ -6070,4 +6070,118 @@ prunable gitdir file points to non-existent location
             ),
         }
     }
+
+    // =========================================================================
+    // try_complete_stale_rebase Tests — has_real_conflicts
+    // =========================================================================
+
+    #[test]
+    fn test_try_complete_stale_rebase_has_real_conflicts() {
+        // Create a scenario where rebase hits real conflicts that can't be auto-resolved
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Initialize repo
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create file with initial content
+        std::fs::write(repo.join("file.txt"), "same line\n").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create feature branch with conflicting change on same line
+        Command::new("git")
+            .args(["checkout", "-b", "feature"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        std::fs::write(repo.join("file.txt"), "feature version of line\n").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "feature change"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Switch back to main and make conflicting change on same line
+        Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        std::fs::write(repo.join("file.txt"), "main version of line\n").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "main change"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Start rebase from feature onto main — should produce real conflicts
+        Command::new("git")
+            .args(["checkout", "feature"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        let rebase_output = Command::new("git")
+            .args(["rebase", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Rebase should fail with real conflicts
+        assert!(
+            !rebase_output.status.success(),
+            "Expected rebase to fail with conflicts"
+        );
+        assert!(
+            GitService::is_rebase_in_progress(repo),
+            "Expected rebase to be in progress"
+        );
+
+        // try_complete_stale_rebase should detect the real conflicts
+        let result = GitService::try_complete_stale_rebase(repo);
+        match result {
+            StaleRebaseResult::HasConflicts { files } => {
+                assert!(!files.is_empty(), "Expected at least one conflict file");
+            }
+            other => {
+                panic!(
+                    "Expected HasConflicts, got {:?}",
+                    other
+                );
+            }
+        }
+    }
 }
