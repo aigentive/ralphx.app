@@ -82,6 +82,5 @@
     }
   },
   "enabledPlugins": {
-    "tailwind-v4-shadcn@claude-skills": true
   }
 }
