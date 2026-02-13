@@ -10,6 +10,7 @@ import { STEP_TOOLS } from "./step-tools.js";
 import { ISSUE_TOOLS } from "./issue-tools.js";
 import {
   ORCHESTRATOR_IDEATION,
+  ORCHESTRATOR_IDEATION_READONLY,
   CHAT_TASK,
   CHAT_PROJECT,
   REVIEWER,
@@ -1056,6 +1057,17 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "ask_user_question",
     // session linking tools
     "create_child_session",
+    "get_parent_session_context",
+    // memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
+  ],
+  [ORCHESTRATOR_IDEATION_READONLY]: [
+    "list_session_proposals",
+    "get_proposal",
+    "get_plan_artifact",
+    "get_session_plan",
     "get_parent_session_context",
     // memory read tools
     "search_memories",
