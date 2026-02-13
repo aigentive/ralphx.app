@@ -2703,12 +2703,6 @@ impl<'a> super::TransitionHandler<'a> {
         // - (Squash, Local): squash merge for clean single commit (operates on main repo)
         // - (Squash, Worktree): squash merge in worktree (or in-repo if target checked out)
 
-        // Clean working tree before merge (non-fatal on error)
-        match GitService::clean_working_tree(repo_path) {
-            Ok(()) => tracing::debug!(task_id = task_id_str, "Pre-merge working tree clean succeeded"),
-            Err(e) => tracing::warn!(task_id = task_id_str, error = %e, "Pre-merge clean failed (non-fatal)"),
-        }
-
         // Build commit message for squash merges
         let squash_commit_msg = build_squash_commit_msg(&task.category, &task.title, &source_branch);
         match (project.merge_strategy, project.git_mode) {
