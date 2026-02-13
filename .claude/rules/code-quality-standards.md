@@ -35,6 +35,7 @@ paths:
 | Validate | `cargo check` / `npm run typecheck` before commit |
 | Hook for logic | Complex state→hook, component only renders |
 | Re-export on extract | `export { New as Old }` — don't break imports |
+| Extract = delete original | When moving functions to new modules, fully remove original code (not just copy) |
 | Named constants | Magic numbers → `TIMEOUT_MS = 300` |
 | DRY | 2+ times → helper |
 
