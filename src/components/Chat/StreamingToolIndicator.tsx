@@ -284,38 +284,43 @@ export function StreamingToolIndicator({
         {summaryLines.map((line, index) => (
           <div
             key={line.id || index}
-            className="flex items-start gap-2 text-xs"
+            className="text-xs"
             style={{
               color: line.hasError ? "var(--status-error)" : "var(--text-secondary)",
             }}
           >
-            {/* Step indicator */}
-            <span
-              className="flex-shrink-0 w-4 text-right tabular-nums"
-              style={{ color: "var(--text-muted)" }}
-            >
-              {index + 1}.
-            </span>
-
-            {/* Summary content */}
-            <div className="flex-1 min-w-0">
+            {/* Line 1: Step number + Verb */}
+            <div className="flex items-start gap-2">
+              <span
+                className="flex-shrink-0 w-4 text-right tabular-nums"
+                style={{ color: "var(--text-muted)" }}
+              >
+                {index + 1}.
+              </span>
               <span className="font-medium" style={{ color: "var(--text-primary)" }}>
                 {line.verb}
               </span>
-              {" "}
+            </div>
+
+            {/* Line 2: File path (indented, monospace, break-all) */}
+            <div className="flex gap-2">
+              <span className="w-4 flex-shrink-0" />
               <span
-                className="font-mono break-all"
+                className="font-mono text-[11px] break-all"
                 style={{
                   color: line.hasError ? "var(--status-error)" : "var(--text-secondary)",
                 }}
               >
                 {line.primary}
               </span>
+            </div>
 
-              {/* Additional details */}
-              {line.details.length > 0 && (
+            {/* Additional details */}
+            {line.details.length > 0 && (
+              <div className="flex gap-2">
+                <span className="w-4 flex-shrink-0" />
                 <div
-                  className="mt-0.5 text-[11px] font-mono"
+                  className="text-[11px] font-mono"
                   style={{ color: "var(--text-muted)" }}
                 >
                   {line.details.map((detail, i) => (
@@ -324,8 +329,8 @@ export function StreamingToolIndicator({
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         ))}
 

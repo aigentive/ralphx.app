@@ -5,6 +5,33 @@
 import type { ToolCall } from "./ToolCallIndicator";
 
 /**
+ * Get a verb for the tool action
+ */
+export function getToolVerb(name: string): string {
+  const normalizedName = name.toLowerCase();
+  switch (normalizedName) {
+    case "bash":
+      return "Running";
+    case "read":
+      return "Reading";
+    case "write":
+      return "Writing";
+    case "edit":
+      return "Editing";
+    case "glob":
+      return "Finding";
+    case "grep":
+      return "Searching";
+    case "update_task":
+      return "Updating";
+    case "add_task_note":
+      return "Adding";
+    default:
+      return "Calling";
+  }
+}
+
+/**
  * Create a brief summary of the tool call for collapsed view
  */
 export function createSummary(toolCall: ToolCall): { title: string; subtitle?: string | undefined } {
