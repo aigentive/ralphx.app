@@ -8,7 +8,7 @@ use rusqlite::Connection;
 use serde_json::Value as JsonValue;
 use tokio::sync::Mutex;
 
-use crate::domain::entities::{MemoryActorType, MemoryEvent, MemoryEventId, ProcessId};
+use crate::domain::entities::{MemoryActorType, MemoryEvent, MemoryEventId, ProjectId};
 use crate::domain::repositories::MemoryEventRepository;
 use crate::error::{AppError, AppResult};
 
@@ -59,7 +59,7 @@ impl SqliteMemoryEventRepository {
 
         Ok(MemoryEvent {
             id: MemoryEventId::from_string(row.get::<_, String>(0)?),
-            project_id: ProcessId::from_string(row.get::<_, String>(1)?),
+            project_id: ProjectId::from_string(row.get::<_, String>(1)?),
             event_type: row.get(2)?,
             actor_type,
             details,
@@ -94,7 +94,7 @@ impl MemoryEventRepository for SqliteMemoryEventRepository {
         Ok(event)
     }
 
-    async fn get_by_project(&self, project_id: &ProcessId) -> AppResult<Vec<MemoryEvent>> {
+    async fn get_by_project(&self, project_id: &ProjectId) -> AppResult<Vec<MemoryEvent>> {
         let conn = self.conn.lock().await;
 
         let mut stmt = conn.prepare(

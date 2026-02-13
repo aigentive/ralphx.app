@@ -196,6 +196,7 @@ pub async fn complete_merge(
                 Arc::clone(&state.app_state.activity_event_repo),
                 Arc::clone(&state.app_state.message_queue),
                 Arc::clone(&state.app_state.running_agent_registry),
+                Arc::clone(&state.app_state.memory_event_repo),
                 state.app_state.app_handle.as_ref().cloned(),
             )
             .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo)),
@@ -217,6 +218,7 @@ pub async fn complete_merge(
             Arc::clone(&state.app_state.running_agent_registry),
             Arc::clone(&state.execution_state),
             state.app_state.app_handle.as_ref().cloned(),
+            Arc::clone(&state.app_state.memory_event_repo),
         )
         .with_task_scheduler(task_scheduler)
         .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo));
@@ -290,6 +292,7 @@ pub async fn complete_merge(
             Arc::clone(&state.app_state.activity_event_repo),
             Arc::clone(&state.app_state.message_queue),
             Arc::clone(&state.app_state.running_agent_registry),
+            Arc::clone(&state.app_state.memory_event_repo),
             state.app_state.app_handle.as_ref().cloned(),
         )
         .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo)),
@@ -310,6 +313,7 @@ pub async fn complete_merge(
         Arc::clone(&state.app_state.running_agent_registry),
         Arc::clone(&state.execution_state),
         state.app_state.app_handle.as_ref().cloned(),
+        Arc::clone(&state.app_state.memory_event_repo),
     )
     .with_task_scheduler(task_scheduler)
     .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo));
@@ -405,6 +409,7 @@ pub async fn report_conflict(
         Arc::clone(&state.app_state.running_agent_registry),
         Arc::clone(&state.execution_state),
         state.app_state.app_handle.as_ref().cloned(),
+        Arc::clone(&state.app_state.memory_event_repo),
     )
     .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo));
 
@@ -500,6 +505,7 @@ pub async fn report_incomplete(
         Arc::clone(&state.app_state.running_agent_registry),
         Arc::clone(&state.execution_state),
         state.app_state.app_handle.as_ref().cloned(),
+        Arc::clone(&state.app_state.memory_event_repo),
     )
     .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo));
 
