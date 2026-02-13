@@ -1,0 +1,803 @@
+// State entry dispatch — all `on_enter` match arms and helpers.
+//
+// Extracted from side_effects.rs for maintainability. The `on_enter` method
+// signature stays in side_effects.rs and delegates here.
+
+use std::path::Path;
+use std::sync::Arc;
+
+use chrono::Utc;
+
+use super::super::machine::State;
+use super::merge_helpers::{
+    compute_merge_worktree_path, expand_home, resolve_task_base_branch, set_trigger_origin,
+    slugify,
+};
+use crate::application::GitService;
+use crate::domain::entities::{GitMode, ProjectId, TaskId, TaskStepStatus};
+use crate::error::{AppError, AppResult};
+
+impl<'a> super::TransitionHandler<'a> {
+    /// Execute on-enter dispatch for all state arms.
+    ///
+    /// Called by `on_enter` in side_effects.rs.
+    pub(super) async fn on_enter_dispatch(&self, state: &State) -> AppResult<()> {
+        match state {
+            State::Ready => {
+                // When entering Ready, spawn QA prep agent if enabled
+                if self.machine.context.qa_enabled {
+                    self.machine
+                        .context
+                        .services
+                        .agent_spawner
+                        .spawn_background("qa-prep", &self.machine.context.task_id)
+                        .await;
+                }
+
+                // Delay auto-scheduling so UI sees task "settle" in Ready column
+                // before it potentially moves to Executing (600ms matches common UI feedback timing)
+                if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
+                    let scheduler = Arc::clone(scheduler);
+                    tokio::spawn(async move {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
+                        scheduler.try_schedule_ready_tasks().await;
+                    });
+                }
+            }
+            State::Executing => {
+                let task_id_str = &self.machine.context.task_id;
+                let project_id_str = &self.machine.context.project_id;
+
+                // Setup branch/worktree for task isolation (Phase 66)
+                // Only setup if task_repo and project_repo are available
+                if let (Some(ref task_repo), Some(ref project_repo)) = (
+                    &self.machine.context.services.task_repo,
+                    &self.machine.context.services.project_repo,
+                ) {
+                    let task_id = TaskId::from_string(task_id_str.clone());
+                    let project_id = ProjectId::from_string(project_id_str.clone());
+
+                    // Fetch task and project
+                    let task_result = task_repo.get_by_id(&task_id).await;
+                    let project_result = project_repo.get_by_id(&project_id).await;
+
+                    if let (Ok(Some(mut task)), Ok(Some(project))) = (task_result, project_result) {
+                        // Only setup if task doesn't already have a branch
+                        if task.task_branch.is_none() {
+                            let branch =
+                                format!("ralphx/{}/task-{}", slugify(&project.name), task_id_str);
+                            // Resolve base branch: feature branch for plan tasks, project base otherwise
+                            let plan_branch_repo = &self.machine.context.services.plan_branch_repo;
+                            let resolved_base =
+                                resolve_task_base_branch(&task, &project, plan_branch_repo).await;
+                            let base_branch = resolved_base.as_str();
+                            let repo_path = Path::new(&project.working_directory);
+
+                            // Attempt branch/worktree setup. Only ExecutionBlocked errors
+                            // should prevent task execution (uncommitted changes in Local mode).
+                            // Other git errors (missing repo, invalid path) are logged but
+                            // don't block - the agent can still work in the project directory.
+                            let git_result: AppResult<Option<(String, Option<String>)>> =
+                                match project.git_mode {
+                                    GitMode::Local => {
+                                        // Block if uncommitted changes exist
+                                        match GitService::has_uncommitted_changes(repo_path) {
+                                            Ok(true) => {
+                                                return Err(AppError::ExecutionBlocked(
+                                                "Cannot execute task: uncommitted changes in working directory. \
+                                                 Please commit or stash your changes first.".to_string()
+                                            ));
+                                            }
+                                            Ok(false) => {
+                                                // Create and checkout branch in main repo
+                                                match GitService::create_branch(
+                                                    repo_path,
+                                                    &branch,
+                                                    base_branch,
+                                                )
+                                                .and_then(|_| {
+                                                    GitService::checkout_branch(repo_path, &branch)
+                                                }) {
+                                                    Ok(_) => Ok(Some((branch.clone(), None))),
+                                                    Err(e) => {
+                                                        tracing::warn!(
+                                                            error = %e,
+                                                            task_id = task_id_str,
+                                                            "Failed to create/checkout task branch (Local mode), continuing without isolation"
+                                                        );
+                                                        Ok(None)
+                                                    }
+                                                }
+                                            }
+                                            Err(e) => {
+                                                tracing::warn!(
+                                                    error = %e,
+                                                    task_id = task_id_str,
+                                                    "Failed to check uncommitted changes, continuing without isolation"
+                                                );
+                                                Ok(None)
+                                            }
+                                        }
+                                    }
+                                    GitMode::Worktree => {
+                                        // Build worktree path
+                                        let worktree_parent = project
+                                            .worktree_parent_directory
+                                            .as_deref()
+                                            .unwrap_or("~/ralphx-worktrees");
+                                        let expanded_parent = expand_home(worktree_parent);
+
+                                        let worktree_path = format!(
+                                            "{}/{}/task-{}",
+                                            expanded_parent,
+                                            slugify(&project.name),
+                                            task_id_str
+                                        );
+                                        let worktree_path_buf =
+                                            std::path::PathBuf::from(&worktree_path);
+
+                                        // Create worktree with new branch
+                                        match GitService::create_worktree(
+                                            repo_path,
+                                            &worktree_path_buf,
+                                            &branch,
+                                            base_branch,
+                                        ) {
+                                            Ok(_) => {
+                                                Ok(Some((branch.clone(), Some(worktree_path))))
+                                            }
+                                            Err(e) => {
+                                                tracing::warn!(
+                                                    error = %e,
+                                                    task_id = task_id_str,
+                                                    "Failed to create worktree (Worktree mode), continuing without isolation"
+                                                );
+                                                Ok(None)
+                                            }
+                                        }
+                                    }
+                                };
+
+                            // If git setup succeeded, persist the branch info
+                            if let Ok(Some((branch_name, worktree_path_opt))) = git_result {
+                                task.task_branch = Some(branch_name.clone());
+                                if let Some(wt_path) = worktree_path_opt {
+                                    task.worktree_path = Some(wt_path.clone());
+                                    tracing::info!(
+                                        task_id = task_id_str,
+                                        branch = %branch_name,
+                                        worktree_path = %wt_path,
+                                        "Created worktree with task branch (Worktree mode)"
+                                    );
+                                } else {
+                                    tracing::info!(
+                                        task_id = task_id_str,
+                                        branch = %branch_name,
+                                        "Created and checked out task branch (Local mode)"
+                                    );
+                                }
+                                task.touch();
+                                if let Err(e) = task_repo.update(&task).await {
+                                    tracing::error!(error = %e, "Failed to persist task branch info");
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Use ChatService for persistent worker execution (Phase 15B)
+                let prompt = format!("Execute task: {}", task_id_str);
+                tracing::debug!(
+                    task_id = task_id_str,
+                    prompt_len = prompt.len(),
+                    "Transition handler sending task_execution message"
+                );
+
+                // send_message handles:
+                // 1. Creating chat_conversation (context_type: 'task_execution')
+                // 2. Creating agent_run (status: 'running')
+                // 3. Spawning Claude CLI with --agent worker
+                // 4. Persisting stream output to chat_messages
+                // 5. Processing queued messages on completion
+                let _ = self
+                    .machine
+                    .context
+                    .services
+                    .chat_service
+                    .send_message(
+                        crate::domain::entities::ChatContextType::TaskExecution,
+                        task_id_str,
+                        &prompt,
+                    )
+                    .await;
+            }
+            State::QaRefining => {
+                // Set trigger_origin="qa" for QA cycle
+                if let Some(ref task_repo) = self.machine.context.services.task_repo {
+                    let task_id = TaskId::from_string(self.machine.context.task_id.clone());
+                    if let Ok(Some(mut task)) = task_repo.get_by_id(&task_id).await {
+                        set_trigger_origin(&mut task, "qa");
+                        if let Err(e) = task_repo.update(&task).await {
+                            tracing::error!(
+                                task_id = %self.machine.context.task_id,
+                                error = %e,
+                                "Failed to set trigger_origin=qa in metadata"
+                            );
+                        }
+                    }
+                }
+
+                // Wait for QA prep if not complete, then spawn QA refiner
+                if !self.machine.context.qa_prep_complete {
+                    self.machine
+                        .context
+                        .services
+                        .agent_spawner
+                        .wait_for("qa-prep", &self.machine.context.task_id)
+                        .await;
+                }
+                self.machine
+                    .context
+                    .services
+                    .agent_spawner
+                    .spawn("qa-refiner", &self.machine.context.task_id)
+                    .await;
+            }
+            State::QaTesting => {
+                // Set trigger_origin="qa" for QA cycle
+                if let Some(ref task_repo) = self.machine.context.services.task_repo {
+                    let task_id = TaskId::from_string(self.machine.context.task_id.clone());
+                    if let Ok(Some(mut task)) = task_repo.get_by_id(&task_id).await {
+                        set_trigger_origin(&mut task, "qa");
+                        if let Err(e) = task_repo.update(&task).await {
+                            tracing::error!(
+                                task_id = %self.machine.context.task_id,
+                                error = %e,
+                                "Failed to set trigger_origin=qa in metadata"
+                            );
+                        }
+                    }
+                }
+
+                // Spawn QA tester agent
+                self.machine
+                    .context
+                    .services
+                    .agent_spawner
+                    .spawn("qa-tester", &self.machine.context.task_id)
+                    .await;
+            }
+            State::QaPassed => {
+                // Emit QA passed event
+                self.machine
+                    .context
+                    .services
+                    .event_emitter
+                    .emit("qa_passed", &self.machine.context.task_id)
+                    .await;
+            }
+            State::QaFailed(data) => {
+                // Emit QA failed event and notify user
+                self.machine
+                    .context
+                    .services
+                    .event_emitter
+                    .emit("qa_failed", &self.machine.context.task_id)
+                    .await;
+
+                // Notify user if not already notified
+                if !data.notified {
+                    let message = format!("QA tests failed: {} failure(s)", data.failure_count());
+                    self.machine
+                        .context
+                        .services
+                        .notifier
+                        .notify_with_message("qa_failed", &self.machine.context.task_id, &message)
+                        .await;
+                }
+            }
+            State::PendingReview => {
+                // Start AI review via ReviewStarter
+                let review_result = self
+                    .machine
+                    .context
+                    .services
+                    .review_starter
+                    .start_ai_review(
+                        &self.machine.context.task_id,
+                        &self.machine.context.project_id,
+                    )
+                    .await;
+
+                // Emit review:update event with the result
+                match &review_result {
+                    super::super::services::ReviewStartResult::Started { review_id } => {
+                        self.machine
+                            .context
+                            .services
+                            .event_emitter
+                            .emit_with_payload(
+                                "review:update",
+                                &self.machine.context.task_id,
+                                &format!(r#"{{"type":"started","reviewId":"{}"}}"#, review_id),
+                            )
+                            .await;
+                    }
+                    super::super::services::ReviewStartResult::Disabled => {
+                        // AI review disabled, emit event but don't spawn agent
+                        self.machine
+                            .context
+                            .services
+                            .event_emitter
+                            .emit_with_payload(
+                                "review:update",
+                                &self.machine.context.task_id,
+                                r#"{"type":"disabled"}"#,
+                            )
+                            .await;
+                    }
+                    super::super::services::ReviewStartResult::Error(msg) => {
+                        // Review failed to start, notify user
+                        self.machine
+                            .context
+                            .services
+                            .notifier
+                            .notify_with_message("review_error", &self.machine.context.task_id, msg)
+                            .await;
+                    }
+                }
+            }
+            State::Reviewing => {
+                // For Local mode: checkout task branch before spawning reviewer
+                // (Worktree mode already has isolated directory)
+                self.checkout_task_branch_if_needed("Reviewing").await;
+
+                // Spawn reviewer agent via ChatService with Review context
+                let task_id = &self.machine.context.task_id;
+                let prompt = format!("Review task: {}", task_id);
+
+                tracing::info!(
+                    task_id = task_id,
+                    "on_enter(Reviewing): Spawning reviewer agent via ChatService"
+                );
+
+                let result = self
+                    .machine
+                    .context
+                    .services
+                    .chat_service
+                    .send_message(
+                        crate::domain::entities::ChatContextType::Review,
+                        task_id,
+                        &prompt,
+                    )
+                    .await;
+
+                match &result {
+                    Ok(_) => {
+                        tracing::info!(task_id = task_id, "Reviewer agent spawned successfully");
+                    }
+                    Err(e) => {
+                        tracing::error!(task_id = task_id, error = %e, "Failed to spawn reviewer agent");
+                    }
+                }
+            }
+            State::ReviewPassed => {
+                // Emit 'review:ai_approved' event
+                self.machine
+                    .context
+                    .services
+                    .event_emitter
+                    .emit("review:ai_approved", &self.machine.context.task_id)
+                    .await;
+
+                // Notify user that review passed and awaits approval
+                self.machine
+                    .context
+                    .services
+                    .notifier
+                    .notify_with_message(
+                        "review:ai_approved",
+                        &self.machine.context.task_id,
+                        "AI review passed. Please review and approve.",
+                    )
+                    .await;
+            }
+            State::Escalated => {
+                // Emit 'review:escalated' event
+                self.machine
+                    .context
+                    .services
+                    .event_emitter
+                    .emit("review:escalated", &self.machine.context.task_id)
+                    .await;
+
+                // Notify user that AI escalated review
+                self.machine
+                    .context
+                    .services
+                    .notifier
+                    .notify_with_message(
+                        "review:escalated",
+                        &self.machine.context.task_id,
+                        "AI review escalated. Please review and decide.",
+                    )
+                    .await;
+            }
+            State::ReExecuting => {
+                // For Local mode: checkout task branch before spawning worker
+                // (Worktree mode already has isolated directory)
+                self.checkout_task_branch_if_needed("ReExecuting").await;
+
+                // Spawn worker agent with revision context via ChatService
+                let task_id = &self.machine.context.task_id;
+                let prompt = format!("Re-execute task (revision): {}", task_id);
+
+                let _ = self
+                    .machine
+                    .context
+                    .services
+                    .chat_service
+                    .send_message(
+                        crate::domain::entities::ChatContextType::TaskExecution,
+                        task_id,
+                        &prompt,
+                    )
+                    .await;
+            }
+            State::RevisionNeeded => {
+                // Auto-transition to ReExecuting will be handled by check_auto_transition
+            }
+            State::Approved => {
+                // Emit task completed event
+                self.machine
+                    .context
+                    .services
+                    .event_emitter
+                    .emit("task_completed", &self.machine.context.task_id)
+                    .await;
+                // NOTE: Do NOT unblock dependents here. Approved auto-transitions to
+                // PendingMerge (Phase 66). Unblocking happens at on_enter(Merged) after
+                // the task's work is actually on main.
+            }
+            State::Failed(data) => {
+                let task_id = &self.machine.context.task_id;
+
+                // Store failure reason in task metadata for frontend access
+                if let Some(ref task_repo) = self.machine.context.services.task_repo {
+                    let task_id_typed = TaskId::from_string(task_id.clone());
+                    match task_repo.get_by_id(&task_id_typed).await {
+                        Ok(Some(mut task)) => {
+                            // Build failure info object
+                            let failure_info = serde_json::json!({
+                                "failure_error": data.error,
+                                "failure_details": data.details,
+                                "is_timeout": data.is_timeout,
+                            });
+
+                            // Merge into existing metadata, preserving other keys
+                            let mut metadata_obj = if let Some(json_str) = task.metadata.as_ref() {
+                                match serde_json::from_str::<serde_json::Value>(json_str) {
+                                    Ok(obj) => obj,
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            task_id = task_id,
+                                            error = %e,
+                                            "Failed to parse task metadata JSON"
+                                        );
+                                        serde_json::json!({})
+                                    }
+                                }
+                            } else {
+                                serde_json::json!({})
+                            };
+
+                            if let Some(obj) = metadata_obj.as_object_mut() {
+                                obj.insert("failure_error".to_string(), failure_info["failure_error"].clone());
+                                if let Some(details) = &data.details {
+                                    obj.insert("failure_details".to_string(), serde_json::json!(details));
+                                }
+                                obj.insert("is_timeout".to_string(), serde_json::json!(data.is_timeout));
+                            }
+
+                            // Update task with new metadata
+                            match serde_json::to_string(&metadata_obj) {
+                                Ok(updated_metadata) => {
+                                    task.metadata = Some(updated_metadata);
+                                    if let Err(e) = task_repo.update(&task).await {
+                                        tracing::error!(
+                                            task_id = task_id,
+                                            error = %e,
+                                            "Failed to update task with failure metadata"
+                                        );
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::error!(
+                                        task_id = task_id,
+                                        error = %e,
+                                        "Failed to serialize failure metadata"
+                                    );
+                                }
+                            }
+                        }
+                        Ok(None) => {
+                            tracing::error!(task_id = task_id, "Task not found when storing failure metadata");
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                task_id = task_id,
+                                error = %e,
+                                "Error retrieving task for failure metadata"
+                            );
+                        }
+                    }
+                }
+
+                // Fail any in-progress steps (Bug 2: agent was terminated, won't call fail_step)
+                if let Some(ref step_repo) = self.machine.context.services.step_repo {
+                    let task_id_typed = TaskId::from_string(task_id.clone());
+                    match step_repo.get_by_task(&task_id_typed).await {
+                        Ok(steps) => {
+                            for step in steps.iter().filter(|s| s.status == TaskStepStatus::InProgress) {
+                                let mut failed_step = step.clone();
+                                failed_step.status = TaskStepStatus::Failed;
+                                failed_step.completion_note = Some("Task execution failed".to_string());
+                                failed_step.completed_at = Some(Utc::now());
+
+                                if let Err(e) = step_repo.update(&failed_step).await {
+                                    tracing::error!(
+                                        task_id = task_id,
+                                        step_id = %step.id,
+                                        error = %e,
+                                        "Failed to update in-progress step to failed status"
+                                    );
+                                } else {
+                                    // Emit step updated event
+                                    self.machine
+                                        .context
+                                        .services
+                                        .event_emitter
+                                        .emit("step:updated", &format!("{}", step.id))
+                                        .await;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                task_id = task_id,
+                                error = %e,
+                                "Failed to retrieve steps for failure handling"
+                            );
+                        }
+                    }
+                }
+
+                // Emit task failed event
+                self.machine
+                    .context
+                    .services
+                    .event_emitter
+                    .emit("task_failed", task_id)
+                    .await;
+            }
+            State::PendingMerge => {
+                // Phase 1 of merge workflow: Attempt programmatic rebase and merge
+                // This is the "fast path" - if successful, skip agent entirely
+                self.attempt_programmatic_merge().await;
+            }
+            State::Merging => {
+                // Phase 2 of merge workflow: Spawn merger agent for conflict resolution
+                // This state is reached when Phase 1 (programmatic merge) failed due to conflicts,
+                // OR when AutoFix validation mode detected validation failures (Phase 113)
+                let task_id = &self.machine.context.task_id;
+
+                // Clean up merge worktree before spawning merger agent.
+                // - Symlink removal: ALWAYS (symlinks cause false conflicts for the agent)
+                // - Git abort: only on recovery re-entry (stale rebase/merge from prior attempt)
+                if let (Some(ref _task_repo), Some(ref project_repo)) = (
+                    &self.machine.context.services.task_repo,
+                    &self.machine.context.services.project_repo,
+                ) {
+                    let project_id = ProjectId::from_string(
+                        self.machine.context.project_id.clone(),
+                    );
+                    if let Ok(Some(project)) = project_repo.get_by_id(&project_id).await {
+                        let wt_path = std::path::PathBuf::from(
+                            compute_merge_worktree_path(&project, task_id),
+                        );
+                        if wt_path.exists() {
+                            // Abort stale rebase/merge from prior attempt (recovery or retry)
+                            if GitService::is_rebase_in_progress(&wt_path) {
+                                tracing::info!(task_id = task_id, "on_enter(Merging): Aborting stale rebase before agent spawn");
+                                let _ = GitService::abort_rebase(&wt_path);
+                            }
+                            if GitService::is_merge_in_progress(&wt_path) {
+                                tracing::info!(task_id = task_id, "on_enter(Merging): Aborting stale merge before agent spawn");
+                                let _ = GitService::abort_merge(&wt_path);
+                            }
+
+                            // Always: remove worktree symlinks that cause false conflicts.
+                            // The merger agent's validation step re-creates them via worktree_setup.
+                            for rel in &[
+                                "node_modules",
+                                "src-tauri/target",
+                                "ralphx-plugin/ralphx-mcp-server/node_modules",
+                            ] {
+                                let sym = wt_path.join(rel);
+                                if sym.is_symlink() {
+                                    tracing::info!(
+                                        task_id = task_id,
+                                        path = %sym.display(),
+                                        "on_enter(Merging): Removing worktree symlink"
+                                    );
+                                    let _ = std::fs::remove_file(&sym);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Check task metadata for validation_recovery flag (Phase 113: AutoFix mode)
+                let is_validation_recovery =
+                    if let Some(ref task_repo) = self.machine.context.services.task_repo {
+                        let tid = TaskId::from_string(task_id.clone());
+                        if let Ok(Some(task)) = task_repo.get_by_id(&tid).await {
+                            task.metadata
+                                .as_ref()
+                                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                                .and_then(|v| v.get("validation_recovery")?.as_bool())
+                                .unwrap_or(false)
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    };
+
+                let prompt = if is_validation_recovery {
+                    format!(
+                        "Fix validation failures for task: {}. The merge succeeded but post-merge \
+                         validation commands failed. The failing code is on the target branch. \
+                         Read the validation failures from task context, fix the code, run validation \
+                         to confirm, then commit your fixes.",
+                        task_id
+                    )
+                } else {
+                    format!("Resolve merge conflicts for task: {}", task_id)
+                };
+
+                tracing::info!(
+                    task_id = task_id,
+                    is_validation_recovery = is_validation_recovery,
+                    "on_enter(Merging): Spawning merger agent via ChatService"
+                );
+
+                // Use ChatService with Merge context type for the merger agent
+                let result = self
+                    .machine
+                    .context
+                    .services
+                    .chat_service
+                    .send_message(
+                        crate::domain::entities::ChatContextType::Merge,
+                        task_id,
+                        &prompt,
+                    )
+                    .await;
+
+                match &result {
+                    Ok(_) => {
+                        tracing::info!(task_id = task_id, "Merger agent spawned successfully");
+                    }
+                    Err(e) => {
+                        tracing::error!(task_id = task_id, error = %e, "Failed to spawn merger agent");
+                    }
+                }
+            }
+            State::Merged => {
+                // Auto-unblock tasks that were waiting on this task
+                // This handles the HTTP handler path where transition_task triggers on_enter
+                self.machine
+                    .context
+                    .services
+                    .dependency_manager
+                    .unblock_dependents(&self.machine.context.task_id)
+                    .await;
+
+                // Schedule newly-unblocked tasks (e.g. plan_merge tasks that just became Ready)
+                if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
+                    let scheduler = Arc::clone(scheduler);
+                    tokio::spawn(async move {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
+                        scheduler.try_schedule_ready_tasks().await;
+                    });
+                }
+
+                // Retry deferred merges — covers the HTTP handler path (e.g. ConflictResolved)
+                // where on_enter(Merged) is called directly without going through
+                // post_merge_cleanup(). Uses 800ms delay to serialize after scheduling.
+                if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
+                    let scheduler = Arc::clone(scheduler);
+                    let project_id = self.machine.context.project_id.clone();
+                    tokio::spawn(async move {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
+                        scheduler.try_retry_deferred_merges(&project_id).await;
+                    });
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// For Local mode: checkout task branch if current branch differs.
+    /// This is needed when re-entering execution states (ReExecuting, Reviewing)
+    /// where the task already has a branch but we may be on a different branch.
+    /// Worktree mode doesn't need this as each task has its own isolated directory.
+    pub(super) async fn checkout_task_branch_if_needed(&self, state_name: &str) {
+        let task_id_str = &self.machine.context.task_id;
+        let project_id_str = &self.machine.context.project_id;
+
+        if let (Some(ref task_repo), Some(ref project_repo)) = (
+            &self.machine.context.services.task_repo,
+            &self.machine.context.services.project_repo,
+        ) {
+            let task_id = TaskId::from_string(task_id_str.clone());
+            let project_id = ProjectId::from_string(project_id_str.clone());
+
+            let task_result = task_repo.get_by_id(&task_id).await;
+            let project_result = project_repo.get_by_id(&project_id).await;
+
+            if let (Ok(Some(task)), Ok(Some(project))) = (task_result, project_result) {
+                // Only checkout for Local mode - Worktree mode already has isolated directory
+                if project.git_mode == GitMode::Local {
+                    if let Some(branch) = &task.task_branch {
+                        let repo_path = Path::new(&project.working_directory);
+                        match GitService::get_current_branch(repo_path) {
+                            Ok(current) if current != *branch => {
+                                match GitService::checkout_branch(repo_path, branch) {
+                                    Ok(_) => {
+                                        tracing::info!(
+                                            task_id = task_id_str,
+                                            branch = %branch,
+                                            from_branch = %current,
+                                            state = state_name,
+                                            "Checked out task branch (Local mode)"
+                                        );
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            error = %e,
+                                            task_id = task_id_str,
+                                            branch = %branch,
+                                            state = state_name,
+                                            "Failed to checkout task branch (Local mode)"
+                                        );
+                                    }
+                                }
+                            }
+                            Ok(_) => {
+                                // Already on correct branch
+                                tracing::debug!(
+                                    task_id = task_id_str,
+                                    branch = %branch,
+                                    state = state_name,
+                                    "Already on task branch (Local mode)"
+                                );
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    error = %e,
+                                    task_id = task_id_str,
+                                    state = state_name,
+                                    "Failed to get current branch"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
