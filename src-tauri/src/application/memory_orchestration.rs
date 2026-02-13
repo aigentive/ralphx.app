@@ -53,7 +53,7 @@ pub struct ProjectMemorySettings {
 impl Default for ProjectMemorySettings {
     fn default() -> Self {
         Self {
-            enabled: true,
+            enabled: false,
             maintenance_categories: vec![
                 "execution".to_string(),
                 "review".to_string(),
