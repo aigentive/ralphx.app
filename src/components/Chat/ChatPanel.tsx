@@ -89,7 +89,7 @@ interface ContextIndicatorProps {
 function ContextIndicator({ context, isExecutionMode = false }: ContextIndicatorProps) {
   const getContextInfo = () => {
     if (isExecutionMode) {
-      return { icon: Hammer, label: "Worker Execution" };
+      return { icon: Hammer, label: "Worker" };
     }
 
     switch (context.view) {
