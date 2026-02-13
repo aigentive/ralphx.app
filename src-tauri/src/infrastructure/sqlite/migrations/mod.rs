@@ -49,6 +49,7 @@ mod v26_merge_strategy;
 mod v27_default_rebase_squash;
 mod v28_repair_schema_drift;
 mod v31_session_linking;
+mod v32_fix_task_fk_constraints;
 mod v2_add_dependency_reason;
 mod v3_add_activity_events;
 mod v4_add_blocked_reason;
@@ -99,6 +100,8 @@ mod v26_merge_strategy_tests;
 #[cfg(test)]
 mod v31_session_linking_tests;
 #[cfg(test)]
+mod v32_fix_task_fk_constraints_tests;
+#[cfg(test)]
 mod v2_add_dependency_reason_tests;
 #[cfg(test)]
 mod v3_add_activity_events_tests;
@@ -114,7 +117,7 @@ mod v8_task_git_fields_tests;
 mod v9_project_git_fields_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 31;
+pub const SCHEMA_VERSION: i32 = 32;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -283,6 +286,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 31,
         name: "session_linking",
         migrate: v31_session_linking::migrate,
+    },
+    Migration {
+        version: 32,
+        name: "fix_task_fk_constraints",
+        migrate: v32_fix_task_fk_constraints::migrate,
     },
 ];
 

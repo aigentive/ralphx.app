@@ -507,6 +507,10 @@ impl TaskRepository for MockTaskRepository {
         Ok(())
     }
 
+    async fn clear_task_references(&self, _id: &TaskId) -> AppResult<()> {
+        Ok(())
+    }
+
     async fn get_by_status(
         &self,
         project_id: &ProjectId,

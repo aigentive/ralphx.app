@@ -136,7 +136,17 @@ impl TaskCleanupService {
         // 2. Clean up git resources (worktree + branch)
         self.cleanup_git_resources(task).await;
 
-        // 3. Delete task from DB
+        // 3. Clear FK references to task before deletion (defense-in-depth)
+        if let Err(e) = self.task_repo.clear_task_references(&task.id).await {
+            tracing::warn!(
+                task_id = task.id.as_str(),
+                error = %e,
+                "Failed to clear task references during cleanup"
+            );
+            return Err(e);
+        }
+
+        // 4. Delete task from DB
         if let Err(e) = self.task_repo.delete(&task.id).await {
             tracing::warn!(
                 task_id = task.id.as_str(),
@@ -146,7 +156,7 @@ impl TaskCleanupService {
             return Err(e);
         }
 
-        // 4. Emit event for real-time UI updates
+        // 5. Emit event for real-time UI updates
         if emit_events {
             self.emit_task_deleted(task.id.as_str(), &project_id_str);
         }
@@ -191,6 +201,18 @@ impl TaskCleanupService {
         // Delete tasks from DB and emit events
         for task in tasks {
             let project_id_str = task.project_id.as_str().to_string();
+            // Clear FK references before deletion (defense-in-depth)
+            if let Err(e) = self.task_repo.clear_task_references(&task.id).await {
+                tracing::warn!(
+                    task_id = task.id.as_str(),
+                    error = %e,
+                    "Failed to clear task references during batch cleanup"
+                );
+                report
+                    .errors
+                    .push(format!("Clear references {}: {}", task.id.as_str(), e));
+                continue;
+            }
             if let Err(e) = self.task_repo.delete(&task.id).await {
                 tracing::warn!(
                     task_id = task.id.as_str(),
@@ -221,6 +243,20 @@ impl TaskCleanupService {
                     "Task reappeared after delete, retrying cleanup"
                 );
                 let project_id_str = task.project_id.as_str().to_string();
+                // Clear FK references before retry delete (defense-in-depth)
+                if let Err(e) = self.task_repo.clear_task_references(&task.id).await {
+                    tracing::warn!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Failed to clear task references during post-delete verification"
+                    );
+                    report.errors.push(format!(
+                        "Clear references (retry) {}: {}",
+                        task.id.as_str(),
+                        e
+                    ));
+                    continue;
+                }
                 if let Err(e) = self.task_repo.delete(&task.id).await {
                     tracing::warn!(
                         task_id = task.id.as_str(),

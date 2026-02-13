@@ -113,6 +113,11 @@ impl TaskRepository for MemoryTaskRepository {
         Ok(())
     }
 
+    async fn clear_task_references(&self, _id: &TaskId) -> AppResult<()> {
+        // No-op for memory repo (used in tests)
+        Ok(())
+    }
+
     async fn get_by_status(
         &self,
         project_id: &ProjectId,

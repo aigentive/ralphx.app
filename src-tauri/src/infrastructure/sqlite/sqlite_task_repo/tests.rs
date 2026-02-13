@@ -1000,3 +1000,95 @@ async fn test_get_by_status_excludes_archived() {
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].title, "Active PendingMerge");
 }
+
+#[tokio::test]
+async fn test_clear_task_references_nullifies_fk_columns() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+
+    // Create a task
+    let task = create_test_task("Task to Clear References");
+    let task_id = task.id.clone();
+    repo.create(task).await.unwrap();
+
+    // Insert a task_proposal with created_task_id referencing the task
+    let proposal_id = "proposal-1";
+    let artifact_id = "artifact-1";
+    let session_id = "test-session-clear-refs";
+    {
+        let conn = repo.conn.lock().await;
+
+        // Create the ideation session first (required by FK)
+        conn.execute(
+            "INSERT INTO ideation_sessions (id, project_id, title, status)
+             VALUES (?1, 'test-project', 'Test Session', 'active')",
+            rusqlite::params![session_id],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO task_proposals (id, session_id, title, category, suggested_priority, priority_score, status, created_task_id)
+             VALUES (?1, ?2, 'Test Proposal', 'feature', 'p0', 50, 'pending', ?3)",
+            rusqlite::params![proposal_id, session_id, task_id.as_str()],
+        )
+        .unwrap();
+
+        // Insert an artifact with task_id referencing the task
+        conn.execute(
+            "INSERT INTO artifacts (id, type, name, content_type, created_by, task_id)
+             VALUES (?1, 'spec', 'Test Artifact', 'text/plain', 'test-user', ?2)",
+            rusqlite::params![artifact_id, task_id.as_str()],
+        )
+        .unwrap();
+
+        // Verify references are set before clear
+        let mut stmt = conn
+            .prepare("SELECT created_task_id FROM task_proposals WHERE id = ?1")
+            .unwrap();
+        let proposal_task_id: Option<String> = stmt
+            .query_row([proposal_id], |row| row.get(0))
+            .unwrap();
+        assert!(proposal_task_id.is_some());
+        assert_eq!(proposal_task_id.unwrap(), task_id.as_str());
+
+        let mut stmt = conn
+            .prepare("SELECT task_id FROM artifacts WHERE id = ?1")
+            .unwrap();
+        let artifact_task_id: Option<String> = stmt
+            .query_row([artifact_id], |row| row.get(0))
+            .unwrap();
+        assert!(artifact_task_id.is_some());
+        assert_eq!(artifact_task_id.unwrap(), task_id.as_str());
+    }
+
+    // Call clear_task_references
+    repo.clear_task_references(&task_id).await.unwrap();
+
+    // Verify references are NULL after clear
+    {
+        let conn = repo.conn.lock().await;
+        let mut stmt = conn
+            .prepare("SELECT created_task_id FROM task_proposals WHERE id = ?1")
+            .unwrap();
+        let proposal_task_id: Option<String> = stmt
+            .query_row([proposal_id], |row| row.get(0))
+            .unwrap();
+        assert!(proposal_task_id.is_none());
+
+        let mut stmt = conn
+            .prepare("SELECT task_id FROM artifacts WHERE id = ?1")
+            .unwrap();
+        let artifact_task_id: Option<String> = stmt
+            .query_row([artifact_id], |row| row.get(0))
+            .unwrap();
+        assert!(artifact_task_id.is_none());
+    }
+
+    // Verify task can still be deleted without FK constraint errors
+    let delete_result = repo.delete(&task_id).await;
+    assert!(delete_result.is_ok());
+
+    // Verify task is actually deleted
+    let found = repo.get_by_id(&task_id).await.unwrap();
+    assert!(found.is_none());
+}
