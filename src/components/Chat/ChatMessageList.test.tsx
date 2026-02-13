@@ -403,6 +403,32 @@ describe("ChatMessageList - Scroll Behavior", () => {
     });
   });
 
+  describe("memo stability (no infinite re-render)", () => {
+    it("timeline useMemo returns stable reference when hookEvents/activeHooks not passed", () => {
+      // When hookEvents and activeHooks are omitted, the default `= []` in
+      // destructuring creates a new array reference each render. This busts
+      // the `timeline` useMemo and causes Virtuoso to re-render infinitely.
+      // The fix uses module-level empty constants as defaults.
+      const { rerender } = render(
+        <ChatMessageList {...defaultProps} />
+      );
+
+      // Re-render with same props (no hookEvents/activeHooks passed)
+      rerender(<ChatMessageList {...defaultProps} />);
+
+      // If the fix is applied, useChatAutoScroll should have been called
+      // with the same messageCount both times — no crash, no infinite loop.
+      // The key assertion: the component renders successfully without
+      // "Maximum update depth exceeded" error.
+      expect(screen.getByTestId("integrated-chat-messages")).toBeInTheDocument();
+
+      // Verify hook was called exactly twice (initial + rerender)
+      // If timeline memo was unstable, React would hit update depth limit
+      const callCount = mockUseChatAutoScroll.mock.calls.length;
+      expect(callCount).toBe(2);
+    });
+  });
+
   describe("footer content hash for streaming", () => {
     it("computes hash based on tool calls count", () => {
       const streamingToolCalls: ToolCall[] = [
