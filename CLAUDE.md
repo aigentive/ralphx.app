@@ -36,6 +36,7 @@ Adding/modifying MCP tools for agents: `.claude/rules/agent-mcp-tools.md` (three
 | chat-task | update_task, add_task_note, get_task_details |
 | chat-project | suggest_task, list_tasks |
 | worker | get_task_context, get_artifact*, *_step |
+| coder | get_task_context, get_artifact*, *_step |
 | reviewer | complete_review |
 | merger | complete_merge, report_conflict, report_incomplete, get_merge_target, get_task_context |
 
