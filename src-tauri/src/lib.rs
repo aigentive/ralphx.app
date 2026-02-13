@@ -213,6 +213,7 @@ pub fn run() {
             let startup_activity_event_repo = Arc::clone(&app_state.activity_event_repo);
             let startup_message_queue = Arc::clone(&app_state.message_queue);
             let startup_running_agent_registry = Arc::clone(&app_state.running_agent_registry);
+            let startup_memory_event_repo = Arc::clone(&app_state.memory_event_repo);
             let startup_execution_state = app.state::<Arc<commands::ExecutionState>>().inner().clone();
             let startup_active_project_state = app.state::<Arc<commands::ActiveProjectState>>().inner().clone();
             let startup_app_state_repo = Arc::clone(&app_state.app_state_repo);
@@ -249,6 +250,7 @@ pub fn run() {
                     startup_activity_event_repo.clone(),
                     startup_message_queue.clone(),
                     startup_running_agent_registry.clone(),
+                    startup_memory_event_repo.clone(),
                     Some(startup_app_handle.clone()),
                 ));
                 scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn domain::state_machine::services::TaskScheduler>);
@@ -265,6 +267,7 @@ pub fn run() {
                 let chat_resumption_activity_event_repo = Arc::clone(&startup_activity_event_repo);
                 let chat_resumption_message_queue = Arc::clone(&startup_message_queue);
                 let chat_resumption_running_agent_registry = Arc::clone(&startup_running_agent_registry);
+                let chat_resumption_memory_event_repo = Arc::clone(&startup_memory_event_repo);
                 let chat_resumption_app_handle = startup_app_handle.clone();
 
                 let startup_runner_chat_message_repo = Arc::clone(&startup_chat_message_repo);
@@ -285,6 +288,7 @@ pub fn run() {
                 let reconcile_activity_event_repo = Arc::clone(&startup_activity_event_repo);
                 let reconcile_message_queue = Arc::clone(&startup_message_queue);
                 let reconcile_running_agent_registry = Arc::clone(&startup_running_agent_registry);
+                let reconcile_memory_event_repo = Arc::clone(&startup_memory_event_repo);
                 let reconcile_app_handle = startup_app_handle.clone();
 
                 // Clone task_dependency_repo for StartupJobRunner (before TaskTransitionService consumes it)
@@ -305,6 +309,7 @@ pub fn run() {
                     Arc::clone(&startup_running_agent_registry),
                     Arc::clone(&startup_execution_state),
                     Some(startup_app_handle),
+                    Arc::clone(&startup_memory_event_repo),
                 )
                 .with_task_scheduler(Arc::clone(&task_scheduler))
                 .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
@@ -313,13 +318,14 @@ pub fn run() {
                 let runner = StartupJobRunner::new(
                     startup_task_repo,
                     startup_runner_task_dep_repo,
-                    startup_project_repo,
+                    Arc::clone(&startup_project_repo),
                     startup_conversation_repo.clone(),
                     startup_runner_chat_message_repo,
                     startup_runner_ideation_session_repo,
                     startup_runner_activity_event_repo,
                     startup_runner_message_queue,
                     startup_runner_running_agent_registry,
+                    Arc::clone(&startup_memory_event_repo),
                     startup_agent_run_repo,
                     Arc::clone(&transition_service),
                     Arc::clone(&startup_execution_state),
@@ -338,6 +344,7 @@ pub fn run() {
                 let archive_service = Arc::new(application::MemoryArchiveService::new(
                     Arc::clone(&startup_memory_archive_repo),
                     Arc::clone(&startup_memory_entry_repo),
+                    Arc::clone(&startup_project_repo),
                     std::path::PathBuf::from("."), // Use current working directory as project root
                 ));
 
@@ -381,6 +388,7 @@ pub fn run() {
                     chat_resumption_activity_event_repo,
                     chat_resumption_message_queue,
                     chat_resumption_running_agent_registry,
+                    chat_resumption_memory_event_repo,
                     Arc::clone(&startup_execution_state),
                 )
                 .with_app_handle(chat_resumption_app_handle)
@@ -401,6 +409,7 @@ pub fn run() {
                         Arc::clone(&reconcile_running_agent_registry),
                         Arc::clone(&startup_execution_state),
                         Some(reconcile_app_handle.clone()),
+                        Arc::clone(&reconcile_memory_event_repo),
                     )
                     .with_task_scheduler(Arc::clone(&task_scheduler))
                     .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
@@ -416,6 +425,7 @@ pub fn run() {
                     reconcile_activity_event_repo,
                     reconcile_message_queue,
                     reconcile_running_agent_registry,
+                    reconcile_memory_event_repo,
                     reconcile_agent_run_repo,
                     reconcile_transition_service,
                     Arc::clone(&startup_execution_state),
@@ -430,6 +440,54 @@ pub fn run() {
                     loop {
                         tokio::time::sleep(interval).await;
                         reconcile_runner.reconcile_stuck_tasks().await;
+                    }
+                });
+
+                // Spawn memory archive job background processing loop
+                // Clone required repositories for the archive job processor
+                let archive_job_memory_archive_repo = Arc::clone(&startup_memory_archive_repo);
+                let archive_job_memory_entry_repo = Arc::clone(&startup_memory_entry_repo);
+                let archive_job_project_repo = Arc::clone(&startup_project_repo);
+
+                tauri::async_runtime::spawn(async move {
+                    let archive_service = Arc::new(application::MemoryArchiveService::new(
+                        archive_job_memory_archive_repo,
+                        archive_job_memory_entry_repo,
+                        archive_job_project_repo,
+                        std::path::PathBuf::from("."),
+                    ));
+
+                    let mut backoff_duration = Duration::from_secs(0);
+
+                    loop {
+                        if !backoff_duration.is_zero() {
+                            tracing::debug!(
+                                backoff_secs = backoff_duration.as_secs(),
+                                "Memory archive job processor backing off after error"
+                            );
+                            tokio::time::sleep(backoff_duration).await;
+                            backoff_duration = Duration::from_secs(0);
+                        }
+
+                        match archive_service.process_next_job().await {
+                            Ok(true) => {
+                                // Job processed successfully, immediately check for more without sleeping
+                                tracing::debug!("Memory archive job processed, checking for more");
+                                backoff_duration = Duration::from_secs(0);
+                                // Loop back immediately without sleep
+                            }
+                            Ok(false) => {
+                                // No jobs available, sleep 30s before next poll
+                                tracing::debug!("No memory archive jobs available, sleeping");
+                                tokio::time::sleep(Duration::from_secs(30)).await;
+                            }
+                            Err(e) => {
+                                tracing::error!(error = %e, "Failed to process memory archive job");
+                                // Back off for 60s on error
+                                backoff_duration = Duration::from_secs(60);
+                                tokio::time::sleep(backoff_duration).await;
+                            }
+                        }
                     }
                 });
             });

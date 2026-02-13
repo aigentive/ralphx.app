@@ -163,6 +163,7 @@ fn create_chat_service(
         state.activity_event_repo.clone(),
         state.message_queue.clone(),
         state.running_agent_registry.clone(),
+        state.memory_event_repo.clone(),
     )
     .with_app_handle(app_handle)
     .with_execution_state(Arc::clone(execution_state))

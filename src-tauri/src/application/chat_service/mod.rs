@@ -28,7 +28,7 @@ use crate::domain::entities::{
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, StateHistoryMetadata,
+    IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository, StateHistoryMetadata,
     TaskDependencyRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, QueuedMessage, RunningAgentKey, RunningAgentRegistry};
@@ -208,6 +208,7 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     activity_event_repo: Arc<dyn ActivityEventRepository>,
     message_queue: Arc<MessageQueue>,
     running_agent_registry: Arc<dyn RunningAgentRegistry>,
+    memory_event_repo: Arc<dyn MemoryEventRepository>,
     app_handle: Option<AppHandle<R>>,
     execution_state: Option<Arc<crate::commands::ExecutionState>>,
     question_state: Option<Arc<QuestionState>>,
@@ -227,6 +228,7 @@ impl<R: Runtime> ClaudeChatService<R> {
         activity_event_repo: Arc<dyn ActivityEventRepository>,
         message_queue: Arc<MessageQueue>,
         running_agent_registry: Arc<dyn RunningAgentRegistry>,
+        memory_event_repo: Arc<dyn MemoryEventRepository>,
     ) -> Self {
         let cli_path = crate::infrastructure::agents::claude::find_claude_cli()
             .unwrap_or_else(|| PathBuf::from("claude"));
@@ -248,6 +250,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             activity_event_repo,
             message_queue,
             running_agent_registry,
+            memory_event_repo,
             app_handle: None,
             execution_state: None,
             question_state: None,
@@ -586,6 +589,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         let activity_event_repo = Arc::clone(&self.activity_event_repo);
         let message_queue = Arc::clone(&self.message_queue);
         let running_agent_registry = Arc::clone(&self.running_agent_registry);
+        let memory_event_repo = Arc::clone(&self.memory_event_repo);
         let execution_state = self.execution_state.clone();
         let question_state = self.question_state.clone();
         let plan_branch_repo = self.plan_branch_repo.clone();
@@ -629,6 +633,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             Some(conversation_clone),
             project_id_clone,
             Some(resolved_agent_name),
+            memory_event_repo,
         );
         tracing::debug!(
             conversation_id = conversation_id.as_str(),

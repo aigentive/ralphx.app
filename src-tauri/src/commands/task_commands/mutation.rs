@@ -193,6 +193,7 @@ pub async fn move_task(
             Arc::clone(&state.activity_event_repo),
             Arc::clone(&state.message_queue),
             Arc::clone(&state.running_agent_registry),
+            Arc::clone(&state.memory_event_repo),
             Some(app.clone()),
         )
         .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo)),
@@ -214,6 +215,7 @@ pub async fn move_task(
         Arc::clone(&state.running_agent_registry),
         Arc::clone(&execution_state),
         Some(app.clone()),
+        Arc::clone(&state.memory_event_repo),
     )
     .with_task_scheduler(task_scheduler)
     .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
@@ -587,6 +589,7 @@ pub async fn block_task(
             Arc::clone(&state.activity_event_repo),
             Arc::clone(&state.message_queue),
             Arc::clone(&state.running_agent_registry),
+            Arc::clone(&state.memory_event_repo),
             Some(app.clone()),
         )
         .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo)),
@@ -608,6 +611,7 @@ pub async fn block_task(
         Arc::clone(&state.running_agent_registry),
         Arc::clone(&execution_state),
         Some(app.clone()),
+        Arc::clone(&state.memory_event_repo),
     )
     .with_task_scheduler(task_scheduler)
     .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
@@ -693,6 +697,7 @@ pub async fn unblock_task(
             Arc::clone(&state.activity_event_repo),
             Arc::clone(&state.message_queue),
             Arc::clone(&state.running_agent_registry),
+            Arc::clone(&state.memory_event_repo),
             Some(app.clone()),
         )
         .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo)),
@@ -714,6 +719,7 @@ pub async fn unblock_task(
         Arc::clone(&state.running_agent_registry),
         Arc::clone(&execution_state),
         Some(app.clone()),
+        Arc::clone(&state.memory_event_repo),
     )
     .with_task_scheduler(task_scheduler)
     .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
@@ -903,6 +909,7 @@ fn build_task_stopper(
         Arc::clone(&state.running_agent_registry),
         Arc::clone(execution_state),
         Some(app.clone()),
+        Arc::clone(&state.memory_event_repo),
     )
     .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
 
@@ -943,6 +950,7 @@ pub async fn pause_task(
         Arc::clone(&state.running_agent_registry),
         Arc::clone(&execution_state),
         state.app_handle.clone(),
+        Arc::clone(&state.memory_event_repo),
     )
     .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
 
@@ -999,6 +1007,7 @@ pub async fn stop_task(
         Arc::clone(&state.running_agent_registry),
         Arc::clone(&execution_state),
         state.app_handle.clone(),
+        Arc::clone(&state.memory_event_repo),
     )
     .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
 
@@ -1090,6 +1099,7 @@ pub async fn cancel_tasks_in_group(
         Arc::clone(&state.running_agent_registry),
         Arc::clone(&execution_state),
         Some(app.clone()),
+        Arc::clone(&state.memory_event_repo),
     )
     .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
 

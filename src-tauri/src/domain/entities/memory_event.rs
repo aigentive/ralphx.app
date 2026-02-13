@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::fmt;
 
-use super::ProcessId;
+use super::ProjectId;
 
 /// Unique identifier for a memory event
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -87,7 +87,7 @@ impl std::error::Error for ParseMemoryActorTypeError {}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryEvent {
     pub id: MemoryEventId,
-    pub project_id: ProcessId,
+    pub project_id: ProjectId,
     pub event_type: String,
     pub actor_type: MemoryActorType,
     pub details: JsonValue,
@@ -97,7 +97,7 @@ pub struct MemoryEvent {
 impl MemoryEvent {
     /// Create a new memory event
     pub fn new(
-        project_id: ProcessId,
+        project_id: ProjectId,
         event_type: impl Into<String>,
         actor_type: MemoryActorType,
         details: JsonValue,
