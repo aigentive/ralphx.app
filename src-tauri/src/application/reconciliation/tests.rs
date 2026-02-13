@@ -456,6 +456,7 @@ async fn reconcile_stuck_tasks_prunes_stale_registry_for_terminal_task() {
             "conv-stale".to_string(),
             run_id.as_str(),
             Some("/tmp/stale".to_string()),
+            None,
         )
         .await;
 

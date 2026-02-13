@@ -139,11 +139,19 @@ pub struct AgentRun {
     pub completed_at: Option<DateTime<Utc>>,
     /// Error message (if failed)
     pub error_message: Option<String>,
+    /// Correlation ID linking all runs in a single message chain
+    /// (initial run + all queue continuations via --resume)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run_chain_id: Option<String>,
+    /// The agent_run ID that triggered this continuation (None for initial runs)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_run_id: Option<String>,
 }
 
 impl AgentRun {
-    /// Create a new agent run in the running state
+    /// Create a new agent run in the running state with a fresh run_chain_id
     pub fn new(conversation_id: ChatConversationId) -> Self {
+        let chain_id = Uuid::new_v4().to_string();
         Self {
             id: AgentRunId::new(),
             conversation_id,
@@ -151,6 +159,26 @@ impl AgentRun {
             started_at: Utc::now(),
             completed_at: None,
             error_message: None,
+            run_chain_id: Some(chain_id),
+            parent_run_id: None,
+        }
+    }
+
+    /// Create a continuation run inheriting the chain from a parent run
+    pub fn new_continuation(
+        conversation_id: ChatConversationId,
+        run_chain_id: String,
+        parent_run_id: String,
+    ) -> Self {
+        Self {
+            id: AgentRunId::new(),
+            conversation_id,
+            status: AgentRunStatus::Running,
+            started_at: Utc::now(),
+            completed_at: None,
+            error_message: None,
+            run_chain_id: Some(run_chain_id),
+            parent_run_id: Some(parent_run_id),
         }
     }
 
@@ -281,6 +309,25 @@ mod tests {
         assert!(!run.is_terminal());
         assert_eq!(run.completed_at, None);
         assert_eq!(run.error_message, None);
+        assert!(run.run_chain_id.is_some());
+        assert_eq!(run.parent_run_id, None);
+    }
+
+    #[test]
+    fn test_new_continuation_run() {
+        let conversation_id = ChatConversationId::new();
+        let chain_id = "chain-123".to_string();
+        let parent_id = "parent-456".to_string();
+        let run = AgentRun::new_continuation(
+            conversation_id,
+            chain_id.clone(),
+            parent_id.clone(),
+        );
+
+        assert_eq!(run.conversation_id, conversation_id);
+        assert_eq!(run.status, AgentRunStatus::Running);
+        assert_eq!(run.run_chain_id, Some(chain_id));
+        assert_eq!(run.parent_run_id, Some(parent_id));
     }
 
     #[test]

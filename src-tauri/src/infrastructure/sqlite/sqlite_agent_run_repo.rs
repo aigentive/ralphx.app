@@ -28,6 +28,27 @@ use crate::domain::entities::{
     AgentRun, AgentRunId, AgentRunStatus, ChatContextType, ChatConversation, ChatConversationId,
     InterruptedConversation,
 };
+
+/// Map a SQLite row to an AgentRun (expects columns: id, conversation_id, status,
+/// started_at, completed_at, error_message, run_chain_id, parent_run_id)
+fn row_to_agent_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<AgentRun> {
+    let status_str: String = row.get("status")?;
+    let started_at_str: String = row.get("started_at")?;
+    let completed_at_str: Option<String> = row.get("completed_at")?;
+
+    Ok(AgentRun {
+        id: AgentRunId::from_string(row.get::<_, String>("id")?),
+        conversation_id: ChatConversationId::from_string(
+            row.get::<_, String>("conversation_id")?,
+        ),
+        status: status_str.parse().unwrap_or(AgentRunStatus::Failed),
+        started_at: parse_datetime(&started_at_str),
+        completed_at: completed_at_str.map(|s| parse_datetime(&s)),
+        error_message: row.get("error_message")?,
+        run_chain_id: row.get("run_chain_id")?,
+        parent_run_id: row.get("parent_run_id")?,
+    })
+}
 use crate::domain::repositories::AgentRunRepository;
 use crate::error::{AppError, AppResult};
 
@@ -56,8 +77,8 @@ impl AgentRunRepository for SqliteAgentRunRepository {
         let conn = self.conn.lock().await;
 
         conn.execute(
-            "INSERT INTO agent_runs (id, conversation_id, status, started_at, completed_at, error_message)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO agent_runs (id, conversation_id, status, started_at, completed_at, error_message, run_chain_id, parent_run_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             rusqlite::params![
                 run.id.as_str(),
                 run.conversation_id.as_str(),
@@ -65,6 +86,8 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                 run.started_at.to_rfc3339(),
                 run.completed_at.map(|dt| dt.to_rfc3339()),
                 run.error_message,
+                run.run_chain_id,
+                run.parent_run_id,
             ],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
@@ -76,25 +99,10 @@ impl AgentRunRepository for SqliteAgentRunRepository {
         let conn = self.conn.lock().await;
 
         let result = conn.query_row(
-            "SELECT id, conversation_id, status, started_at, completed_at, error_message
+            "SELECT id, conversation_id, status, started_at, completed_at, error_message, run_chain_id, parent_run_id
              FROM agent_runs WHERE id = ?1",
             [id.as_str()],
-            |row| {
-                let status_str: String = row.get("status")?;
-                let started_at_str: String = row.get("started_at")?;
-                let completed_at_str: Option<String> = row.get("completed_at")?;
-
-                Ok(AgentRun {
-                    id: AgentRunId::from_string(row.get::<_, String>("id")?),
-                    conversation_id: ChatConversationId::from_string(
-                        row.get::<_, String>("conversation_id")?,
-                    ),
-                    status: status_str.parse().unwrap_or(AgentRunStatus::Failed),
-                    started_at: parse_datetime(&started_at_str),
-                    completed_at: completed_at_str.map(|s| parse_datetime(&s)),
-                    error_message: row.get("error_message")?,
-                })
-            },
+            |row| row_to_agent_run(row),
         );
 
         match result {
@@ -111,25 +119,10 @@ impl AgentRunRepository for SqliteAgentRunRepository {
         let conn = self.conn.lock().await;
 
         let result = conn.query_row(
-            "SELECT id, conversation_id, status, started_at, completed_at, error_message
+            "SELECT id, conversation_id, status, started_at, completed_at, error_message, run_chain_id, parent_run_id
              FROM agent_runs WHERE conversation_id = ?1 ORDER BY started_at DESC LIMIT 1",
             [conversation_id.as_str()],
-            |row| {
-                let status_str: String = row.get("status")?;
-                let started_at_str: String = row.get("started_at")?;
-                let completed_at_str: Option<String> = row.get("completed_at")?;
-
-                Ok(AgentRun {
-                    id: AgentRunId::from_string(row.get::<_, String>("id")?),
-                    conversation_id: ChatConversationId::from_string(
-                        row.get::<_, String>("conversation_id")?,
-                    ),
-                    status: status_str.parse().unwrap_or(AgentRunStatus::Failed),
-                    started_at: parse_datetime(&started_at_str),
-                    completed_at: completed_at_str.map(|s| parse_datetime(&s)),
-                    error_message: row.get("error_message")?,
-                })
-            },
+            |row| row_to_agent_run(row),
         );
 
         match result {
@@ -146,23 +139,10 @@ impl AgentRunRepository for SqliteAgentRunRepository {
         let conn = self.conn.lock().await;
 
         let result = conn.query_row(
-            "SELECT id, conversation_id, status, started_at, completed_at, error_message
+            "SELECT id, conversation_id, status, started_at, completed_at, error_message, run_chain_id, parent_run_id
              FROM agent_runs WHERE conversation_id = ?1 AND status = 'running' ORDER BY started_at DESC LIMIT 1",
             [conversation_id.as_str()],
-            |row| {
-                let status_str: String = row.get("status")?;
-                let started_at_str: String = row.get("started_at")?;
-                let completed_at_str: Option<String> = row.get("completed_at")?;
-
-                Ok(AgentRun {
-                    id: AgentRunId::from_string(row.get::<_, String>("id")?),
-                    conversation_id: ChatConversationId::from_string(row.get::<_, String>("conversation_id")?),
-                    status: status_str.parse().unwrap_or(AgentRunStatus::Failed),
-                    started_at: parse_datetime(&started_at_str),
-                    completed_at: completed_at_str.map(|s| parse_datetime(&s)),
-                    error_message: row.get("error_message")?,
-                })
-            },
+            |row| row_to_agent_run(row),
         );
 
         match result {
@@ -180,28 +160,13 @@ impl AgentRunRepository for SqliteAgentRunRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, conversation_id, status, started_at, completed_at, error_message
+                "SELECT id, conversation_id, status, started_at, completed_at, error_message, run_chain_id, parent_run_id
                  FROM agent_runs WHERE conversation_id = ?1 ORDER BY started_at DESC",
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let runs = stmt
-            .query_map([conversation_id.as_str()], |row| {
-                let status_str: String = row.get("status")?;
-                let started_at_str: String = row.get("started_at")?;
-                let completed_at_str: Option<String> = row.get("completed_at")?;
-
-                Ok(AgentRun {
-                    id: AgentRunId::from_string(row.get::<_, String>("id")?),
-                    conversation_id: ChatConversationId::from_string(
-                        row.get::<_, String>("conversation_id")?,
-                    ),
-                    status: status_str.parse().unwrap_or(AgentRunStatus::Failed),
-                    started_at: parse_datetime(&started_at_str),
-                    completed_at: completed_at_str.map(|s| parse_datetime(&s)),
-                    error_message: row.get("error_message")?,
-                })
-            })
+            .query_map([conversation_id.as_str()], |row| row_to_agent_run(row))
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -332,7 +297,9 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                     ar.status,
                     ar.started_at,
                     ar.completed_at,
-                    ar.error_message
+                    ar.error_message,
+                    ar.run_chain_id,
+                    ar.parent_run_id
                 FROM chat_conversations c
                 INNER JOIN agent_runs ar ON c.id = ar.conversation_id
                 WHERE c.claude_session_id IS NOT NULL
@@ -381,6 +348,8 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                     started_at: parse_datetime(&started_at_str),
                     completed_at: completed_at_str.map(|s| parse_datetime(&s)),
                     error_message: row.get("error_message")?,
+                    run_chain_id: row.get("run_chain_id")?,
+                    parent_run_id: row.get("parent_run_id")?,
                 };
 
                 Ok(InterruptedConversation {
