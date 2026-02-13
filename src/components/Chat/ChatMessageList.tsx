@@ -269,20 +269,6 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
               ) : null
             )}
 
-            {/* Scroll-to-bottom button */}
-            {!isAtBottom && messages.length > 5 && (
-              <div className="flex justify-center mt-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={scrollToBottom}
-                  className="bg-background/95 backdrop-blur shadow-md hover:bg-accent"
-                >
-                  <ChevronDown className="h-4 w-4 mr-1" />
-                  Scroll to bottom
-                </Button>
-              </div>
-            )}
           </div>
         );
       },
@@ -290,7 +276,6 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       failedRun, onDismissFailedRun,
       streamingToolCalls, streamingTasks, streamingText,
       isSending, isAgentRunning,
-      isAtBottom, scrollToBottom, messages.length,
     ]);
 
     // Memoize itemContent — no closure variables change (item comes from args,
@@ -319,7 +304,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
 
     if (isTestEnv) {
       return (
-        <div className="flex-1 overflow-hidden" data-testid="integrated-chat-messages">
+        <div className="flex-1 overflow-hidden relative" data-testid="integrated-chat-messages">
           <div className="px-3 pt-3 w-full" style={contentContainerStyle}>
             {failedRun?.errorMessage && onDismissFailedRun && (
               <FailedRunBanner
@@ -372,12 +357,26 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             )}
             <div ref={messagesEndRef} />
           </div>
+          {/* Scroll-to-bottom button — same position as production branch */}
+          {!isAtBottom && messages.length > 5 && !scrollToTimestamp && (
+            <div className="absolute bottom-4 left-0 right-0 flex justify-center z-10 pointer-events-none">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={scrollToBottom}
+                className="bg-background/95 backdrop-blur shadow-md hover:bg-accent pointer-events-auto"
+              >
+                <ChevronDown className="h-4 w-4 mr-1" />
+                Scroll to bottom
+              </Button>
+            </div>
+          )}
         </div>
       );
     }
 
     return (
-      <div className="flex-1 overflow-hidden" data-testid="integrated-chat-messages">
+      <div className="flex-1 overflow-hidden relative" data-testid="integrated-chat-messages">
         <Virtuoso
           // Key forces complete remount when conversation changes - prevents scroll animation conflicts
           key={conversationId ?? "empty"}
@@ -394,6 +393,21 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
           components={virtuosoComponents}
           itemContent={renderItem}
         />
+        {/* Scroll-to-bottom button — OUTSIDE Virtuoso to avoid Footer feedback loop.
+            isAtBottom/scrollToBottom/messages.length are NOT in virtuosoComponents deps. */}
+        {!isAtBottom && messages.length > 5 && !scrollToTimestamp && (
+          <div className="absolute bottom-4 left-0 right-0 flex justify-center z-10 pointer-events-none">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={scrollToBottom}
+              className="bg-background/95 backdrop-blur shadow-md hover:bg-accent pointer-events-auto"
+            >
+              <ChevronDown className="h-4 w-4 mr-1" />
+              Scroll to bottom
+            </Button>
+          </div>
+        )}
       </div>
     );
   }

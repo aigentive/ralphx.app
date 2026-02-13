@@ -247,6 +247,13 @@ export function IntegratedChatPanel({
   const failedRun = agentRunQuery.data?.status === "failed" ? agentRunQuery.data : null;
   const showFailedBanner = failedRun && failedRun.errorMessage && failedRun.id !== dismissedErrorId;
 
+  // Memoize failedRun prop to avoid creating a new object reference each render,
+  // which would bust ChatMessageList's virtuosoComponents useMemo via the failedRun dep.
+  const failedRunProp = useMemo(
+    () => showFailedBanner && failedRun ? { id: failedRun.id, errorMessage: failedRun.errorMessage! } : null,
+    [showFailedBanner, failedRun]
+  );
+
   const {
     messages: activeConversation,
     sendMessage,
@@ -489,7 +496,7 @@ export function IntegratedChatPanel({
               ref={virtuosoRef}
               messages={sortedMessages}
               conversationId={activeConversationId}
-              failedRun={showFailedBanner && failedRun ? { id: failedRun.id, errorMessage: failedRun.errorMessage! } : null}
+              failedRun={failedRunProp}
               onDismissFailedRun={setDismissedErrorId}
               isSending={isSending}
               isAgentRunning={isAgentRunning}

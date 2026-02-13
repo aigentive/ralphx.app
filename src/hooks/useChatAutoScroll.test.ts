@@ -625,8 +625,8 @@ describe("useChatAutoScroll", () => {
     });
   });
 
-  describe("GAP: scrollToBottom identity changes with messageCount (F3)", () => {
-    it("should return a NEW scrollToBottom reference when messageCount changes", () => {
+  describe("scrollToBottom identity across messageCount changes (F3)", () => {
+    it("should maintain stable scrollToBottom identity when messageCount changes", () => {
       const mockScrollToIndex = vi.fn();
       const virtuosoRef = {
         current: { scrollToIndex: mockScrollToIndex } as unknown as VirtuosoHandle,
@@ -645,8 +645,33 @@ describe("useChatAutoScroll", () => {
 
       const scrollRef2 = result.current.scrollToBottom;
 
-      // GAP: messageCount is in useCallback deps → new identity on change
-      expect(scrollRef1).not.toBe(scrollRef2);
+      // FIX: messageCount is now read from a ref → stable identity
+      expect(scrollRef1).toBe(scrollRef2);
+    });
+
+    it("should use the latest messageCount even with stable identity", () => {
+      const mockScrollToIndex = vi.fn();
+      const virtuosoRef = {
+        current: { scrollToIndex: mockScrollToIndex } as unknown as VirtuosoHandle,
+      };
+
+      const { result, rerender } = renderHook(
+        (props) => useChatAutoScroll(props),
+        {
+          initialProps: { messageCount: 5, virtuosoRef },
+        }
+      );
+
+      rerender({ messageCount: 10, virtuosoRef });
+
+      act(() => {
+        result.current.scrollToBottom();
+      });
+
+      // Uses latest messageCount (10-1=9) despite stable callback ref
+      expect(mockScrollToIndex).toHaveBeenCalledWith(
+        expect.objectContaining({ index: 9 })
+      );
     });
   });
 

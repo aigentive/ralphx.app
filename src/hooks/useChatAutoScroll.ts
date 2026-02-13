@@ -63,12 +63,17 @@ export function useChatAutoScroll({
 
   // Track if user is at bottom
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const isAtBottomRef = useRef(true);
 
   // Computed: should we auto-scroll?
   const shouldAutoScroll = isAtBottom && !disabled;
 
   // Virtuoso callback: update bottom state when user scrolls
+  // Dedup guard prevents re-render when value hasn't changed — breaks the
+  // atBottomStateChange → re-render → new Footer → atBottomStateChange feedback loop.
   const handleAtBottomStateChange = useCallback((atBottom: boolean) => {
+    if (isAtBottomRef.current === atBottom) return;
+    isAtBottomRef.current = atBottom;
     setIsAtBottom(atBottom);
   }, []);
 
@@ -84,20 +89,28 @@ export function useChatAutoScroll({
     [disabled]
   );
 
+  // Stable ref for messageCount — keeps scrollToBottom identity stable across
+  // messageCount changes. Without this, every new message creates a new
+  // scrollToBottom → busts virtuosoComponents useMemo → Virtuoso re-mounts.
+  const messageCountRef = useRef(messageCount);
+  messageCountRef.current = messageCount;
+
   // Manual scroll-to-bottom
   // Routes through Virtuoso scrollToIndex when available, falls back to DOM marker
   const scrollToBottom = useCallback(() => {
+    isAtBottomRef.current = true;
     setIsAtBottom(true);
-    if (virtuosoRef?.current && messageCount > 0) {
+    const count = messageCountRef.current;
+    if (virtuosoRef?.current && count > 0) {
       virtuosoRef.current.scrollToIndex({
-        index: messageCount - 1,
+        index: count - 1,
         align: "end",
         behavior: "smooth",
       });
     } else {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [virtuosoRef, messageCount]);
+  }, [virtuosoRef]);
 
   // NOTE: No useEffect auto-scroll triggers here for Virtuoso mode.
   // Virtuoso's followOutput callback handles all auto-scrolling natively.
