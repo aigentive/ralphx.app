@@ -54,7 +54,7 @@ Steps 1-3 same, but step 5 includes `--resume <claude_session_id>` flag. Prompt 
 
 ---
 
-## 2. Complete Agent Inventory (19 agents)
+## 2. Complete Agent Inventory (20 agents)
 
 | # | Agent Name (frontmatter) | Short Const | Category | Model | Trigger | Session Lifecycle |
 |---|--------------------------|-------------|----------|-------|---------|-------------------|
@@ -65,18 +65,19 @@ Steps 1-3 same, but step 5 includes `--resume <claude_session_id>` flag. Prompt 
 | 5 | `chat-task` | `SHORT_CHAT_TASK` | task | default | User chats in task detail view | per-task |
 | 6 | `chat-project` | `SHORT_CHAT_PROJECT` | project | default | User chats in project view | per-project |
 | 7 | `ralphx-worker` | `SHORT_WORKER` | execution | default | Task enters "executing" / "re_executing" | per-task-execution |
-| 8 | `ralphx-reviewer` | `SHORT_REVIEWER` | review | default | Task enters "reviewing" | per-review-cycle (fresh session each cycle) |
-| 9 | `ralphx-review-chat` | `SHORT_REVIEW_CHAT` | review | default | Task in "review_passed" (human decision) | per-review |
-| 10 | `ralphx-review-history` | `SHORT_REVIEW_HISTORY` | review | default | Task "approved" (read-only history) | per-review |
-| 11 | `ralphx-merger` | `SHORT_MERGER` | merge | default | Task enters "merging" | per-merge |
-| 12 | `ralphx-orchestrator` | `SHORT_ORCHESTRATOR` | orchestration | opus | Multi-task coordination | -- |
-| 13 | `ralphx-supervisor` | `SHORT_SUPERVISOR` | orchestration | haiku | Monitoring worker agents | -- |
-| 14 | `ralphx-qa-prep` | `SHORT_QA_PREP` | qa | sonnet | Task enters "ready" | fire-and-forget |
-| 15 | `ralphx-qa-executor` | `SHORT_QA_EXECUTOR` | qa | sonnet | QA execution phase | -- |
-| 16 | `ralphx-deep-researcher` | `SHORT_DEEP_RESEARCHER` | research | opus | Research tasks | -- |
-| 17 | `project-analyzer` | `SHORT_PROJECT_ANALYZER` | analysis | default | Project analysis (build/validation detection) | fire-and-forget |
-| 18 | `memory-capture` | `SHORT_MEMORY_CAPTURE` | memory | haiku | Post-session knowledge extraction | fire-and-forget |
-| 19 | `memory-maintainer` | `SHORT_MEMORY_MAINTAINER` | memory | default | Memory ingestion/dedup/index maintenance | -- |
+| 8 | `ralphx-coder` | `SHORT_CODER` | execution | default | Delegated coding from `ralphx-worker` | per-subtask |
+| 9 | `ralphx-reviewer` | `SHORT_REVIEWER` | review | default | Task enters "reviewing" | per-review-cycle (fresh session each cycle) |
+| 10 | `ralphx-review-chat` | `SHORT_REVIEW_CHAT` | review | default | Task in "review_passed" (human decision) | per-review |
+| 11 | `ralphx-review-history` | `SHORT_REVIEW_HISTORY` | review | default | Task "approved" (read-only history) | per-review |
+| 12 | `ralphx-merger` | `SHORT_MERGER` | merge | default | Task enters "merging" | per-merge |
+| 13 | `ralphx-orchestrator` | `SHORT_ORCHESTRATOR` | orchestration | opus | Multi-task coordination | -- |
+| 14 | `ralphx-supervisor` | `SHORT_SUPERVISOR` | orchestration | haiku | Monitoring worker agents | -- |
+| 15 | `ralphx-qa-prep` | `SHORT_QA_PREP` | qa | sonnet | Task enters "ready" | fire-and-forget |
+| 16 | `ralphx-qa-executor` | `SHORT_QA_EXECUTOR` | qa | sonnet | QA execution phase | -- |
+| 17 | `ralphx-deep-researcher` | `SHORT_DEEP_RESEARCHER` | research | opus | Research tasks | -- |
+| 18 | `project-analyzer` | `SHORT_PROJECT_ANALYZER` | analysis | default | Project analysis (build/validation detection) | fire-and-forget |
+| 19 | `memory-capture` | `SHORT_MEMORY_CAPTURE` | memory | haiku | Post-session knowledge extraction | fire-and-forget |
+| 20 | `memory-maintainer` | `SHORT_MEMORY_MAINTAINER` | memory | default | Memory ingestion/dedup/index maintenance | -- |
 
 ### Agent MCP Tool Summary
 
@@ -89,6 +90,7 @@ Steps 1-3 same, but step 5 includes `--resume <claude_session_id>` flag. Prompt 
 | chat-task | update_task, add_task_note, get_task_details, search/get/get_for_paths memories |
 | chat-project | suggest_task, list_tasks, search/get/get_for_paths memories, get_conversation_transcript |
 | ralphx-worker | start/complete/skip/fail/add_step, get_step_progress, get_task_issues, mark_issue_in_progress, mark_issue_addressed, get_project_analysis, get_task_context, get/get_version/get_related/search_project artifacts, get_review_notes, get_task_steps, search/get/get_for_paths memories |
+| ralphx-coder | start/complete/skip/fail/add_step, get_step_progress, get_task_issues, mark_issue_in_progress, mark_issue_addressed, get_project_analysis, get_task_context, get/get_version/get_related/search_project artifacts, get_review_notes, get_task_steps, search/get/get_for_paths memories |
 | ralphx-reviewer | complete_review, get_task_issues, get_step_progress, get_issue_progress, get_project_analysis, get_task_context, get/get_version/get_related/search_project artifacts, get_review_notes, get_task_steps, search/get/get_for_paths memories |
 | ralphx-review-chat | approve_task, request_task_changes, get_review_notes, get_task_context, get/get_version/get_related/search_project artifacts, get_task_steps, search/get/get_for_paths memories |
 | ralphx-review-history | get_review_notes, get_task_context, get_task_issues, get_task_steps, get_step_progress, get_issue_progress, get/get_version/get_related/search_project artifacts, search/get/get_for_paths memories |
@@ -254,6 +256,10 @@ Layer 3 (Prompt) provides behavioral guidance to reinforce tool boundaries.
 | Review | ralphx-reviewer | `ralphx:ralphx-reviewer` |
 | Merge | ralphx-merger | `ralphx:ralphx-merger` |
 
+### Delegated Execution Agent
+
+`ralphx-coder` is not selected directly by `resolve_agent()`. It is invoked by `ralphx-worker` for delegated coding scopes during task execution.
+
 ### Session Resumption Rules
 
 | Condition | Resume? | Reason |
@@ -338,6 +344,7 @@ State machine side effects use short names → `spawner_agent_name()` maps to FQ
 | `ralphx-plugin/agents/chat-task.md` | Task-scoped chat |
 | `ralphx-plugin/agents/chat-project.md` | Project-scoped chat |
 | `ralphx-plugin/agents/worker.md` | Task execution worker |
+| `ralphx-plugin/agents/coder.md` | Delegated coding worker |
 | `ralphx-plugin/agents/reviewer.md` | Code reviewer |
 | `ralphx-plugin/agents/review-chat.md` | Post-review human discussion |
 | `ralphx-plugin/agents/review-history.md` | Read-only review history |
