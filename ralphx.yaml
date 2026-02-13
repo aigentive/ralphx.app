@@ -300,7 +300,12 @@ agents:
     system_prompt_file: ralphx-plugin/agents/orchestrator.md
     model: opus
     tools: { extends: base_tools, include: [Write, Edit, Task] }
-    mcp_tools: []
+    mcp_tools: [
+        # memory read tools
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
+      ]
     preapproved_cli_tools: [Write, Edit, Bash, Task]
 
   - name: ralphx-supervisor
