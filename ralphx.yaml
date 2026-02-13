@@ -257,6 +257,51 @@ agents:
         Task(Plan),
       ]
 
+  - name: ralphx-coder
+    system_prompt_file: ralphx-plugin/agents/coder.md
+    model: sonnet
+    tools: { extends: base_tools, include: [Write, Edit, Task] }
+    mcp_tools: [
+        # step management tools
+        start_step,
+        complete_step,
+        skip_step,
+        fail_step,
+        add_step,
+        get_step_progress,
+        # task read tools
+        get_task_context,
+        get_artifact,
+        get_artifact_version,
+        get_related_artifacts,
+        search_project_artifacts,
+        get_review_notes,
+        get_task_steps,
+        get_task_issues,
+        mark_issue_in_progress,
+        mark_issue_addressed,
+        get_project_analysis,
+        # memory read tools
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
+      ]
+    preapproved_cli_tools:
+      [
+        Read,
+        Grep,
+        Glob,
+        WebFetch,
+        WebSearch,
+        Skill,
+        Write,
+        Edit,
+        Bash,
+        Task,
+        Task(Explore),
+        Task(Plan),
+      ]
+
   - name: ralphx-reviewer
     system_prompt_file: ralphx-plugin/agents/reviewer.md
     model: sonnet
