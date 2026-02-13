@@ -139,7 +139,7 @@ fn merge_policy_times_out_when_stale() {
     let decision = policy.decide_reconciliation(RecoveryContext::Merge, evidence);
     assert_eq!(
         decision.action,
-        RecoveryActionKind::Transition(InternalStatus::MergeIncomplete)
+        RecoveryActionKind::AttemptMergeAutoComplete
     );
 }
 
