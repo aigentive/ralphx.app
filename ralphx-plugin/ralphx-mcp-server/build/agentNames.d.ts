@@ -3,12 +3,14 @@
  * These match the `name:` field in each agent's frontmatter (ralphx-plugin/agents/*.md).
  */
 export declare const ORCHESTRATOR_IDEATION = "orchestrator-ideation";
+export declare const ORCHESTRATOR_IDEATION_READONLY = "orchestrator-ideation-readonly";
 export declare const CHAT_TASK = "chat-task";
 export declare const CHAT_PROJECT = "chat-project";
 export declare const REVIEWER = "ralphx-reviewer";
 export declare const REVIEW_CHAT = "ralphx-review-chat";
 export declare const REVIEW_HISTORY = "ralphx-review-history";
 export declare const WORKER = "ralphx-worker";
+export declare const CODER = "ralphx-coder";
 export declare const SESSION_NAMER = "session-namer";
 export declare const DEPENDENCY_SUGGESTER = "dependency-suggester";
 export declare const MERGER = "ralphx-merger";
