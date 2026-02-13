@@ -5929,4 +5929,259 @@ prunable gitdir file points to non-existent location
             assert!(GitService::is_rebase_in_progress(repo) == false);
         }
     }
+
+    // =========================================================================
+    // branches_have_same_content Tests
+    // =========================================================================
+
+    fn init_test_repo(dir: &Path) {
+        Command::new("git")
+            .args(["init"])
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(dir)
+            .output()
+            .unwrap();
+    }
+
+    #[test]
+    fn test_branches_have_same_content_identical() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+        init_test_repo(repo);
+
+        // Create initial commit on main
+        std::fs::write(repo.join("file.txt"), "hello\n").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create a branch pointing at the same commit (identical content)
+        Command::new("git")
+            .args(["branch", "feature"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        let result =
+            GitService::branches_have_same_content(repo, "main", "feature").unwrap();
+        assert!(result, "Branches at same commit should be identical");
+    }
+
+    #[test]
+    fn test_branches_have_same_content_diverged() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+        init_test_repo(repo);
+
+        // Create initial commit on main
+        std::fs::write(repo.join("file.txt"), "hello\n").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create feature branch and add a commit
+        Command::new("git")
+            .args(["checkout", "-b", "feature"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        std::fs::write(repo.join("file.txt"), "changed\n").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "feature change"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        let result =
+            GitService::branches_have_same_content(repo, "main", "feature").unwrap();
+        assert!(!result, "Branches with different content should not be identical");
+    }
+
+    #[test]
+    fn test_squash_merge_identical_branches_returns_success() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+        init_test_repo(repo);
+
+        // Create initial commit on main
+        std::fs::write(repo.join("file.txt"), "hello\n").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create feature branch at same commit (identical)
+        Command::new("git")
+            .args(["branch", "feature"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // try_squash_merge should return Success immediately (early return)
+        let result = GitService::try_squash_merge(
+            repo,
+            "feature",
+            "main",
+            "squash merge",
+        )
+        .unwrap();
+
+        match result {
+            MergeAttemptResult::Success { commit_sha } => {
+                assert!(!commit_sha.is_empty(), "Should return a valid SHA");
+            }
+            other => panic!(
+                "Expected MergeAttemptResult::Success for identical branches, got {:?}",
+                other
+            ),
+        }
+    }
+
+    // =========================================================================
+    // try_complete_stale_rebase Tests — has_real_conflicts
+    // =========================================================================
+
+    #[test]
+    fn test_try_complete_stale_rebase_has_real_conflicts() {
+        // Create a scenario where rebase hits real conflicts that can't be auto-resolved
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        // Initialize repo
+        Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create file with initial content
+        std::fs::write(repo.join("file.txt"), "same line\n").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create feature branch with conflicting change on same line
+        Command::new("git")
+            .args(["checkout", "-b", "feature"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        std::fs::write(repo.join("file.txt"), "feature version of line\n").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "feature change"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Switch back to main and make conflicting change on same line
+        Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        std::fs::write(repo.join("file.txt"), "main version of line\n").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "main change"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Start rebase from feature onto main — should produce real conflicts
+        Command::new("git")
+            .args(["checkout", "feature"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        let rebase_output = Command::new("git")
+            .args(["rebase", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Rebase should fail with real conflicts
+        assert!(
+            !rebase_output.status.success(),
+            "Expected rebase to fail with conflicts"
+        );
+        assert!(
+            GitService::is_rebase_in_progress(repo),
+            "Expected rebase to be in progress"
+        );
+
+        // try_complete_stale_rebase should detect the real conflicts
+        let result = GitService::try_complete_stale_rebase(repo);
+        match result {
+            StaleRebaseResult::HasConflicts { files } => {
+                assert!(!files.is_empty(), "Expected at least one conflict file");
+            }
+            other => {
+                panic!(
+                    "Expected HasConflicts, got {:?}",
+                    other
+                );
+            }
+        }
+    }
 }
