@@ -8,7 +8,11 @@ import {
   isTerminalStatus,
   isActiveStatus,
   isIdleStatus,
+  categorizeStatus,
+  getStatusCounts,
 } from "./status";
+import type { StatusCounts } from "./status";
+import type { InternalStatus } from "./status";
 
 describe("InternalStatusSchema", () => {
   it("should have exactly 24 status values", () => {
@@ -175,5 +179,65 @@ describe("Status Helper Functions", () => {
       expect(isIdleStatus("approved")).toBe(false);
       expect(isIdleStatus("qa_testing")).toBe(false);
     });
+  });
+});
+
+describe("categorizeStatus", () => {
+  it("should return 'idle' for idle statuses", () => {
+    expect(categorizeStatus("backlog")).toBe("idle");
+    expect(categorizeStatus("ready")).toBe("idle");
+    expect(categorizeStatus("blocked")).toBe("idle");
+  });
+
+  it("should return 'done' for terminal statuses", () => {
+    expect(categorizeStatus("approved")).toBe("done");
+    expect(categorizeStatus("merged")).toBe("done");
+    expect(categorizeStatus("failed")).toBe("done");
+    expect(categorizeStatus("cancelled")).toBe("done");
+    expect(categorizeStatus("stopped")).toBe("done");
+  });
+
+  it("should return 'active' for all other statuses", () => {
+    expect(categorizeStatus("executing")).toBe("active");
+    expect(categorizeStatus("re_executing")).toBe("active");
+    expect(categorizeStatus("qa_testing")).toBe("active");
+    expect(categorizeStatus("pending_review")).toBe("active");
+    expect(categorizeStatus("reviewing")).toBe("active");
+    expect(categorizeStatus("paused")).toBe("active");
+    expect(categorizeStatus("qa_passed")).toBe("active");
+    expect(categorizeStatus("merge_conflict")).toBe("active");
+  });
+});
+
+describe("getStatusCounts", () => {
+  function makeTasks(statuses: InternalStatus[]) {
+    return statuses.map((s) => ({ internalStatus: s }) as { internalStatus: InternalStatus });
+  }
+
+  it("should return zero counts for empty array", () => {
+    const counts: StatusCounts = getStatusCounts([]);
+    expect(counts).toEqual({ idle: 0, active: 0, done: 0, total: 0 });
+  });
+
+  it("should count idle tasks", () => {
+    const counts = getStatusCounts(makeTasks(["backlog", "ready", "blocked"]));
+    expect(counts).toEqual({ idle: 3, active: 0, done: 0, total: 3 });
+  });
+
+  it("should count active tasks", () => {
+    const counts = getStatusCounts(makeTasks(["executing", "qa_testing"]));
+    expect(counts).toEqual({ idle: 0, active: 2, done: 0, total: 2 });
+  });
+
+  it("should count done tasks", () => {
+    const counts = getStatusCounts(makeTasks(["merged", "approved"]));
+    expect(counts).toEqual({ idle: 0, active: 0, done: 2, total: 2 });
+  });
+
+  it("should count mixed statuses correctly", () => {
+    const counts = getStatusCounts(
+      makeTasks(["backlog", "executing", "merged", "ready", "failed"])
+    );
+    expect(counts).toEqual({ idle: 2, active: 1, done: 2, total: 5 });
   });
 });
