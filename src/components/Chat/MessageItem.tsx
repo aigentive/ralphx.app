@@ -105,7 +105,7 @@ export const MessageItem = React.memo(function MessageItem({
         <Bot className="w-3.5 h-3.5 mt-2 mr-2 shrink-0 text-white/40" />
       )}
 
-      <div className="flex flex-col gap-3 max-w-[85%] min-w-0">
+      <div className="flex flex-col gap-3 min-w-0 w-full">
         {hasContentBlocks ? (
           // Render content blocks in order (interleaved text and tool calls)
           // Skip child tool calls that belong to Task subagents (they render inside TaskToolCallCard)
