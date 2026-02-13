@@ -13,12 +13,15 @@
 
 mod chat_service_context;
 mod chat_service_errors;
+mod chat_service_handlers;
 mod chat_service_helpers;
 mod chat_service_mock;
 mod chat_service_queue;
+mod chat_service_recovery;
 mod chat_service_replay;
 mod chat_service_repository;
 mod chat_service_send_background;
+mod chat_service_merge;
 mod chat_service_streaming;
 mod chat_service_types;
 
@@ -37,15 +40,16 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
+use tokio_util::sync::CancellationToken;
 use which::which;
 
 // Re-exports from extracted modules
-pub use chat_service_errors::classify_agent_error;
+pub use chat_service_errors::{classify_agent_error, StreamError};
 pub use chat_service_helpers::{get_agent_name, get_assistant_role};
 pub use chat_service_mock::{MockChatResponse, MockChatService};
 pub use chat_service_replay::{build_rehydration_prompt, ConversationReplay, ReplayBuilder, Turn};
 pub use chat_service_streaming::process_stream_background;
-pub(crate) use chat_service_send_background::reconcile_merge_auto_complete;
+pub(crate) use chat_service_merge::reconcile_merge_auto_complete;
 pub use chat_service_types::{
     events, AgentChunkPayload, AgentErrorPayload, AgentHookPayload, AgentMessageCreatedPayload,
     AgentQueueSentPayload, AgentRunCompletedPayload, AgentRunStartedPayload,
@@ -409,6 +413,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         // 2. Create agent run record
         let agent_run = AgentRun::new(conversation_id);
         let agent_run_id = agent_run.id.as_str().to_string();
+        let run_chain_id = agent_run.run_chain_id.clone();
         self.agent_run_repo
             .create(agent_run)
             .await
@@ -446,6 +451,8 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 conversation_id: conversation_id.as_str().to_string(),
                 context_type: context_type.to_string(),
                 context_id: context_id.to_string(),
+                run_chain_id: run_chain_id.clone(),
+                parent_run_id: None,
             },
         );
 
@@ -559,7 +566,8 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
 
         let registry_worktree = working_directory.to_string_lossy().to_string();
 
-        // 7b. Register the process in the running agent registry
+        // 7b. Register the process in the running agent registry with cancellation token
+        let cancellation_token = CancellationToken::new();
         let child_pid = child.id();
         if let Some(pid) = child_pid {
             let registry_key = RunningAgentKey::new(context_type.to_string(), context_id);
@@ -570,71 +578,51 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                     conversation_id.as_str().to_string(),
                     agent_run_id.clone(),
                     Some(registry_worktree.clone()),
+                    Some(cancellation_token.clone()),
                 )
                 .await;
         }
 
-        // 8. Clone values for background task
-        let context_type_clone = context_type;
-        let context_id_clone = context_id.to_string();
-        let conversation_id_clone = conversation_id;
-        let agent_run_id_clone = agent_run_id.clone();
-        let chat_message_repo = Arc::clone(&self.chat_message_repo);
-        let conversation_repo = Arc::clone(&self.conversation_repo);
-        let agent_run_repo = Arc::clone(&self.agent_run_repo);
-        let task_repo = Arc::clone(&self.task_repo);
-        let task_dependency_repo = Arc::clone(&self.task_dependency_repo);
-        let project_repo = Arc::clone(&self.project_repo);
-        let ideation_session_repo = Arc::clone(&self.ideation_session_repo);
-        let activity_event_repo = Arc::clone(&self.activity_event_repo);
-        let message_queue = Arc::clone(&self.message_queue);
-        let running_agent_registry = Arc::clone(&self.running_agent_registry);
-        let memory_event_repo = Arc::clone(&self.memory_event_repo);
-        let execution_state = self.execution_state.clone();
-        let question_state = self.question_state.clone();
-        let plan_branch_repo = self.plan_branch_repo.clone();
-        let app_handle = self.app_handle.clone();
-        let cli_path = self.cli_path.clone();
-        let plugin_dir = self.plugin_dir.clone();
-        let working_directory_clone = working_directory;
-        let stored_session_id_clone = stored_session_id;
-        let message_clone = message.to_string();
-        let conversation_clone = conversation.clone();
-        let project_id_clone = project_id.clone();
+        // 8. Build background context and spawn
         let resolved_agent_name = chat_service_helpers::resolve_agent(&context_type, entity_status.as_deref()).to_string();
 
-        // 9. Process stream in background (extracted to separate module)
-        chat_service_send_background::spawn_send_message_background(
+        let bg_ctx = chat_service_send_background::BackgroundRunContext {
             child,
-            context_type_clone,
-            context_id_clone,
-            conversation_id_clone,
-            agent_run_id_clone,
-            stored_session_id_clone,
-            working_directory_clone,
-            cli_path,
-            plugin_dir,
-            chat_message_repo,
-            conversation_repo,
-            agent_run_repo,
-            task_repo,
-            task_dependency_repo,
-            project_repo,
-            ideation_session_repo,
-            activity_event_repo,
-            message_queue,
-            running_agent_registry,
-            execution_state,
-            question_state,
-            plan_branch_repo,
-            app_handle,
-            false, // is_retry_attempt
-            Some(message_clone),
-            Some(conversation_clone),
-            project_id_clone,
-            Some(resolved_agent_name),
-            memory_event_repo,
-        );
+            context_type,
+            context_id: context_id.to_string(),
+            conversation_id,
+            agent_run_id: agent_run_id.clone(),
+            stored_session_id,
+            working_directory,
+            cli_path: self.cli_path.clone(),
+            plugin_dir: self.plugin_dir.clone(),
+            repos: chat_service_send_background::BackgroundRunRepos {
+                chat_message_repo: Arc::clone(&self.chat_message_repo),
+                conversation_repo: Arc::clone(&self.conversation_repo),
+                agent_run_repo: Arc::clone(&self.agent_run_repo),
+                task_repo: Arc::clone(&self.task_repo),
+                task_dependency_repo: Arc::clone(&self.task_dependency_repo),
+                project_repo: Arc::clone(&self.project_repo),
+                ideation_session_repo: Arc::clone(&self.ideation_session_repo),
+                activity_event_repo: Arc::clone(&self.activity_event_repo),
+                memory_event_repo: Arc::clone(&self.memory_event_repo),
+                message_queue: Arc::clone(&self.message_queue),
+                running_agent_registry: Arc::clone(&self.running_agent_registry),
+            },
+            execution_state: self.execution_state.clone(),
+            question_state: self.question_state.clone(),
+            plan_branch_repo: self.plan_branch_repo.clone(),
+            app_handle: self.app_handle.clone(),
+            run_chain_id,
+            is_retry_attempt: false,
+            user_message_content: Some(message.to_string()),
+            conversation: Some(conversation.clone()),
+            agent_name: Some(resolved_agent_name),
+            cancellation_token,
+        };
+
+        // 9. Process stream in background (extracted to separate module)
+        chat_service_send_background::spawn_send_message_background(bg_ctx);
         tracing::debug!(
             conversation_id = conversation_id.as_str(),
             "chat_service.send_message background spawn kicked"
@@ -779,6 +767,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                         context_type: context_type.to_string(),
                         context_id: context_id.to_string(),
                         claude_session_id: None,
+                        run_chain_id: None,
                     },
                 );
 

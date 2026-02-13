@@ -5,9 +5,11 @@
 
 use async_trait::async_trait;
 use rusqlite::Connection;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
 
 use crate::domain::services::{
     kill_process, kill_worktree_processes, RunningAgentInfo, RunningAgentKey, RunningAgentRegistry,
@@ -17,11 +19,16 @@ use crate::domain::services::{
 /// Persists agent PIDs across app restarts for orphan cleanup.
 pub struct SqliteRunningAgentRegistry {
     conn: Arc<Mutex<Connection>>,
+    /// In-memory map for cancellation tokens (not persisted to SQLite)
+    tokens: Arc<Mutex<HashMap<RunningAgentKey, CancellationToken>>>,
 }
 
 impl SqliteRunningAgentRegistry {
     pub fn new(conn: Arc<Mutex<Connection>>) -> Self {
-        Self { conn }
+        Self {
+            conn,
+            tokens: Arc::new(Mutex::new(HashMap::new())),
+        }
     }
 }
 
@@ -34,6 +41,7 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
         conversation_id: String,
         agent_run_id: String,
         worktree_path: Option<String>,
+        cancellation_token: Option<CancellationToken>,
     ) {
         let conn = self.conn.lock().await;
         let started_at = chrono::Utc::now().to_rfc3339();
@@ -49,6 +57,13 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
                 worktree_path
             ],
         );
+        drop(conn);
+
+        // Store cancellation token in memory (not persisted to SQLite)
+        if let Some(token) = cancellation_token {
+            let mut tokens = self.tokens.lock().await;
+            tokens.insert(key, token);
+        }
     }
 
     async fn unregister(&self, key: &RunningAgentKey) -> Option<RunningAgentInfo> {
@@ -74,6 +89,7 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
                         agent_run_id,
                         started_at,
                         worktree_path,
+                        cancellation_token: None, // Populated below from in-memory map
                     })
                 },
             )
@@ -84,13 +100,23 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
             "DELETE FROM running_agents WHERE context_type = ?1 AND context_id = ?2",
             rusqlite::params![key.context_type, key.context_id],
         );
+        drop(conn);
 
-        info
+        // Attach cancellation token from in-memory map
+        let token = {
+            let mut tokens = self.tokens.lock().await;
+            tokens.remove(key)
+        };
+
+        info.map(|mut i| {
+            i.cancellation_token = token;
+            i
+        })
     }
 
     async fn get(&self, key: &RunningAgentKey) -> Option<RunningAgentInfo> {
         let conn = self.conn.lock().await;
-        conn.query_row(
+        let info = conn.query_row(
             "SELECT pid, conversation_id, agent_run_id, started_at, worktree_path FROM running_agents WHERE context_type = ?1 AND context_id = ?2",
             rusqlite::params![key.context_type, key.context_id],
             |row| {
@@ -108,10 +134,19 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
                     agent_run_id,
                     started_at,
                     worktree_path,
+                    cancellation_token: None,
                 })
             },
         )
-        .ok()
+        .ok();
+        drop(conn);
+
+        // Attach cancellation token from in-memory map
+        let tokens = self.tokens.lock().await;
+        info.map(|mut i| {
+            i.cancellation_token = tokens.get(key).cloned();
+            i
+        })
     }
 
     async fn is_running(&self, key: &RunningAgentKey) -> bool {
@@ -128,6 +163,10 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
         let info = self.unregister(key).await;
 
         if let Some(ref agent_info) = info {
+            // Cancel the async task before killing the process
+            if let Some(ref token) = agent_info.cancellation_token {
+                token.cancel();
+            }
             if let Some(ref path) = agent_info.worktree_path {
                 let worktree = PathBuf::from(path);
                 if worktree.exists() {
@@ -141,72 +180,93 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
     }
 
     async fn list_all(&self) -> Vec<(RunningAgentKey, RunningAgentInfo)> {
-        let conn = self.conn.lock().await;
-        let mut stmt = match conn.prepare(
-            "SELECT context_type, context_id, pid, conversation_id, agent_run_id, started_at, worktree_path FROM running_agents",
-        ) {
-            Ok(stmt) => stmt,
-            Err(_) => return Vec::new(),
+        // Scope DB operations so rusqlite types (not Send) are dropped before token lock
+        let mut results = {
+            let conn = self.conn.lock().await;
+            let mut stmt = match conn.prepare(
+                "SELECT context_type, context_id, pid, conversation_id, agent_run_id, started_at, worktree_path FROM running_agents",
+            ) {
+                Ok(stmt) => stmt,
+                Err(_) => return Vec::new(),
+            };
+
+            let mut results = Vec::new();
+            let mut rows = match stmt.query([]) {
+                Ok(rows) => rows,
+                Err(_) => return Vec::new(),
+            };
+
+            while let Ok(Some(row)) = rows.next() {
+                let context_type: String = match row.get(0) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let context_id: String = match row.get(1) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let pid: u32 = match row.get(2) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let conversation_id: String = match row.get(3) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let agent_run_id: String = match row.get(4) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let started_at_str: String = match row.get(5) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let worktree_path: Option<String> = match row.get(6) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let started_at = chrono::DateTime::parse_from_rfc3339(&started_at_str)
+                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                    .unwrap_or_else(|_| chrono::Utc::now());
+
+                results.push((
+                    RunningAgentKey {
+                        context_type,
+                        context_id,
+                    },
+                    RunningAgentInfo {
+                        pid,
+                        conversation_id,
+                        agent_run_id,
+                        started_at,
+                        worktree_path,
+                        cancellation_token: None,
+                    },
+                ));
+            }
+
+            results
         };
 
-        let mut results = Vec::new();
-        let mut rows = match stmt.query([]) {
-            Ok(rows) => rows,
-            Err(_) => return Vec::new(),
-        };
-
-        while let Ok(Some(row)) = rows.next() {
-            let context_type: String = match row.get(0) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-            let context_id: String = match row.get(1) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-            let pid: u32 = match row.get(2) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-            let conversation_id: String = match row.get(3) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-            let agent_run_id: String = match row.get(4) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-            let started_at_str: String = match row.get(5) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-            let worktree_path: Option<String> = match row.get(6) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-            let started_at = chrono::DateTime::parse_from_rfc3339(&started_at_str)
-                .map(|dt| dt.with_timezone(&chrono::Utc))
-                .unwrap_or_else(|_| chrono::Utc::now());
-
-            results.push((
-                RunningAgentKey {
-                    context_type,
-                    context_id,
-                },
-                RunningAgentInfo {
-                    pid,
-                    conversation_id,
-                    agent_run_id,
-                    started_at,
-                    worktree_path,
-                },
-            ));
+        // Attach cancellation tokens from in-memory map
+        let tokens = self.tokens.lock().await;
+        for (key, info) in &mut results {
+            info.cancellation_token = tokens.get(key).cloned();
         }
 
         results
     }
 
     async fn stop_all(&self) -> Vec<RunningAgentKey> {
+        // Cancel all tokens first
+        {
+            let mut tokens = self.tokens.lock().await;
+            for token in tokens.values() {
+                token.cancel();
+            }
+            tokens.clear();
+        }
+
         // Read all entries, kill processes, then clear table
         let entries = self.list_all().await;
 
@@ -254,6 +314,7 @@ mod tests {
                 "conv-abc".to_string(),
                 "run-xyz".to_string(),
                 Some("/tmp/worktree".to_string()),
+                None,
             )
             .await;
 
@@ -263,6 +324,33 @@ mod tests {
         assert_eq!(info.pid, 12345);
         assert_eq!(info.conversation_id, "conv-abc");
         assert_eq!(info.agent_run_id, "run-xyz");
+    }
+
+    #[tokio::test]
+    async fn test_register_with_cancellation_token() {
+        let conn = setup_conn();
+        let registry = SqliteRunningAgentRegistry::new(conn);
+        let key = RunningAgentKey::new("task", "task-cancel");
+        let token = CancellationToken::new();
+
+        registry
+            .register(
+                key.clone(),
+                99999,
+                "conv-ct".to_string(),
+                "run-ct".to_string(),
+                Some("/tmp/ct".to_string()),
+                Some(token.clone()),
+            )
+            .await;
+
+        let info = registry.get(&key).await.unwrap();
+        assert!(info.cancellation_token.is_some());
+        assert!(!token.is_cancelled());
+
+        // Unregister should return token
+        let info = registry.unregister(&key).await.unwrap();
+        assert!(info.cancellation_token.is_some());
     }
 
     #[tokio::test]
@@ -278,6 +366,7 @@ mod tests {
                 "conv-1".to_string(),
                 "run-1".to_string(),
                 Some("/tmp/worktree".to_string()),
+                None,
             )
             .await;
 
@@ -308,6 +397,7 @@ mod tests {
                 "conv-x".to_string(),
                 "run-x".to_string(),
                 Some("/tmp/worktree".to_string()),
+                None,
             )
             .await;
 
@@ -326,6 +416,7 @@ mod tests {
                 "c1".to_string(),
                 "r1".to_string(),
                 Some("/tmp/k1".to_string()),
+                None,
             )
             .await;
         registry
@@ -335,6 +426,7 @@ mod tests {
                 "c2".to_string(),
                 "r2".to_string(),
                 Some("/tmp/k2".to_string()),
+                None,
             )
             .await;
 
@@ -354,6 +446,7 @@ mod tests {
                 "c".to_string(),
                 "r".to_string(),
                 Some("/tmp/a".to_string()),
+                None,
             )
             .await;
         registry
@@ -363,6 +456,7 @@ mod tests {
                 "c".to_string(),
                 "r".to_string(),
                 Some("/tmp/b".to_string()),
+                None,
             )
             .await;
 
@@ -387,6 +481,7 @@ mod tests {
                 "conv-old".to_string(),
                 "run-old".to_string(),
                 Some("/tmp/old".to_string()),
+                None,
             )
             .await;
         registry
@@ -396,6 +491,7 @@ mod tests {
                 "conv-new".to_string(),
                 "run-new".to_string(),
                 Some("/tmp/new".to_string()),
+                None,
             )
             .await;
 

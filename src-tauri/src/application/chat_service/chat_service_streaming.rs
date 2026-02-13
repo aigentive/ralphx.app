@@ -9,14 +9,6 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::time::{timeout, Duration};
 use tracing::info;
 
-/// Maximum time to wait for a single line of stdout output before killing the agent.
-/// If no output is received for this duration, the agent is considered stuck.
-/// Increased to accommodate long-running validation commands (e.g. cargo test --lib).
-const LINE_READ_TIMEOUT: Duration = Duration::from_secs(600); // 10 minutes
-/// Maximum time to tolerate stdout traffic with no parseable stream events.
-/// Prevents "alive but no UI updates" stalls when output format drifts.
-const PARSE_STALL_TIMEOUT: Duration = Duration::from_secs(180); // 3 minutes
-
 use crate::domain::entities::{
     ActivityEvent, ActivityEventType, ChatContextType, ChatConversationId, ChatMessageId, TaskId,
 };
@@ -25,11 +17,47 @@ use crate::infrastructure::agents::claude::{
     ContentBlockItem, DiffContext, StreamEvent, StreamProcessor, ToolCall,
 };
 use crate::application::question_state::QuestionState;
+use tokio_util::sync::CancellationToken;
 
+use super::chat_service_errors::StreamError;
 use super::{
     event_context, events, has_meaningful_output, AgentChunkPayload, AgentHookPayload,
     AgentTaskCompletedPayload, AgentTaskStartedPayload, AgentToolCallPayload,
 };
+
+/// Per-context-type timeout thresholds for stream processing.
+///
+/// Different agent contexts have different expected run durations.
+/// Task execution needs generous timeouts for long-running commands,
+/// while merge/review contexts should fail-fast on stalls.
+#[derive(Debug, Clone)]
+pub struct StreamTimeoutConfig {
+    /// Max time to wait for a single line of stdout before killing the agent.
+    pub line_read_timeout: Duration,
+    /// Max time to tolerate stdout traffic with no parseable stream events.
+    pub parse_stall_timeout: Duration,
+}
+
+impl StreamTimeoutConfig {
+    /// Returns timeout thresholds appropriate for the given context type.
+    pub fn for_context(context_type: &ChatContextType) -> Self {
+        match context_type {
+            ChatContextType::Merge => Self {
+                line_read_timeout: Duration::from_secs(180),
+                parse_stall_timeout: Duration::from_secs(90),
+            },
+            ChatContextType::Review => Self {
+                line_read_timeout: Duration::from_secs(300),
+                parse_stall_timeout: Duration::from_secs(120),
+            },
+            // TaskExecution, Ideation, Task, Project — generous defaults
+            _ => Self {
+                line_read_timeout: Duration::from_secs(600),
+                parse_stall_timeout: Duration::from_secs(180),
+            },
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct StreamOutcome {
@@ -73,22 +101,26 @@ pub async fn process_stream_background<R: Runtime>(
     chat_message_repo: Option<Arc<dyn ChatMessageRepository>>,
     assistant_message_id: Option<String>,
     question_state: Option<Arc<QuestionState>>,
-) -> Result<StreamOutcome, String> {
+    cancellation_token: CancellationToken,
+) -> Result<StreamOutcome, StreamError> {
+    let timeout_config = StreamTimeoutConfig::for_context(&context_type);
     tracing::debug!(
         conversation_id = conversation_id.as_str(),
         %context_type,
         context_id,
+        line_read_timeout_secs = timeout_config.line_read_timeout.as_secs(),
+        parse_stall_timeout_secs = timeout_config.parse_stall_timeout.as_secs(),
         "process_stream_background start"
     );
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| "Failed to capture stdout".to_string())?;
+    let stdout = child.stdout.take().ok_or_else(|| StreamError::ProcessSpawnFailed {
+        command: "claude".to_string(),
+        error: "Failed to capture stdout".to_string(),
+    })?;
 
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| "Failed to capture stderr".to_string())?;
+    let stderr = child.stderr.take().ok_or_else(|| StreamError::ProcessSpawnFailed {
+        command: "claude".to_string(),
+        error: "Failed to capture stderr".to_string(),
+    })?;
 
     let event_ctx = event_context(conversation_id, &context_type, context_id);
     let conversation_id_str = event_ctx.conversation_id.clone();
@@ -138,45 +170,59 @@ pub async fn process_stream_background<R: Runtime>(
     const FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
 
     loop {
-        let line = match timeout(LINE_READ_TIMEOUT, lines.next_line()).await {
-            Ok(Ok(Some(line))) => line,
-            Ok(Ok(None)) => break, // EOF — stream ended normally
-            Ok(Err(e)) => {
-                tracing::error!(
-                    conversation_id = %conversation_id_str,
-                    error = %e,
-                    "Stream read error"
-                );
-                break;
-            }
-            Err(_) => {
-                // Timeout — no output for LINE_READ_TIMEOUT seconds
-                // Check if agent is waiting for user input on a pending question
-                if let Some(ref qs) = question_state {
-                    if qs.has_pending_for_session(context_id).await {
-                        tracing::info!(
-                            conversation_id = %conversation_id_str,
-                            context_id,
-                            lines_seen,
-                            "Stream no output but pending question exists, resetting timeout"
-                        );
-                        continue;
-                    }
-                }
-
-                tracing::warn!(
+        // Race line-read (with timeout) against cancellation token
+        let line = tokio::select! {
+            biased;
+            _ = cancellation_token.cancelled() => {
+                tracing::info!(
                     conversation_id = %conversation_id_str,
                     lines_seen,
-                    lines_parsed,
-                    "Stream timeout: no output for {} seconds, killing agent",
-                    LINE_READ_TIMEOUT.as_secs()
+                    "Stream cancelled via cancellation token, killing agent"
                 );
                 let _ = child.kill().await;
-                return Err(format!(
-                    "Agent timed out: no output for {} seconds (lines_seen={})",
-                    LINE_READ_TIMEOUT.as_secs(),
-                    lines_seen
-                ));
+                return Err(StreamError::Cancelled);
+            }
+            read_result = timeout(timeout_config.line_read_timeout, lines.next_line()) => {
+                match read_result {
+                    Ok(Ok(Some(line))) => line,
+                    Ok(Ok(None)) => break, // EOF — stream ended normally
+                    Ok(Err(e)) => {
+                        tracing::error!(
+                            conversation_id = %conversation_id_str,
+                            error = %e,
+                            "Stream read error"
+                        );
+                        break;
+                    }
+                    Err(_) => {
+                        // Timeout — no output for configured timeout seconds
+                        // Check if agent is waiting for user input on a pending question
+                        if let Some(ref qs) = question_state {
+                            if qs.has_pending_for_session(context_id).await {
+                                tracing::info!(
+                                    conversation_id = %conversation_id_str,
+                                    context_id,
+                                    lines_seen,
+                                    "Stream no output but pending question exists, resetting timeout"
+                                );
+                                continue;
+                            }
+                        }
+
+                        tracing::warn!(
+                            conversation_id = %conversation_id_str,
+                            lines_seen,
+                            lines_parsed,
+                            "Stream timeout: no output for {} seconds, killing agent",
+                            timeout_config.line_read_timeout.as_secs()
+                        );
+                        let _ = child.kill().await;
+                        return Err(StreamError::Timeout {
+                            context_type,
+                            elapsed_secs: timeout_config.line_read_timeout.as_secs(),
+                        });
+                    }
+                }
             }
         };
 
@@ -590,7 +636,7 @@ pub async fn process_stream_background<R: Runtime>(
                     }
                 }
             }
-        } else if lines_seen > 0 && last_parsed_at.elapsed() >= PARSE_STALL_TIMEOUT {
+        } else if lines_seen > 0 && last_parsed_at.elapsed() >= timeout_config.parse_stall_timeout {
             // Check if agent is waiting for user input on a pending question
             if let Some(ref qs) = question_state {
                 if qs.has_pending_for_session(context_id).await {
@@ -603,58 +649,36 @@ pub async fn process_stream_background<R: Runtime>(
                     last_parsed_at = std::time::Instant::now();
                     // Continue processing — the next timeout will be reset
                 } else {
-                    let sample = debug_lines
-                        .iter()
-                        .rev()
-                        .take(5)
-                        .cloned()
-                        .collect::<Vec<_>>()
-                        .into_iter()
-                        .rev()
-                        .collect::<Vec<_>>()
-                        .join("\n");
                     tracing::warn!(
                         conversation_id = %conversation_id_str,
                         lines_seen,
                         lines_parsed,
-                        stall_secs = PARSE_STALL_TIMEOUT.as_secs(),
+                        stall_secs = timeout_config.parse_stall_timeout.as_secs(),
                         "Stream parse stall: received stdout but no parseable events, killing agent"
                     );
                     let _ = child.kill().await;
-                    return Err(format!(
-                        "Agent stream stalled: {}s without parseable events (lines_seen={}, lines_parsed={}). Sample:\n{}",
-                        PARSE_STALL_TIMEOUT.as_secs(),
+                    return Err(StreamError::ParseStall {
+                        context_type,
+                        elapsed_secs: timeout_config.parse_stall_timeout.as_secs(),
                         lines_seen,
                         lines_parsed,
-                        sample
-                    ));
+                    });
                 }
             } else {
-                let sample = debug_lines
-                    .iter()
-                    .rev()
-                    .take(5)
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .into_iter()
-                    .rev()
-                    .collect::<Vec<_>>()
-                    .join("\n");
                 tracing::warn!(
                     conversation_id = %conversation_id_str,
                     lines_seen,
                     lines_parsed,
-                    stall_secs = PARSE_STALL_TIMEOUT.as_secs(),
+                    stall_secs = timeout_config.parse_stall_timeout.as_secs(),
                     "Stream parse stall: received stdout but no parseable events, killing agent"
                 );
                 let _ = child.kill().await;
-                return Err(format!(
-                    "Agent stream stalled: {}s without parseable events (lines_seen={}, lines_parsed={}). Sample:\n{}",
-                    PARSE_STALL_TIMEOUT.as_secs(),
+                return Err(StreamError::ParseStall {
+                    context_type,
+                    elapsed_secs: timeout_config.parse_stall_timeout.as_secs(),
                     lines_seen,
                     lines_parsed,
-                    sample
-                ));
+                });
             }
         }
 
@@ -694,7 +718,10 @@ pub async fn process_stream_background<R: Runtime>(
     let stderr_content = stderr_task.await.unwrap_or_default();
 
     // Wait for process
-    let status = child.wait().await.map_err(|e| e.to_string())?;
+    let status = child.wait().await.map_err(|e| StreamError::AgentExit {
+        exit_code: None,
+        stderr: e.to_string(),
+    })?;
     #[cfg(unix)]
     let signal = {
         use std::os::unix::process::ExitStatusExt;
@@ -765,17 +792,77 @@ pub async fn process_stream_background<R: Runtime>(
         } else {
             "Agent failed during execution".to_string()
         };
-        return Err(error_msg);
+        return Err(StreamError::AgentExit {
+            exit_code: status.code(),
+            stderr: error_msg,
+        });
     }
 
     if !status.success() && !has_output {
-        let error_msg = if stderr_content.is_empty() {
-            "Agent exited with non-zero status".to_string()
-        } else {
-            format!("Agent failed: {}", stderr_content.trim())
-        };
-        return Err(error_msg);
+        return Err(StreamError::AgentExit {
+            exit_code: status.code(),
+            stderr: stderr_content.trim().to_string(),
+        });
     }
 
     Ok(outcome)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_timeout_config_task_execution() {
+        let config = StreamTimeoutConfig::for_context(&ChatContextType::TaskExecution);
+        assert_eq!(config.line_read_timeout, Duration::from_secs(600));
+        assert_eq!(config.parse_stall_timeout, Duration::from_secs(180));
+    }
+
+    #[test]
+    fn test_timeout_config_review() {
+        let config = StreamTimeoutConfig::for_context(&ChatContextType::Review);
+        assert_eq!(config.line_read_timeout, Duration::from_secs(300));
+        assert_eq!(config.parse_stall_timeout, Duration::from_secs(120));
+    }
+
+    #[test]
+    fn test_timeout_config_merge() {
+        let config = StreamTimeoutConfig::for_context(&ChatContextType::Merge);
+        assert_eq!(config.line_read_timeout, Duration::from_secs(180));
+        assert_eq!(config.parse_stall_timeout, Duration::from_secs(90));
+    }
+
+    #[test]
+    fn test_timeout_config_ideation_uses_defaults() {
+        let config = StreamTimeoutConfig::for_context(&ChatContextType::Ideation);
+        assert_eq!(config.line_read_timeout, Duration::from_secs(600));
+        assert_eq!(config.parse_stall_timeout, Duration::from_secs(180));
+    }
+
+    #[test]
+    fn test_timeout_config_task_uses_defaults() {
+        let config = StreamTimeoutConfig::for_context(&ChatContextType::Task);
+        assert_eq!(config.line_read_timeout, Duration::from_secs(600));
+        assert_eq!(config.parse_stall_timeout, Duration::from_secs(180));
+    }
+
+    #[test]
+    fn test_timeout_config_project_uses_defaults() {
+        let config = StreamTimeoutConfig::for_context(&ChatContextType::Project);
+        assert_eq!(config.line_read_timeout, Duration::from_secs(600));
+        assert_eq!(config.parse_stall_timeout, Duration::from_secs(180));
+    }
+
+    #[test]
+    fn test_merge_shorter_than_review_shorter_than_default() {
+        let merge = StreamTimeoutConfig::for_context(&ChatContextType::Merge);
+        let review = StreamTimeoutConfig::for_context(&ChatContextType::Review);
+        let default = StreamTimeoutConfig::for_context(&ChatContextType::TaskExecution);
+
+        assert!(merge.line_read_timeout < review.line_read_timeout);
+        assert!(review.line_read_timeout < default.line_read_timeout);
+        assert!(merge.parse_stall_timeout < review.parse_stall_timeout);
+        assert!(review.parse_stall_timeout < default.parse_stall_timeout);
+    }
 }

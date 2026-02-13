@@ -71,6 +71,10 @@ pub struct AgentRunStartedPayload {
     pub conversation_id: String,
     pub context_type: String,
     pub context_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run_chain_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_run_id: Option<String>,
 }
 
 /// Payload for agent:chunk event
@@ -116,6 +120,8 @@ pub struct AgentRunCompletedPayload {
     pub context_type: String,
     pub context_id: String,
     pub claude_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run_chain_id: Option<String>,
 }
 
 /// Payload for agent:error event
