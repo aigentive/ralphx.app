@@ -136,6 +136,9 @@ export function PlanBrowser({
 
   const renderPlanItem = (plan: IdeationSession, group: SessionGroup) => {
     const progress = progressMap.get(plan.id);
+    const parentSession = plan.parentSessionId
+      ? sessions.find((s) => s.id === plan.parentSessionId)
+      : undefined;
     return (
       <PlanItem
         key={plan.id}
@@ -143,6 +146,7 @@ export function PlanBrowser({
         isSelected={plan.id === currentPlanId}
         group={group}
         {...(progress != null && { progress })}
+        {...(parentSession && { parentSession })}
         isEditing={editingPlanId === plan.id}
         editingTitle={editingTitle}
         isMenuOpen={openMenuId === plan.id}

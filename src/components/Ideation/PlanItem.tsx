@@ -23,6 +23,7 @@ import {
   RotateCcw,
   RefreshCw,
   CircleCheck,
+  CornerDownRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { IdeationSession } from "@/types/ideation";
@@ -67,6 +68,7 @@ export interface PlanItemProps {
   isSelected: boolean;
   group: SessionGroup;
   progress?: SessionProgress;
+  parentSession?: IdeationSession;
   isEditing: boolean;
   editingTitle: string;
   isMenuOpen: boolean;
@@ -88,11 +90,25 @@ export interface PlanItemProps {
 // Metadata Line
 // ============================================================================
 
-function MetadataLine({ group, plan, progress }: {
+function MetadataLine({ group, plan, progress, parentSession }: {
   group: SessionGroup;
   plan: IdeationSession;
   progress?: SessionProgress;
+  parentSession?: IdeationSession;
 }) {
+  // Show parent session indicator if this is a child session
+  if (parentSession) {
+    return (
+      <div
+        className="flex items-center gap-1 text-[10px]"
+        style={{ color: "hsl(220 10% 45%)" }}
+      >
+        <CornerDownRight className="w-2.5 h-2.5" />
+        <span className="truncate">Follow-up of: {parentSession.title || "Untitled"}</span>
+      </div>
+    );
+  }
+
   switch (group) {
     case "drafts":
       return (
@@ -288,6 +304,7 @@ export function PlanItem({
   isSelected,
   group,
   progress,
+  parentSession,
   isEditing,
   editingTitle,
   isMenuOpen,
@@ -391,7 +408,7 @@ export function PlanItem({
                   {plan.title || "Untitled Plan"}
                 </span>
               </div>
-              <MetadataLine group={group} plan={plan} {...(progress != null && { progress })} />
+              <MetadataLine group={group} plan={plan} {...(progress != null && { progress })} {...(parentSession && { parentSession })} />
             </>
           )}
         </div>
