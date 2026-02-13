@@ -733,6 +733,7 @@ pub struct RebuildArchiveSnapshotsResponse {
 }
 
 // ============================================================================
+<<<<<<< HEAD
 // Request/Response Types - Session Linking
 // ============================================================================
 
@@ -783,6 +784,29 @@ pub struct ParentContextResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plan_content: Option<String>,
     pub proposals: Vec<ParentProposalSummary>,
+=======
+// Request/Response Types - Conversation Transcript
+// ============================================================================
+
+/// Single message in a transcript
+#[derive(Debug, Serialize, Clone)]
+pub struct TranscriptMessage {
+    pub role: String,       // "user", "assistant", etc.
+    pub content: String,
+    pub created_at: String, // RFC3339 timestamp
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GetConversationTranscriptRequest {
+    pub conversation_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GetConversationTranscriptResponse {
+    pub conversation_id: String,
+    pub messages: Vec<TranscriptMessage>,
+    pub message_count: usize,
+>>>>>>> ralphx/ralphx/plan-7a9a6599
 }
 
 // ============================================================================

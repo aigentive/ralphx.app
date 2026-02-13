@@ -6,7 +6,7 @@ use tokio::sync::RwLock;
 
 use async_trait::async_trait;
 
-use crate::domain::entities::{MemoryEvent, MemoryEventId, ProcessId};
+use crate::domain::entities::{MemoryEvent, MemoryEventId, ProjectId};
 use crate::domain::repositories::MemoryEventRepository;
 use crate::error::AppResult;
 
@@ -36,7 +36,7 @@ impl MemoryEventRepository for InMemoryMemoryEventRepository {
         Ok(event)
     }
 
-    async fn get_by_project(&self, project_id: &ProcessId) -> AppResult<Vec<MemoryEvent>> {
+    async fn get_by_project(&self, project_id: &ProjectId) -> AppResult<Vec<MemoryEvent>> {
         let events = self.events.read().await;
         let mut result: Vec<_> = events
             .values()

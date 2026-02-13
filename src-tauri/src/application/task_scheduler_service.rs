@@ -25,7 +25,7 @@ use crate::domain::entities::{
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
+    IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
     TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
@@ -62,6 +62,7 @@ pub struct TaskSchedulerService<R: Runtime = tauri::Wry> {
     activity_event_repo: Arc<dyn ActivityEventRepository>,
     message_queue: Arc<MessageQueue>,
     running_agent_registry: Arc<dyn RunningAgentRegistry>,
+    memory_event_repo: Arc<dyn MemoryEventRepository>,
     app_handle: Option<AppHandle<R>>,
     /// Optional plan branch repository for feature branch resolution.
     plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
@@ -88,6 +89,7 @@ impl<R: Runtime> TaskSchedulerService<R> {
         activity_event_repo: Arc<dyn ActivityEventRepository>,
         message_queue: Arc<MessageQueue>,
         running_agent_registry: Arc<dyn RunningAgentRegistry>,
+        memory_event_repo: Arc<dyn MemoryEventRepository>,
         app_handle: Option<AppHandle<R>>,
     ) -> Self {
         Self {
@@ -102,6 +104,7 @@ impl<R: Runtime> TaskSchedulerService<R> {
             activity_event_repo,
             message_queue,
             running_agent_registry,
+            memory_event_repo,
             app_handle,
             plan_branch_repo: None,
             self_ref: Mutex::new(None),
@@ -247,6 +250,7 @@ impl<R: Runtime> TaskSchedulerService<R> {
             Arc::clone(&self.running_agent_registry),
             Arc::clone(&self.execution_state),
             self.app_handle.clone(),
+            Arc::clone(&self.memory_event_repo),
         );
         if let Some(ref repo) = self.plan_branch_repo {
             service = service.with_plan_branch_repo(Arc::clone(repo));
@@ -520,6 +524,7 @@ mod tests {
             Arc::clone(&app_state.activity_event_repo),
             Arc::clone(&app_state.message_queue),
             Arc::clone(&app_state.running_agent_registry),
+            Arc::clone(&app_state.memory_event_repo),
             None,
         )
     }

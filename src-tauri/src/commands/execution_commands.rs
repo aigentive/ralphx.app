@@ -536,6 +536,7 @@ pub async fn pause_execution(
         Arc::clone(&app_state.running_agent_registry),
         Arc::clone(&execution_state),
         app_state.app_handle.clone(),
+        Arc::clone(&app_state.memory_event_repo),
     )
     .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
 
@@ -654,6 +655,7 @@ pub async fn resume_execution(
         Arc::clone(&app_state.running_agent_registry),
         Arc::clone(&execution_state),
         app_state.app_handle.clone(),
+        Arc::clone(&app_state.memory_event_repo),
     )
     .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
 
@@ -790,6 +792,7 @@ pub async fn resume_execution(
             Arc::clone(&app_state.activity_event_repo),
             Arc::clone(&app_state.message_queue),
             Arc::clone(&app_state.running_agent_registry),
+            Arc::clone(&app_state.memory_event_repo),
             app_state.app_handle.clone(),
         )
         .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)),
@@ -857,6 +860,7 @@ pub async fn stop_execution(
         Arc::clone(&app_state.running_agent_registry),
         Arc::clone(&execution_state),
         app_state.app_handle.clone(),
+        Arc::clone(&app_state.memory_event_repo),
     )
     .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
 
@@ -965,6 +969,7 @@ pub async fn recover_task_execution(
             Arc::clone(&app_state.running_agent_registry),
             Arc::clone(&execution_state),
             app_state.app_handle.clone(),
+            Arc::clone(&app_state.memory_event_repo),
         )
         .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)),
     );
@@ -979,6 +984,7 @@ pub async fn recover_task_execution(
         Arc::clone(&app_state.activity_event_repo),
         Arc::clone(&app_state.message_queue),
         Arc::clone(&app_state.running_agent_registry),
+        Arc::clone(&app_state.memory_event_repo),
         Arc::clone(&app_state.agent_run_repo),
         transition_service,
         Arc::clone(&execution_state),
@@ -1019,6 +1025,7 @@ pub async fn resolve_recovery_prompt(
             Arc::clone(&app_state.running_agent_registry),
             Arc::clone(&execution_state),
             app_state.app_handle.clone(),
+            Arc::clone(&app_state.memory_event_repo),
         )
         .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)),
     );
@@ -1033,6 +1040,7 @@ pub async fn resolve_recovery_prompt(
         Arc::clone(&app_state.activity_event_repo),
         Arc::clone(&app_state.message_queue),
         Arc::clone(&app_state.running_agent_registry),
+        Arc::clone(&app_state.memory_event_repo),
         Arc::clone(&app_state.agent_run_repo),
         transition_service,
         Arc::clone(&execution_state),
@@ -1084,6 +1092,7 @@ pub async fn set_max_concurrent(
                 Arc::clone(&app_state.activity_event_repo),
                 Arc::clone(&app_state.message_queue),
                 Arc::clone(&app_state.running_agent_registry),
+                Arc::clone(&app_state.memory_event_repo),
                 app_state.app_handle.clone(),
             )
             .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)),
@@ -1175,6 +1184,7 @@ pub async fn update_execution_settings(
                     Arc::clone(&app_state.activity_event_repo),
                     Arc::clone(&app_state.message_queue),
                     Arc::clone(&app_state.running_agent_registry),
+                    Arc::clone(&app_state.memory_event_repo),
                     app_state.app_handle.clone(),
                 )
                 .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)),
@@ -1358,6 +1368,7 @@ pub async fn update_global_execution_settings(
                 Arc::clone(&app_state.activity_event_repo),
                 Arc::clone(&app_state.message_queue),
                 Arc::clone(&app_state.running_agent_registry),
+                Arc::clone(&app_state.memory_event_repo),
                 app_state.app_handle.clone(),
             )
             .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)),
@@ -2299,6 +2310,7 @@ mod tests {
             Arc::clone(&app_state.running_agent_registry),
             Arc::clone(&execution_state),
             None,
+            Arc::clone(&app_state.memory_event_repo),
         );
 
         // Pause execution (as stop_execution would)
@@ -2389,6 +2401,7 @@ mod tests {
             Arc::clone(&app_state.running_agent_registry),
             Arc::clone(&execution_state),
             None,
+            Arc::clone(&app_state.memory_event_repo),
         );
 
         // Pause execution (as pause_execution would)
@@ -2480,6 +2493,7 @@ mod tests {
             Arc::clone(&app_state.running_agent_registry),
             Arc::clone(&execution_state),
             None,
+            Arc::clone(&app_state.memory_event_repo),
         );
 
         // Execute pause: pause and transition all agent-active tasks to Paused
@@ -2636,6 +2650,7 @@ mod tests {
             Arc::clone(&app_state.running_agent_registry),
             Arc::clone(&execution_state),
             None,
+            Arc::clone(&app_state.memory_event_repo),
         );
 
         // Execute stop: pause and transition all agent-active tasks to Stopped
@@ -2703,6 +2718,7 @@ mod tests {
             Arc::clone(&app_state.running_agent_registry),
             Arc::clone(&execution_state),
             None,
+            Arc::clone(&app_state.memory_event_repo),
         );
 
         // Transition task from Executing to Failed (simulating task cancellation)
@@ -2770,6 +2786,7 @@ mod tests {
             Arc::clone(&app_state.running_agent_registry),
             Arc::clone(&execution_state),
             None,
+            Arc::clone(&app_state.memory_event_repo),
         );
 
         // Transition each task to Failed (all should decrement running count)
@@ -2963,6 +2980,7 @@ mod tests {
             Arc::clone(&app_state.running_agent_registry),
             Arc::clone(&execution_state),
             None,
+            Arc::clone(&app_state.memory_event_repo),
         );
 
         // Pause: transition Executing -> Paused (creates status history entry)
@@ -3045,6 +3063,7 @@ mod tests {
             Arc::clone(&app_state.running_agent_registry),
             Arc::clone(&execution_state),
             None,
+            Arc::clone(&app_state.memory_event_repo),
         );
 
         // Stop: transition Executing -> Stopped
@@ -3108,6 +3127,7 @@ mod tests {
             Arc::clone(&app_state.running_agent_registry),
             Arc::clone(&execution_state),
             None,
+            Arc::clone(&app_state.memory_event_repo),
         );
 
         // Create tasks in different agent-active states
@@ -3210,6 +3230,7 @@ mod tests {
             Arc::clone(&app_state.running_agent_registry),
             Arc::clone(&execution_state),
             None,
+            Arc::clone(&app_state.memory_event_repo),
         );
 
         // Create two Executing tasks
@@ -3612,6 +3633,7 @@ mod tests {
             Arc::clone(&app_state.activity_event_repo),
             Arc::clone(&app_state.message_queue),
             Arc::clone(&app_state.running_agent_registry),
+            Arc::clone(&app_state.memory_event_repo),
             None,
         ));
         scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
@@ -3664,6 +3686,7 @@ mod tests {
             Arc::clone(&app_state.activity_event_repo),
             Arc::clone(&app_state.message_queue),
             Arc::clone(&app_state.running_agent_registry),
+            Arc::clone(&app_state.memory_event_repo),
             None,
         ));
         scheduler2.set_self_ref(Arc::clone(&scheduler2) as Arc<dyn TaskScheduler>);

@@ -3,8 +3,11 @@
 // Triggers background memory-maintainer and memory-capture agents
 // after agent run completion based on context type and project settings.
 
-use crate::domain::entities::{ChatContextType, ChatConversationId, ProjectId};
+use crate::domain::entities::{ChatContextType, ChatConversationId, ProjectId, MemoryEvent, MemoryActorType};
+use crate::domain::repositories::MemoryEventRepository;
+use crate::infrastructure::agents::claude::build_spawnable_command;
 use std::path::Path;
+use std::sync::Arc;
 
 /// Memory category derived from chat context type
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -138,6 +141,8 @@ pub async fn trigger_memory_pipelines(
     cli_path: &Path,
     plugin_dir: &Path,
     working_directory: &Path,
+    settings: Option<ProjectMemorySettings>,
+    memory_event_repo: Option<Arc<dyn MemoryEventRepository>>,
 ) {
     tracing::debug!(
         %context_type,
@@ -154,8 +159,8 @@ pub async fn trigger_memory_pipelines(
         }
     };
 
-    // Load project memory settings (stub - will be replaced with repository call)
-    let settings = load_project_memory_settings(proj_id).await;
+    // Use provided settings or defaults
+    let settings = settings.unwrap_or_default();
 
     let Some((should_maintain, should_capture)) =
         resolve_pipelines(context_type, project_id, agent_name, &settings)
@@ -183,6 +188,7 @@ pub async fn trigger_memory_pipelines(
         let cli = cli_path.to_path_buf();
         let plugin = plugin_dir.to_path_buf();
         let wd = working_directory.to_path_buf();
+        let event_repo = memory_event_repo.clone();
 
         spawn_tasks.push(tokio::spawn(async move {
             if let Err(e) = spawn_memory_maintainer(
@@ -201,7 +207,27 @@ pub async fn trigger_memory_pipelines(
                     conversation_id = conv_id.as_str(),
                     "trigger_memory_pipelines: failed to spawn memory-maintainer"
                 );
-                // TODO: Log to memory_events table when available
+                // Log spawn failure to memory_events table
+                if let Some(repo) = event_repo {
+                    let event = MemoryEvent::new(
+                        proj.clone(),
+                        "spawn_failed",
+                        MemoryActorType::System,
+                        serde_json::json!({
+                            "agent": "memory-maintainer",
+                            "conversation_id": conv_id.as_str(),
+                            "context_type": ctx.to_string(),
+                            "context_id": &ctx_id,
+                            "error": e.to_string(),
+                        }),
+                    );
+                    if let Err(log_err) = repo.create(event).await {
+                        tracing::warn!(
+                            error = %log_err,
+                            "trigger_memory_pipelines: failed to log spawn failure to memory_events"
+                        );
+                    }
+                }
             }
         }));
     }
@@ -214,6 +240,7 @@ pub async fn trigger_memory_pipelines(
         let cli = cli_path.to_path_buf();
         let plugin = plugin_dir.to_path_buf();
         let wd = working_directory.to_path_buf();
+        let event_repo = memory_event_repo.clone();
 
         spawn_tasks.push(tokio::spawn(async move {
             if let Err(e) = spawn_memory_capture(
@@ -232,7 +259,27 @@ pub async fn trigger_memory_pipelines(
                     conversation_id = conv_id.as_str(),
                     "trigger_memory_pipelines: failed to spawn memory-capture"
                 );
-                // TODO: Log to memory_events table when available
+                // Log spawn failure to memory_events table
+                if let Some(repo) = event_repo {
+                    let event = MemoryEvent::new(
+                        proj.clone(),
+                        "spawn_failed",
+                        MemoryActorType::System,
+                        serde_json::json!({
+                            "agent": "memory-capture",
+                            "conversation_id": conv_id.as_str(),
+                            "context_type": ctx.to_string(),
+                            "context_id": &ctx_id,
+                            "error": e.to_string(),
+                        }),
+                    );
+                    if let Err(log_err) = repo.create(event).await {
+                        tracing::warn!(
+                            error = %log_err,
+                            "trigger_memory_pipelines: failed to log spawn failure to memory_events"
+                        );
+                    }
+                }
             }
         }));
     }
@@ -248,79 +295,110 @@ pub async fn trigger_memory_pipelines(
     // Tasks will log their own errors
 }
 
-/// Load project memory settings (stub implementation)
+/// Spawn memory-maintainer agent
 ///
-/// TODO: Replace with repository-backed implementation when memory_settings repository is available
-async fn load_project_memory_settings(_project_id: &ProjectId) -> ProjectMemorySettings {
-    // For now, return defaults
-    // When repository is available:
-    // project_memory_settings_repo.get_by_project_id(project_id).await
-    //     .unwrap_or_else(|_| ProjectMemorySettings::default())
-    ProjectMemorySettings::default()
-}
-
-/// Spawn memory-maintainer agent (stub implementation)
-///
-/// TODO: Implement actual spawning logic using Claude CLI with --agent flag
+/// Spawns the memory-maintainer agent with appropriate context and environment variables.
 async fn spawn_memory_maintainer(
     conversation_id: &ChatConversationId,
     context_type: ChatContextType,
     context_id: &str,
     project_id: &ProjectId,
-    _cli_path: &Path,
-    _plugin_dir: &Path,
-    _working_directory: &Path,
+    cli_path: &Path,
+    plugin_dir: &Path,
+    working_directory: &Path,
 ) -> Result<(), String> {
     tracing::info!(
         conversation_id = conversation_id.as_str(),
         %context_type,
         context_id = %context_id,
         project_id = project_id.as_str(),
-        "spawn_memory_maintainer: would spawn agent (not implemented yet)"
+        "spawn_memory_maintainer: spawning agent"
     );
 
-    // TODO: Build and spawn Claude CLI command with:
-    // - --agent memory-maintainer
-    // - --plugin-dir <plugin_dir>
-    // - Environment variables:
-    //   - RALPHX_CONVERSATION_ID=<conversation_id>
-    //   - RALPHX_CONTEXT_TYPE=<context_type>
-    //   - RALPHX_CONTEXT_ID=<context_id>
-    //   - RALPHX_PROJECT_ID=<project_id>
-    // - Working directory: <working_directory>
+    let conv_id_str = conversation_id.as_str();
+    let proj_id_str = project_id.as_str();
+    let context_type_str = format!("{}", context_type);
+
+    let prompt = format!(
+        "Analyze and maintain memory rules for conversation_id='{}' in project_id='{}' (context: {}, {})",
+        conv_id_str,
+        proj_id_str,
+        context_type,
+        context_id
+    );
+
+    let mut cmd = build_spawnable_command(
+        cli_path,
+        plugin_dir,
+        &prompt,
+        Some("ralphx:memory-maintainer"),
+        None,
+        working_directory,
+    )?;
+
+    cmd.env("RALPHX_CONVERSATION_ID", &conv_id_str);
+    cmd.env("RALPHX_CONTEXT_TYPE", &context_type_str);
+    cmd.env("RALPHX_CONTEXT_ID", context_id);
+    cmd.env("RALPHX_PROJECT_ID", proj_id_str);
+
+    // Spawn and ignore the child process (fire-and-forget)
+    let _child = cmd.spawn().await.map_err(|e| {
+        format!("Failed to spawn memory-maintainer: {}", e)
+    })?;
 
     Ok(())
 }
 
-/// Spawn memory-capture agent (stub implementation)
+/// Spawn memory-capture agent
 ///
-/// TODO: Implement actual spawning logic using Claude CLI with --agent flag
+/// Spawns the memory-capture agent with appropriate context and environment variables.
 async fn spawn_memory_capture(
     conversation_id: &ChatConversationId,
     context_type: ChatContextType,
     context_id: &str,
     project_id: &ProjectId,
-    _cli_path: &Path,
-    _plugin_dir: &Path,
-    _working_directory: &Path,
+    cli_path: &Path,
+    plugin_dir: &Path,
+    working_directory: &Path,
 ) -> Result<(), String> {
     tracing::info!(
         conversation_id = conversation_id.as_str(),
         %context_type,
         context_id = %context_id,
         project_id = project_id.as_str(),
-        "spawn_memory_capture: would spawn agent (not implemented yet)"
+        "spawn_memory_capture: spawning agent"
     );
 
-    // TODO: Build and spawn Claude CLI command with:
-    // - --agent memory-capture
-    // - --plugin-dir <plugin_dir>
-    // - Environment variables:
-    //   - RALPHX_CONVERSATION_ID=<conversation_id>
-    //   - RALPHX_CONTEXT_TYPE=<context_type>
-    //   - RALPHX_CONTEXT_ID=<context_id>
-    //   - RALPHX_PROJECT_ID=<project_id>
-    // - Working directory: <working_directory>
+    let conv_id_str = conversation_id.as_str();
+    let proj_id_str = project_id.as_str();
+    let context_type_str = format!("{}", context_type);
+
+    let prompt = format!(
+        "Capture learning from conversation_id='{}' in project_id='{}' (context: {}, {})",
+        conv_id_str,
+        proj_id_str,
+        context_type,
+        context_id
+    );
+
+    let mut cmd = build_spawnable_command(
+        cli_path,
+        plugin_dir,
+        &prompt,
+        Some("ralphx:memory-capture"),
+        None,
+        working_directory,
+    )?;
+
+    cmd.env("RALPHX_CONVERSATION_ID", &conv_id_str);
+    cmd.env("RALPHX_CONTEXT_TYPE", &context_type_str);
+    cmd.env("RALPHX_CONTEXT_ID", context_id);
+    cmd.env("RALPHX_PROJECT_ID", proj_id_str);
+
+    // Spawn and ignore the child process (fire-and-forget)
+    let _child = cmd.spawn().await.map_err(|e| {
+        format!("Failed to spawn memory-capture: {}", e)
+    })?;
 
     Ok(())
 }
@@ -392,15 +470,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_load_project_memory_settings_returns_defaults() {
-        let project_id = ProjectId::from_string("test-project".to_string());
-        let settings = load_project_memory_settings(&project_id).await;
-        assert!(settings.enabled);
-        assert_eq!(settings.maintenance_categories.len(), 3);
-        assert_eq!(settings.capture_categories.len(), 3);
-    }
-
-    #[tokio::test]
     async fn test_trigger_memory_pipelines_no_project_id() {
         // Should return early without panicking
         let conv_id = ChatConversationId::from_string("conv-123".to_string());
@@ -417,6 +486,8 @@ mod tests {
             &cli_path,
             &plugin_dir,
             &wd,
+            None,
+            None,
         )
         .await;
         // Test passes if no panic
@@ -440,6 +511,8 @@ mod tests {
             &cli_path,
             &plugin_dir,
             &wd,
+            None,
+            None,
         )
         .await;
         // Test passes if no spawn happens (verified via logs in real scenario)
@@ -463,13 +536,15 @@ mod tests {
             &cli_path,
             &plugin_dir,
             &wd,
+            None,
+            None,
         )
         .await;
         // Test passes if no spawn happens
     }
 
     #[tokio::test]
-    async fn test_spawn_memory_maintainer_succeeds() {
+    async fn test_spawn_memory_maintainer_fails_in_test_env() {
         let project_id = ProjectId::from_string("proj-123".to_string());
         let conv_id = ChatConversationId::from_string("conv-123".to_string());
         let cli_path = PathBuf::from("/usr/bin/claude");
@@ -487,11 +562,12 @@ mod tests {
         )
         .await;
 
-        assert!(result.is_ok());
+        // In test environment, build_spawnable_command returns Err due to ensure_claude_spawn_allowed()
+        assert!(result.is_err());
     }
 
     #[tokio::test]
-    async fn test_spawn_memory_capture_succeeds() {
+    async fn test_spawn_memory_capture_fails_in_test_env() {
         let project_id = ProjectId::from_string("proj-123".to_string());
         let conv_id = ChatConversationId::from_string("conv-123".to_string());
         let cli_path = PathBuf::from("/usr/bin/claude");
@@ -509,7 +585,8 @@ mod tests {
         )
         .await;
 
-        assert!(result.is_ok());
+        // In test environment, build_spawnable_command returns Err due to ensure_claude_spawn_allowed()
+        assert!(result.is_err());
     }
 
     #[test]
