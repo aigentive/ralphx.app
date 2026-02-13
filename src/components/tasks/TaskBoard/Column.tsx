@@ -57,6 +57,10 @@ interface ColumnProps {
   isLast?: boolean;
   /** Optional ideation session ID to filter tasks by plan */
   ideationSessionId?: string | null | undefined;
+  /** Whether this column is collapsed */
+  isCollapsed?: boolean;
+  /** Callback to toggle collapse state */
+  onToggleCollapse?: () => void;
 }
 
 function InvalidDropIcon() {
@@ -97,7 +101,7 @@ function isCompletedDoneGroup(group: StateGroup): boolean {
   );
 }
 
-export function Column({ column, projectId, showArchived, showMergeTasks, isOver, isInvalid, onTaskSelect, hiddenTaskId, searchTasks, matchCount, groups, isLast = false, ideationSessionId }: ColumnProps) {
+export function Column({ column, projectId, showArchived, showMergeTasks, isOver, isInvalid, onTaskSelect, hiddenTaskId, searchTasks, matchCount, groups, isLast = false, ideationSessionId, isCollapsed = false, onToggleCollapse }: ColumnProps) {
   const { setNodeRef } = useDroppable({ id: column.id });
   const sentinelRef = useRef<HTMLDivElement>(null);
   const { active } = useDndContext();
@@ -306,6 +310,87 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
     !isDragging &&
     (column.id === "draft" || column.id === "backlog");
 
+  // Keyboard handler for collapsed column (Enter/Space to expand)
+  const handleCollapsedKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onToggleCollapse?.();
+      }
+    },
+    [onToggleCollapse]
+  );
+
+  // Collapsed rendering: 44px strip with vertical title, count badge, click-to-expand
+  if (isCollapsed) {
+    return (
+      <div
+        ref={setNodeRef}
+        data-testid={`column-${column.id}`}
+        role="button"
+        tabIndex={0}
+        aria-expanded={false}
+        aria-label={`${column.name} column, ${tasks.length} tasks. Click to expand`}
+        onClick={onToggleCollapse}
+        onKeyDown={handleCollapsedKeyDown}
+        className="flex-shrink-0 flex flex-col items-center h-full cursor-pointer"
+        style={{
+          width: "44px",
+          minWidth: "44px",
+          maxWidth: "44px",
+          paddingLeft: "6px",
+          paddingRight: "6px",
+          paddingTop: "8px",
+          scrollSnapAlign: "start",
+          transition: "width 200ms ease, min-width 200ms ease, max-width 200ms ease",
+          ...(!isLast && { borderRight: "1px solid hsla(220 10% 100% / 0.06)" }),
+          // Drop zone highlight when dragging over collapsed column
+          ...(isOver && !isInvalid && {
+            background: "hsla(220 60% 50% / 0.1)",
+            borderRadius: "10px",
+          }),
+          ...(isOver && isInvalid && {
+            background: "hsla(0 70% 50% / 0.08)",
+            borderRadius: "10px",
+          }),
+        }}
+      >
+        {/* Vertical column title - top-to-bottom reading */}
+        <span
+          className="select-none"
+          style={{
+            writingMode: "vertical-rl",
+            transform: "rotate(180deg)",
+            fontSize: "11px",
+            fontWeight: 600,
+            color: "hsl(220 10% 50%)",
+            textTransform: "uppercase",
+            letterSpacing: "0.02em",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            maxHeight: "calc(100% - 40px)",
+          }}
+        >
+          {column.name}
+        </span>
+
+        {/* Task count badge */}
+        <span
+          className="mt-2"
+          style={{
+            fontSize: "10px",
+            fontWeight: 500,
+            color: "hsl(220 10% 40%)",
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {tasks.length}
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div
       data-testid={`column-${column.id}`}
@@ -317,6 +402,7 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
         scrollSnapAlign: "start",
         paddingLeft: "12px",
         paddingRight: "12px",
+        transition: "width 200ms ease, min-width 200ms ease, max-width 200ms ease",
         ...(!isLast && { borderRight: "1px solid hsla(220 10% 100% / 0.06)" }),
       }}
     >

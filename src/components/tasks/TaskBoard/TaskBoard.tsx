@@ -38,6 +38,8 @@ import type { SelectionSource } from "@/api/plan";
 import { infiniteTaskKeys } from "@/hooks/useInfiniteTasksQuery";
 import { defaultWorkflow, type WorkflowColumn } from "@/types/workflow";
 import type { Task, TaskListResponse, InternalStatus } from "@/types/task";
+import { useColumnTaskCounts } from "./useColumnTaskCounts";
+import { useColumnCollapse } from "./useColumnCollapse";
 
 /**
  * Get all statuses for a column from its groups, or fallback to mapsTo
@@ -94,6 +96,19 @@ export function TaskBoard({
   const kanbanChatVisible = useUiStore((s) => s.chatVisibleByView.kanban);
   const setChatVisible = useUiStore((s) => s.setChatVisible);
   const previousActivePlanRef = useRef<string | null>(activePlanId);
+
+  // Column collapse: reactive task counts and auto-collapse/expand logic
+  const taskCounts = useColumnTaskCounts(
+    defaultWorkflow.columns,
+    projectId,
+    showArchived,
+    ideationSessionId,
+  );
+  const { isCollapsed, toggleCollapse, expandColumn } = useColumnCollapse(
+    defaultWorkflow.columns,
+    taskCounts,
+    ideationSessionId,
+  );
 
   // Auto-open Kanban chat when switching to a different active plan.
   useEffect(() => {
@@ -382,6 +397,11 @@ export function TaskBoard({
       setMovingTaskId(taskId);
     }
 
+    // Auto-expand target column if it was collapsed
+    if (targetColumnId && isCollapsed(targetColumnId)) {
+      expandColumn(targetColumnId);
+    }
+
     // Trigger optimistic update FIRST (onMutate is synchronous)
     onDragEnd(event);
     setActiveTask(null);
@@ -571,6 +591,9 @@ export function TaskBoard({
                 );
                 const groups = workflowColumn?.groups;
 
+                // Freeze collapse state during active drag (don't collapse/expand mid-drag)
+                const columnCollapsed = !activeTask && isCollapsed(column.id);
+
                 return (
                   <Column
                     key={column.id}
@@ -588,6 +611,8 @@ export function TaskBoard({
                     {...(groups && { groups })}
                     isLast={index === displayColumns.length - 1}
                     ideationSessionId={ideationSessionId}
+                    isCollapsed={columnCollapsed}
+                    onToggleCollapse={() => toggleCollapse(column.id)}
                   />
                 );
               })}
