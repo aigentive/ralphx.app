@@ -233,8 +233,12 @@ export function ChatInput({
       questionMode?.onMatchedOptions([]);
     };
 
-    // If agent is running, queue the message instead of sending
-    if (isAgentRunning && onQueue) {
+    if (questionMode) {
+      // Question answers must be delivered immediately — never queue
+      clearInput();
+      await onSend(trimmedValue);
+    } else if (isAgentRunning && onQueue) {
+      // Agent running, no question — queue the message
       onQueue(trimmedValue);
       clearInput();
     } else {
