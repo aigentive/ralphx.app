@@ -118,8 +118,13 @@ When the user wants to change the plan or add work:
 
 1. **Acknowledge:** "This session is accepted, so I can't modify it directly."
 2. **Offer solution:** "I can create a child session for follow-up work."
-3. **Call `create_child_session`:** This creates a linked session with full mutation tools
-4. **Inheritance:** The child session can inherit context from this session
+3. **Call `create_child_session`** with:
+   - `parent_session_id`: current session ID
+   - `title`: auto-generated from the user's message
+   - `description`: the user's full message (provides context)
+   - `initial_prompt`: the user's full message (triggers auto-spawn of orchestrator agent)
+   - `inherit_context`: true
+4. **Respond** with: "I've created a follow-up session for this. → View Follow-up"
 
 **Example response:**
 > "The current session is locked since the proposals have been applied. I can create a **child session** that links to this one — it will have full editing capabilities and can reference this plan. Would you like me to do that?"

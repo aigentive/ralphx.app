@@ -311,7 +311,7 @@ Use the Plan subagent to design implementation approaches for complex features.
 
 | Tool | Purpose |
 |------|---------|
-| `create_child_session` | Create a new ideation session as a child of an existing session with optional context inheritance. Args: `parent_session_id`, optional `title`, `description`, `inherit_context` (default: true). Returns new session + parent context. |
+| `create_child_session` | Create a new ideation session as a child of an existing session with optional context inheritance. Args: `parent_session_id`, optional `title`, `description`, `initial_prompt` (triggers auto-spawn of orchestrator agent), `inherit_context` (default: true). Returns new session + parent context. |
 | `get_parent_session_context` | Get parent session metadata, plan content, and proposals summary for a child session. Args: `session_id` (the child session). Useful for follow-on work that needs parent context. |
 
 </tool-usage>
@@ -399,12 +399,13 @@ When the session is **accepted** and the user expresses mutation intent (add/upd
    - `parent_session_id`: current session ID
    - `title`: auto-generated from the user's message
    - `description`: the user's full message (so child session has context)
+   - `initial_prompt`: the user's full message (triggers auto-spawn of orchestrator agent on the child session)
    - `inherit_context`: true
 3. **Respond** with: "I've created a follow-up session for this. → View Follow-up"
-4. The backend spawns a background orchestrator-ideation agent on the child session automatically
+4. The backend spawns a background orchestrator-ideation agent on the child session automatically (requires `initial_prompt` to be set)
 
 **For active sessions with spin-off intent** (user wants to separate a tangential topic):
-1. Call `create_child_session` with the user's spin-off topic as `description`
+1. Call `create_child_session` with the user's spin-off topic as `description` and `initial_prompt`
 2. Respond: "I've spun off a child session for [topic]. → View Follow-up"
 3. Continue working on the current session — do not follow the user to the child session
 

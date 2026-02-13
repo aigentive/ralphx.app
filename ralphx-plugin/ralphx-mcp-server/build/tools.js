@@ -308,6 +308,10 @@ export const ALL_TOOLS = [
                     type: "boolean",
                     description: "If true, inherit parent session's plan and proposals context. Default: true.",
                 },
+                initial_prompt: {
+                    type: "string",
+                    description: "Optional initial prompt/message to forward to the child session's agent. This is the user's message that triggered the child session creation.",
+                },
             },
             required: ["parent_session_id"],
         },

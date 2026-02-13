@@ -5,12 +5,14 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use std::sync::Arc;
 use tauri::Emitter;
 use tracing::{error, info};
 
+use crate::application::chat_service::{ChatService, ClaudeChatService};
 use crate::domain::entities::{
-    IdeationSession, IdeationSessionId, IdeationSessionStatus, SessionLink, SessionRelationship,
-    SpawnOrchestratorJob,
+    ChatContextType, IdeationSession, IdeationSessionId, IdeationSessionStatus, SessionLink,
+    SessionRelationship, SpawnOrchestratorJob,
 };
 
 use super::super::types::{
@@ -215,8 +217,45 @@ pub async fn create_child_session(
         );
     }
 
-    // If description is provided, enqueue a SpawnOrchestratorJob for async processing
-    let orchestration_triggered = if let Some(ref desc) = req.description {
+    // Auto-spawn orchestrator agent on child session if initial_prompt is set.
+    // send_message stores the user message and spawns a background agent — non-blocking.
+    let orchestration_triggered = if let Some(ref prompt) = req.initial_prompt {
+        let app = &state.app_state;
+        let mut chat_service = ClaudeChatService::new(
+            Arc::clone(&app.chat_message_repo),
+            Arc::clone(&app.chat_conversation_repo),
+            Arc::clone(&app.agent_run_repo),
+            Arc::clone(&app.project_repo),
+            Arc::clone(&app.task_repo),
+            Arc::clone(&app.task_dependency_repo),
+            Arc::clone(&app.ideation_session_repo),
+            Arc::clone(&app.activity_event_repo),
+            Arc::clone(&app.message_queue),
+            Arc::clone(&app.running_agent_registry),
+            Arc::clone(&app.memory_event_repo),
+        )
+        .with_execution_state(Arc::clone(&state.execution_state))
+        .with_plan_branch_repo(Arc::clone(&app.plan_branch_repo));
+        if let Some(ref handle) = app.app_handle {
+            chat_service = chat_service.with_app_handle(handle.clone());
+        }
+
+        match chat_service
+            .send_message(ChatContextType::Ideation, &child_session_str, prompt)
+            .await
+        {
+            Ok(_) => true,
+            Err(e) => {
+                // Log but don't fail the create_child_session call — agent spawn is best-effort
+                error!(
+                    "Failed to auto-spawn agent on child session {}: {}",
+                    child_session_str, e
+                );
+                false
+            }
+        }
+    } else if let Some(ref desc) = req.description {
+        // Fallback: If description is provided but no initial_prompt, enqueue a SpawnOrchestratorJob for async processing
         if !desc.trim().is_empty() {
             let job = SpawnOrchestratorJob::new(
                 child_id.clone(),
