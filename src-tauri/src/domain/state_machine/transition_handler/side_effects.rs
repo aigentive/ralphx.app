@@ -1990,9 +1990,9 @@ impl<'a> super::TransitionHandler<'a> {
                 let task_id = &self.machine.context.task_id;
 
                 // Clean up merge worktree before spawning merger agent.
+                // - Git abort: ALWAYS (stale rebase/merge from prior attempt or retry)
                 // - Symlink removal: ALWAYS (symlinks cause false conflicts for the agent)
-                // - Git abort: only on recovery re-entry (stale rebase/merge from prior attempt)
-                if let (Some(ref task_repo), Some(ref project_repo)) = (
+                if let (Some(ref _task_repo), Some(ref project_repo)) = (
                     &self.machine.context.services.task_repo,
                     &self.machine.context.services.project_repo,
                 ) {
