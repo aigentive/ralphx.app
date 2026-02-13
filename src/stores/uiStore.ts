@@ -8,11 +8,18 @@
 
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
+import { enableMapSet } from "immer";
 import type { AskUserQuestionPayload } from "@/types/ask-user-question";
 import type { ExecutionStatusResponse } from "@/lib/tauri";
 import type { RecoveryPromptEvent } from "@/types/events";
 import type { ViewType } from "@/types/chat";
 import type { InternalStatus } from "@/types/status";
+import {
+  loadCollapsedColumns,
+  saveCollapsedColumns,
+} from "@/components/tasks/TaskBoard/Column.utils";
+
+enableMapSet();
 
 export type GraphSelection =
   | { kind: "task"; id: string }
@@ -179,6 +186,8 @@ interface UiState {
   welcomeOverlayReturnView: ViewType | null;
   /** Filter for activity view navigation (set by StatusActivityBadge) */
   activityFilter: ActivityFilter;
+  /** Set of collapsed column IDs (persisted to localStorage) */
+  collapsedColumns: Set<string>;
 }
 
 // ============================================================================
@@ -285,6 +294,14 @@ interface UiActions {
   setActivityFilter: (filter: Partial<ActivityFilter>) => void;
   /** Clear activity filter */
   clearActivityFilter: () => void;
+  /** Set collapse state for a specific column */
+  setColumnCollapsed: (columnId: string, collapsed: boolean) => void;
+  /** Toggle collapse state for a specific column */
+  toggleColumnCollapsed: (columnId: string) => void;
+  /** Expand a specific column (shorthand for setColumnCollapsed(id, false)) */
+  expandColumn: (columnId: string) => void;
+  /** Replace the entire collapsed columns set */
+  setCollapsedColumns: (columns: Set<string>) => void;
 }
 
 // ============================================================================
@@ -330,6 +347,7 @@ export const useUiStore = create<UiState & UiActions>()(
     showWelcomeOverlay: false,
     welcomeOverlayReturnView: null,
     activityFilter: { taskId: null, sessionId: null },
+    collapsedColumns: loadCollapsedColumns(),
 
     // Actions
     toggleSidebar: () =>
@@ -619,6 +637,38 @@ export const useUiStore = create<UiState & UiActions>()(
     clearActivityFilter: () =>
       set((state) => {
         state.activityFilter = { taskId: null, sessionId: null };
+      }),
+
+    setColumnCollapsed: (columnId, collapsed) =>
+      set((state) => {
+        if (collapsed) {
+          state.collapsedColumns.add(columnId);
+        } else {
+          state.collapsedColumns.delete(columnId);
+        }
+        saveCollapsedColumns(state.collapsedColumns);
+      }),
+
+    toggleColumnCollapsed: (columnId) =>
+      set((state) => {
+        if (state.collapsedColumns.has(columnId)) {
+          state.collapsedColumns.delete(columnId);
+        } else {
+          state.collapsedColumns.add(columnId);
+        }
+        saveCollapsedColumns(state.collapsedColumns);
+      }),
+
+    expandColumn: (columnId) =>
+      set((state) => {
+        state.collapsedColumns.delete(columnId);
+        saveCollapsedColumns(state.collapsedColumns);
+      }),
+
+    setCollapsedColumns: (columns) =>
+      set((state) => {
+        state.collapsedColumns = columns;
+        saveCollapsedColumns(state.collapsedColumns);
       }),
   }))
 );
