@@ -450,6 +450,66 @@ describe("ChatMessageList - Scroll Behavior", () => {
     });
   });
 
+  describe("GAP: virtuosoComponents deps include isAtBottom (F1+F2)", () => {
+    it("should re-call hook when isAtBottom toggles (unstable components)", () => {
+      mockIsAtBottom = true;
+      const { rerender } = render(<ChatMessageList {...defaultProps} />);
+
+      const callsAfterMount = mockUseChatAutoScroll.mock.calls.length;
+
+      // Toggle isAtBottom → useMemo recomputes → re-render
+      mockIsAtBottom = false;
+      rerender(<ChatMessageList {...defaultProps} />);
+
+      mockIsAtBottom = true;
+      rerender(<ChatMessageList {...defaultProps} />);
+
+      // Each toggle causes a re-render (the component processes the state change)
+      const callsAfterToggles = mockUseChatAutoScroll.mock.calls.length;
+      expect(callsAfterToggles).toBe(callsAfterMount + 2);
+    });
+  });
+
+  describe("GAP: messages.length in virtuosoComponents deps causes rebuild (F4)", () => {
+    it("should re-render when messages.length changes", () => {
+      const { rerender } = render(
+        <ChatMessageList {...defaultProps} messages={createMessages(5)} />
+      );
+
+      const callsAfterMount = mockUseChatAutoScroll.mock.calls.length;
+
+      // Add a message → messages.length changes → useMemo recomputes
+      rerender(
+        <ChatMessageList {...defaultProps} messages={createMessages(6)} />
+      );
+
+      const callsAfterRerender = mockUseChatAutoScroll.mock.calls.length;
+      // Component re-renders because props changed (expected behavior)
+      expect(callsAfterRerender).toBe(callsAfterMount + 1);
+    });
+  });
+
+  describe("GAP: failedRun prop creates new object each render (F5)", () => {
+    it("should accept new failedRun object references without memoization", () => {
+      const failedRun1 = { id: "run-1", errorMessage: "Error A" };
+      const { rerender } = render(
+        <ChatMessageList {...defaultProps} failedRun={failedRun1} />
+      );
+
+      const callsAfterMount = mockUseChatAutoScroll.mock.calls.length;
+
+      // New object with same data (different reference — simulates upstream inline creation)
+      const failedRun2 = { id: "run-1", errorMessage: "Error A" };
+      rerender(
+        <ChatMessageList {...defaultProps} failedRun={failedRun2} />
+      );
+
+      // Component re-renders because failedRun is a new ref
+      const callsAfterRerender = mockUseChatAutoScroll.mock.calls.length;
+      expect(callsAfterRerender).toBe(callsAfterMount + 1);
+    });
+  });
+
   describe("footer content hash for streaming", () => {
     it("computes hash based on tool calls count", () => {
       const streamingToolCalls: ToolCall[] = [

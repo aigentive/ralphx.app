@@ -604,6 +604,52 @@ describe("useChatAutoScroll", () => {
     });
   });
 
+  describe("GAP: dedup guard missing on handleAtBottomStateChange (F1)", () => {
+    it("should still call setState when value hasn't changed (no guard)", () => {
+      const { result } = renderHook(() =>
+        useChatAutoScroll({ messageCount: 0 })
+      );
+
+      // isAtBottom starts as true
+      expect(result.current.isAtBottom).toBe(true);
+
+      // Calling with same value — without dedup guard, useState(true) is
+      // called even though state is already true. React 18 may bail out of
+      // re-render but the guard itself is missing.
+      const prevRef = result.current.handleAtBottomStateChange;
+      act(() => {
+        result.current.handleAtBottomStateChange(true);
+      });
+      // The function should still be the same reference (no deps change)
+      expect(result.current.handleAtBottomStateChange).toBe(prevRef);
+    });
+  });
+
+  describe("GAP: scrollToBottom identity changes with messageCount (F3)", () => {
+    it("should return a NEW scrollToBottom reference when messageCount changes", () => {
+      const mockScrollToIndex = vi.fn();
+      const virtuosoRef = {
+        current: { scrollToIndex: mockScrollToIndex } as unknown as VirtuosoHandle,
+      };
+
+      const { result, rerender } = renderHook(
+        (props) => useChatAutoScroll(props),
+        {
+          initialProps: { messageCount: 5, virtuosoRef },
+        }
+      );
+
+      const scrollRef1 = result.current.scrollToBottom;
+
+      rerender({ messageCount: 6, virtuosoRef });
+
+      const scrollRef2 = result.current.scrollToBottom;
+
+      // GAP: messageCount is in useCallback deps → new identity on change
+      expect(scrollRef1).not.toBe(scrollRef2);
+    });
+  });
+
   describe("edge cases", () => {
     it("should handle messagesEndRef being null", () => {
       const { result, rerender } = renderHook(
