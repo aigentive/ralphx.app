@@ -213,7 +213,7 @@ agents:
 
   - name: ralphx-worker
     system_prompt_file: ralphx-plugin/agents/worker.md
-    model: opus
+    model: sonnet
     tools: { extends: base_tools, include: [Write, Edit, Task] }
     mcp_tools: [
         # step management tools
@@ -258,7 +258,7 @@ agents:
 
   - name: ralphx-reviewer
     system_prompt_file: ralphx-plugin/agents/reviewer.md
-    model: opus
+    model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: [
         # review tools
