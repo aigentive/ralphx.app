@@ -22,6 +22,7 @@ pub const SHORT_CHAT_PROJECT: &str = "chat-project";
 pub const SHORT_REVIEW_CHAT: &str = "ralphx-review-chat";
 pub const SHORT_REVIEW_HISTORY: &str = "ralphx-review-history";
 pub const SHORT_WORKER: &str = "ralphx-worker";
+pub const SHORT_CODER: &str = "ralphx-coder";
 pub const SHORT_REVIEWER: &str = "ralphx-reviewer";
 pub const SHORT_QA_PREP: &str = "ralphx-qa-prep";
 pub const SHORT_QA_EXECUTOR: &str = "ralphx-qa-executor";
@@ -49,6 +50,9 @@ pub const AGENT_CHAT_PROJECT: &str = "ralphx:chat-project";
 
 /// Worker execution agent (ChatContextType::TaskExecution)
 pub const AGENT_WORKER: &str = "ralphx:ralphx-worker";
+
+/// Delegated coding execution agent (invoked by worker orchestration)
+pub const AGENT_CODER: &str = "ralphx:ralphx-coder";
 
 /// Reviewer agent (ChatContextType::Review, fresh review cycle)
 pub const AGENT_REVIEWER: &str = "ralphx:ralphx-reviewer";
@@ -99,6 +103,7 @@ pub fn spawner_agent_name(agent_type: &str) -> &'static str {
         "qa-tester" => AGENT_QA_TESTER,
         // Test/fallback: worker, reviewer, merger via spawner tests and mocks
         "worker" | "ralphx-worker" => AGENT_WORKER,
+        "coder" | "ralphx-coder" => AGENT_CODER,
         "reviewer" | "ralphx-reviewer" => AGENT_REVIEWER,
         "merger" | "ralphx-merger" => AGENT_MERGER,
         // Fallback: qualify using prefix

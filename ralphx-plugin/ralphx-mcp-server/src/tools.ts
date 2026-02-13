@@ -17,6 +17,7 @@ import {
   REVIEW_CHAT,
   REVIEW_HISTORY,
   WORKER,
+  CODER,
   SESSION_NAMER,
   DEPENDENCY_SUGGESTER,
   MERGER,
@@ -1152,6 +1153,33 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_memories_for_paths",
   ],
   [WORKER]: [
+    // step management tools
+    "start_step",
+    "complete_step",
+    "skip_step",
+    "fail_step",
+    "add_step",
+    "get_step_progress",
+    // issue tools (re-execution workflow)
+    "get_task_issues",
+    "mark_issue_in_progress",
+    "mark_issue_addressed",
+    // project analysis tools
+    "get_project_analysis",
+    // common context tools
+    "get_task_context",
+    "get_artifact",
+    "get_artifact_version",
+    "get_related_artifacts",
+    "search_project_artifacts",
+    "get_review_notes",
+    "get_task_steps",
+    // memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
+  ],
+  [CODER]: [
     // step management tools
     "start_step",
     "complete_step",
