@@ -2275,6 +2275,48 @@ impl<'a> super::TransitionHandler<'a> {
 
         let repo_path = Path::new(&project.working_directory);
 
+        // --- "Already merged" early exit ---
+        // If the source branch is already an ancestor of the target branch, the merge
+        // was completed by a prior agent run that died before calling complete_merge.
+        // Skip the merge entirely and transition straight to Merged.
+        if let Ok(source_sha) = GitService::get_branch_sha(repo_path, &source_branch) {
+            if let Ok(true) = GitService::is_commit_on_branch(repo_path, &source_sha, &target_branch) {
+                tracing::info!(
+                    task_id = task_id_str,
+                    source_branch = %source_branch,
+                    target_branch = %target_branch,
+                    source_sha = %source_sha,
+                    "Source branch already merged into target — skipping merge"
+                );
+
+                // Clean up orphaned merge worktree (if any from prior agent run)
+                if project.git_mode == GitMode::Worktree {
+                    let merge_wt = compute_merge_worktree_path(&project, task_id_str);
+                    let merge_wt_path = Path::new(&merge_wt);
+                    if merge_wt_path.exists() {
+                        if let Err(e) = GitService::delete_worktree(repo_path, merge_wt_path) {
+                            tracing::warn!(error = %e, "Failed to clean up orphaned merge worktree (non-fatal)");
+                        }
+                    }
+                }
+
+                // Use target branch HEAD as the merge commit SHA
+                let target_sha = GitService::get_branch_sha(repo_path, &target_branch)
+                    .unwrap_or_else(|_| source_sha.clone());
+
+                if let Err(e) = complete_merge_internal(
+                    &mut task,
+                    &project,
+                    &target_sha,
+                    task_repo,
+                    self.machine.context.services.app_handle.as_ref(),
+                ).await {
+                    tracing::error!(error = %e, "Failed to complete already-merged task");
+                }
+                return;
+            }
+        }
+
         // Emit merge progress event
         emit_merge_progress(
             self.machine.context.services.app_handle.as_ref(),
