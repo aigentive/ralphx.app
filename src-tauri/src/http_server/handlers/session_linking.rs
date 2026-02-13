@@ -199,15 +199,19 @@ pub async fn create_child_session(
         .title
         .unwrap_or_else(|| "Child Session".to_string());
 
-    // Emit Tauri event
+    // Emit Tauri event (include initial_prompt so downstream consumers can spawn agents)
     if let Some(app_handle) = &state.app_state.app_handle {
+        let mut event_payload = serde_json::json!({
+            "sessionId": child_session_str,
+            "parentSessionId": parent_session_str,
+            "title": title
+        });
+        if let Some(ref prompt) = req.initial_prompt {
+            event_payload["initialPrompt"] = serde_json::json!(prompt);
+        }
         let _ = app_handle.emit(
             "ideation:child_session_created",
-            serde_json::json!({
-                "sessionId": child_session_str,
-                "parentSessionId": parent_session_str,
-                "title": title
-            }),
+            event_payload,
         );
     }
 
@@ -252,6 +256,7 @@ pub async fn create_child_session(
         status: created_session.status.to_string(),
         created_at: created_session.created_at.to_rfc3339(),
         inherited_plan_id: created_session.plan_artifact_id.map(|id| id.to_string()),
+        initial_prompt: req.initial_prompt.clone(),
         parent_context,
         orchestration_triggered,
     }))
