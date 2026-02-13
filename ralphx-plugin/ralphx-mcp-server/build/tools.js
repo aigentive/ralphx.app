@@ -6,7 +6,7 @@ import { PLAN_TOOLS } from "./plan-tools.js";
 import { WORKER_CONTEXT_TOOLS } from "./worker-context-tools.js";
 import { STEP_TOOLS } from "./step-tools.js";
 import { ISSUE_TOOLS } from "./issue-tools.js";
-import { ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, CHAT_TASK, CHAT_PROJECT, REVIEWER, REVIEW_CHAT, REVIEW_HISTORY, WORKER, CODER, SESSION_NAMER, DEPENDENCY_SUGGESTER, MERGER, PROJECT_ANALYZER, SUPERVISOR, QA_PREP, QA_TESTER, ORCHESTRATOR, DEEP_RESEARCHER, MEMORY_MAINTAINER, MEMORY_CAPTURE, } from "./agentNames.js";
+import { ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, CHAT_TASK, CHAT_PROJECT, REVIEWER, REVIEW_CHAT, REVIEW_HISTORY, WORKER, SESSION_NAMER, DEPENDENCY_SUGGESTER, MERGER, PROJECT_ANALYZER, SUPERVISOR, QA_PREP, QA_TESTER, ORCHESTRATOR, DEEP_RESEARCHER, MEMORY_MAINTAINER, MEMORY_CAPTURE, } from "./agentNames.js";
 /**
  * All available MCP tools
  * Tools are filtered based on RALPHX_AGENT_TYPE environment variable
@@ -288,10 +288,7 @@ export const ALL_TOOLS = [
     // ========================================================================
     {
         name: "create_child_session",
-        description: "Create a new ideation session as a child of an existing session. Use when you want to create follow-on work that inherits context from the parent session. " +
-            "The child session starts with 'active' status. " +
-            "When inherit_context is true (default), the child references the parent's plan artifact by ID (copy-on-write: modifications create a new version). " +
-            "Parent proposals are NOT copied to the child — use get_parent_session_context to access them.",
+        description: "Create a new ideation session as a child of an existing session. Use when you want to create follow-on work that inherits context from the parent session.",
         inputSchema: {
             type: "object",
             properties: {
@@ -305,11 +302,11 @@ export const ALL_TOOLS = [
                 },
                 description: {
                     type: "string",
-                    description: "Optional description of the child session. When provided, an orchestrator-ideation agent is automatically spawned in the background to process this description and generate task proposals.",
+                    description: "Optional description of the child session",
                 },
                 inherit_context: {
                     type: "boolean",
-                    description: "If true, child references parent's plan artifact by ID. Parent proposals accessible via get_parent_session_context. Default: true.",
+                    description: "If true, inherit parent session's plan and proposals context. Default: true.",
                 },
             },
             required: ["parent_session_id"],
@@ -997,6 +994,7 @@ export const TOOL_ALLOWLIST = {
         "get_plan_artifact",
         "get_session_plan",
         "get_parent_session_context",
+        // session linking tools
         "create_child_session",
         // memory read tools
         "search_memories",
@@ -1087,36 +1085,6 @@ export const TOOL_ALLOWLIST = {
         "fail_step",
         "add_step",
         "get_step_progress",
-        "get_step_context",
-        "get_sub_steps",
-        // issue tools (re-execution workflow)
-        "get_task_issues",
-        "mark_issue_in_progress",
-        "mark_issue_addressed",
-        // project analysis tools
-        "get_project_analysis",
-        // common context tools
-        "get_task_context",
-        "get_artifact",
-        "get_artifact_version",
-        "get_related_artifacts",
-        "search_project_artifacts",
-        "get_review_notes",
-        "get_task_steps",
-        // memory read tools
-        "search_memories",
-        "get_memory",
-        "get_memories_for_paths",
-    ],
-    [CODER]: [
-        // step management tools
-        "start_step",
-        "complete_step",
-        "skip_step",
-        "fail_step",
-        "add_step",
-        "get_step_progress",
-        "get_step_context",
         // issue tools (re-execution workflow)
         "get_task_issues",
         "mark_issue_in_progress",

@@ -1073,6 +1073,7 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_plan_artifact",
     "get_session_plan",
     "get_parent_session_context",
+    // session linking tools
     "create_child_session",
     // memory read tools
     "search_memories",
