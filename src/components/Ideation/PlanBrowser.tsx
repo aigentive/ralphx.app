@@ -3,69 +3,36 @@
  *
  * Design: Native macOS sidebar with frosted glass, refined typography,
  * and smooth spring animations. Warm orange accent (#ff6b35).
+ *
+ * Five semantic groups: Drafts, In Progress, Accepted, Done, Archived.
  */
 
 import { useMemo, useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import {
   MessageSquare,
   Plus,
-  Clock,
   Sparkles,
-  MoreHorizontal,
   Pencil,
-  Archive,
-  Trash2,
-  History,
-  ChevronDown,
+  Zap,
   CheckCircle,
-  RotateCcw,
-  RefreshCw,
+  CircleCheck,
+  Archive,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import type { IdeationSession } from "@/types/ideation";
 import { ideationApi } from "@/api/ideation";
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMins / 60);
-  const diffDays = Math.floor(diffHours / 24);
-
-  if (diffMins < 1) return "Just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays === 1) return "Yesterday";
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
+import { PlanItem } from "./PlanItem";
+import { SessionGroupHeader } from "./SessionGroupHeader";
+import { groupSessions, type SessionGroup } from "./planBrowserUtils";
+import { useSessionProgress } from "@/hooks/useSessionProgress";
 
 // ============================================================================
 // Types
 // ============================================================================
 
 interface PlanBrowserProps {
-  plans: IdeationSession[];
-  historyPlans: IdeationSession[];
+  sessions: IdeationSession[];
+  projectId: string;
   currentPlanId: string | null;
   onSelectPlan: (planId: string) => void;
   onNewPlan: () => void;
@@ -76,329 +43,30 @@ interface PlanBrowserProps {
 }
 
 // ============================================================================
-// Plan Item Component
+// Group Config
 // ============================================================================
 
-interface PlanItemProps {
-  plan: IdeationSession;
-  isSelected: boolean;
-  isHistory: boolean;
-  isEditing: boolean;
-  editingTitle: string;
-  isMenuOpen: boolean;
-  inputRef: React.RefObject<HTMLInputElement | null>;
-  onSelect: () => void;
-  onStartRename: () => void;
-  onCancelRename: () => void;
-  onConfirmRename: () => void;
-  onTitleChange: (value: string) => void;
-  onKeyDown: (e: React.KeyboardEvent) => void;
-  onMenuOpenChange: (open: boolean) => void;
-  onArchive?: () => void;
-  onDelete?: () => void;
-  onReopen?: () => void;
-  onResetReaccept?: () => void;
-}
-
-function PlanItem({
-  plan,
-  isSelected,
-  isHistory,
-  isEditing,
-  editingTitle,
-  isMenuOpen,
-  inputRef,
-  onSelect,
-  onStartRename,
-  onCancelRename: _onCancelRename,
-  onConfirmRename,
-  onTitleChange,
-  onKeyDown,
-  onMenuOpenChange,
-  onArchive,
-  onDelete,
-  onReopen,
-  onResetReaccept,
-}: PlanItemProps) {
-  const statusBadge = isHistory ? (
-    <span
-      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium"
-      style={{
-        background: plan.status === "accepted"
-          ? "hsla(145 70% 40% / 0.15)"
-          : "hsla(220 10% 100% / 0.08)",
-        color: plan.status === "accepted"
-          ? "hsl(145 70% 60%)"
-          : "hsl(220 10% 60%)",
-        border: plan.status === "accepted"
-          ? "1px solid hsla(145 70% 40% / 0.3)"
-          : "1px solid hsla(220 10% 100% / 0.1)",
-      }}
-    >
-      {plan.status === "accepted" && <CheckCircle className="w-2.5 h-2.5" />}
-      {plan.status === "accepted" ? "Accepted" : "Archived"}
-    </span>
-  ) : null;
-
-  return (
-    <div
-      data-testid={`plan-item-${plan.id}`}
-      className={cn(
-        "group relative rounded-md cursor-pointer",
-        "transition-all duration-150 ease-out"
-      )}
-      style={{
-        padding: "6px 8px",
-        background: isSelected
-          ? "hsla(14 100% 60% / 0.12)"
-          : isMenuOpen
-            ? "hsla(220 10% 100% / 0.04)"
-            : "transparent",
-        border: isSelected
-          ? "1px solid hsla(14 100% 60% / 0.2)"
-          : "1px solid transparent",
-      }}
-      onClick={() => !isEditing && onSelect()}
-      onMouseEnter={(e) => {
-        if (!isSelected && !isMenuOpen) {
-          e.currentTarget.style.background = "hsla(220 10% 100% / 0.04)";
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (!isSelected && !isMenuOpen) {
-          e.currentTarget.style.background = "transparent";
-        }
-      }}
-    >
-      <div className="flex items-center gap-2">
-        {/* Plan icon */}
-        <div
-          className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 transition-colors duration-150"
-          style={{
-            background: isSelected
-              ? "hsla(14 100% 60% / 0.15)"
-              : "hsla(220 10% 100% / 0.04)",
-            border: isSelected
-              ? "1px solid hsla(14 100% 60% / 0.2)"
-              : "1px solid hsla(220 10% 100% / 0.06)",
-          }}
-        >
-          <MessageSquare
-            className="w-3 h-3"
-            style={{ color: isSelected ? "hsl(14 100% 60%)" : "hsl(220 10% 50%)" }}
-          />
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          {isEditing ? (
-            <Input
-              ref={inputRef}
-              value={editingTitle}
-              onChange={(e) => onTitleChange(e.target.value)}
-              onKeyDown={onKeyDown}
-              onBlur={onConfirmRename}
-              className="h-6 text-[13px] px-2 py-0 rounded-md"
-              style={{
-                background: "hsl(220 10% 12%)",
-                border: "1px solid hsla(220 10% 100% / 0.1)",
-              }}
-              onClick={(e) => e.stopPropagation()}
-            />
-          ) : (
-            <>
-              <div className="flex items-center gap-1.5">
-                <span
-                  className={cn(
-                    "text-[12px] font-medium truncate tracking-[-0.01em]",
-                    "transition-colors duration-150"
-                  )}
-                  style={{
-                    color: isSelected ? "hsl(220 10% 90%)" : "hsl(220 10% 70%)",
-                  }}
-                >
-                  {plan.title || "Untitled Plan"}
-                </span>
-                {statusBadge}
-              </div>
-              <div
-                className="flex items-center gap-1 text-[10px]"
-                style={{ color: "hsl(220 10% 45%)" }}
-              >
-                <Clock className="w-2.5 h-2.5" />
-                <span>{formatRelativeTime(plan.updatedAt)}</span>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Menu - active items */}
-        {!isEditing && !isHistory && (
-          <DropdownMenu onOpenChange={onMenuOpenChange}>
-            <DropdownMenuTrigger asChild>
-              <button
-                className={cn(
-                  "w-6 h-6 rounded flex items-center justify-center flex-shrink-0",
-                  "transition-all duration-150",
-                  (isMenuOpen || isSelected)
-                    ? "opacity-100"
-                    : "opacity-0 group-hover:opacity-100"
-                )}
-                style={{
-                  background: isMenuOpen ? "hsla(220 10% 100% / 0.08)" : "transparent",
-                }}
-                onClick={(e) => e.stopPropagation()}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "hsla(220 10% 100% / 0.08)";
-                }}
-                onMouseLeave={(e) => {
-                  if (!isMenuOpen) {
-                    e.currentTarget.style.background = "transparent";
-                  }
-                }}
-              >
-                <MoreHorizontal className="w-3.5 h-3.5" style={{ color: "hsl(220 10% 50%)" }} />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="w-40"
-              style={{
-                background: "hsl(220 10% 14%)",
-                border: "1px solid hsla(220 10% 100% / 0.08)",
-                boxShadow: "0 8px 32px hsla(0 0% 0% / 0.4)",
-              }}
-            >
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onStartRename();
-                }}
-                className="text-[13px] cursor-pointer gap-2.5 py-2"
-              >
-                <Pencil className="w-3.5 h-3.5" />
-                Rename
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onArchive?.();
-                }}
-                className="text-[13px] cursor-pointer gap-2.5 py-2"
-              >
-                <Archive className="w-3.5 h-3.5" />
-                Archive
-              </DropdownMenuItem>
-              <DropdownMenuSeparator style={{ background: "hsla(220 10% 100% / 0.06)" }} />
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete?.();
-                }}
-                className="text-[13px] cursor-pointer gap-2.5 py-2"
-                style={{ color: "hsl(0 70% 60%)" }}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-
-        {/* Menu - history items */}
-        {!isEditing && isHistory && (
-          <DropdownMenu onOpenChange={onMenuOpenChange}>
-            <DropdownMenuTrigger asChild>
-              <button
-                className={cn(
-                  "w-6 h-6 rounded flex items-center justify-center flex-shrink-0",
-                  "transition-all duration-150",
-                  (isMenuOpen || isSelected)
-                    ? "opacity-100"
-                    : "opacity-0 group-hover:opacity-100"
-                )}
-                style={{
-                  background: isMenuOpen ? "hsla(220 10% 100% / 0.08)" : "transparent",
-                }}
-                onClick={(e) => e.stopPropagation()}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "hsla(220 10% 100% / 0.08)";
-                }}
-                onMouseLeave={(e) => {
-                  if (!isMenuOpen) {
-                    e.currentTarget.style.background = "transparent";
-                  }
-                }}
-              >
-                <MoreHorizontal className="w-3.5 h-3.5" style={{ color: "hsl(220 10% 50%)" }} />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="w-48"
-              style={{
-                background: "hsl(220 10% 14%)",
-                border: "1px solid hsla(220 10% 100% / 0.08)",
-                boxShadow: "0 8px 32px hsla(0 0% 0% / 0.4)",
-              }}
-            >
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onStartRename();
-                }}
-                className="text-[13px] cursor-pointer gap-2.5 py-2"
-              >
-                <Pencil className="w-3.5 h-3.5" />
-                Rename
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onReopen?.();
-                }}
-                className="text-[13px] cursor-pointer gap-2.5 py-2"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                Reopen
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onResetReaccept?.();
-                }}
-                className="text-[13px] cursor-pointer gap-2.5 py-2"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                Reset & Re-accept
-              </DropdownMenuItem>
-              <DropdownMenuSeparator style={{ background: "hsla(220 10% 100% / 0.06)" }} />
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete?.();
-                }}
-                className="text-[13px] cursor-pointer gap-2.5 py-2"
-                style={{ color: "hsl(0 70% 60%)" }}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
-    </div>
-  );
-}
+const GROUP_CONFIG: {
+  key: SessionGroup;
+  label: string;
+  icon: typeof Pencil;
+  accentColor?: string;
+  defaultOpen: boolean;
+}[] = [
+  { key: "drafts", label: "Drafts", icon: Pencil, defaultOpen: true },
+  { key: "in-progress", label: "In Progress", icon: Zap, accentColor: "hsl(14 100% 60%)", defaultOpen: true },
+  { key: "accepted", label: "Accepted", icon: CheckCircle, accentColor: "hsl(145 70% 45%)", defaultOpen: true },
+  { key: "done", label: "Done", icon: CircleCheck, accentColor: "hsl(220 10% 45%)", defaultOpen: false },
+  { key: "archived", label: "Archived", icon: Archive, accentColor: "hsl(220 10% 45%)", defaultOpen: false },
+];
 
 // ============================================================================
 // Component
 // ============================================================================
 
 export function PlanBrowser({
-  plans,
-  historyPlans,
+  sessions,
+  projectId,
   currentPlanId,
   onSelectPlan,
   onNewPlan,
@@ -407,20 +75,19 @@ export function PlanBrowser({
   onReopenPlan,
   onResetReacceptPlan,
 }: PlanBrowserProps) {
-  const sortedPlans = useMemo(
-    () => [...plans].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
-    [plans]
-  );
-
-  const sortedHistoryPlans = useMemo(
-    () => [...historyPlans].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
-    [historyPlans]
-  );
+  const { progressMap } = useSessionProgress(projectId, sessions);
+  const grouped = useMemo(() => groupSessions(sessions, progressMap), [sessions, progressMap]);
 
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [groupOpen, setGroupOpen] = useState<Record<SessionGroup, boolean>>({
+    drafts: true,
+    "in-progress": true,
+    accepted: true,
+    done: false,
+    archived: false,
+  });
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -463,7 +130,39 @@ export function PlanBrowser({
     }
   };
 
-  const totalPlans = plans.length + historyPlans.length;
+  const handleGroupToggle = (group: SessionGroup, open: boolean) => {
+    setGroupOpen((prev: Record<SessionGroup, boolean>) => ({ ...prev, [group]: open }));
+  };
+
+  const renderPlanItem = (plan: IdeationSession, group: SessionGroup) => {
+    const progress = progressMap.get(plan.id);
+    return (
+      <PlanItem
+        key={plan.id}
+        plan={plan}
+        isSelected={plan.id === currentPlanId}
+        group={group}
+        {...(progress != null && { progress })}
+        isEditing={editingPlanId === plan.id}
+        editingTitle={editingTitle}
+        isMenuOpen={openMenuId === plan.id}
+        inputRef={inputRef}
+        onSelect={() => onSelectPlan(plan.id)}
+        onStartRename={() => handleStartRename(plan)}
+        onCancelRename={handleCancelRename}
+        onConfirmRename={() => handleConfirmRename(plan.id)}
+        onTitleChange={setEditingTitle}
+        onKeyDown={(e) => handleKeyDown(e, plan.id)}
+        onMenuOpenChange={(open) => setOpenMenuId(open ? plan.id : null)}
+        onArchive={() => onArchivePlan?.(plan.id)}
+        onDelete={() => onDeletePlan?.(plan.id)}
+        onReopen={() => onReopenPlan?.(plan.id)}
+        onResetReaccept={() => onResetReacceptPlan?.(plan.id)}
+      />
+    );
+  };
+
+  const hasAnySessions = sessions.length > 0;
 
   return (
     <div
@@ -516,7 +215,7 @@ export function PlanBrowser({
                 className="text-[11px] tracking-[-0.005em]"
                 style={{ color: "hsl(220 10% 50%)" }}
               >
-                {totalPlans} {totalPlans === 1 ? "plan" : "plans"}
+                {sessions.length} {sessions.length === 1 ? "plan" : "plans"}
               </p>
             </div>
           </div>
@@ -543,7 +242,7 @@ export function PlanBrowser({
 
         {/* Plan List */}
         <div className="flex-1 overflow-y-auto px-2 py-2">
-          {sortedPlans.length === 0 && sortedHistoryPlans.length === 0 ? (
+          {!hasAnySessions ? (
             <div className="flex flex-col items-center justify-center h-full px-4 text-center">
               <div
                 className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3"
@@ -563,89 +262,33 @@ export function PlanBrowser({
             </div>
           ) : (
             <>
-              {/* Active Plans */}
-              <div className="space-y-1">
-                {sortedPlans.map((plan) => (
-                  <PlanItem
-                    key={plan.id}
-                    plan={plan}
-                    isSelected={plan.id === currentPlanId}
-                    isHistory={false}
-                    isEditing={editingPlanId === plan.id}
-                    editingTitle={editingTitle}
-                    isMenuOpen={openMenuId === plan.id}
-                    inputRef={inputRef}
-                    onSelect={() => onSelectPlan(plan.id)}
-                    onStartRename={() => handleStartRename(plan)}
-                    onCancelRename={handleCancelRename}
-                    onConfirmRename={() => handleConfirmRename(plan.id)}
-                    onTitleChange={setEditingTitle}
-                    onKeyDown={(e) => handleKeyDown(e, plan.id)}
-                    onMenuOpenChange={(open) => setOpenMenuId(open ? plan.id : null)}
-                    onArchive={() => onArchivePlan?.(plan.id)}
-                    onDelete={() => onDeletePlan?.(plan.id)}
-                  />
-                ))}
-              </div>
+              {GROUP_CONFIG.map(({ key, label, icon, accentColor }) => {
+                const items = grouped[key];
+                if (items.length === 0) return null;
 
-              {/* History Section (Collapsible) */}
-              {sortedHistoryPlans.length > 0 && (
-                <Collapsible
-                  open={isHistoryOpen}
-                  onOpenChange={setIsHistoryOpen}
-                  className="mt-3"
-                >
-                  <CollapsibleTrigger asChild>
-                    <button
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors duration-150"
-                      style={{
-                        color: "hsl(220 10% 50%)",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = "hsla(220 10% 100% / 0.04)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = "transparent";
-                      }}
-                    >
-                      <History className="w-3.5 h-3.5" />
-                      <span className="text-[11px] font-medium tracking-[-0.01em]">
-                        History ({sortedHistoryPlans.length})
-                      </span>
-                      <ChevronDown
-                        className={cn(
-                          "w-3 h-3 ml-auto transition-transform duration-200",
-                          isHistoryOpen && "rotate-180"
-                        )}
-                      />
-                    </button>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="mt-1 space-y-1">
-                    {sortedHistoryPlans.map((plan) => (
-                      <PlanItem
-                        key={plan.id}
-                        plan={plan}
-                        isSelected={plan.id === currentPlanId}
-                        isHistory={true}
-                        isEditing={editingPlanId === plan.id}
-                        editingTitle={editingTitle}
-                        isMenuOpen={openMenuId === plan.id}
-                        inputRef={inputRef}
-                        onSelect={() => onSelectPlan(plan.id)}
-                        onStartRename={() => handleStartRename(plan)}
-                        onCancelRename={handleCancelRename}
-                        onConfirmRename={() => handleConfirmRename(plan.id)}
-                        onTitleChange={setEditingTitle}
-                        onKeyDown={(e) => handleKeyDown(e, plan.id)}
-                        onMenuOpenChange={(open) => setOpenMenuId(open ? plan.id : null)}
-                        onDelete={() => onDeletePlan?.(plan.id)}
-                        onReopen={() => onReopenPlan?.(plan.id)}
-                        onResetReaccept={() => onResetReacceptPlan?.(plan.id)}
-                      />
-                    ))}
-                  </CollapsibleContent>
-                </Collapsible>
-              )}
+                // Drafts group renders flat (always expanded, no collapsible header)
+                if (key === "drafts") {
+                  return (
+                    <div key={key} className="space-y-1">
+                      {items.map((plan) => renderPlanItem(plan, key))}
+                    </div>
+                  );
+                }
+
+                return (
+                  <SessionGroupHeader
+                    key={key}
+                    icon={icon}
+                    label={label}
+                    count={items.length}
+                    isOpen={groupOpen[key]}
+                    onToggle={(open) => handleGroupToggle(key, open)}
+                    {...(accentColor != null && { accentColor })}
+                  >
+                    {items.map((plan) => renderPlanItem(plan, key))}
+                  </SessionGroupHeader>
+                );
+              })}
             </>
           )}
         </div>
