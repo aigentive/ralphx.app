@@ -213,21 +213,11 @@ export function useChatPanelContext({
   // Auto-select the most recent conversation for execution/review/merge modes
   const autoSelectConversation = useCallback((
     conversations: ConversationsQueryResult,
-    executionLoading: boolean,
-    reviewLoading: boolean,
-    mergeLoading: boolean,
   ) => {
     const isAgentContext = isMergeMode || isExecutionMode || isReviewMode;
-    const isLoading = isMergeMode
-      ? mergeLoading
-      : isExecutionMode
-        ? executionLoading
-        : isReviewMode
-          ? reviewLoading
-          : conversations.isLoading;
 
     // Wait for conversations to load before any validation/selection
-    if (isLoading) {
+    if (conversations.isLoading) {
       return;
     }
 
@@ -260,9 +250,11 @@ export function useChatPanelContext({
             setActiveConversation(mostRecent.id);
           }
         } else {
-          // No conversations in new context - clear selection
-          hasAutoSelectedRef.current = false;
-          setActiveConversation(null);
+          // Empty list — conversation may be freshly created and list hasn't
+          // refetched yet. Don't clear; isConversationInCurrentContext guard
+          // prevents wrong-context messages, and auto-select will run when
+          // the list populates.
+          return;
         }
         return;
       }

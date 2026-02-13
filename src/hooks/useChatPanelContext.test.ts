@@ -212,15 +212,10 @@ describe("useChatPanelContext", () => {
 
       // Call autoSelectConversation with conversations that don't include conv-1
       act(() => {
-        result.current.autoSelectConversation(
-          {
-            data: mockConversations,
-            isLoading: false,
-          },
-          false, // executionLoading
-          false, // reviewLoading
-          false  // mergeLoading
-        );
+        result.current.autoSelectConversation({
+          data: mockConversations,
+          isLoading: false,
+        });
       });
 
       // Should have selected conv-2 (most recent) directly without setting null first
@@ -233,7 +228,7 @@ describe("useChatPanelContext", () => {
       expect(nullCalls.length).toBe(0);
     });
 
-    it("should only set null if new context has no conversations", async () => {
+    it("should NOT clear conversation when new context has no conversations (early return)", async () => {
       mockStore.activeConversationId = "conv-1";
 
       const { result } = renderHook(
@@ -254,21 +249,17 @@ describe("useChatPanelContext", () => {
 
       // Call autoSelectConversation with empty conversation list
       act(() => {
-        result.current.autoSelectConversation(
-          {
-            data: [],
-            isLoading: false,
-          },
-          false, // executionLoading
-          false, // reviewLoading
-          false  // mergeLoading
-        );
+        result.current.autoSelectConversation({
+          data: [],
+          isLoading: false,
+        });
       });
 
-      // Should have set null since new context has no conversations
+      // Should NOT set null — the stale ID is safe because
+      // isConversationInCurrentContext guards against wrong-context messages,
+      // and auto-select will correct when the list populates
       const calls = mockStore.setActiveConversation.mock.calls;
-      expect(calls.length).toBe(1);
-      expect(calls[0][0]).toBe(null);
+      expect(calls.length).toBe(0);
     });
 
     it("should select most recent conversation by lastMessageAt", async () => {
@@ -309,15 +300,10 @@ describe("useChatPanelContext", () => {
       ];
 
       act(() => {
-        result.current.autoSelectConversation(
-          {
-            data: mockConversations,
-            isLoading: false,
-          },
-          false,
-          false,
-          false
-        );
+        result.current.autoSelectConversation({
+          data: mockConversations,
+          isLoading: false,
+        });
       });
 
       // Should select conv-2 (most recent lastMessageAt)
@@ -359,15 +345,10 @@ describe("useChatPanelContext", () => {
       ];
 
       act(() => {
-        result.current.autoSelectConversation(
-          {
-            data: mockConversations,
-            isLoading: false,
-          },
-          false,
-          false,
-          false
-        );
+        result.current.autoSelectConversation({
+          data: mockConversations,
+          isLoading: false,
+        });
       });
 
       // Should not have called setActiveConversation again because we're in history mode

@@ -18,6 +18,7 @@ import { useTasks, taskKeys } from "@/hooks/useTasks";
 import { useChatPanelContext } from "@/hooks/useChatPanelContext";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
+import type { ContextType } from "@/types/chat-conversation";
 import { ALL_REVIEW_STATUSES, EXECUTION_STATUSES, MERGE_STATUSES } from "@/types/status";
 import { AGENT_WORKER, AGENT_REVIEWER } from "@/constants/agents";
 import { StatusActivityBadge, type AgentType } from "./StatusActivityBadge";
@@ -188,45 +189,25 @@ export function IntegratedChatPanel({
   // For execution/review mode, fetch conversations directly with specific context type
   const regularChatData = useChat(chatContext);
 
-  // Fetch execution conversations when in execution mode
-  const executionConversationsQuery = useQuery({
-    queryKey: chatKeys.conversationList("task_execution", selectedTaskId ?? ""),
-    queryFn: () => chatApi.listConversations("task_execution", selectedTaskId ?? ""),
-    enabled: isExecutionMode && !!selectedTaskId,
+  // Single dynamic query for all agent contexts (execution/review/merge)
+  // When currentContextType changes, the query key changes and a fresh fetch fires
+  const isAgentContext = isExecutionMode || isReviewMode || isMergeMode;
+
+  const agentConversationsQuery = useQuery({
+    queryKey: chatKeys.conversationList(currentContextType, selectedTaskId ?? ""),
+    queryFn: () => chatApi.listConversations(currentContextType as ContextType, selectedTaskId ?? ""),
+    enabled: isAgentContext && !!selectedTaskId,
   });
 
-  // Fetch review conversations when in review mode
-  const reviewConversationsQuery = useQuery({
-    queryKey: chatKeys.conversationList("review", selectedTaskId ?? ""),
-    queryFn: () => chatApi.listConversations("review", selectedTaskId ?? ""),
-    enabled: isReviewMode && !!selectedTaskId,
-  });
-
-  // Fetch merge conversations when in merge mode
-  const mergeConversationsQuery = useQuery({
-    queryKey: chatKeys.conversationList("merge", selectedTaskId ?? ""),
-    queryFn: () => chatApi.listConversations("merge", selectedTaskId ?? ""),
-    enabled: isMergeMode && !!selectedTaskId,
-  });
-
-  // Use execution/review/merge conversations when in those modes, otherwise regular conversations
-  const conversations = isMergeMode
-    ? mergeConversationsQuery
-    : isExecutionMode
-      ? executionConversationsQuery
-      : isReviewMode
-        ? reviewConversationsQuery
-        : regularChatData.conversations;
+  // Use agent query for agent contexts, regular chat data otherwise
+  const conversations = isAgentContext
+    ? agentConversationsQuery
+    : regularChatData.conversations;
 
   // Auto-select the most recent conversation in execution/review/merge modes
   useEffect(() => {
-    autoSelectConversation(
-      conversations,
-      executionConversationsQuery.isLoading,
-      reviewConversationsQuery.isLoading,
-      mergeConversationsQuery.isLoading
-    );
-  }, [autoSelectConversation, conversations, executionConversationsQuery.isLoading, reviewConversationsQuery.isLoading, mergeConversationsQuery.isLoading]);
+    autoSelectConversation(conversations);
+  }, [autoSelectConversation, conversations]);
 
   // Check if active conversation belongs to current context (needed by recovery effects below)
   const activeConversationContext = regularChatData.messages.data?.conversation;
