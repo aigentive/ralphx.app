@@ -83,9 +83,9 @@ vi.mock("@/hooks/useChatPanelContext", () => ({
   useChatPanelContext: () => mockChatPanelContext,
 }));
 
-// Mock useIntegratedChatHandlers
-vi.mock("@/hooks/useIntegratedChatHandlers", () => ({
-  useIntegratedChatHandlers: () => ({
+// Mock useChatActions (replaces useIntegratedChatHandlers)
+vi.mock("@/hooks/useChatActions", () => ({
+  useChatActions: () => ({
     handleSend: vi.fn(),
     handleQueue: vi.fn(),
     handleEditLastQueued: vi.fn(),
@@ -95,9 +95,14 @@ vi.mock("@/hooks/useIntegratedChatHandlers", () => ({
   }),
 }));
 
-// Mock useIntegratedChatEvents
-vi.mock("@/hooks/useIntegratedChatEvents", () => ({
-  useIntegratedChatEvents: vi.fn(),
+// Mock useChatEvents (replaces useIntegratedChatEvents)
+vi.mock("@/hooks/useChatEvents", () => ({
+  useChatEvents: vi.fn(),
+}));
+
+// Mock useChatRecovery
+vi.mock("@/hooks/useChatRecovery", () => ({
+  useChatRecovery: vi.fn(),
 }));
 
 // Mock useAgentEvents
