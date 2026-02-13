@@ -404,13 +404,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       result = await callTauri("mark_issue_addressed", { issue_id, resolution_notes, attempt_number });
     } else if (name === "create_child_session") {
       // POST /api/create_child_session
-      const { parent_session_id, title, description, inherit_context } = args as {
+      const { parent_session_id, title, description, inherit_context, initial_prompt } = args as {
         parent_session_id: string;
         title?: string;
         description?: string;
         inherit_context?: boolean;
+        initial_prompt?: string;
       };
-      result = await callTauri("create_child_session", { parent_session_id, title, description, inherit_context });
+      result = await callTauri("create_child_session", { parent_session_id, title, description, inherit_context, initial_prompt });
     } else if (name === "get_parent_session_context") {
       // GET /api/parent_session_context/:session_id
       const { session_id } = args as { session_id: string };

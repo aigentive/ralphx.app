@@ -348,6 +348,10 @@ export const ALL_TOOLS: Tool[] = [
           type: "boolean",
           description: "If true, child references parent's plan artifact by ID. Parent proposals accessible via get_parent_session_context. Default: true.",
         },
+        initial_prompt: {
+          type: "string",
+          description: "Optional initial prompt/message to forward to the child session's agent. This is the user's message that triggered the child session creation.",
+        },
       },
       required: ["parent_session_id"],
     },
