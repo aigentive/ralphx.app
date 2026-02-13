@@ -9,7 +9,7 @@
  * Design spec: specs/design/refined-studio-patterns.md
  */
 
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { type VirtuosoHandle } from "react-virtuoso";
 import { useChat, chatKeys } from "@/hooks/useChat";
 import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectIsSending } from "@/stores/chatStore";
@@ -42,6 +42,8 @@ import { QuestionInputBanner } from "./QuestionInputBanner";
 import { RecoveryPromptDialog } from "@/components/recovery/RecoveryPromptDialog";
 import { useEventBus } from "@/providers/EventProvider";
 import { logger } from "@/lib/logger";
+import { ChildSessionNotification } from "./ChildSessionNotification";
+import { useIdeationStore } from "@/stores/ideationStore";
 
 // ============================================================================
 // Main Component
@@ -503,6 +505,18 @@ export function IntegratedChatPanel({
     handleSend,
   });
 
+  // Ideation store for session navigation
+  const selectSession = useIdeationStore((s) => s.selectSession);
+  const allSessions = useIdeationStore((s) => Object.values(s.sessions));
+
+  // Handler for navigating to child session
+  const handleNavigateToChildSession = useCallback((childSessionId: string) => {
+    const session = allSessions.find((s) => s.id === childSessionId);
+    if (session) {
+      selectSession(session);
+    }
+  }, [allSessions, selectSession]);
+
   // Handle Escape key to close panel
   useEffect(() => {
     if (!onClose) return;
@@ -649,6 +663,14 @@ export function IntegratedChatPanel({
               streamingTasks={streamingTasks}
               streamingText={streamingText}
               scrollToTimestamp={isHistoryMode ? taskHistoryState?.timestamp : null}
+            />
+          )}
+
+          {/* Child Session Notification - shows when follow-up is created (ideation mode only) */}
+          {ideationSessionId && !isHistoryMode && (
+            <ChildSessionNotification
+              sessionId={ideationSessionId}
+              onNavigateToSession={handleNavigateToChildSession}
             />
           )}
 
