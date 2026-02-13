@@ -34,6 +34,9 @@ pub mod testing;
 pub use application::AppState;
 pub use error::{AppError, AppResult};
 
+#[cfg(test)]
+mod tests;
+
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::Manager;
