@@ -130,6 +130,10 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
     handlers?.onMarkResolved?.(taskId);
   }, [handlers, taskId]);
 
+  const handleRemove = useCallback(() => {
+    handlers?.onRemove?.(taskId);
+  }, [handlers, taskId]);
+
   // Node content
   const nodeContent = (
     <div
@@ -253,6 +257,7 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
         onReject: handleReject,
         onRequestChanges: handleRequestChanges,
         onMarkResolved: handleMarkResolved,
+        onRemove: handleRemove,
       }}
       {...(groupInfo !== undefined && { groupInfo })}
     >

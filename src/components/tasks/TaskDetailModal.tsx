@@ -22,8 +22,8 @@ import { TaskEditForm } from "./TaskEditForm";
 import { StatusDropdown } from "./StatusDropdown";
 import { useTaskMutation } from "@/hooks/useTaskMutation";
 import type { Task } from "@/types/task";
-import { X, Loader2, FileText, Pencil, Archive, RotateCcw, Trash } from "lucide-react";
-import { useState } from "react";
+import { X, Loader2, FileText, Pencil, Archive, RotateCcw, Trash, Trash2 } from "lucide-react";
+import { useState, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
@@ -45,6 +45,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useConfirmation } from "@/hooks/useConfirmation";
 
 interface TaskDetailModalProps {
   task: Task | null;
@@ -78,6 +79,27 @@ export function TaskDetailModal({
     isRestoring,
     isCleaningTask,
   } = useTaskMutation(task?.projectId ?? "");
+
+  // Confirmation dialog for remove action
+  const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
+
+  // Handle remove (non-archived tasks)
+  const handleRemove = useCallback(async () => {
+    if (!task) return;
+    const confirmed = await confirm({
+      title: "Remove this task?",
+      description:
+        "This will permanently remove the task and clean up all associated resources (branches, agents, artifacts). This action cannot be undone.",
+      confirmText: "Remove",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
+    cleanupTaskMutation.mutate(task.id, {
+      onSuccess: () => {
+        onClose();
+      },
+    });
+  }, [task, confirm, cleanupTaskMutation, onClose]);
 
   if (!task) return null;
 
@@ -242,6 +264,34 @@ export function TaskDetailModal({
                   title={isEditing ? "Cancel editing" : "Edit task"}
                 >
                   <Pencil className="w-4 h-4" />
+                </button>
+              )}
+              {/* Remove button - only for non-archived tasks */}
+              {!isArchived && (
+                <button
+                  onClick={handleRemove}
+                  disabled={isCleaningTask}
+                  data-testid="task-detail-remove-button"
+                  className="p-2 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 disabled:opacity-50"
+                  style={{
+                    color: "var(--status-error)",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isCleaningTask) {
+                      e.currentTarget.style.backgroundColor = "var(--bg-hover)";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = "transparent";
+                  }}
+                  aria-label="Remove task"
+                  title="Remove task"
+                >
+                  {isCleaningTask ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-4 h-4" />
+                  )}
                 </button>
               )}
               {/* Archive button - only for non-archived tasks */}
@@ -485,6 +535,9 @@ export function TaskDetailModal({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Remove Confirmation Dialog */}
+      <ConfirmationDialog {...confirmationDialogProps} />
     </Dialog>
   );
 }

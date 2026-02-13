@@ -29,7 +29,7 @@ import {
   ContextMenuItem,
   ContextMenuSeparator,
 } from "@/components/ui/context-menu";
-import { Eye, Pencil, Archive, RotateCcw, Trash, Lightbulb } from "lucide-react";
+import { Eye, Pencil, Archive, RotateCcw, Trash, Trash2, Lightbulb } from "lucide-react";
 import type { Task } from "@/types/task";
 import type { TaskAction, ActionSurface } from "@/lib/task-actions";
 import { getTaskActions, canEdit } from "@/lib/task-actions";
@@ -60,6 +60,7 @@ export interface TaskContextMenuHandlers {
   onMarkResolved?: () => void;
   onStartIdeation?: () => void;
   onViewAgentChat?: () => void;
+  onRemove?: () => void;
 }
 
 // ============================================================================
@@ -240,6 +241,16 @@ export function TaskContextMenuItems({
     if (confirmed) handlers.onPermanentDelete?.();
   }, [confirm, handlers]);
 
+  const handleRemove = useCallback(async () => {
+    const confirmed = await confirm({
+      title: "Remove this task?",
+      description: "This will permanently remove the task and clean up all associated resources (branches, agents, artifacts). This action cannot be undone.",
+      confirmText: "Remove",
+      variant: "destructive",
+    });
+    if (confirmed) handlers.onRemove?.();
+  }, [confirm, handlers]);
+
   return (
     <>
       <ContextMenuItem
@@ -281,13 +292,21 @@ export function TaskContextMenuItems({
         </>
       )}
 
-      {!isArchived && handlers.onArchive && (
+      {!isArchived && (handlers.onRemove || handlers.onArchive) && (
         <>
           <ContextMenuSeparator />
-          <ContextMenuItem onClick={handleArchive}>
-            <Archive className="w-4 h-4 mr-2" />
-            Archive
-          </ContextMenuItem>
+          {handlers.onRemove && (
+            <ContextMenuItem onClick={handleRemove} className="text-destructive">
+              <Trash2 className="w-4 h-4 mr-2" />
+              Remove
+            </ContextMenuItem>
+          )}
+          {handlers.onArchive && (
+            <ContextMenuItem onClick={handleArchive}>
+              <Archive className="w-4 h-4 mr-2" />
+              Archive
+            </ContextMenuItem>
+          )}
         </>
       )}
 

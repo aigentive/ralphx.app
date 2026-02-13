@@ -172,6 +172,10 @@ export function TaskCard({
     restoreMutation.mutate(task.id);
   };
 
+  const handleRemove = () => {
+    cleanupTaskMutation.mutate(task.id);
+  };
+
   const handlePermanentDelete = () => {
     setShowDeleteConfirm(true);
   };
@@ -224,6 +228,7 @@ export function TaskCard({
         onArchive={handleArchive}
         onRestore={handleRestore}
         onPermanentDelete={handlePermanentDelete}
+        onRemove={handleRemove}
         onStatusChange={handleStatusChange}
         onBlockWithReason={handleBlockWithReason}
         onUnblock={handleUnblock}
