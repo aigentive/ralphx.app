@@ -684,6 +684,44 @@ impl<R: Runtime> TaskTransitionService<R> {
         tracing::debug!(?state, "Calling TransitionHandler::on_enter");
         if let Err(e) = handler.on_enter(&state).await {
             tracing::error!(error = %e, "on_enter failed");
+
+            // If execution was blocked (e.g., git isolation failure), transition task to Failed
+            if matches!(&e, AppError::ExecutionBlocked(_)) {
+                tracing::warn!(
+                    task_id = task_id.as_str(),
+                    error = %e,
+                    "ExecutionBlocked during on_enter — transitioning task to Failed"
+                );
+                if let Ok(Some(mut failed_task)) = self.task_repo.get_by_id(task_id).await {
+                    let from_status = failed_task.internal_status;
+                    failed_task.internal_status = InternalStatus::Failed;
+                    failed_task.blocked_reason = Some(e.to_string());
+                    failed_task.touch();
+                    if let Err(update_err) = self.task_repo.update(&failed_task).await {
+                        tracing::error!(error = %update_err, "Failed to persist Failed status after ExecutionBlocked");
+                    } else {
+                        // Record state history
+                        let _ = self
+                            .task_repo
+                            .persist_status_change(task_id, from_status, InternalStatus::Failed, "system")
+                            .await;
+                        // Emit event for UI
+                        if let Some(ref handle) = self._app_handle {
+                            let _ = handle.emit(
+                                "task:event",
+                                serde_json::json!({
+                                    "type": "status_changed",
+                                    "taskId": task_id.as_str(),
+                                    "from": from_status.as_str(),
+                                    "to": "failed",
+                                    "changedBy": "system",
+                                    "reason": e.to_string(),
+                                }),
+                            );
+                        }
+                    }
+                }
+            }
         }
         tracing::debug!("TransitionHandler::on_enter complete");
 

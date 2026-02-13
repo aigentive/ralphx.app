@@ -561,9 +561,9 @@ async fn test_resolve_working_directory_worktree_mode_no_worktree_path() {
         .with_working_dir("/fallback")
         .with_repos(task_repo, project_repo);
 
-    // Falls back to project working_directory when worktree_path is None
+    // Safety net: falls back to spawner default (NOT project dir) when worktree_path is None
     let resolved = spawner.resolve_working_directory("task-no-wt").await;
-    assert_eq!(resolved, PathBuf::from("/project/root"));
+    assert_eq!(resolved, PathBuf::from("/fallback"));
 }
 
 #[tokio::test]
