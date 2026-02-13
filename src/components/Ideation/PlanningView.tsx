@@ -17,6 +17,7 @@ import {
   Sparkles,
   RotateCcw,
   RefreshCw,
+  ArrowLeft,
 } from "lucide-react";
 import { useEventBus } from "@/providers/EventProvider";
 import { toast } from "sonner";
@@ -606,6 +607,34 @@ export function PlanningView({
               }}
             >
               <div className="flex items-center gap-2">
+                {/* Parent session breadcrumb */}
+                {session.parentSessionId && (() => {
+                  const parentSession = sessions.find((s) => s.id === session.parentSessionId);
+                  if (parentSession) {
+                    return (
+                      <button
+                        onClick={() => onSelectSession(session.parentSessionId!)}
+                        className="flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors duration-150"
+                        style={{
+                          background: "hsla(220 10% 100% / 0.04)",
+                          border: "1px solid hsla(220 10% 100% / 0.08)",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = "hsla(220 10% 100% / 0.08)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = "hsla(220 10% 100% / 0.04)";
+                        }}
+                      >
+                        <ArrowLeft className="w-3 h-3" style={{ color: "hsl(220 10% 60%)" }} />
+                        <span className="text-[11px]" style={{ color: "hsl(220 10% 70%)" }}>
+                          {parentSession.title || "Untitled"}
+                        </span>
+                      </button>
+                    );
+                  }
+                  return null;
+                })()}
                 <div
                   className="w-6 h-6 rounded-md flex items-center justify-center"
                   style={{
