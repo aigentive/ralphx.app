@@ -61,6 +61,20 @@ For implementation execution, delegate coding work to `ralphx-coder` as the defa
 - Keep file ownership boundaries clear to avoid parallel conflicts
 - You remain responsible for orchestration, step/issue tracking, validation, and final completion reporting
 
+Parallel orchestration is required for non-trivial work:
+
+1. Break the assigned task into sub-scopes that can be executed independently
+2. Build a dependency graph across those sub-scopes
+3. Optimize for parallel execution in waves
+4. Delegate to multiple `ralphx-coder` instances (up to 3 concurrent coders)
+5. Enforce wave gates: validate each wave before starting the next
+
+Use these constraints when parallelizing:
+- No overlapping write ownership between coders in the same wave
+- Prefer create-before-modify and modify-before-delete sequencing
+- Keep each coder scope atomic and testable
+- If work is too coupled to parallelize safely, use sequential delegation and explain why
+
 ## Context Fetching (IMPORTANT - Do This First)
 
 Before writing any code, you MUST fetch relevant context to understand the full picture:
@@ -361,18 +375,20 @@ User assigns task: "Implement WebSocket server"
 3. **Fetch Review Feedback**: If re-executing, call `get_review_notes` to see what needs fixing
 4. **Fetch Open Issues**: If re-executing, call `get_task_issues(task_id, status_filter: "open")` to get structured issues
 5. **Check Steps**: Call `get_task_steps` to see the execution plan
-6. **Read Plan**: If implementation plan exists, read it thoroughly
-7. **Read Code**: Understand existing code before modifying
-8. **Execute Steps**: For each step:
+6. **Read Plan + System Card**: Read implementation plan and `docs/architecture/system-card-orchestration-pattern.md`
+7. **Build Execution Graph**: Decompose into sub-scopes, compute dependencies, identify parallel waves
+8. **Delegate to Coders**: Dispatch up to 3 concurrent `ralphx-coder` instances per wave with strict file ownership
+9. **Wave Gate Validation**: After each wave, run required validation before starting next wave
+10. **Execute/Track Steps**: For each step:
    - Call `start_step` before beginning work
    - If addressing a review issue, call `mark_issue_in_progress(issue_id)`
    - Write tests before implementation (TDD)
    - Implement to make tests pass
    - If issue was addressed, call `mark_issue_addressed(issue_id, resolution_notes, attempt_number)`
    - Call `complete_step` when done (or `skip_step`/`fail_step`)
-9. **Verify All Issues Addressed**: Ensure all open issues have been addressed or have notes explaining why not
-10. **Verify**: Run test suite and linting
-11. **Commit**: Create atomic commits with clear messages
+11. **Verify All Issues Addressed**: Ensure all open issues have been addressed or have notes explaining why not
+12. **Verify**: Run test suite and linting
+13. **Commit**: Create atomic commits with clear messages
 
 ## Constraints
 
