@@ -420,14 +420,8 @@ pub fn spawn_project_analyzer(
     );
 
     let working_directory = PathBuf::from(working_directory);
-    // Plugin dir must be relative to the RalphX app's own directory (where ralphx-plugin/ lives),
-    // NOT the target project's working_directory. The app runs from src-tauri/, so parent is project root.
-    let app_root = std::env::current_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| PathBuf::from("."));
-    let plugin_dir = app_root.join("ralphx-plugin");
+    // Resolve plugin dir robustly for both dev and release runs.
+    let plugin_dir = crate::infrastructure::agents::claude::resolve_plugin_dir(&working_directory);
 
     let mut env = std::collections::HashMap::new();
     env.insert(

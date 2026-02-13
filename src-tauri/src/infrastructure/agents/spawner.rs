@@ -209,8 +209,8 @@ impl AgentSpawner for AgenticClientSpawner {
         // Resolve project ID for RALPHX_PROJECT_ID env var
         let project_id = self.resolve_project_id(task_id).await;
 
-        // Plugin dir is relative to working directory (which is now project root)
-        let plugin_dir = working_dir.join("ralphx-plugin");
+        // Resolve plugin dir robustly for both dev and release runs.
+        let plugin_dir = crate::infrastructure::agents::claude::resolve_plugin_dir(&working_dir);
 
         let mut env = std::collections::HashMap::new();
         if let Some(pid) = project_id {

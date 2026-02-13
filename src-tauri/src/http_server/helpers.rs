@@ -565,7 +565,7 @@ pub async fn maybe_trigger_dependency_analysis(
 
         // Find working directory (project root where ralphx-plugin exists)
         let working_directory = find_project_root();
-        let plugin_dir = working_directory.join("ralphx-plugin");
+        let plugin_dir = crate::infrastructure::agents::claude::resolve_plugin_dir(&working_directory);
 
         // Find Claude CLI
         let cli_path = match crate::infrastructure::agents::claude::find_claude_cli() {

@@ -738,6 +738,13 @@ pub fn find_claude_cli() -> Option<PathBuf> {
 
 /// Find the plugin directory relative to the app
 pub fn find_plugin_dir() -> Option<PathBuf> {
+    if let Ok(path) = std::env::var("RALPHX_PLUGIN_DIR") {
+        let candidate = PathBuf::from(path);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+
     // In development, it's relative to the current working directory
     let dev_path = std::env::current_dir().ok()?.join("ralphx-plugin");
 
@@ -767,5 +774,38 @@ pub fn find_plugin_dir() -> Option<PathBuf> {
         }
     }
 
+    // Production fallback: app data location where local release provisioning
+    // installs plugin runtime assets.
+    if let Ok(home) = std::env::var("HOME") {
+        let app_data_plugin = PathBuf::from(home)
+            .join("Library/Application Support/com.ralphx.app/ralphx-plugin");
+        if app_data_plugin.exists() {
+            return Some(app_data_plugin);
+        }
+    }
+
     None
+}
+
+/// Resolve plugin directory for a specific working directory context.
+///
+/// Priority:
+/// 1) `<working_dir>/ralphx-plugin`
+/// 2) `<working_dir>/../ralphx-plugin`
+/// 3) global discovery via `find_plugin_dir()`
+/// 4) fallback to `<working_dir>/ralphx-plugin` (even if missing)
+pub fn resolve_plugin_dir(working_dir: &Path) -> PathBuf {
+    let direct = working_dir.join("ralphx-plugin");
+    if direct.exists() {
+        return direct;
+    }
+
+    if let Some(parent) = working_dir.parent() {
+        let parent_candidate = parent.join("ralphx-plugin");
+        if parent_candidate.exists() {
+            return parent_candidate;
+        }
+    }
+
+    find_plugin_dir().unwrap_or(direct)
 }
