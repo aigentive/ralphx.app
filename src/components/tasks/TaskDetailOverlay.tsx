@@ -30,6 +30,7 @@ import {
   Archive,
   RotateCcw,
   Trash,
+  Trash2,
   Loader2,
   Lightbulb,
   History,
@@ -394,6 +395,24 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
     });
   };
 
+  // Handle remove (non-archived tasks)
+  const handleRemove = async () => {
+    if (!task) return;
+    const confirmed = await confirm({
+      title: "Remove this task?",
+      description:
+        "This will permanently remove the task and clean up all associated resources (branches, agents, artifacts). This action cannot be undone.",
+      confirmText: "Remove",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
+    cleanupTaskMutation.mutate(task.id, {
+      onSuccess: () => {
+        handleClose();
+      },
+    });
+  };
+
   // Handle start ideation
   const handleStartIdeation = async () => {
     if (!task) return;
@@ -556,6 +575,25 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
                   className="hover:bg-[hsla(220_10%_100%/0.05)]"
                 >
                   <Pencil className="w-4 h-4" />
+                </Button>
+              )}
+              {/* Remove button - non-archived tasks */}
+              {!isArchived && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={handleRemove}
+                  disabled={isCleaningTask}
+                  data-testid="task-overlay-remove-button"
+                  aria-label="Remove task"
+                  style={{ color: "hsl(0 70% 60%)" }}
+                  className="hover:bg-[hsla(0_70%_55%/0.1)]"
+                >
+                  {isCleaningTask ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-4 h-4" />
+                  )}
                 </Button>
               )}
               {/* Archive button */}

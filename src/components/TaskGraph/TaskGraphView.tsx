@@ -986,6 +986,21 @@ function TaskGraphViewInner({
     }
   }, []);
 
+  // Task removal handler (context menu "Remove" — confirmation handled by TaskContextMenuItems)
+  const handleRemoveTask = useCallback(
+    async (taskId: string) => {
+      try {
+        await api.tasks.cleanupTask(taskId);
+        clearGraphSelection();
+        queryClient.invalidateQueries({ queryKey: taskGraphKeys.graphPrefix(projectId) });
+        toast.success("Task removed");
+      } catch {
+        toast.error("Failed to remove task");
+      }
+    },
+    [clearGraphSelection, queryClient, projectId]
+  );
+
   // Memoized handlers object for nodes
   const nodeHandlers: TaskNodeHandlers = useMemo(() => ({
     onViewDetails: handleViewDetails,
@@ -996,6 +1011,7 @@ function TaskGraphViewInner({
     onReject: handleReject,
     onRequestChanges: handleRequestChanges,
     onMarkResolved: handleMarkResolved,
+    onRemove: handleRemoveTask,
   }), [
     handleViewDetails,
     handleStartExecution,
@@ -1005,6 +1021,7 @@ function TaskGraphViewInner({
     handleReject,
     handleRequestChanges,
     handleMarkResolved,
+    handleRemoveTask,
   ]);
 
   // Layout config with per-node mode lookup for mixed dimensions.
@@ -1106,7 +1123,7 @@ function TaskGraphViewInner({
     [cancelTasksInGroupMutation, projectId, queryClient]
   );
 
-  // Task deletion handler (Delete key on task node)
+  // Task deletion handler (Delete key on task node — has its own confirmation dialog)
   const handleDeleteTask = useCallback(
     async (taskId: string) => {
       const taskNode = graphData?.nodes.find((n) => n.taskId === taskId);

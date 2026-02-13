@@ -46,6 +46,8 @@ export interface TaskNodeHandlers {
   onRequestChanges?: (taskId: string) => void;
   /** Mark merge conflict as resolved */
   onMarkResolved?: (taskId: string) => void;
+  /** Remove task (full cleanup) */
+  onRemove?: (taskId: string) => void;
 }
 
 /**
@@ -177,6 +179,10 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
 
   const handleMarkResolved = useCallback(() => {
     handlers?.onMarkResolved?.(taskId);
+  }, [handlers, taskId]);
+
+  const handleRemove = useCallback(() => {
+    handlers?.onRemove?.(taskId);
   }, [handlers, taskId]);
 
   // Node content that will be wrapped by context menu
@@ -365,6 +371,7 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
         onReject: handleReject,
         onRequestChanges: handleRequestChanges,
         onMarkResolved: handleMarkResolved,
+        onRemove: handleRemove,
       }}
       {...(groupInfo !== undefined && { groupInfo })}
     >
