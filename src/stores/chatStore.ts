@@ -162,8 +162,10 @@ export const useChatStore = create<ChatState & ChatActions>()(
     setAgentRunning: (contextKey, isRunning) =>
       set((state) => {
         if (isRunning) {
+          if (state.isAgentRunning[contextKey]) return; // already true — no-op
           state.isAgentRunning[contextKey] = true;
         } else {
+          if (!(contextKey in state.isAgentRunning)) return; // already absent — no-op
           delete state.isAgentRunning[contextKey];
         }
       }),

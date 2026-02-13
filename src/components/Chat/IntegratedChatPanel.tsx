@@ -36,7 +36,7 @@ import {
 import { useChatActions } from "@/hooks/useChatActions";
 import { useChatEvents } from "@/hooks/useChatEvents";
 import { useChatRecovery } from "@/hooks/useChatRecovery";
-import { useAgentEvents } from "@/hooks/useAgentEvents";
+// useAgentEvents is already called inside useChat — no direct import needed
 import { useAskUserQuestion } from "@/hooks/useAskUserQuestion";
 import { useQuestionInput } from "@/hooks/useQuestionInput";
 import { QuestionInputBanner } from "./QuestionInputBanner";
@@ -142,8 +142,7 @@ export function IntegratedChatPanel({
 
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
 
-  // Listen for agent lifecycle events so chat stays live during reviews/merges
-  useAgentEvents(activeConversationId);
+  // Agent lifecycle events (useAgentEvents) are handled inside useChat — no duplicate subscription needed.
 
   // If a new run starts in this context, switch to its conversation (live mode only)
   useEffect(() => {
