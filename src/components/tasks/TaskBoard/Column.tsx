@@ -37,6 +37,7 @@ import {
   saveCollapsedGroups,
   getGroupIcon,
 } from "./Column.utils.tsx";
+import { CollapsedQuickAdd } from "./CollapsedQuickAdd";
 
 interface ColumnProps {
   column: WorkflowColumnResponse;
@@ -387,6 +388,11 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
         >
           {tasks.length}
         </span>
+
+        {/* Quick-add button for draft/backlog columns (hidden during drag) */}
+        {!isDragging && (column.id === "draft" || column.id === "backlog") && (
+          <CollapsedQuickAdd projectId={projectId} columnId={column.id} />
+        )}
       </div>
     );
   }
