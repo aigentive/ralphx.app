@@ -427,6 +427,27 @@ describe("ChatMessageList - Scroll Behavior", () => {
       const callCount = mockUseChatAutoScroll.mock.calls.length;
       expect(callCount).toBe(2);
     });
+
+    it("re-render with same props does not increase hook call count beyond expected", () => {
+      // Regression test: Virtuoso components/itemContent props must be
+      // memoized (useMemo/useCallback) so Virtuoso doesn't re-mount
+      // Header/Footer on every render, which triggers atBottomStateChange
+      // → state change → re-render → new components object → infinite loop.
+      const { rerender } = render(
+        <ChatMessageList {...defaultProps} />
+      );
+
+      const callsAfterMount = mockUseChatAutoScroll.mock.calls.length;
+
+      // Re-render 5 times with identical props
+      for (let i = 0; i < 5; i++) {
+        rerender(<ChatMessageList {...defaultProps} />);
+      }
+
+      // Each rerender should call the hook exactly once (no cascading re-renders)
+      const callsAfterRerenders = mockUseChatAutoScroll.mock.calls.length;
+      expect(callsAfterRerenders).toBe(callsAfterMount + 5);
+    });
   });
 
   describe("footer content hash for streaming", () => {
