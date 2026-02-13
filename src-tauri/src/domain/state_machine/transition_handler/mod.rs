@@ -92,6 +92,17 @@ impl<'a> TransitionHandler<'a> {
 
                 // Execute on-enter action for new state
                 if let Err(e) = self.on_enter(&new_state).await {
+                    // Emit error event for UI visibility before logging
+                    self.machine
+                        .context
+                        .services
+                        .event_emitter
+                        .emit_with_payload(
+                            "task:on_enter_error",
+                            &self.machine.context.task_id,
+                            &format!(r#"{{"state":"{:?}","error":"{}"}}"#, new_state, e),
+                        )
+                        .await;
                     tracing::error!(error = %e, "on_enter failed for state {:?}", new_state);
                     // Note: We still return Success as the transition happened,
                     // but side effects may not have completed
@@ -103,6 +114,16 @@ impl<'a> TransitionHandler<'a> {
                     self.on_exit(&new_state, &auto_state).await;
                     // Execute on-enter for final state
                     if let Err(e) = self.on_enter(&auto_state).await {
+                        self.machine
+                            .context
+                            .services
+                            .event_emitter
+                            .emit_with_payload(
+                                "task:on_enter_error",
+                                &self.machine.context.task_id,
+                                &format!(r#"{{"state":"{:?}","error":"{}"}}"#, auto_state, e),
+                            )
+                            .await;
                         tracing::error!(error = %e, "on_enter failed for auto-transition state {:?}", auto_state);
                     }
                     return TransitionResult::AutoTransition(auto_state);

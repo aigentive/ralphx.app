@@ -6,9 +6,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::info;
+use tracing::{info, warn};
 
-use tauri::{AppHandle, Wry};
+use tauri::{AppHandle, Emitter, Wry};
 
 use crate::commands::ExecutionState;
 use crate::domain::agents::{AgentConfig, AgentHandle, AgentRole, AgenticClient};
@@ -185,17 +185,49 @@ impl AgenticClientSpawner {
 #[async_trait]
 impl AgentSpawner for AgenticClientSpawner {
     async fn spawn(&self, agent_type: &str, task_id: &str) {
+        // B5: Check if agent is already running for this task
+        {
+            let handles = self.handles.lock().await;
+            if handles.contains_key(task_id) {
+                warn!(
+                    task_id = task_id,
+                    agent_type = agent_type,
+                    "Spawn skipped: agent already running for this task"
+                );
+                return;
+            }
+        }
+
         // Check execution state before spawning
         if let Some(ref exec) = self.execution_state {
             if !exec.can_start_task() {
+                let reason = if exec.is_paused() {
+                    "execution_paused"
+                } else {
+                    "max_concurrent_reached"
+                };
                 info!(
                     task_id = task_id,
                     agent_type = agent_type,
                     is_paused = exec.is_paused(),
                     running_count = exec.running_count(),
                     max_concurrent = exec.max_concurrent(),
+                    reason = reason,
                     "Spawn blocked: execution paused or at max concurrent"
                 );
+                // Emit event for UI visibility
+                if let Some(ref handle) = self.app_handle {
+                    let _ = handle.emit(
+                        "execution:spawn_blocked",
+                        serde_json::json!({
+                            "task_id": task_id,
+                            "agent_type": agent_type,
+                            "reason": reason,
+                            "running_count": exec.running_count(),
+                            "max_concurrent": exec.max_concurrent(),
+                        }),
+                    );
+                }
                 return;
             }
             // Increment running count before spawning

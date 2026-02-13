@@ -9,6 +9,7 @@ use tauri::State;
 use crate::application::git_service::{CommitInfo, DiffStats, GitService};
 use crate::application::task_scheduler_service::TaskSchedulerService;
 use crate::application::{AppState, TaskTransitionService};
+use crate::commands::execution_commands::AGENT_ACTIVE_STATUSES;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{GitMode, InternalStatus, ProjectId, TaskId};
 use crate::domain::state_machine::services::TaskScheduler;
@@ -606,6 +607,25 @@ pub async fn change_project_git_mode(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Project not found: {}", project_id.as_str()))?;
+
+    // A7: Block git mode change when tasks are actively running
+    let active_tasks = state
+        .task_repo
+        .get_by_project(&project_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let in_flight: Vec<_> = active_tasks
+        .iter()
+        .filter(|t| AGENT_ACTIVE_STATUSES.contains(&t.internal_status))
+        .collect();
+    if !in_flight.is_empty() {
+        let task_ids: Vec<_> = in_flight.iter().map(|t| t.id.as_str().to_string()).collect();
+        return Err(format!(
+            "Cannot change git mode while {} task(s) are in active states: {}",
+            in_flight.len(),
+            task_ids.join(", ")
+        ));
+    }
 
     // Parse git mode
     let new_mode: GitMode = input.git_mode.parse().map_err(|_| {

@@ -101,14 +101,15 @@ async fn test_b1_send_message_error_no_failed_transition() {
         "GAP: Task stays in Executing with no agent — no auto-transition to Failed"
     );
 
-    // No error events were emitted
+    // FIXED (Phase 2, B1+H2): Error event IS now emitted when send_message fails.
+    // Previously this was a GAP — errors were silently swallowed.
     let events = svc.emitter.get_events();
     let has_error_event = events
         .iter()
         .any(|e| e.args.first().map(|s| s.contains("error")).unwrap_or(false));
     assert!(
-        !has_error_event,
-        "GAP: No error event emitted when send_message fails"
+        has_error_event,
+        "FIXED: Error event should be emitted when send_message fails (was GAP, now fixed)"
     );
 }
 

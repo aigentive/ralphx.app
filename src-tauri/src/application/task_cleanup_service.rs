@@ -134,6 +134,13 @@ impl TaskCleanupService {
         }
 
         // 2. Clean up git resources (worktree + branch)
+        if let Some(ref branch) = task.task_branch {
+            tracing::info!(
+                task_id = task.id.as_str(),
+                branch = branch.as_str(),
+                "Cleaning up git resources for task"
+            );
+        }
         self.cleanup_git_resources(task).await;
 
         // 3. Clear FK references to task before deletion (defense-in-depth)
