@@ -14,31 +14,9 @@ import { useEventBus } from "@/providers/EventProvider";
 import type { ChatMessageResponse } from "@/api/chat";
 import type { ChatConversation, ContextType } from "@/types/chat-conversation";
 import { useChatStore } from "@/stores/chatStore";
+import { buildStoreKey } from "@/lib/chat-context-registry";
 import { chatKeys } from "./useChat";
 import type { Unsubscribe } from "@/lib/event-bus";
-
-/**
- * Build a context key string from context type and ID
- * Uses context-aware keys for unified queue system
- */
-function buildContextKey(contextType: ContextType, contextId: string): string {
-  switch (contextType) {
-    case "ideation":
-      return `session:${contextId}`;
-    case "task":
-      return `task:${contextId}`;
-    case "task_execution":
-      return `task_execution:${contextId}`;
-    case "review":
-      return `review:${contextId}`;
-    case "merge":
-      return `merge:${contextId}`;
-    case "project":
-      return `project:${contextId}`;
-    default:
-      return `project:${contextId}`;
-  }
-}
 
 /**
  * Hook to manage agent event listeners
@@ -76,7 +54,7 @@ export function useAgentEvents(activeConversationId: string | null) {
         const { context_type, context_id: eventContextId, conversation_id } = payload;
 
         // Build context key from the event payload
-        const eventContextKey = buildContextKey(context_type as ContextType, eventContextId);
+        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
 
         // Set agent as running for this context
         setAgentRunning(eventContextKey, true);
@@ -164,7 +142,7 @@ export function useAgentEvents(activeConversationId: string | null) {
         const { conversation_id, context_type, context_id: eventContextId } = payload;
 
         // Build context key from the event payload
-        const eventContextKey = buildContextKey(context_type as ContextType, eventContextId);
+        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
 
         // Update agent running state for the specific context
         setAgentRunning(eventContextKey, false);
@@ -199,7 +177,7 @@ export function useAgentEvents(activeConversationId: string | null) {
         const { message_id, context_type, context_id: eventContextId } = payload;
 
         // Build context key from the event payload - unified queue with context-aware keys
-        const eventContextKey = buildContextKey(context_type as ContextType, eventContextId);
+        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
         // Remove from frontend optimistic queue by exact ID match
         deleteQueuedMessage(eventContextKey, message_id);
       })
@@ -217,7 +195,7 @@ export function useAgentEvents(activeConversationId: string | null) {
       }>("agent:stopped", (payload) => {
         const { conversation_id, context_type, context_id: eventContextId } = payload;
 
-        const eventContextKey = buildContextKey(context_type as ContextType, eventContextId);
+        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
 
         setAgentRunning(eventContextKey, false);
 
@@ -244,7 +222,7 @@ export function useAgentEvents(activeConversationId: string | null) {
         const { conversation_id, context_type, context_id: eventContextId } = payload;
 
         // Build context key from the event payload
-        const eventContextKey = buildContextKey(context_type as ContextType, eventContextId);
+        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
 
         // Update agent running state on error for the specific context
         setAgentRunning(eventContextKey, false);

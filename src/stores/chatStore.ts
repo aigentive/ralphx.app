@@ -10,6 +10,7 @@ import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import type { ChatMessage } from "@/types/ideation";
 import type { ChatContext } from "@/types/chat";
+import { buildStoreKey } from "@/lib/chat-context-registry";
 
 // ============================================================================
 // Constants
@@ -275,16 +276,17 @@ export const useChatStore = create<ChatState & ChatActions>()(
 /**
  * Generate a context key from a ChatContext
  * Used to key messages by their source context
+ *
+ * Delegates to the chat-context-registry's buildStoreKey for consistent key formatting.
  */
 export function getContextKey(context: ChatContext): string {
   if (context.view === "ideation" && context.ideationSessionId) {
-    return `session:${context.ideationSessionId}`;
+    return buildStoreKey("ideation", context.ideationSessionId);
   }
   if (context.view === "task_detail" && context.selectedTaskId) {
-    return `task:${context.selectedTaskId}`;
+    return buildStoreKey("task", context.selectedTaskId);
   }
-  // Default to project-level context
-  return `project:${context.projectId}`;
+  return buildStoreKey("project", context.projectId);
 }
 
 // ============================================================================

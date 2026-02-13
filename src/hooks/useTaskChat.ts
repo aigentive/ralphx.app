@@ -13,6 +13,7 @@ import { useEffect, useCallback, useRef, useMemo } from "react";
 import { chatApi, type SendAgentMessageResult, type ChatMessageResponse } from "@/api/chat";
 import type { ChatConversation, AgentRun } from "@/types/chat-conversation";
 import { useChatStore } from "@/stores/chatStore";
+import { buildStoreKey } from "@/lib/chat-context-registry";
 import { logger } from "@/lib/logger";
 import { chatKeys, useConversation } from "./useChat";
 import { useAgentEvents } from "./useAgentEvents";
@@ -26,14 +27,6 @@ import { useTaskStateTransitions } from "./useTaskStateTransitions";
  * - merge: Merge agent conflict resolution conversation
  */
 export type TaskContextType = "task" | "task_execution" | "review" | "merge";
-
-/**
- * Build a context key string for task-related contexts
- * Format: ${contextType}:${taskId}
- */
-function buildTaskContextKey(contextType: TaskContextType, taskId: string): string {
-  return `${contextType}:${taskId}`;
-}
 
 /**
  * Hook for task-specific chat functionality with context-aware messaging
@@ -67,7 +60,7 @@ function buildTaskContextKey(contextType: TaskContextType, taskId: string): stri
  */
 export function useTaskChat(taskId: string, contextType: TaskContextType, historicalStatus?: string) {
   const queryClient = useQueryClient();
-  const contextKey = buildTaskContextKey(contextType, taskId);
+  const contextKey = buildStoreKey(contextType, taskId);
   const isHistoricalMode = !!historicalStatus;
   logger.debug(`[useTaskChat] taskId=${taskId}, contextType=${contextType}, contextKey=${contextKey}, historicalStatus=${historicalStatus}`);
 
