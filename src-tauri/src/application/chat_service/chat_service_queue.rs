@@ -8,41 +8,57 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 
 use super::chat_service_context;
+use super::chat_service_helpers::get_assistant_role;
 use super::chat_service_streaming::process_stream_background;
-use super::chat_service_types::{AgentQueueSentPayload, AgentRunStartedPayload};
+use super::chat_service_types::{
+    AgentErrorPayload, AgentMessageCreatedPayload, AgentQueueSentPayload, AgentRunStartedPayload,
+};
 use super::has_meaningful_output;
 use crate::application::question_state::QuestionState;
 use crate::domain::entities::{ChatContextType, ChatConversationId};
 use crate::domain::repositories::{ActivityEventRepository, ChatMessageRepository, TaskRepository};
 use crate::domain::services::MessageQueue;
+use tokio_util::sync::CancellationToken;
 
-/// Process all queued messages for a context with retry loop
+/// Process all queued messages for a context with retry loop.
 ///
 /// Returns the total number of messages processed.
 ///
 /// This handles race conditions where messages can be queued while we're processing,
-/// so it keeps checking until the queue is stable-empty.
-#[allow(dead_code)]
-pub async fn process_message_queue<R: Runtime + 'static>(
+/// so it keeps checking until the queue is stable-empty (50ms late-arrival check).
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn process_queued_messages<R: Runtime + 'static>(
     context_type: ChatContextType,
     context_id: &str,
     conversation_id: ChatConversationId,
     session_id: &str,
-    message_queue: Arc<MessageQueue>,
-    chat_message_repo: Arc<dyn ChatMessageRepository>,
-    activity_event_repo: Arc<dyn ActivityEventRepository>,
-    task_repo: Arc<dyn TaskRepository>,
+    message_queue: &Arc<MessageQueue>,
+    chat_message_repo: &Arc<dyn ChatMessageRepository>,
+    activity_event_repo: &Arc<dyn ActivityEventRepository>,
+    task_repo: &Arc<dyn TaskRepository>,
     cli_path: &Path,
     plugin_dir: &Path,
     working_directory: &Path,
     question_state: Option<Arc<QuestionState>>,
     app_handle: Option<AppHandle<R>>,
     project_id: Option<&str>,
+    cancellation_token: CancellationToken,
+    run_chain_id: Option<&str>,
+    parent_run_id: Option<&str>,
 ) -> u32 {
     let mut total_processed = 0u32;
 
     // Outer loop: keep processing until queue is stable-empty
     loop {
+        // Check cancellation before each iteration
+        if cancellation_token.is_cancelled() {
+            tracing::info!(
+                "[QUEUE] Cancellation requested, stopping queue processing after {} messages",
+                total_processed
+            );
+            break;
+        }
+
         let queue_count = message_queue.get_queued(context_type, context_id).len();
 
         if queue_count == 0 {
@@ -78,6 +94,10 @@ pub async fn process_message_queue<R: Runtime + 'static>(
 
         // Inner loop: process all currently queued messages
         while let Some(queued_msg) = message_queue.pop(context_type, context_id) {
+            if cancellation_token.is_cancelled() {
+                tracing::info!("[QUEUE] Cancellation requested mid-queue, stopping");
+                break;
+            }
             total_processed += 1;
             tracing::info!(
                 "[QUEUE] Processing queued message id={}, content_len={}",
@@ -100,6 +120,12 @@ pub async fn process_message_queue<R: Runtime + 'static>(
 
             // Emit run_started for the queued message (so frontend shows activity)
             let queued_run_id = uuid::Uuid::new_v4().to_string();
+            tracing::info!(
+                queued_run_id = %queued_run_id,
+                run_chain_id = run_chain_id.unwrap_or("none"),
+                parent_run_id = parent_run_id.unwrap_or("none"),
+                "[QUEUE] Continuation run"
+            );
             if let Some(ref handle) = app_handle {
                 let _ = handle.emit(
                     "agent:run_started",
@@ -108,6 +134,8 @@ pub async fn process_message_queue<R: Runtime + 'static>(
                         conversation_id: conversation_id.as_str().to_string(),
                         context_type: context_type.to_string(),
                         context_id: context_id.to_string(),
+                        run_chain_id: run_chain_id.map(|s| s.to_string()),
+                        parent_run_id: parent_run_id.map(|s| s.to_string()),
                     },
                 );
             }
@@ -126,7 +154,7 @@ pub async fn process_message_queue<R: Runtime + 'static>(
             if let Some(ref handle) = app_handle {
                 let _ = handle.emit(
                     "agent:message_created",
-                    super::chat_service_types::AgentMessageCreatedPayload {
+                    AgentMessageCreatedPayload {
                         message_id: user_msg_id,
                         conversation_id: conversation_id.as_str().to_string(),
                         context_type: context_type.to_string(),
@@ -160,16 +188,9 @@ pub async fn process_message_queue<R: Runtime + 'static>(
                 }
             };
 
-            tracing::info!(cmd = ?spawnable, "Spawning CLI agent (queue)");
+            tracing::info!(cmd = ?spawnable, "Spawning CLI agent (queue resume)");
             match spawnable.spawn().await {
                 Ok(child) => {
-                    tracing::debug!(
-                        %context_type,
-                        context_id,
-                        conversation_id = conversation_id.as_str(),
-                        "queue spawn ok"
-                    );
-
                     // Create empty assistant message before queue stream
                     let queue_assistant_msg = chat_service_context::create_assistant_message(
                         context_type,
@@ -188,11 +209,12 @@ pub async fn process_message_queue<R: Runtime + 'static>(
                         context_id,
                         &conversation_id,
                         app_handle.clone(),
-                        Some(Arc::clone(&activity_event_repo)),
-                        Some(Arc::clone(&task_repo)),
-                        Some(Arc::clone(&chat_message_repo)),
+                        Some(Arc::clone(activity_event_repo)),
+                        Some(Arc::clone(task_repo)),
+                        Some(Arc::clone(chat_message_repo)),
                         Some(queue_assistant_msg_id.clone()),
                         question_state.clone(),
+                        cancellation_token.clone(),
                     )
                     .await
                     {
@@ -202,7 +224,8 @@ pub async fn process_message_queue<R: Runtime + 'static>(
                             let blocks = outcome.content_blocks;
                             if has_meaningful_output(&response, tools.len()) {
                                 let tool_calls_json = serde_json::to_string(&tools).ok();
-                                let content_blocks_json = serde_json::to_string(&blocks).ok();
+                                let content_blocks_json =
+                                    serde_json::to_string(&blocks).ok();
                                 let _ = chat_message_repo
                                     .update_content(
                                         &crate::domain::entities::ChatMessageId::from_string(
@@ -218,15 +241,14 @@ pub async fn process_message_queue<R: Runtime + 'static>(
                                 if let Some(ref handle) = app_handle {
                                     let _ = handle.emit(
                                         "agent:message_created",
-                                        super::chat_service_types::AgentMessageCreatedPayload {
+                                        AgentMessageCreatedPayload {
                                             message_id: queue_assistant_msg_id,
-                                            conversation_id: conversation_id.as_str().to_string(),
+                                            conversation_id: conversation_id
+                                                .as_str()
+                                                .to_string(),
                                             context_type: context_type.to_string(),
                                             context_id: context_id.to_string(),
-                                            role: super::chat_service_helpers::get_assistant_role(
-                                                &context_type,
-                                            )
-                                            .to_string(),
+                                            role: get_assistant_role(&context_type).to_string(),
                                             content: response.clone(),
                                         },
                                     );
@@ -238,17 +260,20 @@ pub async fn process_message_queue<R: Runtime + 'static>(
                             // to prevent UI flickering between messages.
                         }
                         Err(e) => {
-                            tracing::error!("Failed to process queued message stream: {}", e);
+                            let error_string = e.to_string();
+                            tracing::error!("Failed to process queued message stream: {}", error_string);
                             // Emit error event
                             if let Some(ref handle) = app_handle {
                                 let _ = handle.emit(
                                     "agent:error",
-                                    super::chat_service_types::AgentErrorPayload {
-                                        conversation_id: Some(conversation_id.as_str().to_string()),
+                                    AgentErrorPayload {
+                                        conversation_id: Some(
+                                            conversation_id.as_str().to_string(),
+                                        ),
                                         context_type: context_type.to_string(),
                                         context_id: context_id.to_string(),
-                                        error: e.clone(),
-                                        stderr: Some(e),
+                                        error: error_string.clone(),
+                                        stderr: Some(error_string),
                                     },
                                 );
                             }
@@ -261,7 +286,7 @@ pub async fn process_message_queue<R: Runtime + 'static>(
                     if let Some(ref handle) = app_handle {
                         let _ = handle.emit(
                             "agent:error",
-                            super::chat_service_types::AgentErrorPayload {
+                            AgentErrorPayload {
                                 conversation_id: Some(conversation_id.as_str().to_string()),
                                 context_type: context_type.to_string(),
                                 context_id: context_id.to_string(),
