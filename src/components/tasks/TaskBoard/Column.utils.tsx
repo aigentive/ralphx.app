@@ -10,6 +10,45 @@ import { RotateCcw, RefreshCw, Clock, Bot, CheckCircle, GitMerge, AlertTriangle,
 /** Storage key prefix for collapsed group state */
 export const COLLAPSED_GROUPS_KEY = "ralphx:collapsed-groups";
 
+/** Storage key for collapsed column state */
+export const COLLAPSED_COLUMNS_KEY = "ralphx:collapsed-columns";
+
+/**
+ * Load collapsed column IDs from localStorage
+ *
+ * @returns Set of collapsed column IDs
+ */
+export function loadCollapsedColumns(): Set<string> {
+  try {
+    const stored = localStorage.getItem(COLLAPSED_COLUMNS_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        return new Set(parsed);
+      }
+    }
+  } catch {
+    // Ignore parse errors
+  }
+  return new Set();
+}
+
+/**
+ * Save collapsed column IDs to localStorage
+ *
+ * @param collapsed - Set of collapsed column IDs
+ */
+export function saveCollapsedColumns(collapsed: Set<string>): void {
+  try {
+    localStorage.setItem(
+      COLLAPSED_COLUMNS_KEY,
+      JSON.stringify(Array.from(collapsed))
+    );
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 /**
  * Get collapsed group state from localStorage
  *
