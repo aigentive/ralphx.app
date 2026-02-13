@@ -2450,6 +2450,51 @@ impl GitService {
         }
     }
 
+    /// Find a commit on `branch` whose message contains `grep_pattern`.
+    ///
+    /// Uses `git log --grep` (fixed-string match) and returns the SHA of the
+    /// most recent matching commit, or `None` if no match is found.
+    ///
+    /// # Arguments
+    /// * `repo`         - Path to the git repository
+    /// * `grep_pattern` - Fixed string to search for in commit messages
+    /// * `branch`       - Branch to search on
+    pub fn find_commit_by_message_grep(
+        repo: &Path,
+        grep_pattern: &str,
+        branch: &str,
+    ) -> AppResult<Option<String>> {
+        let output = Command::new("git")
+            .args([
+                "log",
+                "--fixed-strings",
+                &format!("--grep={}", grep_pattern),
+                "--format=%H",
+                branch,
+                "-1",
+            ])
+            .current_dir(repo)
+            .output()
+            .map_err(|e| {
+                AppError::GitOperation(format!("Failed to run git log --grep: {}", e))
+            })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AppError::GitOperation(format!(
+                "git log --grep failed: {}",
+                stderr
+            )));
+        }
+
+        let sha = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if sha.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(sha))
+        }
+    }
+
     /// Get commits on the current branch since it diverged from base
     ///
     /// # Arguments
@@ -6280,5 +6325,93 @@ prunable gitdir file points to non-existent location
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_find_commit_by_message_grep_finds_matching_commit() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create a commit with a task ID in the message
+        std::fs::write(repo.join("file.txt"), "initial").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "task abc-123: initial work"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Get the SHA of that commit for verification
+        let expected_sha = {
+            let out = Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(repo)
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+
+        // Get the branch name
+        let branch = {
+            let out = Command::new("git")
+                .args(["branch", "--show-current"])
+                .current_dir(repo)
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+
+        let result = GitService::find_commit_by_message_grep(repo, "abc-123", &branch).unwrap();
+        assert_eq!(result, Some(expected_sha));
+    }
+
+    #[test]
+    fn test_find_commit_by_message_grep_returns_none_when_not_found() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo = temp_dir.path();
+
+        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        std::fs::write(repo.join("file.txt"), "initial").unwrap();
+        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "unrelated commit message"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        let branch = {
+            let out = Command::new("git")
+                .args(["branch", "--show-current"])
+                .current_dir(repo)
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+
+        let result = GitService::find_commit_by_message_grep(repo, "nonexistent-id", &branch).unwrap();
+        assert_eq!(result, None);
     }
 }

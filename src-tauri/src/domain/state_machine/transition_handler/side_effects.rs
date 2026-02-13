@@ -2380,6 +2380,63 @@ impl<'a> super::TransitionHandler<'a> {
             }
         }
 
+        // --- "Deleted source branch" recovery ---
+        // If the source branch ref is gone but the task's commits are already on
+        // the target branch (e.g. detached HEAD, premature cleanup), recover
+        // by completing the merge instead of falling through to MergeIncomplete.
+        if !GitService::branch_exists(repo_path, &source_branch) {
+            match GitService::find_commit_by_message_grep(repo_path, task_id_str, &target_branch) {
+                Ok(Some(found_sha)) => {
+                    tracing::info!(
+                        task_id = task_id_str,
+                        source_branch = %source_branch,
+                        target_branch = %target_branch,
+                        found_sha = %found_sha,
+                        "Source branch missing but task commits found on target — recovering"
+                    );
+
+                    // Clean up orphaned merge worktree (same as "already merged" path)
+                    if project.git_mode == GitMode::Worktree {
+                        let merge_wt = compute_merge_worktree_path(&project, task_id_str);
+                        let merge_wt_path = Path::new(&merge_wt);
+                        if merge_wt_path.exists() {
+                            if let Err(e) = GitService::delete_worktree(repo_path, merge_wt_path) {
+                                tracing::warn!(error = %e, "Failed to clean up orphaned merge worktree (non-fatal)");
+                            }
+                        }
+                    }
+
+                    let target_sha = GitService::get_branch_sha(repo_path, &target_branch)
+                        .unwrap_or_else(|_| found_sha.clone());
+
+                    if let Err(e) = complete_merge_internal(
+                        &mut task,
+                        &project,
+                        &target_sha,
+                        task_repo,
+                        self.machine.context.services.app_handle.as_ref(),
+                    ).await {
+                        tracing::error!(error = %e, "Failed to complete merge for recovered task");
+                    }
+                    return;
+                }
+                Ok(None) => {
+                    tracing::debug!(
+                        task_id = task_id_str,
+                        source_branch = %source_branch,
+                        "Source branch missing, no task commits on target — falling through"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        task_id = task_id_str,
+                        error = %e,
+                        "Failed to search for task commits on target branch"
+                    );
+                }
+            }
+        }
+
         // Emit merge progress event
         emit_merge_progress(
             self.machine.context.services.app_handle.as_ref(),
