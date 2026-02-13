@@ -8,7 +8,7 @@
  * - Streaming tool calls / typing indicator footer
  */
 
-import React, { forwardRef, useEffect, useMemo, useRef, useImperativeHandle } from "react";
+import React, { forwardRef, useCallback, useEffect, useMemo, useRef, useImperativeHandle } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { MessageItem } from "./MessageItem";
 import { StreamingToolIndicator } from "./StreamingToolIndicator";
@@ -205,6 +205,118 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       return items;
     }, [messages, hookEvents, activeHooks, hasHookEvents]);
 
+    // Memoize Virtuoso components to prevent infinite re-render loop.
+    // Inline object literals create new references every render, causing Virtuoso
+    // to re-mount Header/Footer → layout change → atBottomStateChange → re-render → loop.
+    const virtuosoComponents = useMemo(() => ({
+      Header: () => (
+        <div className="px-3 pt-3 w-full" style={contentContainerStyle}>
+          {/* Show failed run banner if last run failed */}
+          {failedRun?.errorMessage && onDismissFailedRun && (
+            <FailedRunBanner
+              errorMessage={failedRun.errorMessage}
+              onDismiss={() => onDismissFailedRun(failedRun.id)}
+            />
+          )}
+        </div>
+      ),
+      Footer: () => {
+        // Filter out Task tool calls — they're already represented by TaskSubagentCard
+        const topLevelToolCalls = streamingToolCalls.filter(
+          (tc) => tc.name.toLowerCase() !== "task"
+        );
+
+        // Split Edit/Write tool calls (with arguments) for individual diff rendering
+        const diffToolCalls = topLevelToolCalls.filter(
+          (tc) => isDiffToolCall(tc.name) && tc.arguments != null
+        );
+        const otherToolCalls = topLevelToolCalls.filter(
+          (tc) => !isDiffToolCall(tc.name) || tc.arguments == null
+        );
+
+        return (
+          <div className="px-3 pb-3 w-full relative" style={contentContainerStyle}>
+            {/* Show streaming assistant text from agent:chunk events */}
+            {streamingText && (
+              <MessageItem
+                key="streaming-assistant"
+                role="assistant"
+                content={streamingText}
+                createdAt={new Date().toISOString()}
+                toolCalls={null}
+                contentBlocks={null}
+              />
+            )}
+
+            {/* Task subagent cards — above everything else */}
+            {streamingTasks && streamingTasks.size > 0 &&
+              Array.from(streamingTasks.values()).map((task: StreamingTask) => (
+                <TaskSubagentCard key={task.toolUseId} task={task} />
+              ))
+            }
+
+            {/* Diff views for Edit/Write — shown as individual cards */}
+            {diffToolCalls.map((tc) => (
+              <DiffToolCallView key={tc.id} toolCall={tc} isStreaming className="mb-2" />
+            ))}
+
+            {/* Aggregated indicator for remaining tools, or typing indicator */}
+            {(isSending || isAgentRunning) && (
+              otherToolCalls.length > 0 ? (
+                <StreamingToolIndicator toolCalls={otherToolCalls} isActive={true} />
+              ) : !streamingText && diffToolCalls.length === 0 ? (
+                <TypingIndicator />
+              ) : null
+            )}
+
+            {/* Scroll-to-bottom button */}
+            {!isAtBottom && messages.length > 5 && (
+              <div className="flex justify-center mt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={scrollToBottom}
+                  className="bg-background/95 backdrop-blur shadow-md hover:bg-accent"
+                >
+                  <ChevronDown className="h-4 w-4 mr-1" />
+                  Scroll to bottom
+                </Button>
+              </div>
+            )}
+          </div>
+        );
+      },
+    }), [
+      failedRun, onDismissFailedRun,
+      streamingToolCalls, streamingTasks, streamingText,
+      isSending, isAgentRunning,
+      isAtBottom, scrollToBottom, messages.length,
+    ]);
+
+    // Memoize itemContent — no closure variables change (item comes from args,
+    // contentContainerStyle is a module-level constant).
+    const renderItem = useCallback((_: number, item: TimelineItem) => {
+      if (item.kind === "hook") {
+        return (
+          <div className="px-3 w-full" style={contentContainerStyle}>
+            <HookEventMessage event={item.data} />
+          </div>
+        );
+      }
+      const msg = item.data;
+      return (
+        <div className="px-3 w-full" style={contentContainerStyle}>
+          <MessageItem
+            role={msg.role}
+            content={msg.content}
+            createdAt={msg.createdAt}
+            toolCalls={msg.toolCalls ?? null}
+            contentBlocks={msg.contentBlocks ?? null}
+          />
+        </div>
+      );
+    }, []);
+
     if (isTestEnv) {
       return (
         <div className="flex-1 overflow-hidden" data-testid="integrated-chat-messages">
@@ -279,106 +391,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
           atBottomThreshold={150}
           alignToBottom
           className="h-full"
-          components={{
-            Header: () => (
-              <div className="px-3 pt-3 w-full" style={contentContainerStyle}>
-                {/* Show failed run banner if last run failed */}
-                {failedRun?.errorMessage && onDismissFailedRun && (
-                  <FailedRunBanner
-                    errorMessage={failedRun.errorMessage}
-                    onDismiss={() => onDismissFailedRun(failedRun.id)}
-                  />
-                )}
-              </div>
-            ),
-            Footer: () => {
-              // Filter out Task tool calls — they're already represented by TaskSubagentCard
-              const topLevelToolCalls = streamingToolCalls.filter(
-                (tc) => tc.name.toLowerCase() !== "task"
-              );
-
-              // Split Edit/Write tool calls (with arguments) for individual diff rendering
-              const diffToolCalls = topLevelToolCalls.filter(
-                (tc) => isDiffToolCall(tc.name) && tc.arguments != null
-              );
-              const otherToolCalls = topLevelToolCalls.filter(
-                (tc) => !isDiffToolCall(tc.name) || tc.arguments == null
-              );
-
-              return (
-                <div className="px-3 pb-3 w-full relative" style={contentContainerStyle}>
-                  {/* Show streaming assistant text from agent:chunk events */}
-                  {streamingText && (
-                    <MessageItem
-                      key="streaming-assistant"
-                      role="assistant"
-                      content={streamingText}
-                      createdAt={new Date().toISOString()}
-                      toolCalls={null}
-                      contentBlocks={null}
-                    />
-                  )}
-
-                  {/* Task subagent cards — above everything else */}
-                  {streamingTasks && streamingTasks.size > 0 &&
-                    Array.from(streamingTasks.values()).map((task: StreamingTask) => (
-                      <TaskSubagentCard key={task.toolUseId} task={task} />
-                    ))
-                  }
-
-                  {/* Diff views for Edit/Write — shown as individual cards */}
-                  {diffToolCalls.map((tc) => (
-                    <DiffToolCallView key={tc.id} toolCall={tc} isStreaming className="mb-2" />
-                  ))}
-
-                  {/* Aggregated indicator for remaining tools, or typing indicator */}
-                  {(isSending || isAgentRunning) && (
-                    otherToolCalls.length > 0 ? (
-                      <StreamingToolIndicator toolCalls={otherToolCalls} isActive={true} />
-                    ) : !streamingText && diffToolCalls.length === 0 ? (
-                      <TypingIndicator />
-                    ) : null
-                  )}
-
-                  {/* Scroll-to-bottom button */}
-                  {!isAtBottom && messages.length > 5 && (
-                    <div className="flex justify-center mt-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={scrollToBottom}
-                        className="bg-background/95 backdrop-blur shadow-md hover:bg-accent"
-                      >
-                        <ChevronDown className="h-4 w-4 mr-1" />
-                        Scroll to bottom
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              );
-            },
-          }}
-          itemContent={(_, item) => {
-            if (item.kind === "hook") {
-              return (
-                <div className="px-3 w-full" style={contentContainerStyle}>
-                  <HookEventMessage event={item.data} />
-                </div>
-              );
-            }
-            const msg = item.data;
-            return (
-              <div className="px-3 w-full" style={contentContainerStyle}>
-                <MessageItem
-                  role={msg.role}
-                  content={msg.content}
-                  createdAt={msg.createdAt}
-                  toolCalls={msg.toolCalls ?? null}
-                  contentBlocks={msg.contentBlocks ?? null}
-                />
-              </div>
-            );
-          }}
+          components={virtuosoComponents}
+          itemContent={renderItem}
         />
       </div>
     );
