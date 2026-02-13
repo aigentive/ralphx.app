@@ -193,7 +193,7 @@ agents:
 
   - name: ralphx-worker
     system_prompt_file: ralphx-plugin/agents/worker.md
-    model: haiku
+    model: opus
     tools: { extends: base_tools, include: [Write, Edit, Task] }
     mcp_tools:
       [
