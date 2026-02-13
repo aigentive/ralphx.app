@@ -156,6 +156,7 @@ export const useChatStore = create<ChatState & ChatActions>()(
 
     setActiveConversation: (conversationId) =>
       set((state) => {
+        if (state.activeConversationId === conversationId) return;
         state.activeConversationId = conversationId;
       }),
 

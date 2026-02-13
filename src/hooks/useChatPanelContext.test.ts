@@ -310,6 +310,91 @@ describe("useChatPanelContext", () => {
       expect(mockStore.setActiveConversation).toHaveBeenCalledWith("conv-2");
     });
 
+    it("should have stable callback reference across re-renders (activeConversationId not in deps)", async () => {
+      mockStore.activeConversationId = null;
+
+      const { result, rerender } = renderHook(
+        (props) => useChatPanelContext(props),
+        {
+          wrapper,
+          initialProps: {
+            projectId: "project-1",
+            ideationSessionId: undefined,
+            selectedTaskId: "task-1",
+            isExecutionMode: true,
+            isReviewMode: false,
+            isMergeMode: false,
+            isHistoryMode: false,
+          },
+        }
+      );
+
+      const firstRef = result.current.autoSelectConversation;
+
+      // Simulate activeConversationId changing (e.g., after autoSelect runs)
+      mockStore.activeConversationId = "conv-1";
+
+      // Re-render with same props — only activeConversationId changed in store
+      rerender({
+        projectId: "project-1",
+        ideationSessionId: undefined,
+        selectedTaskId: "task-1",
+        isExecutionMode: true,
+        isReviewMode: false,
+        isMergeMode: false,
+        isHistoryMode: false,
+      });
+
+      const secondRef = result.current.autoSelectConversation;
+
+      // Callback should be the SAME reference — activeConversationId is not a dep
+      expect(secondRef).toBe(firstRef);
+    });
+
+    it("should read activeConversationId from store snapshot inside callback", async () => {
+      // Start with no active conversation
+      mockStore.activeConversationId = null;
+
+      const { result } = renderHook(
+        (props) => useChatPanelContext(props),
+        {
+          wrapper,
+          initialProps: {
+            projectId: "project-1",
+            ideationSessionId: undefined,
+            selectedTaskId: "task-1",
+            isExecutionMode: true,
+            isReviewMode: false,
+            isMergeMode: false,
+            isHistoryMode: false,
+          },
+        }
+      );
+
+      // Now update the store directly (simulating a previous selection)
+      mockStore.activeConversationId = "conv-existing";
+
+      const mockConversations: ConversationData[] = [
+        {
+          id: "conv-existing",
+          lastMessageAt: "2026-02-11T12:00:00Z",
+          createdAt: "2026-02-11T11:00:00Z",
+        },
+      ];
+
+      // Call autoSelectConversation — it should read the CURRENT store value
+      // ("conv-existing"), not the stale closure value (null)
+      act(() => {
+        result.current.autoSelectConversation({
+          data: mockConversations,
+          isLoading: false,
+        });
+      });
+
+      // conv-existing belongs to context and is already active — no call needed
+      expect(mockStore.setActiveConversation).not.toHaveBeenCalled();
+    });
+
     it("should not auto-select in history mode with explicit override", async () => {
       const { result } = renderHook(
         (props) => useChatPanelContext(props),

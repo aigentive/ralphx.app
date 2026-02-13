@@ -270,8 +270,8 @@ export function useChatEvents({
 
         if (payload.role === "assistant") {
           setStreamingText("");
-          setStreamingToolCalls([]);
-          setStreamingTasks(new Map());
+          setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
+          setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
         }
 
         queryClient.invalidateQueries({
@@ -290,9 +290,9 @@ export function useChatEvents({
       }>("agent:run_completed", (payload) => {
         if (!isRelevant(payload)) return;
 
-        setStreamingToolCalls([]);
+        setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
         setStreamingText("");
-        setStreamingTasks(new Map());
+        setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
         queryClient.invalidateQueries({
           queryKey: chatKeys.conversation(payload.conversation_id),
         });
@@ -310,7 +310,7 @@ export function useChatEvents({
       }>("agent:error", (payload) => {
         if (!payload.conversation_id) return;
 
-        setStreamingToolCalls([]);
+        setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
         queryClient.invalidateQueries({
           queryKey: chatKeys.conversation(payload.conversation_id),
         });
@@ -319,9 +319,9 @@ export function useChatEvents({
 
     // ── Cleanup ──────────────────────────────────────────────────────
     return () => {
-      setStreamingToolCalls([]);
+      setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
       setStreamingText("");
-      setStreamingTasks(new Map());
+      setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
       unsubscribes.forEach((unsub) => unsub());
     };
   }, [
