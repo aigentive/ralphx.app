@@ -42,6 +42,10 @@ const contentContainerStyle: React.CSSProperties = {
   wordBreak: "break-word",
 };
 
+/** Stable empty arrays — avoids new refs on each render when props are omitted */
+const EMPTY_HOOK_EVENTS: HookEvent[] = [];
+const EMPTY_ACTIVE_HOOKS: HookStartedEvent[] = [];
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -102,8 +106,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       streamingTasks,
       streamingText,
       scrollToTimestamp,
-      hookEvents = [],
-      activeHooks = [],
+      hookEvents = EMPTY_HOOK_EVENTS,
+      activeHooks = EMPTY_ACTIVE_HOOKS,
     },
     ref
   ) {
