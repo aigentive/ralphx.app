@@ -64,7 +64,7 @@ Steps 1-3 same, but step 5 includes `--resume <claude_session_id>` flag. Prompt 
 | 4 | `dependency-suggester` | `SHORT_DEPENDENCY_SUGGESTER` | ideation | haiku | After proposals created | fire-and-forget |
 | 5 | `chat-task` | `SHORT_CHAT_TASK` | task | default | User chats in task detail view | per-task |
 | 6 | `chat-project` | `SHORT_CHAT_PROJECT` | project | default | User chats in project view | per-project |
-| 7 | `ralphx-worker` | `SHORT_WORKER` | execution | default | Task enters "executing" / "re_executing" | per-task-execution |
+| 7 | `ralphx-worker` | `SHORT_WORKER` | execution | default | Task enters "executing" / "re_executing"; decomposes graph + delegates parallel coder waves (max 3) | per-task-execution |
 | 8 | `ralphx-coder` | `SHORT_CODER` | execution | default | Delegated coding from `ralphx-worker` | per-subtask |
 | 9 | `ralphx-reviewer` | `SHORT_REVIEWER` | review | default | Task enters "reviewing" | per-review-cycle (fresh session each cycle) |
 | 10 | `ralphx-review-chat` | `SHORT_REVIEW_CHAT` | review | default | Task in "review_passed" (human decision) | per-review |
@@ -259,6 +259,7 @@ Layer 3 (Prompt) provides behavioral guidance to reinforce tool boundaries.
 ### Delegated Execution Agent
 
 `ralphx-coder` is not selected directly by `resolve_agent()`. It is invoked by `ralphx-worker` for delegated coding scopes during task execution.
+`ralphx-worker` builds a dependency graph from task scope, schedules parallel waves, and dispatches up to 3 concurrent coder instances with non-overlapping file ownership.
 
 ### Session Resumption Rules
 
