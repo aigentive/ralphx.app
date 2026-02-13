@@ -329,26 +329,24 @@ export function StreamingToolIndicator({
           </div>
         ))}
 
-        {/* Active indicator at the end */}
-        {isActive && (
-          <div className="flex items-center gap-2 text-xs pt-1">
-            <span className="w-4" />
-            <div className="flex items-center gap-1">
-              <div
-                className="w-1.5 h-1.5 rounded-full animate-pulse"
-                style={{ backgroundColor: "var(--accent-primary)" }}
-              />
-              <div
-                className="w-1.5 h-1.5 rounded-full animate-pulse"
-                style={{ backgroundColor: "var(--accent-primary)", animationDelay: "0.15s" }}
-              />
-              <div
-                className="w-1.5 h-1.5 rounded-full animate-pulse"
-                style={{ backgroundColor: "var(--accent-primary)", animationDelay: "0.3s" }}
-              />
-            </div>
+        {/* Active indicator at the end - always shown while component is mounted */}
+        <div className="flex items-center gap-2 text-xs pt-1">
+          <span className="w-4" />
+          <div className="flex items-center gap-1">
+            <div
+              className="w-1.5 h-1.5 rounded-full animate-pulse"
+              style={{ backgroundColor: "var(--accent-primary)" }}
+            />
+            <div
+              className="w-1.5 h-1.5 rounded-full animate-pulse"
+              style={{ backgroundColor: "var(--accent-primary)", animationDelay: "0.15s" }}
+            />
+            <div
+              className="w-1.5 h-1.5 rounded-full animate-pulse"
+              style={{ backgroundColor: "var(--accent-primary)", animationDelay: "0.3s" }}
+            />
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

@@ -194,7 +194,7 @@ interface ContextIndicatorProps {
 export function ContextIndicator({ context, isExecutionMode = false, isReviewMode = false }: ContextIndicatorProps) {
   const getContextInfo = () => {
     if (isExecutionMode) {
-      return { icon: Hammer, label: "Worker Execution" };
+      return { icon: Hammer, label: "Worker" };
     }
     if (isReviewMode) {
       return { icon: Bot, label: "AI Review" };
