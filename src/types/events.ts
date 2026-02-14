@@ -323,7 +323,7 @@ export type PlanArtifactEvent = z.infer<typeof PlanArtifactEventSchema>;
  */
 export const MergeValidationStepEventSchema = z.object({
   task_id: z.string(),
-  phase: z.enum(["setup", "validate"]),
+  phase: z.enum(["setup", "validate", "install"]),
   command: z.string(),
   path: z.string(),
   label: z.string(),

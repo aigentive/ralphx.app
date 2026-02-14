@@ -319,6 +319,7 @@ export function ExecutionTaskDetail({ task, isHistorical }: ExecutionTaskDetailP
         metadata={task.metadata}
         liveSteps={liveValidationSteps}
         title="Setup & Install"
+        metadataLogKey="execution_setup_log"
       />
 
       {/* Revision Feedback (only for re-executing) */}

@@ -119,9 +119,8 @@ export function StepsGroup({ steps, phase, label }: {
   const [expanded, setExpanded] = useState(anyFailed);
 
   const totalMs = steps.reduce((sum, s) => sum + (s.duration_ms ?? 0), 0);
-  const isSetup = phase === "setup";
-  const badgeBg = isSetup ? "rgba(10, 132, 255, 0.15)" : "rgba(52, 199, 89, 0.15)";
-  const badgeColor = isSetup ? "#64d2ff" : "#34c759";
+  const badgeBg = phase === "setup" ? "rgba(10, 132, 255, 0.15)" : phase === "install" ? "rgba(255, 107, 53, 0.15)" : "rgba(52, 199, 89, 0.15)";
+  const badgeColor = phase === "setup" ? "#64d2ff" : phase === "install" ? "#ff6b35" : "#34c759";
 
   const statusIcon = anyRunning ? (
     <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#0a84ff" }} />
@@ -220,15 +219,18 @@ export function StepsGroup({ steps, phase, label }: {
  * Parse validation log entries from task metadata (historical data).
  * Returns entries matching MergeValidationStepEvent shape.
  */
-function parseMetadataValidationLog(metadata: string | Record<string, unknown> | null | undefined): MergeValidationStepEvent[] {
+function parseMetadataValidationLog(
+  metadata: string | Record<string, unknown> | null | undefined,
+  logKey = "validation_log",
+): MergeValidationStepEvent[] {
   if (!metadata) return [];
   try {
     const parsed = typeof metadata === "string" ? JSON.parse(metadata) : metadata;
-    const log = parsed?.validation_log;
+    const log = parsed?.[logKey];
     if (!Array.isArray(log)) return [];
     return log.map((entry: Record<string, unknown>) => ({
       task_id: String(entry.task_id ?? ""),
-      phase: (entry.phase === "setup" || entry.phase === "validate") ? entry.phase : "validate",
+      phase: (entry.phase === "setup" || entry.phase === "validate" || entry.phase === "install") ? entry.phase : "validate",
       command: String(entry.command ?? ""),
       path: String(entry.path ?? ""),
       label: String(entry.label ?? entry.command ?? ""),
@@ -258,20 +260,23 @@ export function ValidationProgress({
   metadata,
   liveSteps,
   title = "Merge Validation",
+  metadataLogKey = "validation_log",
 }: {
   taskId: string;
   metadata?: string | Record<string, unknown> | null | undefined;
   liveSteps?: MergeValidationStepEvent[] | undefined;
   title?: string;
+  metadataLogKey?: string;
 }) {
-  const metadataSteps = useMemo(() => parseMetadataValidationLog(metadata), [metadata]);
+  const metadataSteps = useMemo(() => parseMetadataValidationLog(metadata, metadataLogKey), [metadata, metadataLogKey]);
   const steps = liveSteps && liveSteps.length > 0 ? liveSteps : metadataSteps;
 
   if (steps.length === 0) return null;
 
   const source = liveSteps && liveSteps.length > 0 ? "live" : "historical";
   const setupSteps = steps.filter((s) => s.phase === "setup");
-  const validateSteps = steps.filter((s) => s.phase !== "setup");
+  const installSteps = steps.filter((s) => s.phase === "install");
+  const validateSteps = steps.filter((s) => s.phase !== "setup" && s.phase !== "install");
   const passedValidateSteps = validateSteps.filter((s) => s.status === "success" || s.status === "cached");
   const nonPassedValidateSteps = validateSteps.filter((s) => s.status !== "success" && s.status !== "cached");
 
@@ -289,6 +294,13 @@ export function ValidationProgress({
             steps={setupSteps}
             phase="setup"
             label={`${setupSteps.length} command${setupSteps.length !== 1 ? "s" : ""}`}
+          />
+        )}
+        {installSteps.length > 0 && (
+          <StepsGroup
+            steps={installSteps}
+            phase="install"
+            label={`${installSteps.length} command${installSteps.length !== 1 ? "s" : ""}`}
           />
         )}
         {passedValidateSteps.length > 0 && (
