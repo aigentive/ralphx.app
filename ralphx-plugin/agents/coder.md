@@ -18,6 +18,7 @@ allowedTools:
   - mcp__ralphx__fail_step
   - mcp__ralphx__add_step
   - mcp__ralphx__get_step_progress
+  - mcp__ralphx__get_step_context
   - mcp__ralphx__get_task_context
   - mcp__ralphx__get_artifact
   - mcp__ralphx__get_artifact_version
@@ -59,6 +60,26 @@ You are executing a **SINGLE TASK** or a scoped sub-task delegated by a worker.
 ## Context Fetching (IMPORTANT - Do This First)
 
 Before writing any code, you MUST fetch relevant context to understand the full picture:
+
+### Step 0: Get Step Context (if dispatched with a sub-step ID)
+
+If you were dispatched with a step/sub-step ID, call this FIRST:
+
+```
+get_step_context(step_id: "...")
+```
+
+This returns:
+- **step**: Your assigned sub-step
+- **parent_step**: The parent step (for overall context)
+- **task_summary**: The task title and description
+- **scope_context**: Your STRICT SCOPE (file boundaries, instructions)
+- **sibling_steps**: Other coders' sub-steps (DO NOT do their work)
+
+If `scope_context` is present, it is your absolute boundary:
+- Only modify files listed in scope_context
+- Do not expand beyond the instructions
+- Your sibling steps are being handled by other coders
 
 ### Step 1: Get Task Context
 
@@ -316,6 +337,7 @@ Break down the task into 3-8 discrete, verifiable steps.
 
 | Tool | When to Use |
 |------|------------|
+| `get_step_context` | FIRST if dispatched with a step/sub-step ID |
 | `get_task_context` | ALWAYS first - get task + linked artifacts |
 | `get_review_notes` | MANDATORY for re-execution - get all review feedback |
 | `get_task_issues` | MANDATORY for re-execution - get structured issues to address |
