@@ -19,9 +19,10 @@ use crate::domain::entities::{
     AgentRunId, ChatContextType, ChatConversation, ChatConversationId, InternalStatus, TaskId,
 };
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
-    TaskDependencyRepository, TaskRepository,
+    ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
+    ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
+    MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
+    TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::TaskScheduler;
@@ -51,6 +52,7 @@ pub(super) async fn handle_stream_success<R: Runtime>(
     task_dependency_repo: &Arc<dyn TaskDependencyRepository>,
     project_repo: &Arc<dyn ProjectRepository>,
     chat_message_repo: &Arc<dyn ChatMessageRepository>,
+    chat_attachment_repo: &Arc<dyn ChatAttachmentRepository>,
     conversation_repo: &Arc<dyn ChatConversationRepository>,
     agent_run_repo: &Arc<dyn AgentRunRepository>,
     ideation_session_repo: &Arc<dyn IdeationSessionRepository>,
@@ -76,6 +78,7 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                         Arc::clone(task_repo),
                         Arc::clone(task_dependency_repo),
                         Arc::clone(chat_message_repo),
+                        Arc::clone(chat_attachment_repo),
                         Arc::clone(conversation_repo),
                         Arc::clone(agent_run_repo),
                         Arc::clone(ideation_session_repo),
@@ -100,6 +103,7 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                         Arc::clone(task_dependency_repo),
                         Arc::clone(project_repo),
                         Arc::clone(chat_message_repo),
+                        Arc::clone(chat_attachment_repo),
                         Arc::clone(conversation_repo),
                         Arc::clone(agent_run_repo),
                         Arc::clone(ideation_session_repo),
@@ -161,6 +165,7 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                 task_dependency_repo,
                 project_repo,
                 chat_message_repo,
+                chat_attachment_repo,
                 conversation_repo,
                 agent_run_repo,
                 ideation_session_repo,
@@ -209,6 +214,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
     plugin_dir: &Path,
     working_directory: &Path,
     chat_message_repo: &Arc<dyn ChatMessageRepository>,
+    chat_attachment_repo: &Arc<dyn ChatAttachmentRepository>,
     conversation_repo: &Arc<dyn ChatConversationRepository>,
     agent_run_repo: &Arc<dyn AgentRunRepository>,
     task_repo: &Arc<dyn TaskRepository>,
@@ -311,6 +317,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     resolved_project_id.clone(),
                     Arc::clone(chat_message_repo),
                     Arc::clone(conversation_repo),
+                    Arc::clone(chat_attachment_repo),
                     &session_id,
                 )
                 .await
@@ -347,7 +354,8 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                             working_directory,
                             None,
                             resolved_project_id.as_deref(),
-                        ) {
+                            Arc::clone(chat_attachment_repo),
+                        ).await {
                             if let Ok(retry_child) = spawnable.spawn().await {
                                 use super::chat_service_send_background::{
                                     BackgroundRunContext, BackgroundRunRepos,
@@ -366,6 +374,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                         plugin_dir: plugin_dir.to_path_buf(),
                                         repos: BackgroundRunRepos {
                                             chat_message_repo: Arc::clone(chat_message_repo),
+                                            chat_attachment_repo: Arc::clone(chat_attachment_repo),
                                             conversation_repo: Arc::clone(conversation_repo),
                                             agent_run_repo: Arc::clone(agent_run_repo),
                                             task_repo: Arc::clone(task_repo),
@@ -480,6 +489,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                         Arc::clone(task_dependency_repo),
                         Arc::clone(project_repo),
                         Arc::clone(chat_message_repo),
+                        Arc::clone(chat_attachment_repo),
                         Arc::clone(conversation_repo),
                         Arc::clone(agent_run_repo),
                         Arc::clone(ideation_session_repo),
@@ -577,6 +587,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                 task_dependency_repo,
                 project_repo,
                 chat_message_repo,
+                chat_attachment_repo,
                 conversation_repo,
                 agent_run_repo,
                 ideation_session_repo,

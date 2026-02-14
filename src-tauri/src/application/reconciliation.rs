@@ -19,9 +19,10 @@ use crate::domain::entities::{
     MergeRecoverySource, MergeRecoveryState, Task, TaskId,
 };
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
-    TaskDependencyRepository, TaskRepository,
+    ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
+    ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
+    MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
+    TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::transition_handler::{has_branch_missing_metadata, set_trigger_origin};
@@ -304,6 +305,7 @@ pub struct ReconciliationRunner<R: Runtime = tauri::Wry> {
     project_repo: Arc<dyn ProjectRepository>,
     chat_conversation_repo: Arc<dyn ChatConversationRepository>,
     chat_message_repo: Arc<dyn ChatMessageRepository>,
+    chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     activity_event_repo: Arc<dyn ActivityEventRepository>,
     message_queue: Arc<MessageQueue>,
@@ -326,6 +328,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         project_repo: Arc<dyn ProjectRepository>,
         chat_conversation_repo: Arc<dyn ChatConversationRepository>,
         chat_message_repo: Arc<dyn ChatMessageRepository>,
+        chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
         ideation_session_repo: Arc<dyn IdeationSessionRepository>,
         activity_event_repo: Arc<dyn ActivityEventRepository>,
         message_queue: Arc<MessageQueue>,
@@ -342,6 +345,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             project_repo,
             chat_conversation_repo,
             chat_message_repo,
+            chat_attachment_repo,
             ideation_session_repo,
             activity_event_repo,
             message_queue,
@@ -1157,6 +1161,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
                     &self.task_dep_repo,
                     &self.project_repo,
                     &self.chat_message_repo,
+                    &self.chat_attachment_repo,
                     &self.chat_conversation_repo,
                     &self.agent_run_repo,
                     &self.ideation_session_repo,

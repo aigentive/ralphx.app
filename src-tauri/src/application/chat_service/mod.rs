@@ -27,11 +27,13 @@ mod chat_service_types;
 
 use crate::application::question_state::QuestionState;
 use crate::domain::entities::{
-    AgentRun, ChatContextType, ChatConversation, ChatConversationId, IdeationSessionId, TaskId,
+    AgentRun, ChatContextType, ChatConversation, ChatConversationId, ChatMessageId,
+    IdeationSessionId, TaskId,
 };
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository, StateHistoryMetadata,
+    ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
+    ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
+    MemoryEventRepository, PlanBranchRepository, ProjectRepository, StateHistoryMetadata,
     TaskDependencyRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, QueuedMessage, RunningAgentKey, RunningAgentRegistry};
@@ -203,6 +205,7 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     plugin_dir: PathBuf,
     default_working_directory: PathBuf,
     chat_message_repo: Arc<dyn ChatMessageRepository>,
+    chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     conversation_repo: Arc<dyn ChatConversationRepository>,
     agent_run_repo: Arc<dyn AgentRunRepository>,
     project_repo: Arc<dyn ProjectRepository>,
@@ -223,6 +226,7 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
 impl<R: Runtime> ClaudeChatService<R> {
     pub fn new(
         chat_message_repo: Arc<dyn ChatMessageRepository>,
+        chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
         conversation_repo: Arc<dyn ChatConversationRepository>,
         agent_run_repo: Arc<dyn AgentRunRepository>,
         project_repo: Arc<dyn ProjectRepository>,
@@ -251,6 +255,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             plugin_dir,
             default_working_directory,
             chat_message_repo,
+            chat_attachment_repo,
             conversation_repo,
             agent_run_repo,
             project_repo,
@@ -334,7 +339,7 @@ impl<R: Runtime> ClaudeChatService<R> {
     }
 
     /// Create a spawnable Claude CLI command.
-    fn build_command(
+    async fn build_command(
         &self,
         conversation: &ChatConversation,
         user_message: &str,
@@ -350,7 +355,9 @@ impl<R: Runtime> ClaudeChatService<R> {
             working_directory,
             entity_status,
             project_id,
+            Arc::clone(&self.chat_attachment_repo),
         )
+        .await
         .map_err(ChatServiceError::SpawnFailed)
     }
 
@@ -479,6 +486,32 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             "chat_service.send_message user message stored"
         );
 
+        // 4b. Link pending attachments to the user message
+        let pending_attachments = self
+            .chat_attachment_repo
+            .find_by_conversation_id(&conversation_id)
+            .await
+            .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?
+            .into_iter()
+            .filter(|a| a.message_id.is_none())
+            .collect::<Vec<_>>();
+
+        if !pending_attachments.is_empty() {
+            let attachment_ids: Vec<_> = pending_attachments.iter().map(|a| a.id.clone()).collect();
+            self.chat_attachment_repo
+                .update_message_ids(
+                    &attachment_ids,
+                    &ChatMessageId::from_string(&user_msg_id),
+                )
+                .await
+                .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?;
+            tracing::debug!(
+                message_id = %user_msg_id,
+                attachment_count = pending_attachments.len(),
+                "chat_service.send_message linked attachments to user message"
+            );
+        }
+
         // 5. Emit message created event
         self.emit_event(
             "agent:message_created",
@@ -553,13 +586,15 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             cli_path = %self.cli_path.display(),
             "chat_service.send_message building command"
         );
-        let spawnable = self.build_command(
-            &conversation,
-            message,
-            &working_directory,
-            entity_status.as_deref(),
-            project_id.as_deref(),
-        )?;
+        let spawnable = self
+            .build_command(
+                &conversation,
+                message,
+                &working_directory,
+                entity_status.as_deref(),
+                project_id.as_deref(),
+            )
+            .await?;
         tracing::info!(cmd = ?spawnable, "Spawning CLI agent");
         let child = match spawnable.spawn().await {
             Ok(child) => child,
@@ -604,6 +639,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             plugin_dir: self.plugin_dir.clone(),
             repos: chat_service_send_background::BackgroundRunRepos {
                 chat_message_repo: Arc::clone(&self.chat_message_repo),
+                chat_attachment_repo: Arc::clone(&self.chat_attachment_repo),
                 conversation_repo: Arc::clone(&self.conversation_repo),
                 agent_run_repo: Arc::clone(&self.agent_run_repo),
                 task_repo: Arc::clone(&self.task_repo),

@@ -363,6 +363,7 @@ pub async fn retry_merge(
     let task_dependency_repo = Arc::clone(&state.task_dependency_repo);
     let project_repo = Arc::clone(&state.project_repo);
     let chat_message_repo = Arc::clone(&state.chat_message_repo);
+    let chat_attachment_repo = Arc::clone(&state.chat_attachment_repo);
     let chat_conversation_repo = Arc::clone(&state.chat_conversation_repo);
     let agent_run_repo = Arc::clone(&state.agent_run_repo);
     let ideation_session_repo = Arc::clone(&state.ideation_session_repo);
@@ -383,6 +384,7 @@ pub async fn retry_merge(
             task_dependency_repo,
             project_repo,
             chat_message_repo,
+            chat_attachment_repo,
             chat_conversation_repo,
             agent_run_repo,
             ideation_session_repo,
@@ -411,6 +413,7 @@ async fn execute_merge_retry_background(
     task_dependency_repo: Arc<dyn crate::domain::repositories::TaskDependencyRepository>,
     project_repo: Arc<dyn crate::domain::repositories::ProjectRepository>,
     chat_message_repo: Arc<dyn crate::domain::repositories::ChatMessageRepository>,
+    chat_attachment_repo: Arc<dyn crate::domain::repositories::ChatAttachmentRepository>,
     chat_conversation_repo: Arc<dyn crate::domain::repositories::ChatConversationRepository>,
     agent_run_repo: Arc<dyn crate::domain::repositories::AgentRunRepository>,
     ideation_session_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository>,
@@ -434,6 +437,7 @@ async fn execute_merge_retry_background(
         Arc::clone(&task_repo),
         Arc::clone(&task_dependency_repo),
         Arc::clone(&chat_message_repo),
+        Arc::clone(&chat_attachment_repo),
         Arc::clone(&chat_conversation_repo),
         Arc::clone(&agent_run_repo),
         Arc::clone(&ideation_session_repo),
@@ -451,6 +455,7 @@ async fn execute_merge_retry_background(
         Arc::clone(&task_dependency_repo),
         Arc::clone(&project_repo),
         Arc::clone(&chat_message_repo),
+        Arc::clone(&chat_attachment_repo),
         Arc::clone(&chat_conversation_repo),
         Arc::clone(&agent_run_repo),
         Arc::clone(&ideation_session_repo),
@@ -683,6 +688,7 @@ fn create_transition_service(
             Arc::clone(&state.task_repo),
             Arc::clone(&state.task_dependency_repo),
             Arc::clone(&state.chat_message_repo),
+            Arc::clone(&state.chat_attachment_repo),
             Arc::clone(&state.chat_conversation_repo),
             Arc::clone(&state.agent_run_repo),
             Arc::clone(&state.ideation_session_repo),
@@ -702,6 +708,7 @@ fn create_transition_service(
         Arc::clone(&state.task_dependency_repo),
         Arc::clone(&state.project_repo),
         Arc::clone(&state.chat_message_repo),
+        Arc::clone(&state.chat_attachment_repo),
         Arc::clone(&state.chat_conversation_repo),
         Arc::clone(&state.agent_run_repo),
         Arc::clone(&state.ideation_session_repo),

@@ -20,9 +20,10 @@ use crate::application::{ChatService, ClaudeChatService};
 use crate::commands::execution_commands::{ExecutionState, AGENT_ACTIVE_STATUSES};
 use crate::domain::entities::{ChatContextType, InterruptedConversation, TaskId};
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
-    TaskDependencyRepository, TaskRepository,
+    ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
+    ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
+    MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
+    TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 
@@ -36,6 +37,7 @@ pub struct ChatResumptionRunner<R: Runtime = tauri::Wry> {
     task_repo: Arc<dyn TaskRepository>,
     task_dependency_repo: Arc<dyn TaskDependencyRepository>,
     chat_message_repo: Arc<dyn ChatMessageRepository>,
+    chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     project_repo: Arc<dyn ProjectRepository>,
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     activity_event_repo: Arc<dyn ActivityEventRepository>,
@@ -56,6 +58,7 @@ impl<R: Runtime> ChatResumptionRunner<R> {
         task_repo: Arc<dyn TaskRepository>,
         task_dependency_repo: Arc<dyn TaskDependencyRepository>,
         chat_message_repo: Arc<dyn ChatMessageRepository>,
+        chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
         project_repo: Arc<dyn ProjectRepository>,
         ideation_session_repo: Arc<dyn IdeationSessionRepository>,
         activity_event_repo: Arc<dyn ActivityEventRepository>,
@@ -70,6 +73,7 @@ impl<R: Runtime> ChatResumptionRunner<R> {
             task_repo,
             task_dependency_repo,
             chat_message_repo,
+            chat_attachment_repo,
             project_repo,
             ideation_session_repo,
             activity_event_repo,
@@ -247,6 +251,7 @@ impl<R: Runtime> ChatResumptionRunner<R> {
     fn create_chat_service(&self) -> ClaudeChatService<R> {
         let mut service = ClaudeChatService::new(
             Arc::clone(&self.chat_message_repo),
+            Arc::clone(&self.chat_attachment_repo),
             Arc::clone(&self.conversation_repo),
             Arc::clone(&self.agent_run_repo),
             Arc::clone(&self.project_repo),
@@ -307,6 +312,7 @@ mod tests {
             Arc::clone(&app_state.task_repo),
             Arc::clone(&app_state.task_dependency_repo),
             Arc::clone(&app_state.chat_message_repo),
+            Arc::clone(&app_state.chat_attachment_repo),
             Arc::clone(&app_state.project_repo),
             Arc::clone(&app_state.ideation_session_repo),
             Arc::clone(&app_state.activity_event_repo),
