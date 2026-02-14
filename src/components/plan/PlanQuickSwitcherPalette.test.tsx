@@ -49,10 +49,29 @@ const createMockCandidate = (overrides: Partial<PlanCandidate> = {}): PlanCandid
   ...overrides,
 });
 
+// Test data with explicit sorting order:
+// - Feature A: Tier 0 (activeNow=2), most recent → appears first
+// - Bug Fixes: Tier 0 (activeNow=1), older → appears second
+// - Feature B: Tier 1 (incomplete=2, activeNow=0) → appears third
 const mockCandidates: PlanCandidate[] = [
-  createMockCandidate({ sessionId: "session-1", title: "Feature A" }),
-  createMockCandidate({ sessionId: "session-2", title: "Feature B", taskStats: { total: 5, incomplete: 2, activeNow: 0 } }),
-  createMockCandidate({ sessionId: "session-3", title: "Bug Fixes", taskStats: { total: 8, incomplete: 3, activeNow: 1 } }),
+  createMockCandidate({
+    sessionId: "session-1",
+    title: "Feature A",
+    acceptedAt: "2026-01-25T10:00:00Z", // Most recent
+    taskStats: { total: 10, incomplete: 5, activeNow: 2 }
+  }),
+  createMockCandidate({
+    sessionId: "session-2",
+    title: "Feature B",
+    acceptedAt: "2026-01-23T10:00:00Z", // Oldest
+    taskStats: { total: 5, incomplete: 2, activeNow: 0 }
+  }),
+  createMockCandidate({
+    sessionId: "session-3",
+    title: "Bug Fixes",
+    acceptedAt: "2026-01-24T10:00:00Z", // Middle
+    taskStats: { total: 8, incomplete: 3, activeNow: 1 }
+  }),
 ];
 
 describe("PlanQuickSwitcherPalette", () => {
@@ -257,12 +276,12 @@ describe("PlanQuickSwitcherPalette", () => {
       render(<PlanQuickSwitcherPalette {...defaultProps} />);
       const input = screen.getByPlaceholderText(/Search plans/);
 
-      // Initially no highlight (index 0), press down to move to index 1
+      // Initially at index 0 (Feature A), press down to move to index 1 (Bug Fixes after sorting)
       fireEvent.keyDown(input, { key: "ArrowDown" });
 
-      // Feature B should be highlighted (index 1)
-      const featureBButton = screen.getByText("Feature B").closest("button");
-      expect(featureBButton?.className).toMatch(/bg-accent/);
+      // Bug Fixes should be highlighted (index 1 after sorting)
+      const bugFixesButton = screen.getByText("Bug Fixes").closest("button");
+      expect(bugFixesButton?.className).toMatch(/bg-accent/);
     });
 
     it("navigates up with ArrowUp and clamps at top", () => {
@@ -285,15 +304,15 @@ describe("PlanQuickSwitcherPalette", () => {
       const featureAButton = screen.getByText("Feature A").closest("button");
       expect(featureAButton?.className).toMatch(/bg-accent|bg-accent\/50/);
 
-      // Navigate down to last item
+      // Navigate down to last item (Feature B after sorting)
       fireEvent.keyDown(input, { key: "ArrowDown" });
       fireEvent.keyDown(input, { key: "ArrowDown" });
-      const bugFixesButton = screen.getByText("Bug Fixes").closest("button");
-      expect(bugFixesButton?.className).toMatch(/bg-accent/);
+      const featureBButton = screen.getByText("Feature B").closest("button");
+      expect(featureBButton?.className).toMatch(/bg-accent/);
 
       // Attempt to go past last item; should remain on last
       fireEvent.keyDown(input, { key: "ArrowDown" });
-      expect(bugFixesButton?.className).toMatch(/bg-accent/);
+      expect(featureBButton?.className).toMatch(/bg-accent/);
     });
 
     it("jumps to first and last with Shift+ArrowUp/Down", () => {
@@ -303,10 +322,10 @@ describe("PlanQuickSwitcherPalette", () => {
       // Move highlight away from first
       fireEvent.keyDown(input, { key: "ArrowDown" }); // index 1
 
-      // Shift+ArrowDown should jump to last
+      // Shift+ArrowDown should jump to last (Feature B is now last after sorting)
       fireEvent.keyDown(input, { key: "ArrowDown", shiftKey: true });
-      const bugFixesButton = screen.getByText("Bug Fixes").closest("button");
-      expect(bugFixesButton?.className).toMatch(/bg-accent/);
+      const featureBButton = screen.getByText("Feature B").closest("button");
+      expect(featureBButton?.className).toMatch(/bg-accent/);
 
       // Shift+ArrowUp should jump to first
       fireEvent.keyDown(input, { key: "ArrowUp", shiftKey: true });
@@ -320,7 +339,8 @@ describe("PlanQuickSwitcherPalette", () => {
       render(<PlanQuickSwitcherPalette {...defaultProps} />);
       const input = screen.getByPlaceholderText(/Search plans/);
 
-      // Navigate to Feature B (index 1)
+      // Navigate to Feature B (now index 2 after sorting: Feature A → Bug Fixes → Feature B)
+      fireEvent.keyDown(input, { key: "ArrowDown" });
       fireEvent.keyDown(input, { key: "ArrowDown" });
       // Select it
       fireEvent.keyDown(input, { key: "Enter" });
@@ -672,8 +692,8 @@ describe("PlanQuickSwitcherPalette", () => {
       // Press End
       await user.keyboard("{End}");
 
-      // Last item should be highlighted
-      const lastButton = screen.getByText("Bug Fixes").closest("button");
+      // Last item should be highlighted (Feature B is now last after sorting)
+      const lastButton = screen.getByText("Feature B").closest("button");
       expect(lastButton?.className).toMatch(/bg-accent/);
     });
   });
@@ -709,10 +729,10 @@ describe("PlanQuickSwitcherPalette", () => {
       // Navigate down
       fireEvent.keyDown(input, { key: "ArrowDown" });
 
-      // Second item should have focus ring
-      const featureBButton = screen.getByText("Feature B").closest("button");
-      expect(featureBButton).toHaveClass("focus-visible:ring-1");
-      expect(featureBButton?.className).toMatch(/bg-accent/);
+      // Second item (Bug Fixes) should have focus ring after sorting
+      const bugFixesButton = screen.getByText("Bug Fixes").closest("button");
+      expect(bugFixesButton).toHaveClass("focus-visible:ring-1");
+      expect(bugFixesButton?.className).toMatch(/bg-accent/);
     });
 
     it("should move focus ring when navigating", () => {
@@ -728,8 +748,8 @@ describe("PlanQuickSwitcherPalette", () => {
 
       // First item remains active (bg-accent/50) but is no longer the highlighted row
 
-      // Second item should have ring
-      highlightedButton = screen.getByText("Feature B").closest("button");
+      // Second item (Bug Fixes) should have ring after sorting
+      highlightedButton = screen.getByText("Bug Fixes").closest("button");
       expect(highlightedButton?.className).toMatch(/bg-accent/);
     });
   });

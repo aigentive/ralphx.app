@@ -9,15 +9,23 @@
  * - Click outside to close
  * - No backdrop/modal overlay
  * - Uses framer-motion for enter/exit animations
+ *
+ * Refactored to use usePlanQuickSwitcher hook and extracted sub-components.
+ * Now ~200 lines (thin rendering shell).
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
+/* eslint-disable react-hooks/refs */
+// Disabled: ESLint incorrectly flags passing ref objects from hook as "accessing during render"
+// We're not accessing .current, just passing ref objects to ref={} props which is valid React.
+
 import { AnimatePresence, motion } from "framer-motion";
-import { FileText, Check, Loader2, AlertCircle, RefreshCw } from "lucide-react";
-import { usePlanStore } from "@/stores/planStore";
+import { FileText, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
+import { usePlanQuickSwitcher } from "@/hooks/usePlanQuickSwitcher";
+import { PlanCandidateItem } from "./PlanCandidateItem";
+import { PlanClearAction } from "./PlanClearAction";
 import type { SelectionSource } from "@/api/plan";
 
 // ============================================================================
@@ -36,240 +44,18 @@ interface PlanQuickSwitcherPaletteProps {
   anchorSelector?: string;
 }
 
-function formatIncompleteSummary(incomplete: number, total: number): string {
-  if (total <= 0) return "No tasks yet";
-  if (incomplete <= 0) {
-    return total === 1 ? "1 task complete" : `${total} tasks complete`;
-  }
-  return `${incomplete} of ${total} incomplete`;
-}
-
-function getCompletionPercent(incomplete: number, total: number): number {
-  if (total <= 0) return 0;
-  const completed = Math.max(0, total - Math.max(0, incomplete));
-  return Math.round((completed / total) * 100);
-}
-
 // ============================================================================
 // Component
 // ============================================================================
 
-export function PlanQuickSwitcherPalette({
-  projectId,
-  isOpen,
-  onClose,
-  selectionSource = "quick_switcher",
-  showClearAction = true,
-  anchorSelector,
-}: PlanQuickSwitcherPaletteProps) {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [highlightedIndex, setHighlightedIndex] = useState(0);
-  const [anchorCenterX, setAnchorCenterX] = useState<number | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const highlightedItemRef = useRef<HTMLButtonElement>(null);
+export function PlanQuickSwitcherPalette(props: PlanQuickSwitcherPaletteProps) {
+  const switcher = usePlanQuickSwitcher(props);
 
-  // Store state
-  const activePlanId = usePlanStore((state) => state.activePlanByProject[projectId] ?? null);
-  const planCandidates = usePlanStore((state) => state.planCandidates);
-  const isLoading = usePlanStore((state) => state.isLoading);
-  const error = usePlanStore((state) => state.error);
-  const loadCandidates = usePlanStore((state) => state.loadCandidates);
-  const setActivePlan = usePlanStore((state) => state.setActivePlan);
-  const clearActivePlan = usePlanStore((state) => state.clearActivePlan);
-  const canClearPlan = showClearAction && Boolean(activePlanId);
-
-  // Filter candidates by search query (case-insensitive)
-  const filteredCandidates = searchQuery
-    ? planCandidates.filter((plan) =>
-        (plan.title || "Untitled Plan").toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : planCandidates;
-
-  // Auto-focus search input when opened
-  useEffect(() => {
-    if (isOpen && inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, [isOpen]);
-
-  // Load candidates when opened
-  useEffect(() => {
-    if (isOpen) {
-      loadCandidates(projectId);
-    }
-  }, [isOpen, projectId, loadCandidates]);
-
-  // Reset state when closed
-  useEffect(() => {
-    if (!isOpen) {
-      setSearchQuery("");
-      setHighlightedIndex(0);
-    }
-  }, [isOpen]);
-
-  // Reset highlighted index when filtered list changes
-  useEffect(() => {
-    setHighlightedIndex(0);
-  }, [searchQuery]);
-
-  // Scroll highlighted item into view
-  useEffect(() => {
-    if (
-      highlightedItemRef.current &&
-      typeof highlightedItemRef.current.scrollIntoView === "function"
-    ) {
-      highlightedItemRef.current.scrollIntoView({
-        block: "nearest",
-        behavior: "smooth",
-      });
-    }
-  }, [highlightedIndex]);
-
-  // Center to the requested anchor container (e.g., split-layout left pane).
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const updateAnchorCenter = () => {
-      if (!anchorSelector) {
-        setAnchorCenterX(null);
-        return;
-      }
-      const anchor = document.querySelector(anchorSelector);
-      if (anchor instanceof HTMLElement) {
-        const rect = anchor.getBoundingClientRect();
-        setAnchorCenterX(rect.left + rect.width / 2);
-      } else {
-        setAnchorCenterX(null);
-      }
-    };
-
-    updateAnchorCenter();
-
-    const anchor = anchorSelector ? document.querySelector(anchorSelector) : null;
-    const resizeObserver =
-      anchor instanceof HTMLElement && typeof ResizeObserver !== "undefined"
-        ? new ResizeObserver(() => updateAnchorCenter())
-        : null;
-
-    if (anchor instanceof HTMLElement && resizeObserver) {
-      resizeObserver.observe(anchor);
-    }
-
-    window.addEventListener("resize", updateAnchorCenter);
-    window.addEventListener("scroll", updateAnchorCenter, true);
-
-    return () => {
-      resizeObserver?.disconnect();
-      window.removeEventListener("resize", updateAnchorCenter);
-      window.removeEventListener("scroll", updateAnchorCenter, true);
-    };
-  }, [isOpen, anchorSelector]);
-
-  // Click outside to close
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleMouseDown = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-
-    document.addEventListener("mousedown", handleMouseDown);
-    return () => document.removeEventListener("mousedown", handleMouseDown);
-  }, [isOpen, onClose]);
-
-  // Handle plan selection
-  const handleSelect = useCallback(
-    async (sessionId: string) => {
-      try {
-        await setActivePlan(projectId, sessionId, selectionSource);
-        onClose();
-      } catch (error) {
-        console.error("Failed to set active plan:", error);
-      }
-    },
-    [projectId, setActivePlan, onClose, selectionSource]
-  );
-
-  // Handle active plan clear
-  const handleClear = useCallback(async () => {
-    try {
-      await clearActivePlan(projectId);
-      onClose();
-    } catch (error) {
-      console.error("Failed to clear active plan:", error);
-    }
-  }, [clearActivePlan, onClose, projectId]);
-
-  // Handle retry
-  const handleRetry = useCallback(() => {
-    loadCandidates(projectId);
-  }, [projectId, loadCandidates]);
-
-  // Keyboard navigation handler
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      const candidateCount = filteredCandidates.length;
-      const itemCount = candidateCount + (canClearPlan ? 1 : 0);
-
-      // Prevent navigation if no interactive rows
-      if (itemCount === 0 && ["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
-        return;
-      }
-
-      switch (e.key) {
-        case "ArrowDown":
-          e.preventDefault();
-          if (e.shiftKey) {
-            setHighlightedIndex(itemCount - 1);
-          } else {
-            setHighlightedIndex((i) => Math.min(i + 1, itemCount - 1));
-          }
-          break;
-        case "ArrowUp":
-          e.preventDefault();
-          if (e.shiftKey) {
-            setHighlightedIndex(0);
-          } else {
-            setHighlightedIndex((i) => Math.max(i - 1, 0));
-          }
-          break;
-        case "Home":
-          e.preventDefault();
-          setHighlightedIndex(0);
-          break;
-        case "End":
-          e.preventDefault();
-          setHighlightedIndex(itemCount - 1);
-          break;
-        case "Enter": {
-          e.preventDefault();
-          if (canClearPlan && highlightedIndex === 0) {
-            handleClear();
-            return;
-          }
-
-          const candidateIndex = canClearPlan ? highlightedIndex - 1 : highlightedIndex;
-          if (candidateIndex >= 0 && filteredCandidates[candidateIndex]) {
-            handleSelect(filteredCandidates[candidateIndex].sessionId);
-          }
-          break;
-        }
-        case "Escape":
-          e.preventDefault();
-          onClose();
-          break;
-      }
-    },
-    [canClearPlan, filteredCandidates, handleClear, highlightedIndex, onClose, handleSelect]
-  );
-
+  const hasItems = switcher.filteredCandidates.length > 0 || switcher.canClearPlan;
 
   return (
     <AnimatePresence>
-      {isOpen && (
+      {props.isOpen && (
         <motion.div
           initial="hidden"
           animate="visible"
@@ -295,10 +81,10 @@ export function PlanQuickSwitcherPalette({
             },
           }}
           className="fixed top-20 left-1/2 -translate-x-1/2 z-50 w-[420px]"
-          ref={containerRef}
+          ref={switcher.containerRef}
           data-quick-switcher-panel
           style={{
-            left: anchorCenterX !== null ? `${anchorCenterX}px` : undefined,
+            left: switcher.anchorCenterX !== null ? `${switcher.anchorCenterX}px` : undefined,
           }}
         >
           <div
@@ -319,12 +105,12 @@ export function PlanQuickSwitcherPalette({
               style={{ borderBottom: "1px solid hsla(220 20% 100% / 0.08)" }}
             >
               <input
-                ref={inputRef}
+                ref={switcher.inputRef}
                 type="text"
                 placeholder="Search plans... (Cmd+Shift+P)"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={handleKeyDown}
+                value={switcher.searchQuery}
+                onChange={(e) => switcher.setSearchQuery(e.target.value)}
+                onKeyDown={switcher.handleKeyDown}
                 className={cn(
                   "w-full bg-transparent border-0 text-sm placeholder:text-muted-foreground",
                   "outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none",
@@ -338,146 +124,59 @@ export function PlanQuickSwitcherPalette({
               />
             </div>
 
-            {/* Results list */}
-            {error ? (
+            {/* Content area */}
+            {switcher.error ? (
+              // Error state
               <div className="p-8 flex flex-col items-center justify-center gap-3 text-muted-foreground">
                 <AlertCircle className="h-5 w-5 text-destructive" />
-                <p className="text-center">{error}</p>
+                <p className="text-center">{switcher.error}</p>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={handleRetry}
+                  onClick={switcher.handleRetry}
                   className="gap-2"
                 >
                   <RefreshCw className="h-4 w-4" />
                   Retry
                 </Button>
               </div>
-            ) : isLoading ? (
+            ) : switcher.isLoading ? (
+              // Loading state
               <div className="p-8 flex flex-col items-center justify-center gap-2 text-muted-foreground transition-colors">
                 <Loader2 className="h-5 w-5 animate-spin" />
                 <p>Loading plans...</p>
               </div>
-            ) : filteredCandidates.length > 0 || canClearPlan ? (
+            ) : hasItems ? (
+              // Results list
               <ScrollArea className="max-h-[400px]" type="auto">
-                {canClearPlan && (
-                  <button
-                    ref={highlightedIndex === 0 ? highlightedItemRef : null}
-                    onClick={handleClear}
-                    onMouseEnter={() => setHighlightedIndex(0)}
-                    className={cn(
-                      "w-full text-left px-3 py-2 rounded-lg flex items-center justify-between",
-                      "transition-all duration-150 origin-center",
-                      "hover:scale-[1.01]",
-                      "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                      highlightedIndex === 0 && "bg-accent"
-                    )}
-                    style={{
-                      background:
-                        highlightedIndex === 0
-                          ? "hsla(14 100% 60% / 0.16)"
-                          : "transparent",
-                      border:
-                        highlightedIndex === 0
-                          ? "1px solid hsla(14 100% 60% / 0.35)"
-                          : "1px solid transparent",
-                    }}
-                    data-testid="plan-quick-switcher-clear"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div
-                        className="text-[13px] font-medium leading-tight"
-                        style={{ color: highlightedIndex === 0 ? "hsl(14 100% 66%)" : "hsl(220 10% 90%)" }}
-                      >
-                        Clear active plan
-                      </div>
-                      <div className="text-xs leading-tight mt-0.5" style={{ color: "hsl(220 10% 62%)" }}>
-                        Return to no active plan state
-                      </div>
-                    </div>
-                  </button>
+                {switcher.canClearPlan && (
+                  <PlanClearAction
+                    isHighlighted={switcher.highlightedIndex === 0}
+                    onMouseEnter={() => switcher.setHighlightedIndex(0)}
+                    onClick={switcher.handleClear}
+                    highlightedRef={switcher.highlightedItemRef}
+                  />
                 )}
-                {filteredCandidates.map((plan, index) => {
-                  const itemIndex = canClearPlan ? index + 1 : index;
-                  const isActive = activePlanId === plan.sessionId;
-                  const isHighlighted = highlightedIndex === itemIndex;
-                  const completionPercent = getCompletionPercent(
-                    plan.taskStats.incomplete,
-                    plan.taskStats.total
-                  );
-                  const showProgressBar =
-                    plan.taskStats.total > 0 && plan.taskStats.incomplete > 0;
+                {switcher.filteredCandidates.map((plan, index) => {
+                  const itemIndex = switcher.canClearPlan ? index + 1 : index;
+                  const isActive = switcher.activePlanId === plan.sessionId;
+                  const isHighlighted = switcher.highlightedIndex === itemIndex;
 
                   return (
-                    <button
+                    <PlanCandidateItem
                       key={plan.sessionId}
-                      ref={isHighlighted ? highlightedItemRef : null}
-                      onClick={() => handleSelect(plan.sessionId)}
-                      onMouseEnter={() => setHighlightedIndex(itemIndex)}
-                      className={cn(
-                        "w-full text-left px-3 py-2 rounded-lg flex items-center justify-between",
-                        "transition-all duration-150 origin-center",
-                        "hover:scale-[1.01]",
-                        "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                        isHighlighted && "bg-accent",
-                        isActive && "bg-accent/50"
-                      )}
-                      style={{
-                        background:
-                          isHighlighted
-                            ? "hsla(14 100% 60% / 0.16)"
-                            : isActive
-                              ? "hsla(14 100% 60% / 0.1)"
-                              : "transparent",
-                        border: isHighlighted
-                          ? "1px solid hsla(14 100% 60% / 0.35)"
-                          : "1px solid transparent",
-                      }}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div
-                          className="text-[13px] font-medium leading-tight"
-                          style={{ color: isHighlighted ? "hsl(14 100% 66%)" : "hsl(220 10% 90%)" }}
-                        >
-                          {plan.title || "Untitled Plan"}
-                        </div>
-                        <div className="text-xs leading-tight mt-0.5" style={{ color: "hsl(220 10% 62%)" }}>
-                          {formatIncompleteSummary(plan.taskStats.incomplete, plan.taskStats.total)}
-                          {plan.taskStats.activeNow > 0 && " • Active work"}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 ml-3 shrink-0">
-                        {showProgressBar && (
-                          <div className="flex items-center gap-1.5" aria-hidden="true">
-                            <div
-                              className="w-14 h-1 rounded-full overflow-hidden"
-                              style={{ backgroundColor: "hsla(220 10% 100% / 0.1)" }}
-                            >
-                              <div
-                                className="h-full rounded-full transition-all duration-300"
-                                style={{
-                                  width: `${completionPercent}%`,
-                                  backgroundColor: "hsla(14 100% 60% / 0.7)",
-                                }}
-                              />
-                            </div>
-                            <span
-                              className="text-[10px] tabular-nums"
-                              style={{ color: "hsl(220 10% 48%)" }}
-                            >
-                              {completionPercent}%
-                            </span>
-                          </div>
-                        )}
-                        {isActive && <Check className="h-4 w-4" style={{ color: "hsl(14 100% 62%)" }} />}
-                      </div>
-                    </button>
+                      plan={plan}
+                      isActive={isActive}
+                      isHighlighted={isHighlighted}
+                      onMouseEnter={() => switcher.setHighlightedIndex(itemIndex)}
+                      onClick={() => switcher.handleSelect(plan.sessionId)}
+                      highlightedRef={switcher.highlightedItemRef}
+                    />
                   );
                 })}
               </ScrollArea>
             ) : (
-              /* Empty state */
+              // Empty state
               <div className="p-8 text-center text-muted-foreground transition-colors">
                 <FileText className="h-8 w-8 mx-auto mb-2 opacity-50 transition-opacity" />
                 <p>No accepted plans found</p>
