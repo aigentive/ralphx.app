@@ -120,6 +120,8 @@ pub async fn start_http_server(
         .route("/api/fail_step", post(fail_step_http))
         .route("/api/add_step", post(add_step_http))
         .route("/api/step_progress/:task_id", get(get_step_progress_http))
+        .route("/api/step_context/:step_id", get(get_step_context_http))
+        .route("/api/sub_steps/:parent_step_id", get(get_sub_steps_http))
         // Permission bridge endpoints
         .route("/api/permission/request", post(request_permission))
         .route("/api/permission/await/:request_id", get(await_permission))
