@@ -22,8 +22,9 @@ use crate::domain::state_machine::transition_handler::metadata_builder::{
     build_trigger_origin_metadata, MetadataUpdate,
 };
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
+    ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
+    ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
+    MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
     TaskRepository, TaskStepRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
@@ -428,6 +429,7 @@ impl<R: Runtime> TaskTransitionService<R> {
         task_dep_repo: Arc<dyn TaskDependencyRepository>,
         project_repo: Arc<dyn ProjectRepository>,
         chat_message_repo: Arc<dyn ChatMessageRepository>,
+        chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
         conversation_repo: Arc<dyn ChatConversationRepository>,
         agent_run_repo: Arc<dyn AgentRunRepository>,
         ideation_session_repo: Arc<dyn IdeationSessionRepository>,
@@ -453,6 +455,7 @@ impl<R: Runtime> TaskTransitionService<R> {
         let chat_service: Arc<dyn ChatService> = {
             let mut service = ClaudeChatService::new(
                 Arc::clone(&chat_message_repo),
+                Arc::clone(&chat_attachment_repo),
                 Arc::clone(&conversation_repo),
                 Arc::clone(&agent_run_repo),
                 Arc::clone(&project_repo),

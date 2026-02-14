@@ -34,6 +34,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
     session_id: &str,
     message_queue: &Arc<MessageQueue>,
     chat_message_repo: &Arc<dyn ChatMessageRepository>,
+    chat_attachment_repo: &Arc<dyn crate::domain::repositories::ChatAttachmentRepository>,
     activity_event_repo: &Arc<dyn ActivityEventRepository>,
     task_repo: &Arc<dyn TaskRepository>,
     cli_path: &Path,
@@ -150,6 +151,32 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
             let user_msg_id = user_msg.id.as_str().to_string();
             let _ = chat_message_repo.create(user_msg).await;
 
+            // Link pending attachments to the user message
+            if let Ok(pending_attachments) = chat_attachment_repo
+                .find_by_conversation_id(&conversation_id)
+                .await
+            {
+                let pending: Vec<_> = pending_attachments
+                    .into_iter()
+                    .filter(|a| a.message_id.is_none())
+                    .collect();
+
+                if !pending.is_empty() {
+                    let attachment_ids: Vec<_> = pending.iter().map(|a| a.id.clone()).collect();
+                    let _ = chat_attachment_repo
+                        .update_message_ids(
+                            &attachment_ids,
+                            &crate::domain::entities::ChatMessageId::from_string(&user_msg_id),
+                        )
+                        .await;
+                    tracing::debug!(
+                        message_id = %user_msg_id,
+                        attachment_count = pending.len(),
+                        "[QUEUE] Linked attachments to user message"
+                    );
+                }
+            }
+
             // Emit user message created
             if let Some(ref handle) = app_handle {
                 let _ = handle.emit(
@@ -175,7 +202,8 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                 working_directory,
                 session_id,
                 project_id,
-            ) {
+                Arc::clone(chat_attachment_repo),
+            ).await {
                 Ok(cmd) => cmd,
                 Err(err) => {
                     tracing::warn!(

@@ -210,6 +210,7 @@ pub fn run() {
             let startup_plan_branch_repo = Arc::clone(&app_state.plan_branch_repo);
             let startup_step_repo = Arc::clone(&app_state.task_step_repo);
             let startup_chat_message_repo = Arc::clone(&app_state.chat_message_repo);
+            let startup_chat_attachment_repo = Arc::clone(&app_state.chat_attachment_repo);
             let startup_conversation_repo = Arc::clone(&app_state.chat_conversation_repo);
             let startup_agent_run_repo = Arc::clone(&app_state.agent_run_repo);
             let startup_ideation_session_repo = Arc::clone(&app_state.ideation_session_repo);
@@ -247,6 +248,7 @@ pub fn run() {
                     startup_task_repo.clone(),
                     startup_task_dependency_repo.clone(),
                     startup_chat_message_repo.clone(),
+                    startup_chat_attachment_repo.clone(),
                     startup_conversation_repo.clone(),
                     startup_agent_run_repo.clone(),
                     startup_ideation_session_repo.clone(),
@@ -265,6 +267,7 @@ pub fn run() {
                 let chat_resumption_task_dependency_repo = Arc::clone(&startup_task_dependency_repo);
                 let chat_resumption_project_repo = Arc::clone(&startup_project_repo);
                 let chat_resumption_chat_message_repo = Arc::clone(&startup_chat_message_repo);
+                let chat_resumption_chat_attachment_repo = Arc::clone(&startup_chat_attachment_repo);
                 let chat_resumption_conversation_repo = Arc::clone(&startup_conversation_repo);
                 let chat_resumption_ideation_session_repo = Arc::clone(&startup_ideation_session_repo);
                 let chat_resumption_activity_event_repo = Arc::clone(&startup_activity_event_repo);
@@ -285,6 +288,7 @@ pub fn run() {
                 let reconcile_task_dependency_repo = Arc::clone(&startup_task_dependency_repo);
                 let reconcile_project_repo = Arc::clone(&startup_project_repo);
                 let reconcile_chat_message_repo = Arc::clone(&startup_chat_message_repo);
+                let reconcile_chat_attachment_repo = Arc::clone(&startup_chat_attachment_repo);
                 let reconcile_conversation_repo = Arc::clone(&startup_conversation_repo);
                 let reconcile_agent_run_repo = Arc::clone(&startup_agent_run_repo);
                 let reconcile_ideation_session_repo = Arc::clone(&startup_ideation_session_repo);
@@ -304,6 +308,7 @@ pub fn run() {
                     Arc::clone(&startup_task_dependency_repo),
                     Arc::clone(&startup_project_repo),
                     Arc::clone(&startup_chat_message_repo),
+                    Arc::clone(&startup_chat_attachment_repo),
                     Arc::clone(&startup_conversation_repo),
                     Arc::clone(&startup_agent_run_repo),
                     Arc::clone(&startup_ideation_session_repo),
@@ -324,6 +329,7 @@ pub fn run() {
                     Arc::clone(&startup_project_repo),
                     startup_conversation_repo.clone(),
                     startup_runner_chat_message_repo,
+                    Arc::clone(&startup_chat_attachment_repo),
                     startup_runner_ideation_session_repo,
                     startup_runner_activity_event_repo,
                     startup_runner_message_queue,
@@ -386,6 +392,7 @@ pub fn run() {
                     chat_resumption_task_repo,
                     chat_resumption_task_dependency_repo,
                     chat_resumption_chat_message_repo,
+                    chat_resumption_chat_attachment_repo,
                     chat_resumption_project_repo,
                     chat_resumption_ideation_session_repo,
                     chat_resumption_activity_event_repo,
@@ -404,6 +411,7 @@ pub fn run() {
                         Arc::clone(&reconcile_task_dependency_repo),
                         Arc::clone(&reconcile_project_repo),
                         Arc::clone(&reconcile_chat_message_repo),
+                        Arc::clone(&reconcile_chat_attachment_repo),
                         Arc::clone(&reconcile_conversation_repo),
                         Arc::clone(&reconcile_agent_run_repo),
                         Arc::clone(&reconcile_ideation_session_repo),
@@ -424,6 +432,7 @@ pub fn run() {
                     reconcile_project_repo,
                     reconcile_conversation_repo,
                     reconcile_chat_message_repo,
+                    reconcile_chat_attachment_repo,
                     reconcile_ideation_session_repo,
                     reconcile_activity_event_repo,
                     reconcile_message_queue,

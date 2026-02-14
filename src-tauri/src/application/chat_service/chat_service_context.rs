@@ -9,10 +9,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::domain::entities::{
-    ChatContextType, ChatConversation, ChatConversationId, ChatMessage, ChatMessageId, GitMode,
-    IdeationSessionId, MessageRole, ProjectId, TaskId,
+    ChatAttachment, ChatContextType, ChatConversation, ChatConversationId, ChatMessage,
+    ChatMessageId, GitMode, IdeationSessionId, MessageRole, ProjectId, TaskId,
 };
-use crate::domain::repositories::{IdeationSessionRepository, ProjectRepository, TaskRepository};
+use crate::domain::repositories::{
+    ChatAttachmentRepository, IdeationSessionRepository, ProjectRepository, TaskRepository,
+};
 use crate::infrastructure::agents::claude::{
     build_spawnable_command, mcp_agent_type, ContentBlockItem, SpawnableCommand, ToolCall,
 };
@@ -253,11 +255,88 @@ pub fn build_initial_prompt(
     }
 }
 
+/// Determine if a file is text-based from mime type or extension
+pub(super) fn is_text_file(mime_type: Option<&str>, file_name: &str) -> bool {
+    // Check mime type first
+    if let Some(mime) = mime_type {
+        if mime.starts_with("text/")
+            || mime == "application/json"
+            || mime == "application/xml"
+            || mime == "application/javascript"
+            || mime == "application/typescript"
+            || mime == "application/yaml"
+            || mime == "application/x-yaml"
+            || mime == "application/toml"
+        {
+            return true;
+        }
+    }
+
+    // Fallback to extension
+    let ext = Path::new(file_name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase());
+
+    matches!(
+        ext.as_deref(),
+        Some(
+            "txt" | "md" | "rs" | "ts" | "tsx" | "js" | "jsx" | "json" | "yaml" | "yml" | "xml"
+                | "html" | "css" | "py" | "java" | "c" | "cpp" | "h" | "go" | "sh" | "toml"
+                | "csv" | "log" | "sql" | "graphql" | "env" | "gitignore" | "dockerfile"
+        )
+    )
+}
+
+/// Format attachments for inclusion in agent context
+pub(super) async fn format_attachments_for_agent(attachments: &[ChatAttachment]) -> Result<String, String> {
+    if attachments.is_empty() {
+        return Ok(String::new());
+    }
+
+    let mut output = String::from("\n\n<attachments>\n");
+
+    for attachment in attachments {
+        output.push_str("<attachment>\n");
+        output.push_str(&format!("<filename>{}</filename>\n", attachment.file_name));
+
+        if let Some(ref mime) = attachment.mime_type {
+            output.push_str(&format!("<mime_type>{}</mime_type>\n", mime));
+        }
+
+        if is_text_file(attachment.mime_type.as_deref(), &attachment.file_name) {
+            // Read and include content for text files
+            match tokio::fs::read_to_string(&attachment.file_path).await {
+                Ok(content) => {
+                    output.push_str("<content>\n");
+                    output.push_str(&content);
+                    output.push_str("\n</content>\n");
+                }
+                Err(e) => {
+                    output.push_str(&format!("<error>Failed to read file: {}</error>\n", e));
+                }
+            }
+        } else {
+            // Binary file - include path reference
+            output.push_str(&format!(
+                "<file_path>{}</file_path>\n",
+                attachment.file_path
+            ));
+            output.push_str("<note>Use the Read tool to access this file</note>\n");
+        }
+
+        output.push_str("</attachment>\n");
+    }
+
+    output.push_str("</attachments>");
+    Ok(output)
+}
+
 /// Create a spawnable Claude CLI command.
 ///
 /// `entity_status` is optional and enables dynamic agent resolution based on state.
 /// For example, a review context with status "review_passed" will use the review-chat agent.
-pub fn build_command(
+pub async fn build_command(
     cli_path: &Path,
     plugin_dir: &Path,
     conversation: &ChatConversation,
@@ -265,6 +344,7 @@ pub fn build_command(
     working_directory: &Path,
     entity_status: Option<&str>,
     project_id: Option<&str>,
+    chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
 ) -> Result<SpawnableCommand, String> {
     // Compute agent_name using the resolution system (context type + optional status)
     let agent_name = resolve_agent(&conversation.context_type, entity_status);
@@ -284,19 +364,31 @@ pub fn build_command(
         && !is_fresh_review_cycle
         && conversation.context_type != ChatContextType::TaskExecution;
 
+    // Fetch pending attachments (not yet linked to a message)
+    let attachments = chat_attachment_repo
+        .find_by_conversation_id(&conversation.id)
+        .await
+        .map_err(|e| format!("Failed to fetch attachments: {}", e))?
+        .into_iter()
+        .filter(|a| a.message_id.is_none()) // Only pending attachments
+        .collect::<Vec<_>>();
+
+    let attachment_context = format_attachments_for_agent(&attachments).await?;
+
     let (prompt, resume_session) = if should_resume {
         let session_id = conversation.claude_session_id.as_ref().unwrap();
-        (
-            user_message.to_string(),
-            Some(session_id.as_str().to_string()),
-        )
+        // For resume, append attachments to the user message
+        let message_with_attachments = format!("{}{}", user_message, attachment_context);
+        (message_with_attachments, Some(session_id.as_str().to_string()))
     } else {
         let initial_prompt = build_initial_prompt(
             conversation.context_type,
             &conversation.context_id,
             user_message,
         );
-        (initial_prompt, None)
+        // Append attachments after the initial prompt
+        let prompt_with_attachments = format!("{}{}", initial_prompt, attachment_context);
+        (prompt_with_attachments, None)
     };
 
     let mut spawnable = build_spawnable_command(
@@ -330,7 +422,7 @@ pub fn build_command(
 ///
 /// Like `build_command()`, but always resumes with the given session_id
 /// and uses static agent resolution (no entity_status needed for queue messages).
-pub fn build_resume_command(
+pub async fn build_resume_command(
     cli_path: &Path,
     plugin_dir: &Path,
     context_type: ChatContextType,
@@ -339,6 +431,7 @@ pub fn build_resume_command(
     working_directory: &Path,
     session_id: &str,
     project_id: Option<&str>,
+    _chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
 ) -> Result<SpawnableCommand, String> {
     let agent_name = resolve_agent(&context_type, None);
 
@@ -475,4 +568,195 @@ pub fn create_assistant_message(
     }
 
     msg
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::entities::ChatAttachment;
+
+    #[test]
+    fn test_is_text_file_by_mime_type() {
+        // Text MIME types
+        assert!(is_text_file(Some("text/plain"), "file.txt"));
+        assert!(is_text_file(Some("text/html"), "file.html"));
+        assert!(is_text_file(Some("application/json"), "file.json"));
+        assert!(is_text_file(Some("application/xml"), "file.xml"));
+        assert!(is_text_file(Some("application/javascript"), "file.js"));
+        assert!(is_text_file(Some("application/typescript"), "file.ts"));
+
+        // Binary MIME types
+        assert!(!is_text_file(Some("image/png"), "file.png"));
+        assert!(!is_text_file(Some("application/pdf"), "file.pdf"));
+        assert!(!is_text_file(Some("video/mp4"), "file.mp4"));
+    }
+
+    #[test]
+    fn test_is_text_file_by_extension() {
+        // Common text extensions (no MIME type provided)
+        assert!(is_text_file(None, "file.txt"));
+        assert!(is_text_file(None, "file.md"));
+        assert!(is_text_file(None, "file.rs"));
+        assert!(is_text_file(None, "file.ts"));
+        assert!(is_text_file(None, "file.tsx"));
+        assert!(is_text_file(None, "file.js"));
+        assert!(is_text_file(None, "file.jsx"));
+        assert!(is_text_file(None, "file.json"));
+        assert!(is_text_file(None, "file.yaml"));
+        assert!(is_text_file(None, "file.yml"));
+        assert!(is_text_file(None, "file.xml"));
+        assert!(is_text_file(None, "file.html"));
+        assert!(is_text_file(None, "file.css"));
+        assert!(is_text_file(None, "file.py"));
+        assert!(is_text_file(None, "file.java"));
+        assert!(is_text_file(None, "file.c"));
+        assert!(is_text_file(None, "file.cpp"));
+        assert!(is_text_file(None, "file.h"));
+        assert!(is_text_file(None, "file.go"));
+        assert!(is_text_file(None, "file.sh"));
+        assert!(is_text_file(None, "file.toml"));
+        assert!(is_text_file(None, "file.csv"));
+        assert!(is_text_file(None, "file.log"));
+        assert!(is_text_file(None, "file.sql"));
+        assert!(is_text_file(None, "file.graphql"));
+
+        // Binary extensions
+        assert!(!is_text_file(None, "file.png"));
+        assert!(!is_text_file(None, "file.jpg"));
+        assert!(!is_text_file(None, "file.pdf"));
+        assert!(!is_text_file(None, "file.mp4"));
+        assert!(!is_text_file(None, "file.zip"));
+
+        // Files without extensions
+        assert!(!is_text_file(None, "README"));
+        assert!(!is_text_file(None, "no-extension"));
+    }
+
+    #[tokio::test]
+    async fn test_format_attachments_empty() {
+        let attachments: Vec<ChatAttachment> = vec![];
+        let result = format_attachments_for_agent(&attachments).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "");
+    }
+
+    #[tokio::test]
+    async fn test_format_attachments_binary_file() {
+        let conversation_id = ChatConversationId::new();
+        let attachment = ChatAttachment::new(
+            conversation_id,
+            "screenshot.png",
+            "/path/to/screenshot.png",
+            1024,
+            Some("image/png".to_string()),
+        );
+
+        let result = format_attachments_for_agent(&[attachment]).await;
+        assert!(result.is_ok());
+
+        let formatted = result.unwrap();
+        assert!(formatted.contains("<attachments>"));
+        assert!(formatted.contains("<filename>screenshot.png</filename>"));
+        assert!(formatted.contains("<mime_type>image/png</mime_type>"));
+        assert!(formatted.contains("<file_path>/path/to/screenshot.png</file_path>"));
+        assert!(formatted.contains("Use the Read tool to access this file"));
+        assert!(formatted.contains("</attachments>"));
+    }
+
+    #[tokio::test]
+    async fn test_format_attachments_text_file() {
+        use std::fs;
+
+        // Create a temporary text file
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_attachment.txt");
+        let test_content = "Hello, this is a test file!";
+        fs::write(&temp_file, test_content).expect("Failed to write test file");
+
+        let conversation_id = ChatConversationId::new();
+        let attachment = ChatAttachment::new(
+            conversation_id,
+            "test_attachment.txt",
+            temp_file.to_str().unwrap(),
+            test_content.len() as i64,
+            Some("text/plain".to_string()),
+        );
+
+        let result = format_attachments_for_agent(&[attachment]).await;
+        assert!(result.is_ok());
+
+        let formatted = result.unwrap();
+        assert!(formatted.contains("<attachments>"));
+        assert!(formatted.contains("<filename>test_attachment.txt</filename>"));
+        assert!(formatted.contains("<mime_type>text/plain</mime_type>"));
+        assert!(formatted.contains("<content>"));
+        assert!(formatted.contains(test_content));
+        assert!(formatted.contains("</content>"));
+        assert!(formatted.contains("</attachments>"));
+
+        // Cleanup
+        fs::remove_file(temp_file).ok();
+    }
+
+    #[tokio::test]
+    async fn test_format_attachments_multiple_files() {
+        use std::fs;
+
+        // Create a temporary text file
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_multiple.txt");
+        let test_content = "Test content";
+        fs::write(&temp_file, test_content).expect("Failed to write test file");
+
+        let conversation_id = ChatConversationId::new();
+        let text_attachment = ChatAttachment::new(
+            conversation_id,
+            "test_multiple.txt",
+            temp_file.to_str().unwrap(),
+            test_content.len() as i64,
+            Some("text/plain".to_string()),
+        );
+
+        let binary_attachment = ChatAttachment::new(
+            conversation_id,
+            "image.png",
+            "/path/to/image.png",
+            2048,
+            Some("image/png".to_string()),
+        );
+
+        let result = format_attachments_for_agent(&[text_attachment, binary_attachment]).await;
+        assert!(result.is_ok());
+
+        let formatted = result.unwrap();
+
+        // Should contain both attachments
+        assert!(formatted.contains("test_multiple.txt"));
+        assert!(formatted.contains(test_content));
+        assert!(formatted.contains("image.png"));
+        assert!(formatted.contains("/path/to/image.png"));
+        assert!(formatted.contains("Use the Read tool to access this file"));
+
+        // Cleanup
+        fs::remove_file(temp_file).ok();
+    }
+
+    #[tokio::test]
+    async fn test_format_attachments_file_read_error() {
+        let conversation_id = ChatConversationId::new();
+        let attachment = ChatAttachment::new(
+            conversation_id,
+            "nonexistent.txt",
+            "/nonexistent/path/file.txt",
+            0,
+            Some("text/plain".to_string()),
+        );
+
+        let result = format_attachments_for_agent(&[attachment]).await;
+        assert!(result.is_ok());
+
+        let formatted = result.unwrap();
+        assert!(formatted.contains("<filename>nonexistent.txt</filename>"));
+        assert!(formatted.contains("<error>Failed to read file:"));
+    }
 }

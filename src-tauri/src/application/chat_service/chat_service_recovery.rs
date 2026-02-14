@@ -7,7 +7,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::domain::entities::{ChatConversation, ChatConversationId, ChatContextType};
-use crate::domain::repositories::{ChatConversationRepository, ChatMessageRepository};
+use crate::domain::repositories::{
+    ChatAttachmentRepository, ChatConversationRepository, ChatMessageRepository,
+};
 use crate::error::{AppError, AppResult};
 use super::chat_service_context;
 use super::chat_service_replay::{build_rehydration_prompt, ReplayBuilder};
@@ -45,6 +47,7 @@ pub(super) async fn attempt_session_recovery(
     _resolved_project_id: Option<String>,
     chat_message_repo: Arc<dyn ChatMessageRepository>,
     conversation_repo: Arc<dyn ChatConversationRepository>,
+    chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     old_session_id: &str,
 ) -> AppResult<String> {
     let recovery_start = std::time::Instant::now();
@@ -93,7 +96,10 @@ pub(super) async fn attempt_session_recovery(
         working_directory,
         None, // entity_status
         _resolved_project_id.as_deref(),
-    ) {
+        chat_attachment_repo,
+    )
+    .await
+    {
         Ok(s) => s,
         Err(e) => {
             let err = AppError::Infrastructure(format!("Failed to build recovery command: {}", e));

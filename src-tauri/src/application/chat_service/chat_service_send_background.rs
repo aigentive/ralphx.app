@@ -16,8 +16,10 @@ use crate::domain::entities::{
     AgentRunId, ChatConversationId, ChatContextType,
 };
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
+    ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
+    ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
+    MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
+    TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentKey, RunningAgentRegistry};
 use tokio_util::sync::CancellationToken;
@@ -33,6 +35,7 @@ use crate::domain::entities::ChatConversation;
 /// All repository and service dependencies grouped together.
 pub(super) struct BackgroundRunRepos {
     pub chat_message_repo: Arc<dyn ChatMessageRepository>,
+    pub chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     pub conversation_repo: Arc<dyn ChatConversationRepository>,
     pub agent_run_repo: Arc<dyn AgentRunRepository>,
     pub task_repo: Arc<dyn TaskRepository>,
@@ -152,6 +155,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
         } = ctx;
         let BackgroundRunRepos {
             chat_message_repo,
+            chat_attachment_repo,
             conversation_repo,
             agent_run_repo,
             task_repo,
@@ -296,6 +300,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     &task_dependency_repo,
                     &project_repo,
                     &chat_message_repo,
+                    &chat_attachment_repo,
                     &conversation_repo,
                     &agent_run_repo,
                     &ideation_session_repo,
@@ -368,6 +373,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                         sess_id,
                         &message_queue,
                         &chat_message_repo,
+                        &chat_attachment_repo,
                         &activity_event_repo,
                         &task_repo,
                         &cli_path,
@@ -447,6 +453,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     &plugin_dir,
                     &working_directory,
                     &chat_message_repo,
+                    &chat_attachment_repo,
                     &conversation_repo,
                     &agent_run_repo,
                     &task_repo,

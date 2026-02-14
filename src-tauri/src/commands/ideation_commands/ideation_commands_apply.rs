@@ -383,6 +383,7 @@ pub async fn apply_proposals_to_kanban(
             Arc::clone(&state.task_repo),
             Arc::clone(&state.task_dependency_repo),
             Arc::clone(&state.chat_message_repo),
+            Arc::clone(&state.chat_attachment_repo),
             Arc::clone(&state.chat_conversation_repo),
             Arc::clone(&state.agent_run_repo),
             Arc::clone(&state.ideation_session_repo),
