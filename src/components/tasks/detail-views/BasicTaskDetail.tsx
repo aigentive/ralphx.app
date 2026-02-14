@@ -112,25 +112,40 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
   const hasSteps = (steps?.length ?? 0) > 0;
   const isRestartable = RESTARTABLE_STATUSES.has(task.internalStatus);
 
-  // Parse failure info from task metadata when task is failed
+  // Parse failure info from task metadata when task is failed or qa_failed
   let failureInfo: {
     failure_error: string;
     failure_details?: string;
     is_timeout: boolean;
   } | null = null;
 
-  if (task.internalStatus === "failed" && task.metadata) {
-    try {
-      const metadata = JSON.parse(task.metadata);
-      if (metadata.failure_error) {
-        failureInfo = {
-          failure_error: metadata.failure_error,
-          failure_details: metadata.failure_details,
-          is_timeout: metadata.is_timeout || false,
-        };
+  const isFailed = task.internalStatus === "failed" || task.internalStatus === "qa_failed";
+
+  if (isFailed) {
+    if (task.metadata) {
+      try {
+        const metadata = JSON.parse(task.metadata);
+        if (metadata.failure_error) {
+          failureInfo = {
+            failure_error: metadata.failure_error,
+            failure_details: metadata.failure_details,
+            is_timeout: metadata.is_timeout || false,
+          };
+        }
+      } catch {
+        // JSON parse failed - fall through to fallback
       }
-    } catch {
-      // Ignore JSON parse errors
+    }
+
+    // Fallback handling for null/invalid metadata
+    if (!failureInfo) {
+      // Try blockedReason first (set by ExecutionBlocked handler)
+      const errorMessage = task.blockedReason ||
+        "Task execution failed. Error details were not recorded during the state transition.";
+      failureInfo = {
+        failure_error: errorMessage,
+        is_timeout: false,
+      };
     }
   }
 

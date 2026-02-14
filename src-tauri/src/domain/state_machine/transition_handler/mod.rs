@@ -11,6 +11,7 @@ use std::sync::Arc;
 mod merge_completion;
 mod merge_helpers;
 mod merge_validation;
+pub mod metadata_builder;
 mod on_enter_states;
 mod side_effects;
 #[cfg(test)]
@@ -34,6 +35,9 @@ pub(crate) use side_effects::clear_trigger_origin;
 pub(crate) use side_effects::get_trigger_origin;
 pub(crate) use side_effects::parse_metadata;
 pub(crate) use side_effects::set_trigger_origin;
+
+// Re-export metadata builder for atomic metadata writes (Wave 1)
+pub use metadata_builder::{build_failed_metadata, build_trigger_origin_metadata, MetadataUpdate};
 
 /// Result of handling a transition
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -193,13 +197,13 @@ impl<'a> TransitionHandler<'a> {
                     self.try_schedule_ready_tasks().await;
                 }
 
-                // Clear trigger_origin when exiting agent-active states
+                // Clear trigger_origin when exiting agent-active states (using update_metadata for targeted write)
                 use crate::domain::state_machine::transition_handler::clear_trigger_origin;
                 if let Some(ref task_repo) = self.machine.context.services.task_repo {
                     let task_id = TaskId::from_string(self.machine.context.task_id.clone());
                     if let Ok(Some(mut task)) = task_repo.get_by_id(&task_id).await {
                         clear_trigger_origin(&mut task);
-                        if let Err(e) = task_repo.update(&task).await {
+                        if let Err(e) = task_repo.update_metadata(&task_id, task.metadata.clone()).await {
                             tracing::error!(
                                 task_id = %self.machine.context.task_id,
                                 error = %e,

@@ -683,6 +683,9 @@ mod tests {
                 .insert(task.id.as_str().to_string(), task.clone());
             Ok(())
         }
+        async fn update_metadata(&self, _id: &TaskId, _metadata: Option<String>) -> AppResult<()> {
+            Ok(())
+        }
         async fn delete(&self, _id: &TaskId) -> AppResult<()> {
             Ok(())
         }

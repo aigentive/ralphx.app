@@ -247,7 +247,7 @@ describe("BasicTaskDetail", () => {
       expect(screen.queryByText(/Task failed/)).not.toBeInTheDocument();
     });
 
-    it("handles malformed JSON metadata gracefully", () => {
+    it("handles malformed JSON metadata gracefully (shows fallback)", () => {
       const task = createTestTask({
         internalStatus: "failed",
         metadata: "invalid json",
@@ -255,7 +255,75 @@ describe("BasicTaskDetail", () => {
 
       render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
 
-      expect(screen.queryByTestId("failure-reason-section")).not.toBeInTheDocument();
+      expect(screen.getByTestId("failure-reason-section")).toBeInTheDocument();
+      expect(screen.getByText("Task execution failed. Error details were not recorded during the state transition.")).toBeInTheDocument();
+    });
+
+    it("displays generic fallback banner for failed task with null metadata", () => {
+      const task = createTestTask({
+        internalStatus: "failed",
+        metadata: null,
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByTestId("failure-reason-section")).toBeInTheDocument();
+      expect(screen.getByText("Task execution failed. Error details were not recorded during the state transition.")).toBeInTheDocument();
+    });
+
+    it("displays blockedReason when failed with null metadata but blockedReason exists", () => {
+      const task = createTestTask({
+        internalStatus: "failed",
+        metadata: null,
+        blockedReason: "Dependency task failed to complete",
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByTestId("failure-reason-section")).toBeInTheDocument();
+      expect(screen.getByText("Dependency task failed to complete")).toBeInTheDocument();
+    });
+
+    it("displays rich failure info when metadata is valid (existing behavior)", () => {
+      const failureMetadata = JSON.stringify({
+        failure_error: "Build script exited with code 1",
+        failure_details: "npm run build failed",
+        is_timeout: false,
+      });
+      const task = createTestTask({
+        internalStatus: "failed",
+        metadata: failureMetadata,
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByTestId("failure-reason-section")).toBeInTheDocument();
+      expect(screen.getByText("Build script exited with code 1")).toBeInTheDocument();
+      expect(screen.getByText("npm run build failed")).toBeInTheDocument();
+    });
+
+    it("displays generic fallback for failed task with malformed JSON metadata", () => {
+      const task = createTestTask({
+        internalStatus: "failed",
+        metadata: "{ invalid json }",
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByTestId("failure-reason-section")).toBeInTheDocument();
+      expect(screen.getByText("Task execution failed. Error details were not recorded during the state transition.")).toBeInTheDocument();
+    });
+
+    it("displays generic fallback for qa_failed task with null metadata", () => {
+      const task = createTestTask({
+        internalStatus: "qa_failed",
+        metadata: null,
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByTestId("failure-reason-section")).toBeInTheDocument();
+      expect(screen.getByText("Task execution failed. Error details were not recorded during the state transition.")).toBeInTheDocument();
     });
   });
 
