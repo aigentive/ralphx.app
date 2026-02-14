@@ -8,7 +8,7 @@
  * PendingMerge is typically very brief (1-3 seconds).
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Loader2,
   GitMerge,
@@ -34,7 +34,6 @@ import { useMergeProgressEvents } from "@/hooks/useMergeProgressEvents";
 import { MergePhaseTimeline } from "./MergePhaseTimeline";
 import { ValidationProgress } from "./shared/ValidationProgress";
 import type { Task } from "@/types/task";
-import type { MergeValidationStepEvent } from "@/types/events";
 
 interface MergingTaskDetailProps {
   task: Task;
