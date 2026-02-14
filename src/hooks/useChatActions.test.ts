@@ -131,7 +131,7 @@ describe("useChatActions", () => {
         await result.current.handleSend("hello world");
       });
 
-      expect(mutateAsync).toHaveBeenCalledWith("hello world");
+      expect(mutateAsync).toHaveBeenCalledWith({ content: "hello world", attachmentIds: undefined });
     });
 
     it("does not send empty or whitespace-only strings", async () => {
@@ -170,7 +170,7 @@ describe("useChatActions", () => {
 
       // Should use direct API, NOT the mutation
       expect(mutateAsync).not.toHaveBeenCalled();
-      expect(mockSendAgentMessage).toHaveBeenCalledWith("review", "task-42", "looks good");
+      expect(mockSendAgentMessage).toHaveBeenCalledWith("review", "task-42", "looks good", undefined);
       expect(mockActions.setAgentRunning).toHaveBeenCalledWith("review:task-42", true);
       expect(mockInvalidateQueries).toHaveBeenCalled();
     });

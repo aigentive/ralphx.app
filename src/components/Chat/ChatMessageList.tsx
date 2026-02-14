@@ -25,8 +25,10 @@ import { isDiffToolCall } from "./DiffToolCallView.utils";
 import { DiffToolCallView } from "./DiffToolCallView";
 import { TaskSubagentCard } from "./TaskSubagentCard";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
+import { useMessageAttachments } from "@/hooks/useMessageAttachments";
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { MessageAttachment } from "./MessageAttachments";
 
 // ============================================================================
 // Constants
@@ -57,6 +59,7 @@ export interface ChatMessageData {
   createdAt: string;
   toolCalls?: ToolCall[] | null;
   contentBlocks?: ContentBlockItem[] | null;
+  attachments?: MessageAttachment[];
 }
 
 /** Discriminated union for timeline items when hook events are interleaved */
@@ -120,6 +123,9 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
 
     // Forward the ref to parent
     useImperativeHandle(ref, () => virtuosoRef.current!, []);
+
+    // Fetch attachments for all messages
+    const { data: attachmentsMap } = useMessageAttachments(messages, conversationId);
 
     // Footer content hash — makes Virtuoso aware of footer height changes
     // without manual scrollTo calls. Virtuoso re-evaluates followOutput when
@@ -220,9 +226,15 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         : messages;
 
       for (const msg of filteredMessages) {
+        // Enrich message with attachments if available
+        const attachments = attachmentsMap?.get(msg.id);
+        const enrichedMsg = attachments
+          ? { ...msg, attachments }
+          : msg;
+
         items.push({
           kind: "message",
-          data: msg,
+          data: enrichedMsg,
           sortTime: new Date(msg.createdAt).getTime(),
         });
       }
@@ -238,7 +250,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       }
 
       return items;
-    }, [messages, hookEvents, activeHooks, hasHookEvents, shouldFilterLastAssistant, streamingContentBlocks, streamingTasks, conversationId]);
+    }, [messages, hookEvents, activeHooks, hasHookEvents, shouldFilterLastAssistant, streamingContentBlocks, streamingTasks, conversationId, attachmentsMap]);
 
     // Memoize Virtuoso components to prevent infinite re-render loop.
     // Inline object literals create new references every render, causing Virtuoso
@@ -337,6 +349,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             createdAt={msg.createdAt}
             toolCalls={msg.toolCalls ?? null}
             contentBlocks={msg.contentBlocks ?? null}
+            {...(msg.attachments && { attachments: msg.attachments })}
           />
         </div>
       );
@@ -365,6 +378,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                   createdAt={item.data.createdAt}
                   toolCalls={item.data.toolCalls ?? null}
                   contentBlocks={item.data.contentBlocks ?? null}
+                  {...(item.data.attachments && { attachments: item.data.attachments })}
                 />
               )}
             </div>

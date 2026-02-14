@@ -49,6 +49,7 @@ import { useEventBus } from "@/providers/EventProvider";
 import { logger } from "@/lib/logger";
 import { ChildSessionNotification } from "./ChildSessionNotification";
 import { useIdeationStore } from "@/stores/ideationStore";
+import { useChatAttachments } from "@/hooks/useChatAttachments";
 
 // Stable empty array to avoid new reference on every render when tasks query returns undefined
 const EMPTY_TASKS: never[] = [];
@@ -290,6 +291,14 @@ export function IntegratedChatPanel({
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
 
+  // File attachments - use activeConversationId for attachment association
+  // Only enable attachments when there's an active conversation (not in history mode)
+  const {
+    attachments,
+    uploadFiles,
+    removeAttachment,
+    clearAttachments,
+  } = useChatAttachments(activeConversationId ?? "");
 
   // Memoize messagesData to avoid dependency chain issues in useEffect hooks
   // No time-based filtering needed - we switch context types based on historical state
@@ -311,7 +320,7 @@ export function IntegratedChatPanel({
   });
 
   const {
-    handleSend,
+    handleSend: handleSendBase,
     handleQueue,
     handleEditLastQueued,
     handleDeleteQueuedMessage,
@@ -326,6 +335,21 @@ export function IntegratedChatPanel({
     sendMessage,
     messageCount: messagesData.length,
   });
+
+  // Wrap handleSend to include attachment IDs and clear attachments after send
+  const handleSend = useCallback(async (message: string) => {
+    // Collect attachment IDs before sending
+    const attachmentIds = attachments.map(a => a.id);
+
+    // Call the base handler with attachment IDs
+    await handleSendBase(message, attachmentIds.length > 0 ? attachmentIds : undefined);
+
+    // Clear attachments after successful send
+    // Note: If send fails, attachments are preserved for retry
+    if (attachmentIds.length > 0) {
+      clearAttachments();
+    }
+  }, [attachments, handleSendBase, clearAttachments]);
 
   // Wrapper for handleEditLastQueued that provides the queued messages
   const handleEditLastQueuedWrapper = () => {
@@ -611,6 +635,10 @@ export function IntegratedChatPanel({
                   },
                 } : {})}
                 autoFocus={autoFocusInput}
+                enableAttachments={!!activeConversationId && !isHistoryMode}
+                attachments={attachments}
+                onFilesSelected={uploadFiles}
+                onRemoveAttachment={removeAttachment}
               />
             </div>
           </div>

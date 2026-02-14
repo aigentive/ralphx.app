@@ -23,9 +23,14 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 // Mock unified hooks (ChatPanel uses these after Phase 6 migration)
+const mockHandleSend = vi.fn();
+const mockUploadFiles = vi.fn().mockResolvedValue([]);
+const mockRemoveAttachment = vi.fn().mockResolvedValue(undefined);
+const mockClearAttachments = vi.fn();
+
 vi.mock("@/hooks/useChatActions", () => ({
   useChatActions: () => ({
-    handleSend: vi.fn(),
+    handleSend: mockHandleSend,
     handleQueue: vi.fn(),
     handleStopAgent: vi.fn(),
     handleDeleteQueuedMessage: vi.fn(),
@@ -36,6 +41,17 @@ vi.mock("@/hooks/useChatActions", () => ({
 
 vi.mock("@/hooks/useChatEvents", () => ({
   useChatEvents: vi.fn(),
+}));
+
+vi.mock("@/hooks/useChatAttachments", () => ({
+  useChatAttachments: () => ({
+    attachments: [],
+    uploadFiles: mockUploadFiles,
+    removeAttachment: mockRemoveAttachment,
+    clearAttachments: mockClearAttachments,
+    uploading: false,
+    uploadProgress: [],
+  }),
 }));
 
 // Mock chat context registry

@@ -342,6 +342,8 @@ export const chatApi = {
   isChatServiceAvailable,
   stopAgent,
   isAgentRunning,
+  // Attachments
+  listMessageAttachments,
 } as const;
 
 // ============================================================================
@@ -381,11 +383,13 @@ function transformSendAgentMessageResponse(raw: RawSendAgentMessageResponse): Se
  * @param contextType The context type (ideation, task, project, task_execution)
  * @param contextId The context ID
  * @param content The message content
+ * @param attachmentIds Optional array of attachment IDs to link to this message
  */
 export async function sendAgentMessage(
   contextType: ContextType,
   contextId: string,
-  content: string
+  content: string,
+  attachmentIds?: string[]
 ): Promise<SendAgentMessageResult> {
   const raw = await typedInvoke(
     "send_agent_message",
@@ -394,6 +398,7 @@ export async function sendAgentMessage(
         contextType,
         contextId,
         content,
+        ...(attachmentIds !== undefined && attachmentIds.length > 0 && { attachmentIds }),
       },
     },
     SendAgentMessageResponseSchema
@@ -408,12 +413,14 @@ export async function sendAgentMessage(
  * @param contextId The context ID
  * @param content The message content
  * @param clientId Optional client-provided ID (allows frontend/backend to use same ID)
+ * @param attachmentIds Optional array of attachment IDs to link to this message
  */
 export async function queueAgentMessage(
   contextType: ContextType,
   contextId: string,
   content: string,
-  clientId?: string
+  clientId?: string,
+  attachmentIds?: string[]
 ): Promise<QueuedMessageResponse> {
   const raw = await typedInvoke(
     "queue_agent_message",
@@ -423,6 +430,7 @@ export async function queueAgentMessage(
         contextId,
         content,
         ...(clientId !== undefined && { clientId }),
+        ...(attachmentIds !== undefined && attachmentIds.length > 0 && { attachmentIds }),
       },
     },
     QueuedMessageResponseSchema
@@ -511,5 +519,50 @@ export async function isAgentRunning(
     "is_agent_running",
     { contextType, contextId },
     z.boolean()
+  );
+}
+
+// ============================================================================
+// Chat Attachments API
+// ============================================================================
+
+/**
+ * Chat attachment response from backend
+ */
+export interface ChatAttachmentResponse {
+  id: string;
+  conversationId: string;
+  messageId: string | null;
+  fileName: string;
+  filePath: string;
+  mimeType: string | null;
+  fileSize: number;
+  createdAt: string;
+}
+
+const ChatAttachmentResponseSchema = z.object({
+  id: z.string(),
+  conversationId: z.string(),
+  messageId: z.string().nullable(),
+  fileName: z.string(),
+  filePath: z.string(),
+  mimeType: z.string().nullable(),
+  fileSize: z.number(),
+  createdAt: z.string(),
+});
+
+/**
+ * List all attachments for a specific message
+ *
+ * @param messageId The message ID
+ * @returns Array of attachments
+ */
+export async function listMessageAttachments(
+  messageId: string
+): Promise<ChatAttachmentResponse[]> {
+  return typedInvoke(
+    "list_message_attachments",
+    { messageId },
+    z.array(ChatAttachmentResponseSchema)
   );
 }

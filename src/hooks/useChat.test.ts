@@ -351,7 +351,7 @@ describe("useChat", () => {
     });
 
     await act(async () => {
-      await result.current.sendMessage.mutateAsync("New message content");
+      await result.current.sendMessage.mutateAsync({ content: "New message content" });
     });
 
     expect(chatApi.sendAgentMessage).toHaveBeenCalledWith(
@@ -378,7 +378,7 @@ describe("useChat", () => {
     });
 
     await act(async () => {
-      await result.current.sendMessage.mutateAsync("Task message");
+      await result.current.sendMessage.mutateAsync({ content: "Task message" });
     });
 
     expect(chatApi.sendAgentMessage).toHaveBeenCalledWith(
@@ -534,7 +534,7 @@ describe("useChat", () => {
 
     await expect(
       act(async () => {
-        await result.current.sendMessage.mutateAsync("Message");
+        await result.current.sendMessage.mutateAsync({ content: "Message" });
       })
     ).rejects.toThrow("Failed to send message");
   });
