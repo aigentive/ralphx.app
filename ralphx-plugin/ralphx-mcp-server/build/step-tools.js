@@ -111,6 +111,14 @@ export const STEP_TOOLS = [
                     type: "string",
                     description: "Optional: ID of the step to insert after. If not provided, adds to the end.",
                 },
+                parent_step_id: {
+                    type: "string",
+                    description: "Optional: ID of the parent step. Creates a sub-step that tracks a specific coder dispatch. The coder should use get_step_context with this sub-step's ID.",
+                },
+                scope_context: {
+                    type: "string",
+                    description: 'Optional: JSON string with STRICT SCOPE for this sub-step. Example: \'{"files":["src/foo.ts","src/bar.ts"],"read_only":["src/types.ts"],"instructions":"Implement the caching layer"}\'',
+                },
             },
             required: ["task_id", "title"],
         },
@@ -127,6 +135,34 @@ export const STEP_TOOLS = [
                 },
             },
             required: ["task_id"],
+        },
+    },
+    {
+        name: "get_step_context",
+        description: "Get complete context for a step including parent task, scope constraints, sibling steps, and progress. Coders dispatched by a worker should call this FIRST with their assigned sub-step ID.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                step_id: {
+                    type: "string",
+                    description: "The step/sub-step ID to get context for",
+                },
+            },
+            required: ["step_id"],
+        },
+    },
+    {
+        name: "get_sub_steps",
+        description: "Get all sub-steps for a parent step. Use this to check progress of coder dispatches after creating sub-steps.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                parent_step_id: {
+                    type: "string",
+                    description: "The parent step ID",
+                },
+            },
+            required: ["parent_step_id"],
         },
     },
 ];

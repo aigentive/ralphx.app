@@ -268,6 +268,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const { task_id } = args;
             result = await callTauriGet(`step_progress/${task_id}`);
         }
+        else if (name === "get_step_context") {
+            // GET /api/step_context/:step_id
+            const { step_id } = args;
+            result = await callTauriGet(`step_context/${step_id}`);
+        }
+        else if (name === "get_sub_steps") {
+            // GET /api/sub_steps/:parent_step_id
+            const { parent_step_id } = args;
+            result = await callTauriGet(`sub_steps/${parent_step_id}`);
+        }
         else if (name === "get_review_notes") {
             // GET /api/review_notes/:task_id
             const { task_id } = args;
