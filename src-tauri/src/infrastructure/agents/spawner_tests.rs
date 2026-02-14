@@ -28,6 +28,9 @@ impl TaskRepository for MockTaskRepoForSpawner {
     async fn update(&self, _: &Task) -> AppResult<()> {
         Ok(())
     }
+    async fn update_metadata(&self, _: &TaskId, _: Option<String>) -> AppResult<()> {
+        Ok(())
+    }
     async fn delete(&self, _: &TaskId) -> AppResult<()> {
         Ok(())
     }

@@ -502,6 +502,10 @@ impl TaskRepository for MockTaskRepository {
         Ok(())
     }
 
+    async fn update_metadata(&self, _id: &TaskId, _metadata: Option<String>) -> AppResult<()> {
+        Ok(())
+    }
+
     async fn delete(&self, id: &TaskId) -> AppResult<()> {
         self.tasks.lock().unwrap().remove(&id.to_string());
         Ok(())

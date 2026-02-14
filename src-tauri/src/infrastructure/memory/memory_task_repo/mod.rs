@@ -101,6 +101,15 @@ impl TaskRepository for MemoryTaskRepository {
         Ok(())
     }
 
+    async fn update_metadata(&self, id: &TaskId, metadata: Option<String>) -> AppResult<()> {
+        let mut tasks = self.tasks.write().await;
+        if let Some(task) = tasks.get_mut(id) {
+            task.metadata = metadata;
+            task.updated_at = Utc::now();
+        }
+        Ok(())
+    }
+
     async fn delete(&self, id: &TaskId) -> AppResult<()> {
         let mut tasks = self.tasks.write().await;
         tasks.remove(id);

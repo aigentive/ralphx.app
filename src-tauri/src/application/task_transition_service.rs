@@ -18,6 +18,9 @@ use crate::application::{ChatService, ClaudeChatService};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{InternalStatus, Task, TaskId};
 use crate::domain::state_machine::transition_handler::set_trigger_origin;
+use crate::domain::state_machine::transition_handler::metadata_builder::{
+    build_trigger_origin_metadata, MetadataUpdate,
+};
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
     IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
@@ -521,8 +524,8 @@ impl<R: Runtime> TaskTransitionService<R> {
 
     /// Transition a task to a new status, triggering appropriate entry actions.
     ///
-    /// This is the main entry point for status changes that should trigger side effects
-    /// like spawning worker agents.
+    /// This is a backward-compatible wrapper around transition_task_with_metadata
+    /// that passes None for the metadata parameter.
     ///
     /// # Arguments
     /// * `task_id` - The ID of the task to transition
@@ -535,6 +538,29 @@ impl<R: Runtime> TaskTransitionService<R> {
         &self,
         task_id: &TaskId,
         new_status: InternalStatus,
+    ) -> AppResult<Task> {
+        self.transition_task_with_metadata(task_id, new_status, None).await
+    }
+
+    /// Transition a task to a new status with optional metadata update.
+    ///
+    /// This is the main entry point for status changes that should trigger side effects
+    /// like spawning worker agents. Metadata updates are merged atomically with the
+    /// status change.
+    ///
+    /// # Arguments
+    /// * `task_id` - The ID of the task to transition
+    /// * `new_status` - The target status
+    /// * `metadata_update` - Optional metadata to merge into task.metadata
+    ///
+    /// # Returns
+    /// * `Ok(Task)` - The updated task with new status and merged metadata
+    /// * `Err(AppError)` - If the task is not found or transition is invalid
+    pub async fn transition_task_with_metadata(
+        &self,
+        task_id: &TaskId,
+        new_status: InternalStatus,
+        metadata_update: Option<MetadataUpdate>,
     ) -> AppResult<Task> {
         tracing::debug!(
             task_id = task_id.as_str(),
@@ -569,6 +595,18 @@ impl<R: Runtime> TaskTransitionService<R> {
         // 3. Update the task status
         task.internal_status = new_status;
         task.touch();
+
+        // 3.1. Compute auto-metadata for QA transitions
+        let auto_metadata = auto_metadata_for_status(new_status);
+
+        // 3.2. Merge metadata updates (auto + explicit)
+        if metadata_update.is_some() || auto_metadata.is_some() {
+            // Prioritize explicit update, fallback to auto
+            let final_update = metadata_update.or(auto_metadata);
+            if let Some(update) = final_update {
+                task.metadata = Some(update.merge_into(task.metadata.as_deref()));
+            }
+        }
 
         // 4. Persist the update and record history (so UI can see the change)
         self.task_repo.update(&task).await?;
@@ -852,6 +890,26 @@ impl<R: Runtime> TaskTransitionService<R> {
         tracing::debug!(?from_state, ?to_state, "Calling TransitionHandler::on_exit");
         handler.on_exit(&from_state, &to_state).await;
         tracing::debug!("TransitionHandler::on_exit complete");
+    }
+}
+
+/// Auto-compute metadata for specific status transitions.
+///
+/// Returns metadata updates that should be automatically applied when transitioning
+/// to certain statuses (e.g., QaRefining/QaTesting get trigger_origin=qa).
+///
+/// # Arguments
+/// * `status` - The target status being transitioned to
+///
+/// # Returns
+/// * `Some(MetadataUpdate)` if auto-metadata applies to this status
+/// * `None` if no auto-metadata for this status
+fn auto_metadata_for_status(status: InternalStatus) -> Option<MetadataUpdate> {
+    match status {
+        InternalStatus::QaRefining | InternalStatus::QaTesting => {
+            Some(build_trigger_origin_metadata("qa"))
+        }
+        _ => None,
     }
 }
 

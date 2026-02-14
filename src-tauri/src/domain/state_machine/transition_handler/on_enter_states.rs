@@ -10,9 +10,9 @@ use chrono::Utc;
 
 use super::super::machine::State;
 use super::merge_helpers::{
-    compute_merge_worktree_path, expand_home, resolve_task_base_branch, set_trigger_origin,
-    slugify,
+    compute_merge_worktree_path, expand_home, resolve_task_base_branch, slugify,
 };
+use super::metadata_builder::{build_failed_metadata, MetadataUpdate};
 use crate::application::GitService;
 use crate::domain::entities::{GitMode, ProjectId, TaskId, TaskStepStatus};
 use crate::error::{AppError, AppResult};
@@ -231,8 +231,8 @@ impl<'a> super::TransitionHandler<'a> {
                             )
                             .await
                             {
-                                // Store execution_setup_log in metadata
-                                if let Ok(Some(mut task_updated)) = task_repo.get_by_id(&task_id).await {
+                                // Store execution_setup_log in metadata (using update_metadata for targeted write)
+                                if let Ok(Some(task_updated)) = task_repo.get_by_id(&task_id).await {
                                     let log_json = serde_json::to_value(&setup_result.log)
                                         .unwrap_or_else(|_| serde_json::Value::Array(Vec::new()));
 
@@ -248,8 +248,7 @@ impl<'a> super::TransitionHandler<'a> {
                                     }
 
                                     if let Ok(updated_metadata) = serde_json::to_string(&metadata_obj) {
-                                        task_updated.metadata = Some(updated_metadata);
-                                        let _ = task_repo.update(&task_updated).await;
+                                        let _ = task_repo.update_metadata(&task_id, Some(updated_metadata)).await;
                                     }
                                 }
 
@@ -270,8 +269,8 @@ impl<'a> super::TransitionHandler<'a> {
                                                 task_id = task_id_str,
                                                 "Pre-execution setup failed (install command failed). Proceeding with warning."
                                             );
-                                            // Store warning in metadata but proceed
-                                            if let Ok(Some(mut task_updated)) = task_repo.get_by_id(&task_id).await {
+                                            // Store warning in metadata but proceed (using update_metadata for targeted write)
+                                            if let Ok(Some(task_updated)) = task_repo.get_by_id(&task_id).await {
                                                 let mut metadata_obj = if let Some(json_str) = task_updated.metadata.as_ref() {
                                                     serde_json::from_str::<serde_json::Value>(json_str)
                                                         .unwrap_or_else(|_| serde_json::json!({}))
@@ -284,8 +283,7 @@ impl<'a> super::TransitionHandler<'a> {
                                                 }
 
                                                 if let Ok(updated_metadata) = serde_json::to_string(&metadata_obj) {
-                                                    task_updated.metadata = Some(updated_metadata);
-                                                    let _ = task_repo.update(&task_updated).await;
+                                                    let _ = task_repo.update_metadata(&task_id, Some(updated_metadata)).await;
                                                 }
                                             }
                                         }
@@ -336,16 +334,26 @@ impl<'a> super::TransitionHandler<'a> {
                 }
             }
             State::QaRefining => {
-                // Set trigger_origin="qa" for QA cycle
+                // Set trigger_origin="qa" for QA cycle (skip if already set by transition_task_with_metadata)
                 if let Some(ref task_repo) = self.machine.context.services.task_repo {
                     let task_id = TaskId::from_string(self.machine.context.task_id.clone());
-                    if let Ok(Some(mut task)) = task_repo.get_by_id(&task_id).await {
-                        set_trigger_origin(&mut task, "qa");
-                        if let Err(e) = task_repo.update(&task).await {
-                            tracing::error!(
+                    if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await {
+                        if !MetadataUpdate::key_exists_in("trigger_origin", task.metadata.as_deref()) {
+                            // Fallback: metadata not pre-computed, write it now for backward compatibility
+                            let metadata_update = super::metadata_builder::build_trigger_origin_metadata("qa");
+                            let merged_metadata = metadata_update.merge_into(task.metadata.as_deref());
+
+                            if let Err(e) = task_repo.update_metadata(&task_id, Some(merged_metadata)).await {
+                                tracing::error!(
+                                    task_id = %self.machine.context.task_id,
+                                    error = %e,
+                                    "Failed to set trigger_origin=qa in metadata"
+                                );
+                            }
+                        } else {
+                            tracing::debug!(
                                 task_id = %self.machine.context.task_id,
-                                error = %e,
-                                "Failed to set trigger_origin=qa in metadata"
+                                "Skipping metadata write - trigger_origin already present (pre-computed)"
                             );
                         }
                     }
@@ -368,16 +376,26 @@ impl<'a> super::TransitionHandler<'a> {
                     .await;
             }
             State::QaTesting => {
-                // Set trigger_origin="qa" for QA cycle
+                // Set trigger_origin="qa" for QA cycle (skip if already set by transition_task_with_metadata)
                 if let Some(ref task_repo) = self.machine.context.services.task_repo {
                     let task_id = TaskId::from_string(self.machine.context.task_id.clone());
-                    if let Ok(Some(mut task)) = task_repo.get_by_id(&task_id).await {
-                        set_trigger_origin(&mut task, "qa");
-                        if let Err(e) = task_repo.update(&task).await {
-                            tracing::error!(
+                    if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await {
+                        if !MetadataUpdate::key_exists_in("trigger_origin", task.metadata.as_deref()) {
+                            // Fallback: metadata not pre-computed, write it now for backward compatibility
+                            let metadata_update = super::metadata_builder::build_trigger_origin_metadata("qa");
+                            let merged_metadata = metadata_update.merge_into(task.metadata.as_deref());
+
+                            if let Err(e) = task_repo.update_metadata(&task_id, Some(merged_metadata)).await {
+                                tracing::error!(
+                                    task_id = %self.machine.context.task_id,
+                                    error = %e,
+                                    "Failed to set trigger_origin=qa in metadata"
+                                );
+                            }
+                        } else {
+                            tracing::debug!(
                                 task_id = %self.machine.context.task_id,
-                                error = %e,
-                                "Failed to set trigger_origin=qa in metadata"
+                                "Skipping metadata write - trigger_origin already present (pre-computed)"
                             );
                         }
                     }
@@ -600,57 +618,25 @@ impl<'a> super::TransitionHandler<'a> {
                 // Store failure reason in task metadata for frontend access
                 if let Some(ref task_repo) = self.machine.context.services.task_repo {
                     let task_id_typed = TaskId::from_string(task_id.clone());
+
+                    // Skip guard: check if metadata was already pre-computed (e.g., by transition_task_with_metadata)
                     match task_repo.get_by_id(&task_id_typed).await {
-                        Ok(Some(mut task)) => {
-                            // Build failure info object
-                            let failure_info = serde_json::json!({
-                                "failure_error": data.error,
-                                "failure_details": data.details,
-                                "is_timeout": data.is_timeout,
-                            });
-
-                            // Merge into existing metadata, preserving other keys
-                            let mut metadata_obj = if let Some(json_str) = task.metadata.as_ref() {
-                                match serde_json::from_str::<serde_json::Value>(json_str) {
-                                    Ok(obj) => obj,
-                                    Err(e) => {
-                                        tracing::warn!(
-                                            task_id = task_id,
-                                            error = %e,
-                                            "Failed to parse task metadata JSON"
-                                        );
-                                        serde_json::json!({})
-                                    }
-                                }
+                        Ok(Some(task)) => {
+                            if MetadataUpdate::key_exists_in("failure_error", task.metadata.as_deref()) {
+                                tracing::debug!(
+                                    task_id = task_id,
+                                    "Skipping metadata write - failure_error already present (pre-computed)"
+                                );
                             } else {
-                                serde_json::json!({})
-                            };
+                                // Fallback: metadata not pre-computed, write it now for backward compatibility
+                                let metadata_update = build_failed_metadata(data);
+                                let merged_metadata = metadata_update.merge_into(task.metadata.as_deref());
 
-                            if let Some(obj) = metadata_obj.as_object_mut() {
-                                obj.insert("failure_error".to_string(), failure_info["failure_error"].clone());
-                                if let Some(details) = &data.details {
-                                    obj.insert("failure_details".to_string(), serde_json::json!(details));
-                                }
-                                obj.insert("is_timeout".to_string(), serde_json::json!(data.is_timeout));
-                            }
-
-                            // Update task with new metadata
-                            match serde_json::to_string(&metadata_obj) {
-                                Ok(updated_metadata) => {
-                                    task.metadata = Some(updated_metadata);
-                                    if let Err(e) = task_repo.update(&task).await {
-                                        tracing::error!(
-                                            task_id = task_id,
-                                            error = %e,
-                                            "Failed to update task with failure metadata"
-                                        );
-                                    }
-                                }
-                                Err(e) => {
+                                if let Err(e) = task_repo.update_metadata(&task_id_typed, Some(merged_metadata)).await {
                                     tracing::error!(
                                         task_id = task_id,
                                         error = %e,
-                                        "Failed to serialize failure metadata"
+                                        "Failed to update task with failure metadata"
                                     );
                                 }
                             }

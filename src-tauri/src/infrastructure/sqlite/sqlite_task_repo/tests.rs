@@ -1092,3 +1092,137 @@ async fn test_clear_task_references_nullifies_fk_columns() {
     let found = repo.get_by_id(&task_id).await.unwrap();
     assert!(found.is_none());
 }
+
+// ==================== UPDATE METADATA TESTS ====================
+
+#[tokio::test]
+async fn test_update_metadata_sets_metadata_on_task_with_no_prior_metadata() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let task = create_test_task("Test Task");
+
+    // Create task with no metadata
+    repo.create(task.clone()).await.unwrap();
+
+    // Update metadata
+    let metadata = r#"{"failure_error":"Task execution failed"}"#;
+    let result = repo.update_metadata(&task.id, Some(metadata.to_string())).await;
+
+    assert!(result.is_ok());
+
+    // Verify metadata was set
+    let updated = repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert!(updated.metadata.is_some());
+    assert_eq!(updated.metadata.unwrap(), metadata);
+}
+
+#[tokio::test]
+async fn test_update_metadata_replaces_existing_metadata() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let mut task = create_test_task("Test Task");
+
+    // Create task with initial metadata
+    task.metadata = Some(r#"{"old_key":"old_value"}"#.to_string());
+    repo.create(task.clone()).await.unwrap();
+
+    // Replace with new metadata
+    let new_metadata = r#"{"failure_error":"Task execution failed"}"#;
+    let result = repo.update_metadata(&task.id, Some(new_metadata.to_string())).await;
+
+    assert!(result.is_ok());
+
+    // Verify metadata was replaced
+    let updated = repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert!(updated.metadata.is_some());
+    assert_eq!(updated.metadata.unwrap(), new_metadata);
+}
+
+#[tokio::test]
+async fn test_update_metadata_sets_none_to_clear_metadata() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let mut task = create_test_task("Test Task");
+
+    // Create task with metadata
+    task.metadata = Some(r#"{"key":"value"}"#.to_string());
+    repo.create(task.clone()).await.unwrap();
+
+    // Clear metadata
+    let result = repo.update_metadata(&task.id, None).await;
+
+    assert!(result.is_ok());
+
+    // Verify metadata was cleared
+    let updated = repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert!(updated.metadata.is_none());
+}
+
+#[tokio::test]
+async fn test_update_metadata_does_not_change_internal_status() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let mut task = create_test_task("Test Task");
+
+    // Set initial status
+    task.internal_status = InternalStatus::Executing;
+    repo.create(task.clone()).await.unwrap();
+
+    // Update metadata
+    let metadata = r#"{"key":"value"}"#;
+    let result = repo.update_metadata(&task.id, Some(metadata.to_string())).await;
+
+    assert!(result.is_ok());
+
+    // Verify status was not changed
+    let updated = repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(updated.internal_status, InternalStatus::Executing);
+    assert_eq!(updated.metadata.unwrap(), metadata);
+}
+
+#[tokio::test]
+async fn test_update_metadata_does_not_change_other_columns() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let mut task = create_test_task("Test Task");
+
+    // Set up task with various fields
+    task.description = Some("Original description".to_string());
+    task.priority = 42;
+    task.internal_status = InternalStatus::Ready;
+    task.task_branch = Some("feature/test".to_string());
+    task.worktree_path = Some("/path/to/worktree".to_string());
+    task.blocked_reason = Some("Blocked by dependency".to_string());
+
+    repo.create(task.clone()).await.unwrap();
+
+    // Update metadata
+    let metadata = r#"{"key":"value"}"#;
+    let result = repo.update_metadata(&task.id, Some(metadata.to_string())).await;
+
+    assert!(result.is_ok());
+
+    // Verify other columns were not changed
+    let updated = repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(updated.description, Some("Original description".to_string()));
+    assert_eq!(updated.priority, 42);
+    assert_eq!(updated.internal_status, InternalStatus::Ready);
+    assert_eq!(updated.task_branch, Some("feature/test".to_string()));
+    assert_eq!(updated.worktree_path, Some("/path/to/worktree".to_string()));
+    assert_eq!(updated.blocked_reason, Some("Blocked by dependency".to_string()));
+    assert_eq!(updated.metadata.unwrap(), metadata);
+}
+
+#[tokio::test]
+async fn test_update_metadata_returns_ok_for_nonexistent_task() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let id = TaskId::new();
+
+    // Try to update metadata on non-existent task
+    let metadata = r#"{"key":"value"}"#;
+    let result = repo.update_metadata(&id, Some(metadata.to_string())).await;
+
+    // Should succeed (UPDATE affects 0 rows but doesn't error)
+    assert!(result.is_ok());
+}

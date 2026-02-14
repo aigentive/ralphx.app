@@ -153,6 +153,19 @@ impl TaskRepository for SqliteTaskRepository {
         Ok(())
     }
 
+    async fn update_metadata(&self, id: &TaskId, metadata: Option<String>) -> AppResult<()> {
+        let conn = self.conn.lock().await;
+        let now = Utc::now();
+
+        conn.execute(
+            "UPDATE tasks SET metadata = ?1, updated_at = ?2 WHERE id = ?3",
+            rusqlite::params![metadata, now.to_rfc3339(), id.as_str()],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(())
+    }
+
     async fn delete(&self, id: &TaskId) -> AppResult<()> {
         let conn = self.conn.lock().await;
 

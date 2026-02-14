@@ -39,6 +39,21 @@ pub trait TaskRepository: Send + Sync {
     /// Update a task
     async fn update(&self, task: &Task) -> AppResult<()>;
 
+    /// Update only the metadata field of a task
+    ///
+    /// This method performs a targeted UPDATE of only the `metadata` and `updated_at`
+    /// columns, preventing full-row clobbering when on_enter handlers write metadata
+    /// after `transition_task()` has already persisted the status.
+    ///
+    /// # Arguments
+    /// * `id` - The task ID
+    /// * `metadata` - The new metadata JSON string, or None to clear
+    ///
+    /// # Returns
+    /// * `Ok(())` - Metadata was updated successfully (or task doesn't exist)
+    /// * `Err` - Database error
+    async fn update_metadata(&self, id: &TaskId, metadata: Option<String>) -> AppResult<()>;
+
     /// Delete a task
     async fn delete(&self, id: &TaskId) -> AppResult<()>;
 
@@ -307,6 +322,10 @@ mod tests {
         }
 
         async fn update(&self, _task: &Task) -> AppResult<()> {
+            Ok(())
+        }
+
+        async fn update_metadata(&self, _id: &TaskId, _metadata: Option<String>) -> AppResult<()> {
             Ok(())
         }
 
