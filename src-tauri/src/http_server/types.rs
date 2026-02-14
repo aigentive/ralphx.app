@@ -5,7 +5,9 @@ use std::sync::Arc;
 
 use crate::application::AppState;
 use crate::commands::ExecutionState;
-use crate::domain::entities::{Artifact, ArtifactContent, MemoryEntry, TaskProposal, TaskStep};
+use crate::domain::entities::{
+    Artifact, ArtifactContent, MemoryEntry, StepProgressSummary, TaskProposal, TaskStep,
+};
 
 // ============================================================================
 // HTTP Server State
@@ -490,6 +492,8 @@ pub struct AddStepRequest {
     pub title: String,
     pub description: Option<String>,
     pub after_step_id: Option<String>,
+    pub parent_step_id: Option<String>,   // NEW: create as sub-step
+    pub scope_context: Option<String>,     // NEW: STRICT SCOPE JSON
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -523,6 +527,25 @@ impl From<TaskStep> for StepResponse {
             scope_context: step.scope_context,
         }
     }
+}
+
+#[derive(Debug, Serialize)]
+pub struct TaskSummaryForStep {
+    pub id: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub internal_status: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct StepContextResponse {
+    pub step: StepResponse,
+    pub parent_step: Option<StepResponse>,
+    pub task_summary: TaskSummaryForStep,
+    pub scope_context: Option<String>,
+    pub sibling_steps: Vec<StepResponse>,
+    pub step_progress: StepProgressSummary,
+    pub context_hints: Vec<String>,
 }
 
 // ============================================================================
