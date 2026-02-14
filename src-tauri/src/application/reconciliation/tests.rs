@@ -690,3 +690,200 @@ fn merge_policy_prompts_when_run_missing_and_cannot_start() {
     let decision = policy.decide_reconciliation(RecoveryContext::Merge, evidence);
     assert_eq!(decision.action, RecoveryActionKind::Prompt);
 }
+
+// ── MergeConflict reconciliation tests ──
+
+#[test]
+fn merge_conflict_retry_delay_exponential_backoff() {
+    assert_eq!(
+        ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(0),
+        chrono::Duration::seconds(60)
+    );
+    assert_eq!(
+        ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(1),
+        chrono::Duration::seconds(120)
+    );
+    assert_eq!(
+        ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(2),
+        chrono::Duration::seconds(240)
+    );
+    assert_eq!(
+        ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(3),
+        chrono::Duration::seconds(480)
+    );
+    // Verify cap at 600s
+    assert_eq!(
+        ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(10),
+        chrono::Duration::seconds(600)
+    );
+}
+
+#[tokio::test]
+async fn reconcile_merge_conflict_skips_when_under_cooldown() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Conflict Task".to_string());
+    task.internal_status = InternalStatus::MergeConflict;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Record status history with recent timestamp (under cooldown)
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task.id,
+            InternalStatus::Merging,
+            InternalStatus::MergeConflict,
+            "merge_conflict",
+        )
+        .await
+        .unwrap();
+
+    // Should return false (no retry) because age < 60s
+    let reconciled = reconciler
+        .reconcile_merge_conflict_task(&task, InternalStatus::MergeConflict)
+        .await;
+    assert!(
+        !reconciled,
+        "Should not retry when task is under cooldown period"
+    );
+
+    // Verify task status unchanged
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::MergeConflict,
+        "Task status should not change when under cooldown"
+    );
+}
+
+#[tokio::test]
+async fn reconcile_merge_conflict_transitions_after_cooldown() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Old Conflict Task".to_string());
+    task.internal_status = InternalStatus::MergeConflict;
+    task.updated_at = chrono::Utc::now() - chrono::Duration::seconds(120);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Record status history with old timestamp (past cooldown)
+    // Note: In reality, updated_at fallback is used when history is missing
+    // This test validates the transition path when age > delay
+
+    let reconciled = reconciler
+        .reconcile_merge_conflict_task(&task, InternalStatus::MergeConflict)
+        .await;
+    assert!(
+        reconciled,
+        "Should retry when task is past cooldown period"
+    );
+
+    // Verify task transitioned to PendingMerge
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::PendingMerge,
+        "Task should transition to PendingMerge after cooldown"
+    );
+}
+
+#[tokio::test]
+async fn reconcile_merge_conflict_stops_after_max_retries() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Max Retry Task".to_string());
+    task.internal_status = InternalStatus::MergeConflict;
+    task.updated_at = chrono::Utc::now() - chrono::Duration::seconds(1000);
+    // Set 3 auto-retry events (max limit)
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_recovery": {
+                "version": 1,
+                "events": [
+                    {
+                        "at": "2026-02-10T00:00:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "git_error",
+                        "message": "retry 1"
+                    },
+                    {
+                        "at": "2026-02-10T00:01:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "git_error",
+                        "message": "retry 2"
+                    },
+                    {
+                        "at": "2026-02-10T00:02:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "git_error",
+                        "message": "retry 3"
+                    }
+                ],
+                "last_state": "retrying"
+            }
+        })
+        .to_string(),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Should return false (no retry) because retry_count >= 3
+    let reconciled = reconciler
+        .reconcile_merge_conflict_task(&task, InternalStatus::MergeConflict)
+        .await;
+    assert!(
+        !reconciled,
+        "Should not retry when max retry count is reached"
+    );
+
+    // Verify task status unchanged
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::MergeConflict,
+        "Task status should not change when max retries reached"
+    );
+}

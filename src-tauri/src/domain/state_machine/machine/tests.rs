@@ -717,6 +717,13 @@ fn test_merge_conflict_handles_cancel() {
 }
 
 #[test]
+fn test_merge_conflict_retry_transitions_to_pending_merge() {
+    let mut machine = create_machine();
+    let response = machine.merge_conflict(&TaskEvent::Retry);
+    assert_eq!(response, Response::Transition(State::PendingMerge));
+}
+
+#[test]
 fn test_merging_handles_cancel() {
     let mut machine = create_machine();
     let response = machine.merging(&TaskEvent::Cancel);

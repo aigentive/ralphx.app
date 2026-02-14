@@ -286,6 +286,7 @@ impl TaskStateMachine {
     /// MergeConflict state - merge failed, needs manual resolution
     pub fn merge_conflict(&mut self, event: &TaskEvent) -> Response {
         match event {
+            TaskEvent::Retry => Response::Transition(State::PendingMerge),
             TaskEvent::ConflictResolved => Response::Transition(State::Merged),
             TaskEvent::Pause => Response::Transition(State::Paused),
             TaskEvent::Stop => Response::Transition(State::Stopped),

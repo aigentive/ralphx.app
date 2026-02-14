@@ -34,6 +34,9 @@ const QA_STALE_MINUTES: i64 = 5;
 const MERGE_INCOMPLETE_AUTO_RETRY_BASE_SECONDS: i64 = 30;
 const MERGE_INCOMPLETE_AUTO_RETRY_MAX_SECONDS: i64 = 300;
 const MERGE_INCOMPLETE_MAX_AUTO_RETRIES: u32 = 5;
+const MERGE_CONFLICT_AUTO_RETRY_BASE_SECONDS: i64 = 60;
+const MERGE_CONFLICT_AUTO_RETRY_MAX_SECONDS: i64 = 600;
+const MERGE_CONFLICT_MAX_AUTO_RETRIES: u32 = 3;
 const EXECUTING_MAX_AUTO_RETRIES: u32 = 5;
 const REVIEWING_MAX_AUTO_RETRIES: u32 = 3;
 const QA_MAX_AUTO_RETRIES: u32 = 3;
@@ -394,6 +397,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 InternalStatus::Merging,
                 InternalStatus::PendingMerge,
                 InternalStatus::MergeIncomplete,
+                InternalStatus::MergeConflict,
                 InternalStatus::QaRefining,
                 InternalStatus::QaTesting,
             ] {
@@ -542,6 +546,9 @@ impl<R: Runtime> ReconciliationRunner<R> {
             InternalStatus::PendingMerge => self.reconcile_pending_merge_task(task, status).await,
             InternalStatus::MergeIncomplete => {
                 self.reconcile_merge_incomplete_task(task, status).await
+            }
+            InternalStatus::MergeConflict => {
+                self.reconcile_merge_conflict_task(task, status).await
             }
             InternalStatus::QaRefining | InternalStatus::QaTesting => {
                 self.reconcile_qa_task(task, status).await
@@ -999,6 +1006,58 @@ impl<R: Runtime> ReconciliationRunner<R> {
         }
     }
 
+    async fn reconcile_merge_conflict_task(&self, task: &Task, status: InternalStatus) -> bool {
+        if status != InternalStatus::MergeConflict {
+            return false;
+        }
+
+        // Skip retry when branch_missing flag is set - surface to user instead
+        if has_branch_missing_metadata(task) {
+            return false;
+        }
+
+        let age = match self.latest_status_transition_age(task, status).await {
+            Some(age) => age,
+            None => return false,
+        };
+
+        let retry_count = Self::merge_conflict_auto_retry_count(task);
+        if retry_count >= MERGE_CONFLICT_MAX_AUTO_RETRIES {
+            return false;
+        }
+
+        let retry_delay = Self::merge_conflict_retry_delay(retry_count);
+        if age < retry_delay {
+            return false;
+        }
+
+        let attempt = retry_count + 1;
+        if let Err(e) = self.record_merge_auto_retry_event(task, attempt).await {
+            warn!(
+                task_id = task.id.as_str(),
+                attempt = attempt,
+                error = %e,
+                "Failed to record merge auto-retry metadata"
+            );
+        }
+
+        match self
+            .transition_service
+            .transition_task(&task.id, InternalStatus::PendingMerge)
+            .await
+        {
+            Ok(_) => true,
+            Err(e) => {
+                warn!(
+                    task_id = task.id.as_str(),
+                    error = %e,
+                    "Failed to transition MergeConflict -> PendingMerge during recovery"
+                );
+                false
+            }
+        }
+    }
+
     pub async fn recover_execution_stop(&self, task_id: &TaskId) -> bool {
         let task = match self.task_repo.get_by_id(task_id).await {
             Ok(Some(task)) => task,
@@ -1356,6 +1415,25 @@ impl<R: Runtime> ReconciliationRunner<R> {
         let exponent = retry_count.min(6);
         let scaled = MERGE_INCOMPLETE_AUTO_RETRY_BASE_SECONDS.saturating_mul(1_i64 << exponent);
         chrono::Duration::seconds(scaled.min(MERGE_INCOMPLETE_AUTO_RETRY_MAX_SECONDS))
+    }
+
+    fn merge_conflict_auto_retry_count(task: &Task) -> u32 {
+        MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+            .ok()
+            .flatten()
+            .map(|meta| {
+                meta.events
+                    .iter()
+                    .filter(|e| matches!(e.kind, MergeRecoveryEventKind::AutoRetryTriggered))
+                    .count() as u32
+            })
+            .unwrap_or(0)
+    }
+
+    fn merge_conflict_retry_delay(retry_count: u32) -> chrono::Duration {
+        let exponent = retry_count.min(6);
+        let scaled = MERGE_CONFLICT_AUTO_RETRY_BASE_SECONDS.saturating_mul(1_i64 << exponent);
+        chrono::Duration::seconds(scaled.min(MERGE_CONFLICT_AUTO_RETRY_MAX_SECONDS))
     }
 
     fn latest_deferred_blocker_id(&self, task: &Task) -> Option<TaskId> {
