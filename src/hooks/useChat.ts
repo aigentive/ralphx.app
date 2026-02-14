@@ -87,7 +87,7 @@ export function useConversations(context: ChatContext) {
  * Hook to fetch a single conversation with messages
  */
 export function useConversation(conversationId: string | null) {
-  return useQuery<
+  const query = useQuery<
     { conversation: ChatConversation; messages: ChatMessageResponse[] },
     Error
   >({
@@ -100,6 +100,8 @@ export function useConversation(conversationId: string | null) {
     },
     enabled: !!conversationId,
   });
+
+  return query;
 }
 
 /**

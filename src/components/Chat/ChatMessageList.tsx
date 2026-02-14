@@ -87,6 +87,8 @@ interface ChatMessageListProps {
   hookEvents?: HookEvent[];
   /** Currently running hooks — optional, interleaved chronologically */
   activeHooks?: HookStartedEvent[];
+  /** Ref to track conversation that's finalizing (between message_created and query refetch) */
+  finalizingConversationRef?: React.MutableRefObject<string | null>;
 }
 
 // ============================================================================
@@ -108,6 +110,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       scrollToTimestamp,
       hookEvents = EMPTY_HOOK_EVENTS,
       activeHooks = EMPTY_ACTIVE_HOOKS,
+      finalizingConversationRef,
     },
     ref
   ) {
@@ -181,10 +184,42 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     // for consistent typing. When hook events exist, they're interleaved and sorted.
     const hasHookEvents = hookEvents.length > 0 || activeHooks.length > 0;
 
+    // Filter logic: during active streaming OR when conversation is finalizing (between
+    // message_created clearing state and query refetch completing), exclude the last
+    // assistant message from DB to prevent duplication with streamingContentBlocks.
+    //
+    // The finalizingConversationRef persists through the timing window where streaming state
+    // is cleared but the query refetch hasn't completed yet. This prevents duplicates during
+    // that critical window.
+    const hasActiveStreaming = (streamingContentBlocks && streamingContentBlocks.length > 0) ||
+                              (streamingTasks && streamingTasks.size > 0);
+    const isFinalizing = finalizingConversationRef?.current === conversationId;
+    const shouldFilterLastAssistant = hasActiveStreaming || isFinalizing;
+
     const timeline = useMemo((): TimelineItem[] => {
       const items: TimelineItem[] = [];
 
-      for (const msg of messages) {
+      // If we have active streaming OR conversation is finalizing, exclude the last assistant message
+      // from DB (it's being rendered in streamingContentBlocks, or about to appear from DB)
+      const filteredMessages = shouldFilterLastAssistant
+        ? (() => {
+            // Find the last assistant message index
+            let lastAssistantIdx = -1;
+            for (let i = messages.length - 1; i >= 0; i--) {
+              if (messages[i]!.role === "assistant") {
+                lastAssistantIdx = i;
+                break;
+              }
+            }
+            // If found, exclude it
+            if (lastAssistantIdx >= 0) {
+              return messages.filter((_, idx) => idx !== lastAssistantIdx);
+            }
+            return messages;
+          })()
+        : messages;
+
+      for (const msg of filteredMessages) {
         items.push({
           kind: "message",
           data: msg,
@@ -203,7 +238,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       }
 
       return items;
-    }, [messages, hookEvents, activeHooks, hasHookEvents]);
+    }, [messages, hookEvents, activeHooks, hasHookEvents, shouldFilterLastAssistant, streamingContentBlocks, streamingTasks, conversationId]);
 
     // Memoize Virtuoso components to prevent infinite re-render loop.
     // Inline object literals create new references every render, causing Virtuoso

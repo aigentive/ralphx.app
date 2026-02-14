@@ -15,7 +15,7 @@
  * stopped, error, session_recovered). This hook adds streaming UI features.
  */
 
-import { useEffect, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEventBus } from "@/providers/EventProvider";
 import { chatKeys } from "@/hooks/useChat";
@@ -36,6 +36,8 @@ interface UseChatEventsProps {
   setStreamingToolCalls: Dispatch<SetStateAction<ToolCall[]>>;
   setStreamingContentBlocks: Dispatch<SetStateAction<StreamingContentBlock[]>>;
   setStreamingTasks: Dispatch<SetStateAction<Map<string, StreamingTask>>>;
+  /** Ref to track conversation ID that's currently finalizing (between message_created and query refetch) */
+  finalizingConversationRef: React.MutableRefObject<string | null>;
 }
 
 // ============================================================================
@@ -49,6 +51,7 @@ export function useChatEvents({
   setStreamingToolCalls,
   setStreamingContentBlocks,
   setStreamingTasks,
+  finalizingConversationRef,
 }: UseChatEventsProps) {
   const bus = useEventBus();
   const queryClient = useQueryClient();
@@ -59,6 +62,12 @@ export function useChatEvents({
   const supportsSubagentTasks = config?.supportsSubagentTasks ?? false;
 
   useEffect(() => {
+    // Clear streaming state immediately when conversation changes to ensure clean slate
+    // This runs BEFORE subscribing to new events, preventing stale state from previous conversation
+    setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
+    setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
+    setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
+
     const unsubscribes: Unsubscribe[] = [];
 
     // Helper: check if event matches current context
@@ -291,7 +300,21 @@ export function useChatEvents({
     }
 
     // ── agent:message_created ────────────────────────────────────────
-    // Clear streaming state for assistant messages to prevent duplicate display
+    // Clear streaming state for assistant messages to prevent duplicate display.
+    //
+    // Atomic swap strategy: Mark conversation as "finalizing" in ref BEFORE clearing
+    // streaming state. The ref persists through the query refetch window (500ms), allowing
+    // ChatMessageList to continue filtering the last assistant message until the DB query
+    // completes. This prevents duplicates during the timing window between clearing state
+    // and query refetch completion.
+    //
+    // Timeline:
+    // 1. Streaming active: streamingContentBlocks visible, last DB assistant message filtered
+    // 2. agent:message_created fires: set finalizingConversationRef → clear streaming state → invalidate query
+    // 3. Streaming state clears synchronously, but ref persists → filter still applies
+    // 4. Query refetch completes: new DB message appears
+    // 5. After 500ms: clear ref → filter no longer applies
+    // Result: smooth swap, no duplicate or flash
     unsubscribes.push(
       bus.subscribe<{
         conversation_id?: string;
@@ -303,9 +326,20 @@ export function useChatEvents({
         if (!isRelevant(payload)) return;
 
         if (payload.role === "assistant") {
+          // Mark conversation as finalizing BEFORE clearing state
+          // This ref persists through the query refetch window, keeping the filter active
+          finalizingConversationRef.current = payload.conversation_id;
+
           setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
           setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
           setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
+
+          // Clear the finalizing ref after query refetch completes (500ms delay)
+          setTimeout(() => {
+            if (finalizingConversationRef.current === payload.conversation_id) {
+              finalizingConversationRef.current = null;
+            }
+          }, 500);
         }
 
         queryClient.invalidateQueries({
@@ -356,6 +390,7 @@ export function useChatEvents({
       setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
       setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
       setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
+      finalizingConversationRef.current = null;
       unsubscribes.forEach((unsub) => unsub());
     };
   }, [
