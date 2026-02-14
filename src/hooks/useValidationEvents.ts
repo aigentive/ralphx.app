@@ -4,7 +4,7 @@
  * Subscribes to merge:validation_step events from the backend and accumulates
  * validation step data for display in task detail views.
  *
- * Supports filtering by context (e.g., "merge" vs "execution") when the backend
+ * Supports filtering by context (e.g., "merge" vs "execution" vs "review") when the backend
  * emits context-qualified events.
  *
  * Uses EventBus abstraction for browser/Tauri compatibility.
@@ -24,12 +24,12 @@ import {
  * or appends new steps.
  *
  * @param taskId - The task ID to filter events for
- * @param context - Optional context filter ("merge" | "execution") to filter events by context
+ * @param context - Optional context filter ("merge" | "execution" | "review") to filter events by context
  * @returns Array of validation step events (live, accumulated)
  */
 export function useValidationEvents(
   taskId: string,
-  context?: "merge" | "execution"
+  context?: "merge" | "execution" | "review"
 ): MergeValidationStepEvent[] {
   const [steps, setSteps] = useState<MergeValidationStepEvent[]>([]);
   const bus = useEventBus();
