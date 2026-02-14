@@ -53,16 +53,16 @@ async fn test_a1_worktree_mode_transition_ready_to_executing() {
         .handle_transition(&State::Ready, &TaskEvent::StartExecution)
         .await;
 
-    // Transition succeeds (TransitionHandler catches on_enter errors)
-    assert!(result.is_success());
-
-    // on_enter(Executing) was reached: send_message was called
-    // (The git setup fails silently because /tmp/test-project is not a real git repo,
-    // but send_message is still called after the git block.)
-    // Note: If the git block returns ExecutionBlocked, on_enter returns early
-    // before send_message. With a non-git directory, the error is caught.
-    // Either way, the transition itself succeeds.
-    assert_eq!(result.state(), Some(&State::Executing));
+    // After the fix, ExecutionBlocked triggers auto-dispatch of ExecutionFailed,
+    // so the task transitions to Failed instead of staying in Executing
+    assert!(
+        result.is_success(),
+        "TransitionHandler should return Success after auto-dispatching ExecutionFailed"
+    );
+    assert!(
+        matches!(result.state(), Some(State::Failed(_))),
+        "State should be Failed after ExecutionBlocked triggers auto-dispatch"
+    );
 }
 
 #[tokio::test]
@@ -136,9 +136,16 @@ async fn test_a2_local_mode_transition_ready_to_executing() {
         .handle_transition(&State::Ready, &TaskEvent::StartExecution)
         .await;
 
-    // State transition itself succeeds even if on_enter fails
-    assert!(result.is_success());
-    assert_eq!(result.state(), Some(&State::Executing));
+    // After the fix, ExecutionBlocked triggers auto-dispatch of ExecutionFailed,
+    // so the task transitions to Failed instead of staying in Executing
+    assert!(
+        result.is_success(),
+        "TransitionHandler should return Success after auto-dispatching ExecutionFailed"
+    );
+    assert!(
+        matches!(result.state(), Some(State::Failed(_))),
+        "State should be Failed after ExecutionBlocked triggers auto-dispatch"
+    );
 }
 
 // ============================================================================
@@ -284,10 +291,9 @@ async fn test_a5_worktree_path_none_at_spawn_time() {
 async fn test_a6_execution_blocked_does_not_propagate_through_transition_handler() {
     // Scenario A6: ExecutionBlocked from on_enter — COVERED
     //
-    // TransitionHandler catches on_enter errors and still returns Success.
-    // The actual Failed transition happens at TaskTransitionService level,
-    // not inside TransitionHandler. This test demonstrates that on_enter
-    // errors are swallowed at the TransitionHandler level.
+    // TransitionHandler now auto-dispatches ExecutionFailed when on_enter
+    // returns ExecutionBlocked. This prevents tasks from getting stuck in
+    // Executing state with no agent. The task should end up in Failed state.
 
     let svc = create_hardening_services();
 
@@ -310,16 +316,15 @@ async fn test_a6_execution_blocked_does_not_propagate_through_transition_handler
         .handle_transition(&State::Ready, &TaskEvent::StartExecution)
         .await;
 
-    // The transition STILL returns Success even though on_enter returned
-    // ExecutionBlocked. This is by design (see TransitionHandler::handle_transition).
+    // After the fix, ExecutionBlocked triggers auto-dispatch of ExecutionFailed,
+    // so the task transitions to Failed instead of staying in Executing
     assert!(
         result.is_success(),
-        "TransitionHandler should return Success even when on_enter fails with ExecutionBlocked"
+        "TransitionHandler should return Success after auto-dispatching ExecutionFailed"
     );
-    assert_eq!(
-        result.state(),
-        Some(&State::Executing),
-        "State should be Executing despite on_enter failure"
+    assert!(
+        matches!(result.state(), Some(State::Failed(_))),
+        "State should be Failed after ExecutionBlocked triggers auto-dispatch"
     );
 
     // send_message was NOT called because ExecutionBlocked is returned before it
@@ -462,10 +467,16 @@ async fn test_a8_nonexistent_plan_branch_falls_back_to_project_base() {
         .handle_transition(&State::Ready, &TaskEvent::StartExecution)
         .await;
 
-    // Transition succeeds — on_enter still runs even when plan branch lookup
-    // returns None (falls back to project.base_branch or "main")
-    assert!(result.is_success());
-    assert_eq!(result.state(), Some(&State::Executing));
+    // After the fix, ExecutionBlocked triggers auto-dispatch of ExecutionFailed,
+    // so the task transitions to Failed instead of staying in Executing
+    assert!(
+        result.is_success(),
+        "TransitionHandler should return Success after auto-dispatching ExecutionFailed"
+    );
+    assert!(
+        matches!(result.state(), Some(State::Failed(_))),
+        "State should be Failed after ExecutionBlocked triggers auto-dispatch"
+    );
 }
 
 #[tokio::test]

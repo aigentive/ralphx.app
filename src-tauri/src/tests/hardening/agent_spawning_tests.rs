@@ -8,7 +8,6 @@ use super::helpers::*;
 use crate::commands::ExecutionState;
 use crate::domain::state_machine::events::TaskEvent;
 use crate::domain::state_machine::machine::State;
-use crate::domain::state_machine::transition_handler::TransitionResult;
 
 // ============================================================================
 // B1: send_message() error swallowed via `let _`
@@ -16,13 +15,13 @@ use crate::domain::state_machine::transition_handler::TransitionResult;
 
 #[tokio::test]
 async fn test_b1_send_message_error_swallowed() {
-    // Scenario B1: send_message() error swallowed via `let _` — GAP
+    // Scenario B1: send_message() error swallowed via `let _` — FIXED
     //
     // Set MockChatService to unavailable. Transition Ready->Executing.
-    // on_enter calls `let _ = chat_service.send_message(...)` which silently
-    // discards the error. Task remains in Executing state with no agent running.
+    // Previously on_enter called `let _ = chat_service.send_message(...)` which
+    // silently discarded the error. Task would remain in Executing state with no agent.
     //
-    // This test demonstrates the gap: the error is silently swallowed.
+    // FIXED: Task now correctly transitions to Failed state when agent spawning fails.
 
     let svc = create_hardening_services();
 
@@ -48,12 +47,17 @@ async fn test_b1_send_message_error_swallowed() {
         .handle_transition(&State::Ready, &TaskEvent::StartExecution)
         .await;
 
-    // Transition succeeds — on_enter completed without error
+    // Transition succeeds — now properly handling the error
     assert!(
         result.is_success(),
-        "Transition should succeed even when send_message fails"
+        "Transition should succeed and handle send_message failure"
     );
-    assert_eq!(result.state(), Some(&State::Executing));
+
+    // FIXED: Task correctly transitions to Failed state when agent spawn fails
+    assert!(
+        matches!(result.state(), Some(State::Failed(_))),
+        "FIXED: Task correctly transitions to Failed state when agent spawn fails"
+    );
 
     // send_message WAS called (the call_count increments even on error)
     assert_eq!(
@@ -62,16 +66,14 @@ async fn test_b1_send_message_error_swallowed() {
         "send_message should have been called once"
     );
 
-    // GAP: The task is now in Executing state but no agent is actually running.
-    // The `let _ =` in on_enter(Executing) swallowed the ChatServiceError.
-    // No Failed transition occurs. No error event is emitted.
-    // The task will sit in Executing indefinitely with no agent working on it.
+    // FIXED: The task is now in Failed state rather than stuck in Executing.
+    // The error is properly handled and the task transitions to Failed.
 }
 
 #[tokio::test]
 async fn test_b1_send_message_error_no_failed_transition() {
-    // Scenario B1 variant: Verify that after send_message fails, no automatic
-    // transition to Failed occurs. The task stays in Executing forever.
+    // Scenario B1 variant: FIXED - Verify that after send_message fails,
+    // task correctly transitions to Failed state.
 
     let svc = create_hardening_services();
     svc.chat_service.set_available(false).await;
@@ -93,12 +95,14 @@ async fn test_b1_send_message_error_no_failed_transition() {
         .handle_transition(&State::Ready, &TaskEvent::StartExecution)
         .await;
 
-    // GAP: No auto-transition to Failed — check_auto_transition doesn't
-    // handle Executing state (it only handles QaPassed, RevisionNeeded, etc.)
-    assert_eq!(
-        result,
-        TransitionResult::Success(State::Executing),
-        "GAP: Task stays in Executing with no agent — no auto-transition to Failed"
+    // FIXED: Task correctly transitions to Failed when agent spawn fails
+    assert!(
+        result.is_success(),
+        "Transition should succeed"
+    );
+    assert!(
+        matches!(result.state(), Some(State::Failed(_))),
+        "FIXED: Task correctly transitions to Failed when agent spawn fails"
     );
 
     // FIXED (Phase 2, B1+H2): Error event IS now emitted when send_message fails.
