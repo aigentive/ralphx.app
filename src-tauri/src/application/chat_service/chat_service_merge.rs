@@ -108,12 +108,27 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
     };
 
     // Resolve working path: prefer worktree if it exists, else fall back to project repo
+    let worktree_exists = task
+        .worktree_path
+        .as_ref()
+        .map(|p| PathBuf::from(p).exists())
+        .unwrap_or(false);
+
     let worktree_path = task
         .worktree_path
         .as_ref()
         .map(PathBuf::from)
         .filter(|path| path.exists())
         .unwrap_or_else(|| PathBuf::from(&project.working_directory));
+
+    // Warn if worktree was set but is missing (race condition with prune/cleanup)
+    if task.worktree_path.is_some() && !worktree_exists {
+        tracing::warn!(
+            task_id = task_id_str,
+            worktree_path = task.worktree_path.as_deref().unwrap_or(""),
+            "attempt_merge_auto_complete: worktree path was set but does not exist, falling back to main repo"
+        );
+    }
 
     let worktree = Path::new(&worktree_path);
 
@@ -305,6 +320,39 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
         }
     }
 
+    // Get main repo path and resolve merge branches early (needed for verification)
+    let main_repo_path = PathBuf::from(&project.working_directory);
+    let (source_branch, target_branch) = resolve_merge_branches(&task, &project, plan_branch_repo).await;
+
+    // Guard: source_branch should never be empty after resolve_merge_branches
+    if source_branch.is_empty() {
+        tracing::error!(
+            task_id = task_id_str,
+            "attempt_merge_auto_complete: source_branch is empty after resolve_merge_branches"
+        );
+        transition_to_merge_incomplete(
+            &task_id,
+            "Auto-complete failed: could not determine source branch name",
+            task_repo,
+            task_dependency_repo,
+            project_repo,
+            chat_message_repo,
+            chat_attachment_repo,
+            conversation_repo,
+            agent_run_repo,
+            ideation_session_repo,
+            activity_event_repo,
+            message_queue,
+            running_agent_registry,
+            memory_event_repo,
+            execution_state,
+            plan_branch_repo,
+            app_handle,
+        )
+        .await;
+        return;
+    }
+
     // 3b. If this was a validation recovery (AutoFix mode), re-run validation before completing.
     // The agent may have fixed code and committed, but we must verify validation passes.
     let is_validation_recovery = task
@@ -388,59 +436,22 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
         }
     }
 
-    // 4. Verify merge actually happened on main branch
-    // Get the task branch HEAD SHA from worktree
-    let task_branch_head = match GitService::get_head_sha(worktree) {
-        Ok(sha) => sha,
-        Err(e) => {
-            tracing::error!(
-                task_id = task_id_str,
-                error = %e,
-                "attempt_merge_auto_complete: failed to get task branch HEAD SHA"
-            );
-            transition_to_merge_incomplete(
-                &task_id,
-                &format!("Auto-complete failed: could not get task branch HEAD SHA: {}", e),
-                task_repo,
-                task_dependency_repo,
-                project_repo,
-                chat_message_repo,
-                chat_attachment_repo,
-                conversation_repo,
-                agent_run_repo,
-                ideation_session_repo,
-                activity_event_repo,
-                message_queue,
-                running_agent_registry,
-                memory_event_repo,
-                execution_state,
-                plan_branch_repo,
-                app_handle,
-            )
-            .await;
-            return;
+    // 4. Verify merge actually happened on target branch using helper
+    let commit_sha = match verify_merge_on_target(&main_repo_path, &source_branch, &target_branch) {
+        MergeVerification::Merged(sha) => {
+            // Task branch is merged - capture the merge commit SHA
+            sha
         }
-    };
-
-    // Get main repo path and resolve correct merge target (plan branch or base branch)
-    let main_repo_path = PathBuf::from(&project.working_directory);
-    let (_, target_branch) = resolve_merge_branches(&task, &project, plan_branch_repo).await;
-
-    // Verify task branch commit is merged into target branch
-    match GitService::is_commit_on_branch(&main_repo_path, &task_branch_head, &target_branch) {
-        Ok(true) => {
-            // Task branch is merged - good to proceed
-        }
-        Ok(false) => {
+        MergeVerification::NotMerged => {
             tracing::warn!(
                 task_id = task_id_str,
-                task_branch_head = %task_branch_head,
+                source_branch = %source_branch,
                 target_branch = %target_branch,
                 "attempt_merge_auto_complete: task branch not merged to target, transitioning to MergeIncomplete"
             );
             transition_to_merge_incomplete(
                 &task_id,
-                &format!("Agent exited but task branch {} not merged to {}", task_branch_head, target_branch),
+                &format!("Agent exited but task branch {} not merged to {}", source_branch, target_branch),
                 task_repo,
                 task_dependency_repo,
                 project_repo,
@@ -460,15 +471,15 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
             .await;
             return;
         }
-        Err(e) => {
+        MergeVerification::SourceBranchMissing => {
             tracing::error!(
                 task_id = task_id_str,
-                error = %e,
-                "attempt_merge_auto_complete: failed to verify merge on target branch"
+                source_branch = %source_branch,
+                "attempt_merge_auto_complete: source branch does not exist or cannot be resolved"
             );
             transition_to_merge_incomplete(
                 &task_id,
-                &format!("Auto-complete failed: could not verify merge: {}", e),
+                &format!("Auto-complete failed: source branch {} does not exist or cannot be resolved", source_branch),
                 task_repo,
                 task_dependency_repo,
                 project_repo,
@@ -488,20 +499,15 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
             .await;
             return;
         }
-    }
-
-    // 6. Get merge commit SHA from main branch HEAD (not worktree)
-    let commit_sha = match GitService::get_head_sha(&main_repo_path) {
-        Ok(sha) => sha,
-        Err(e) => {
+        MergeVerification::TargetBranchMissing => {
             tracing::error!(
                 task_id = task_id_str,
-                error = %e,
-                "attempt_merge_auto_complete: failed to get main branch HEAD SHA"
+                target_branch = %target_branch,
+                "attempt_merge_auto_complete: target branch does not exist or cannot be resolved"
             );
             transition_to_merge_incomplete(
                 &task_id,
-                &format!("Auto-complete failed: could not get main branch HEAD SHA: {}", e),
+                &format!("Auto-complete failed: target branch {} does not exist or cannot be resolved", target_branch),
                 task_repo,
                 task_dependency_repo,
                 project_repo,
@@ -749,3 +755,52 @@ async fn transition_to_merge_incomplete<R: Runtime>(
         );
     }
 }
+
+/// Result of merge verification on target branch
+#[derive(Debug, PartialEq)]
+pub(crate) enum MergeVerification {
+    /// Source branch was successfully merged to target (includes merge commit SHA)
+    Merged(String),
+    /// Source branch exists but is not merged to target
+    NotMerged,
+    /// Source branch does not exist or is empty
+    SourceBranchMissing,
+    /// Target branch does not exist
+    TargetBranchMissing,
+}
+
+/// Verify if source branch has been merged to target branch.
+///
+/// Uses git operations from main repo to avoid race conditions with worktree deletion.
+/// Returns:
+/// - `Merged(sha)` if source branch tip is on target branch (includes target HEAD SHA)
+/// - `NotMerged` if source exists but is not on target
+/// - `SourceBranchMissing` if source branch doesn't exist or can't be resolved
+/// - `TargetBranchMissing` if target branch doesn't exist or can't be resolved
+pub(crate) fn verify_merge_on_target(
+    main_repo: &Path,
+    source_branch: &str,
+    target_branch: &str,
+) -> MergeVerification {
+    // Get source branch SHA
+    let source_sha = match GitService::get_branch_sha(main_repo, source_branch) {
+        Ok(sha) => sha,
+        Err(_) => return MergeVerification::SourceBranchMissing,
+    };
+
+    // Get target branch SHA
+    let target_sha = match GitService::get_branch_sha(main_repo, target_branch) {
+        Ok(sha) => sha,
+        Err(_) => return MergeVerification::TargetBranchMissing,
+    };
+
+    // Check if source commit is on target branch
+    match GitService::is_commit_on_branch(main_repo, &source_sha, target_branch) {
+        Ok(true) => MergeVerification::Merged(target_sha),
+        Ok(false) => MergeVerification::NotMerged,
+        Err(_) => MergeVerification::TargetBranchMissing,
+    }
+}
+
+#[cfg(test)]
+mod chat_service_merge_tests;
