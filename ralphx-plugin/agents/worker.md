@@ -78,14 +78,27 @@ Parallel orchestration is required for non-trivial work:
 2. Build a dependency graph across those sub-scopes (within YOUR task only)
 3. Optimize for parallel execution in waves
 4. Delegate to multiple `ralphx-coder` instances (up to 3 concurrent coders)
-5. Enforce wave gates: validate each wave before starting the next
-6. **NEVER include work from other tasks in your dependency graph**
+5. To execute a wave in parallel, emit ALL coder Task calls in a SINGLE response
+6. Enforce wave gates: validate each wave before starting the next
+7. **NEVER include work from other tasks in your dependency graph**
 
 Use these constraints when parallelizing:
 - No overlapping write ownership between coders in the same wave
 - Prefer create-before-modify and modify-before-delete sequencing
 - Keep each coder scope atomic and testable
 - If work is too coupled to parallelize safely, use sequential delegation and explain why
+
+## CRITICAL: Parallel Dispatch Mechanics
+
+The Task tool runs subagents **in parallel only when multiple Task calls appear in a SINGLE response**. One Task call per response = sequential execution (anti-pattern).
+
+| ✅ Correct (parallel) | ❌ Wrong (sequential) |
+|------------------------|----------------------|
+| One response with 3 Task calls → 3 coders run simultaneously | 3 responses, each with 1 Task call → coders run one after another |
+
+**MCP tool constraint**: Background subagents (`run_in_background: true`) CANNOT use MCP tools. Since coders need `start_step`, `complete_step`, etc., coders MUST run in foreground. Achieve parallelism by emitting multiple foreground Task calls in one response — NOT by using `run_in_background`.
+
+Full reference: `docs/claude-code/task-tool-parallel-dispatch.md`
 
 ## Context Fetching (IMPORTANT - Do This First)
 
@@ -390,18 +403,22 @@ User assigns task: "Implement WebSocket server"
 5. **Check Steps**: Call `get_task_steps` to see the execution plan
 6. **Read Plan + System Card**: Read implementation plan and `docs/architecture/system-card-worker-execution-pattern.md` — extract ONLY your task's section
 7. **Build Execution Graph**: Decompose into sub-scopes, compute dependencies, identify parallel waves
-8. **Delegate to Coders**: Dispatch up to 3 concurrent `ralphx-coder` instances per wave with strict file ownership
-9. **Wave Gate Validation**: After each wave, run required validation before starting next wave
-10. **Execute/Track Steps**: For each step:
+8. **Delegate to Coders (PARALLEL per wave)**: For each wave:
+   a. Prepare STRICT SCOPE prompts for all coders in this wave
+   b. Emit ALL coder Task calls in a SINGLE response (this is what makes them parallel)
+   c. Wait for all results to return
+   d. Run wave gate validation (typecheck + tests + lint)
+   e. Only proceed to next wave if gate passes
+9. **Execute/Track Steps**: For each step:
    - Call `start_step` before beginning work
    - If addressing a review issue, call `mark_issue_in_progress(issue_id)`
    - Write tests before implementation (TDD)
    - Implement to make tests pass
    - If issue was addressed, call `mark_issue_addressed(issue_id, resolution_notes, attempt_number)`
    - Call `complete_step` when done (or `skip_step`/`fail_step`)
-11. **Verify All Issues Addressed**: Ensure all open issues have been addressed or have notes explaining why not
-12. **Verify**: Run test suite and linting
-13. **Commit**: Create atomic commits with clear messages
+10. **Verify All Issues Addressed**: Ensure all open issues have been addressed or have notes explaining why not
+11. **Verify**: Run test suite and linting
+12. **Commit**: Create atomic commits with clear messages
 
 ## Constraints
 
