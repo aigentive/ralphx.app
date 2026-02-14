@@ -359,7 +359,7 @@ export function PlanQuickSwitcherPalette({
                 <p>Loading plans...</p>
               </div>
             ) : filteredCandidates.length > 0 || canClearPlan ? (
-              <ScrollArea className="max-h-[400px]">
+              <ScrollArea className="max-h-[400px]" type="auto">
                 {canClearPlan && (
                   <button
                     ref={highlightedIndex === 0 ? highlightedItemRef : null}
