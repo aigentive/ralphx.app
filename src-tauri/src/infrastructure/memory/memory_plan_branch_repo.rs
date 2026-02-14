@@ -97,4 +97,10 @@ impl PlanBranchRepository for MemoryPlanBranchRepository {
         }
         Ok(())
     }
+
+    async fn delete(&self, id: &PlanBranchId) -> AppResult<()> {
+        let mut branches = self.branches.write().await;
+        branches.remove(id.as_str());
+        Ok(())
+    }
 }

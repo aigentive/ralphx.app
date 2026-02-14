@@ -179,6 +179,21 @@ impl PlanBranchRepository for SqlitePlanBranchRepository {
         }
         Ok(())
     }
+
+    async fn delete(&self, id: &PlanBranchId) -> AppResult<()> {
+        let conn = self.conn.lock().await;
+        let rows = conn
+            .execute(
+                "DELETE FROM plan_branches WHERE id = ?1",
+                rusqlite::params![id.as_str()],
+            )
+            .map_err(|e| AppError::Database(format!("Failed to delete plan branch: {}", e)))?;
+
+        if rows == 0 {
+            return Err(AppError::NotFound(format!("Plan branch not found: {}", id)));
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
