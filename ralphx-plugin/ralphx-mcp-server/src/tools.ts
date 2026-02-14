@@ -1160,6 +1160,8 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "fail_step",
     "add_step",
     "get_step_progress",
+    "get_step_context",
+    "get_sub_steps",
     // issue tools (re-execution workflow)
     "get_task_issues",
     "mark_issue_in_progress",
@@ -1187,6 +1189,7 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "fail_step",
     "add_step",
     "get_step_progress",
+    "get_step_context",
     // issue tools (re-execution workflow)
     "get_task_issues",
     "mark_issue_in_progress",
