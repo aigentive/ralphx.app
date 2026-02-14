@@ -36,7 +36,7 @@ interface UseChatActionsProps {
   /** Send message mutation from useChat or useTaskChat */
   sendMessage: {
     isPending: boolean;
-    mutateAsync: (content: string) => Promise<unknown>;
+    mutateAsync: (params: { content: string; attachmentIds?: string[] }) => Promise<unknown>;
   };
   /** Current message count (for first-message detection in ideation) */
   messageCount?: number;
@@ -69,7 +69,7 @@ export function useChatActions({
 
   // ── Send ─────────────────────────────────────────────────────────
   const handleSend = useCallback(
-    async (content: string) => {
+    async (content: string, attachmentIds?: string[]) => {
       if (!content.trim() || sendMessage.isPending) return;
 
       // Capture first message state before sending (for auto-naming trigger)
@@ -80,7 +80,7 @@ export function useChatActions({
         if (contextType === "review" && selectedTaskId) {
           setAgentRunning(storeContextKey, true);
 
-          const result = await chatApi.sendAgentMessage("review", selectedTaskId, content);
+          const result = await chatApi.sendAgentMessage("review", selectedTaskId, content, attachmentIds);
 
           queryClient.invalidateQueries({
             queryKey: chatKeys.conversationList("review", selectedTaskId),
@@ -95,7 +95,11 @@ export function useChatActions({
             }
           }
         } else {
-          await sendMessage.mutateAsync(content);
+          await sendMessage.mutateAsync(
+            attachmentIds !== undefined
+              ? { content, attachmentIds }
+              : { content }
+          );
         }
 
         // Trigger session auto-naming on first ideation message (fire-and-forget)

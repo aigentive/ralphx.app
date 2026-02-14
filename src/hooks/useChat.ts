@@ -218,11 +218,11 @@ export function useChat(context: ChatContext) {
   }, [isFailed, errorMessage, agentRunStatus.data?.id]);
 
   // Send message mutation
-  const sendMessage = useMutation<SendAgentMessageResult, Error, string>({
-    mutationFn: async (content: string) => {
+  const sendMessage = useMutation<SendAgentMessageResult, Error, { content: string; attachmentIds?: string[] }>({
+    mutationFn: async ({ content, attachmentIds }) => {
       // Set agent running immediately so subsequent messages get queued
       setAgentRunning(contextKey, true);
-      return chatApi.sendAgentMessage(contextType, contextId, content);
+      return chatApi.sendAgentMessage(contextType, contextId, content, attachmentIds);
     },
     onMutate: () => {
       setSending(contextKey, true);

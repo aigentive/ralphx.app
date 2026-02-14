@@ -681,12 +681,13 @@ describe("ChatInput", () => {
       expect(onSend).toHaveBeenCalledWith("answer");
     });
 
-    it("calls onQueue when Send button clicked in question mode with agent running", async () => {
+    it("calls onSend (not onQueue) in question mode even with agent running", async () => {
       const user = userEvent.setup();
+      const onSend = vi.fn().mockResolvedValue(undefined);
       const onQueue = vi.fn();
       render(
         <ChatInput
-          {...defaultProps}
+          onSend={onSend}
           isAgentRunning={true}
           questionMode={questionModeProps}
           onQueue={onQueue}
@@ -697,8 +698,177 @@ describe("ChatInput", () => {
       await user.type(textarea, "answer");
       await user.click(screen.getByTestId("chat-input-send"));
 
-      // When agent is running, Send calls onQueue (queue mode)
-      expect(onQueue).toHaveBeenCalledWith("answer");
+      // Question answers must be delivered immediately — never queue
+      expect(onSend).toHaveBeenCalledWith("answer");
+      expect(onQueue).not.toHaveBeenCalled();
+    });
+  });
+
+  // ============================================================================
+  // File Attachment Tests
+  // ============================================================================
+
+  describe("file attachments", () => {
+    it("does not render ChatAttachmentPicker when enableAttachments is false", () => {
+      render(<ChatInput {...defaultProps} />);
+      expect(screen.queryByTestId("attachment-picker-button")).not.toBeInTheDocument();
+    });
+
+    it("renders ChatAttachmentPicker when enableAttachments is true", () => {
+      render(<ChatInput {...defaultProps} enableAttachments={true} />);
+      expect(screen.getByTestId("attachment-picker-button")).toBeInTheDocument();
+    });
+
+    it("does not render ChatAttachmentGallery when attachments array is empty", () => {
+      render(<ChatInput {...defaultProps} enableAttachments={true} attachments={[]} />);
+      expect(screen.queryByTestId("chat-attachment-gallery")).not.toBeInTheDocument();
+    });
+
+    it("does not render ChatAttachmentGallery when attachments is undefined", () => {
+      render(<ChatInput {...defaultProps} enableAttachments={true} />);
+      expect(screen.queryByTestId("chat-attachment-gallery")).not.toBeInTheDocument();
+    });
+
+    it("renders ChatAttachmentGallery when attachments exist", () => {
+      const attachments = [
+        { id: "1", fileName: "test.txt", fileSize: 1024 },
+      ];
+      render(<ChatInput {...defaultProps} enableAttachments={true} attachments={attachments} />);
+      expect(screen.getByTestId("chat-attachment-gallery")).toBeInTheDocument();
+    });
+
+    it("renders ChatAttachmentGallery in compact variant", () => {
+      const attachments = [
+        { id: "1", fileName: "test.txt", fileSize: 1024 },
+      ];
+      render(<ChatInput {...defaultProps} enableAttachments={true} attachments={attachments} />);
+
+      // Compact variant uses flex gap-2 overflow-x-auto
+      const gallery = screen.getByTestId("chat-attachment-gallery");
+      expect(gallery).toHaveClass("flex");
+      expect(gallery).toHaveClass("gap-2");
+      expect(gallery).toHaveClass("overflow-x-auto");
+    });
+
+    it("calls onFilesSelected when files are selected via ChatAttachmentPicker", async () => {
+      const user = userEvent.setup();
+      const onFilesSelected = vi.fn();
+      render(
+        <ChatInput
+          {...defaultProps}
+          enableAttachments={true}
+          onFilesSelected={onFilesSelected}
+        />
+      );
+
+      const file = new File(["content"], "test.txt", { type: "text/plain" });
+      const fileInput = screen.getByTestId("attachment-file-input");
+
+      await user.upload(fileInput, file);
+
+      expect(onFilesSelected).toHaveBeenCalledWith([file]);
+    });
+
+    it("calls onRemoveAttachment when remove button is clicked", async () => {
+      const user = userEvent.setup();
+      const onRemoveAttachment = vi.fn();
+      const attachments = [
+        { id: "1", fileName: "test.txt", fileSize: 1024 },
+      ];
+      render(
+        <ChatInput
+          {...defaultProps}
+          enableAttachments={true}
+          attachments={attachments}
+          onRemoveAttachment={onRemoveAttachment}
+        />
+      );
+
+      const removeButton = screen.getByTestId("remove-attachment");
+      await user.click(removeButton);
+
+      expect(onRemoveAttachment).toHaveBeenCalledWith("1");
+    });
+
+    it("ChatAttachmentPicker appears to the left of textarea", () => {
+      render(<ChatInput {...defaultProps} enableAttachments={true} />);
+
+      const container = screen.getByTestId("chat-input-textarea").parentElement;
+      const pickerButton = screen.getByTestId("attachment-picker-button");
+
+      expect(container).toContainElement(pickerButton);
+
+      // Picker should be first child in the flex container
+      const children = Array.from(container?.children || []);
+      const pickerIndex = children.findIndex(el => el.contains(pickerButton));
+      const textareaIndex = children.findIndex(el => el === screen.getByTestId("chat-input-textarea"));
+
+      expect(pickerIndex).toBeLessThan(textareaIndex);
+    });
+
+    it("ChatAttachmentGallery appears below textarea and above helper text", () => {
+      const attachments = [
+        { id: "1", fileName: "test.txt", fileSize: 1024 },
+      ];
+      render(<ChatInput {...defaultProps} enableAttachments={true} attachments={attachments} />);
+
+      const gallery = screen.getByTestId("chat-attachment-gallery");
+      const helperText = screen.getByText(/Enter to send/i);
+
+      // Both should be in the document
+      expect(gallery).toBeInTheDocument();
+      expect(helperText).toBeInTheDocument();
+
+      // Gallery should be before helper text in DOM order
+      // Gallery is wrapped in a div, so we need to find the common parent (chat-input container)
+      const galleryWrapper = gallery.parentElement;
+      const mainContainer = galleryWrapper?.parentElement;
+      const children = Array.from(mainContainer?.children || []);
+      const galleryWrapperIndex = children.indexOf(galleryWrapper!);
+      const helperIndex = children.indexOf(helperText);
+
+      expect(galleryWrapperIndex).toBeGreaterThan(-1);
+      expect(helperIndex).toBeGreaterThan(-1);
+      expect(galleryWrapperIndex).toBeLessThan(helperIndex);
+    });
+
+    it("maintains existing functionality when attachments are enabled", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn().mockResolvedValue(undefined);
+      const attachments = [
+        { id: "1", fileName: "test.txt", fileSize: 1024 },
+      ];
+
+      render(
+        <ChatInput
+          onSend={onSend}
+          enableAttachments={true}
+          attachments={attachments}
+        />
+      );
+
+      const textarea = screen.getByTestId("chat-input-textarea");
+      await user.type(textarea, "Hello{Enter}");
+
+      expect(onSend).toHaveBeenCalledWith("Hello");
+    });
+
+    it("send button still works with attachments enabled", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn().mockResolvedValue(undefined);
+
+      render(
+        <ChatInput
+          onSend={onSend}
+          enableAttachments={true}
+        />
+      );
+
+      const textarea = screen.getByTestId("chat-input-textarea");
+      await user.type(textarea, "Message");
+      await user.click(screen.getByTestId("chat-input-send"));
+
+      expect(onSend).toHaveBeenCalledWith("Message");
     });
   });
 

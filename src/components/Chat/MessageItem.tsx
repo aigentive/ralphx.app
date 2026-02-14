@@ -16,6 +16,7 @@ import { ToolCallIndicator, type ToolCall } from "./ToolCallIndicator";
 import { TextBubble } from "./TextBubble";
 import { formatTimestamp } from "./MessageItem.utils";
 import { isTaskToolCall } from "./DiffToolCallView.utils";
+import { MessageAttachments, type MessageAttachment } from "./MessageAttachments";
 
 // ============================================================================
 // Types
@@ -46,6 +47,8 @@ export interface MessageItemProps {
   toolCalls?: ToolCall[] | null;
   /** Pre-parsed content blocks array (parsed at API layer) */
   contentBlocks?: ContentBlockItem[] | null;
+  /** File attachments for user messages */
+  attachments?: MessageAttachment[];
 }
 
 // ============================================================================
@@ -58,6 +61,7 @@ export const MessageItem = React.memo(function MessageItem({
   createdAt,
   toolCalls,
   contentBlocks,
+  attachments,
 }: MessageItemProps) {
   const isUser = role === "user";
 
@@ -106,6 +110,11 @@ export const MessageItem = React.memo(function MessageItem({
       )}
 
       <div className="flex flex-col gap-3 min-w-0 w-full">
+        {/* Render attachments for user messages */}
+        {isUser && attachments && attachments.length > 0 && (
+          <MessageAttachments attachments={attachments} />
+        )}
+
         {hasContentBlocks ? (
           // Render content blocks in order (interleaved text and tool calls)
           // Skip child tool calls that belong to Task subagents (they render inside TaskToolCallCard)
@@ -163,5 +172,6 @@ export const MessageItem = React.memo(function MessageItem({
     && prev.content === next.content
     && prev.createdAt === next.createdAt
     && prev.toolCalls === next.toolCalls
-    && prev.contentBlocks === next.contentBlocks;
+    && prev.contentBlocks === next.contentBlocks
+    && prev.attachments === next.attachments;
 });

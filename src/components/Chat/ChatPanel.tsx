@@ -37,6 +37,7 @@ import type { StreamingTask, StreamingContentBlock } from "@/types/streaming-tas
 import { useAskUserQuestion } from "@/hooks/useAskUserQuestion";
 import { useQuestionInput } from "@/hooks/useQuestionInput";
 import { useAgentHookEvents, useHookEventsStore } from "@/hooks/useAgentHookEvents";
+import { useChatAttachments } from "@/hooks/useChatAttachments";
 
 const COLLAPSED_WIDTH = 40;
 
@@ -358,6 +359,26 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     handleSend,
   });
 
+  // File attachments state — managed per conversation
+  const {
+    attachments,
+    uploadFiles,
+    removeAttachment,
+    clearAttachments,
+  } = useChatAttachments(activeConversationId ?? "");
+
+  // Wrapper for send that handles attachments
+  const handleSendWithAttachments = useCallback(async (content: string) => {
+    // Collect attachment IDs before sending
+    const attachmentIds = attachments.map((a) => a.id);
+
+    // Send message with attachment IDs
+    await handleSend(content, attachmentIds.length > 0 ? attachmentIds : undefined);
+
+    // Clear attachments after successful send
+    clearAttachments();
+  }, [handleSend, clearAttachments, attachments]);
+
   // Close with animation
   const handleClose = useCallback(() => {
     setIsExiting(true);
@@ -519,7 +540,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
           {/* Chat Input */}
           <div className="p-3">
             <ChatInput
-              onSend={activeQuestion ? handleQuestionSend : handleSend}
+              onSend={activeQuestion ? handleQuestionSend : handleSendWithAttachments}
               onQueue={handleQueue}
               onStop={handleStopAgentWrapper}
               isAgentRunning={isAgentRunning}
@@ -532,6 +553,10 @@ function ChatPanelContent({ context }: ChatPanelProps) {
                   : "Send a message..."
               }
               showHelperText={queuedMessages.length > 0 || !!activeQuestion}
+              enableAttachments={true}
+              attachments={attachments}
+              onFilesSelected={uploadFiles}
+              onRemoveAttachment={removeAttachment}
               {...(activeQuestion ? {
                 value: questionInputValue,
                 onChange: setQuestionInputValue,

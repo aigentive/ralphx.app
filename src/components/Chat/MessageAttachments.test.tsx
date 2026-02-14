@@ -1,0 +1,155 @@
+/**
+ * MessageAttachments tests
+ */
+
+import { describe, it, expect, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { MessageAttachments } from "./MessageAttachments";
+
+describe("MessageAttachments", () => {
+  const mockAttachments = [
+    {
+      id: "att-1",
+      fileName: "document.txt",
+      fileSize: 1024,
+      mimeType: "text/plain",
+      filePath: "/path/to/document.txt",
+    },
+    {
+      id: "att-2",
+      fileName: "screenshot.png",
+      fileSize: 2048000,
+      mimeType: "image/png",
+      filePath: "/path/to/screenshot.png",
+    },
+    {
+      id: "att-3",
+      fileName: "report.pdf",
+      fileSize: 512000,
+      mimeType: "application/pdf",
+      filePath: "/path/to/report.pdf",
+    },
+  ];
+
+  it("should render nothing if attachments array is empty", () => {
+    const { container } = render(<MessageAttachments attachments={[]} />);
+    expect(container.firstChild).toBeNull();
+  });
+
+  it("should render attachment chips for each attachment", () => {
+    render(<MessageAttachments attachments={mockAttachments} />);
+
+    expect(screen.getByText("document.txt")).toBeInTheDocument();
+    expect(screen.getByText("screenshot.png")).toBeInTheDocument();
+    expect(screen.getByText("report.pdf")).toBeInTheDocument();
+  });
+
+  it("should format file sizes correctly", () => {
+    render(<MessageAttachments attachments={mockAttachments} />);
+
+    // 1024 bytes = 1.0 KB
+    expect(screen.getByText("1.0 KB")).toBeInTheDocument();
+    // 2048000 bytes = 2.0 MB
+    expect(screen.getByText("2.0 MB")).toBeInTheDocument();
+    // 512000 bytes = 500.0 KB
+    expect(screen.getByText("500.0 KB")).toBeInTheDocument();
+  });
+
+  it("should display correct icons for different file types", () => {
+    render(<MessageAttachments attachments={mockAttachments} />);
+
+    const chips = screen.getAllByTestId("attachment-chip");
+    expect(chips).toHaveLength(3);
+  });
+
+  it("should truncate long file names", () => {
+    const longName = [
+      {
+        id: "att-long",
+        fileName: "very_long_filename_that_should_be_truncated_to_fit_in_the_chip.txt",
+        fileSize: 100,
+        mimeType: "text/plain",
+        filePath: "/path/to/file.txt",
+      },
+    ];
+
+    const { container } = render(<MessageAttachments attachments={longName} />);
+
+    // Check that text overflow is set to ellipsis (the span element)
+    const fileNameElement = container.querySelector('span[title="very_long_filename_that_should_be_truncated_to_fit_in_the_chip.txt"]');
+    expect(fileNameElement).toBeInTheDocument();
+    // Verify max-width class is present for truncation
+    expect(fileNameElement).toHaveClass("max-w-[180px]");
+  });
+
+  it("should handle files with no MIME type", () => {
+    const noMimeType = [
+      {
+        id: "att-no-mime",
+        fileName: "unknown.dat",
+        fileSize: 500,
+        filePath: "/path/to/unknown.dat",
+      },
+    ];
+
+    render(<MessageAttachments attachments={noMimeType} />);
+    expect(screen.getByText("unknown.dat")).toBeInTheDocument();
+  });
+
+  it("should format very small files (< 1024 bytes)", () => {
+    const smallFile = [
+      {
+        id: "att-small",
+        fileName: "tiny.txt",
+        fileSize: 42,
+        mimeType: "text/plain",
+        filePath: "/path/to/tiny.txt",
+      },
+    ];
+
+    render(<MessageAttachments attachments={smallFile} />);
+    expect(screen.getByText("42 B")).toBeInTheDocument();
+  });
+
+  it("should render code file icons for common code extensions", () => {
+    const codeFile = [
+      {
+        id: "att-code",
+        fileName: "script.ts",
+        fileSize: 1000,
+        mimeType: "application/typescript",
+        filePath: "/path/to/script.ts",
+      },
+    ];
+
+    render(<MessageAttachments attachments={codeFile} />);
+    expect(screen.getByText("script.ts")).toBeInTheDocument();
+  });
+
+  it("should handle onClick callback when provided", () => {
+    const onClick = vi.fn();
+    const attachments = [mockAttachments[0]];
+
+    render(<MessageAttachments attachments={attachments} onClick={onClick} />);
+
+    const chip = screen.getByTestId("attachment-chip");
+    chip.click();
+
+    expect(onClick).toHaveBeenCalledWith("att-1", "/path/to/document.txt");
+  });
+
+  it("should apply hover styles to chips", () => {
+    render(<MessageAttachments attachments={[mockAttachments[0]]} />);
+
+    const chip = screen.getByTestId("attachment-chip");
+    expect(chip).toHaveStyle({ background: "hsl(220 10% 15%)" });
+  });
+
+  it("should render in compact horizontal layout", () => {
+    const { container } = render(<MessageAttachments attachments={mockAttachments} />);
+
+    const wrapper = container.firstChild as HTMLElement;
+    expect(wrapper).toHaveClass("flex");
+    expect(wrapper).toHaveClass("gap-2");
+  });
+});

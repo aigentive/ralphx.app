@@ -9,6 +9,8 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import { ChatAttachmentPicker } from "./ChatAttachmentPicker";
+import { ChatAttachmentGallery, type ChatAttachment } from "./ChatAttachmentGallery";
 
 // ============================================================================
 // Types
@@ -52,6 +54,14 @@ export interface ChatInputProps {
   isReadOnly?: boolean;
   /** Question-aware mode: changes placeholder, enables number matching, updates helper text */
   questionMode?: QuestionMode;
+  /** Enable file attachment picker */
+  enableAttachments?: boolean;
+  /** Array of file attachments */
+  attachments?: ChatAttachment[];
+  /** Callback when files are selected */
+  onFilesSelected?: (files: File[]) => void;
+  /** Callback when attachment is removed */
+  onRemoveAttachment?: (id: string) => void;
 }
 
 // ============================================================================
@@ -126,6 +136,10 @@ export function ChatInput({
   onStop,
   isReadOnly = false,
   questionMode,
+  enableAttachments = false,
+  attachments,
+  onFilesSelected,
+  onRemoveAttachment,
 }: ChatInputProps) {
   // Support both controlled and uncontrolled modes
   const [internalValue, setInternalValue] = useState("");
@@ -286,6 +300,14 @@ export function ChatInput({
   return (
     <div data-testid="chat-input" className="flex flex-col">
       <div className="flex gap-2 items-end">
+        {/* Attachment Picker - to the left of textarea */}
+        {enableAttachments && (
+          <ChatAttachmentPicker
+            {...(onFilesSelected !== undefined && { onFilesSelected })}
+            disabled={isReadOnly}
+          />
+        )}
+
         {/* Textarea - macOS Tahoe flat styling */}
         <textarea
           ref={textareaRef}
@@ -405,6 +427,17 @@ export function ChatInput({
           </button>
         )}
       </div>
+
+      {/* Attachment Gallery - compact variant, shown below textarea */}
+      {attachments && attachments.length > 0 && (
+        <div className="mt-2">
+          <ChatAttachmentGallery
+            attachments={attachments}
+            {...(onRemoveAttachment !== undefined && { onRemove: onRemoveAttachment })}
+            compact={true}
+          />
+        </div>
+      )}
 
       {/* Helper Text - macOS Tahoe muted styling */}
       {showHelperText && (

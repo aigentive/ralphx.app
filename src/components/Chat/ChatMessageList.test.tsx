@@ -44,6 +44,11 @@ vi.mock("@/hooks/useChatAutoScroll", () => ({
   useChatAutoScroll: (...args: unknown[]) => mockUseChatAutoScroll(...args),
 }));
 
+// Mock useMessageAttachments — returns empty map by default (no attachments)
+vi.mock("@/hooks/useMessageAttachments", () => ({
+  useMessageAttachments: () => ({ data: new Map() }),
+}));
+
 const createMessages = (count: number): ChatMessageData[] => {
   return Array.from({ length: count }, (_, i) => ({
     id: `msg-${i + 1}`,
