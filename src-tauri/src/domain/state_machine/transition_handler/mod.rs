@@ -108,7 +108,26 @@ impl<'a> TransitionHandler<'a> {
                         )
                         .await;
                     tracing::error!(error = %e, "on_enter failed for state {:?}", new_state);
-                    // Note: We still return Success as the transition happened,
+
+                    // If ExecutionBlocked, directly dispatch ExecutionFailed to transition to Failed
+                    if matches!(e, crate::error::AppError::ExecutionBlocked(_)) {
+                        let error_msg = e.to_string();
+                        tracing::warn!("ExecutionBlocked detected, dispatching ExecutionFailed to transition to Failed");
+
+                        // Dispatch the event directly to avoid recursion
+                        let failed_event = TaskEvent::ExecutionFailed { error: error_msg };
+                        let failed_response = self.machine.dispatch(&new_state, &failed_event);
+
+                        if let Response::Transition(failed_state) = failed_response {
+                            // Execute on-exit for the intermediate state
+                            self.on_exit(&new_state, &failed_state).await;
+                            // Execute on-enter for Failed state (should not fail)
+                            let _ = self.on_enter(&failed_state).await;
+                            return TransitionResult::Success(failed_state);
+                        }
+                    }
+
+                    // Note: For other errors, we still return Success as the transition happened,
                     // but side effects may not have completed
                 }
 

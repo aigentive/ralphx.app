@@ -20,6 +20,7 @@ import {
   ProgressIndicator,
   TwoColumnLayout,
 } from "./shared";
+import { ValidationProgress } from "./shared/ValidationProgress";
 import { useTaskSteps, useStepProgress } from "@/hooks/useTaskSteps";
 import { useTaskStateHistory } from "@/hooks/useReviews";
 import { reviewIssuesApi } from "@/api/review-issues";
@@ -36,6 +37,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type { Task } from "@/types/task";
 import type { ReviewNoteResponse } from "@/lib/tauri";
+import { useValidationEvents } from "@/hooks/useValidationEvents";
 
 interface ExecutionTaskDetailProps {
   task: Task;
@@ -260,6 +262,9 @@ export function ExecutionTaskDetail({ task, isHistorical }: ExecutionTaskDetailP
     enabled: task.internalStatus === "re_executing",
   });
 
+  // Live validation events for setup/install progress
+  const liveValidationSteps = useValidationEvents(task.id, "execution");
+
   const hasSteps = (steps?.length ?? 0) > 0;
   const isReExecuting = task.internalStatus === "re_executing";
   const revisionFeedback = isReExecuting
@@ -307,6 +312,14 @@ export function ExecutionTaskDetail({ task, isHistorical }: ExecutionTaskDetailP
           </DetailCard>
         </section>
       )}
+
+      {/* Setup/Install Progress (live validation events) */}
+      <ValidationProgress
+        taskId={task.id}
+        metadata={task.metadata}
+        liveSteps={liveValidationSteps}
+        title="Setup & Install"
+      />
 
       {/* Revision Feedback (only for re-executing) */}
       {isReExecuting && (

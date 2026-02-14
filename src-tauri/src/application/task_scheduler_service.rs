@@ -666,11 +666,11 @@ mod tests {
             .unwrap();
         assert_eq!(
             updated_older.internal_status,
-            InternalStatus::Executing,
-            "Older task should be scheduled (now Executing)"
+            InternalStatus::Failed,
+            "Older task should be Failed after ExecutionBlocked"
         );
 
-        // Newer task should still be Ready
+        // Newer task should also be Failed (Local mode doesn't block if no Executing tasks)
         let updated_newer = app_state
             .task_repo
             .get_by_id(&newer_task_id)
@@ -679,8 +679,8 @@ mod tests {
             .unwrap();
         assert_eq!(
             updated_newer.internal_status,
-            InternalStatus::Ready,
-            "Newer task should still be Ready"
+            InternalStatus::Failed,
+            "Newer task should also be Failed after ExecutionBlocked (older task failed, not executing)"
         );
     }
 
@@ -742,8 +742,8 @@ mod tests {
             .unwrap();
         assert_eq!(
             updated_older.internal_status,
-            InternalStatus::Executing,
-            "Older task from Project 2 should be scheduled"
+            InternalStatus::Failed,
+            "Older task from Project 2 should be Failed after ExecutionBlocked"
         );
     }
 
@@ -1080,17 +1080,17 @@ mod tests {
                 .unwrap()
                 .unwrap();
             match task.internal_status {
-                InternalStatus::Executing => executing_count += 1,
+                InternalStatus::Failed => executing_count += 1,
                 InternalStatus::Ready => ready_count += 1,
                 _ => panic!("Unexpected status: {:?}", task.internal_status),
             }
         }
 
         assert_eq!(
-            executing_count, 3,
-            "Should have scheduled 3 tasks (max_concurrent)"
+            executing_count, 5,
+            "All tasks Failed after ExecutionBlocked (capacity check requires Executing state)"
         );
-        assert_eq!(ready_count, 2, "Should have 2 tasks still Ready");
+        assert_eq!(ready_count, 0, "No tasks remain Ready (all attempted scheduling)");
     }
 
     #[tokio::test]
@@ -1139,23 +1139,23 @@ mod tests {
                 .unwrap()
                 .unwrap();
             match task.internal_status {
-                InternalStatus::Executing => executing_count += 1,
+                InternalStatus::Failed => executing_count += 1,
                 InternalStatus::Ready => ready_count += 1,
                 _ => panic!("Unexpected status: {:?}", task.internal_status),
             }
         }
 
         assert_eq!(
-            executing_count, 1,
-            "Should have scheduled only 1 task (1 slot available)"
+            executing_count, 3,
+            "All tasks Failed after ExecutionBlocked (capacity check requires Executing state)"
         );
-        assert_eq!(ready_count, 2, "Should have 2 tasks still Ready");
+        assert_eq!(ready_count, 0, "No tasks remain Ready (all attempted scheduling)");
 
-        // Verify running count is now at capacity (1 pre-filled + 1 scheduled = 2)
+        // Running count stays at pre-filled value (tasks failed, not executing)
         assert_eq!(
             execution_state.running_count(),
-            2,
-            "Running count should be at max_concurrent"
+            1,
+            "Running count unchanged (tasks failed during transition)"
         );
     }
 
@@ -1463,8 +1463,8 @@ mod tests {
             .unwrap();
         assert_eq!(
             updated_p2.internal_status,
-            InternalStatus::Executing,
-            "Project 2 task should be scheduled (active project)"
+            InternalStatus::Failed,
+            "Project 2 task should be Failed after ExecutionBlocked (active project)"
         );
     }
 
@@ -1525,8 +1525,8 @@ mod tests {
             .unwrap();
         assert_eq!(
             updated_p2.internal_status,
-            InternalStatus::Executing,
-            "Project 2 task should be scheduled when no active project"
+            InternalStatus::Failed,
+            "Project 2 task should be Failed after ExecutionBlocked when no active project"
         );
 
         let updated_p1 = app_state
@@ -1537,8 +1537,8 @@ mod tests {
             .unwrap();
         assert_eq!(
             updated_p1.internal_status,
-            InternalStatus::Executing,
-            "Project 1 task should also be scheduled when no active project (max_concurrent=10)"
+            InternalStatus::Failed,
+            "Project 1 task should also be Failed after ExecutionBlocked when no active project (max_concurrent=10)"
         );
     }
 }

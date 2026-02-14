@@ -28,6 +28,18 @@ struct MergeAnalysisEntry {
     worktree_setup: Vec<String>,
 }
 
+/// Analysis entry for pre-execution setup commands.
+/// Includes the `install` field (unlike MergeAnalysisEntry which omits it).
+#[derive(Debug, Clone, serde::Deserialize)]
+struct PreExecAnalysisEntry {
+    path: String,
+    label: String,
+    #[serde(default)]
+    install: Option<String>,
+    #[serde(default)]
+    worktree_setup: Vec<String>,
+}
+
 /// A single validation command execution record for streaming + storage.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ValidationLogEntry {
@@ -56,6 +68,13 @@ pub(crate) struct ValidationFailure {
     pub(super) path: String,
     pub(super) exit_code: Option<i32>,
     pub(super) stderr: String,
+}
+
+/// Result of running pre-execution setup commands.
+#[derive(Debug)]
+pub(crate) struct PreExecSetupResult {
+    pub(crate) success: bool,
+    pub(crate) log: Vec<ValidationLogEntry>,
 }
 
 /// Truncate a string to `max_len` chars, appending "... (truncated)" if needed.
@@ -95,6 +114,7 @@ async fn run_setup_phase(
     task_id_str: &str,
     app_handle: Option<&tauri::AppHandle>,
     resolve: &(dyn Fn(&str) -> String + Send + Sync),
+    context: Option<&str>,
 ) -> (Vec<ValidationLogEntry>, bool) {
     let mut log: Vec<ValidationLogEntry> = Vec::new();
     let mut setup_had_failures = false;
@@ -135,17 +155,18 @@ async fn run_setup_phase(
 
             // Emit "running" event before execution
             if let Some(handle) = app_handle {
-                let _ = handle.emit(
-                    "merge:validation_step",
-                    serde_json::json!({
-                        "task_id": task_id_str,
-                        "phase": "setup",
-                        "command": resolved_cmd,
-                        "path": resolved_path,
-                        "label": entry.label,
-                        "status": "running",
-                    }),
-                );
+                let mut event_data = serde_json::json!({
+                    "task_id": task_id_str,
+                    "phase": "setup",
+                    "command": resolved_cmd,
+                    "path": resolved_path,
+                    "label": entry.label,
+                    "status": "running",
+                });
+                if let Some(ctx) = context {
+                    event_data["context"] = serde_json::json!(ctx);
+                }
+                let _ = handle.emit("merge:validation_step", event_data);
             }
 
             tracing::info!(
@@ -246,21 +267,22 @@ async fn run_setup_phase(
             };
 
             if let Some(handle) = app_handle {
-                let _ = handle.emit(
-                    "merge:validation_step",
-                    serde_json::json!({
-                        "task_id": task_id_str,
-                        "phase": log_entry.phase,
-                        "command": log_entry.command,
-                        "path": log_entry.path,
-                        "label": log_entry.label,
-                        "status": log_entry.status,
-                        "exit_code": log_entry.exit_code,
-                        "stdout": log_entry.stdout,
-                        "stderr": log_entry.stderr,
-                        "duration_ms": log_entry.duration_ms,
-                    }),
-                );
+                let mut event_data = serde_json::json!({
+                    "task_id": task_id_str,
+                    "phase": log_entry.phase,
+                    "command": log_entry.command,
+                    "path": log_entry.path,
+                    "label": log_entry.label,
+                    "status": log_entry.status,
+                    "exit_code": log_entry.exit_code,
+                    "stdout": log_entry.stdout,
+                    "stderr": log_entry.stderr,
+                    "duration_ms": log_entry.duration_ms,
+                });
+                if let Some(ctx) = context {
+                    event_data["context"] = serde_json::json!(ctx);
+                }
+                let _ = handle.emit("merge:validation_step", event_data);
             }
             log.push(log_entry);
         }
@@ -683,6 +705,7 @@ pub(crate) async fn run_validation_commands(
         task_id_str,
         app_handle,
         &resolve,
+        None,
     )
     .await;
 
@@ -809,4 +832,273 @@ pub(super) fn extract_cached_validation(task: &Task, current_sha: &str) -> Optio
     }
     let log_val = val.get("validation_log")?;
     serde_json::from_value::<Vec<ValidationLogEntry>>(log_val.clone()).ok()
+}
+
+/// Run install commands for pre-execution setup.
+/// Returns (log_entries, had_failures).
+async fn run_install_phase(
+    entries: &[PreExecAnalysisEntry],
+    exec_cwd: &Path,
+    task_id_str: &str,
+    app_handle: Option<&tauri::AppHandle>,
+    resolve: &(dyn Fn(&str) -> String + Send + Sync),
+) -> (Vec<ValidationLogEntry>, bool) {
+    let mut log: Vec<ValidationLogEntry> = Vec::new();
+    let mut install_had_failures = false;
+
+    for entry in entries {
+        let Some(ref cmd_str) = entry.install else {
+            continue;
+        };
+
+        let resolved_cmd = resolve(cmd_str);
+        let resolved_path = resolve(&entry.path);
+        let cmd_cwd = if resolved_path == "." {
+            exec_cwd.to_path_buf()
+        } else {
+            exec_cwd.join(&resolved_path)
+        };
+
+        // Emit "running" event before execution
+        if let Some(handle) = app_handle {
+            let _ = handle.emit(
+                "merge:validation_step",
+                serde_json::json!({
+                    "task_id": task_id_str,
+                    "phase": "install",
+                    "command": resolved_cmd,
+                    "path": resolved_path,
+                    "label": entry.label,
+                    "status": "running",
+                    "context": "execution",
+                }),
+            );
+        }
+
+        tracing::info!(
+            command = %resolved_cmd,
+            cwd = %cmd_cwd.display(),
+            "Running pre-execution install command"
+        );
+
+        let start = std::time::Instant::now();
+
+        // Clone for move into spawn_blocking
+        let resolved_cmd_clone = resolved_cmd.clone();
+        let cmd_cwd_clone = cmd_cwd.clone();
+
+        let result = tokio::task::spawn_blocking(move || {
+            Command::new("sh")
+                .arg("-c")
+                .arg(&resolved_cmd_clone)
+                .current_dir(&cmd_cwd_clone)
+                .output()
+        })
+        .await;
+
+        let log_entry = match result {
+            Ok(Ok(output)) => {
+                let duration_ms = start.elapsed().as_millis() as u64;
+                let stdout_raw = String::from_utf8_lossy(&output.stdout).to_string();
+                let stderr_raw = String::from_utf8_lossy(&output.stderr).to_string();
+                let status = if output.status.success() {
+                    "success"
+                } else {
+                    "failed"
+                };
+
+                if !output.status.success() {
+                    install_had_failures = true;
+                    tracing::warn!(
+                        command = %resolved_cmd,
+                        stderr = %stderr_raw,
+                        "Pre-execution install command failed"
+                    );
+                }
+
+                ValidationLogEntry {
+                    phase: "install".to_string(),
+                    command: resolved_cmd.clone(),
+                    path: resolved_path.clone(),
+                    label: entry.label.clone(),
+                    status: status.to_string(),
+                    exit_code: output.status.code(),
+                    stdout: truncate_output(&stdout_raw, 2000),
+                    stderr: truncate_output(&stderr_raw, 2000),
+                    duration_ms,
+                }
+            }
+            Ok(Err(e)) => {
+                install_had_failures = true;
+                let duration_ms = start.elapsed().as_millis() as u64;
+                tracing::warn!(
+                    command = %resolved_cmd,
+                    error = %e,
+                    "Pre-execution install command failed"
+                );
+
+                ValidationLogEntry {
+                    phase: "install".to_string(),
+                    command: resolved_cmd.clone(),
+                    path: resolved_path.clone(),
+                    label: entry.label.clone(),
+                    status: "failed".to_string(),
+                    exit_code: None,
+                    stdout: String::new(),
+                    stderr: truncate_output(&format!("Failed to execute: {}", e), 2000),
+                    duration_ms,
+                }
+            }
+            Err(e) => {
+                install_had_failures = true;
+                let duration_ms = start.elapsed().as_millis() as u64;
+                tracing::error!(
+                    command = %resolved_cmd,
+                    error = %e,
+                    "Pre-execution install task panicked or was cancelled"
+                );
+
+                ValidationLogEntry {
+                    phase: "install".to_string(),
+                    command: resolved_cmd.clone(),
+                    path: resolved_path.clone(),
+                    label: entry.label.clone(),
+                    status: "failed".to_string(),
+                    exit_code: None,
+                    stdout: String::new(),
+                    stderr: truncate_output(&format!("Task failed: {}", e), 2000),
+                    duration_ms,
+                }
+            }
+        };
+
+        if let Some(handle) = app_handle {
+            let _ = handle.emit(
+                "merge:validation_step",
+                serde_json::json!({
+                    "task_id": task_id_str,
+                    "phase": log_entry.phase,
+                    "command": log_entry.command,
+                    "path": log_entry.path,
+                    "label": log_entry.label,
+                    "status": log_entry.status,
+                    "exit_code": log_entry.exit_code,
+                    "stdout": log_entry.stdout,
+                    "stderr": log_entry.stderr,
+                    "duration_ms": log_entry.duration_ms,
+                    "context": "execution",
+                }),
+            );
+        }
+        log.push(log_entry);
+    }
+
+    (log, install_had_failures)
+}
+
+/// Load effective analysis, resolve template vars, and run pre-execution setup commands.
+///
+/// Returns `None` if no analysis entries exist (backward compatible — skip setup).
+/// Returns `Some(PreExecSetupResult)` with success/failure details otherwise.
+///
+/// When `app_handle` is `Some`, emits `merge:validation_step` events with context="execution"
+/// for real-time UI streaming. All executed commands are recorded in `PreExecSetupResult::log`
+/// for metadata storage.
+///
+/// This function runs worktree_setup + install commands only. No validate steps.
+pub(crate) async fn run_pre_execution_setup(
+    project: &Project,
+    task: &Task,
+    exec_cwd: &Path,
+    task_id_str: &str,
+    app_handle: Option<&tauri::AppHandle>,
+) -> Option<PreExecSetupResult> {
+    let overall_start = std::time::Instant::now();
+    tracing::info!(
+        task_id = task_id_str,
+        cwd = %exec_cwd.display(),
+        "run_pre_execution_setup: starting pre-execution setup"
+    );
+
+    // Load effective analysis: custom_analysis ?? detected_analysis
+    let analysis_json = project
+        .custom_analysis
+        .as_ref()
+        .or(project.detected_analysis.as_ref())?;
+
+    let entries: Vec<PreExecAnalysisEntry> = match serde_json::from_str(analysis_json) {
+        Ok(e) => e,
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to parse project analysis JSON, skipping pre-execution setup");
+            return None;
+        }
+    };
+
+    if entries.is_empty() {
+        return None;
+    }
+
+    // Build template resolver
+    let project_root = &project.working_directory;
+    let worktree_path = exec_cwd.to_str().unwrap_or(project_root);
+    let task_branch = task.task_branch.as_deref().unwrap_or("");
+
+    let project_root_owned = project_root.clone();
+    let worktree_path_owned = worktree_path.to_string();
+    let task_branch_owned = task_branch.to_string();
+
+    let resolve = |s: &str| -> String {
+        s.replace("{project_root}", &project_root_owned)
+            .replace("{worktree_path}", &worktree_path_owned)
+            .replace("{task_branch}", &task_branch_owned)
+    };
+
+    // Phase 1: Worktree Setup (non-fatal, reuse existing run_setup_phase logic)
+    // Convert PreExecAnalysisEntry to MergeAnalysisEntry for reuse
+    let merge_entries: Vec<MergeAnalysisEntry> = entries
+        .iter()
+        .map(|e| MergeAnalysisEntry {
+            path: e.path.clone(),
+            label: e.label.clone(),
+            validate: Vec::new(),
+            worktree_setup: e.worktree_setup.clone(),
+        })
+        .collect();
+
+    let (mut log, _setup_had_failures) = run_setup_phase(
+        &merge_entries,
+        exec_cwd,
+        task_id_str,
+        app_handle,
+        &resolve,
+        Some("execution"),
+    )
+    .await;
+
+    // Phase 2: Install (fatal based on merge_validation_mode)
+    let (install_log, install_had_failures) = run_install_phase(
+        &entries,
+        exec_cwd,
+        task_id_str,
+        app_handle,
+        &resolve,
+    )
+    .await;
+
+    log.extend(install_log);
+
+    let overall_duration_ms = overall_start.elapsed().as_millis() as u64;
+    let success = !install_had_failures;
+    tracing::info!(
+        task_id = task_id_str,
+        duration_ms = overall_duration_ms,
+        success = success,
+        total_commands = log.len(),
+        "run_pre_execution_setup: completed pre-execution setup"
+    );
+
+    Some(PreExecSetupResult {
+        success,
+        log,
+    })
 }

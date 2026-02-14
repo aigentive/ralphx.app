@@ -319,6 +319,7 @@ export type PlanArtifactEvent = z.infer<typeof PlanArtifactEventSchema>;
 /**
  * Schema for merge validation step events
  * Emitted during post-merge validation for real-time progress streaming
+ * Also used for pre-execution setup/install progress
  */
 export const MergeValidationStepEventSchema = z.object({
   task_id: z.string(),
@@ -331,6 +332,7 @@ export const MergeValidationStepEventSchema = z.object({
   stdout: z.string().optional(),
   stderr: z.string().optional(),
   duration_ms: z.number().optional(),
+  context: z.enum(["merge", "execution"]).optional(),
 });
 
 export type MergeValidationStepEvent = z.infer<typeof MergeValidationStepEventSchema>;
