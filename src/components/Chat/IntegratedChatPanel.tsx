@@ -15,10 +15,13 @@ import { type VirtuosoHandle } from "react-virtuoso";
 import { useChat, chatKeys } from "@/hooks/useChat";
 import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectIsSending } from "@/stores/chatStore";
 import { useUiStore } from "@/stores/uiStore";
-import { useTasks } from "@/hooks/useTasks";
+import { useTaskStore } from "@/stores/taskStore";
+import { useTasks, taskKeys } from "@/hooks/useTasks";
 import { useChatPanelContext } from "@/hooks/useChatPanelContext";
 import { useQuery } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
+import { api } from "@/lib/tauri";
+import type { Task } from "@/types/task";
 import type { ContextType } from "@/types/chat-conversation";
 import { ALL_REVIEW_STATUSES, EXECUTION_STATUSES, MERGE_STATUSES } from "@/types/status";
 import { AGENT_WORKER, AGENT_REVIEWER } from "@/constants/agents";
@@ -92,10 +95,23 @@ export function IntegratedChatPanel({
 
   // Get task data from React Query (useTasks) which has full task data
   const { data: tasks = EMPTY_TASKS } = useTasks(projectId);
-  const selectedTask = useMemo(
-    () => selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) : undefined,
-    [tasks, selectedTaskId]
+
+  // Read from Zustand store (event-updated, sync) — same pattern as TaskDetailOverlay
+  const taskFromStore = useTaskStore((state) =>
+    selectedTaskId ? state.tasks[selectedTaskId] : undefined
   );
+
+  // Find from list query
+  const taskFromList = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) : undefined;
+
+  // Fallback: fetch the specific task by ID when not found in store or list
+  const { data: taskFromDetail } = useQuery<Task, Error>({
+    queryKey: taskKeys.detail(selectedTaskId ?? ""),
+    queryFn: () => api.tasks.get(selectedTaskId!),
+    enabled: Boolean(selectedTaskId) && !taskFromStore && !taskFromList,
+  });
+
+  const selectedTask: Task | undefined = taskFromStore ?? taskFromList ?? taskFromDetail;
 
   // Determine effective status - use historical status in history mode, otherwise current status
   const effectiveStatus = taskHistoryState?.status ?? selectedTask?.internalStatus;
