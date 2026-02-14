@@ -21,7 +21,7 @@ import {
   TwoColumnLayout,
 } from "./shared";
 import { ReviewTimeline } from "./shared/ReviewTimeline";
-import { ValidationProgress } from "./MergingTaskDetail";
+import { ValidationProgress } from "./shared/ValidationProgress";
 import { useTaskStateHistory } from "@/hooks/useReviews";
 import { useGitDiff } from "@/hooks/useGitDiff";
 import type { Task } from "@/types/task";

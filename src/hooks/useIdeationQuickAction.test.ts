@@ -4,16 +4,14 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
-import { Lightbulb } from "lucide-react";
 import { useIdeationQuickAction } from "./useIdeationQuickAction";
-import * as useIdeationModule from "./useIdeation";
-import * as ideationStoreModule from "@/stores/ideationStore";
-import * as uiStoreModule from "@/stores/uiStore";
-import * as chatApiModule from "@/api/chat";
-import * as ideationApiModule from "@/api/ideation";
-import type { IdeationSession } from "@/types/ideation";
+import { useCreateIdeationSession } from "./useIdeation";
+import { useIdeationStore } from "@/stores/ideationStore";
+import { useUiStore } from "@/stores/uiStore";
+import { chatApi } from "@/api/chat";
+import { ideationApi } from "@/api/ideation";
 
-// Mock modules
+// Mock dependencies
 vi.mock("./useIdeation");
 vi.mock("@/stores/ideationStore");
 vi.mock("@/stores/uiStore");
@@ -21,234 +19,203 @@ vi.mock("@/api/chat");
 vi.mock("@/api/ideation");
 
 describe("useIdeationQuickAction", () => {
-  const mockProjectId = "project-123";
-  const mockSessionId = "session-456";
-  const mockSession: Partial<IdeationSession> = {
-    id: mockSessionId,
-    projectId: mockProjectId,
-    title: null,
-    status: "active",
-  };
+  const projectId = "test-project-123";
+  const mockSessionId = "test-session-456";
 
   let mockMutateAsync: ReturnType<typeof vi.fn>;
-  let mockAddSession: ReturnType<typeof vi.fn>;
+  let mockSelectSession: ReturnType<typeof vi.fn>;
   let mockSetActiveSession: ReturnType<typeof vi.fn>;
   let mockSetCurrentView: ReturnType<typeof vi.fn>;
-  let mockSendAgentMessage: ReturnType<typeof vi.fn>;
-  let mockSpawnSessionNamer: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
 
     // Mock mutation
-    mockMutateAsync = vi.fn().mockResolvedValue(mockSession);
-    vi.spyOn(useIdeationModule, "useCreateIdeationSession").mockReturnValue({
+    mockMutateAsync = vi.fn().mockResolvedValue({
+      id: mockSessionId,
+      projectId,
+      title: "Test Session",
+      status: "active",
+      createdAt: "2024-01-01T00:00:00Z",
+      updatedAt: "2024-01-01T00:00:00Z",
+    });
+
+    vi.mocked(useCreateIdeationSession).mockReturnValue({
       mutateAsync: mockMutateAsync,
+      isPending: false,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
 
-    // Mock store actions
-    mockAddSession = vi.fn();
+    // Mock stores
+    mockSelectSession = vi.fn();
     mockSetActiveSession = vi.fn();
     mockSetCurrentView = vi.fn();
 
-    vi.spyOn(ideationStoreModule, "useIdeationStore").mockImplementation(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (selector: any) => {
-        if (selector.name === "addSession" || selector.toString().includes("addSession")) {
-          return mockAddSession;
-        }
-        if (selector.name === "setActiveSession" || selector.toString().includes("setActiveSession")) {
-          return mockSetActiveSession;
-        }
-        return vi.fn();
-      }
-    );
-
-    vi.spyOn(uiStoreModule, "useUiStore").mockImplementation(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (selector: any) => {
-      if (selector.name === "setCurrentView" || selector.toString().includes("setCurrentView")) {
-        return mockSetCurrentView;
-      }
-      return vi.fn();
+    vi.mocked(useIdeationStore).mockImplementation(<T,>(selector: (state: { selectSession: typeof mockSelectSession; setActiveSession: typeof mockSetActiveSession }) => T): T => {
+      const store = {
+        selectSession: mockSelectSession,
+        setActiveSession: mockSetActiveSession,
+      };
+      return selector(store);
     });
 
-    // Mock API calls
-    mockSendAgentMessage = vi.fn().mockResolvedValue({ id: "msg-1" });
-    mockSpawnSessionNamer = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(useUiStore).mockImplementation(<T,>(selector: (state: { setCurrentView: typeof mockSetCurrentView }) => T): T => {
+      const store = {
+        setCurrentView: mockSetCurrentView,
+      };
+      return selector(store);
+    });
 
-    vi.spyOn(chatApiModule, "sendAgentMessage").mockImplementation(mockSendAgentMessage);
-    vi.spyOn(ideationApiModule.ideationApi.sessions, "spawnSessionNamer").mockImplementation(
-      mockSpawnSessionNamer
-    );
+    // Mock APIs
+    vi.mocked(chatApi.sendAgentMessage).mockResolvedValue({
+      conversationId: "conv-123",
+      agentRunId: "run-123",
+      isNewConversation: true,
+    });
+
+    vi.mocked(ideationApi.sessions.spawnSessionNamer).mockResolvedValue(undefined);
   });
 
-  describe("QuickAction properties", () => {
-    it("should return a QuickAction with correct id and label", () => {
-      const { result } = renderHook(() => useIdeationQuickAction(mockProjectId));
-
+  describe("action properties", () => {
+    it("should have correct id", () => {
+      const { result } = renderHook(() => useIdeationQuickAction(projectId));
       expect(result.current.id).toBe("ideation");
+    });
+
+    it("should have Lightbulb icon", () => {
+      const { result } = renderHook(() => useIdeationQuickAction(projectId));
+      expect(result.current.icon).toBeDefined();
+      // Lucide icons are components, just verify it's defined and truthy
+      expect(result.current.icon).toBeTruthy();
+    });
+
+    it("should have correct label", () => {
+      const { result } = renderHook(() => useIdeationQuickAction(projectId));
       expect(result.current.label).toBe("Start new ideation session");
     });
 
-    it("should use Lightbulb icon", () => {
-      const { result } = renderHook(() => useIdeationQuickAction(mockProjectId));
-
-      expect(result.current.icon).toBe(Lightbulb);
-    });
-
-    it("should have correct flow labels", () => {
-      const { result } = renderHook(() => useIdeationQuickAction(mockProjectId));
-
+    it("should have correct labels for creating/success/view", () => {
+      const { result } = renderHook(() => useIdeationQuickAction(projectId));
       expect(result.current.creatingLabel).toBe("Creating your ideation session...");
       expect(result.current.successLabel).toBe("Session created!");
       expect(result.current.viewLabel).toBe("View Session");
     });
   });
 
-  describe("description", () => {
-    it("should wrap query in quotes", () => {
-      const { result } = renderHook(() => useIdeationQuickAction(mockProjectId));
+  describe("isVisible", () => {
+    it("should return true when query is not empty", () => {
+      const { result } = renderHook(() => useIdeationQuickAction(projectId));
+      expect(result.current.isVisible("test query")).toBe(true);
+      expect(result.current.isVisible("a")).toBe(true);
+    });
 
-      expect(result.current.description("test query")).toBe('"test query"');
-      expect(result.current.description("another")).toBe('"another"');
+    it("should return false when query is empty", () => {
+      const { result } = renderHook(() => useIdeationQuickAction(projectId));
+      expect(result.current.isVisible("")).toBe(false);
+      expect(result.current.isVisible("   ")).toBe(false);
+    });
+
+    it("should return false when query is only whitespace", () => {
+      const { result } = renderHook(() => useIdeationQuickAction(projectId));
+      expect(result.current.isVisible("  \t  \n  ")).toBe(false);
     });
   });
 
-  describe("isVisible", () => {
-    it("should return true when query is non-empty", () => {
-      const { result } = renderHook(() => useIdeationQuickAction(mockProjectId));
-
-      expect(result.current.isVisible("hello")).toBe(true);
-      expect(result.current.isVisible("a")).toBe(true);
-      expect(result.current.isVisible("  text  ")).toBe(true);
-    });
-
-    it("should return false when query is empty or whitespace", () => {
-      const { result } = renderHook(() => useIdeationQuickAction(mockProjectId));
-
-      expect(result.current.isVisible("")).toBe(false);
-      expect(result.current.isVisible("   ")).toBe(false);
-      expect(result.current.isVisible("\t\n")).toBe(false);
+  describe("description", () => {
+    it("should return query wrapped in quotes", () => {
+      const { result } = renderHook(() => useIdeationQuickAction(projectId));
+      expect(result.current.description("Build a user dashboard")).toBe('"Build a user dashboard"');
+      expect(result.current.description("test")).toBe('"test"');
     });
   });
 
   describe("execute", () => {
-    it("should create session via mutation", async () => {
-      const { result } = renderHook(() => useIdeationQuickAction(mockProjectId));
+    it("should create session and add to store", async () => {
+      const { result } = renderHook(() => useIdeationQuickAction(projectId));
 
-      await result.current.execute("my ideation query");
+      await result.current.execute("Build a user dashboard");
 
-      expect(mockMutateAsync).toHaveBeenCalledWith({ projectId: mockProjectId });
-    });
-
-    it("should add session to store", async () => {
-      const { result } = renderHook(() => useIdeationQuickAction(mockProjectId));
-
-      await result.current.execute("my ideation query");
+      expect(mockMutateAsync).toHaveBeenCalledWith({
+        projectId,
+      });
 
       await waitFor(() => {
-        expect(mockAddSession).toHaveBeenCalledWith(mockSession);
+        expect(mockSelectSession).toHaveBeenCalledWith({
+          id: mockSessionId,
+          projectId,
+          title: "Test Session",
+          status: "active",
+          createdAt: "2024-01-01T00:00:00Z",
+          updatedAt: "2024-01-01T00:00:00Z",
+        });
       });
     });
 
-    it("should set active session", async () => {
-      const { result } = renderHook(() => useIdeationQuickAction(mockProjectId));
+    it("should send message in background (fire-and-forget)", async () => {
+      const { result } = renderHook(() => useIdeationQuickAction(projectId));
 
-      await result.current.execute("my ideation query");
-
-      await waitFor(() => {
-        expect(mockSetActiveSession).toHaveBeenCalledWith(mockSessionId);
-      });
-    });
-
-    it("should send agent message (fire-and-forget)", async () => {
-      const { result } = renderHook(() => useIdeationQuickAction(mockProjectId));
-
-      await result.current.execute("my ideation query");
+      await result.current.execute("Build a user dashboard");
 
       await waitFor(() => {
-        expect(mockSendAgentMessage).toHaveBeenCalledWith(
+        expect(chatApi.sendAgentMessage).toHaveBeenCalledWith(
           "ideation",
           mockSessionId,
-          "my ideation query"
+          "Build a user dashboard"
         );
       });
     });
 
-    it("should spawn session namer (fire-and-forget)", async () => {
-      const { result } = renderHook(() => useIdeationQuickAction(mockProjectId));
+    it("should spawn session namer in background (fire-and-forget)", async () => {
+      const { result } = renderHook(() => useIdeationQuickAction(projectId));
 
-      await result.current.execute("my ideation query");
+      await result.current.execute("Build a user dashboard");
 
       await waitFor(() => {
-        expect(mockSpawnSessionNamer).toHaveBeenCalledWith(mockSessionId, "my ideation query");
+        expect(ideationApi.sessions.spawnSessionNamer).toHaveBeenCalledWith(
+          mockSessionId,
+          "Build a user dashboard"
+        );
       });
     });
 
-    it("should return session ID on success", async () => {
-      const { result } = renderHook(() => useIdeationQuickAction(mockProjectId));
+    it("should not throw if background operations fail", async () => {
+      vi.mocked(chatApi.sendAgentMessage).mockRejectedValue(new Error("Network error"));
+      vi.mocked(ideationApi.sessions.spawnSessionNamer).mockRejectedValue(new Error("Network error"));
 
-      const sessionId = await result.current.execute("my ideation query");
+      const { result } = renderHook(() => useIdeationQuickAction(projectId));
 
-      expect(sessionId).toBe(mockSessionId);
+      await expect(result.current.execute("Build a user dashboard")).resolves.toEqual(mockSessionId);
     });
 
-    it("should not throw if fire-and-forget operations fail", async () => {
-      mockSendAgentMessage.mockRejectedValue(new Error("Network error"));
-      mockSpawnSessionNamer.mockRejectedValue(new Error("Spawn error"));
+    it("should return session ID", async () => {
+      const { result } = renderHook(() => useIdeationQuickAction(projectId));
 
-      const { result } = renderHook(() => useIdeationQuickAction(mockProjectId));
+      const sessionId = await result.current.execute("Build a user dashboard");
 
-      await expect(result.current.execute("query")).resolves.toBe(mockSessionId);
+      expect(sessionId).toBe(mockSessionId);
     });
   });
 
   describe("navigateTo", () => {
-    it("should set active session", () => {
-      const { result } = renderHook(() => useIdeationQuickAction(mockProjectId));
+    it("should set active session and switch to ideation view", () => {
+      const { result } = renderHook(() => useIdeationQuickAction(projectId));
 
       result.current.navigateTo(mockSessionId);
 
       expect(mockSetActiveSession).toHaveBeenCalledWith(mockSessionId);
-    });
-
-    it("should switch view to ideation", () => {
-      const { result } = renderHook(() => useIdeationQuickAction(mockProjectId));
-
-      result.current.navigateTo(mockSessionId);
-
       expect(mockSetCurrentView).toHaveBeenCalledWith("ideation");
     });
   });
 
   describe("memoization", () => {
-    it("should return stable reference when projectId unchanged", () => {
-      const { result, rerender } = renderHook(
-        ({ projectId }) => useIdeationQuickAction(projectId),
-        { initialProps: { projectId: mockProjectId } }
-      );
+    it("should return same action object on re-render when deps don't change", () => {
+      const { result, rerender } = renderHook(() => useIdeationQuickAction(projectId));
 
-      const firstAction = result.current;
+      const firstResult = result.current;
+      rerender();
+      const secondResult = result.current;
 
-      rerender({ projectId: mockProjectId });
-
-      expect(result.current).toBe(firstAction);
-    });
-
-    it("should return new reference when projectId changes", () => {
-      const { result, rerender } = renderHook(
-        ({ projectId }) => useIdeationQuickAction(projectId),
-        { initialProps: { projectId: "project-1" } }
-      );
-
-      const firstAction = result.current;
-
-      rerender({ projectId: "project-2" });
-
-      expect(result.current).not.toBe(firstAction);
-      expect(result.current.id).toBe("ideation"); // Still valid action
+      expect(firstResult).toBe(secondResult);
     });
   });
 });

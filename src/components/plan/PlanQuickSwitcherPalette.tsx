@@ -9,23 +9,18 @@
  * - Click outside to close
  * - No backdrop/modal overlay
  * - Uses framer-motion for enter/exit animations
- *
- * Refactored to use usePlanQuickSwitcher hook and extracted sub-components.
- * Now ~200 lines (thin rendering shell).
  */
 
-/* eslint-disable react-hooks/refs */
-// Disabled: ESLint incorrectly flags passing ref objects from hook as "accessing during render"
-// We're not accessing .current, just passing ref objects to ref={} props which is valid React.
-
+import { useState, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { FileText, Loader2, AlertCircle, RefreshCw } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Button } from "@/components/ui/button";
 import { usePlanQuickSwitcher } from "@/hooks/usePlanQuickSwitcher";
 import { PlanCandidateItem } from "./PlanCandidateItem";
 import { PlanClearAction } from "./PlanClearAction";
+import { QuickActionRow } from "./QuickActionRow";
+import { cn } from "@/lib/utils";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
 import type { SelectionSource } from "@/api/plan";
 
 // ============================================================================
@@ -48,14 +43,62 @@ interface PlanQuickSwitcherPaletteProps {
 // Component
 // ============================================================================
 
-export function PlanQuickSwitcherPalette(props: PlanQuickSwitcherPaletteProps) {
-  const switcher = usePlanQuickSwitcher(props);
+export function PlanQuickSwitcherPalette({
+  projectId,
+  isOpen,
+  onClose,
+  selectionSource = "quick_switcher",
+  showClearAction = true,
+  anchorSelector,
+}: PlanQuickSwitcherPaletteProps) {
+  const switcher = usePlanQuickSwitcher({
+    projectId,
+    isOpen,
+    onClose,
+    selectionSource,
+    showClearAction,
+    ...(anchorSelector && { anchorSelector }),
+  });
 
-  const hasItems = switcher.filteredCandidates.length > 0 || switcher.canClearPlan;
+  // Destructure to separate refs from data (fixes ESLint refs-during-render false positive)
+  const {
+    inputRef,
+    containerRef,
+    highlightedItemRef,
+    filteredCandidates,
+    canClearPlan,
+    showQuickAction,
+    activePlanId,
+    isLoading,
+    error: storeError,
+    searchQuery,
+    highlightedIndex,
+    anchorCenterX,
+    quickAction,
+    quickActionFlow,
+    handleKeyDown,
+    handleSelect,
+    handleClear,
+    handleRetry,
+    setSearchQuery,
+  } = switcher;
+
+  const hasItems = filteredCandidates.length > 0 || canClearPlan;
+
+  // Local mouse hover state (hook manages keyboard navigation via highlightedIndex)
+  const [mouseHighlightedIndex, setMouseHighlightedIndex] = useState<number | null>(null);
+
+  // Use mouse index when available, otherwise fall back to keyboard index
+  const effectiveHighlightedIndex = mouseHighlightedIndex ?? highlightedIndex;
+
+  // Clear mouse highlight when keyboard navigation occurs
+  useEffect(() => {
+    setMouseHighlightedIndex(null);
+  }, [highlightedIndex]);
 
   return (
     <AnimatePresence>
-      {props.isOpen && (
+      {isOpen && (
         <motion.div
           initial="hidden"
           animate="visible"
@@ -81,10 +124,10 @@ export function PlanQuickSwitcherPalette(props: PlanQuickSwitcherPaletteProps) {
             },
           }}
           className="fixed top-20 left-1/2 -translate-x-1/2 z-50 w-[420px]"
-          ref={switcher.containerRef}
+          ref={containerRef}
           data-quick-switcher-panel
           style={{
-            left: switcher.anchorCenterX !== null ? `${switcher.anchorCenterX}px` : undefined,
+            left: anchorCenterX !== null ? `${anchorCenterX}px` : undefined,
           }}
         >
           <div
@@ -105,12 +148,12 @@ export function PlanQuickSwitcherPalette(props: PlanQuickSwitcherPaletteProps) {
               style={{ borderBottom: "1px solid hsla(220 20% 100% / 0.08)" }}
             >
               <input
-                ref={switcher.inputRef}
+                ref={inputRef}
                 type="text"
                 placeholder="Search plans... (Cmd+Shift+P)"
-                value={switcher.searchQuery}
-                onChange={(e) => switcher.setSearchQuery(e.target.value)}
-                onKeyDown={switcher.handleKeyDown}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={handleKeyDown}
                 className={cn(
                   "w-full bg-transparent border-0 text-sm placeholder:text-muted-foreground",
                   "outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none",
@@ -124,43 +167,76 @@ export function PlanQuickSwitcherPalette(props: PlanQuickSwitcherPaletteProps) {
               />
             </div>
 
-            {/* Content area */}
-            {switcher.error ? (
-              // Error state
+            {/* Results list */}
+            {storeError ? (
               <div className="p-8 flex flex-col items-center justify-center gap-3 text-muted-foreground">
                 <AlertCircle className="h-5 w-5 text-destructive" />
-                <p className="text-center">{switcher.error}</p>
+                <p className="text-center">{storeError}</p>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={switcher.handleRetry}
+                  onClick={handleRetry}
                   className="gap-2"
                 >
                   <RefreshCw className="h-4 w-4" />
                   Retry
                 </Button>
               </div>
-            ) : switcher.isLoading ? (
-              // Loading state
+            ) : isLoading ? (
               <div className="p-8 flex flex-col items-center justify-center gap-2 text-muted-foreground transition-colors">
                 <Loader2 className="h-5 w-5 animate-spin" />
                 <p>Loading plans...</p>
               </div>
+            ) : quickActionFlow.isBlocking ? (
+              /* Quick action flow is blocking - show single row replacing the list */
+              <QuickActionRow
+                action={quickAction}
+                flowState={quickActionFlow.flowState}
+                searchQuery={searchQuery}
+                isHighlighted={false}
+                onMouseEnter={() => {}}
+                onSelect={() => {}}
+                onConfirm={() => quickActionFlow.confirm(searchQuery)}
+                onCancel={quickActionFlow.cancel}
+                onViewEntity={quickActionFlow.viewEntity}
+              />
             ) : hasItems ? (
-              // Results list
               <ScrollArea className="max-h-[400px]" type="auto">
-                {switcher.canClearPlan && (
-                  <PlanClearAction
-                    isHighlighted={switcher.highlightedIndex === 0}
-                    onMouseEnter={() => switcher.setHighlightedIndex(0)}
-                    onClick={switcher.handleClear}
-                    highlightedRef={switcher.highlightedItemRef}
+                {showQuickAction && (
+                  <QuickActionRow
+                    action={quickAction}
+                    flowState={quickActionFlow.flowState}
+                    searchQuery={searchQuery}
+                    isHighlighted={effectiveHighlightedIndex === 0}
+                    onMouseEnter={() => setMouseHighlightedIndex(0)}
+                    onSelect={quickActionFlow.startConfirmation}
+                    onConfirm={() => quickActionFlow.confirm(searchQuery)}
+                    onCancel={quickActionFlow.cancel}
+                    onViewEntity={quickActionFlow.viewEntity}
+                    highlightedRef={
+                      effectiveHighlightedIndex === 0
+                        ? (highlightedItemRef as React.RefObject<HTMLButtonElement>)
+                        : undefined
+                    }
                   />
                 )}
-                {switcher.filteredCandidates.map((plan, index) => {
-                  const itemIndex = switcher.canClearPlan ? index + 1 : index;
-                  const isActive = switcher.activePlanId === plan.sessionId;
-                  const isHighlighted = switcher.highlightedIndex === itemIndex;
+                {canClearPlan && (
+                  <PlanClearAction
+                    isHighlighted={effectiveHighlightedIndex === (showQuickAction ? 1 : 0)}
+                    onMouseEnter={() => setMouseHighlightedIndex(showQuickAction ? 1 : 0)}
+                    onClick={handleClear}
+                    highlightedRef={
+                      effectiveHighlightedIndex === (showQuickAction ? 1 : 0)
+                        ? (highlightedItemRef as React.RefObject<HTMLButtonElement>)
+                        : undefined
+                    }
+                  />
+                )}
+                {filteredCandidates.map((plan, index) => {
+                  const offset = (showQuickAction ? 1 : 0) + (canClearPlan ? 1 : 0);
+                  const itemIndex = index + offset;
+                  const isActive = activePlanId === plan.sessionId;
+                  const isHighlighted = effectiveHighlightedIndex === itemIndex;
 
                   return (
                     <PlanCandidateItem
@@ -168,15 +244,19 @@ export function PlanQuickSwitcherPalette(props: PlanQuickSwitcherPaletteProps) {
                       plan={plan}
                       isActive={isActive}
                       isHighlighted={isHighlighted}
-                      onMouseEnter={() => switcher.setHighlightedIndex(itemIndex)}
-                      onClick={() => switcher.handleSelect(plan.sessionId)}
-                      highlightedRef={switcher.highlightedItemRef}
+                      onMouseEnter={() => setMouseHighlightedIndex(itemIndex)}
+                      onClick={() => handleSelect(plan.sessionId)}
+                      highlightedRef={
+                        isHighlighted
+                          ? (highlightedItemRef as React.RefObject<HTMLButtonElement>)
+                          : undefined
+                      }
                     />
                   );
                 })}
               </ScrollArea>
             ) : (
-              // Empty state
+              /* Empty state */
               <div className="p-8 text-center text-muted-foreground transition-colors">
                 <FileText className="h-8 w-8 mx-auto mb-2 opacity-50 transition-opacity" />
                 <p>No accepted plans found</p>

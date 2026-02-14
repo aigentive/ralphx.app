@@ -1,71 +1,51 @@
 /**
- * QuickActionRow - Renders quick action with multi-state flow
+ * QuickActionRow - Rendering component for QuickAction in command palette
  *
- * Supports four states:
- * - idle: Button row with icon + label + query description (animated enter/exit)
- * - confirming: Inline confirmation prompt with Confirm/Cancel buttons
- * - creating: Spinner + creatingLabel (all controls disabled)
- * - success: Check icon + successLabel + view button
+ * Displays a quick action in different states:
+ * - idle: Button row with icon + label + description (query)
+ * - confirming: Inline confirmation with query + Confirm/Cancel buttons
+ * - creating: Spinner + creatingLabel
+ * - success: Check icon + successLabel + "View" button
  *
- * The confirming/creating/success states replace the candidate list using
- * AnimatePresence mode="wait" for crossfade transitions.
+ * Uses framer-motion for smooth state transitions and glass morphism styling
+ * matching PlanCandidateItem patterns.
  */
 
-import { motion, AnimatePresence } from "framer-motion";
-import { Check, Loader2, type LucideIcon } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Loader2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import type { QuickAction } from "@/hooks/useIdeationQuickAction";
 
 // ============================================================================
 // Types
 // ============================================================================
 
+/**
+ * Flow state for quick action execution
+ */
 export type QuickActionFlowState = "idle" | "confirming" | "creating" | "success";
 
-export interface QuickAction {
-  /** Unique identifier for the action (e.g., "ideation", "create-task") */
-  id: string;
-  /** Display label (e.g., "Start new ideation session") */
-  label: string;
-  /** Icon component from lucide-react */
-  icon: LucideIcon;
-  /** Generate description text based on current query */
-  description: (query: string) => string;
-  /** Determine if action should be visible for given query */
-  isVisible: (query: string) => boolean;
-  /** Execute the action. Returns entity ID on success. */
-  execute: (query: string) => Promise<string>;
-  /** Label shown during creation */
-  creatingLabel: string;
-  /** Label shown on success */
-  successLabel: string;
-  /** Button text on success */
-  viewLabel: string;
-  /** Navigate to the created entity */
-  navigateTo: (entityId: string) => void;
-}
-
-interface QuickActionRowProps {
-  /** The quick action definition */
+export interface QuickActionRowProps {
+  /** The action configuration */
   action: QuickAction;
   /** Current flow state */
   flowState: QuickActionFlowState;
   /** Current search query */
   searchQuery: string;
-  /** Whether this row is currently highlighted */
+  /** Whether this row is highlighted (keyboard nav) */
   isHighlighted: boolean;
-  /** Mouse enter handler for highlight tracking */
+  /** Callback when mouse enters the row */
   onMouseEnter: () => void;
-  /** Called when user selects this action (idle state) */
+  /** Callback when row is selected (clicked in idle state) */
   onSelect: () => void;
-  /** Called when user confirms the action (confirming state) */
+  /** Callback when action is confirmed */
   onConfirm: () => void;
-  /** Called when user cancels confirmation (confirming state) */
+  /** Callback when action is cancelled */
   onCancel: () => void;
-  /** Called when user clicks view entity button (success state) */
+  /** Callback when "View" button is clicked after success */
   onViewEntity: () => void;
-  /** Ref for highlighted item (for scroll-into-view) */
-  highlightedRef: React.RefObject<HTMLButtonElement> | null;
+  /** Ref to attach when highlighted (for keyboard scroll-into-view) */
+  highlightedRef?: React.RefObject<HTMLButtonElement> | undefined;
 }
 
 // ============================================================================
@@ -85,21 +65,20 @@ export function QuickActionRow({
   highlightedRef,
 }: QuickActionRowProps) {
   const Icon = action.icon;
+  const description = action.description(searchQuery);
 
-  // Idle state: button row with animated enter/exit
-  if (flowState === "idle") {
-    return (
-      <motion.div
-        initial={{ height: 0, opacity: 0 }}
-        animate={{ height: "auto", opacity: 1 }}
-        exit={{ height: 0, opacity: 0 }}
-        transition={{ duration: 0.2 }}
-        data-testid="quick-action-idle"
-      >
-        <button
+  return (
+    <AnimatePresence mode="wait">
+      {flowState === "idle" && (
+        <motion.button
+          key="idle"
           ref={isHighlighted ? highlightedRef : null}
           onClick={onSelect}
           onMouseEnter={onMouseEnter}
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={{ duration: 0.15 }}
           className={cn(
             "w-full text-left px-3 py-2 rounded-lg flex items-center gap-3",
             "transition-all duration-150 origin-center",
@@ -117,7 +96,7 @@ export function QuickActionRow({
         >
           <Icon
             className="h-4 w-4 shrink-0"
-            style={{ color: isHighlighted ? "hsl(14 100% 66%)" : "hsl(220 10% 62%)" }}
+            style={{ color: isHighlighted ? "hsl(14 100% 66%)" : "hsl(220 10% 70%)" }}
           />
           <div className="flex-1 min-w-0">
             <div
@@ -127,112 +106,130 @@ export function QuickActionRow({
               {action.label}
             </div>
             <div
-              className="text-xs leading-tight mt-0.5"
+              className="text-xs leading-tight mt-0.5 truncate"
               style={{ color: "hsl(220 10% 62%)" }}
             >
-              {action.description(searchQuery)}
+              {description}
             </div>
           </div>
-        </button>
-      </motion.div>
-    );
-  }
+        </motion.button>
+      )}
 
-  // Confirming/creating/success states: replace candidate list with crossfade
-  return (
-    <div data-testid="quick-action-content">
-      <AnimatePresence mode="wait">
-        {flowState === "confirming" && (
-          <motion.div
-            key="confirming"
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-            transition={{ duration: 0.15 }}
-            className="p-4 flex flex-col gap-3"
-          >
-            <p className="text-sm" style={{ color: "hsl(220 10% 90%)" }}>
-              Start <span className="font-medium">{action.label.toLowerCase()}</span> with:{" "}
-              <span className="font-medium" style={{ color: "hsl(14 100% 66%)" }}>
-                &quot;{searchQuery}&quot;
-              </span>
-              ?
-            </p>
+      {flowState === "confirming" && (
+        <motion.div
+          key="confirming"
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={{ duration: 0.15 }}
+          className="px-3 py-2"
+        >
+          <div className="flex flex-col gap-2">
+            <div className="text-sm" style={{ color: "hsl(220 10% 90%)" }}>
+              <span style={{ color: "hsl(220 10% 70%)" }}>Create session for: </span>
+              <span className="font-medium">{description}</span>
+            </div>
             <div className="flex gap-2">
-              <Button
-                size="sm"
+              <button
                 onClick={onConfirm}
-                className="flex-1"
+                className={cn(
+                  "flex-1 px-3 py-1.5 rounded text-xs font-medium",
+                  "transition-all duration-150",
+                  "hover:scale-[1.02]",
+                  "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                )}
                 style={{
-                  backgroundColor: "hsl(14 100% 60%)",
-                  color: "hsl(220 10% 10%)",
+                  background: "hsla(14 100% 60% / 0.16)",
+                  border: "1px solid hsla(14 100% 60% / 0.35)",
+                  color: "hsl(14 100% 66%)",
                 }}
               >
-                Confirm
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
+                Create Session
+              </button>
+              <button
                 onClick={onCancel}
-                className="flex-1"
+                className={cn(
+                  "flex-1 px-3 py-1.5 rounded text-xs font-medium",
+                  "transition-all duration-150",
+                  "hover:scale-[1.02]",
+                  "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                )}
+                style={{
+                  background: "hsla(220 10% 100% / 0.05)",
+                  border: "1px solid hsla(220 20% 100% / 0.1)",
+                  color: "hsl(220 10% 70%)",
+                }}
               >
                 Cancel
-              </Button>
+              </button>
             </div>
-          </motion.div>
-        )}
+          </div>
+        </motion.div>
+      )}
 
-        {flowState === "creating" && (
-          <motion.div
-            key="creating"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="p-8 flex flex-col items-center justify-center gap-3"
+      {flowState === "creating" && (
+        <motion.div
+          key="creating"
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={{ duration: 0.15 }}
+          className="px-3 py-2 flex items-center gap-3"
+        >
+          <Loader2
+            className="h-4 w-4 animate-spin shrink-0"
+            style={{ color: "hsl(14 100% 66%)" }}
+          />
+          <div
+            className="text-[13px] font-medium"
+            style={{ color: "hsl(220 10% 90%)" }}
           >
-            <Loader2
-              className="h-5 w-5 animate-spin"
-              style={{ color: "hsl(14 100% 60%)" }}
-            />
-            <p className="text-sm" style={{ color: "hsl(220 10% 90%)" }}>
-              {action.creatingLabel}
-            </p>
-          </motion.div>
-        )}
+            {action.creatingLabel}
+          </div>
+        </motion.div>
+      )}
 
-        {flowState === "success" && (
-          <motion.div
-            key="success"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-            className="p-4 flex flex-col items-center gap-3"
-          >
-            <div className="flex items-center gap-2">
+      {flowState === "success" && (
+        <motion.div
+          key="success"
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={{ duration: 0.15 }}
+          className="px-3 py-2"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
               <Check
-                className="h-5 w-5"
-                style={{ color: "hsl(14 100% 60%)" }}
+                className="h-4 w-4 shrink-0"
+                style={{ color: "hsl(142 76% 36%)" }}
               />
-              <p className="text-sm font-medium" style={{ color: "hsl(220 10% 90%)" }}>
+              <div
+                className="text-[13px] font-medium"
+                style={{ color: "hsl(220 10% 90%)" }}
+              >
                 {action.successLabel}
-              </p>
+              </div>
             </div>
-            <Button
-              size="sm"
+            <button
               onClick={onViewEntity}
-              className="w-full"
+              className={cn(
+                "px-3 py-1.5 rounded text-xs font-medium shrink-0",
+                "transition-all duration-150",
+                "hover:scale-[1.02]",
+                "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              )}
               style={{
-                backgroundColor: "hsl(14 100% 60%)",
-                color: "hsl(220 10% 10%)",
+                background: "hsla(14 100% 60% / 0.16)",
+                border: "1px solid hsla(14 100% 60% / 0.35)",
+                color: "hsl(14 100% 66%)",
               }}
             >
               {action.viewLabel}
-            </Button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+            </button>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

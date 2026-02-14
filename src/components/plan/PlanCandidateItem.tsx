@@ -1,8 +1,11 @@
 /**
- * PlanCandidateItem - Individual plan row in quick switcher
+ * PlanCandidateItem - Reusable plan row button for quick switcher
  *
- * Extracted from PlanQuickSwitcherPalette to reduce component complexity.
- * Renders a single plan candidate with title, task stats, progress bar, and active indicator.
+ * Displays a single plan candidate with:
+ * - Title and task stats
+ * - Progress bar (if tasks incomplete)
+ * - Active indicator checkmark
+ * - Hover/highlight states with accent styling
  */
 
 import { Check } from "lucide-react";
@@ -19,11 +22,11 @@ interface PlanCandidateItemProps {
   isHighlighted: boolean;
   onMouseEnter: () => void;
   onClick: () => void;
-  highlightedRef?: React.RefObject<HTMLButtonElement | null>;
+  highlightedRef?: React.RefObject<HTMLButtonElement> | undefined;
 }
 
 // ============================================================================
-// Utility Functions
+// Utilities
 // ============================================================================
 
 function formatIncompleteSummary(incomplete: number, total: number): string {
@@ -61,7 +64,7 @@ export function PlanCandidateItem({
 
   return (
     <button
-      ref={isHighlighted ? highlightedRef : null}
+      ref={highlightedRef}
       onClick={onClick}
       onMouseEnter={onMouseEnter}
       className={cn(
@@ -73,11 +76,12 @@ export function PlanCandidateItem({
         isActive && "bg-accent/50"
       )}
       style={{
-        background: isHighlighted
-          ? "hsla(14 100% 60% / 0.16)"
-          : isActive
-            ? "hsla(14 100% 60% / 0.1)"
-            : "transparent",
+        background:
+          isHighlighted
+            ? "hsla(14 100% 60% / 0.16)"
+            : isActive
+              ? "hsla(14 100% 60% / 0.1)"
+              : "transparent",
         border: isHighlighted
           ? "1px solid hsla(14 100% 60% / 0.35)"
           : "1px solid transparent",

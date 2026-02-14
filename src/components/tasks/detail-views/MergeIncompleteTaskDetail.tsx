@@ -28,7 +28,7 @@ import {
   StatusPill,
   TwoColumnLayout,
 } from "./shared";
-import { ValidationProgress } from "./MergingTaskDetail";
+import { ValidationProgress } from "./shared/ValidationProgress";
 import type { Task, TaskMetadata, MergeRecoveryEvent } from "@/types/task";
 import { useQueryClient } from "@tanstack/react-query";
 import { taskKeys } from "@/hooks/useTasks";

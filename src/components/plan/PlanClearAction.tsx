@@ -1,8 +1,10 @@
 /**
- * PlanClearAction - Clear active plan button row
+ * PlanClearAction - Reusable "Clear active plan" button for quick switcher
  *
- * Extracted from PlanQuickSwitcherPalette to reduce component complexity.
- * Renders the "Clear active plan" action row.
+ * Features:
+ * - Glass morphism styling with accent colors
+ * - Hover/highlight states
+ * - Auto-scaling on hover
  */
 
 import { cn } from "@/lib/utils";
@@ -15,7 +17,7 @@ interface PlanClearActionProps {
   isHighlighted: boolean;
   onMouseEnter: () => void;
   onClick: () => void;
-  highlightedRef?: React.RefObject<HTMLButtonElement | null>;
+  highlightedRef?: React.RefObject<HTMLButtonElement> | undefined;
 }
 
 // ============================================================================
@@ -30,7 +32,7 @@ export function PlanClearAction({
 }: PlanClearActionProps) {
   return (
     <button
-      ref={isHighlighted ? highlightedRef : null}
+      ref={highlightedRef}
       onClick={onClick}
       onMouseEnter={onMouseEnter}
       className={cn(
@@ -41,12 +43,14 @@ export function PlanClearAction({
         isHighlighted && "bg-accent"
       )}
       style={{
-        background: isHighlighted
-          ? "hsla(14 100% 60% / 0.16)"
-          : "transparent",
-        border: isHighlighted
-          ? "1px solid hsla(14 100% 60% / 0.35)"
-          : "1px solid transparent",
+        background:
+          isHighlighted
+            ? "hsla(14 100% 60% / 0.16)"
+            : "transparent",
+        border:
+          isHighlighted
+            ? "1px solid hsla(14 100% 60% / 0.35)"
+            : "1px solid transparent",
       }}
       data-testid="plan-quick-switcher-clear"
     >

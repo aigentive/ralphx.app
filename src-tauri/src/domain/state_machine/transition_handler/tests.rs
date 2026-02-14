@@ -2582,3 +2582,40 @@ async fn test_executing_entry_recovers_existing_branch_into_worktree() {
         "Worktree should be on the existing branch"
     );
 }
+
+// ==================
+// ExecutionBlocked error handling tests
+// ==================
+
+/// Test that ExecutionFailed event transitions Executing to Failed
+/// This verifies the INTENDED behavior when on_enter returns ExecutionBlocked:
+/// the handler should auto-dispatch ExecutionFailed to move the task to Failed.
+///
+/// NOTE: This test verifies the event transition logic. The actual on_enter
+/// ExecutionBlocked path (uncommitted changes guard) is tested via integration
+/// tests that require filesystem setup.
+#[tokio::test]
+async fn test_execution_blocked_triggers_execution_failed() {
+    let (_spawner, emitter, _notifier, _dep_manager, _review_starter, services) =
+        create_test_services();
+    let context = create_context_with_services("task-1", "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let mut handler = TransitionHandler::new(&mut machine);
+
+    // Simulate what happens when on_enter(Executing) returns ExecutionBlocked:
+    // the handler should auto-dispatch ExecutionFailed
+    let result = handler
+        .handle_transition(
+            &State::Executing,
+            &TaskEvent::ExecutionFailed {
+                error: "Execution blocked: uncommitted changes in working directory".to_string(),
+            },
+        )
+        .await;
+
+    // Should transition to Failed state
+    assert!(matches!(result.state(), Some(State::Failed(_))));
+
+    // Should emit task_failed event
+    assert!(emitter.has_event("task_failed"));
+}

@@ -1,21 +1,26 @@
 /**
- * usePlanQuickSwitcher - Orchestration hook for plan quick switcher palette
+ * usePlanQuickSwitcher - Orchestration hook for PlanQuickSwitcherPalette
  *
- * Extracts all state, effects, and handlers from PlanQuickSwitcherPalette.
- * Owns:
- * - State: searchQuery, highlightedIndex, anchorCenterX
- * - Refs: inputRef, containerRef, highlightedItemRef
- * - Store subscriptions: activePlanId, planCandidates, isLoading, error, actions
- * - Derived data: filteredCandidates, canClearPlan
- * - Effects: auto-focus, load on open, reset on close, highlight reset, anchor centering, click-outside
- * - Handlers: handleKeyDown, handleSelect, handleClear, handleRetry, setters
+ * Extracts ALL state, effects, and handlers from the component.
+ * Provides clean separation of concerns: hook manages logic, component renders UI.
+ *
+ * Features:
+ * - Dynamic item indexing (quick-action | clear | candidates)
+ * - Keyboard navigation with blocking support
+ * - Quick action flow integration
+ * - Auto-focus, auto-load, auto-reset lifecycle
+ * - Anchor centering calculation
+ * - Click-outside-to-close detection
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { usePlanStore } from "@/stores/planStore";
+import { useIdeationQuickAction } from "./useIdeationQuickAction";
+import { useQuickActionFlow } from "./useQuickActionFlow";
+import { usePlanCandidateSort } from "./usePlanCandidateSort";
 import type { PlanCandidate } from "@/stores/planStore";
 import type { SelectionSource } from "@/api/plan";
-import { usePlanCandidateSort } from "./usePlanCandidateSort";
+import type { QuickAction, UseQuickActionFlowReturn } from "./useQuickActionFlow";
 
 // ============================================================================
 // Types
@@ -25,20 +30,21 @@ export interface UsePlanQuickSwitcherProps {
   projectId: string;
   isOpen: boolean;
   onClose: () => void;
-  /** Source attribution for selection analytics */
   selectionSource?: SelectionSource;
-  /** Show clear active plan command at top of list when active plan exists */
   showClearAction?: boolean;
-  /** Optional CSS selector used to anchor horizontal centering to a specific container */
   anchorSelector?: string;
 }
+
+export type PaletteItem =
+  | { type: "quick-action" }
+  | { type: "clear" }
+  | { type: "candidate"; candidate: PlanCandidate };
 
 export interface UsePlanQuickSwitcherReturn {
   // State
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   highlightedIndex: number;
-  setHighlightedIndex: (index: number | ((prev: number) => number)) => void;
   anchorCenterX: number | null;
 
   // Refs
@@ -52,9 +58,19 @@ export interface UsePlanQuickSwitcherReturn {
   isLoading: boolean;
   error: string | null;
 
-  // Derived data
+  // Derived state
+  sortedCandidates: PlanCandidate[];
   filteredCandidates: PlanCandidate[];
   canClearPlan: boolean;
+  showQuickAction: boolean;
+
+  // Quick action
+  quickAction: QuickAction;
+  quickActionFlow: UseQuickActionFlowReturn;
+
+  // Helpers
+  getItemAtIndex: (index: number) => PaletteItem;
+  getTotalItemCount: () => number;
 
   // Handlers
   handleKeyDown: (e: React.KeyboardEvent) => void;
@@ -75,17 +91,26 @@ export function usePlanQuickSwitcher({
   showClearAction = true,
   anchorSelector,
 }: UsePlanQuickSwitcherProps): UsePlanQuickSwitcherReturn {
+  // ============================================================================
   // State
+  // ============================================================================
+
   const [searchQuery, setSearchQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [anchorCenterX, setAnchorCenterX] = useState<number | null>(null);
 
+  // ============================================================================
   // Refs
+  // ============================================================================
+
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const highlightedItemRef = useRef<HTMLButtonElement>(null);
 
-  // Store subscriptions
+  // ============================================================================
+  // Store State
+  // ============================================================================
+
   const activePlanId = usePlanStore((state) => state.activePlanByProject[projectId] ?? null);
   const planCandidates = usePlanStore((state) => state.planCandidates);
   const isLoading = usePlanStore((state) => state.isLoading);
@@ -94,18 +119,84 @@ export function usePlanQuickSwitcher({
   const setActivePlan = usePlanStore((state) => state.setActivePlan);
   const clearActivePlan = usePlanStore((state) => state.clearActivePlan);
 
-  // Derived data: planCandidates → sortedCandidates → filteredCandidates
+  // ============================================================================
+  // Quick Action Integration
+  // ============================================================================
+
+  const quickAction = useIdeationQuickAction(projectId);
+  const quickActionFlow = useQuickActionFlow(quickAction);
+
+  // ============================================================================
+  // Derived State
+  // ============================================================================
+
   const sortedCandidates = usePlanCandidateSort(planCandidates);
 
-  const filteredCandidates = searchQuery
-    ? sortedCandidates.filter((plan) =>
-        (plan.title || "Untitled Plan").toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : sortedCandidates;
+  const filteredCandidates = useMemo(() => {
+    if (!searchQuery) return sortedCandidates;
+    const query = searchQuery.toLowerCase();
+    return sortedCandidates.filter((plan) =>
+      (plan.title || "Untitled Plan").toLowerCase().includes(query)
+    );
+  }, [searchQuery, sortedCandidates]);
 
   const canClearPlan = showClearAction && Boolean(activePlanId);
 
+  const showQuickAction =
+    quickAction.isVisible(searchQuery) && quickActionFlow.flowState === "idle";
+
+  // ============================================================================
+  // Item Indexing Helpers
+  // ============================================================================
+
+  const getTotalItemCount = useCallback((): number => {
+    let count = 0;
+    if (showQuickAction || quickActionFlow.flowState !== "idle") count++;
+    if (canClearPlan) count++;
+    count += filteredCandidates.length;
+    return count;
+  }, [showQuickAction, quickActionFlow.flowState, canClearPlan, filteredCandidates.length]);
+
+  const getItemAtIndex = useCallback(
+    (index: number): PaletteItem => {
+      let currentIndex = 0;
+
+      // Quick action is at index 0 when visible OR when flow is active
+      if (showQuickAction || quickActionFlow.flowState !== "idle") {
+        if (index === currentIndex) {
+          return { type: "quick-action" };
+        }
+        currentIndex++;
+      }
+
+      // Clear action is next (if enabled)
+      if (canClearPlan) {
+        if (index === currentIndex) {
+          return { type: "clear" };
+        }
+        currentIndex++;
+      }
+
+      // Candidates fill remaining indices
+      const candidateIndex = index - currentIndex;
+      const candidate = filteredCandidates[candidateIndex];
+      if (candidateIndex >= 0 && candidate) {
+        return {
+          type: "candidate",
+          candidate,
+        };
+      }
+
+      // Fallback for out-of-bounds
+      return { type: "quick-action" };
+    },
+    [showQuickAction, quickActionFlow.flowState, canClearPlan, filteredCandidates]
+  );
+
+  // ============================================================================
   // Handlers
+  // ============================================================================
+
   const handleSelect = useCallback(
     async (sessionId: string) => {
       try {
@@ -133,8 +224,16 @@ export function usePlanQuickSwitcher({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      const candidateCount = filteredCandidates.length;
-      const itemCount = candidateCount + (canClearPlan ? 1 : 0);
+      // When quick action flow is blocking, only Escape works
+      if (quickActionFlow.isBlocking) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          quickActionFlow.cancel();
+        }
+        return;
+      }
+
+      const itemCount = getTotalItemCount();
 
       // Prevent navigation if no interactive rows
       if (itemCount === 0 && ["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
@@ -150,6 +249,7 @@ export function usePlanQuickSwitcher({
             setHighlightedIndex((i) => Math.min(i + 1, itemCount - 1));
           }
           break;
+
         case "ArrowUp":
           e.preventDefault();
           if (e.shiftKey) {
@@ -158,39 +258,59 @@ export function usePlanQuickSwitcher({
             setHighlightedIndex((i) => Math.max(i - 1, 0));
           }
           break;
+
         case "Home":
           e.preventDefault();
           setHighlightedIndex(0);
           break;
+
         case "End":
           e.preventDefault();
           setHighlightedIndex(itemCount - 1);
           break;
+
         case "Enter": {
           e.preventDefault();
-          if (canClearPlan && highlightedIndex === 0) {
-            handleClear();
-            return;
-          }
+          const item = getItemAtIndex(highlightedIndex);
 
-          const candidateIndex = canClearPlan ? highlightedIndex - 1 : highlightedIndex;
-          if (candidateIndex >= 0 && filteredCandidates[candidateIndex]) {
-            handleSelect(filteredCandidates[candidateIndex].sessionId);
+          switch (item.type) {
+            case "quick-action":
+              quickActionFlow.startConfirmation();
+              break;
+
+            case "clear":
+              handleClear();
+              break;
+
+            case "candidate":
+              handleSelect(item.candidate.sessionId);
+              break;
           }
           break;
         }
+
         case "Escape":
           e.preventDefault();
           onClose();
           break;
       }
     },
-    [canClearPlan, filteredCandidates, handleClear, highlightedIndex, onClose, handleSelect]
+    [
+      quickActionFlow,
+      getTotalItemCount,
+      getItemAtIndex,
+      highlightedIndex,
+      handleClear,
+      handleSelect,
+      onClose,
+    ]
   );
 
+  // ============================================================================
   // Effects
+  // ============================================================================
 
-  // Auto-focus search input when opened
+  // Auto-focus input when opened
   useEffect(() => {
     if (isOpen && inputRef.current) {
       inputRef.current.focus();
@@ -212,7 +332,7 @@ export function usePlanQuickSwitcher({
     }
   }, [isOpen]);
 
-  // Reset highlighted index when filtered list changes
+  // Reset highlighted index when search query changes
   useEffect(() => {
     setHighlightedIndex(0);
   }, [searchQuery]);
@@ -230,7 +350,7 @@ export function usePlanQuickSwitcher({
     }
   }, [highlightedIndex]);
 
-  // Center to the requested anchor container (e.g., split-layout left pane).
+  // Center to the requested anchor container
   useEffect(() => {
     if (!isOpen) return;
 
@@ -284,12 +404,15 @@ export function usePlanQuickSwitcher({
     return () => document.removeEventListener("mousedown", handleMouseDown);
   }, [isOpen, onClose]);
 
+  // ============================================================================
+  // Return
+  // ============================================================================
+
   return {
     // State
     searchQuery,
     setSearchQuery,
     highlightedIndex,
-    setHighlightedIndex,
     anchorCenterX,
 
     // Refs
@@ -303,9 +426,19 @@ export function usePlanQuickSwitcher({
     isLoading,
     error,
 
-    // Derived data
+    // Derived state
+    sortedCandidates,
     filteredCandidates,
     canClearPlan,
+    showQuickAction,
+
+    // Quick action
+    quickAction,
+    quickActionFlow,
+
+    // Helpers
+    getItemAtIndex,
+    getTotalItemCount,
 
     // Handlers
     handleKeyDown,
