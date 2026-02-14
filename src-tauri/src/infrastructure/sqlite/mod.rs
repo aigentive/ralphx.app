@@ -11,6 +11,9 @@ pub mod sqlite_app_state_repo;
 pub mod sqlite_artifact_bucket_repo;
 pub mod sqlite_artifact_flow_repo;
 pub mod sqlite_artifact_repo;
+pub mod sqlite_chat_attachment_repo;
+#[cfg(test)]
+mod sqlite_chat_attachment_repo_tests;
 pub mod sqlite_chat_conversation_repo;
 pub mod sqlite_chat_message_repo;
 #[cfg(test)]
@@ -56,6 +59,7 @@ pub use sqlite_app_state_repo::SqliteAppStateRepository;
 pub use sqlite_artifact_bucket_repo::SqliteArtifactBucketRepository;
 pub use sqlite_artifact_flow_repo::SqliteArtifactFlowRepository;
 pub use sqlite_artifact_repo::SqliteArtifactRepository;
+pub use sqlite_chat_attachment_repo::SqliteChatAttachmentRepository;
 pub use sqlite_chat_conversation_repo::SqliteChatConversationRepository;
 pub use sqlite_chat_message_repo::SqliteChatMessageRepository;
 pub use sqlite_execution_settings_repo::{

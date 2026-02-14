@@ -9,6 +9,7 @@ pub mod app_state_repository;
 pub mod artifact_bucket_repository;
 pub mod artifact_flow_repository;
 pub mod artifact_repository;
+pub mod chat_attachment_repository;
 pub mod chat_conversation_repository;
 pub mod chat_message_repository;
 pub mod execution_settings_repository;
@@ -48,6 +49,7 @@ pub use app_state_repository::AppStateRepository;
 pub use artifact_bucket_repository::ArtifactBucketRepository;
 pub use artifact_flow_repository::ArtifactFlowRepository;
 pub use artifact_repository::{ArtifactRepository, ArtifactVersionSummary};
+pub use chat_attachment_repository::ChatAttachmentRepository;
 pub use chat_conversation_repository::ChatConversationRepository;
 pub use chat_message_repository::ChatMessageRepository;
 pub use execution_settings_repository::{
