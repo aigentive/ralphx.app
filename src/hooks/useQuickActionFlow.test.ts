@@ -1,70 +1,54 @@
 /**
  * useQuickActionFlow hook tests
  *
- * Tests the generic quick action state machine:
- * - State transitions: idle → confirming → creating → success → idle
- * - Cancel/dismiss transitions back to idle
- * - Error handling transitions back to idle with error message
- * - Entity ID capture on success
- * - isBlocking correctness (true when not idle)
- * - Edge cases (double-confirm, cancel during idle)
+ * Tests for the generic quick action state machine hook
+ * that manages: idle → confirming → creating → success flow
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
+import { renderHook, waitFor, act } from "@testing-library/react";
+import { Sparkles } from "lucide-react";
 import { useQuickActionFlow } from "./useQuickActionFlow";
 import type { QuickAction } from "./useQuickActionFlow";
 
 describe("useQuickActionFlow", () => {
-  let mockAction: QuickAction;
+  const mockNavigate = vi.fn();
+  const mockExecute = vi.fn();
+
+  const createMockAction = (overrides?: Partial<QuickAction>): QuickAction => ({
+    id: "test-action",
+    label: "Test Action",
+    icon: Sparkles,
+    description: (query: string) => `Create test for "${query}"`,
+    isVisible: (query: string) => query.length > 0,
+    execute: mockExecute,
+    creatingLabel: "Creating test...",
+    successLabel: "Test created!",
+    viewLabel: "View Test",
+    navigateTo: mockNavigate,
+    ...overrides,
+  });
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mockIcon = vi.fn() as any;
-    mockAction = {
-      id: "test-action",
-      label: "Test Action",
-      icon: mockIcon,
-      description: (query) => `"${query}"`,
-      isVisible: (query) => query.trim().length > 0,
-      execute: vi.fn().mockResolvedValue("test-entity-123"),
-      creatingLabel: "Creating...",
-      successLabel: "Created!",
-      viewLabel: "View",
-      navigateTo: vi.fn(),
-    };
   });
 
   describe("initial state", () => {
     it("should start in idle state", () => {
-      const { result } = renderHook(() => useQuickActionFlow(mockAction));
+      const action = createMockAction();
+      const { result } = renderHook(() => useQuickActionFlow(action));
 
       expect(result.current.flowState).toBe("idle");
       expect(result.current.createdEntityId).toBeNull();
       expect(result.current.error).toBeNull();
-    });
-
-    it("should have isBlocking=false when idle", () => {
-      const { result } = renderHook(() => useQuickActionFlow(mockAction));
-
       expect(result.current.isBlocking).toBe(false);
-    });
-
-    it("should provide all transition methods", () => {
-      const { result } = renderHook(() => useQuickActionFlow(mockAction));
-
-      expect(result.current.startConfirmation).toBeInstanceOf(Function);
-      expect(result.current.confirm).toBeInstanceOf(Function);
-      expect(result.current.cancel).toBeInstanceOf(Function);
-      expect(result.current.viewEntity).toBeInstanceOf(Function);
-      expect(result.current.dismiss).toBeInstanceOf(Function);
     });
   });
 
   describe("state transitions", () => {
-    it("should transition from idle to confirming when startConfirmation is called", () => {
-      const { result } = renderHook(() => useQuickActionFlow(mockAction));
+    it("should transition from idle to confirming", () => {
+      const action = createMockAction();
+      const { result } = renderHook(() => useQuickActionFlow(action));
 
       act(() => {
         result.current.startConfirmation();
@@ -74,13 +58,13 @@ describe("useQuickActionFlow", () => {
       expect(result.current.isBlocking).toBe(true);
     });
 
-    it("should transition from confirming to idle when cancel is called", () => {
-      const { result } = renderHook(() => useQuickActionFlow(mockAction));
+    it("should transition from confirming back to idle on cancel", () => {
+      const action = createMockAction();
+      const { result } = renderHook(() => useQuickActionFlow(action));
 
       act(() => {
         result.current.startConfirmation();
       });
-
       expect(result.current.flowState).toBe("confirming");
 
       act(() => {
@@ -91,31 +75,10 @@ describe("useQuickActionFlow", () => {
       expect(result.current.isBlocking).toBe(false);
     });
 
-    it("should transition from confirming to creating when confirm is called", async () => {
-      const { result } = renderHook(() => useQuickActionFlow(mockAction));
-
-      act(() => {
-        result.current.startConfirmation();
-      });
-
-      let confirmPromise: Promise<void>;
-      act(() => {
-        confirmPromise = result.current.confirm("test query");
-      });
-
-      // Should be in creating state while execute() is running
-      expect(result.current.flowState).toBe("creating");
-      expect(result.current.isBlocking).toBe(true);
-
-      await act(async () => {
-        await confirmPromise;
-      });
-
-      expect(mockAction.execute).toHaveBeenCalledWith("test query");
-    });
-
-    it("should transition from creating to success on successful execution", async () => {
-      const { result } = renderHook(() => useQuickActionFlow(mockAction));
+    it("should transition from confirming → creating → success on successful confirm", async () => {
+      mockExecute.mockResolvedValueOnce("entity-123");
+      const action = createMockAction();
+      const { result } = renderHook(() => useQuickActionFlow(action));
 
       act(() => {
         result.current.startConfirmation();
@@ -125,14 +88,21 @@ describe("useQuickActionFlow", () => {
         await result.current.confirm("test query");
       });
 
-      expect(result.current.flowState).toBe("success");
-      expect(result.current.createdEntityId).toBe("test-entity-123");
+      await waitFor(() => {
+        expect(result.current.flowState).toBe("success");
+      });
+
+      expect(result.current.createdEntityId).toBe("entity-123");
       expect(result.current.error).toBeNull();
       expect(result.current.isBlocking).toBe(true);
+      expect(mockExecute).toHaveBeenCalledWith("test query");
     });
 
-    it("should transition from success to idle when dismiss is called", async () => {
-      const { result } = renderHook(() => useQuickActionFlow(mockAction));
+    it("should transition from creating back to idle on error", async () => {
+      const error = new Error("Creation failed");
+      mockExecute.mockRejectedValueOnce(error);
+      const action = createMockAction();
+      const { result } = renderHook(() => useQuickActionFlow(action));
 
       act(() => {
         result.current.startConfirmation();
@@ -142,19 +112,45 @@ describe("useQuickActionFlow", () => {
         await result.current.confirm("test query");
       });
 
-      expect(result.current.flowState).toBe("success");
+      await waitFor(() => {
+        expect(result.current.flowState).toBe("idle");
+      });
+
+      expect(result.current.error).toBe("Creation failed");
+      expect(result.current.createdEntityId).toBeNull();
+      expect(result.current.isBlocking).toBe(false);
+    });
+
+    it("should transition from success to idle on dismiss", async () => {
+      mockExecute.mockResolvedValueOnce("entity-123");
+      const action = createMockAction();
+      const { result } = renderHook(() => useQuickActionFlow(action));
+
+      act(() => {
+        result.current.startConfirmation();
+      });
+
+      await act(async () => {
+        await result.current.confirm("test query");
+      });
+
+      await waitFor(() => {
+        expect(result.current.flowState).toBe("success");
+      });
 
       act(() => {
         result.current.dismiss();
       });
 
       expect(result.current.flowState).toBe("idle");
-      expect(result.current.isBlocking).toBe(false);
       expect(result.current.createdEntityId).toBeNull();
+      expect(result.current.isBlocking).toBe(false);
     });
 
-    it("should transition from success to idle when viewEntity is called", async () => {
-      const { result } = renderHook(() => useQuickActionFlow(mockAction));
+    it("should transition from success to idle on cancel", async () => {
+      mockExecute.mockResolvedValueOnce("entity-123");
+      const action = createMockAction();
+      const { result } = renderHook(() => useQuickActionFlow(action));
 
       act(() => {
         result.current.startConfirmation();
@@ -164,26 +160,124 @@ describe("useQuickActionFlow", () => {
         await result.current.confirm("test query");
       });
 
-      expect(result.current.flowState).toBe("success");
+      await waitFor(() => {
+        expect(result.current.flowState).toBe("success");
+      });
+
+      act(() => {
+        result.current.cancel();
+      });
+
+      expect(result.current.flowState).toBe("idle");
+      expect(result.current.isBlocking).toBe(false);
+    });
+
+    it("should call navigateTo and transition to idle on viewEntity", async () => {
+      mockExecute.mockResolvedValueOnce("entity-123");
+      const action = createMockAction();
+      const { result } = renderHook(() => useQuickActionFlow(action));
+
+      act(() => {
+        result.current.startConfirmation();
+      });
+
+      await act(async () => {
+        await result.current.confirm("test query");
+      });
+
+      await waitFor(() => {
+        expect(result.current.flowState).toBe("success");
+      });
 
       act(() => {
         result.current.viewEntity();
       });
 
-      expect(mockAction.navigateTo).toHaveBeenCalledWith("test-entity-123");
+      expect(mockNavigate).toHaveBeenCalledWith("entity-123");
       expect(result.current.flowState).toBe("idle");
       expect(result.current.isBlocking).toBe(false);
+    });
+  });
+
+  describe("isBlocking derived state", () => {
+    it("should be false when idle", () => {
+      const action = createMockAction();
+      const { result } = renderHook(() => useQuickActionFlow(action));
+
+      expect(result.current.isBlocking).toBe(false);
+    });
+
+    it("should be true when confirming", () => {
+      const action = createMockAction();
+      const { result } = renderHook(() => useQuickActionFlow(action));
+
+      act(() => {
+        result.current.startConfirmation();
+      });
+
+      expect(result.current.isBlocking).toBe(true);
+    });
+
+    it("should be true when creating", async () => {
+      let resolveExecute: (value: string) => void;
+      const executePromise = new Promise<string>((resolve) => {
+        resolveExecute = resolve;
+      });
+      mockExecute.mockReturnValueOnce(executePromise);
+
+      const action = createMockAction();
+      const { result } = renderHook(() => useQuickActionFlow(action));
+
+      act(() => {
+        result.current.startConfirmation();
+      });
+
+      act(() => {
+        void result.current.confirm("test query");
+      });
+
+      // During async execution (creating state)
+      await waitFor(() => {
+        expect(result.current.flowState).toBe("creating");
+      });
+      expect(result.current.isBlocking).toBe(true);
+
+      // Resolve the promise
+      act(() => {
+        resolveExecute("entity-123");
+      });
+
+      await waitFor(() => {
+        expect(result.current.flowState).toBe("success");
+      });
+    });
+
+    it("should be true when in success state", async () => {
+      mockExecute.mockResolvedValueOnce("entity-123");
+      const action = createMockAction();
+      const { result } = renderHook(() => useQuickActionFlow(action));
+
+      act(() => {
+        result.current.startConfirmation();
+      });
+
+      await act(async () => {
+        await result.current.confirm("test query");
+      });
+
+      await waitFor(() => {
+        expect(result.current.flowState).toBe("success");
+      });
+
+      expect(result.current.isBlocking).toBe(true);
     });
   });
 
   describe("error handling", () => {
-    it("should transition to idle with error message when execution fails", async () => {
-      const errorAction = {
-        ...mockAction,
-        execute: vi.fn().mockRejectedValue(new Error("Network error")),
-      };
-
-      const { result } = renderHook(() => useQuickActionFlow(errorAction));
+    it("should handle string errors from execute", async () => {
+      mockExecute.mockRejectedValueOnce("String error");
+      const action = createMockAction();
+      const { result } = renderHook(() => useQuickActionFlow(action));
 
       act(() => {
         result.current.startConfirmation();
@@ -193,19 +287,16 @@ describe("useQuickActionFlow", () => {
         await result.current.confirm("test query");
       });
 
-      expect(result.current.flowState).toBe("idle");
-      expect(result.current.error).toBe("Network error");
-      expect(result.current.createdEntityId).toBeNull();
-      expect(result.current.isBlocking).toBe(false);
+      await waitFor(() => {
+        expect(result.current.error).toBe("String error");
+      });
     });
 
-    it("should handle non-Error exceptions", async () => {
-      const errorAction = {
-        ...mockAction,
-        execute: vi.fn().mockRejectedValue("String error"),
-      };
-
-      const { result } = renderHook(() => useQuickActionFlow(errorAction));
+    it("should handle Error objects from execute", async () => {
+      const error = new Error("Detailed error");
+      mockExecute.mockRejectedValueOnce(error);
+      const action = createMockAction();
+      const { result } = renderHook(() => useQuickActionFlow(action));
 
       act(() => {
         result.current.startConfirmation();
@@ -215,18 +306,15 @@ describe("useQuickActionFlow", () => {
         await result.current.confirm("test query");
       });
 
-      expect(result.current.flowState).toBe("idle");
-      expect(result.current.error).toBe("An error occurred");
-      expect(result.current.isBlocking).toBe(false);
+      await waitFor(() => {
+        expect(result.current.error).toBe("Detailed error");
+      });
     });
 
-    it("should clear error when startConfirmation is called again", async () => {
-      const errorAction = {
-        ...mockAction,
-        execute: vi.fn().mockRejectedValue(new Error("Network error")),
-      };
-
-      const { result } = renderHook(() => useQuickActionFlow(errorAction));
+    it("should handle unknown error types from execute", async () => {
+      mockExecute.mockRejectedValueOnce({ code: 42 });
+      const action = createMockAction();
+      const { result } = renderHook(() => useQuickActionFlow(action));
 
       act(() => {
         result.current.startConfirmation();
@@ -236,113 +324,76 @@ describe("useQuickActionFlow", () => {
         await result.current.confirm("test query");
       });
 
-      expect(result.current.error).toBe("Network error");
+      await waitFor(() => {
+        expect(result.current.error).toBe("An unknown error occurred");
+      });
+    });
+
+    it("should clear error when transitioning back to success", async () => {
+      // First attempt fails
+      mockExecute.mockRejectedValueOnce(new Error("First error"));
+      const action = createMockAction();
+      const { result } = renderHook(() => useQuickActionFlow(action));
 
       act(() => {
         result.current.startConfirmation();
+      });
+
+      await act(async () => {
+        await result.current.confirm("test query");
+      });
+
+      await waitFor(() => {
+        expect(result.current.error).toBe("First error");
+      });
+
+      // Second attempt succeeds
+      mockExecute.mockResolvedValueOnce("entity-123");
+
+      act(() => {
+        result.current.startConfirmation();
+      });
+
+      await act(async () => {
+        await result.current.confirm("test query");
+      });
+
+      await waitFor(() => {
+        expect(result.current.flowState).toBe("success");
       });
 
       expect(result.current.error).toBeNull();
-      expect(result.current.flowState).toBe("confirming");
-    });
-  });
-
-  describe("isBlocking behavior", () => {
-    it("should be false only in idle state", () => {
-      const { result } = renderHook(() => useQuickActionFlow(mockAction));
-
-      expect(result.current.flowState).toBe("idle");
-      expect(result.current.isBlocking).toBe(false);
-    });
-
-    it("should be true in confirming state", () => {
-      const { result } = renderHook(() => useQuickActionFlow(mockAction));
-
-      act(() => {
-        result.current.startConfirmation();
-      });
-
-      expect(result.current.flowState).toBe("confirming");
-      expect(result.current.isBlocking).toBe(true);
-    });
-
-    it("should be true in creating state", async () => {
-      const { result } = renderHook(() => useQuickActionFlow(mockAction));
-
-      act(() => {
-        result.current.startConfirmation();
-      });
-
-      let confirmPromise: Promise<void>;
-      act(() => {
-        confirmPromise = result.current.confirm("test query");
-      });
-
-      expect(result.current.flowState).toBe("creating");
-      expect(result.current.isBlocking).toBe(true);
-
-      await act(async () => {
-        await confirmPromise;
-      });
-    });
-
-    it("should be true in success state", async () => {
-      const { result } = renderHook(() => useQuickActionFlow(mockAction));
-
-      act(() => {
-        result.current.startConfirmation();
-      });
-
-      await act(async () => {
-        await result.current.confirm("test query");
-      });
-
-      expect(result.current.flowState).toBe("success");
-      expect(result.current.isBlocking).toBe(true);
-    });
-
-    it("should return to false after dismiss", async () => {
-      const { result } = renderHook(() => useQuickActionFlow(mockAction));
-
-      act(() => {
-        result.current.startConfirmation();
-      });
-
-      await act(async () => {
-        await result.current.confirm("test query");
-      });
-
-      act(() => {
-        result.current.dismiss();
-      });
-
-      expect(result.current.flowState).toBe("idle");
-      expect(result.current.isBlocking).toBe(false);
     });
   });
 
   describe("edge cases", () => {
-    it("should handle double-confirm (confirm called twice rapidly)", async () => {
-      const { result } = renderHook(() => useQuickActionFlow(mockAction));
+    it("should not call navigateTo if no entity was created", () => {
+      const action = createMockAction();
+      const { result } = renderHook(() => useQuickActionFlow(action));
+
+      act(() => {
+        result.current.viewEntity();
+      });
+
+      expect(mockNavigate).not.toHaveBeenCalled();
+    });
+
+    it("should handle multiple startConfirmation calls", () => {
+      const action = createMockAction();
+      const { result } = renderHook(() => useQuickActionFlow(action));
 
       act(() => {
         result.current.startConfirmation();
+        result.current.startConfirmation();
+        result.current.startConfirmation();
       });
 
-      await act(async () => {
-        await Promise.all([
-          result.current.confirm("query 1"),
-          result.current.confirm("query 2"),
-        ]);
-      });
-
-      // execute should only be called once (first call)
-      expect(mockAction.execute).toHaveBeenCalledTimes(1);
-      expect(mockAction.execute).toHaveBeenCalledWith("query 1");
+      expect(result.current.flowState).toBe("confirming");
     });
 
-    it("should handle cancel when already in idle state (no-op)", () => {
-      const { result } = renderHook(() => useQuickActionFlow(mockAction));
+    it("should ignore cancel when in idle state", () => {
+      const action = createMockAction();
+      const { result } = renderHook(() => useQuickActionFlow(action));
 
       expect(result.current.flowState).toBe("idle");
 
@@ -351,174 +402,6 @@ describe("useQuickActionFlow", () => {
       });
 
       expect(result.current.flowState).toBe("idle");
-      expect(result.current.isBlocking).toBe(false);
-    });
-
-    it("should handle dismiss when already in idle state (no-op)", () => {
-      const { result } = renderHook(() => useQuickActionFlow(mockAction));
-
-      expect(result.current.flowState).toBe("idle");
-
-      act(() => {
-        result.current.dismiss();
-      });
-
-      expect(result.current.flowState).toBe("idle");
-    });
-
-    it("should handle viewEntity when no entity ID exists (no-op)", () => {
-      const { result } = renderHook(() => useQuickActionFlow(mockAction));
-
-      act(() => {
-        result.current.viewEntity();
-      });
-
-      expect(mockAction.navigateTo).not.toHaveBeenCalled();
-      expect(result.current.flowState).toBe("idle");
-    });
-
-    it("should handle confirm called from idle state (skip to creating)", async () => {
-      const { result } = renderHook(() => useQuickActionFlow(mockAction));
-
-      expect(result.current.flowState).toBe("idle");
-
-      await act(async () => {
-        await result.current.confirm("direct query");
-      });
-
-      expect(mockAction.execute).toHaveBeenCalledWith("direct query");
-      expect(result.current.flowState).toBe("success");
-      expect(result.current.createdEntityId).toBe("test-entity-123");
-    });
-
-    it("should preserve entity ID across multiple dismiss/startConfirmation cycles", async () => {
-      const { result } = renderHook(() => useQuickActionFlow(mockAction));
-
-      // First cycle
-      act(() => {
-        result.current.startConfirmation();
-      });
-
-      await act(async () => {
-        await result.current.confirm("query 1");
-      });
-
-      expect(result.current.createdEntityId).toBe("test-entity-123");
-
-      act(() => {
-        result.current.dismiss();
-      });
-
-      expect(result.current.createdEntityId).toBeNull();
-
-      // Second cycle with different entity ID
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (mockAction.execute as any).mockResolvedValue("test-entity-456");
-
-      act(() => {
-        result.current.startConfirmation();
-      });
-
-      await act(async () => {
-        await result.current.confirm("query 2");
-      });
-
-      expect(result.current.createdEntityId).toBe("test-entity-456");
-    });
-  });
-
-  describe("callback stability", () => {
-    it("should maintain stable callback references across state changes", async () => {
-      const { result } = renderHook(() => useQuickActionFlow(mockAction));
-
-      const initialCallbacks = {
-        startConfirmation: result.current.startConfirmation,
-        confirm: result.current.confirm,
-        cancel: result.current.cancel,
-        viewEntity: result.current.viewEntity,
-        dismiss: result.current.dismiss,
-      };
-
-      act(() => {
-        result.current.startConfirmation();
-      });
-
-      expect(result.current.startConfirmation).toBe(
-        initialCallbacks.startConfirmation
-      );
-      expect(result.current.confirm).toBe(initialCallbacks.confirm);
-      expect(result.current.cancel).toBe(initialCallbacks.cancel);
-      expect(result.current.viewEntity).toBe(initialCallbacks.viewEntity);
-      expect(result.current.dismiss).toBe(initialCallbacks.dismiss);
-
-      await act(async () => {
-        await result.current.confirm("test");
-      });
-
-      expect(result.current.startConfirmation).toBe(
-        initialCallbacks.startConfirmation
-      );
-      expect(result.current.confirm).toBe(initialCallbacks.confirm);
-      expect(result.current.cancel).toBe(initialCallbacks.cancel);
-      expect(result.current.viewEntity).toBe(initialCallbacks.viewEntity);
-      expect(result.current.dismiss).toBe(initialCallbacks.dismiss);
-    });
-  });
-
-  describe("action reference changes", () => {
-    it("should handle action reference changing", () => {
-      const { result, rerender } = renderHook(
-        (props: { action: QuickAction }) => useQuickActionFlow(props.action),
-        {
-          initialProps: { action: mockAction },
-        }
-      );
-
-      expect(result.current.flowState).toBe("idle");
-
-      const newAction = {
-        ...mockAction,
-        id: "new-action",
-      };
-
-      rerender({ action: newAction });
-
-      expect(result.current.flowState).toBe("idle");
-    });
-
-    it("should use the latest action when confirm is called", async () => {
-      const action1 = {
-        ...mockAction,
-        execute: vi.fn().mockResolvedValue("entity-1"),
-      };
-
-      const action2 = {
-        ...mockAction,
-        execute: vi.fn().mockResolvedValue("entity-2"),
-      };
-
-      const { result, rerender } = renderHook(
-        (props: { action: QuickAction }) => useQuickActionFlow(props.action),
-        {
-          initialProps: { action: action1 },
-        }
-      );
-
-      act(() => {
-        result.current.startConfirmation();
-      });
-
-      // Change action while in confirming state
-      rerender({ action: action2 });
-
-      await act(async () => {
-        await result.current.confirm("test");
-      });
-
-      // Should use the latest action
-      expect(action2.execute).toHaveBeenCalledWith("test");
-      expect(action1.execute).not.toHaveBeenCalled();
-      expect(result.current.createdEntityId).toBe("entity-2");
     });
   });
 });

@@ -1,248 +1,314 @@
 /**
- * usePlanQuickSwitcher hook tests
+ * Tests for usePlanQuickSwitcher hook
  *
- * Tests for:
- * - State management (searchQuery, highlightedIndex, anchorCenterX)
- * - Refs management (inputRef, containerRef, highlightedItemRef)
- * - Store subscriptions
- * - Derived data (filteredCandidates, canClearPlan)
- * - Event handlers (handleKeyDown, handleSelect, handleClear, handleRetry)
- * - Effects (auto-focus, load on open, reset on close, anchor centering)
+ * Tests:
+ * - Item indexing logic (getItemAtIndex, getTotalItemCount)
+ * - Keyboard navigation across item types
+ * - Blocking behavior when quickActionFlow.isBlocking
+ * - Handlers (select, clear, retry)
+ * - Derived state (sortedCandidates, showQuickAction)
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { renderHook, act, waitFor } from "@testing-library/react";
 import { usePlanQuickSwitcher } from "./usePlanQuickSwitcher";
-import { usePlanStore, type PlanCandidate } from "@/stores/planStore";
+import type { PlanCandidate } from "@/stores/planStore";
+import type { QuickAction, UseQuickActionFlowReturn } from "./useQuickActionFlow";
 
-// Mock zustand store
+// ============================================================================
+// Mocks
+// ============================================================================
+
+const mockLoadCandidates = vi.fn();
+const mockSetActivePlan = vi.fn();
+const mockClearActivePlan = vi.fn();
+
+
+// Mock planStore
 vi.mock("@/stores/planStore", () => ({
-  usePlanStore: vi.fn(),
+  usePlanStore: vi.fn((selector) => {
+    const state = {
+      activePlanByProject: { "project-1": "active-plan-1" },
+      planCandidates: mockPlanCandidates,
+      isLoading: false,
+      error: null,
+      loadCandidates: mockLoadCandidates,
+      setActivePlan: mockSetActivePlan,
+      clearActivePlan: mockClearActivePlan,
+    };
+    return selector ? selector(state) : state;
+  }),
 }));
 
-// ============================================================================
-// Test Data
-// ============================================================================
+// Mock hooks
+const mockQuickAction: QuickAction = {
+  id: "ideation",
+  label: "Start new ideation session",
+  icon: vi.fn() as unknown as QuickAction["icon"],
+  description: (query: string) => `"${query}"`,
+  isVisible: (query: string) => query.trim().length > 0,
+  execute: vi.fn(),
+  creatingLabel: "Creating...",
+  successLabel: "Created!",
+  viewLabel: "View",
+  navigateTo: vi.fn(),
+};
 
-const createMockCandidate = (overrides: Partial<PlanCandidate> = {}): PlanCandidate => ({
-  sessionId: "session-1",
-  title: "Test Plan",
-  acceptedAt: "2026-01-24T10:00:00Z",
-  taskStats: {
-    total: 10,
-    incomplete: 5,
-    activeNow: 2,
-  },
-  interactionStats: {
-    selectedCount: 3,
-    lastSelectedAt: "2026-01-24T12:00:00Z",
-  },
-  score: 0.85,
-  ...overrides,
-});
+const mockQuickActionFlow: UseQuickActionFlowReturn = {
+  flowState: "idle",
+  createdEntityId: null,
+  error: null,
+  startConfirmation: vi.fn(),
+  confirm: vi.fn(),
+  cancel: vi.fn(),
+  viewEntity: vi.fn(),
+  dismiss: vi.fn(),
+  isBlocking: false,
+};
 
-const mockCandidates: PlanCandidate[] = [
-  createMockCandidate({ sessionId: "session-1", title: "Feature A" }),
-  createMockCandidate({ sessionId: "session-2", title: "Feature B" }),
-  createMockCandidate({ sessionId: "session-3", title: "Bug Fixes" }),
+vi.mock("./useIdeationQuickAction", () => ({
+  useIdeationQuickAction: vi.fn(() => mockQuickAction),
+}));
+
+vi.mock("./useQuickActionFlow", () => ({
+  useQuickActionFlow: vi.fn(() => mockQuickActionFlow),
+}));
+
+vi.mock("./usePlanCandidateSort", () => ({
+  usePlanCandidateSort: vi.fn((candidates) => candidates),
+}));
+
+// Sample plan candidates
+const mockPlanCandidates: PlanCandidate[] = [
+  {
+    sessionId: "plan-1",
+    title: "Feature A",
+    acceptedAt: "2026-02-14T10:00:00Z",
+    taskStats: { total: 5, incomplete: 2, activeNow: 1 },
+    interactionStats: { selectedCount: 3, lastSelectedAt: "2026-02-13T10:00:00Z" },
+    score: 0.9,
+  },
+  {
+    sessionId: "plan-2",
+    title: "Feature B",
+    acceptedAt: "2026-02-13T10:00:00Z",
+    taskStats: { total: 3, incomplete: 1, activeNow: 0 },
+    interactionStats: { selectedCount: 1, lastSelectedAt: "2026-02-12T10:00:00Z" },
+    score: 0.7,
+  },
 ];
 
+// ============================================================================
+// Tests
+// ============================================================================
+
 describe("usePlanQuickSwitcher", () => {
-  const mockLoadCandidates = vi.fn();
-  const mockSetActivePlan = vi.fn().mockResolvedValue(undefined);
-  const mockClearActivePlan = vi.fn().mockResolvedValue(undefined);
-  const mockOnClose = vi.fn();
-
-  const defaultStoreState = {
-    activePlanByProject: { "project-1": "session-1" },
-    planCandidates: mockCandidates,
-    isLoading: false,
-    error: null,
-    loadCandidates: mockLoadCandidates,
-    setActivePlan: mockSetActivePlan,
-    clearActivePlan: mockClearActivePlan,
-  };
-
   beforeEach(() => {
     vi.clearAllMocks();
-    (usePlanStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector) =>
-      selector(defaultStoreState)
-    );
+    // Reset mock quick action flow state
+    mockQuickActionFlow.flowState = "idle";
+    mockQuickActionFlow.isBlocking = false;
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  // ==========================================================================
-  // State Management
-  // ==========================================================================
-
-  describe("state management", () => {
-    it("initializes with empty searchQuery", () => {
+  describe("Item indexing logic", () => {
+    it("should calculate total item count correctly with all items visible", () => {
       const { result } = renderHook(() =>
         usePlanQuickSwitcher({
-          isOpen: true,
           projectId: "project-1",
-          onClose: mockOnClose,
+          isOpen: true,
+          onClose: vi.fn(),
+          showClearAction: true,
         })
       );
 
-      expect(result.current.searchQuery).toBe("");
+      act(() => {
+        result.current.setSearchQuery("Feature"); // Matches "Feature A" and "Feature B"
+      });
+
+      // Quick action (index 0) + Clear (index 1) + 2 candidates = 4 total
+      expect(result.current.getTotalItemCount()).toBe(4);
     });
 
-    it("initializes with highlightedIndex 0", () => {
+    it("should calculate total item count without clear action", () => {
       const { result } = renderHook(() =>
         usePlanQuickSwitcher({
-          isOpen: true,
           projectId: "project-1",
-          onClose: mockOnClose,
+          isOpen: true,
+          onClose: vi.fn(),
+          showClearAction: false,
         })
       );
 
-      expect(result.current.highlightedIndex).toBe(0);
+      act(() => {
+        result.current.setSearchQuery("Feature"); // Matches "Feature A" and "Feature B"
+      });
+
+      // Quick action (index 0) + 2 candidates = 3 total
+      expect(result.current.getTotalItemCount()).toBe(3);
     });
 
-    it("resets searchQuery when closed", () => {
-      const { result, rerender } = renderHook(
-        ({ isOpen }) =>
-          usePlanQuickSwitcher({
-            isOpen,
-            projectId: "project-1",
-            onClose: mockOnClose,
-          }),
-        { initialProps: { isOpen: true } }
+    it("should calculate total item count without quick action", () => {
+      const { result } = renderHook(() =>
+        usePlanQuickSwitcher({
+          projectId: "project-1",
+          isOpen: true,
+          onClose: vi.fn(),
+          showClearAction: true,
+        })
+      );
+
+      // Hide quick action by setting empty search query
+      act(() => {
+        result.current.setSearchQuery("");
+      });
+
+      // Clear (index 0) + 2 candidates = 3 total (no quick action when query is empty)
+      expect(result.current.getTotalItemCount()).toBe(3);
+    });
+
+    it("should get quick action item at index 0 when visible", () => {
+      const { result } = renderHook(() =>
+        usePlanQuickSwitcher({
+          projectId: "project-1",
+          isOpen: true,
+          onClose: vi.fn(),
+          showClearAction: true,
+        })
       );
 
       act(() => {
         result.current.setSearchQuery("test");
       });
 
-      expect(result.current.searchQuery).toBe("test");
-
-      rerender({ isOpen: false });
-
-      expect(result.current.searchQuery).toBe("");
+      const item = result.current.getItemAtIndex(0);
+      expect(item.type).toBe("quick-action");
     });
 
-    it("resets highlightedIndex when search query changes", () => {
+    it("should get clear item at correct index with quick action visible", () => {
       const { result } = renderHook(() =>
         usePlanQuickSwitcher({
-          isOpen: true,
           projectId: "project-1",
-          onClose: mockOnClose,
+          isOpen: true,
+          onClose: vi.fn(),
+          showClearAction: true,
         })
       );
 
       act(() => {
-        result.current.setHighlightedIndex(2);
+        result.current.setSearchQuery("test");
       });
 
-      expect(result.current.highlightedIndex).toBe(2);
+      // With quick action: clear is at index 1
+      const item = result.current.getItemAtIndex(1);
+      expect(item.type).toBe("clear");
+    });
+
+    it("should get clear item at index 0 when quick action not visible", () => {
+      const { result } = renderHook(() =>
+        usePlanQuickSwitcher({
+          projectId: "project-1",
+          isOpen: true,
+          onClose: vi.fn(),
+          showClearAction: true,
+        })
+      );
 
       act(() => {
-        result.current.setSearchQuery("feature");
+        result.current.setSearchQuery("");
       });
 
-      expect(result.current.highlightedIndex).toBe(0);
+      // Without quick action: clear is at index 0
+      const item = result.current.getItemAtIndex(0);
+      expect(item.type).toBe("clear");
+    });
+
+    it("should get candidate items at correct indices", () => {
+      const { result } = renderHook(() =>
+        usePlanQuickSwitcher({
+          projectId: "project-1",
+          isOpen: true,
+          onClose: vi.fn(),
+          showClearAction: true,
+        })
+      );
+
+      act(() => {
+        result.current.setSearchQuery("Feature"); // Matches both candidates
+      });
+
+      // With quick action and clear: candidates start at index 2
+      const item1 = result.current.getItemAtIndex(2);
+      expect(item1.type).toBe("candidate");
+      if (item1.type === "candidate") {
+        expect(item1.candidate.sessionId).toBe("plan-1");
+      }
+
+      const item2 = result.current.getItemAtIndex(3);
+      expect(item2.type).toBe("candidate");
+      if (item2.type === "candidate") {
+        expect(item2.candidate.sessionId).toBe("plan-2");
+      }
+    });
+
+    it("should return quick-action for out of bounds index", () => {
+      const { result } = renderHook(() =>
+        usePlanQuickSwitcher({
+          projectId: "project-1",
+          isOpen: true,
+          onClose: vi.fn(),
+          showClearAction: true,
+        })
+      );
+
+      act(() => {
+        result.current.setSearchQuery("test");
+      });
+
+      const item = result.current.getItemAtIndex(999);
+      expect(item.type).toBe("quick-action");
     });
   });
 
-  // ==========================================================================
-  // Store Subscriptions
-  // ==========================================================================
-
-  describe("store subscriptions", () => {
-    it("exposes activePlanId from store", () => {
+  describe("Derived state", () => {
+    it("should filter candidates by search query", () => {
       const { result } = renderHook(() =>
         usePlanQuickSwitcher({
-          isOpen: true,
           projectId: "project-1",
-          onClose: mockOnClose,
-        })
-      );
-
-      expect(result.current.activePlanId).toBe("session-1");
-    });
-
-    it("exposes planCandidates from store", () => {
-      const { result } = renderHook(() =>
-        usePlanQuickSwitcher({
           isOpen: true,
-          projectId: "project-1",
-          onClose: mockOnClose,
-        })
-      );
-
-      expect(result.current.planCandidates).toEqual(mockCandidates);
-    });
-
-    it("exposes isLoading from store", () => {
-      const { result } = renderHook(() =>
-        usePlanQuickSwitcher({
-          isOpen: true,
-          projectId: "project-1",
-          onClose: mockOnClose,
-        })
-      );
-
-      expect(result.current.isLoading).toBe(false);
-    });
-
-    it("exposes error from store", () => {
-      const { result } = renderHook(() =>
-        usePlanQuickSwitcher({
-          isOpen: true,
-          projectId: "project-1",
-          onClose: mockOnClose,
-        })
-      );
-
-      expect(result.current.error).toBeNull();
-    });
-  });
-
-  // ==========================================================================
-  // Derived Data
-  // ==========================================================================
-
-  describe("derived data", () => {
-    it("returns all candidates when searchQuery is empty", () => {
-      const { result } = renderHook(() =>
-        usePlanQuickSwitcher({
-          isOpen: true,
-          projectId: "project-1",
-          onClose: mockOnClose,
-        })
-      );
-
-      expect(result.current.filteredCandidates).toEqual(mockCandidates);
-    });
-
-    it("filters candidates by title (case-insensitive)", () => {
-      const { result } = renderHook(() =>
-        usePlanQuickSwitcher({
-          isOpen: true,
-          projectId: "project-1",
-          onClose: mockOnClose,
+          onClose: vi.fn(),
         })
       );
 
       act(() => {
-        result.current.setSearchQuery("feature");
+        result.current.setSearchQuery("Feature A");
+      });
+
+      expect(result.current.filteredCandidates).toHaveLength(1);
+      expect(result.current.filteredCandidates[0].sessionId).toBe("plan-1");
+    });
+
+    it("should show all candidates when search query is empty", () => {
+      const { result } = renderHook(() =>
+        usePlanQuickSwitcher({
+          projectId: "project-1",
+          isOpen: true,
+          onClose: vi.fn(),
+        })
+      );
+
+      act(() => {
+        result.current.setSearchQuery("");
       });
 
       expect(result.current.filteredCandidates).toHaveLength(2);
-      expect(result.current.filteredCandidates[0].title).toBe("Feature A");
-      expect(result.current.filteredCandidates[1].title).toBe("Feature B");
     });
 
-    it("returns canClearPlan true when showClearAction and activePlanId exist", () => {
+    it("should set canClearPlan to true when showClearAction and active plan exists", () => {
       const { result } = renderHook(() =>
         usePlanQuickSwitcher({
-          isOpen: true,
           projectId: "project-1",
-          onClose: mockOnClose,
+          isOpen: true,
+          onClose: vi.fn(),
           showClearAction: true,
         })
       );
@@ -250,12 +316,12 @@ describe("usePlanQuickSwitcher", () => {
       expect(result.current.canClearPlan).toBe(true);
     });
 
-    it("returns canClearPlan false when showClearAction is false", () => {
+    it("should set canClearPlan to false when showClearAction is false", () => {
       const { result } = renderHook(() =>
         usePlanQuickSwitcher({
-          isOpen: true,
           projectId: "project-1",
-          onClose: mockOnClose,
+          isOpen: true,
+          onClose: vi.fn(),
           showClearAction: false,
         })
       );
@@ -263,56 +329,391 @@ describe("usePlanQuickSwitcher", () => {
       expect(result.current.canClearPlan).toBe(false);
     });
 
-    it("returns canClearPlan false when no active plan", () => {
-      (usePlanStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector) =>
-        selector({
-          ...defaultStoreState,
-          activePlanByProject: {},
+    it("should show quick action when query is non-empty and flow is idle", () => {
+      const { result } = renderHook(() =>
+        usePlanQuickSwitcher({
+          projectId: "project-1",
+          isOpen: true,
+          onClose: vi.fn(),
         })
       );
 
+      act(() => {
+        result.current.setSearchQuery("test");
+      });
+
+      expect(result.current.showQuickAction).toBe(true);
+    });
+
+    it("should hide quick action when query is empty", () => {
       const { result } = renderHook(() =>
         usePlanQuickSwitcher({
-          isOpen: true,
           projectId: "project-1",
-          onClose: mockOnClose,
+          isOpen: true,
+          onClose: vi.fn(),
+        })
+      );
+
+      act(() => {
+        result.current.setSearchQuery("");
+      });
+
+      expect(result.current.showQuickAction).toBe(false);
+    });
+
+    it("should hide quick action when flow is not idle", () => {
+      mockQuickActionFlow.flowState = "confirming";
+      mockQuickActionFlow.isBlocking = true;
+
+      const { result } = renderHook(() =>
+        usePlanQuickSwitcher({
+          projectId: "project-1",
+          isOpen: true,
+          onClose: vi.fn(),
+        })
+      );
+
+      act(() => {
+        result.current.setSearchQuery("test");
+      });
+
+      expect(result.current.showQuickAction).toBe(false);
+    });
+  });
+
+  describe("Keyboard navigation", () => {
+    it("should handle ArrowDown to increment highlighted index", () => {
+      const { result } = renderHook(() =>
+        usePlanQuickSwitcher({
+          projectId: "project-1",
+          isOpen: true,
+          onClose: vi.fn(),
           showClearAction: true,
         })
       );
 
-      expect(result.current.canClearPlan).toBe(false);
+      act(() => {
+        result.current.setSearchQuery("test");
+      });
+
+      const event = new KeyboardEvent("keydown", { key: "ArrowDown" });
+      Object.defineProperty(event, "preventDefault", {
+        value: vi.fn(),
+        writable: true,
+      });
+
+      act(() => {
+        result.current.handleKeyDown(event as unknown as React.KeyboardEvent);
+      });
+
+      expect(result.current.highlightedIndex).toBe(1);
+    });
+
+    it("should handle ArrowUp to decrement highlighted index", () => {
+      const { result } = renderHook(() =>
+        usePlanQuickSwitcher({
+          projectId: "project-1",
+          isOpen: true,
+          onClose: vi.fn(),
+          showClearAction: true,
+        })
+      );
+
+      // Manually set highlighted index to test ArrowUp
+      act(() => {
+        result.current.setSearchQuery("Feature");
+      });
+
+      // Move down twice
+      act(() => {
+        result.current.handleKeyDown({
+          key: "ArrowDown",
+          preventDefault: vi.fn(),
+        } as unknown as React.KeyboardEvent);
+      });
+
+      act(() => {
+        result.current.handleKeyDown({
+          key: "ArrowDown",
+          preventDefault: vi.fn(),
+        } as unknown as React.KeyboardEvent);
+      });
+
+      expect(result.current.highlightedIndex).toBe(2);
+
+      // Move up once
+      act(() => {
+        result.current.handleKeyDown({
+          key: "ArrowUp",
+          preventDefault: vi.fn(),
+        } as unknown as React.KeyboardEvent);
+      });
+
+      expect(result.current.highlightedIndex).toBe(1);
+    });
+
+    it("should handle Home to jump to first item", () => {
+      const { result } = renderHook(() =>
+        usePlanQuickSwitcher({
+          projectId: "project-1",
+          isOpen: true,
+          onClose: vi.fn(),
+          showClearAction: true,
+        })
+      );
+
+      act(() => {
+        result.current.setSearchQuery("Feature");
+      });
+
+      // Move to last item
+      act(() => {
+        result.current.handleKeyDown({
+          key: "End",
+          preventDefault: vi.fn(),
+        } as unknown as React.KeyboardEvent);
+      });
+
+      expect(result.current.highlightedIndex).toBe(3); // Last item
+
+      // Jump back to first
+      act(() => {
+        result.current.handleKeyDown({
+          key: "Home",
+          preventDefault: vi.fn(),
+        } as unknown as React.KeyboardEvent);
+      });
+
+      expect(result.current.highlightedIndex).toBe(0);
+    });
+
+    it("should handle End to jump to last item", () => {
+      const { result } = renderHook(() =>
+        usePlanQuickSwitcher({
+          projectId: "project-1",
+          isOpen: true,
+          onClose: vi.fn(),
+          showClearAction: true,
+        })
+      );
+
+      act(() => {
+        result.current.setSearchQuery("Feature");
+      });
+
+      act(() => {
+        result.current.handleKeyDown({
+          key: "End",
+          preventDefault: vi.fn(),
+        } as unknown as React.KeyboardEvent);
+      });
+
+      expect(result.current.highlightedIndex).toBe(3); // Last item (quick-action + clear + 2 candidates)
+    });
+
+    it("should handle Escape to close", () => {
+      const onClose = vi.fn();
+      const { result } = renderHook(() =>
+        usePlanQuickSwitcher({
+          projectId: "project-1",
+          isOpen: true,
+          onClose,
+        })
+      );
+
+      act(() => {
+        result.current.handleKeyDown({
+          key: "Escape",
+          preventDefault: vi.fn(),
+        } as unknown as React.KeyboardEvent);
+      });
+
+      expect(onClose).toHaveBeenCalled();
+    });
+
+    it("should block all navigation except Escape when quickActionFlow is blocking", () => {
+      mockQuickActionFlow.isBlocking = true;
+      const onClose = vi.fn();
+
+      const { result } = renderHook(() =>
+        usePlanQuickSwitcher({
+          projectId: "project-1",
+          isOpen: true,
+          onClose,
+        })
+      );
+
+      // Try ArrowDown - should not change index
+      act(() => {
+        result.current.handleKeyDown({
+          key: "ArrowDown",
+          preventDefault: vi.fn(),
+        } as unknown as React.KeyboardEvent);
+      });
+      expect(result.current.highlightedIndex).toBe(0);
+
+      // Try Enter - should not trigger selection
+      act(() => {
+        result.current.handleKeyDown({
+          key: "Enter",
+          preventDefault: vi.fn(),
+        } as unknown as React.KeyboardEvent);
+      });
+      expect(mockSetActivePlan).not.toHaveBeenCalled();
+
+      // Escape should still work and call cancel
+      act(() => {
+        result.current.handleKeyDown({
+          key: "Escape",
+          preventDefault: vi.fn(),
+        } as unknown as React.KeyboardEvent);
+      });
+      expect(mockQuickActionFlow.cancel).toHaveBeenCalled();
     });
   });
 
-  // ==========================================================================
-  // Handlers
-  // ==========================================================================
-
-  describe("handlers", () => {
-    it("handleSelect calls setActivePlan and onClose", async () => {
+  describe("Enter key handling", () => {
+    it("should trigger quick action when Enter pressed on quick action item", () => {
       const { result } = renderHook(() =>
         usePlanQuickSwitcher({
-          isOpen: true,
           projectId: "project-1",
-          onClose: mockOnClose,
-          selectionSource: "quick_switcher",
+          isOpen: true,
+          onClose: vi.fn(),
+          showClearAction: true,
+        })
+      );
+
+      act(() => {
+        result.current.setSearchQuery("Feature");
+      });
+
+      // Highlighted index starts at 0 (quick action)
+      act(() => {
+        result.current.handleKeyDown({
+          key: "Enter",
+          preventDefault: vi.fn(),
+        } as unknown as React.KeyboardEvent);
+      });
+
+      expect(mockQuickActionFlow.startConfirmation).toHaveBeenCalled();
+    });
+
+    it("should call handleClear when Enter pressed on clear item", () => {
+      const { result } = renderHook(() =>
+        usePlanQuickSwitcher({
+          projectId: "project-1",
+          isOpen: true,
+          onClose: vi.fn(),
+          showClearAction: true,
+        })
+      );
+
+      act(() => {
+        result.current.setSearchQuery("Feature");
+      });
+
+      // Move to clear item (index 1)
+      act(() => {
+        result.current.handleKeyDown({
+          key: "ArrowDown",
+          preventDefault: vi.fn(),
+        } as unknown as React.KeyboardEvent);
+      });
+
+      act(() => {
+        result.current.handleKeyDown({
+          key: "Enter",
+          preventDefault: vi.fn(),
+        } as unknown as React.KeyboardEvent);
+      });
+
+      expect(mockClearActivePlan).toHaveBeenCalledWith("project-1");
+    });
+
+    it("should call handleSelect when Enter pressed on candidate item", async () => {
+      const onClose = vi.fn();
+      mockSetActivePlan.mockResolvedValue(undefined);
+
+      const { result } = renderHook(() =>
+        usePlanQuickSwitcher({
+          projectId: "project-1",
+          isOpen: true,
+          onClose,
+          showClearAction: true,
+        })
+      );
+
+      act(() => {
+        result.current.setSearchQuery("Feature");
+      });
+
+      // Move to first candidate (index 2)
+      act(() => {
+        result.current.handleKeyDown({
+          key: "ArrowDown",
+          preventDefault: vi.fn(),
+        } as unknown as React.KeyboardEvent);
+      });
+
+      act(() => {
+        result.current.handleKeyDown({
+          key: "ArrowDown",
+          preventDefault: vi.fn(),
+        } as unknown as React.KeyboardEvent);
+      });
+
+      await act(async () => {
+        result.current.handleKeyDown({
+          key: "Enter",
+          preventDefault: vi.fn(),
+        } as unknown as React.KeyboardEvent);
+      });
+
+      await waitFor(() => {
+        expect(mockSetActivePlan).toHaveBeenCalledWith(
+          "project-1",
+          "plan-1",
+          "quick_switcher"
+        );
+      });
+    });
+  });
+
+  describe("Handlers", () => {
+    it("should call setActivePlan and close on handleSelect", async () => {
+      const onClose = vi.fn();
+      mockSetActivePlan.mockResolvedValue(undefined);
+
+      const { result } = renderHook(() =>
+        usePlanQuickSwitcher({
+          projectId: "project-1",
+          isOpen: true,
+          onClose,
+          selectionSource: "kanban_inline",
         })
       );
 
       await act(async () => {
-        await result.current.handleSelect("session-2");
+        await result.current.handleSelect("plan-2");
       });
 
-      expect(mockSetActivePlan).toHaveBeenCalledWith("project-1", "session-2", "quick_switcher");
-      expect(mockOnClose).toHaveBeenCalled();
+      expect(mockSetActivePlan).toHaveBeenCalledWith(
+        "project-1",
+        "plan-2",
+        "kanban_inline"
+      );
+      expect(onClose).toHaveBeenCalled();
     });
 
-    it("handleClear calls clearActivePlan and onClose", async () => {
+    it("should call clearActivePlan and close on handleClear", async () => {
+      const onClose = vi.fn();
+      mockClearActivePlan.mockResolvedValue(undefined);
+
       const { result } = renderHook(() =>
         usePlanQuickSwitcher({
-          isOpen: true,
           projectId: "project-1",
-          onClose: mockOnClose,
+          isOpen: true,
+          onClose,
         })
       );
 
@@ -321,15 +722,15 @@ describe("usePlanQuickSwitcher", () => {
       });
 
       expect(mockClearActivePlan).toHaveBeenCalledWith("project-1");
-      expect(mockOnClose).toHaveBeenCalled();
+      expect(onClose).toHaveBeenCalled();
     });
 
-    it("handleRetry calls loadCandidates", () => {
+    it("should call loadCandidates on handleRetry", () => {
       const { result } = renderHook(() =>
         usePlanQuickSwitcher({
-          isOpen: true,
           projectId: "project-1",
-          onClose: mockOnClose,
+          isOpen: true,
+          onClose: vi.fn(),
         })
       );
 
@@ -339,96 +740,138 @@ describe("usePlanQuickSwitcher", () => {
 
       expect(mockLoadCandidates).toHaveBeenCalledWith("project-1");
     });
+
+    it("should not close on handleSelect error", async () => {
+      const onClose = vi.fn();
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+      mockSetActivePlan.mockRejectedValue(new Error("Failed to set plan"));
+
+      const { result } = renderHook(() =>
+        usePlanQuickSwitcher({
+          projectId: "project-1",
+          isOpen: true,
+          onClose,
+        })
+      );
+
+      await act(async () => {
+        await result.current.handleSelect("plan-2");
+      });
+
+      expect(onClose).not.toHaveBeenCalled();
+      expect(consoleError).toHaveBeenCalled();
+
+      consoleError.mockRestore();
+    });
+
+    it("should not close on handleClear error", async () => {
+      const onClose = vi.fn();
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+      mockClearActivePlan.mockRejectedValue(new Error("Failed to clear plan"));
+
+      const { result } = renderHook(() =>
+        usePlanQuickSwitcher({
+          projectId: "project-1",
+          isOpen: true,
+          onClose,
+        })
+      );
+
+      await act(async () => {
+        await result.current.handleClear();
+      });
+
+      expect(onClose).not.toHaveBeenCalled();
+      expect(consoleError).toHaveBeenCalled();
+
+      consoleError.mockRestore();
+    });
   });
 
-  // ==========================================================================
-  // Effects
-  // ==========================================================================
-
-  describe("effects", () => {
-    it("loads candidates when opened", () => {
+  describe("Effects and lifecycle", () => {
+    it("should load candidates when opened", () => {
       renderHook(() =>
         usePlanQuickSwitcher({
-          isOpen: true,
           projectId: "project-1",
-          onClose: mockOnClose,
+          isOpen: true,
+          onClose: vi.fn(),
         })
       );
 
       expect(mockLoadCandidates).toHaveBeenCalledWith("project-1");
     });
 
-    it("does not load candidates when closed", () => {
+    it("should not load candidates when closed", () => {
       renderHook(() =>
         usePlanQuickSwitcher({
-          isOpen: false,
           projectId: "project-1",
-          onClose: mockOnClose,
+          isOpen: false,
+          onClose: vi.fn(),
         })
       );
 
       expect(mockLoadCandidates).not.toHaveBeenCalled();
     });
 
-    it("loads candidates when projectId changes", () => {
-      const { rerender } = renderHook(
-        ({ projectId }) =>
+    it("should reset search query and highlighted index when closed", () => {
+      const { result, rerender } = renderHook(
+        ({ isOpen }) =>
           usePlanQuickSwitcher({
-            isOpen: true,
-            projectId,
-            onClose: mockOnClose,
+            projectId: "project-1",
+            isOpen,
+            onClose: vi.fn(),
           }),
-        { initialProps: { projectId: "project-1" } }
+        { initialProps: { isOpen: true } }
       );
 
-      expect(mockLoadCandidates).toHaveBeenCalledWith("project-1");
+      act(() => {
+        result.current.setSearchQuery("test");
+      });
 
-      rerender({ projectId: "project-2" });
+      act(() => {
+        result.current.handleKeyDown({
+          key: "ArrowDown",
+          preventDefault: vi.fn(),
+        } as unknown as React.KeyboardEvent);
+      });
 
-      expect(mockLoadCandidates).toHaveBeenCalledWith("project-2");
+      expect(result.current.searchQuery).toBe("test");
+      expect(result.current.highlightedIndex).toBe(1);
+
+      // Close
+      rerender({ isOpen: false });
+
+      expect(result.current.searchQuery).toBe("");
+      expect(result.current.highlightedIndex).toBe(0);
     });
-  });
 
-  // ==========================================================================
-  // Refs
-  // ==========================================================================
-
-  describe("refs", () => {
-    it("provides inputRef", () => {
+    it("should reset highlighted index when search query changes", () => {
       const { result } = renderHook(() =>
         usePlanQuickSwitcher({
-          isOpen: true,
           projectId: "project-1",
-          onClose: mockOnClose,
+          isOpen: true,
+          onClose: vi.fn(),
         })
       );
 
-      expect(result.current.inputRef).toBeDefined();
-      expect(result.current.inputRef.current).toBeNull(); // Not attached to DOM in unit test
-    });
+      act(() => {
+        result.current.setSearchQuery("test");
+      });
 
-    it("provides containerRef", () => {
-      const { result } = renderHook(() =>
-        usePlanQuickSwitcher({
-          isOpen: true,
-          projectId: "project-1",
-          onClose: mockOnClose,
-        })
-      );
+      act(() => {
+        result.current.handleKeyDown({
+          key: "ArrowDown",
+          preventDefault: vi.fn(),
+        } as unknown as React.KeyboardEvent);
+      });
 
-      expect(result.current.containerRef).toBeDefined();
-    });
+      expect(result.current.highlightedIndex).toBe(1);
 
-    it("provides highlightedItemRef", () => {
-      const { result } = renderHook(() =>
-        usePlanQuickSwitcher({
-          isOpen: true,
-          projectId: "project-1",
-          onClose: mockOnClose,
-        })
-      );
+      act(() => {
+        result.current.setSearchQuery("new query");
+      });
 
-      expect(result.current.highlightedItemRef).toBeDefined();
+      expect(result.current.highlightedIndex).toBe(0);
     });
   });
 });

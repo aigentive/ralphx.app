@@ -1,146 +1,112 @@
 /**
- * Generic state machine hook for quick action flows
+ * Generic quick action state machine hook
  *
- * State transitions:
- * idle ──(startConfirmation)──> confirming ──(confirm)──> creating ──(success)──> success
- *   ^                               |                        |                       |
- *   └────────(cancel)───────────────┘                        |                       |
- *   └────────(error)──────────────────────────────────────────┘                       |
- *   └────────(dismiss/viewEntity)──────────────────────────────────────────────────────┘
- *
- * Usage:
- * ```tsx
- * const action: QuickAction = {
- *   id: "ideation",
- *   label: "Start new ideation session",
- *   execute: async (query) => createSession(query),
- *   navigateTo: (id) => router.push(`/sessions/${id}`),
- *   // ... other properties
- * };
- *
- * const flow = useQuickActionFlow(action);
- *
- * // User types in search → show action row → select
- * flow.startConfirmation();
- *
- * // User confirms
- * await flow.confirm(query);
- *
- * // User clicks "View"
- * flow.viewEntity();
- * ```
+ * Manages the flow: idle → confirming → creating → success
+ * Used by quick actions in the command palette and search interface.
  */
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback } from "react";
 import type { LucideIcon } from "lucide-react";
 
+/**
+ * State machine states for quick action flow
+ */
 export type QuickActionFlowState = "idle" | "confirming" | "creating" | "success";
 
+/**
+ * Quick action configuration
+ */
 export interface QuickAction {
-  /** Unique identifier for this action type */
   id: string;
-  /** Label shown in the action row (e.g. "Start new ideation session") */
   label: string;
-  /** Icon to display */
   icon: LucideIcon;
-  /** Description shown with the query (e.g. `"${query}"`) */
   description: (query: string) => string;
-  /** Whether this action should appear given the current query */
   isVisible: (query: string) => boolean;
-  /** Execute the action. Returns entity ID on success. */
   execute: (query: string) => Promise<string>;
-  /** Label shown during creation (e.g. "Creating your ideation session...") */
   creatingLabel: string;
-  /** Label shown on success (e.g. "Session created!") */
   successLabel: string;
-  /** Button text on success (e.g. "View Session") */
   viewLabel: string;
-  /** Navigate to the created entity */
   navigateTo: (entityId: string) => void;
 }
 
+/**
+ * Return type for useQuickActionFlow hook
+ */
 export interface UseQuickActionFlowReturn {
-  /** Current flow state */
   flowState: QuickActionFlowState;
-  /** ID of the created entity (available in success state) */
   createdEntityId: string | null;
-  /** Error message if creation failed */
   error: string | null;
-  /** Start the confirmation flow */
   startConfirmation: () => void;
-  /** Confirm and execute the action */
   confirm: (query: string) => Promise<void>;
-  /** Cancel confirmation (returns to idle) */
   cancel: () => void;
-  /** View the created entity (calls navigateTo, then returns to idle) */
   viewEntity: () => void;
-  /** Dismiss success banner or error (returns to idle) */
   dismiss: () => void;
-  /** True when flow is blocking UI (confirming | creating | success) */
   isBlocking: boolean;
 }
 
+/**
+ * Hook to manage quick action state machine flow
+ *
+ * State transitions:
+ * - idle → (startConfirmation) → confirming
+ * - confirming → (confirm) → creating → success
+ * - confirming → (cancel) → idle
+ * - creating → (error) → idle
+ * - success → (dismiss/cancel/viewEntity) → idle
+ */
 export function useQuickActionFlow(action: QuickAction): UseQuickActionFlowReturn {
   const [flowState, setFlowState] = useState<QuickActionFlowState>("idle");
   const [createdEntityId, setCreatedEntityId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  // Track if we're currently executing to prevent double-confirm
-  const isExecutingRef = useRef(false);
-
-  // Store action and entity ID in refs to always use latest version and stabilize callbacks
-  const actionRef = useRef(action);
-  actionRef.current = action;
-
-  const createdEntityIdRef = useRef<string | null>(null);
-  createdEntityIdRef.current = createdEntityId;
 
   const startConfirmation = useCallback(() => {
     setFlowState("confirming");
     setError(null);
   }, []);
 
-  const confirm = useCallback(async (query: string) => {
-    // Prevent double-confirm
-    if (isExecutingRef.current) {
-      return;
-    }
+  const confirm = useCallback(
+    async (query: string) => {
+      setFlowState("creating");
+      setError(null);
 
-    isExecutingRef.current = true;
-    setFlowState("creating");
-    setError(null);
+      try {
+        const entityId = await action.execute(query);
+        setCreatedEntityId(entityId);
+        setFlowState("success");
+      } catch (err) {
+        // Extract error message
+        let errorMessage: string;
+        if (typeof err === "string") {
+          errorMessage = err;
+        } else if (err instanceof Error) {
+          errorMessage = err.message;
+        } else {
+          errorMessage = "An unknown error occurred";
+        }
 
-    try {
-      const entityId = await actionRef.current.execute(query);
-      setCreatedEntityId(entityId);
-      setFlowState("success");
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "An error occurred";
-      setError(errorMessage);
-      setFlowState("idle");
-      setCreatedEntityId(null);
-    } finally {
-      isExecutingRef.current = false;
-    }
-  }, []);
+        setError(errorMessage);
+        setFlowState("idle");
+      }
+    },
+    [action]
+  );
 
   const cancel = useCallback(() => {
     setFlowState("idle");
-    setError(null);
+    setCreatedEntityId(null);
   }, []);
 
   const viewEntity = useCallback(() => {
-    if (createdEntityIdRef.current) {
-      actionRef.current.navigateTo(createdEntityIdRef.current);
+    if (createdEntityId) {
+      action.navigateTo(createdEntityId);
     }
     setFlowState("idle");
     setCreatedEntityId(null);
-  }, []);
+  }, [action, createdEntityId]);
 
   const dismiss = useCallback(() => {
     setFlowState("idle");
     setCreatedEntityId(null);
-    setError(null);
   }, []);
 
   const isBlocking = flowState !== "idle";

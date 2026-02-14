@@ -1,59 +1,64 @@
 /**
  * Plan candidate sorting hook
  *
- * Sorts plan candidates into tiers based on task execution status:
- * - Tier 0: Plans with actively executing tasks (activeNow > 0)
- * - Tier 1: Plans with incomplete work but no active execution (incomplete > 0, activeNow === 0)
- * - Tier 2: Plans with all tasks complete or no tasks
- *
- * Within each tier, candidates are sorted by most recently accepted first.
+ * Sorts plan candidates by priority tier and recency.
+ * Tier 0 (activeNow > 0) > Tier 1 (incomplete > 0) > Tier 2 (complete/empty)
+ * Within same tier: most recent (acceptedAt DESC) first
  */
 
 import { useMemo } from "react";
 import type { PlanCandidate } from "@/stores/planStore";
 
 /**
- * Get the tier number for a plan candidate.
- * Lower tier numbers have higher priority.
+ * Determine the priority tier for a plan candidate
+ * @param candidate - The plan candidate to evaluate
+ * @returns Tier number (0 = highest priority, 2 = lowest)
  */
-function getCandidateTier(c: PlanCandidate): number {
-  if (c.taskStats.activeNow > 0) return 0; // Tier 0: actively executing
-  if (c.taskStats.incomplete > 0) return 1; // Tier 1: has remaining work
-  return 2; // Tier 2: all complete or no tasks
+export function getCandidateTier(candidate: PlanCandidate): number {
+  const { activeNow, incomplete } = candidate.taskStats;
+
+  // Tier 0: Has tasks actively executing
+  if (activeNow > 0) {
+    return 0;
+  }
+
+  // Tier 1: Has incomplete tasks but none active
+  if (incomplete > 0) {
+    return 1;
+  }
+
+  // Tier 2: All complete or no tasks
+  return 2;
 }
 
 /**
- * Pure function to sort plan candidates by tier and acceptance date.
- * Returns a new array; does not mutate the input.
- *
- * Sorting rules:
- * 1. Primary: tier (0 > 1 > 2)
- * 2. Secondary: acceptedAt (most recent first within tier)
+ * Sort plan candidates by tier and recency
+ * @param candidates - Array of plan candidates to sort
+ * @returns Sorted array (does not mutate original)
  */
-export function sortPlanCandidates(
-  candidates: PlanCandidate[]
-): PlanCandidate[] {
+export function sortPlanCandidates(candidates: PlanCandidate[]): PlanCandidate[] {
+  // Create shallow copy to avoid mutating original
   return [...candidates].sort((a, b) => {
-    const aTier = getCandidateTier(a);
-    const bTier = getCandidateTier(b);
+    const tierA = getCandidateTier(a);
+    const tierB = getCandidateTier(b);
 
-    if (aTier !== bTier) {
-      return aTier - bTier;
+    // Primary sort: tier (ascending - lower tier = higher priority)
+    if (tierA !== tierB) {
+      return tierA - tierB;
     }
 
-    // Within same tier: most recently accepted first
-    return (
-      new Date(b.acceptedAt).getTime() - new Date(a.acceptedAt).getTime()
-    );
+    // Secondary sort: acceptedAt (descending - most recent first)
+    const dateA = new Date(a.acceptedAt).getTime();
+    const dateB = new Date(b.acceptedAt).getTime();
+    return dateB - dateA;
   });
 }
 
 /**
- * Hook wrapper that memoizes the sort result.
- * Returns a new sorted array when the input array reference changes.
+ * Hook to sort plan candidates with memoization
+ * @param candidates - Array of plan candidates to sort
+ * @returns Sorted array of plan candidates
  */
-export function usePlanCandidateSort(
-  candidates: PlanCandidate[]
-): PlanCandidate[] {
+export function usePlanCandidateSort(candidates: PlanCandidate[]): PlanCandidate[] {
   return useMemo(() => sortPlanCandidates(candidates), [candidates]);
 }

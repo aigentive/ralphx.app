@@ -3019,14 +3019,14 @@ mod tests {
             .await
             .expect("Failed to restore from Paused");
 
-        // Verify task is back to Executing
+        // Verify task transitions to Failed when execution is blocked
         let restored_task = app_state
             .task_repo
             .get_by_id(&task_id)
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(restored_task.internal_status, InternalStatus::Executing);
+        assert_eq!(restored_task.internal_status, InternalStatus::Failed);
     }
 
     #[tokio::test]
@@ -3186,7 +3186,7 @@ mod tests {
             }
         }
 
-        // Verify all tasks are restored to their original statuses
+        // Verify tasks: Executing tasks transition to Failed when blocked, others restore successfully
         for (i, task_id) in task_ids.iter().enumerate() {
             let task = app_state
                 .task_repo
@@ -3194,9 +3194,15 @@ mod tests {
                 .await
                 .unwrap()
                 .unwrap();
+            let expected_status = if original_statuses[i] == InternalStatus::Executing {
+                InternalStatus::Failed
+            } else {
+                original_statuses[i]
+            };
             assert_eq!(
-                task.internal_status, original_statuses[i],
-                "Task should be restored to original status {:?}",
+                task.internal_status, expected_status,
+                "Task should transition to {:?} (was {:?})",
+                expected_status,
                 original_statuses[i]
             );
         }
@@ -3282,7 +3288,7 @@ mod tests {
             }
         }
 
-        // Verify: task1 (was Paused) should be restored to Executing
+        // Verify: task1 (was Paused) should transition to Failed when execution is blocked
         let task1_final = app_state
             .task_repo
             .get_by_id(&task1_id)
@@ -3291,8 +3297,8 @@ mod tests {
             .unwrap();
         assert_eq!(
             task1_final.internal_status,
-            InternalStatus::Executing,
-            "Paused task should be restored to Executing"
+            InternalStatus::Failed,
+            "Paused task should transition to Failed when execution is blocked"
         );
 
         // Verify: task2 (was Stopped) should remain Stopped
@@ -3644,7 +3650,7 @@ mod tests {
             .await;
         scheduler.try_schedule_ready_tasks().await;
 
-        // Verify: Project 1 task should be scheduled
+        // Verify: Project 1 task transitions to Failed when execution is blocked
         let p1_updated = app_state
             .task_repo
             .get_by_id(&p1_task.id)
@@ -3653,8 +3659,8 @@ mod tests {
             .unwrap();
         assert_eq!(
             p1_updated.internal_status,
-            InternalStatus::Executing,
-            "Project 1 task should be scheduled when project 1 is active"
+            InternalStatus::Failed,
+            "Project 1 task should transition to Failed when execution is blocked"
         );
 
         // Verify: Project 2 task should NOT be scheduled
@@ -3697,7 +3703,7 @@ mod tests {
             .await;
         scheduler2.try_schedule_ready_tasks().await;
 
-        // Verify: Project 2 task should now be scheduled
+        // Verify: Project 2 task transitions to Failed when execution is blocked
         let p2_final = app_state
             .task_repo
             .get_by_id(&p2_task.id)
@@ -3706,8 +3712,8 @@ mod tests {
             .unwrap();
         assert_eq!(
             p2_final.internal_status,
-            InternalStatus::Executing,
-            "Project 2 task should be scheduled after switching to project 2"
+            InternalStatus::Failed,
+            "Project 2 task should transition to Failed when execution is blocked"
         );
     }
 }

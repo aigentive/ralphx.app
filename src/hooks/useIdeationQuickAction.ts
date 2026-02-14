@@ -1,88 +1,124 @@
 /**
- * useIdeationQuickAction - Factory hook for creating ideation sessions from command palette
+ * useIdeationQuickAction - Factory hook for ideation-specific QuickAction
  *
- * Returns a QuickAction object that:
- * - Creates a new ideation session via mutation
- * - Adds it to the ideation store
- * - Sets it as active
- * - Fire-and-forget: sends first message + spawns namer agent
- * - Provides navigation to the created session
- *
- * Visible when search query is non-empty.
+ * Creates a QuickAction that:
+ * - Is visible when search query is non-empty
+ * - Creates a new ideation session with the query as first message
+ * - Fire-and-forget sends the message and spawns a session namer
+ * - Navigates to the ideation view with the new session active
  */
 
 import { useMemo } from "react";
 import { Lightbulb } from "lucide-react";
-import type { QuickAction } from "@/types/quick-action";
-import { useCreateIdeationSession } from "./useIdeation";
+import { useCreateIdeationSession } from "@/hooks/useIdeation";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useUiStore } from "@/stores/uiStore";
 import { chatApi } from "@/api/chat";
 import { ideationApi } from "@/api/ideation";
+import type { LucideIcon } from "lucide-react";
+
+// ============================================================================
+// Types
+// ============================================================================
 
 /**
- * Hook that returns a QuickAction for creating ideation sessions
+ * QuickAction configuration for command palette integration
+ */
+export interface QuickAction {
+  /** Unique identifier for this action */
+  id: string;
+  /** Display label for the action button */
+  label: string;
+  /** Icon component to render */
+  icon: LucideIcon;
+  /** Function to generate description from search query */
+  description: (query: string) => string;
+  /** Function to determine if action should be visible for given query */
+  isVisible: (query: string) => boolean;
+  /** Function to execute the action, returns entity ID */
+  execute: (query: string) => Promise<string>;
+  /** Label to show while action is executing */
+  creatingLabel: string;
+  /** Label to show on success */
+  successLabel: string;
+  /** Label for the "View" button after success */
+  viewLabel: string;
+  /** Function to navigate to the created entity */
+  navigateTo: (entityId: string) => void;
+}
+
+// ============================================================================
+// Hook
+// ============================================================================
+
+/**
+ * Hook to create an ideation-specific QuickAction
  *
- * @param projectId - The project ID to create the session in
- * @returns Memoized QuickAction object
+ * @param projectId - The project ID for creating sessions
+ * @returns QuickAction configuration
  *
  * @example
  * ```tsx
- * const ideationAction = useIdeationQuickAction(projectId);
+ * const ideationAction = useIdeationQuickAction("project-123");
  *
- * // Check visibility
- * if (ideationAction.isVisible(query)) {
- *   // Render action
+ * if (ideationAction.isVisible(searchQuery)) {
+ *   <QuickActionRow
+ *     action={ideationAction}
+ *     searchQuery={searchQuery}
+ *     ...
+ *   />
  * }
- *
- * // Execute
- * const sessionId = await ideationAction.execute(query);
- *
- * // Navigate
- * ideationAction.navigateTo(sessionId);
  * ```
  */
 export function useIdeationQuickAction(projectId: string): QuickAction {
   const createSession = useCreateIdeationSession();
-  const addSession = useIdeationStore((s) => s.addSession);
-  const setActiveSession = useIdeationStore((s) => s.setActiveSession);
-  const setCurrentView = useUiStore((s) => s.setCurrentView);
+  const selectSession = useIdeationStore((state) => state.selectSession);
+  const setActiveSession = useIdeationStore((state) => state.setActiveSession);
+  const setCurrentView = useUiStore((state) => state.setCurrentView);
 
-  return useMemo(
+  return useMemo<QuickAction>(
     () => ({
       id: "ideation",
       label: "Start new ideation session",
       icon: Lightbulb,
-      description: (query) => `"${query}"`,
-      isVisible: (query) => query.trim().length > 0,
-      execute: async (query) => {
-        // Create session via mutation
-        const session = await createSession.mutateAsync({ projectId });
+      description: (query: string) => `"${query}"`,
+      isVisible: (query: string) => query.trim().length > 0,
 
-        // Add to store and set active
-        addSession(session);
-        setActiveSession(session.id);
-
-        // Fire-and-forget: send first message
-        chatApi.sendAgentMessage("ideation", session.id, query).catch(() => {
-          // Silently ignore errors - fire-and-forget
+      execute: async (query: string): Promise<string> => {
+        // Create the session
+        const session = await createSession.mutateAsync({
+          projectId,
         });
 
-        // Fire-and-forget: spawn session namer
-        ideationApi.sessions.spawnSessionNamer(session.id, query).catch(() => {
-          // Silently ignore errors - fire-and-forget
-        });
+        // Add to store and set as active
+        selectSession(session);
+
+        // Fire-and-forget: send initial message and spawn namer
+        // Don't await these - let them happen in background
+        chatApi
+          .sendAgentMessage("ideation", session.id, query)
+          .catch((error) => {
+            console.error("Failed to send initial ideation message:", error);
+          });
+
+        ideationApi.sessions
+          .spawnSessionNamer(session.id, query)
+          .catch((error) => {
+            console.error("Failed to spawn session namer:", error);
+          });
 
         return session.id;
       },
+
       creatingLabel: "Creating your ideation session...",
       successLabel: "Session created!",
       viewLabel: "View Session",
-      navigateTo: (sessionId) => {
+
+      navigateTo: (sessionId: string) => {
         setActiveSession(sessionId);
         setCurrentView("ideation");
       },
     }),
-    [projectId, createSession, addSession, setActiveSession, setCurrentView]
+    [projectId, createSession, selectSession, setActiveSession, setCurrentView]
   );
 }
