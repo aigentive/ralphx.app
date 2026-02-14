@@ -710,6 +710,12 @@ pub fn run() {
             commands::unified_chat_commands::is_chat_service_available,
             commands::unified_chat_commands::stop_agent,
             commands::unified_chat_commands::is_agent_running,
+            // Chat attachment commands
+            commands::chat_attachment_commands::upload_chat_attachment,
+            commands::chat_attachment_commands::link_attachments_to_message,
+            commands::chat_attachment_commands::list_conversation_attachments,
+            commands::chat_attachment_commands::list_message_attachments,
+            commands::chat_attachment_commands::delete_chat_attachment,
             // Activity event commands (pagination, filtering)
             commands::activity_commands::list_task_activity_events,
             commands::activity_commands::list_session_activity_events,

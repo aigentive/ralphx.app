@@ -6,6 +6,7 @@ pub mod agent_run;
 pub mod app_state;
 pub mod artifact;
 pub mod artifact_flow;
+pub mod chat_attachment;
 pub mod chat_conversation;
 pub mod ideation;
 pub mod memory_archive;
@@ -47,6 +48,7 @@ pub use artifact_flow::{
     ArtifactFlowEngine, ArtifactFlowEvaluation, ArtifactFlowEvent, ArtifactFlowFilter,
     ArtifactFlowId, ArtifactFlowStep, ArtifactFlowTrigger, ParseArtifactFlowEventError,
 };
+pub use chat_attachment::{ChatAttachment, ChatAttachmentId};
 pub use chat_conversation::{ChatContextType, ChatConversation, ChatConversationId};
 pub use ideation::{
     BusinessValueFactor, ChatMessage, Complexity, ComplexityFactor, CriticalPathFactor,

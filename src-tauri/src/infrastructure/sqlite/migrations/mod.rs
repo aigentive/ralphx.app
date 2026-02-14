@@ -51,6 +51,7 @@ mod v28_repair_schema_drift;
 mod v31_session_linking;
 mod v32_fix_task_fk_constraints;
 mod v33_agent_run_chain_ids;
+mod v34_chat_attachments;
 mod v2_add_dependency_reason;
 mod v3_add_activity_events;
 mod v4_add_blocked_reason;
@@ -105,6 +106,8 @@ mod v32_fix_task_fk_constraints_tests;
 #[cfg(test)]
 mod v33_agent_run_chain_ids_tests;
 #[cfg(test)]
+mod v34_chat_attachments_tests;
+#[cfg(test)]
 mod v2_add_dependency_reason_tests;
 #[cfg(test)]
 mod v3_add_activity_events_tests;
@@ -120,7 +123,7 @@ mod v8_task_git_fields_tests;
 mod v9_project_git_fields_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 33;
+pub const SCHEMA_VERSION: i32 = 34;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -299,6 +302,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 33,
         name: "agent_run_chain_ids",
         migrate: v33_agent_run_chain_ids::migrate,
+    },
+    Migration {
+        version: 34,
+        name: "chat_attachments",
+        migrate: v34_chat_attachments::migrate,
     },
 ];
 

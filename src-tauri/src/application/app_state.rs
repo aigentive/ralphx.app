@@ -4,7 +4,7 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tokio::sync::Mutex;
 
 use crate::application::PermissionState;
@@ -15,47 +15,48 @@ use crate::domain::qa::QASettings;
 use crate::domain::repositories::{
     ActivePlanRepository, ActivityEventRepository, AgentProfileRepository, AgentRunRepository,
     AppStateRepository, ArtifactBucketRepository, ArtifactFlowRepository, ArtifactRepository,
-    ChatConversationRepository, ChatMessageRepository, ExecutionSettingsRepository,
-    GlobalExecutionSettingsRepository, IdeationSessionRepository, IdeationSettingsRepository,
-    MemoryArchiveRepository, MemoryEntryRepository,
+    ChatAttachmentRepository, ChatConversationRepository, ChatMessageRepository,
+    ExecutionSettingsRepository, GlobalExecutionSettingsRepository, IdeationSessionRepository,
+    IdeationSettingsRepository, MemoryArchiveRepository, MemoryEntryRepository,
     MemoryEventRepository, MethodologyRepository, PlanBranchRepository,
     PlanSelectionStatsRepository, ProcessRepository, ProjectRepository,
     ProposalDependencyRepository, ReviewRepository, ReviewSettingsRepository,
-    SessionLinkRepository, TaskDependencyRepository, TaskProposalRepository, TaskQARepository, TaskRepository,
-    TaskStepRepository, WorkflowRepository,
+    SessionLinkRepository, TaskDependencyRepository, TaskProposalRepository, TaskQARepository,
+    TaskRepository, TaskStepRepository, WorkflowRepository,
 };
 use crate::domain::services::{MemoryRunningAgentRegistry, MessageQueue, RunningAgentRegistry};
 use crate::error::AppResult;
 use crate::infrastructure::memory::{
-    MemoryActivePlanRepository, MemoryActivityEventRepository, MemoryAgentProfileRepository,
-    MemoryAgentRunRepository, MemoryAppStateRepository, MemoryArtifactBucketRepository,
-    MemoryArtifactFlowRepository, MemoryArtifactRepository, MemoryChatConversationRepository,
+    InMemoryMemoryEntryRepository, InMemoryMemoryEventRepository, MemoryActivePlanRepository,
+    MemoryActivityEventRepository, MemoryAgentProfileRepository, MemoryAgentRunRepository,
+    MemoryAppStateRepository, MemoryArtifactBucketRepository, MemoryArtifactFlowRepository,
+    MemoryArtifactRepository, MemoryChatAttachmentRepository, MemoryChatConversationRepository,
     MemoryChatMessageRepository, MemoryExecutionSettingsRepository,
     MemoryGlobalExecutionSettingsRepository, MemoryIdeationSessionRepository,
     MemoryIdeationSettingsRepository, MemoryMethodologyRepository, MemoryPermissionRepository,
     MemoryPlanBranchRepository, MemoryPlanSelectionStatsRepository, MemoryProcessRepository,
     MemoryProjectRepository, MemoryProposalDependencyRepository, MemoryQuestionRepository,
     MemoryReviewIssueRepository, MemoryReviewRepository, MemoryReviewSettingsRepository,
-    MemorySessionLinkRepository, MemoryTaskDependencyRepository, MemoryTaskProposalRepository, MemoryTaskQARepository,
-    MemoryTaskRepository, MemoryTaskStepRepository, MemoryWorkflowRepository,
-    InMemoryMemoryEntryRepository, InMemoryMemoryEventRepository,
+    MemorySessionLinkRepository, MemoryTaskDependencyRepository, MemoryTaskProposalRepository,
+    MemoryTaskQARepository, MemoryTaskRepository, MemoryTaskStepRepository,
+    MemoryWorkflowRepository,
 };
 use crate::infrastructure::sqlite::ReviewIssueRepository;
 use crate::infrastructure::sqlite::{
     get_app_data_db_path, get_default_db_path, open_connection, run_migrations,
     SqliteActivePlanRepository, SqliteActivityEventRepository, SqliteAgentProfileRepository,
     SqliteAgentRunRepository, SqliteAppStateRepository, SqliteArtifactBucketRepository,
-    SqliteArtifactFlowRepository, SqliteArtifactRepository, SqliteChatConversationRepository,
-    SqliteChatMessageRepository, SqliteExecutionSettingsRepository,
+    SqliteArtifactFlowRepository, SqliteArtifactRepository, SqliteChatAttachmentRepository,
+    SqliteChatConversationRepository, SqliteChatMessageRepository, SqliteExecutionSettingsRepository,
     SqliteGlobalExecutionSettingsRepository, SqliteIdeationSessionRepository,
     SqliteIdeationSettingsRepository, SqliteMemoryArchiveRepository, SqliteMemoryEntryRepository,
     SqliteMemoryEventRepository, SqliteMethodologyRepository, SqlitePermissionRepository,
     SqlitePlanBranchRepository, SqlitePlanSelectionStatsRepository, SqliteProcessRepository,
     SqliteProjectRepository, SqliteProposalDependencyRepository, SqliteQuestionRepository,
     SqliteReviewIssueRepository, SqliteReviewRepository, SqliteReviewSettingsRepository,
-    SqliteRunningAgentRegistry, SqliteSessionLinkRepository, SqliteTaskDependencyRepository, SqliteTaskProposalRepository,
-    SqliteTaskQARepository, SqliteTaskRepository, SqliteTaskStepRepository,
-    SqliteWorkflowRepository,
+    SqliteRunningAgentRegistry, SqliteSessionLinkRepository, SqliteTaskDependencyRepository,
+    SqliteTaskProposalRepository, SqliteTaskQARepository, SqliteTaskRepository,
+    SqliteTaskStepRepository, SqliteWorkflowRepository,
 };
 use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
 
@@ -145,6 +146,10 @@ pub struct AppState {
     pub memory_event_repo: Arc<dyn MemoryEventRepository>,
     /// Memory archive repository for snapshot generation job queue
     pub memory_archive_repo: Arc<dyn MemoryArchiveRepository>,
+    /// Chat attachment repository for file uploads in chat
+    pub chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
+    /// Storage path for chat attachments
+    pub attachment_storage_path: PathBuf,
     /// Tauri app handle for emitting events to frontend (None in tests)
     pub app_handle: Option<AppHandle>,
 }
@@ -173,6 +178,19 @@ impl AppState {
         let artifact_repo: Arc<dyn ArtifactRepository> = Arc::new(
             SqliteArtifactRepository::from_shared(Arc::clone(&shared_conn)),
         );
+
+        // Chat attachment repository
+        let chat_attachment_repo: Arc<dyn ChatAttachmentRepository> = Arc::new(
+            SqliteChatAttachmentRepository::from_shared(Arc::clone(&shared_conn)),
+        );
+        let attachment_storage_path = if cfg!(debug_assertions) {
+            std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+        } else {
+            app_handle
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+        };
 
         Ok(Self {
             task_repo: Arc::clone(&task_repo),
@@ -271,6 +289,8 @@ impl AppState {
             memory_archive_repo: Arc::new(SqliteMemoryArchiveRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
+            chat_attachment_repo,
+            attachment_storage_path,
             permission_state: Arc::new(PermissionState::with_repo(Arc::new(
                 SqlitePermissionRepository::from_shared(Arc::clone(&shared_conn)),
             ))),
@@ -302,6 +322,15 @@ impl AppState {
             SqliteArtifactRepository::from_shared(Arc::clone(&shared_conn)),
         );
 
+        // Chat attachment repository
+        let chat_attachment_repo: Arc<dyn ChatAttachmentRepository> = Arc::new(
+            SqliteChatAttachmentRepository::from_shared(Arc::clone(&shared_conn)),
+        );
+        let attachment_storage_path = app_handle
+            .path()
+            .app_data_dir()
+            .unwrap_or_else(|_| PathBuf::from("."));
+
         Ok(Self {
             task_repo: Arc::clone(&task_repo),
             task_step_repo: Arc::new(SqliteTaskStepRepository::from_shared(Arc::clone(
@@ -399,6 +428,8 @@ impl AppState {
             memory_archive_repo: Arc::new(SqliteMemoryArchiveRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
+            chat_attachment_repo,
+            attachment_storage_path,
             permission_state: Arc::new(PermissionState::with_repo(Arc::new(
                 SqlitePermissionRepository::from_shared(Arc::clone(&shared_conn)),
             ))),
@@ -419,6 +450,11 @@ impl AppState {
         let task_proposal_repo: Arc<dyn TaskProposalRepository> =
             Arc::new(MemoryTaskProposalRepository::new());
         let artifact_repo: Arc<dyn ArtifactRepository> = Arc::new(MemoryArtifactRepository::new());
+
+        // Chat attachment repository for tests
+        let chat_attachment_repo: Arc<dyn ChatAttachmentRepository> =
+            Arc::new(MemoryChatAttachmentRepository::new());
+        let attachment_storage_path = std::env::temp_dir();
 
         Self {
             task_repo: Arc::clone(&task_repo),
@@ -459,6 +495,8 @@ impl AppState {
             memory_archive_repo: Arc::new(SqliteMemoryArchiveRepository::new(
                 open_connection(&PathBuf::from(":memory:")).expect("Failed to create in-memory connection")
             )),
+            chat_attachment_repo,
+            attachment_storage_path,
             permission_state: Arc::new(PermissionState::with_repo(Arc::new(
                 MemoryPermissionRepository::new(),
             ))),
@@ -481,6 +519,11 @@ impl AppState {
         let task_proposal_repo: Arc<dyn TaskProposalRepository> =
             Arc::new(MemoryTaskProposalRepository::new());
         let artifact_repo: Arc<dyn ArtifactRepository> = Arc::new(MemoryArtifactRepository::new());
+
+        // Chat attachment repository for tests
+        let chat_attachment_repo: Arc<dyn ChatAttachmentRepository> =
+            Arc::new(MemoryChatAttachmentRepository::new());
+        let attachment_storage_path = std::env::temp_dir();
 
         Self {
             task_repo: Arc::clone(&task_repo),
@@ -521,6 +564,8 @@ impl AppState {
             memory_archive_repo: Arc::new(SqliteMemoryArchiveRepository::new(
                 open_connection(&PathBuf::from(":memory:")).expect("Failed to create in-memory connection")
             )),
+            chat_attachment_repo,
+            attachment_storage_path,
             permission_state: Arc::new(PermissionState::with_repo(Arc::new(
                 MemoryPermissionRepository::new(),
             ))),

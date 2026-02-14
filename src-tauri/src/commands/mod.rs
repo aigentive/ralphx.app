@@ -4,6 +4,7 @@
 pub mod activity_commands;
 pub mod agent_profile_commands;
 pub mod artifact_commands;
+pub mod chat_attachment_commands;
 pub mod chat_responses;
 pub mod diff_commands;
 pub mod execution_commands;
@@ -45,6 +46,11 @@ pub use artifact_commands::{
     get_artifact_relations, get_artifacts, get_artifacts_by_bucket, get_artifacts_by_task,
     get_buckets, get_system_buckets, update_artifact, AddRelationInput, ArtifactRelationResponse,
     ArtifactResponse, BucketResponse, CreateArtifactInput, CreateBucketInput, UpdateArtifactInput,
+};
+pub use chat_attachment_commands::{
+    delete_chat_attachment, link_attachments_to_message, list_conversation_attachments,
+    list_message_attachments, upload_chat_attachment, ChatAttachmentResponse,
+    LinkAttachmentsInput, UploadChatAttachmentInput,
 };
 pub use chat_responses::ChatMessageResponse;
 pub use diff_commands::{get_file_diff, get_task_file_changes};

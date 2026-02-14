@@ -9,6 +9,7 @@ pub mod memory_app_state_repo;
 pub mod memory_artifact_bucket_repo;
 pub mod memory_artifact_flow_repo;
 pub mod memory_artifact_repo;
+pub mod memory_chat_attachment_repo;
 pub mod memory_chat_conversation_repo;
 pub mod memory_chat_message_repo;
 pub mod memory_execution_settings_repo;
@@ -45,6 +46,7 @@ pub use memory_app_state_repo::MemoryAppStateRepository;
 pub use memory_artifact_bucket_repo::MemoryArtifactBucketRepository;
 pub use memory_artifact_flow_repo::MemoryArtifactFlowRepository;
 pub use memory_artifact_repo::MemoryArtifactRepository;
+pub use memory_chat_attachment_repo::MemoryChatAttachmentRepository;
 pub use memory_chat_conversation_repo::MemoryChatConversationRepository;
 pub use memory_chat_message_repo::MemoryChatMessageRepository;
 pub use memory_execution_settings_repo::{

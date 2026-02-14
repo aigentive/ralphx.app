@@ -3,6 +3,7 @@
 
 pub mod app_state;
 pub mod apply_service;
+pub mod chat_attachment_service;
 pub mod chat_resumption;
 pub mod chat_service;
 pub mod dependency_service;
@@ -32,6 +33,7 @@ pub use app_state::AppState;
 pub use apply_service::{
     ApplyProposalsOptions, ApplyProposalsResult, ApplyService, SelectionValidation, TargetColumn,
 };
+pub use chat_attachment_service::ChatAttachmentService;
 pub use chat_resumption::ChatResumptionRunner;
 pub use dependency_service::{DependencyAnalysis, DependencyService, ValidationResult};
 pub use diff_service::{DiffService, FileChange, FileChangeStatus, FileDiff};
