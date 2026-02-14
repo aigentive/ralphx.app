@@ -49,7 +49,7 @@ impl SessionReopenService {
     /// 1. Validate session is Accepted or Archived
     /// 2. Get all tasks for this session
     /// 3. Delegate task cleanup to TaskCleanupService (stop agents, git cleanup, DB delete)
-    /// 4. Clean plan branch (delete git branch, mark Abandoned)
+    /// 4. Clean plan branch (delete git branch, delete DB record)
     /// 5. Clear created_task_id on all proposals
     /// 6. Set session status to Active
     pub async fn reopen(&self, session_id: &IdeationSessionId) -> AppResult<()> {
@@ -85,17 +85,14 @@ impl SessionReopenService {
             .cleanup_tasks(&tasks, StopMode::DirectStop, false)
             .await;
 
-        // 4. Clean plan branch (delete git branch, mark Abandoned)
+        // 4. Clean plan branch (delete git branch, delete DB record)
         if let Ok(Some(plan_branch)) = self.plan_branch_repo.get_by_session_id(session_id).await {
             if plan_branch.status == PlanBranchStatus::Active {
                 if let Ok(Some(project)) = self.project_repo.get_by_id(&session.project_id).await {
                     let repo_path = PathBuf::from(&project.working_directory);
                     let _ = GitService::delete_feature_branch(&repo_path, &plan_branch.branch_name);
                 }
-                let _ = self
-                    .plan_branch_repo
-                    .update_status(&plan_branch.id, PlanBranchStatus::Abandoned)
-                    .await;
+                let _ = self.plan_branch_repo.delete(&plan_branch.id).await;
             }
         }
 
@@ -275,5 +272,56 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(reopened.status, IdeationSessionStatus::Active);
+    }
+
+    #[tokio::test]
+    async fn test_reopen_deletes_plan_branch_record() {
+        use crate::domain::entities::{ArtifactId, PlanBranch};
+
+        let state = AppState::new_test();
+        let project_id = ProjectId::new();
+
+        // Create session and accept it
+        let session = IdeationSession::new(project_id.clone());
+        let created = state.ideation_session_repo.create(session).await.unwrap();
+        state
+            .ideation_session_repo
+            .update_status(&created.id, IdeationSessionStatus::Accepted)
+            .await
+            .unwrap();
+
+        // Create plan branch for this session
+        let plan_branch = PlanBranch::new(
+            ArtifactId::new(),
+            created.id.clone(),
+            project_id,
+            "ralphx/test-project/plan-test".to_string(),
+            "main".to_string(),
+        );
+        state
+            .plan_branch_repo
+            .create(plan_branch.clone())
+            .await
+            .unwrap();
+
+        // Verify plan branch exists
+        let found = state
+            .plan_branch_repo
+            .get_by_session_id(&created.id)
+            .await
+            .unwrap();
+        assert!(found.is_some());
+
+        // Reopen session
+        let service = build_service(&state);
+        service.reopen(&created.id).await.unwrap();
+
+        // Verify plan branch record is deleted (None)
+        let after_reopen = state
+            .plan_branch_repo
+            .get_by_session_id(&created.id)
+            .await
+            .unwrap();
+        assert!(after_reopen.is_none());
     }
 }
