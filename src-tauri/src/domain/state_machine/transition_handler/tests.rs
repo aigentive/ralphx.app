@@ -1,3 +1,4 @@
+use crate::domain::entities::InternalStatus;
 use crate::domain::state_machine::context::{TaskContext, TaskServices};
 use crate::domain::state_machine::mocks::{
     MockAgentSpawner, MockDependencyManager, MockEventEmitter, MockNotifier, MockReviewStarter,
@@ -2078,4 +2079,506 @@ async fn test_deferred_merge_not_triggered_by_non_merge_exits() {
             to
         );
     }
+}
+
+// ==================
+// Branch discovery integration tests
+// ==================
+
+/// Test: Branch discovery integration with attempt_programmatic_merge.
+///
+/// Verifies end-to-end recovery flow: when a task enters PendingMerge with
+/// task_branch = None but the git branch exists, discover_and_attach_task_branch
+/// is called to re-attach the branch before resolve_merge_branches.
+#[tokio::test]
+async fn test_branch_discovery_integrates_with_pending_merge() {
+    use crate::domain::entities::{Project, Task};
+    use crate::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
+    use std::fs;
+    use std::process::Command;
+    use tempfile::TempDir;
+
+    // Create a temporary git repository
+    let temp_dir = TempDir::new().unwrap();
+    let repo_path = temp_dir.path().to_path_buf();
+
+    // Initialize git repo
+    Command::new("git")
+        .args(["init"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    // Create initial commit
+    fs::write(repo_path.join("README.md"), "test").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "Initial commit"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    // Create project and task
+    let project = Project::new("test-project".to_string(), repo_path.to_string_lossy().to_string());
+    let task = Task::new(project.id.clone(), "Test task".to_string());
+
+    // Create the orphaned git branch (simulating recovery scenario)
+    let expected_branch = format!("ralphx/test-project/task-{}", task.id.as_str());
+    Command::new("git")
+        .args(["branch", &expected_branch])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    // Ensure task_branch is None (orphaned state)
+    assert_eq!(task.task_branch, None);
+
+    // Set up repositories
+    let task_repo: Arc<dyn crate::domain::repositories::TaskRepository> =
+        Arc::new(MemoryTaskRepository::new());
+    let project_repo: Arc<dyn crate::domain::repositories::ProjectRepository> =
+        Arc::new(MemoryProjectRepository::new());
+
+    // Persist task and project
+    task_repo.create(task.clone()).await.unwrap();
+    project_repo.create(project.clone()).await.unwrap();
+
+    // Create services with real repos
+    let mut services = TaskServices::new_mock();
+    services.task_repo = Some(task_repo.clone());
+    services.project_repo = Some(project_repo.clone());
+
+    let context = create_context_with_services(task.id.as_str(), project.id.as_str(), services);
+    let mut machine = TaskStateMachine::new(context);
+
+    let handler = TransitionHandler::new(&mut machine);
+
+    // Call on_enter(PendingMerge) which triggers attempt_programmatic_merge
+    let _ = handler.on_enter(&State::PendingMerge).await;
+
+    // Wait for attempt_programmatic_merge to complete (it's async)
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    // Verify the branch was discovered and attached
+    let updated_task = task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(
+        updated_task.task_branch,
+        Some(expected_branch),
+        "Branch should be discovered and re-attached during PendingMerge entry"
+    );
+}
+
+/// Integration test: Task in MergeIncomplete with task_branch=None, git branch exists
+/// with commits → retry_merge → branch discovered → programmatic merge succeeds → Merged
+#[tokio::test]
+async fn test_merge_retry_recovery_discovers_branch_and_merges() {
+    use crate::domain::entities::{Project, Task};
+    use crate::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
+    use std::fs;
+    use std::process::Command;
+    use tempfile::TempDir;
+
+    // Create a temporary git repository
+    let temp_dir = TempDir::new().unwrap();
+    let repo_path = temp_dir.path().to_path_buf();
+
+    // Initialize git repo
+    Command::new("git")
+        .args(["init"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    // Create initial commit on main
+    fs::write(repo_path.join("README.md"), "initial content").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "Initial commit"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    // Create project and task
+    let project = Project::new("test-project".to_string(), repo_path.to_string_lossy().to_string());
+    let mut task = Task::new(project.id.clone(), "Test recovery task".to_string());
+    task.internal_status = InternalStatus::MergeIncomplete;
+    task.task_branch = None; // Simulate orphaned state
+
+    // Create the orphaned git branch with a commit
+    let expected_branch = format!("ralphx/test-project/task-{}", task.id.as_str());
+    Command::new("git")
+        .args(["checkout", "-b", &expected_branch])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    fs::write(repo_path.join("feature.txt"), "feature work").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "Add feature"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    // Return to main
+    Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    // Ensure task_branch is None (orphaned state)
+    assert_eq!(task.task_branch, None);
+
+    // Set up repositories
+    let task_repo: Arc<dyn crate::domain::repositories::TaskRepository> =
+        Arc::new(MemoryTaskRepository::new());
+    let project_repo: Arc<dyn crate::domain::repositories::ProjectRepository> =
+        Arc::new(MemoryProjectRepository::new());
+
+    // Persist task and project
+    task_repo.create(task.clone()).await.unwrap();
+    project_repo.create(project.clone()).await.unwrap();
+
+    // Create services with real repos
+    let mut services = TaskServices::new_mock();
+    services.task_repo = Some(task_repo.clone());
+    services.project_repo = Some(project_repo.clone());
+
+    let context = create_context_with_services(task.id.as_str(), project.id.as_str(), services);
+    let mut machine = TaskStateMachine::new(context);
+
+    let handler = TransitionHandler::new(&mut machine);
+
+    // Simulate retry_merge: transition from MergeIncomplete → PendingMerge
+    let _ = handler.on_enter(&State::PendingMerge).await;
+
+    // Wait for attempt_programmatic_merge to complete (it's async)
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    // Verify the branch was discovered and attached
+    let updated_task = task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(
+        updated_task.task_branch,
+        Some(expected_branch.clone()),
+        "Branch should be discovered and re-attached during retry"
+    );
+
+    // Verify merge succeeded and task reached Merged
+    assert_eq!(
+        updated_task.internal_status,
+        InternalStatus::Merged,
+        "Task should transition to Merged after successful programmatic merge"
+    );
+}
+
+/// Integration test: Same setup as previous test but with conflicting changes on target
+/// branch → retry_merge → branch discovered → Merging state (agent would be spawned)
+#[tokio::test]
+async fn test_merge_retry_recovery_detects_conflicts_and_enters_merging() {
+    use crate::domain::entities::{Project, Task};
+    use crate::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
+    use std::fs;
+    use std::process::Command;
+    use tempfile::TempDir;
+
+    // Create a temporary git repository
+    let temp_dir = TempDir::new().unwrap();
+    let repo_path = temp_dir.path().to_path_buf();
+
+    // Initialize git repo
+    Command::new("git")
+        .args(["init"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    // Create initial commit on main
+    fs::write(repo_path.join("conflict.txt"), "original line\n").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "Initial commit"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    // Create project and task
+    let project = Project::new("test-project".to_string(), repo_path.to_string_lossy().to_string());
+    let mut task = Task::new(project.id.clone(), "Test conflict task".to_string());
+    task.internal_status = InternalStatus::MergeIncomplete;
+    task.task_branch = None; // Simulate orphaned state
+
+    // Create the orphaned git branch with a conflicting change
+    let expected_branch = format!("ralphx/test-project/task-{}", task.id.as_str());
+    Command::new("git")
+        .args(["checkout", "-b", &expected_branch])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    fs::write(repo_path.join("conflict.txt"), "branch change\n").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "Branch modification"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    // Return to main and make conflicting change
+    Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    fs::write(repo_path.join("conflict.txt"), "main change\n").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "Main modification"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    // Ensure task_branch is None (orphaned state)
+    assert_eq!(task.task_branch, None);
+
+    // Set up repositories
+    let task_repo: Arc<dyn crate::domain::repositories::TaskRepository> =
+        Arc::new(MemoryTaskRepository::new());
+    let project_repo: Arc<dyn crate::domain::repositories::ProjectRepository> =
+        Arc::new(MemoryProjectRepository::new());
+
+    // Persist task and project
+    task_repo.create(task.clone()).await.unwrap();
+    project_repo.create(project.clone()).await.unwrap();
+
+    // Create services with real repos
+    let mut services = TaskServices::new_mock();
+    services.task_repo = Some(task_repo.clone());
+    services.project_repo = Some(project_repo.clone());
+
+    let context = create_context_with_services(task.id.as_str(), project.id.as_str(), services);
+    let mut machine = TaskStateMachine::new(context);
+
+    let handler = TransitionHandler::new(&mut machine);
+
+    // Simulate retry_merge: transition from MergeIncomplete → PendingMerge
+    let _ = handler.on_enter(&State::PendingMerge).await;
+
+    // Wait for attempt_programmatic_merge to complete (it's async)
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    // Verify the branch was discovered and attached
+    let updated_task = task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(
+        updated_task.task_branch,
+        Some(expected_branch.clone()),
+        "Branch should be discovered and re-attached during retry"
+    );
+
+    // Verify merge detected conflicts and entered Merging state (agent path)
+    assert_eq!(
+        updated_task.internal_status,
+        InternalStatus::Merging,
+        "Task should transition to Merging when conflicts are detected"
+    );
+}
+
+/// Integration test: Task in Failed with task_branch=None, git branch exists → transition
+/// to Ready → Executing → worktree created for existing branch → execution proceeds
+#[tokio::test]
+async fn test_executing_entry_recovers_existing_branch_into_worktree() {
+    use crate::domain::entities::{GitMode, Project, Task};
+    use crate::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
+    use std::fs;
+    use std::process::Command;
+    use tempfile::TempDir;
+
+    // Create a temporary git repository
+    let temp_dir = TempDir::new().unwrap();
+    let repo_path = temp_dir.path().to_path_buf();
+
+    // Initialize git repo
+    Command::new("git")
+        .args(["init"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    // Create initial commit on main
+    fs::write(repo_path.join("README.md"), "initial content").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "Initial commit"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    // Create project with Worktree mode and worktree parent in temp dir
+    let worktree_parent = temp_dir.path().join("worktrees");
+    fs::create_dir_all(&worktree_parent).unwrap();
+    let mut project = Project::new("test-project".to_string(), repo_path.to_string_lossy().to_string());
+    project.git_mode = GitMode::Worktree;
+    project.worktree_parent_directory = Some(worktree_parent.to_string_lossy().to_string());
+
+    let mut task = Task::new(project.id.clone(), "Test worktree recovery".to_string());
+    task.internal_status = InternalStatus::Failed;
+    task.task_branch = None; // Simulate recovery scenario
+
+    // Create the orphaned git branch (from previous execution attempt)
+    let expected_branch = format!("ralphx/test-project/task-{}", task.id.as_str());
+    Command::new("git")
+        .args(["branch", &expected_branch])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    // Ensure task_branch is None (orphaned state)
+    assert_eq!(task.task_branch, None);
+
+    // Set up repositories
+    let task_repo: Arc<dyn crate::domain::repositories::TaskRepository> =
+        Arc::new(MemoryTaskRepository::new());
+    let project_repo: Arc<dyn crate::domain::repositories::ProjectRepository> =
+        Arc::new(MemoryProjectRepository::new());
+
+    // Persist task and project
+    task_repo.create(task.clone()).await.unwrap();
+    project_repo.create(project.clone()).await.unwrap();
+
+    // Create services with real repos
+    let mut services = TaskServices::new_mock();
+    services.task_repo = Some(task_repo.clone());
+    services.project_repo = Some(project_repo.clone());
+
+    let context = create_context_with_services(task.id.as_str(), project.id.as_str(), services);
+    let mut machine = TaskStateMachine::new(context);
+
+    let handler = TransitionHandler::new(&mut machine);
+
+    // Simulate recovery: transition to Executing (which triggers worktree setup)
+    let result = handler.on_enter(&State::Executing).await;
+
+    // Verify worktree creation succeeded
+    assert!(
+        result.is_ok(),
+        "Executing entry should succeed even with existing branch: {:?}",
+        result
+    );
+
+    // Verify the branch was attached to the task
+    let updated_task = task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(
+        updated_task.task_branch,
+        Some(expected_branch.clone()),
+        "Existing branch should be attached during Executing entry"
+    );
+
+    // Verify worktree was created (path should exist)
+    let expected_worktree = format!(
+        "{}/test-project/task-{}",
+        worktree_parent.to_string_lossy(),
+        task.id.as_str()
+    );
+    assert_eq!(
+        updated_task.worktree_path,
+        Some(expected_worktree.clone()),
+        "Worktree path should be set"
+    );
+
+    // Verify worktree directory exists
+    let worktree_path = std::path::Path::new(&expected_worktree);
+    assert!(
+        worktree_path.exists(),
+        "Worktree directory should exist at {}",
+        expected_worktree
+    );
+
+    // Verify the worktree is on the correct branch
+    let branch_check = Command::new("git")
+        .args(["branch", "--show-current"])
+        .current_dir(worktree_path)
+        .output()
+        .unwrap();
+    let current_branch = String::from_utf8_lossy(&branch_check.stdout).trim().to_string();
+    assert_eq!(
+        current_branch, expected_branch,
+        "Worktree should be on the existing branch"
+    );
 }

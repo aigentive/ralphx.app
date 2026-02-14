@@ -25,7 +25,7 @@ use super::merge_helpers::{
 };
 // Used by #[cfg(test)] mod tests via `super::*`
 #[cfg(test)]
-use super::merge_helpers::resolve_task_base_branch;
+use super::merge_helpers::{discover_and_attach_task_branch, resolve_task_base_branch};
 #[cfg(test)]
 use crate::domain::entities::Project;
 use super::merge_validation::{
@@ -122,6 +122,37 @@ impl<'a> super::TransitionHandler<'a> {
             );
             return;
         };
+
+        // Attempt to discover and re-attach orphaned task branch
+        // (handles recovery from Failed/Critical states where task_branch was cleared)
+        match super::merge_helpers::discover_and_attach_task_branch(
+            &mut task,
+            &project,
+            task_repo,
+        )
+        .await
+        {
+            Ok(true) => {
+                tracing::info!(
+                    task_id = task_id_str,
+                    branch = ?task.task_branch,
+                    "Successfully recovered orphaned task branch"
+                );
+            }
+            Ok(false) => {
+                tracing::debug!(
+                    task_id = task_id_str,
+                    "No orphaned branch to recover (branch already set or doesn't exist)"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    task_id = task_id_str,
+                    "Failed to discover orphaned task branch — continuing with existing flow"
+                );
+            }
+        }
 
         // Resolve source and target branches (handles merge tasks and plan feature branches)
         let plan_branch_repo = &self.machine.context.services.plan_branch_repo;
@@ -4877,6 +4908,75 @@ mod tests {
         // Merge task path wins: feature branch into base
         assert_eq!(source, "ralphx/test/plan-dual");
         assert_eq!(target, "main");
+    }
+
+    #[tokio::test]
+    async fn resolve_merge_branches_after_branch_discovery_returns_valid_source() {
+        // Set up a real git repo with a task branch
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_path = tmp.path();
+
+        // Init git repo with an initial commit
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "--allow-empty", "-m", "init"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
+        // Create a task branch (simulating orphaned branch from failed task)
+        let mut task = make_task(None, None); // task_branch is None
+        task.id = TaskId::from_string("orphaned-123".to_string());
+        let expected_branch = format!("ralphx/test-project/task-{}", task.id.as_str());
+
+        std::process::Command::new("git")
+            .args(["branch", &expected_branch])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
+        // Create project pointing to real git repo
+        let mut project = make_project(Some("main"));
+        project.working_directory = repo_path.to_string_lossy().to_string();
+
+        // Create task repo and save task
+        let task_repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::new());
+        task_repo.create(task.clone()).await.unwrap();
+
+        // Call discover_and_attach_task_branch (this simulates what happens in attempt_programmatic_merge)
+        let mut task_mut = task.clone();
+        let discovered = discover_and_attach_task_branch(
+            &mut task_mut,
+            &project,
+            &task_repo,
+        )
+        .await
+        .unwrap();
+
+        // Branch should have been discovered and attached
+        assert!(discovered, "Branch should have been discovered");
+        assert_eq!(task_mut.task_branch, Some(expected_branch.clone()));
+
+        // Now verify that resolve_merge_branches returns the correct source branch
+        let repo: Option<Arc<dyn PlanBranchRepository>> = None;
+        let (source, target) = resolve_merge_branches(&task_mut, &project, &repo).await;
+
+        assert_eq!(source, expected_branch, "Source branch should match the discovered branch");
+        assert_eq!(target, "main", "Target branch should be project base branch");
     }
 
     // ==================

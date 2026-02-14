@@ -593,3 +593,220 @@ prunable gitdir file points to non-existent location
     assert_eq!(result[1].path, "/tmp/stale-wt");
     assert_eq!(result[1].branch.as_deref(), Some("old-branch"));
 }
+
+// =========================================================================
+// Branch Recovery Tests (for re-execution scenarios)
+// =========================================================================
+
+#[test]
+fn test_worktree_recovery_existing_branch_checkout() {
+    // Simulates re-entering Executing state where branch exists from previous attempt
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+
+    // Initialize repo
+    Command::new("git")
+        .args(["init"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    std::fs::write(repo.join("test.txt"), "initial").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    let _ = Command::new("git")
+        .args(["branch", "-M", "main"])
+        .current_dir(repo)
+        .output();
+
+    // Simulate previous execution: create task branch with some work
+    let task_branch = "ralphx/test-project/task-abc123";
+    Command::new("git")
+        .args(["checkout", "-b", task_branch])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    std::fs::write(repo.join("work.txt"), "previous attempt").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "previous work"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    // Go back to main (simulating user's working state)
+    Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    // Verify branch exists
+    let branch_exists = GitService::branch_exists(repo, task_branch);
+    assert!(branch_exists, "Task branch should exist from previous attempt");
+
+    // Re-execution: checkout existing branch into new worktree
+    let worktree_path = temp_dir.path().join("worktrees").join("task-abc123");
+    let result = GitService::checkout_existing_branch_worktree(repo, &worktree_path, task_branch);
+    assert!(
+        result.is_ok(),
+        "Should successfully checkout existing branch: {:?}",
+        result.err()
+    );
+
+    // Verify worktree was created and has the previous work
+    assert!(worktree_path.exists(), "Worktree should be created");
+    assert!(
+        worktree_path.join("work.txt").exists(),
+        "Previous work should be present"
+    );
+    let branch = GitService::get_current_branch(&worktree_path).unwrap();
+    assert_eq!(branch, task_branch, "Should be on the task branch");
+}
+
+#[test]
+fn test_worktree_creation_new_branch_when_not_exists() {
+    // Verifies normal flow when branch doesn't exist yet
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+
+    // Initialize repo
+    Command::new("git")
+        .args(["init"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    std::fs::write(repo.join("test.txt"), "initial").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    let _ = Command::new("git")
+        .args(["branch", "-M", "main"])
+        .current_dir(repo)
+        .output();
+
+    let new_branch = "ralphx/test-project/task-new";
+
+    // Verify branch does NOT exist
+    let branch_exists = GitService::branch_exists(repo, new_branch);
+    assert!(!branch_exists, "New task branch should not exist yet");
+
+    // Create worktree with new branch
+    let worktree_path = temp_dir.path().join("worktrees").join("task-new");
+    let result = GitService::create_worktree(repo, &worktree_path, new_branch, "main");
+    assert!(
+        result.is_ok(),
+        "Should successfully create worktree with new branch: {:?}",
+        result.err()
+    );
+
+    // Verify worktree was created and is on new branch
+    assert!(worktree_path.exists(), "Worktree should be created");
+    let branch = GitService::get_current_branch(&worktree_path).unwrap();
+    assert_eq!(branch, new_branch, "Should be on the new task branch");
+
+    // Verify branch now exists
+    let branch_exists_after = GitService::branch_exists(repo, new_branch);
+    assert!(branch_exists_after, "Branch should exist after creation");
+}
+
+#[test]
+fn test_create_worktree_fails_when_branch_exists() {
+    // Demonstrates the problem this fix addresses: create_worktree with -b fails for existing branch
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+
+    // Initialize repo
+    Command::new("git")
+        .args(["init"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    std::fs::write(repo.join("test.txt"), "initial").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    let _ = Command::new("git")
+        .args(["branch", "-M", "main"])
+        .current_dir(repo)
+        .output();
+
+    // Create an existing branch
+    let existing_branch = "ralphx/test-project/task-exists";
+    Command::new("git")
+        .args(["branch", existing_branch])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    // Attempt to create worktree with -b for existing branch (should fail)
+    let worktree_path = temp_dir.path().join("worktrees").join("task-exists");
+    let result = GitService::create_worktree(repo, &worktree_path, existing_branch, "main");
+
+    assert!(
+        result.is_err(),
+        "create_worktree should fail when branch already exists"
+    );
+
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("already exists") || err_msg.contains("Failed to create worktree"),
+        "Error should indicate branch already exists: {}",
+        err_msg
+    );
+}
