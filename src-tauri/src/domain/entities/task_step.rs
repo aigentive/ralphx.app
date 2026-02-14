@@ -93,6 +93,10 @@ pub struct TaskStep {
     pub started_at: Option<DateTime<Utc>>,
     /// When the step reached a terminal state
     pub completed_at: Option<DateTime<Utc>>,
+    /// Optional parent step ID - if set, this step is a sub-step
+    pub parent_step_id: Option<TaskStepId>,
+    /// Optional scope context - JSON containing STRICT SCOPE for sub-steps
+    pub scope_context: Option<String>,
 }
 
 impl TaskStep {
@@ -117,6 +121,8 @@ impl TaskStep {
             updated_at: now,
             started_at: None,
             completed_at: None,
+            parent_step_id: None,
+            scope_context: None,
         }
     }
 
@@ -151,6 +157,8 @@ impl TaskStep {
         let updated_at_str: String = row.get(10)?;
         let started_at_str: Option<String> = row.get(11)?;
         let completed_at_str: Option<String> = row.get(12)?;
+        let parent_step_id_str: Option<String> = row.get(13)?;
+        let scope_context: Option<String> = row.get(14)?;
 
         let status = TaskStepStatus::from_db_string(&status_str).map_err(|e| {
             rusqlite::Error::FromSqlConversionFailure(
@@ -218,6 +226,8 @@ impl TaskStep {
             updated_at,
             started_at,
             completed_at,
+            parent_step_id: parent_step_id_str.map(TaskStepId::from_string),
+            scope_context,
         })
     }
 }

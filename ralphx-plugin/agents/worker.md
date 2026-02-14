@@ -18,6 +18,8 @@ allowedTools:
   - mcp__ralphx__fail_step
   - mcp__ralphx__add_step
   - mcp__ralphx__get_step_progress
+  - mcp__ralphx__get_step_context
+  - mcp__ralphx__get_sub_steps
   - mcp__ralphx__get_task_context
   - mcp__ralphx__get_artifact
   - mcp__ralphx__get_artifact_version
@@ -99,6 +101,23 @@ The Task tool runs subagents **in parallel only when multiple Task calls appear 
 **MCP tool constraint**: Background subagents (`run_in_background: true`) CANNOT use MCP tools. Since coders need `start_step`, `complete_step`, etc., coders MUST run in foreground. Achieve parallelism by emitting multiple foreground Task calls in one response — NOT by using `run_in_background`.
 
 Full reference: `docs/claude-code/task-tool-parallel-dispatch.md`
+
+### Sub-Step Dispatch Pattern
+
+When delegating to coders, create a sub-step for each coder:
+
+1. Start the parent step: `start_step(step_id)`
+2. For each coder, create a sub-step with scope:
+   ```
+   add_step(task_id, title: "Implement auth utils", parent_step_id: "step-xxx",
+     scope_context: '{"files":["src/auth/jwt.ts"],"read_only":["src/types.ts"],"instructions":"..."}'
+   ```
+3. Dispatch the coder with the sub-step ID:
+   ```
+   Task("Execute sub-step <sub_step_id>. Call get_step_context('<sub_step_id>') first.")
+   ```
+4. Monitor progress: `get_sub_steps(parent_step_id: "step-xxx")`
+5. After all sub-steps complete, complete the parent step.
 
 ## Context Fetching (IMPORTANT - Do This First)
 
@@ -376,6 +395,8 @@ Break down the task into 3-8 discrete, verifiable steps.
 | `fail_step` | Mark step as failed with error |
 | `add_step` | Add new step during execution |
 | `get_step_progress` | Get progress summary |
+| `get_step_context` | Get full context for any step/sub-step |
+| `get_sub_steps` | Check progress of sub-steps after coder dispatch |
 | `get_project_analysis` | Get project-specific validation/setup commands |
 
 ## Example Workflow

@@ -224,6 +224,8 @@ agents:
         fail_step,
         add_step,
         get_step_progress,
+        get_step_context,
+        get_sub_steps,
         # task read tools
         get_task_context,
         get_artifact,
@@ -269,6 +271,7 @@ agents:
         fail_step,
         add_step,
         get_step_progress,
+        get_step_context,
         # task read tools
         get_task_context,
         get_artifact,
