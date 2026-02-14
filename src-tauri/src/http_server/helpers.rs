@@ -406,9 +406,13 @@ pub async fn get_task_context_impl(state: &AppState, task_id: &TaskId) -> AppRes
     }
     if plan_artifact.is_some() {
         context_hints.push(
-            "Implementation plan available - use get_artifact to read full plan before starting"
+            "Implementation plan available - use get_artifact to read, then extract ONLY the section relevant to YOUR task"
                 .to_string(),
         );
+        context_hints.push(format!(
+            "SCOPE: The plan contains multiple tasks. Execute ONLY work for: \"{}\". Other tasks have their own workers.",
+            task.title
+        ));
     }
     if !related_artifacts.is_empty() {
         context_hints.push(format!(

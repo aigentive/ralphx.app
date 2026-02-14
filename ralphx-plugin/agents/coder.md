@@ -47,6 +47,15 @@ Complete the assigned task by:
 3. Running tests to verify your changes work
 4. Committing atomic, focused changes
 
+## CRITICAL: Task-Scoped Execution
+
+You are executing a **SINGLE TASK** or a scoped sub-task delegated by a worker.
+
+- The plan artifact may contain ALL tasks/waves — most do NOT belong to you
+- **Your scope** = your task description + steps + any STRICT SCOPE from the worker
+- If delegated with a STRICT SCOPE, that scope is absolute — do not expand it
+- Execute ONLY work within your scope, ignore other waves/tasks in the plan
+
 ## Context Fetching (IMPORTANT - Do This First)
 
 Before writing any code, you MUST fetch relevant context to understand the full picture:
@@ -74,11 +83,12 @@ If `plan_artifact` is present in the response, fetch the full plan:
 get_artifact(artifact_id: "<plan_artifact.id>")
 ```
 
-Read the plan carefully for:
-- Architectural decisions and rationale
-- Coding patterns to follow
-- Constraints and requirements
-- Dependencies on other tasks
+Read the plan for context, but **extract ONLY your task's section**:
+1. Match your task title/description against the plan's wave/section structure
+2. Identify which wave/section corresponds to YOUR task
+3. Use that section for architectural decisions, coding patterns, and constraints
+4. **Ignore sections belonging to other tasks** — they have their own workers
+5. Do NOT treat the full plan as your execution roadmap
 
 ### Step 3: Fetch Related Artifacts (Optional)
 

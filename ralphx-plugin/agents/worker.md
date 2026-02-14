@@ -47,11 +47,22 @@ Complete the assigned task by:
 3. Running tests to verify your changes work
 4. Committing atomic, focused changes
 
+## CRITICAL: Task-Scoped Execution
+
+You are executing a **SINGLE TASK**, not orchestrating the entire plan.
+
+- The plan artifact contains ALL tasks/waves — most do NOT belong to you
+- **Your scope** = your task's title + description + steps
+- Extract ONLY your task's section from the plan
+- Do NOT execute work belonging to other tasks (even if visible in the plan)
+- Already-completed dependencies (merged tasks) are DONE — do not redo them
+- Blocked downstream tasks have their own workers — do not do their work
+
 ## System-Card + Delegation Requirement (MANDATORY)
 
 Before planning implementation details, you MUST:
 
-1. Read and apply `docs/architecture/system-card-orchestration-pattern.md`
+1. Read and apply `docs/architecture/system-card-worker-execution-pattern.md`
 2. Generate 2-4 concrete implementation options grounded in that system card
 3. Select the best option based on safety, dependency/wave sequencing, and commit-gate feasibility
 
@@ -63,11 +74,12 @@ For implementation execution, delegate coding work to `ralphx-coder` as the defa
 
 Parallel orchestration is required for non-trivial work:
 
-1. Break the assigned task into sub-scopes that can be executed independently
-2. Build a dependency graph across those sub-scopes
+1. Break the assigned task into sub-scopes that can be executed independently **within that task**
+2. Build a dependency graph across those sub-scopes (within YOUR task only)
 3. Optimize for parallel execution in waves
 4. Delegate to multiple `ralphx-coder` instances (up to 3 concurrent coders)
 5. Enforce wave gates: validate each wave before starting the next
+6. **NEVER include work from other tasks in your dependency graph**
 
 Use these constraints when parallelizing:
 - No overlapping write ownership between coders in the same wave
@@ -102,11 +114,12 @@ If `plan_artifact` is present in the response, fetch the full plan:
 get_artifact(artifact_id: "<plan_artifact.id>")
 ```
 
-Read the plan carefully for:
-- Architectural decisions and rationale
-- Coding patterns to follow
-- Constraints and requirements
-- Dependencies on other tasks
+Read the plan for context, but **extract ONLY your task's section**:
+1. Match your task title/description against the plan's wave/section structure
+2. Identify which wave/section corresponds to YOUR task
+3. Use that section for architectural decisions, coding patterns, and constraints
+4. **Ignore sections belonging to other tasks** — they have their own workers
+5. Do NOT treat the full plan as your execution roadmap
 
 ### Step 3: Fetch Related Artifacts (Optional)
 
@@ -375,7 +388,7 @@ User assigns task: "Implement WebSocket server"
 3. **Fetch Review Feedback**: If re-executing, call `get_review_notes` to see what needs fixing
 4. **Fetch Open Issues**: If re-executing, call `get_task_issues(task_id, status_filter: "open")` to get structured issues
 5. **Check Steps**: Call `get_task_steps` to see the execution plan
-6. **Read Plan + System Card**: Read implementation plan and `docs/architecture/system-card-orchestration-pattern.md`
+6. **Read Plan + System Card**: Read implementation plan and `docs/architecture/system-card-worker-execution-pattern.md` — extract ONLY your task's section
 7. **Build Execution Graph**: Decompose into sub-scopes, compute dependencies, identify parallel waves
 8. **Delegate to Coders**: Dispatch up to 3 concurrent `ralphx-coder` instances per wave with strict file ownership
 9. **Wave Gate Validation**: After each wave, run required validation before starting next wave
