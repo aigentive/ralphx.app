@@ -39,4 +39,7 @@ pub trait PlanBranchRepository: Send + Sync {
 
     /// Mark a plan branch as merged (sets status to Merged and merged_at timestamp)
     async fn set_merged(&self, id: &PlanBranchId) -> AppResult<()>;
+
+    /// Delete a plan branch record
+    async fn delete(&self, id: &PlanBranchId) -> AppResult<()>;
 }
