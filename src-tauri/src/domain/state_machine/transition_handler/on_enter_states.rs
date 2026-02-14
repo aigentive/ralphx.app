@@ -129,13 +129,31 @@ impl<'a> super::TransitionHandler<'a> {
                                         let worktree_path_buf =
                                             std::path::PathBuf::from(&worktree_path);
 
-                                        // Create worktree with new branch
-                                        match GitService::create_worktree(
-                                            repo_path,
-                                            &worktree_path_buf,
-                                            &branch,
-                                            base_branch,
-                                        ) {
+                                        // Check if branch already exists from a previous execution attempt
+                                        let branch_exists = GitService::branch_exists(repo_path, &branch);
+
+                                        // Create worktree - use existing branch if it exists, create new one otherwise
+                                        let result = if branch_exists {
+                                            tracing::info!(
+                                                task_id = task_id_str,
+                                                branch = %branch,
+                                                "Branch already exists, checking out existing branch into worktree"
+                                            );
+                                            GitService::checkout_existing_branch_worktree(
+                                                repo_path,
+                                                &worktree_path_buf,
+                                                &branch,
+                                            )
+                                        } else {
+                                            GitService::create_worktree(
+                                                repo_path,
+                                                &worktree_path_buf,
+                                                &branch,
+                                                base_branch,
+                                            )
+                                        };
+
+                                        match result {
                                             Ok(_) => {
                                                 Ok(Some((branch.clone(), Some(worktree_path))))
                                             }
