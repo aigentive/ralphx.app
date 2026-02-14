@@ -332,7 +332,7 @@ export const MergeValidationStepEventSchema = z.object({
   stdout: z.string().optional(),
   stderr: z.string().optional(),
   duration_ms: z.number().optional(),
-  context: z.enum(["merge", "execution"]).optional(),
+  context: z.enum(["merge", "execution", "review"]).optional(),
 });
 
 export type MergeValidationStepEvent = z.infer<typeof MergeValidationStepEventSchema>;

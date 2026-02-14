@@ -20,8 +20,10 @@ import {
   StatusPill,
   TwoColumnLayout,
 } from "./shared";
+import { ValidationProgress } from "./shared/ValidationProgress";
 import type { Task } from "@/types/task";
 import { useTaskStateHistory } from "@/hooks/useReviews";
+import { useValidationEvents } from "@/hooks/useValidationEvents";
 import type { ReviewNoteResponse } from "@/lib/tauri";
 
 interface ReviewingTaskDetailProps {
@@ -215,6 +217,10 @@ export function ReviewingTaskDetail({
   });
   const outcome = isHistorical ? findOutcomeForTimestamp(history, viewTimestamp) : null;
   const outcomeConfig = isHistorical ? getOutcomeConfig(outcome) : null;
+
+  // Live validation events for setup/install progress
+  const liveValidationSteps = useValidationEvents(task.id, "review");
+
   return (
     <TwoColumnLayout
       description={task.description}
@@ -240,6 +246,15 @@ export function ReviewingTaskDetail({
             size="md"
           />
         }
+      />
+
+      {/* Setup/Install Progress (live validation events) */}
+      <ValidationProgress
+        taskId={task.id}
+        metadata={task.metadata}
+        liveSteps={liveValidationSteps}
+        title="Environment Setup"
+        metadataLogKey="review_setup_log"
       />
 
       {/* Review Steps */}

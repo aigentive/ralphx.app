@@ -842,6 +842,7 @@ async fn run_install_phase(
     task_id_str: &str,
     app_handle: Option<&tauri::AppHandle>,
     resolve: &(dyn Fn(&str) -> String + Send + Sync),
+    context: &str,
 ) -> (Vec<ValidationLogEntry>, bool) {
     let mut log: Vec<ValidationLogEntry> = Vec::new();
     let mut install_had_failures = false;
@@ -870,7 +871,7 @@ async fn run_install_phase(
                     "path": resolved_path,
                     "label": entry.label,
                     "status": "running",
-                    "context": "execution",
+                    "context": context,
                 }),
             );
         }
@@ -986,7 +987,7 @@ async fn run_install_phase(
                     "stdout": log_entry.stdout,
                     "stderr": log_entry.stderr,
                     "duration_ms": log_entry.duration_ms,
-                    "context": "execution",
+                    "context": context,
                 }),
             );
         }
@@ -1001,7 +1002,7 @@ async fn run_install_phase(
 /// Returns `None` if no analysis entries exist (backward compatible — skip setup).
 /// Returns `Some(PreExecSetupResult)` with success/failure details otherwise.
 ///
-/// When `app_handle` is `Some`, emits `merge:validation_step` events with context="execution"
+/// When `app_handle` is `Some`, emits `merge:validation_step` events with the provided context
 /// for real-time UI streaming. All executed commands are recorded in `PreExecSetupResult::log`
 /// for metadata storage.
 ///
@@ -1012,6 +1013,7 @@ pub(crate) async fn run_pre_execution_setup(
     exec_cwd: &Path,
     task_id_str: &str,
     app_handle: Option<&tauri::AppHandle>,
+    context: &str,
 ) -> Option<PreExecSetupResult> {
     let overall_start = std::time::Instant::now();
     tracing::info!(
@@ -1071,7 +1073,7 @@ pub(crate) async fn run_pre_execution_setup(
         task_id_str,
         app_handle,
         &resolve,
-        Some("execution"),
+        Some(context),
     )
     .await;
 
@@ -1082,6 +1084,7 @@ pub(crate) async fn run_pre_execution_setup(
         task_id_str,
         app_handle,
         &resolve,
+        context,
     )
     .await;
 

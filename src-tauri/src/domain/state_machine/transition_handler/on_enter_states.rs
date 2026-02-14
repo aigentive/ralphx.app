@@ -18,6 +18,122 @@ use crate::domain::entities::{GitMode, ProjectId, TaskId, TaskStepStatus};
 use crate::error::{AppError, AppResult};
 
 impl<'a> super::TransitionHandler<'a> {
+    /// Run pre-execution setup (worktree_setup + install), store log in metadata.
+    /// Returns Err if setup fails in Block/AutoFix mode.
+    async fn run_and_store_pre_execution_setup(
+        &self,
+        task_id_str: &str,
+        project_id_str: &str,
+        context: &str,           // "execution" or "review"
+        metadata_key: &str,      // "execution_setup_log" or "review_setup_log"
+    ) -> AppResult<()> {
+        // Run pre-execution setup (worktree_setup + install) before spawning agent
+        if let (Some(ref task_repo), Some(ref project_repo)) = (
+            &self.machine.context.services.task_repo,
+            &self.machine.context.services.project_repo,
+        ) {
+            let task_id = TaskId::from_string(task_id_str.to_string());
+            let project_id = ProjectId::from_string(project_id_str.to_string());
+
+            let task_result = task_repo.get_by_id(&task_id).await;
+            let project_result = project_repo.get_by_id(&project_id).await;
+
+            if let (Ok(Some(task)), Ok(Some(project))) = (task_result, project_result) {
+                // Skip pre-exec setup if mode is Off
+                use crate::domain::entities::MergeValidationMode;
+                if project.merge_validation_mode != MergeValidationMode::Off {
+                    // Determine execution directory (worktree_path or working_directory)
+                    let exec_cwd = if let Some(ref wt_path) = task.worktree_path {
+                        std::path::PathBuf::from(wt_path)
+                    } else {
+                        std::path::PathBuf::from(&project.working_directory)
+                    };
+
+                    // Only run pre-execution setup if exec_cwd exists
+                    if !exec_cwd.exists() {
+                        tracing::warn!(
+                            task_id = task_id_str,
+                            exec_cwd = %exec_cwd.display(),
+                            "Execution directory does not exist, skipping pre-execution setup"
+                        );
+                    } else if let Some(setup_result) = super::merge_validation::run_pre_execution_setup(
+                        &project,
+                        &task,
+                        &exec_cwd,
+                        task_id_str,
+                        self.machine.context.services.app_handle.as_ref(),
+                        context,
+                    )
+                    .await
+                    {
+                        // Store setup log in metadata (using update_metadata for targeted write)
+                        if let Ok(Some(task_updated)) = task_repo.get_by_id(&task_id).await {
+                            let log_json = serde_json::to_value(&setup_result.log)
+                                .unwrap_or_else(|_| serde_json::Value::Array(Vec::new()));
+
+                            let mut metadata_obj = if let Some(json_str) = task_updated.metadata.as_ref() {
+                                serde_json::from_str::<serde_json::Value>(json_str)
+                                    .unwrap_or_else(|_| serde_json::json!({}))
+                            } else {
+                                serde_json::json!({})
+                            };
+
+                            if let Some(obj) = metadata_obj.as_object_mut() {
+                                obj.insert(metadata_key.to_string(), log_json);
+                            }
+
+                            if let Ok(updated_metadata) = serde_json::to_string(&metadata_obj) {
+                                let _ = task_repo.update_metadata(&task_id, Some(updated_metadata)).await;
+                            }
+                        }
+
+                        // Handle setup failure based on merge_validation_mode
+                        if !setup_result.success {
+                            match project.merge_validation_mode {
+                                MergeValidationMode::Block | MergeValidationMode::AutoFix => {
+                                    tracing::error!(
+                                        task_id = task_id_str,
+                                        "Pre-execution setup failed (install command failed). Blocking execution."
+                                    );
+                                    return Err(AppError::ExecutionBlocked(
+                                        format!("Pre-execution setup failed: install command(s) failed. Check {} in task metadata for details.", metadata_key)
+                                    ));
+                                }
+                                MergeValidationMode::Warn => {
+                                    tracing::warn!(
+                                        task_id = task_id_str,
+                                        "Pre-execution setup failed (install command failed). Proceeding with warning."
+                                    );
+                                    // Store warning in metadata but proceed (using update_metadata for targeted write)
+                                    if let Ok(Some(task_updated)) = task_repo.get_by_id(&task_id).await {
+                                        let mut metadata_obj = if let Some(json_str) = task_updated.metadata.as_ref() {
+                                            serde_json::from_str::<serde_json::Value>(json_str)
+                                                .unwrap_or_else(|_| serde_json::json!({}))
+                                        } else {
+                                            serde_json::json!({})
+                                        };
+
+                                        if let Some(obj) = metadata_obj.as_object_mut() {
+                                            obj.insert("execution_setup_warning".to_string(), serde_json::json!(true));
+                                        }
+
+                                        if let Ok(updated_metadata) = serde_json::to_string(&metadata_obj) {
+                                            let _ = task_repo.update_metadata(&task_id, Some(updated_metadata)).await;
+                                        }
+                                    }
+                                }
+                                MergeValidationMode::Off => {
+                                    // Already skipped above, but for completeness
+                                }
+                            }
+                        }
+                    } // end if let Some(setup_result)
+                } // end if project.merge_validation_mode != Off
+            } // end if let (Ok(Some(task)), Ok(Some(project)))
+        } // end if let (Some(ref task_repo), Some(ref project_repo))
+        Ok(())
+    }
+
     /// Execute on-enter dispatch for all state arms.
     ///
     /// Called by `on_enter` in side_effects.rs.
@@ -194,108 +310,7 @@ impl<'a> super::TransitionHandler<'a> {
                 }
 
                 // Run pre-execution setup (worktree_setup + install) before spawning agent
-                if let (Some(ref task_repo), Some(ref project_repo)) = (
-                    &self.machine.context.services.task_repo,
-                    &self.machine.context.services.project_repo,
-                ) {
-                    let task_id = TaskId::from_string(task_id_str.clone());
-                    let project_id = ProjectId::from_string(project_id_str.clone());
-
-                    let task_result = task_repo.get_by_id(&task_id).await;
-                    let project_result = project_repo.get_by_id(&project_id).await;
-
-                    if let (Ok(Some(task)), Ok(Some(project))) = (task_result, project_result) {
-                        // Skip pre-exec setup if mode is Off
-                        use crate::domain::entities::MergeValidationMode;
-                        if project.merge_validation_mode != MergeValidationMode::Off {
-                            // Determine execution directory (worktree_path or working_directory)
-                            let exec_cwd = if let Some(ref wt_path) = task.worktree_path {
-                                std::path::PathBuf::from(wt_path)
-                            } else {
-                                std::path::PathBuf::from(&project.working_directory)
-                            };
-
-                            // Only run pre-execution setup if exec_cwd exists
-                            if !exec_cwd.exists() {
-                                tracing::warn!(
-                                    task_id = task_id_str,
-                                    exec_cwd = %exec_cwd.display(),
-                                    "Execution directory does not exist, skipping pre-execution setup"
-                                );
-                            } else if let Some(setup_result) = super::merge_validation::run_pre_execution_setup(
-                                &project,
-                                &task,
-                                &exec_cwd,
-                                task_id_str,
-                                self.machine.context.services.app_handle.as_ref(),
-                            )
-                            .await
-                            {
-                                // Store execution_setup_log in metadata (using update_metadata for targeted write)
-                                if let Ok(Some(task_updated)) = task_repo.get_by_id(&task_id).await {
-                                    let log_json = serde_json::to_value(&setup_result.log)
-                                        .unwrap_or_else(|_| serde_json::Value::Array(Vec::new()));
-
-                                    let mut metadata_obj = if let Some(json_str) = task_updated.metadata.as_ref() {
-                                        serde_json::from_str::<serde_json::Value>(json_str)
-                                            .unwrap_or_else(|_| serde_json::json!({}))
-                                    } else {
-                                        serde_json::json!({})
-                                    };
-
-                                    if let Some(obj) = metadata_obj.as_object_mut() {
-                                        obj.insert("execution_setup_log".to_string(), log_json);
-                                    }
-
-                                    if let Ok(updated_metadata) = serde_json::to_string(&metadata_obj) {
-                                        let _ = task_repo.update_metadata(&task_id, Some(updated_metadata)).await;
-                                    }
-                                }
-
-                                // Handle setup failure based on merge_validation_mode
-                                if !setup_result.success {
-                                    match project.merge_validation_mode {
-                                        MergeValidationMode::Block | MergeValidationMode::AutoFix => {
-                                            tracing::error!(
-                                                task_id = task_id_str,
-                                                "Pre-execution setup failed (install command failed). Blocking execution."
-                                            );
-                                            return Err(AppError::ExecutionBlocked(
-                                                "Pre-execution setup failed: install command(s) failed. Check execution_setup_log in task metadata for details.".to_string()
-                                            ));
-                                        }
-                                        MergeValidationMode::Warn => {
-                                            tracing::warn!(
-                                                task_id = task_id_str,
-                                                "Pre-execution setup failed (install command failed). Proceeding with warning."
-                                            );
-                                            // Store warning in metadata but proceed (using update_metadata for targeted write)
-                                            if let Ok(Some(task_updated)) = task_repo.get_by_id(&task_id).await {
-                                                let mut metadata_obj = if let Some(json_str) = task_updated.metadata.as_ref() {
-                                                    serde_json::from_str::<serde_json::Value>(json_str)
-                                                        .unwrap_or_else(|_| serde_json::json!({}))
-                                                } else {
-                                                    serde_json::json!({})
-                                                };
-
-                                                if let Some(obj) = metadata_obj.as_object_mut() {
-                                                    obj.insert("execution_setup_warning".to_string(), serde_json::json!(true));
-                                                }
-
-                                                if let Ok(updated_metadata) = serde_json::to_string(&metadata_obj) {
-                                                    let _ = task_repo.update_metadata(&task_id, Some(updated_metadata)).await;
-                                                }
-                                            }
-                                        }
-                                        MergeValidationMode::Off => {
-                                            // Already skipped above, but for completeness
-                                        }
-                                    }
-                                }
-                            } // end if let Some(setup_result)
-                        } // end if project.merge_validation_mode != Off
-                    } // end if let (Ok(Some(task)), Ok(Some(project)))
-                } // end if let (Some(ref task_repo), Some(ref project_repo))
+                self.run_and_store_pre_execution_setup(task_id_str, project_id_str, "execution", "execution_setup_log").await?;
 
                 // Use ChatService for persistent worker execution (Phase 15B)
                 let prompt = format!("Execute task: {}", task_id_str);
@@ -494,8 +509,12 @@ impl<'a> super::TransitionHandler<'a> {
                 // (Worktree mode already has isolated directory)
                 self.checkout_task_branch_if_needed("Reviewing").await;
 
-                // Spawn reviewer agent via ChatService with Review context
+                // Run pre-execution setup before reviewing
+                let project_id_str = &self.machine.context.project_id;
                 let task_id = &self.machine.context.task_id;
+                self.run_and_store_pre_execution_setup(task_id, project_id_str, "review", "review_setup_log").await?;
+
+                // Spawn reviewer agent via ChatService with Review context
                 let prompt = format!("Review task: {}", task_id);
 
                 tracing::info!(
@@ -570,6 +589,11 @@ impl<'a> super::TransitionHandler<'a> {
                 // For Local mode: checkout task branch before spawning worker
                 // (Worktree mode already has isolated directory)
                 self.checkout_task_branch_if_needed("ReExecuting").await;
+
+                // Run pre-execution setup before re-executing
+                let task_id_str = &self.machine.context.task_id;
+                let project_id_str = &self.machine.context.project_id;
+                self.run_and_store_pre_execution_setup(task_id_str, project_id_str, "execution", "execution_setup_log").await?;
 
                 // Spawn worker agent with revision context via ChatService
                 let task_id = &self.machine.context.task_id;
