@@ -313,6 +313,9 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     setStreamingTasks(new Map());
   }, [handleStopAgent]);
 
+  // Ref to track conversation ID that's finalizing (between message_created and query refetch)
+  const finalizingConversationRef = useRef<string | null>(null);
+
   // Unified event subscriptions (replaces useChatPanelHandlers event logic)
   useChatEvents({
     activeConversationId,
@@ -321,6 +324,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     setStreamingToolCalls,
     setStreamingContentBlocks,
     setStreamingTasks,
+    finalizingConversationRef,
   });
 
   // Hook events — listen for agent:hook Tauri events scoped to active conversation
@@ -482,6 +486,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
               streamingContentBlocks={streamingContentBlocks}
               hookEvents={hookEvents}
               activeHooks={activeHooksList}
+              finalizingConversationRef={finalizingConversationRef}
             />
           </div>
         )}

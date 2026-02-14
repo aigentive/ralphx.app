@@ -324,6 +324,11 @@ export function IntegratedChatPanel({
     setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
   }, [handleStopAgent, setStreamingToolCalls, setStreamingContentBlocks, setStreamingTasks]);
 
+  // Ref to track conversation ID that's finalizing (between message_created and query refetch)
+  // Used to persist filtering state through the timing window where streaming state is cleared
+  // but the query refetch hasn't completed yet
+  const finalizingConversationRef = useRef<string | null>(null);
+
   useChatEvents({
     activeConversationId,
     contextId: currentContextId,
@@ -331,6 +336,7 @@ export function IntegratedChatPanel({
     setStreamingToolCalls,
     setStreamingContentBlocks,
     setStreamingTasks,
+    finalizingConversationRef,
   });
 
   // Ask user question state — scoped to current context (ideation session, task, or project)
@@ -515,6 +521,7 @@ export function IntegratedChatPanel({
               streamingTasks={streamingTasks}
               streamingContentBlocks={streamingContentBlocks}
               scrollToTimestamp={isHistoryMode ? taskHistoryState?.timestamp : null}
+              finalizingConversationRef={finalizingConversationRef}
             />
           )}
 
