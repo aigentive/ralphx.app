@@ -38,8 +38,8 @@ impl TaskStepRepository for SqliteTaskStepRepository {
         let conn = self.conn.lock().await;
 
         conn.execute(
-            "INSERT INTO task_steps (id, task_id, title, description, status, sort_order, depends_on, created_by, completion_note, created_at, updated_at, started_at, completed_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            "INSERT INTO task_steps (id, task_id, title, description, status, sort_order, depends_on, created_by, completion_note, created_at, updated_at, started_at, completed_at, parent_step_id, scope_context)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             rusqlite::params![
                 step.id.as_str(),
                 step.task_id.as_str(),
@@ -54,6 +54,8 @@ impl TaskStepRepository for SqliteTaskStepRepository {
                 step.updated_at.to_rfc3339(),
                 step.started_at.map(|dt| dt.to_rfc3339()),
                 step.completed_at.map(|dt| dt.to_rfc3339()),
+                step.parent_step_id.as_ref().map(|id| id.as_str()),
+                step.scope_context,
             ],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
@@ -65,7 +67,7 @@ impl TaskStepRepository for SqliteTaskStepRepository {
         let conn = self.conn.lock().await;
 
         let result = conn.query_row(
-            "SELECT id, task_id, title, description, status, sort_order, depends_on, created_by, completion_note, created_at, updated_at, started_at, completed_at
+            "SELECT id, task_id, title, description, status, sort_order, depends_on, created_by, completion_note, created_at, updated_at, started_at, completed_at, parent_step_id, scope_context
              FROM task_steps WHERE id = ?1",
             [id.as_str()],
             |row| TaskStep::from_row(row),
@@ -83,7 +85,7 @@ impl TaskStepRepository for SqliteTaskStepRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, task_id, title, description, status, sort_order, depends_on, created_by, completion_note, created_at, updated_at, started_at, completed_at
+                "SELECT id, task_id, title, description, status, sort_order, depends_on, created_by, completion_note, created_at, updated_at, started_at, completed_at, parent_step_id, scope_context
                  FROM task_steps WHERE task_id = ?1
                  ORDER BY sort_order ASC",
             )
@@ -107,7 +109,7 @@ impl TaskStepRepository for SqliteTaskStepRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, task_id, title, description, status, sort_order, depends_on, created_by, completion_note, created_at, updated_at, started_at, completed_at
+                "SELECT id, task_id, title, description, status, sort_order, depends_on, created_by, completion_note, created_at, updated_at, started_at, completed_at, parent_step_id, scope_context
                  FROM task_steps WHERE task_id = ?1 AND status = ?2
                  ORDER BY sort_order ASC",
             )
@@ -129,7 +131,7 @@ impl TaskStepRepository for SqliteTaskStepRepository {
         let conn = self.conn.lock().await;
 
         conn.execute(
-            "UPDATE task_steps SET task_id = ?2, title = ?3, description = ?4, status = ?5, sort_order = ?6, depends_on = ?7, created_by = ?8, completion_note = ?9, updated_at = ?10, started_at = ?11, completed_at = ?12
+            "UPDATE task_steps SET task_id = ?2, title = ?3, description = ?4, status = ?5, sort_order = ?6, depends_on = ?7, created_by = ?8, completion_note = ?9, updated_at = ?10, started_at = ?11, completed_at = ?12, parent_step_id = ?13, scope_context = ?14
              WHERE id = ?1",
             rusqlite::params![
                 step.id.as_str(),
@@ -144,6 +146,8 @@ impl TaskStepRepository for SqliteTaskStepRepository {
                 step.updated_at.to_rfc3339(),
                 step.started_at.map(|dt| dt.to_rfc3339()),
                 step.completed_at.map(|dt| dt.to_rfc3339()),
+                step.parent_step_id.as_ref().map(|id| id.as_str()),
+                step.scope_context,
             ],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
@@ -211,8 +215,8 @@ impl TaskStepRepository for SqliteTaskStepRepository {
 
         for step in &steps {
             let result = conn.execute(
-                "INSERT INTO task_steps (id, task_id, title, description, status, sort_order, depends_on, created_by, completion_note, created_at, updated_at, started_at, completed_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                "INSERT INTO task_steps (id, task_id, title, description, status, sort_order, depends_on, created_by, completion_note, created_at, updated_at, started_at, completed_at, parent_step_id, scope_context)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
                 rusqlite::params![
                     step.id.as_str(),
                     step.task_id.as_str(),
@@ -227,6 +231,8 @@ impl TaskStepRepository for SqliteTaskStepRepository {
                     step.updated_at.to_rfc3339(),
                     step.started_at.map(|dt| dt.to_rfc3339()),
                     step.completed_at.map(|dt| dt.to_rfc3339()),
+                    step.parent_step_id.as_ref().map(|id| id.as_str()),
+                    step.scope_context,
                 ],
             );
 
