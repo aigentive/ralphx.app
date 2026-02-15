@@ -4,6 +4,7 @@
  */
 
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { getQueryClient } from "@/lib/queryClient";
@@ -235,7 +236,9 @@ function AppContent() {
   }, [mergePipelineData]);
 
   // Paused tasks (provider errors)
-  const pausedTasks = useTaskStore(selectTasksByStatus("paused"));
+  // useShallow prevents infinite re-renders: selectTasksByStatus returns a new array
+  // on every call via .filter(), and Zustand's default Object.is sees new !== old.
+  const pausedTasks = useTaskStore(useShallow(selectTasksByStatus("paused")));
   const pausedCount = pausedTasks.length;
 
   // Ideation hooks
