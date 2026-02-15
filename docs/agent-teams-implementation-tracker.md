@@ -1,29 +1,21 @@
 # Agent Teams Implementation Tracker
 
 **Started:** 2026-02-15
-**Base Branch:** `feat/agent-teams`
-**Status:** IN PROGRESS
+**Branch:** `main` (merged 2026-02-15)
+**Status:** PHASE 1 COMPLETE — 100 files, 11,847 insertions, 10,373 tests passing
 
-## Git Worktrees
+## Summary
 
-### Phase 1A (MERGED into feat/agent-teams)
-| Worktree | Branch | Worker | Commit | Status |
-|----------|--------|--------|--------|--------|
-| `ralphx-wt-config` | `feat/agent-teams-config` | rust-config (Opus) | `75905584` | DONE — 47 tests |
-| `ralphx-wt-services` | `feat/agent-teams-services` | rust-services (Opus) | `a6dc8716` | DONE — 21 tests |
-| `ralphx-wt-mcp` | `feat/agent-teams-mcp` | mcp-prompts (Sonnet) | `d83ad3de` | DONE — 37 tests |
-| `ralphx-wt-frontend` | `feat/agent-teams-frontend` | frontend (Opus) | `77d1443c` | DONE — 91 tests |
+| Phase | Status | Workers | Tests |
+|-------|--------|---------|-------|
+| 1A: Foundation | DONE | 4 workers (3 Opus, 1 Sonnet) | 196 new tests |
+| 1B: Fixes + Verification | DONE | 4 workers (2 Opus, 2 Sonnet) + 1 relaunch | 10,373 total passing |
+| 1C: Context Relaunch Protocol | PLANNED | — | — |
+| 2: Split-Pane UI | FUTURE | — | — |
 
-### Phase 1B (IN PROGRESS — fix branches)
-| Worktree | Branch | Worker | Focus | Status |
-|----------|--------|--------|-------|--------|
-| `ralphx-wt-rust` | `feat/agent-teams-rust-fixes` | rust-fixes (Opus) | Services gaps: ChatService, events, HTTP handler, interactive mode | IN PROGRESS |
-| `ralphx-wt-front` | `feat/agent-teams-frontend-fixes` | frontend-fixes (Sonnet) | 4 wiring bugs: filter, target selector, teammate props, CSS | IN PROGRESS |
-| `ralphx-wt-verify` | `feat/agent-teams-verify` | verifier (Sonnet) | MCP build + Rust check/clippy/test + Frontend lint/test | BLOCKED by fixes |
+## Phase 1A: Foundation — DONE ✓
 
-## Phase 1A: Foundation (Parallel)
-
-### rust-config (Opus) — DONE ✓
+### rust-config (Opus) — `75905584`
 - [x] `ProcessSlot`, `ProcessMapping` structs in `agent_config/`
 - [x] `TeamConstraints`, `TeamConstraintsConfig`, `TeamMode` structs
 - [x] `resolve_process_agent()` function
@@ -35,7 +27,7 @@
 - [x] Environment variable overrides for constraints
 - [x] Unit tests (47 tests)
 
-### rust-services (Opus) — PARTIAL (gaps being fixed in Phase 1B)
+### rust-services (Opus) — `a6dc8716`
 - [x] `TeamStateTracker` service (`team_state_tracker.rs`, 965 lines)
 - [x] `TeammateHandle` with child process, stream task
 - [x] Artifact model: 3 new `ArtifactType` variants (TeamResearch, TeamAnalysis, TeamSummary)
@@ -45,15 +37,8 @@
 - [x] `team_sessions` DB table for resume support
 - [x] `team_messages` DB table
 - [x] Unit tests (21 tests)
-- [ ] ChatService `send_message()` extension for team mode → **Phase 1B rust-fixes**
-- [ ] `resolve_agent()` extended with `team_mode` parameter → **Phase 1B rust-fixes**
-- [ ] `StreamProcessorConfig` team extensions → **Phase 1B rust-fixes**
-- [ ] Interactive mode support in `ClaudeCodeClient` (stdin pipe) → **Phase 1B rust-fixes**
-- [ ] Team event emission (payloads defined, no emit calls) → **Phase 1B rust-fixes**
-- [ ] `request_teammate_spawn` HTTP handler → **Phase 1B rust-fixes**
-- [ ] `TeamArtifactMetadata` DB persistence → **Phase 1B rust-fixes**
 
-### mcp-prompts (Sonnet) — DONE ✓
+### mcp-prompts (Sonnet) — `d83ad3de`
 - [x] `ideation-team-member` allowlist in `tools.ts`
 - [x] `worker-team-member` allowlist in `tools.ts`
 - [x] `RALPHX_ALLOWED_MCP_TOOLS` env var support in `getToolAllowlist()`
@@ -73,7 +58,7 @@
 - [x] `ideation-critic.md` template
 - [x] 37 vitest unit tests (`src/__tests__/tools.test.ts`)
 
-### frontend (Opus) — DONE ✓ (wiring bugs being fixed in Phase 1B)
+### frontend (Opus) — `77d1443c` + `e782af77`
 - [x] `team:*` event constants in `src/lib/events.ts`
 - [x] `teamStore.ts` (Zustand + immer, 212 lines)
 - [x] `chatStore.ts` extension (`isTeamActive`)
@@ -94,36 +79,32 @@
 - [x] `MessageItem.tsx` teammate color border
 - [x] `ExecutionTaskDetail.tsx` multi-track progress
 - [x] 91 tests across 11 test files
-- [ ] Wire TeamFilterTabs to actually filter messages → **Phase 1B frontend-fixes**
-- [ ] Wire TargetSelector to send handler → **Phase 1B frontend-fixes**
-- [ ] Pass teammate props to MessageItem from ChatMessageList → **Phase 1B frontend-fixes**
-- [ ] Fix `focusRingColor` invalid CSS → **Phase 1B frontend-fixes**
 
-## Phase 1B: Integration + Fixes (IN PROGRESS)
+## Phase 1B: Fixes + Verification — DONE ✓
 
-### Merge (DONE)
-- [x] Merge all 4 feature branches into `feat/agent-teams`
-- [x] Resolve merge conflicts (agent prompt duplicates between mcp + config)
+### Services Gap Fixes — `6af25a22` + `1dfe29da`
+- [x] ChatService `send_message()` extension for team mode
+- [x] `resolve_agent()` with `team_mode` parameter
+- [x] Interactive mode in ClaudeCodeClient (stdin pipe management)
+- [x] Team event emission (`team_events.rs`, all 7 event types)
+- [x] `request_teammate_spawn` HTTP handler (`handlers/teams.rs`)
+- [x] `StreamProcessorConfig` team extensions (teammate_name, teammate_color)
+- [x] `TeamArtifactMetadata` DB persistence
 
-### Services Gap Fixes (rust-fixes worker — IN PROGRESS)
-- [ ] ChatService `send_message()` extension for team mode
-- [ ] `resolve_agent()` with `team_mode` parameter
-- [ ] Interactive mode in ClaudeCodeClient (stdin pipe management)
-- [ ] Team event emission (`app_handle.emit()` for all 7 event types)
-- [ ] `request_teammate_spawn` HTTP handler
-- [ ] `StreamProcessorConfig` team extensions (teammate_name, teammate_color)
-- [ ] `TeamArtifactMetadata` DB persistence
+### Frontend Wiring Fixes — `7dc5fef2`
+- [x] Fix `focusRingColor` invalid CSS in TeamFilterTabs
+- [x] Wire TeamFilterTabs filter to actually filter messages
+- [x] Wire TargetSelector value into send/queue handlers
+- [x] Pass teammateName/teammateColor to MessageItem from ChatMessageList
 
-### Frontend Wiring Fixes (frontend-fixes worker — IN PROGRESS)
-- [ ] Fix `focusRingColor` invalid CSS in TeamFilterTabs
-- [ ] Wire TeamFilterTabs filter to actually filter messages
-- [ ] Wire TargetSelector value into send/queue handlers
-- [ ] Pass teammateName/teammateColor to MessageItem from ChatMessageList
+### Verification — `19739af6`
+- [x] MCP server: `npm run build` + `npm test` (74 tests passed)
+- [x] Rust: `cargo check` + `cargo clippy` + `cargo test --lib` (4837 tests passed)
+- [x] Frontend: `npm run lint` + `npx vitest run` (5462 tests passed)
 
-### Verification (verifier worker — BLOCKED by fixes)
-- [ ] MCP server: `npm run build` + `npm test`
-- [ ] Rust: `cargo check` + `cargo clippy` + `cargo test --lib`
-- [ ] Frontend: `npm run lint` + `npx vitest run`
+### Context Relaunch (applied during Phase 1B)
+- rust-fixes worker hit 7% context → forced handoff → relaunched as rust-fixes-v2
+- Protocol documented: `docs/architecture/agent-teams-context-relaunch.md`
 
 ## Phase 1C: Context Relaunch Protocol (PLANNED)
 
@@ -157,13 +138,3 @@
 - [ ] `usePaneEvents.ts`
 - [ ] Responsive breakpoints
 - [ ] Display mode toggle
-
-## Integration Points (Cross-Worker Dependencies)
-
-| Dependency | Producer | Consumer | Notes |
-|-----------|----------|----------|-------|
-| `TeamConstraints` types | rust-config | rust-services | Services needs config types for validation |
-| `ArtifactType` enum | rust-services | mcp-prompts | MCP handlers reference new artifact types |
-| Team event payloads | rust-services | frontend | Frontend event types must match backend emission |
-| MCP tool names | mcp-prompts | rust-services | HTTP handler routing must match tool definitions |
-| `TeamStatusResponse` shape | rust-services | frontend | API response types must align |
