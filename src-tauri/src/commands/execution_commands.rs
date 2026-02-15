@@ -25,6 +25,10 @@ use crate::domain::state_machine::transition_handler::get_trigger_origin;
 /// Tasks in these states need to be cancelled when stop is called,
 /// and resumed when the app restarts.
 ///
+/// NOTE: `Paused` is intentionally excluded. Paused tasks persist across restarts
+/// with their metadata intact (pause_reason in SQLite). Startup recovery does not
+/// touch them — they stay visible in the UI for manual or auto-resume.
+///
 /// Used by:
 /// - `stop_execution` command to find tasks to cancel
 /// - `StartupJobRunner` to find tasks to resume on app restart
@@ -566,6 +570,19 @@ pub async fn pause_execution(
         for task in tasks {
             // Check if task is in an agent-active state
             if AGENT_ACTIVE_STATUSES.contains(&task.internal_status) {
+                // Store PauseReason::UserInitiated metadata before transitioning
+                let pause_reason = crate::application::chat_service::PauseReason::UserInitiated {
+                    previous_status: task.internal_status.to_string(),
+                    paused_at: chrono::Utc::now().to_rfc3339(),
+                    scope: "global".to_string(),
+                };
+                let mut updated_task = task.clone();
+                updated_task.metadata = Some(
+                    pause_reason.write_to_task_metadata(updated_task.metadata.as_deref()),
+                );
+                updated_task.touch();
+                let _ = app_state.task_repo.update(&updated_task).await;
+
                 // Use TransitionHandler to transition to Paused
                 // Paused is NOT terminal - can be restored on resume
                 // This triggers on_exit handlers which decrement running count
@@ -685,34 +702,51 @@ pub async fn resume_execution(
             .map_err(|e| e.to_string())?;
 
         for task in tasks {
-            // Find the pre-pause status from status history
-            // Look for the last transition where to == Paused, restore to `from` status
-            let status_history = match app_state.task_repo.get_status_history(&task.id).await {
-                Ok(history) => history,
-                Err(e) => {
-                    tracing::warn!(
-                        task_id = task.id.as_str(),
-                        error = %e,
-                        "Failed to get status history for resume"
-                    );
-                    continue;
+            // Determine restore status: prefer pause_reason metadata, fall back to status_history
+            let restore_status = if let Some(reason) =
+                crate::application::chat_service::PauseReason::from_task_metadata(
+                    task.metadata.as_deref(),
+                )
+            {
+                match reason.previous_status().parse::<InternalStatus>() {
+                    Ok(status) => status,
+                    Err(_) => {
+                        tracing::warn!(
+                            task_id = task.id.as_str(),
+                            previous_status = reason.previous_status(),
+                            "Invalid previous_status in pause metadata, falling back to history"
+                        );
+                        InternalStatus::Executing // safe fallback
+                    }
                 }
-            };
+            } else {
+                // Fallback: find the pre-pause status from status history
+                let status_history = match app_state.task_repo.get_status_history(&task.id).await {
+                    Ok(history) => history,
+                    Err(e) => {
+                        tracing::warn!(
+                            task_id = task.id.as_str(),
+                            error = %e,
+                            "Failed to get status history for resume"
+                        );
+                        continue;
+                    }
+                };
 
-            // Find the transition that moved to Paused (most recent)
-            let pause_transition = status_history
-                .iter()
-                .rev()
-                .find(|t| t.to == InternalStatus::Paused);
+                let pause_transition = status_history
+                    .iter()
+                    .rev()
+                    .find(|t| t.to == InternalStatus::Paused);
 
-            let restore_status = match pause_transition {
-                Some(transition) => transition.from,
-                None => {
-                    tracing::warn!(
-                        task_id = task.id.as_str(),
-                        "No pause transition found in history, cannot restore"
-                    );
-                    continue;
+                match pause_transition {
+                    Some(transition) => transition.from,
+                    None => {
+                        tracing::warn!(
+                            task_id = task.id.as_str(),
+                            "No pause transition found in history or metadata, cannot restore"
+                        );
+                        continue;
+                    }
                 }
             };
 
@@ -751,7 +785,16 @@ pub async fn resume_execution(
 
             // Re-run entry actions to respawn the agent
             // Fetch fresh task after transition
-            if let Ok(Some(restored_task)) = app_state.task_repo.get_by_id(&task.id).await {
+            if let Ok(Some(mut restored_task)) = app_state.task_repo.get_by_id(&task.id).await {
+                // Clear pause_reason metadata on successful resume
+                restored_task.metadata = Some(
+                    crate::application::chat_service::PauseReason::clear_from_task_metadata(
+                        restored_task.metadata.as_deref(),
+                    ),
+                );
+                restored_task.touch();
+                let _ = app_state.task_repo.update(&restored_task).await;
+
                 transition_service
                     .execute_entry_actions(&task.id, &restored_task, restore_status)
                     .await;

@@ -200,6 +200,15 @@ export const tasksApi = {
     typedInvokeWithTransform("pause_task", { taskId }, TaskSchema, transformTask),
 
   /**
+   * Resume a paused task
+   * Reads previous_status from pause metadata and restores the task
+   * @param taskId The task ID
+   * @returns The resumed task
+   */
+  resume: (taskId: string): Promise<Task> =>
+    typedInvokeWithTransform("resume_task", { taskId }, TaskSchema, transformTask),
+
+  /**
    * Stop a running task
    * Transitions the task to Stopped state (terminal, requires manual restart)
    * @param taskId The task ID

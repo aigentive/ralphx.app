@@ -1,8 +1,12 @@
 /**
- * PausedTasksPopover - Compact popover showing provider-error-paused tasks
+ * PausedTasksPopover - Compact popover showing all paused tasks
  *
  * Follows MergePipelinePopover pattern: glass panel, scrollable list,
  * header with total count, footer with explanation.
+ *
+ * Supports two pause types:
+ * - provider_error: auto-resumable provider errors (rate limit, server, etc.)
+ * - user_initiated: manually paused by user
  */
 
 import {
@@ -10,7 +14,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { PausedTaskCard, type ProviderErrorMetadata } from "./PausedTaskCard";
+import { PausedTaskCard, type PauseReason } from "./PausedTaskCard";
 import type { Task } from "@/types/task";
 import { useUiStore } from "@/stores/uiStore";
 import { api } from "@/lib/tauri";
@@ -24,13 +28,50 @@ interface PausedTasksPopoverProps {
   alignOffset?: number;
 }
 
-/** Parse provider_error metadata from task.metadata JSON string */
-function parseProviderError(task: Task): ProviderErrorMetadata | null {
+/** Parse pause_reason from task.metadata JSON string, with legacy fallback */
+export function parsePauseReason(task: Task): PauseReason | null {
   if (!task.metadata) return null;
   try {
     const parsed = JSON.parse(task.metadata);
+
+    // New format: pause_reason with type discriminator
+    if (parsed?.pause_reason) {
+      const pr = parsed.pause_reason;
+      if (pr.type === "user_initiated") {
+        return {
+          type: "user_initiated",
+          previous_status: pr.previous_status ?? "executing",
+          paused_at: pr.paused_at ?? new Date().toISOString(),
+          scope: pr.scope ?? "global",
+        };
+      }
+      if (pr.type === "provider_error") {
+        return {
+          type: "provider_error",
+          category: pr.category ?? "server_error",
+          message: pr.message ?? "Unknown error",
+          retry_after: pr.retry_after ?? null,
+          previous_status: pr.previous_status ?? "executing",
+          paused_at: pr.paused_at ?? new Date().toISOString(),
+          auto_resumable: pr.auto_resumable ?? false,
+          resume_attempts: pr.resume_attempts ?? 0,
+        };
+      }
+    }
+
+    // Legacy format: provider_error at top level
     if (parsed?.provider_error) {
-      return parsed.provider_error as ProviderErrorMetadata;
+      const pe = parsed.provider_error;
+      return {
+        type: "provider_error",
+        category: pe.category ?? "server_error",
+        message: pe.message ?? "Unknown error",
+        retry_after: pe.retry_after ?? null,
+        previous_status: pe.previous_status ?? "executing",
+        paused_at: pe.paused_at ?? new Date().toISOString(),
+        auto_resumable: pe.auto_resumable ?? false,
+        resume_attempts: pe.resume_attempts ?? 0,
+      };
     }
   } catch {
     // Invalid JSON - skip
@@ -47,8 +88,7 @@ export function PausedTasksPopover({
 
   const handleResume = async (taskId: string) => {
     try {
-      // Move task back to its previous status (backend handles this via resume transition)
-      await api.tasks.move(taskId, "executing");
+      await api.tasks.resume(taskId);
     } catch (error) {
       console.error("Failed to resume paused task:", error);
     }
@@ -57,6 +97,21 @@ export function PausedTasksPopover({
   const handleViewDetails = (taskId: string) => {
     setSelectedTaskId(taskId);
   };
+
+  // Parse all paused tasks with their reasons
+  const tasksWithReasons = pausedTasks
+    .map((task) => ({ task, reason: parsePauseReason(task) }))
+    .filter((entry): entry is { task: Task; reason: PauseReason } => entry.reason !== null);
+
+  // Split into groups
+  const providerErrors = tasksWithReasons.filter((e) => e.reason.type === "provider_error");
+  const userPaused = tasksWithReasons.filter((e) => e.reason.type === "user_initiated");
+  // Tasks with no parseable reason still show (generic paused)
+  const unparsed = pausedTasks.filter(
+    (t) => !tasksWithReasons.some((e) => e.task.id === t.id)
+  );
+
+  const hasBothGroups = providerErrors.length > 0 && (userPaused.length > 0 || unparsed.length > 0);
 
   return (
     <Popover>
@@ -92,7 +147,11 @@ export function PausedTasksPopover({
             className="text-[11px] tabular-nums"
             style={{ color: "hsl(220 10% 42%)" }}
           >
-            provider errors
+            {providerErrors.length > 0 && userPaused.length > 0
+              ? `${providerErrors.length} errors · ${userPaused.length} user`
+              : providerErrors.length > 0
+                ? "provider errors"
+                : "user paused"}
           </span>
         </div>
 
@@ -112,19 +171,61 @@ export function PausedTasksPopover({
               No paused tasks
             </div>
           ) : (
-            pausedTasks.map((task) => {
-              const errorMeta = parseProviderError(task);
-              if (!errorMeta) return null;
-              return (
+            <>
+              {/* Provider Errors section */}
+              {providerErrors.length > 0 && hasBothGroups && (
+                <div
+                  className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider"
+                  style={{ color: "hsl(220 10% 42%)" }}
+                >
+                  Provider Errors
+                </div>
+              )}
+              {providerErrors.map((entry) => (
                 <PausedTaskCard
-                  key={task.id}
-                  task={task}
-                  errorMeta={errorMeta}
+                  key={entry.task.id}
+                  task={entry.task}
+                  pauseReason={entry.reason}
                   onResume={handleResume}
                   onViewDetails={handleViewDetails}
                 />
-              );
-            })
+              ))}
+
+              {/* User Paused section */}
+              {userPaused.length > 0 && hasBothGroups && (
+                <div
+                  className="px-2 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wider"
+                  style={{ color: "hsl(220 10% 42%)" }}
+                >
+                  User Paused
+                </div>
+              )}
+              {userPaused.map((entry) => (
+                <PausedTaskCard
+                  key={entry.task.id}
+                  task={entry.task}
+                  pauseReason={entry.reason}
+                  onResume={handleResume}
+                  onViewDetails={handleViewDetails}
+                />
+              ))}
+
+              {/* Unparsed paused tasks - show as user-initiated with fallback */}
+              {unparsed.map((task) => (
+                <PausedTaskCard
+                  key={task.id}
+                  task={task}
+                  pauseReason={{
+                    type: "user_initiated",
+                    previous_status: "executing",
+                    paused_at: new Date().toISOString(),
+                    scope: "unknown",
+                  }}
+                  onResume={handleResume}
+                  onViewDetails={handleViewDetails}
+                />
+              ))}
+            </>
           )}
         </div>
 
@@ -136,7 +237,7 @@ export function PausedTasksPopover({
             color: "hsl(220 10% 42%)",
           }}
         >
-          Tasks paused due to provider errors. Auto-resumable tasks retry automatically.
+          Click Resume to restart individual tasks. Auto-resumable tasks retry automatically.
         </div>
       </PopoverContent>
     </Popover>
