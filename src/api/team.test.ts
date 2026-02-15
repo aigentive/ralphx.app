@@ -1,9 +1,22 @@
 /**
- * team API tests — Zod schema validation tests
+ * team API tests — Zod schema validation + API function tests
  */
 
-import { describe, it, expect } from "vitest";
-import { TeammateStatusSchema, TeamMessageSchema, TeamStatusSchema } from "./team";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { invoke } from "@tauri-apps/api/core";
+import {
+  TeammateStatusSchema,
+  TeamMessageSchema,
+  TeamStatusSchema,
+  getTeamStatus,
+  sendTeamMessage,
+  getTeamMessages,
+  stopTeammate,
+  stopTeam,
+  getTeammateCost,
+} from "./team";
+
+const mockInvoke = invoke as ReturnType<typeof vi.fn>;
 
 describe("team API schemas", () => {
   describe("TeammateStatusSchema", () => {
@@ -134,6 +147,151 @@ describe("team API schemas", () => {
 
     it("rejects invalid structure", () => {
       expect(() => TeamStatusSchema.parse({ name: "x" })).toThrow();
+    });
+  });
+});
+
+// ============================================================================
+// API Function Tests
+// ============================================================================
+
+const createMockTeamStatus = () => ({
+  name: "task-abc",
+  context_type: "task_execution",
+  context_id: "abc",
+  lead_name: "lead-agent",
+  teammates: [],
+  phase: "active",
+  created_at: "2026-02-15T10:00:00Z",
+  message_count: 3,
+});
+
+const createMockMessage = (overrides = {}) => ({
+  id: "msg-1",
+  sender: "coder-1",
+  recipient: "coder-2",
+  content: "Hello",
+  message_type: "teammate_message",
+  timestamp: "2026-02-15T10:00:00Z",
+  ...overrides,
+});
+
+describe("team API functions", () => {
+  beforeEach(() => {
+    mockInvoke.mockReset();
+  });
+
+  describe("getTeamStatus", () => {
+    it("returns parsed team status when result is non-null", async () => {
+      const raw = createMockTeamStatus();
+      mockInvoke.mockResolvedValue(raw);
+
+      const result = await getTeamStatus("task-abc");
+
+      expect(mockInvoke).toHaveBeenCalledWith("get_team_status", { teamName: "task-abc" });
+      expect(result).not.toBeNull();
+      expect(result!.name).toBe("task-abc");
+      expect(result!.phase).toBe("active");
+    });
+
+    it("returns null when result is null", async () => {
+      mockInvoke.mockResolvedValue(null);
+
+      const result = await getTeamStatus("nonexistent");
+
+      expect(mockInvoke).toHaveBeenCalledWith("get_team_status", { teamName: "nonexistent" });
+      expect(result).toBeNull();
+    });
+  });
+
+  describe("sendTeamMessage", () => {
+    it("wraps params in input object and parses response", async () => {
+      const raw = createMockMessage();
+      mockInvoke.mockResolvedValue(raw);
+
+      const result = await sendTeamMessage("task-abc", "coder-2", "Hello");
+
+      expect(mockInvoke).toHaveBeenCalledWith("send_team_message", {
+        input: { teamName: "task-abc", target: "coder-2", content: "Hello" },
+      });
+      expect(result.sender).toBe("coder-1");
+      expect(result.content).toBe("Hello");
+    });
+  });
+
+  describe("getTeamMessages", () => {
+    it("fetches messages without limit", async () => {
+      mockInvoke.mockResolvedValue([createMockMessage()]);
+
+      const result = await getTeamMessages("task-abc");
+
+      expect(mockInvoke).toHaveBeenCalledWith("get_team_messages", {
+        teamName: "task-abc",
+      });
+      expect(result).toHaveLength(1);
+    });
+
+    it("includes limit when provided", async () => {
+      mockInvoke.mockResolvedValue([createMockMessage()]);
+
+      await getTeamMessages("task-abc", 10);
+
+      expect(mockInvoke).toHaveBeenCalledWith("get_team_messages", {
+        teamName: "task-abc",
+        limit: 10,
+      });
+    });
+  });
+
+  describe("stopTeammate", () => {
+    it("calls stop_teammate with correct params", async () => {
+      mockInvoke.mockResolvedValue(undefined);
+
+      await stopTeammate("task-abc", "coder-1");
+
+      expect(mockInvoke).toHaveBeenCalledWith("stop_teammate", {
+        teamName: "task-abc",
+        teammateName: "coder-1",
+      });
+    });
+  });
+
+  describe("stopTeam", () => {
+    it("calls stop_team with team name", async () => {
+      mockInvoke.mockResolvedValue(undefined);
+
+      await stopTeam("task-abc");
+
+      expect(mockInvoke).toHaveBeenCalledWith("stop_team", { teamName: "task-abc" });
+    });
+  });
+
+  describe("getTeammateCost", () => {
+    it("parses inline schema response correctly", async () => {
+      const raw = {
+        teammate_name: "coder-1",
+        input_tokens: 5000,
+        output_tokens: 2000,
+        cache_creation_tokens: 100,
+        cache_read_tokens: 50,
+        estimated_usd: 0.15,
+      };
+      mockInvoke.mockResolvedValue(raw);
+
+      const result = await getTeammateCost("task-abc", "coder-1");
+
+      expect(mockInvoke).toHaveBeenCalledWith("get_teammate_cost", {
+        teamName: "task-abc",
+        teammateName: "coder-1",
+      });
+      expect(result.teammate_name).toBe("coder-1");
+      expect(result.estimated_usd).toBe(0.15);
+    });
+
+    it("rejects invalid response shape", async () => {
+      mockInvoke.mockResolvedValue({ invalid: true });
+
+      await expect(getTeammateCost("task-abc", "coder-1")).rejects.toThrow();
     });
   });
 });

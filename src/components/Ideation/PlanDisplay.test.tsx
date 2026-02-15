@@ -1,7 +1,22 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { PlanDisplay } from "./PlanDisplay";
+import type { PlanDisplayProps, TeamMetadata } from "./PlanDisplay";
 import type { Artifact } from "@/types/artifact";
+
+vi.mock("./TeamFindingsSection", () => ({
+  TeamFindingsSection: ({ findings, teamMode, teammateCount }: { findings: unknown[]; teamMode: string; teammateCount: number }) => (
+    <div data-testid="team-findings-section" data-team-mode={teamMode} data-count={teammateCount}>
+      {findings.length} findings
+    </div>
+  ),
+}));
+
+vi.mock("./DebateSummary", () => ({
+  DebateSummary: ({ data }: { data: { winner: { name: string } } }) => (
+    <div data-testid="debate-summary">Winner: {data.winner.name}</div>
+  ),
+}));
 
 const mockPlan: Artifact = {
   id: "artifact-1",
@@ -93,5 +108,78 @@ describe("PlanDisplay", () => {
 
     render(<PlanDisplay plan={filePlan} isExpanded={true} />);
     expect(screen.getByText("No content available")).toBeInTheDocument();
+  });
+
+  describe("team metadata", () => {
+    const researchMetadata: TeamMetadata = {
+      teamIdeated: true,
+      teamMode: "research",
+      teammateCount: 3,
+      findings: [
+        { specialist: "auth-expert", keyFinding: "Use JWT" },
+        { specialist: "db-expert", keyFinding: "Add indexes" },
+      ],
+    };
+
+    const debateMetadata: TeamMetadata = {
+      teamIdeated: true,
+      teamMode: "debate",
+      teammateCount: 2,
+      findings: [{ specialist: "advocate-1", keyFinding: "REST wins" }],
+      debateSummary: {
+        advocates: [
+          {
+            name: "REST Advocate",
+            role: "advocate",
+            strengths: ["Simple"],
+            weaknesses: ["Limited"],
+            evidence: ["Industry standard"],
+            criticChallenge: "Latency concerns",
+          },
+        ],
+        winner: { name: "REST Advocate", justification: "Better ecosystem" },
+      },
+    };
+
+    it("renders 'Research Team' badge for research mode", () => {
+      render(<PlanDisplay plan={mockPlan} teamMetadata={researchMetadata} />);
+      expect(screen.getByText("Research Team")).toBeInTheDocument();
+    });
+
+    it("renders 'Debate Team' badge for debate mode", () => {
+      render(<PlanDisplay plan={mockPlan} teamMetadata={debateMetadata} />);
+      expect(screen.getByText("Debate Team")).toBeInTheDocument();
+    });
+
+    it("renders TeamFindingsSection when expanded with findings", () => {
+      render(<PlanDisplay plan={mockPlan} teamMetadata={researchMetadata} isExpanded={true} />);
+      const section = screen.getByTestId("team-findings-section");
+      expect(section).toBeInTheDocument();
+      expect(section).toHaveAttribute("data-team-mode", "research");
+      expect(section).toHaveAttribute("data-count", "3");
+    });
+
+    it("renders DebateSummary for debate mode when expanded", () => {
+      render(<PlanDisplay plan={mockPlan} teamMetadata={debateMetadata} isExpanded={true} />);
+      expect(screen.getByTestId("debate-summary")).toBeInTheDocument();
+      expect(screen.getByText("Winner: REST Advocate")).toBeInTheDocument();
+    });
+
+    it("does not render team badge when teamMetadata is absent", () => {
+      render(<PlanDisplay plan={mockPlan} />);
+      expect(screen.queryByText("Research Team")).not.toBeInTheDocument();
+      expect(screen.queryByText("Debate Team")).not.toBeInTheDocument();
+    });
+
+    it("does not render team badge when teamIdeated is false", () => {
+      const inactiveMetadata: TeamMetadata = {
+        teamIdeated: false,
+        teamMode: "research",
+        teammateCount: 0,
+        findings: [],
+      };
+      render(<PlanDisplay plan={mockPlan} teamMetadata={inactiveMetadata} />);
+      expect(screen.queryByText("Research Team")).not.toBeInTheDocument();
+    });
   });
 });
