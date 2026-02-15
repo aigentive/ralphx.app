@@ -5,16 +5,22 @@
  *   ←/→ or h/l → switch coordinator/teammate column
  *   ↑/↓ or j/k → switch between teammate panes
  *   1-5 → jump to teammate by index
+ *   z → toggle maximize focused pane
+ *   - → minimize focused pane
+ *   = → reset all pane sizes
+ *   x → stop focused agent
  *   Escape → cancel prefix mode
  *
- * Auto-cancels prefix after 3 seconds.
+ * Auto-cancels prefix after 1.5 seconds.
  */
 
 import { useEffect, useRef, useCallback } from "react";
+
+import { stopTeammate } from "@/api/team";
 import { useSplitPaneStore } from "@/stores/splitPaneStore";
 import { useTeamStore, type TeammateState } from "@/stores/teamStore";
 
-const PREFIX_TIMEOUT_MS = 3000;
+const PREFIX_TIMEOUT_MS = 1500;
 const COORDINATOR_PANE = "coordinator";
 
 export function useTeamKeyboardNav(enabled: boolean, contextKey: string | null) {
@@ -120,6 +126,48 @@ export function useTeamKeyboardNav(enabled: boolean, contextKey: string | null) 
             const currentIdx = focusedPane ? teammates.indexOf(focusedPane) : -1;
             const nextIdx = currentIdx < teammates.length - 1 ? currentIdx + 1 : 0;
             setFocusedPane(teammates[nextIdx]!);
+          }
+          deactivatePrefix();
+          break;
+        }
+
+        // z: toggle maximize focused pane
+        case "z": {
+          if (focusedPane && focusedPane !== COORDINATOR_PANE) {
+            const pane = useSplitPaneStore.getState().panes[focusedPane];
+            if (pane?.maximized) {
+              useSplitPaneStore.getState().restorePane(focusedPane);
+            } else {
+              useSplitPaneStore.getState().maximizePane(focusedPane);
+            }
+          }
+          deactivatePrefix();
+          break;
+        }
+
+        // -: minimize focused pane
+        case "-": {
+          if (focusedPane && focusedPane !== COORDINATOR_PANE) {
+            useSplitPaneStore.getState().minimizePane(focusedPane);
+          }
+          deactivatePrefix();
+          break;
+        }
+
+        // =: reset all pane sizes to equal
+        case "=": {
+          useSplitPaneStore.getState().resetPaneSizes();
+          deactivatePrefix();
+          break;
+        }
+
+        // x: stop focused agent
+        case "x": {
+          if (focusedPane && focusedPane !== COORDINATOR_PANE) {
+            const team = useTeamStore.getState().activeTeams[contextKey];
+            if (team) {
+              void stopTeammate(team.teamName, focusedPane);
+            }
           }
           deactivatePrefix();
           break;

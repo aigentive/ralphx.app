@@ -27,6 +27,9 @@ export interface TeammateSummary {
   step?: string;
   model?: string;
   color?: string;
+  stepsCompleted?: number;
+  stepsTotal?: number;
+  wave?: number;
 }
 
 /**
@@ -42,6 +45,8 @@ export interface RunningProcess {
   taskBranch: string | null;
   teamName?: string;
   teammates?: TeammateSummary[];
+  currentWave?: number;
+  totalWaves?: number;
 }
 
 /**

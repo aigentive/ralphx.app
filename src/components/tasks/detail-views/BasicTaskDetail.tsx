@@ -13,7 +13,7 @@ import { useTaskSteps } from "@/hooks/useTaskSteps";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { taskKeys } from "@/hooks/useTasks";
 import { api } from "@/lib/tauri";
-import { Loader2, RotateCcw, User, Users } from "lucide-react";
+import { Loader2, Play, RotateCcw, User, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Task } from "@/types/task";
 
@@ -108,26 +108,35 @@ function ActionButtonsCard({
     },
   });
 
-  const handleRestart = useCallback(async () => {
+  const isReady = status === "ready";
+
+  const handleAction = useCallback(async () => {
     const statusLabels: Record<string, string> = {
+      ready: "Start",
       failed: "Restart",
       stopped: "Restart",
       cancelled: "Restart",
       paused: "Resume",
     };
     const actionLabel = statusLabels[status] || "Restart";
-    const taskLabel = status === "paused" ? "paused task" : "failed task";
+    const taskLabel = isReady
+      ? "task"
+      : status === "paused"
+        ? "paused task"
+        : "failed task";
     const modeNote = executionMode === "team" ? " in team mode" : "";
 
     const confirmed = await confirm({
       title: `${actionLabel} this ${taskLabel}?`,
-      description: `The task will be moved to ready status and can be executed again${modeNote}.`,
+      description: isReady
+        ? `The task will be started${modeNote}.`
+        : `The task will be moved to ready status and can be executed again${modeNote}.`,
       confirmText: actionLabel,
       variant: "default",
     });
     if (!confirmed) return;
     restartMutation.mutate();
-  }, [confirm, status, restartMutation, executionMode]);
+  }, [confirm, status, isReady, restartMutation, executionMode]);
 
   return (
     <DetailCard data-testid="action-buttons">
@@ -139,21 +148,23 @@ function ActionButtonsCard({
           Actions
         </span>
         <Button
-          data-testid="restart-button"
-          onClick={handleRestart}
+          data-testid={isReady ? "start-button" : "restart-button"}
+          onClick={handleAction}
           disabled={restartMutation.isPending}
           className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px] transition-colors"
           style={{
-            backgroundColor: "hsl(217 90% 60%)",
+            backgroundColor: isReady ? "hsl(14 100% 60%)" : "hsl(217 90% 60%)",
             color: "white",
           }}
         >
           {restartMutation.isPending ? (
             <Loader2 className="w-4 h-4 animate-spin" />
+          ) : isReady ? (
+            <Play className="w-4 h-4" />
           ) : (
             <RotateCcw className="w-4 h-4" />
           )}
-          {status === "paused" ? "Resume" : "Restart"}
+          {isReady ? "Start" : status === "paused" ? "Resume" : "Restart"}
         </Button>
       </div>
 
@@ -182,6 +193,7 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
   const { data: steps, isLoading: stepsLoading } = useTaskSteps(task.id);
   const hasSteps = (steps?.length ?? 0) > 0;
   const isRestartable = RESTARTABLE_STATUSES.has(task.internalStatus);
+  const showsActions = isRestartable || task.internalStatus === "ready";
 
   // Parse failure info from task metadata when task is failed or qa_failed
   let failureInfo: {
@@ -276,7 +288,7 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
       )}
 
       {/* Action Buttons (hidden in historical mode) */}
-      {!isHistorical && isRestartable && (
+      {!isHistorical && showsActions && (
         <section>
           <ActionButtonsCard taskId={task.id} status={task.internalStatus} />
         </section>

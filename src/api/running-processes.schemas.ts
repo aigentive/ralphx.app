@@ -28,6 +28,9 @@ export const TeammateSummarySchema = z.object({
   step: z.string().optional(),
   model: z.string().optional(),
   color: z.string().optional(),
+  steps_completed: z.number().int().nonnegative().optional(),
+  steps_total: z.number().int().nonnegative().optional(),
+  wave: z.number().int().nonnegative().optional(),
 });
 
 /**
@@ -43,6 +46,8 @@ export const RunningProcessSchema = z.object({
   task_branch: z.string().nullable(),
   team_name: z.string().optional(),
   teammates: z.array(TeammateSummarySchema).optional(),
+  current_wave: z.number().int().nonnegative().optional(),
+  total_waves: z.number().int().nonnegative().optional(),
 });
 
 /**

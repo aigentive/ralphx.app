@@ -2,12 +2,15 @@
  * TeamProcessGroup - Collapsible group for team-mode running processes
  *
  * Shows a team header with agent count and collapsible teammate sub-entries.
- * Each teammate shows status dot, name, step info, and model.
+ * Each teammate shows status dot, name, step info, progress bar, and model.
+ * Includes wave validation gate indicator when wave data is available.
  */
 
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Pause, Square, Loader2 } from "lucide-react";
 import type { RunningProcess } from "@/api/running-processes";
+import { TeammateProgressBar } from "./TeammateProgressBar";
+import { WaveGateIndicator } from "./WaveGateIndicator";
 
 interface TeamProcessGroupProps {
   /** The parent process representing the team task */
@@ -50,13 +53,20 @@ export function TeamProcessGroup({
     (t) => !["completed", "done"].includes(t.status.toLowerCase())
   ).length;
 
+  const hasWaveData =
+    process.currentWave !== undefined && process.totalWaves !== undefined;
+
   const ChevronIcon = isExpanded ? ChevronDown : ChevronRight;
 
   return (
     <div
       data-testid={`team-group-${process.taskId}`}
       className="rounded-md"
-      style={{ backgroundColor: "hsla(220 10% 100% / 0.02)" }}
+      style={{
+        backgroundColor: "hsla(220 10% 100% / 0.02)",
+        backdropFilter: "blur(8px)",
+        WebkitBackdropFilter: "blur(8px)",
+      }}
     >
       {/* Team Header */}
       <div className="flex items-center gap-2 px-2 py-1.5 hover:bg-white/[0.04] transition-colors rounded-t-md">
@@ -115,69 +125,98 @@ export function TeamProcessGroup({
         </div>
       </div>
 
-      {/* Teammate Sub-entries */}
+      {/* Expanded content */}
       {isExpanded && teammates.length > 0 && (
         <div
           className="pb-1"
           style={{ borderTop: "1px solid hsla(220 10% 100% / 0.04)" }}
         >
+          {/* Wave Gate Indicator */}
+          {hasWaveData && (
+            <div className="px-2 pt-1.5 pb-1">
+              <WaveGateIndicator
+                currentWave={process.currentWave!}
+                totalWaves={process.totalWaves!}
+                teammates={teammates}
+              />
+            </div>
+          )}
+
+          {/* Teammate Sub-entries */}
           {teammates.map((teammate, idx) => {
             const dotColor = teammate.color ?? getTeammateDotColor(teammate.status);
             const isDone = ["completed", "done"].includes(teammate.status.toLowerCase());
+            const hasProgress =
+              teammate.stepsCompleted !== undefined &&
+              teammate.stepsTotal !== undefined &&
+              teammate.stepsTotal > 0;
 
             return (
               <div
                 key={teammate.name + idx}
                 data-testid={`teammate-${teammate.name}`}
-                className="flex items-center gap-2 px-2 py-1 pl-8"
+                className="px-2 py-1 pl-8"
                 style={{ opacity: isDone ? 0.5 : 1 }}
               >
-                {/* Status dot */}
-                <span
-                  className="w-1.5 h-1.5 rounded-full shrink-0"
-                  style={{ backgroundColor: dotColor }}
-                />
+                {/* Top row: dot + name + step + model */}
+                <div className="flex items-center gap-2">
+                  {/* Status dot */}
+                  <span
+                    className="w-1.5 h-1.5 rounded-full shrink-0"
+                    style={{ backgroundColor: dotColor }}
+                  />
 
-                {/* Name */}
-                <span
-                  className="text-[11px] font-medium shrink-0"
-                  style={{ color: "hsl(220 10% 75%)" }}
-                >
-                  {teammate.name}
-                </span>
+                  {/* Name */}
+                  <span
+                    className="text-[11px] font-medium shrink-0"
+                    style={{ color: "hsl(220 10% 75%)" }}
+                  >
+                    {teammate.name}
+                  </span>
 
-                {/* Step info */}
-                {teammate.step && (
-                  <>
-                    <span
-                      className="shrink-0 text-[11px]"
-                      style={{ color: "hsl(220 10% 30%)" }}
-                    >
-                      ·
-                    </span>
-                    <span
-                      className="text-[10px] truncate min-w-0"
-                      style={{ color: "hsl(220 10% 50%)" }}
-                    >
-                      {teammate.step}
-                    </span>
-                  </>
-                )}
+                  {/* Step info */}
+                  {teammate.step && (
+                    <>
+                      <span
+                        className="shrink-0 text-[11px]"
+                        style={{ color: "hsl(220 10% 30%)" }}
+                      >
+                        ·
+                      </span>
+                      <span
+                        className="text-[10px] truncate min-w-0"
+                        style={{ color: "hsl(220 10% 50%)" }}
+                      >
+                        {teammate.step}
+                      </span>
+                    </>
+                  )}
 
-                {/* Model badge */}
-                {teammate.model && (
-                  <>
-                    <span className="flex-1" />
-                    <span
-                      className="text-[9px] font-medium px-1 rounded shrink-0"
-                      style={{
-                        color: "hsl(220 10% 50%)",
-                        backgroundColor: "hsla(220 10% 100% / 0.05)",
-                      }}
-                    >
-                      {teammate.model}
-                    </span>
-                  </>
+                  {/* Model badge */}
+                  {teammate.model && (
+                    <>
+                      <span className="flex-1" />
+                      <span
+                        className="text-[9px] font-medium px-1 rounded shrink-0"
+                        style={{
+                          color: "hsl(220 10% 50%)",
+                          backgroundColor: "hsla(220 10% 100% / 0.05)",
+                        }}
+                      >
+                        {teammate.model}
+                      </span>
+                    </>
+                  )}
+                </div>
+
+                {/* Progress bar row (only when step data available) */}
+                {hasProgress && (
+                  <div className="mt-0.5 pl-3.5">
+                    <TeammateProgressBar
+                      completed={teammate.stepsCompleted!}
+                      total={teammate.stepsTotal!}
+                    />
+                  </div>
                 )}
               </div>
             );

@@ -26,6 +26,8 @@ import type { Artifact } from "@/types/artifact";
 import { cn } from "@/lib/utils";
 import { TeamFindingsSection } from "./TeamFindingsSection";
 import type { TeamFinding } from "./TeamFindingsSection";
+import { DebateSummary } from "./DebateSummary";
+import type { DebateSummaryData } from "./DebateSummary";
 
 // ============================================================================
 // Types
@@ -36,6 +38,7 @@ export interface TeamMetadata {
   teamMode: "research" | "debate";
   teammateCount: number;
   findings: TeamFinding[];
+  debateSummary?: DebateSummaryData | undefined;
 }
 
 export interface PlanDisplayProps {
@@ -556,6 +559,13 @@ export function PlanDisplay({
                 teamMode={teamMetadata.teamMode}
                 teammateCount={teamMetadata.teammateCount}
               />
+            )}
+
+            {/* Debate summary — shown for debate-mode plans */}
+            {teamMetadata?.teamIdeated && teamMetadata.teamMode === "debate" && teamMetadata.debateSummary && (
+              <div className="mb-4">
+                <DebateSummary data={teamMetadata.debateSummary} />
+              </div>
             )}
 
             {/* Version banner when viewing historical */}
