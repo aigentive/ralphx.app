@@ -196,6 +196,10 @@ pub enum MergeRecoveryEventKind {
     AttemptSucceeded,
     /// Manual retry initiated by user
     ManualRetry,
+    /// Main-branch merge deferred because agents are running
+    MainMergeDeferred,
+    /// Main-branch merge retry triggered after agents went idle
+    MainMergeRetry,
 }
 
 /// Source of the merge recovery event
@@ -222,6 +226,8 @@ pub enum MergeRecoveryReasonCode {
     ValidationFailed,
     /// Source or target branch does not exist
     BranchNotFound,
+    /// Merge deferred because agents are running globally
+    AgentsRunning,
     /// Unknown/unclassified reason
     Unknown,
 }
@@ -434,6 +440,8 @@ mod tests {
                 "attempt_succeeded",
             ),
             (MergeRecoveryEventKind::ManualRetry, "manual_retry"),
+            (MergeRecoveryEventKind::MainMergeDeferred, "main_merge_deferred"),
+            (MergeRecoveryEventKind::MainMergeRetry, "main_merge_retry"),
         ];
 
         for (kind, expected) in &kinds {
@@ -468,6 +476,8 @@ mod tests {
                 MergeRecoveryReasonCode::ValidationFailed,
                 "validation_failed",
             ),
+            (MergeRecoveryReasonCode::BranchNotFound, "branch_not_found"),
+            (MergeRecoveryReasonCode::AgentsRunning, "agents_running"),
             (MergeRecoveryReasonCode::Unknown, "unknown"),
         ];
 

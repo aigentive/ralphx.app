@@ -137,6 +137,50 @@ pub(crate) fn has_branch_missing_metadata(task: &Task) -> bool {
         .unwrap_or(false)
 }
 
+/// Check if a task has the `main_merge_deferred` flag set in its metadata.
+/// This flag indicates a merge to main was deferred because agents were running.
+pub(crate) fn has_main_merge_deferred_metadata(task: &Task) -> bool {
+    parse_metadata(task)
+        .and_then(|v| v.get("main_merge_deferred")?.as_bool())
+        .unwrap_or(false)
+}
+
+/// Set the `main_merge_deferred` flag and `main_merge_deferred_at` timestamp in a task's metadata.
+///
+/// This is called when a merge to main is deferred because agents are running.
+/// Mutates the task in-place, creating metadata if it doesn't exist.
+pub(crate) fn set_main_merge_deferred_metadata(task: &mut Task) {
+    let mut meta = parse_metadata(task).unwrap_or_else(|| serde_json::json!({}));
+    if let Some(obj) = meta.as_object_mut() {
+        obj.insert("main_merge_deferred".to_string(), serde_json::json!(true));
+        obj.insert(
+            "main_merge_deferred_at".to_string(),
+            serde_json::json!(chrono::Utc::now().to_rfc3339()),
+        );
+    }
+    task.metadata = Some(meta.to_string());
+}
+
+/// Clear the `main_merge_deferred` and `main_merge_deferred_at` fields from a task's metadata.
+///
+/// Called when retrying a main-merge-deferred task after agents go idle.
+/// Mutates the task in-place. If the metadata becomes an empty object after removal,
+/// clears metadata entirely.
+pub(crate) fn clear_main_merge_deferred_metadata(task: &mut Task) {
+    let Some(mut meta) = parse_metadata(task) else {
+        return;
+    };
+    if let Some(obj) = meta.as_object_mut() {
+        obj.remove("main_merge_deferred");
+        obj.remove("main_merge_deferred_at");
+        if obj.is_empty() {
+            task.metadata = None;
+        } else {
+            task.metadata = Some(meta.to_string());
+        }
+    }
+}
+
 /// Clear the `merge_deferred` and `merge_deferred_at` fields from a task's metadata.
 ///
 /// Mutates the task in-place. If the metadata becomes an empty object after removal,
@@ -582,5 +626,154 @@ mod tests {
 
         // Task should have the correctly slugified branch name
         assert_eq!(task.task_branch, Some(expected_branch));
+    }
+
+    // ===== Main Merge Deferred Metadata Tests =====
+
+    #[test]
+    fn test_has_main_merge_deferred_metadata_returns_false_when_no_metadata() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let task = Task::new(project.id, "Test task".to_string());
+
+        assert!(!has_main_merge_deferred_metadata(&task));
+    }
+
+    #[test]
+    fn test_has_main_merge_deferred_metadata_returns_false_when_flag_missing() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        task.metadata = Some(r#"{"other_field": true}"#.to_string());
+
+        assert!(!has_main_merge_deferred_metadata(&task));
+    }
+
+    #[test]
+    fn test_has_main_merge_deferred_metadata_returns_true_when_flag_set() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        task.metadata = Some(r#"{"main_merge_deferred": true}"#.to_string());
+
+        assert!(has_main_merge_deferred_metadata(&task));
+    }
+
+    #[test]
+    fn test_has_main_merge_deferred_metadata_returns_false_when_flag_false() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        task.metadata = Some(r#"{"main_merge_deferred": false}"#.to_string());
+
+        assert!(!has_main_merge_deferred_metadata(&task));
+    }
+
+    #[test]
+    fn test_set_main_merge_deferred_metadata_creates_metadata_if_missing() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        assert!(task.metadata.is_none());
+
+        set_main_merge_deferred_metadata(&mut task);
+
+        assert!(task.metadata.is_some());
+        let meta: serde_json::Value = serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
+        assert_eq!(meta["main_merge_deferred"], true);
+        assert!(meta["main_merge_deferred_at"].is_string());
+    }
+
+    #[test]
+    fn test_set_main_merge_deferred_metadata_preserves_existing_fields() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        task.metadata = Some(r#"{"existing_field": "value"}"#.to_string());
+
+        set_main_merge_deferred_metadata(&mut task);
+
+        let meta: serde_json::Value = serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
+        assert_eq!(meta["existing_field"], "value");
+        assert_eq!(meta["main_merge_deferred"], true);
+        assert!(meta["main_merge_deferred_at"].is_string());
+    }
+
+    #[test]
+    fn test_set_main_merge_deferred_metadata_overwrites_existing_flag() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        task.metadata = Some(r#"{"main_merge_deferred": false, "main_merge_deferred_at": "old-time"}"#.to_string());
+
+        set_main_merge_deferred_metadata(&mut task);
+
+        let meta: serde_json::Value = serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
+        assert_eq!(meta["main_merge_deferred"], true);
+        // Timestamp should be updated
+        assert_ne!(meta["main_merge_deferred_at"], "old-time");
+    }
+
+    #[test]
+    fn test_clear_main_merge_deferred_metadata_removes_flag_and_timestamp() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        task.metadata = Some(r#"{"main_merge_deferred": true, "main_merge_deferred_at": "2026-02-15T00:00:00Z"}"#.to_string());
+
+        clear_main_merge_deferred_metadata(&mut task);
+
+        let meta: serde_json::Value = serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
+        assert!(meta.get("main_merge_deferred").is_none());
+        assert!(meta.get("main_merge_deferred_at").is_none());
+    }
+
+    #[test]
+    fn test_clear_main_merge_deferred_metadata_preserves_other_fields() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        task.metadata = Some(
+            r#"{"main_merge_deferred": true, "main_merge_deferred_at": "2026-02-15T00:00:00Z", "other_field": "value"}"#.to_string(),
+        );
+
+        clear_main_merge_deferred_metadata(&mut task);
+
+        let meta: serde_json::Value = serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
+        assert_eq!(meta["other_field"], "value");
+        assert!(meta.get("main_merge_deferred").is_none());
+        assert!(meta.get("main_merge_deferred_at").is_none());
+    }
+
+    #[test]
+    fn test_clear_main_merge_deferred_metadata_clears_metadata_if_empty() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        task.metadata = Some(r#"{"main_merge_deferred": true, "main_merge_deferred_at": "2026-02-15T00:00:00Z"}"#.to_string());
+
+        clear_main_merge_deferred_metadata(&mut task);
+
+        // Metadata should be cleared entirely when only main_merge_deferred fields were present
+        assert!(task.metadata.is_none());
+    }
+
+    #[test]
+    fn test_clear_main_merge_deferred_metadata_noop_when_no_metadata() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        assert!(task.metadata.is_none());
+
+        clear_main_merge_deferred_metadata(&mut task);
+
+        // Should remain None without error
+        assert!(task.metadata.is_none());
+    }
+
+    #[test]
+    fn test_set_and_clear_main_merge_deferred_roundtrip() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+
+        // Set the flag
+        set_main_merge_deferred_metadata(&mut task);
+        assert!(has_main_merge_deferred_metadata(&task));
+
+        // Clear the flag
+        clear_main_merge_deferred_metadata(&mut task);
+        assert!(!has_main_merge_deferred_metadata(&task));
+
+        // Metadata should be None after clearing (only had main_merge_deferred fields)
+        assert!(task.metadata.is_none());
     }
 }
