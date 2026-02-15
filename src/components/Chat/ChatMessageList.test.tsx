@@ -13,6 +13,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChatMessageList, type ChatMessageData } from "./ChatMessageList";
 import type { ToolCall } from "./ToolCallIndicator";
+import type { StreamingContentBlock } from "@/types/streaming-task";
 
 // Mock scrollIntoView before tests run — should NEVER be called for auto-scroll
 const scrollIntoViewMock = vi.fn();
@@ -69,8 +70,7 @@ const defaultProps = {
   isAgentRunning: false,
   streamingToolCalls: [],
   streamingTasks: new Map(),
-  streamingText: undefined,
-  messagesEndRef: { current: null },
+  streamingContentBlocks: undefined,
   scrollToTimestamp: null,
 };
 
@@ -161,16 +161,19 @@ describe("ChatMessageList - Scroll Behavior", () => {
         <ChatMessageList
           {...defaultProps}
           isSending={true}
-          streamingText={undefined}
+          streamingContentBlocks={undefined}
         />
       );
 
-      // Add streaming text
+      // Add streaming text via content blocks
+      const blocks: StreamingContentBlock[] = [
+        { type: "text", text: "Streaming assistant response..." },
+      ];
       rerender(
         <ChatMessageList
           {...defaultProps}
           isSending={true}
-          streamingText="Streaming assistant response..."
+          streamingContentBlocks={blocks}
         />
       );
 
@@ -200,16 +203,19 @@ describe("ChatMessageList - Scroll Behavior", () => {
         <ChatMessageList
           {...defaultProps}
           isSending={true}
-          streamingText={undefined}
+          streamingContentBlocks={undefined}
         />
       );
 
       // Add streaming content (should not trigger scroll)
+      const blocks: StreamingContentBlock[] = [
+        { type: "text", text: "New content" },
+      ];
       rerender(
         <ChatMessageList
           {...defaultProps}
           isSending={true}
-          streamingText="New content"
+          streamingContentBlocks={blocks}
         />
       );
 
@@ -233,11 +239,14 @@ describe("ChatMessageList - Scroll Behavior", () => {
       mockIsAtBottom = false;
       mockHandleFollowOutput.mockReturnValue(false);
 
+      const blocks: StreamingContentBlock[] = [
+        { type: "text", text: "Streaming..." },
+      ];
       render(
         <ChatMessageList
           {...defaultProps}
           isSending={true}
-          streamingText="Streaming..."
+          streamingContentBlocks={blocks}
         />
       );
 
@@ -607,11 +616,14 @@ describe("ChatMessageList - Scroll Behavior", () => {
     });
 
     it("computes hash based on streaming text presence", () => {
+      const blocks: StreamingContentBlock[] = [
+        { type: "text", text: "Thinking..." },
+      ];
       render(
         <ChatMessageList
           {...defaultProps}
           isSending={true}
-          streamingText="Thinking..."
+          streamingContentBlocks={blocks}
         />
       );
 

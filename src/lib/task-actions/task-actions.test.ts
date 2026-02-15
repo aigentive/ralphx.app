@@ -169,19 +169,28 @@ describe("getTaskActions (graph)", () => {
     expect(actions[0].isViewAction).toBe(true);
   });
 
-  it("returns View Conflicts and Mark Resolved for merge_conflict", () => {
+  it("returns View Conflicts, Mark Resolved, and Cancel for merge_conflict", () => {
     const actions = getTaskActions("merge_conflict", "graph");
-    expect(actions).toHaveLength(2);
+    expect(actions).toHaveLength(3);
     expect(actions[0].id).toBe("view-conflicts");
     expect(actions[0].isViewAction).toBe(true);
     expect(actions[1].id).toBe("mark-resolved");
     expect(actions[1].confirmConfig).toBeDefined();
+    expect(actions[2].id).toBe("cancel");
+  });
+
+  it("returns Cancel for pending_merge and merge_incomplete", () => {
+    for (const status of ["pending_merge", "merge_incomplete"] as InternalStatus[]) {
+      const actions = getTaskActions(status, "graph");
+      expect(actions).toHaveLength(1);
+      expect(actions[0].id).toBe("cancel");
+    }
   });
 
   it("returns empty for statuses without quick actions", () => {
     const noActionStatuses: InternalStatus[] = [
       "backlog", "qa_refining", "qa_testing", "qa_passed", "qa_failed",
-      "approved", "pending_merge", "merging", "merge_incomplete",
+      "approved", "merging",
       "merged", "failed", "cancelled", "paused", "stopped",
     ];
     for (const status of noActionStatuses) {
