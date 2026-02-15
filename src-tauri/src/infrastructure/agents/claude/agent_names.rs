@@ -34,6 +34,10 @@ pub const SHORT_MERGER: &str = "ralphx-merger";
 pub const SHORT_MEMORY_MAINTAINER: &str = "memory-maintainer";
 pub const SHORT_MEMORY_CAPTURE: &str = "memory-capture";
 
+// ── Team lead variants (extends base agents) ────────────────────────────
+pub const SHORT_IDEATION_TEAM_LEAD: &str = "ideation-team-lead";
+pub const SHORT_WORKER_TEAM: &str = "ralphx-worker-team";
+
 // ── ChatService agents (resolve_agent → build_command → --agent flag) ─────
 
 /// Ideation orchestrator (default for ChatContextType::Ideation)
