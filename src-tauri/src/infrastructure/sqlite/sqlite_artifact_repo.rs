@@ -78,6 +78,7 @@ impl SqliteArtifactRepository {
             task_id: task_id.map(TaskId::from_string),
             process_id: process_id.map(ProcessId::from_string),
             version: version as u32,
+            team_metadata: None,
         };
 
         Ok(Artifact {

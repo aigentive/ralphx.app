@@ -58,7 +58,9 @@ pub use chat_service_types::{
     events, AgentChunkPayload, AgentErrorPayload, AgentHookPayload, AgentMessageCreatedPayload,
     AgentQueueSentPayload, AgentRunCompletedPayload, AgentRunStartedPayload,
     AgentTaskCompletedPayload, AgentTaskStartedPayload, AgentToolCallPayload,
-    ChatConversationWithMessages, ChatServiceError, SendResult,
+    ChatConversationWithMessages, ChatServiceError, SendResult, TeamCostUpdatePayload,
+    TeamCreatedPayload, TeamDisbandedPayload, TeamMessagePayload, TeamTeammateIdlePayload,
+    TeamTeammateShutdownPayload, TeamTeammateSpawnedPayload,
 };
 
 // Types and errors are now in chat_service_types.rs

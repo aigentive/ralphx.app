@@ -27,6 +27,7 @@ pub mod supervisor_service;
 pub mod task_cleanup_service;
 pub mod task_context_service;
 pub mod task_scheduler_service;
+pub mod team_state_tracker;
 pub mod task_transition_service;
 
 // Re-export commonly used items
@@ -66,6 +67,7 @@ pub use task_cleanup_service::{
 };
 pub use task_context_service::TaskContextService;
 pub use task_scheduler_service::TaskSchedulerService;
+pub use team_state_tracker::TeamStateTracker;
 pub use task_transition_service::TaskTransitionService;
 
 // Unified chat service (handles all chat contexts: ideation, task, project, task_execution)
@@ -73,5 +75,7 @@ pub use chat_service::{
     AgentChunkPayload, AgentErrorPayload, AgentMessageCreatedPayload, AgentQueueSentPayload,
     AgentRunCompletedPayload, AgentRunStartedPayload, AgentToolCallPayload,
     ChatConversationWithMessages, ChatService, ChatServiceError, ClaudeChatService,
-    MockChatResponse, MockChatService, SendResult,
+    MockChatResponse, MockChatService, SendResult, TeamCostUpdatePayload, TeamCreatedPayload,
+    TeamDisbandedPayload, TeamMessagePayload, TeamTeammateIdlePayload,
+    TeamTeammateShutdownPayload, TeamTeammateSpawnedPayload,
 };

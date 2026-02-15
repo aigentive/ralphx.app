@@ -360,10 +360,10 @@ mod tests {
         let conn = setup_test_db();
         let repo = SqliteArtifactBucketRepository::new(conn);
 
-        // v25 migration seeds 4 system buckets
+        // v25 migration seeds 4 system buckets, v37 adds team-findings (5 total)
         let result = repo.get_all().await;
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 4);
+        assert_eq!(result.unwrap().len(), 5);
     }
 
     #[tokio::test]
@@ -379,8 +379,8 @@ mod tests {
 
         let result = repo.get_all().await;
         assert!(result.is_ok());
-        // 4 seeded + 2 created
-        assert_eq!(result.unwrap().len(), 6);
+        // 5 seeded + 2 created
+        assert_eq!(result.unwrap().len(), 7);
     }
 
     #[tokio::test]
@@ -416,10 +416,10 @@ mod tests {
         let bucket = create_test_bucket();
         repo.create(bucket).await.unwrap();
 
-        // v25 seeds 4 system buckets
+        // v25 seeds 4 system buckets, v37 adds team-findings (5 total)
         let result = repo.get_system_buckets().await;
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 4);
+        assert_eq!(result.unwrap().len(), 5);
     }
 
     #[tokio::test]
@@ -437,8 +437,8 @@ mod tests {
         assert!(result.is_ok());
 
         let buckets = result.unwrap();
-        // 4 seeded + 1 created
-        assert_eq!(buckets.len(), 5);
+        // 5 seeded + 1 created
+        assert_eq!(buckets.len(), 6);
         assert!(buckets.iter().all(|b| b.is_system));
         assert!(buckets.iter().any(|b| b.id == system.id));
     }
@@ -545,19 +545,19 @@ mod tests {
     // ==================== SEEDING TESTS ====================
 
     #[tokio::test]
-    async fn test_seed_builtin_buckets_creates_all_four() {
+    async fn test_seed_builtin_buckets_creates_all_five() {
         let conn = setup_test_db();
         let repo = SqliteArtifactBucketRepository::new(conn);
 
-        // v25 migration already seeded them, so seed_builtin_buckets returns 0
+        // v25+v37 migration already seeded them, so seed_builtin_buckets returns 0
         let count = repo.seed_builtin_buckets().await.unwrap();
         assert_eq!(count, 0);
 
         let all = repo.get_all().await.unwrap();
-        assert_eq!(all.len(), 4);
+        assert_eq!(all.len(), 5);
 
         let system = repo.get_system_buckets().await.unwrap();
-        assert_eq!(system.len(), 4);
+        assert_eq!(system.len(), 5);
     }
 
     #[tokio::test]
@@ -572,9 +572,9 @@ mod tests {
         assert_eq!(count1, 0);
         assert_eq!(count2, 0);
 
-        // Still only 4 buckets
+        // Still only 5 buckets
         let all = repo.get_all().await.unwrap();
-        assert_eq!(all.len(), 4);
+        assert_eq!(all.len(), 5);
     }
 
     #[tokio::test]
@@ -662,8 +662,8 @@ mod tests {
         // Seed built-ins (already seeded by v25, so no new ones)
         repo.seed_builtin_buckets().await.unwrap();
 
-        // Should have 5 buckets total (1 custom + 4 system from v25)
+        // Should have 6 buckets total (1 custom + 5 system from v25+v37)
         let all = repo.get_all().await.unwrap();
-        assert_eq!(all.len(), 5);
+        assert_eq!(all.len(), 6);
     }
 }
