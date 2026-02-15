@@ -211,7 +211,7 @@ describe("Column", () => {
         <Column column={column} projectId="p1" showArchived={false} showMergeTasks isCollapsed onToggleCollapse={vi.fn()} />,
         { wrapper: DndWrapper },
       );
-      expect(screen.getByLabelText("Add task to Draft")).toBeInTheDocument();
+      expect(screen.getByLabelText("Add task")).toBeInTheDocument();
     });
 
     it("should NOT show '+' button on non-draft collapsed columns", () => {
@@ -220,7 +220,7 @@ describe("Column", () => {
         <Column column={column} projectId="p1" showArchived={false} showMergeTasks isCollapsed onToggleCollapse={vi.fn()} />,
         { wrapper: DndWrapper },
       );
-      expect(screen.queryByLabelText("Add task to Draft")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Add task")).not.toBeInTheDocument();
     });
 
     it("should not render sentinel element when collapsed (no infinite scroll)", () => {

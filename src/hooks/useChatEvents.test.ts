@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import type { ContextType } from "@/types/chat-conversation";
 import type { ToolCall } from "@/components/Chat/ToolCallIndicator";
-import type { StreamingTask } from "@/types/streaming-task";
+import type { StreamingTask, StreamingContentBlock } from "@/types/streaming-task";
 
 // ============================================================================
 // Mock infrastructure
@@ -86,8 +86,9 @@ interface DefaultProps {
   contextId: string | null;
   contextType: ContextType | null;
   setStreamingToolCalls: ReturnType<typeof vi.fn>;
-  setStreamingText: ReturnType<typeof vi.fn>;
+  setStreamingContentBlocks: ReturnType<typeof vi.fn>;
   setStreamingTasks: ReturnType<typeof vi.fn>;
+  finalizingConversationRef: React.MutableRefObject<string | null>;
 }
 
 function makeProps(overrides?: Partial<DefaultProps>): DefaultProps {
@@ -96,10 +97,24 @@ function makeProps(overrides?: Partial<DefaultProps>): DefaultProps {
     contextId: CTX_ID,
     contextType: "task_execution" as ContextType,
     setStreamingToolCalls: vi.fn(),
-    setStreamingText: vi.fn(),
+    setStreamingContentBlocks: vi.fn(),
     setStreamingTasks: vi.fn(),
+    finalizingConversationRef: { current: null },
     ...overrides,
   };
+}
+
+/**
+ * Renders the hook and clears the initial mount calls on all setters.
+ * The effect fires on mount and clears streaming state (3 calls).
+ * This helper lets tests focus on event-driven behavior without counting mount effects.
+ */
+function renderAndClear(props: DefaultProps) {
+  const result = renderHook(() => useChatEvents(props));
+  props.setStreamingToolCalls.mockClear();
+  props.setStreamingContentBlocks.mockClear();
+  props.setStreamingTasks.mockClear();
+  return result;
 }
 
 /**
@@ -139,7 +154,7 @@ describe("useChatEvents", () => {
   describe("tool call accumulation", () => {
     it("should accumulate tool calls via setStreamingToolCalls on agent:tool_call", () => {
       const props = makeProps();
-      renderHook(() => useChatEvents(props));
+      renderAndClear(props);
 
       act(() => {
         fireEvent("agent:tool_call", {
@@ -165,7 +180,7 @@ describe("useChatEvents", () => {
 
     it("should update existing tool call when same tool_id arrives with result", () => {
       const props = makeProps();
-      renderHook(() => useChatEvents(props));
+      renderAndClear(props);
 
       // First event: tool call started
       act(() => {
@@ -203,7 +218,7 @@ describe("useChatEvents", () => {
 
     it("should skip result: prefixed tool names", () => {
       const props = makeProps();
-      renderHook(() => useChatEvents(props));
+      renderAndClear(props);
 
       act(() => {
         fireEvent("agent:tool_call", {
@@ -225,7 +240,7 @@ describe("useChatEvents", () => {
   describe("child tool call routing", () => {
     it("should route tool calls with parent_tool_use_id to setStreamingTasks", () => {
       const props = makeProps();
-      renderHook(() => useChatEvents(props));
+      renderAndClear(props);
 
       const parentId = "toolu_parent";
 
@@ -273,7 +288,7 @@ describe("useChatEvents", () => {
       };
 
       const props = makeProps({ contextType: "task" as ContextType });
-      renderHook(() => useChatEvents(props));
+      renderAndClear(props);
 
       act(() => {
         fireEvent("agent:tool_call", {
@@ -293,12 +308,12 @@ describe("useChatEvents", () => {
   });
 
   // --------------------------------------------------------------------------
-  // 3. Streaming text
+  // 3. Streaming text (via content blocks)
   // --------------------------------------------------------------------------
   describe("streaming text", () => {
-    it("should append text chunks via setStreamingText when supportsStreamingText", () => {
+    it("should append text chunks via setStreamingContentBlocks when supportsStreamingText", () => {
       const props = makeProps();
-      renderHook(() => useChatEvents(props));
+      renderAndClear(props);
 
       act(() => {
         fireEvent("agent:chunk", {
@@ -308,11 +323,15 @@ describe("useChatEvents", () => {
         });
       });
 
-      expect(props.setStreamingText).toHaveBeenCalledTimes(1);
+      expect(props.setStreamingContentBlocks).toHaveBeenCalledTimes(1);
 
-      // Execute the updater — appends to previous text
-      const result = executeUpdater<string>(props.setStreamingText, "Previous: ");
-      expect(result).toBe("Previous: Hello ");
+      // Execute the updater — appends to last text block
+      const result = executeUpdater<StreamingContentBlock[]>(
+        props.setStreamingContentBlocks,
+        [{ type: "text", text: "Previous: " }],
+      );
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({ type: "text", text: "Previous: Hello " });
     });
   });
 
@@ -320,9 +339,9 @@ describe("useChatEvents", () => {
   // 4. Message created clears streaming state
   // --------------------------------------------------------------------------
   describe("agent:message_created", () => {
-    it("should clear streaming text, tool calls, and tasks on assistant message", () => {
+    it("should clear streaming content blocks, tool calls, and tasks on assistant message", () => {
       const props = makeProps();
-      renderHook(() => useChatEvents(props));
+      renderAndClear(props);
 
       act(() => {
         fireEvent("agent:message_created", {
@@ -332,12 +351,18 @@ describe("useChatEvents", () => {
         });
       });
 
-      expect(props.setStreamingText).toHaveBeenCalledWith("");
-      // Tool calls and tasks use functional updaters now
+      // All three use functional updaters
+      expect(props.setStreamingContentBlocks).toHaveBeenCalledTimes(1);
       expect(props.setStreamingToolCalls).toHaveBeenCalledTimes(1);
       expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
 
       // Verify functional updater returns empty when prev has items
+      const contentResult = executeUpdater<StreamingContentBlock[]>(
+        props.setStreamingContentBlocks,
+        [{ type: "text", text: "some text" }],
+      );
+      expect(contentResult).toEqual([]);
+
       const toolCallResult = executeUpdater<ToolCall[]>(props.setStreamingToolCalls, [
         { id: "tc1", name: "Read", arguments: {} },
       ]);
@@ -352,7 +377,7 @@ describe("useChatEvents", () => {
 
     it("should NOT clear streaming state on user message", () => {
       const props = makeProps();
-      renderHook(() => useChatEvents(props));
+      renderAndClear(props);
 
       act(() => {
         fireEvent("agent:message_created", {
@@ -362,12 +387,11 @@ describe("useChatEvents", () => {
         });
       });
 
-      // setStreamingText should not be called with "" for user messages
+      // User messages should not trigger clearing of streaming state
+      expect(props.setStreamingContentBlocks).not.toHaveBeenCalled();
+      expect(props.setStreamingToolCalls).not.toHaveBeenCalled();
+      expect(props.setStreamingTasks).not.toHaveBeenCalled();
       // But invalidateQueries should still be called
-      const textCalls = props.setStreamingText.mock.calls.filter(
-        (call: [string | ((...args: unknown[]) => unknown)]) => call[0] === ""
-      );
-      expect(textCalls).toHaveLength(0);
       expect(mockInvalidateQueries).toHaveBeenCalled();
     });
   });
@@ -378,7 +402,7 @@ describe("useChatEvents", () => {
   describe("agent:run_completed", () => {
     it("should clear all streaming state on run completion", () => {
       const props = makeProps();
-      renderHook(() => useChatEvents(props));
+      renderAndClear(props);
 
       act(() => {
         fireEvent("agent:run_completed", {
@@ -387,9 +411,9 @@ describe("useChatEvents", () => {
         });
       });
 
-      // Tool calls and tasks use functional updaters
+      // All three use functional updaters
       expect(props.setStreamingToolCalls).toHaveBeenCalledTimes(1);
-      expect(props.setStreamingText).toHaveBeenCalledWith("");
+      expect(props.setStreamingContentBlocks).toHaveBeenCalledTimes(1);
       expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
 
       // Verify updaters clear non-empty state
@@ -407,7 +431,7 @@ describe("useChatEvents", () => {
   describe("agent:error", () => {
     it("should clear streaming tool calls on error", () => {
       const props = makeProps();
-      renderHook(() => useChatEvents(props));
+      renderAndClear(props);
 
       act(() => {
         fireEvent("agent:error", {
@@ -424,8 +448,8 @@ describe("useChatEvents", () => {
       ]);
       expect(result).toEqual([]);
       expect(mockInvalidateQueries).toHaveBeenCalled();
-      // Note: agent:error only clears tool calls, not text or tasks
-      expect(props.setStreamingText).not.toHaveBeenCalled();
+      // Note: agent:error only clears tool calls, not content blocks or tasks
+      expect(props.setStreamingContentBlocks).not.toHaveBeenCalled();
     });
   });
 
@@ -435,7 +459,7 @@ describe("useChatEvents", () => {
   describe("context relevance filtering", () => {
     it("should ignore events with a different conversation_id", () => {
       const props = makeProps();
-      renderHook(() => useChatEvents(props));
+      renderAndClear(props);
 
       act(() => {
         fireEvent("agent:tool_call", {
@@ -452,7 +476,7 @@ describe("useChatEvents", () => {
 
     it("should ignore events with a different context_id", () => {
       const props = makeProps();
-      renderHook(() => useChatEvents(props));
+      renderAndClear(props);
 
       act(() => {
         fireEvent("agent:chunk", {
@@ -462,7 +486,7 @@ describe("useChatEvents", () => {
         });
       });
 
-      expect(props.setStreamingText).not.toHaveBeenCalled();
+      expect(props.setStreamingContentBlocks).not.toHaveBeenCalled();
     });
   });
 
@@ -500,7 +524,7 @@ describe("useChatEvents", () => {
   describe("subagent task lifecycle", () => {
     it("should create a streaming task on agent:task_started", () => {
       const props = makeProps();
-      renderHook(() => useChatEvents(props));
+      renderAndClear(props);
 
       act(() => {
         fireEvent("agent:task_started", {
@@ -531,7 +555,7 @@ describe("useChatEvents", () => {
 
     it("should mark a streaming task as completed on agent:task_completed", () => {
       const props = makeProps();
-      renderHook(() => useChatEvents(props));
+      renderAndClear(props);
 
       act(() => {
         fireEvent("agent:task_completed", {
@@ -606,9 +630,9 @@ describe("useChatEvents", () => {
 
       unmount();
 
-      // Cleanup uses functional updaters for tool calls and tasks
+      // Cleanup uses functional updaters for all three
       expect(props.setStreamingToolCalls).toHaveBeenCalled();
-      expect(props.setStreamingText).toHaveBeenCalledWith("");
+      expect(props.setStreamingContentBlocks).toHaveBeenCalled();
       expect(props.setStreamingTasks).toHaveBeenCalled();
 
       // All subscriptions should be removed
@@ -631,6 +655,14 @@ describe("useChatEvents", () => {
         props.setStreamingToolCalls.mock.calls.length - 1,
       );
       expect(toolCallResult).toBe(emptyToolCalls); // Same reference!
+
+      const emptyBlocks: StreamingContentBlock[] = [];
+      const blockResult = executeUpdater<StreamingContentBlock[]>(
+        props.setStreamingContentBlocks,
+        emptyBlocks,
+        props.setStreamingContentBlocks.mock.calls.length - 1,
+      );
+      expect(blockResult).toBe(emptyBlocks); // Same reference!
 
       const emptyTasks = new Map<string, StreamingTask>();
       const taskResult = executeUpdater<Map<string, StreamingTask>>(

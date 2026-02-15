@@ -357,7 +357,8 @@ describe("useChat", () => {
     expect(chatApi.sendAgentMessage).toHaveBeenCalledWith(
       "ideation",
       "session-1",
-      "New message content"
+      "New message content",
+      undefined
     );
   });
 
@@ -384,7 +385,8 @@ describe("useChat", () => {
     expect(chatApi.sendAgentMessage).toHaveBeenCalledWith(
       "task",
       "task-1",
-      "Task message"
+      "Task message",
+      undefined
     );
   });
 

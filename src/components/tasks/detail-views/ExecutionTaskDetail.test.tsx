@@ -44,6 +44,24 @@ vi.mock("@/lib/tauri", () => ({
   },
 }));
 
+// Mock EventBus for useValidationEvents hook
+const mockListeners = new Map<string, Set<(payload: unknown) => void>>();
+const stableBus = {
+  subscribe: (eventName: string, callback: (payload: unknown) => void) => {
+    if (!mockListeners.has(eventName)) {
+      mockListeners.set(eventName, new Set());
+    }
+    mockListeners.get(eventName)!.add(callback);
+    return () => {
+      mockListeners.get(eventName)?.delete(callback);
+    };
+  },
+};
+
+vi.mock("@/providers/EventProvider", () => ({
+  useEventBus: () => stableBus,
+}));
+
 const mockStepList = vi.fn(({ taskId, editable }) => (
   <div data-testid="mock-step-list" data-task-id={taskId} data-editable={String(editable)} />
 ));
