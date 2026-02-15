@@ -11,7 +11,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::process::Child;
+use tokio::io::AsyncWriteExt;
+use tokio::process::{Child, ChildStdin};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 
@@ -55,15 +56,61 @@ pub struct TeammateCost {
 }
 
 /// Handle to a teammate's child process (not serializable)
+///
+/// Supports interactive mode via an explicit `stdin` pipe. When a teammate
+/// is spawned in interactive mode (no `-p` flag), messages are sent by writing
+/// to `stdin` instead of spawning a new process.
 pub struct TeammateHandle {
     pub child: Child,
     pub stream_task: Option<JoinHandle<()>>,
+    /// Explicit stdin pipe for interactive mode messaging.
+    /// When set, messages can be written directly to the teammate's stdin.
+    pub stdin: Option<ChildStdin>,
+}
+
+impl TeammateHandle {
+    /// Create a new handle from a child process, optionally capturing stdin.
+    pub fn new(mut child: Child, interactive: bool) -> Self {
+        let stdin = if interactive {
+            child.stdin.take()
+        } else {
+            None
+        };
+        Self {
+            child,
+            stream_task: None,
+            stdin,
+        }
+    }
+
+    /// Write a message to the teammate's stdin pipe (interactive mode).
+    ///
+    /// Returns an error if the teammate has no stdin pipe or the write fails.
+    pub async fn write_message(&mut self, message: &str) -> Result<(), std::io::Error> {
+        if let Some(ref mut stdin) = self.stdin {
+            stdin.write_all(message.as_bytes()).await?;
+            stdin.write_all(b"\n").await?;
+            stdin.flush().await?;
+            Ok(())
+        } else {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::NotConnected,
+                "Teammate stdin not available (non-interactive mode)",
+            ))
+        }
+    }
+
+    /// Check if this handle supports interactive messaging
+    pub fn is_interactive(&self) -> bool {
+        self.stdin.is_some()
+    }
 }
 
 impl std::fmt::Debug for TeammateHandle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TeammateHandle")
             .field("child_pid", &self.child.id())
+            .field("interactive", &self.stdin.is_some())
             .finish()
     }
 }
@@ -601,6 +648,49 @@ impl TeamStateTracker {
         let teams = self.teams.read().await;
         teams.contains_key(team_name)
     }
+
+    /// Send a message to a teammate's stdin (interactive mode).
+    ///
+    /// Returns an error if the teammate doesn't exist, has no handle,
+    /// or is not in interactive mode.
+    pub async fn send_stdin_message(
+        &self,
+        team_name: &str,
+        teammate_name: &str,
+        message: &str,
+    ) -> Result<(), TeamTrackerError> {
+        let mut teams = self.teams.write().await;
+        let team = teams
+            .get_mut(team_name)
+            .ok_or_else(|| TeamTrackerError::TeamNotFound(team_name.to_string()))?;
+        let teammate = team
+            .teammates
+            .get_mut(teammate_name)
+            .ok_or_else(|| TeamTrackerError::TeammateNotFound(teammate_name.to_string()))?;
+
+        if let Some(ref mut handle) = teammate.handle {
+            handle
+                .write_message(message)
+                .await
+                .map_err(|e| TeamTrackerError::StdinWriteFailed(e.to_string()))?;
+            teammate.last_activity_at = Utc::now();
+            Ok(())
+        } else {
+            Err(TeamTrackerError::TeammateNotFound(format!(
+                "{} (no process handle)",
+                teammate_name
+            )))
+        }
+    }
+
+    /// Get the teammate count for a team
+    pub async fn get_teammate_count(&self, team_name: &str) -> Result<usize, TeamTrackerError> {
+        let teams = self.teams.read().await;
+        let team = teams
+            .get(team_name)
+            .ok_or_else(|| TeamTrackerError::TeamNotFound(team_name.to_string()))?;
+        Ok(team.teammates.len())
+    }
 }
 
 // ============================================================================
@@ -613,6 +703,8 @@ pub enum TeamTrackerError {
     TeamAlreadyExists(String),
     TeammateNotFound(String),
     TeammateAlreadyExists(String),
+    StdinWriteFailed(String),
+    MaxTeammatesExceeded { max: u8, current: usize },
 }
 
 impl std::fmt::Display for TeamTrackerError {
@@ -622,6 +714,10 @@ impl std::fmt::Display for TeamTrackerError {
             Self::TeamAlreadyExists(name) => write!(f, "Team already exists: {}", name),
             Self::TeammateNotFound(name) => write!(f, "Teammate not found: {}", name),
             Self::TeammateAlreadyExists(name) => write!(f, "Teammate already exists: {}", name),
+            Self::StdinWriteFailed(msg) => write!(f, "Stdin write failed: {}", msg),
+            Self::MaxTeammatesExceeded { max, current } => {
+                write!(f, "Max teammates exceeded: {current} >= {max}")
+            }
         }
     }
 }

@@ -11,6 +11,7 @@ pub mod reviews;
 pub mod session_linking;
 pub mod steps;
 pub mod tasks;
+pub mod teams;
 pub mod worker;
 
 pub use artifacts::*;
@@ -26,6 +27,7 @@ pub use reviews::*;
 pub use session_linking::*;
 pub use steps::*;
 pub use tasks::*;
+pub use teams::*;
 pub use worker::*;
 
 // Re-export parent types and helpers for handlers to use

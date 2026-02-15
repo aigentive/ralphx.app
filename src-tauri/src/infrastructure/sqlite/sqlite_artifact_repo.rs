@@ -10,8 +10,9 @@ use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 
 use crate::domain::entities::{
-    Artifact, ArtifactBucketId, ArtifactContent, ArtifactId, ArtifactMetadata, ArtifactRelation,
-    ArtifactRelationId, ArtifactRelationType, ArtifactType, ProcessId, TaskId,
+    artifact::TeamArtifactMetadata, Artifact, ArtifactBucketId, ArtifactContent, ArtifactId,
+    ArtifactMetadata, ArtifactRelation, ArtifactRelationId, ArtifactRelationType, ArtifactType,
+    ProcessId, TaskId,
 };
 use crate::domain::repositories::ArtifactRepository;
 use crate::error::{AppError, AppResult};
@@ -36,6 +37,11 @@ impl SqliteArtifactRepository {
     }
 
     /// Parse an Artifact from a database row
+    ///
+    /// Expected column order:
+    /// 0:id, 1:type, 2:name, 3:content_type, 4:content_text, 5:content_path,
+    /// 6:bucket_id, 7:task_id, 8:process_id, 9:created_by, 10:version,
+    /// 11:previous_version_id, 12:created_at, 13:metadata_json
     fn artifact_from_row(row: &rusqlite::Row<'_>) -> Result<Artifact, rusqlite::Error> {
         let id: String = row.get(0)?;
         let type_str: String = row.get(1)?;
@@ -49,6 +55,7 @@ impl SqliteArtifactRepository {
         let created_by: String = row.get(9)?;
         let version: i32 = row.get(10)?;
         let created_at_str: String = row.get(12)?;
+        let metadata_json: Option<String> = row.get(13)?;
 
         // Parse artifact type
         let artifact_type = ArtifactType::from_str(&type_str)
@@ -71,6 +78,11 @@ impl SqliteArtifactRepository {
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap_or_else(|_| Utc::now());
 
+        // Parse team_metadata from metadata_json
+        let team_metadata: Option<TeamArtifactMetadata> = metadata_json
+            .as_deref()
+            .and_then(|json| serde_json::from_str(json).ok());
+
         // Build metadata
         let metadata = ArtifactMetadata {
             created_at,
@@ -78,7 +90,7 @@ impl SqliteArtifactRepository {
             task_id: task_id.map(TaskId::from_string),
             process_id: process_id.map(ProcessId::from_string),
             version: version as u32,
-            team_metadata: None,
+            team_metadata,
         };
 
         Ok(Artifact {
@@ -122,11 +134,16 @@ impl ArtifactRepository for SqliteArtifactRepository {
         };
 
         let created_at = artifact.metadata.created_at.to_rfc3339();
+        let metadata_json = artifact
+            .metadata
+            .team_metadata
+            .as_ref()
+            .and_then(|tm| serde_json::to_string(tm).ok());
 
         conn.execute(
             "INSERT INTO artifacts (id, type, name, content_type, content_text, content_path,
-             bucket_id, task_id, process_id, created_by, version, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+             bucket_id, task_id, process_id, created_by, version, created_at, metadata_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             rusqlite::params![
                 artifact.id.as_str(),
                 artifact.artifact_type.as_str(),
@@ -140,6 +157,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
                 artifact.metadata.created_by,
                 artifact.metadata.version as i32,
                 created_at,
+                metadata_json,
             ],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
@@ -153,7 +171,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
         let result = conn.query_row(
             "SELECT id, type, name, content_type, content_text, content_path,
                     bucket_id, task_id, process_id, created_by, version,
-                    previous_version_id, created_at
+                    previous_version_id, created_at, metadata_json
              FROM artifacts WHERE id = ?1",
             [id.as_str()],
             Self::artifact_from_row,
@@ -180,7 +198,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
             let result = conn.query_row(
                 "SELECT id, type, name, content_type, content_text, content_path,
                         bucket_id, task_id, process_id, created_by, version,
-                        previous_version_id, created_at
+                        previous_version_id, created_at, metadata_json
                  FROM artifacts WHERE id = ?1",
                 [current_id.as_str()],
                 |row| {
@@ -223,7 +241,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
             .prepare(
                 "SELECT id, type, name, content_type, content_text, content_path,
                         bucket_id, task_id, process_id, created_by, version,
-                        previous_version_id, created_at
+                        previous_version_id, created_at, metadata_json
                  FROM artifacts WHERE bucket_id = ?1
                  ORDER BY created_at DESC",
             )
@@ -245,7 +263,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
             .prepare(
                 "SELECT id, type, name, content_type, content_text, content_path,
                         bucket_id, task_id, process_id, created_by, version,
-                        previous_version_id, created_at
+                        previous_version_id, created_at, metadata_json
                  FROM artifacts WHERE type = ?1
                  ORDER BY created_at DESC",
             )
@@ -267,7 +285,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
             .prepare(
                 "SELECT id, type, name, content_type, content_text, content_path,
                         bucket_id, task_id, process_id, created_by, version,
-                        previous_version_id, created_at
+                        previous_version_id, created_at, metadata_json
                  FROM artifacts WHERE task_id = ?1
                  ORDER BY created_at DESC",
             )
@@ -289,7 +307,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
             .prepare(
                 "SELECT id, type, name, content_type, content_text, content_path,
                         bucket_id, task_id, process_id, created_by, version,
-                        previous_version_id, created_at
+                        previous_version_id, created_at, metadata_json
                  FROM artifacts WHERE process_id = ?1
                  ORDER BY created_at DESC",
             )
@@ -312,10 +330,16 @@ impl ArtifactRepository for SqliteArtifactRepository {
             ArtifactContent::File { path } => ("file", None, Some(path.clone())),
         };
 
+        let metadata_json = artifact
+            .metadata
+            .team_metadata
+            .as_ref()
+            .and_then(|tm| serde_json::to_string(tm).ok());
+
         conn.execute(
             "UPDATE artifacts SET type = ?2, name = ?3, content_type = ?4,
              content_text = ?5, content_path = ?6, bucket_id = ?7, task_id = ?8,
-             process_id = ?9, created_by = ?10, version = ?11
+             process_id = ?9, created_by = ?10, version = ?11, metadata_json = ?12
              WHERE id = ?1",
             rusqlite::params![
                 artifact.id.as_str(),
@@ -329,6 +353,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
                 artifact.metadata.process_id.as_ref().map(|p| p.as_str()),
                 artifact.metadata.created_by,
                 artifact.metadata.version as i32,
+                metadata_json,
             ],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
@@ -353,7 +378,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
             .prepare(
                 "SELECT a.id, a.type, a.name, a.content_type, a.content_text, a.content_path,
                         a.bucket_id, a.task_id, a.process_id, a.created_by, a.version,
-                        a.previous_version_id, a.created_at
+                        a.previous_version_id, a.created_at, a.metadata_json
                  FROM artifacts a
                  INNER JOIN artifact_relations r ON a.id = r.to_artifact_id
                  WHERE r.from_artifact_id = ?1 AND r.relation_type = 'derived_from'
@@ -378,7 +403,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
             .prepare(
                 "SELECT DISTINCT a.id, a.type, a.name, a.content_type, a.content_text,
                         a.content_path, a.bucket_id, a.task_id, a.process_id, a.created_by,
-                        a.version, a.previous_version_id, a.created_at
+                        a.version, a.previous_version_id, a.created_at, a.metadata_json
                  FROM artifacts a
                  INNER JOIN artifact_relations r ON
                     (a.id = r.to_artifact_id AND r.from_artifact_id = ?1) OR
@@ -491,11 +516,16 @@ impl ArtifactRepository for SqliteArtifactRepository {
         };
 
         let created_at = artifact.metadata.created_at.to_rfc3339();
+        let metadata_json = artifact
+            .metadata
+            .team_metadata
+            .as_ref()
+            .and_then(|tm| serde_json::to_string(tm).ok());
 
         conn.execute(
             "INSERT INTO artifacts (id, type, name, content_type, content_text, content_path,
-             bucket_id, task_id, process_id, created_by, version, previous_version_id, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+             bucket_id, task_id, process_id, created_by, version, previous_version_id, created_at, metadata_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             rusqlite::params![
                 artifact.id.as_str(),
                 artifact.artifact_type.as_str(),
@@ -510,6 +540,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
                 artifact.metadata.version as i32,
                 previous_version_id.as_str(),
                 created_at,
+                metadata_json,
             ],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
@@ -1477,5 +1508,67 @@ mod tests {
         assert_eq!(history[0].version, 3);
         assert_eq!(history[1].version, 2);
         assert_eq!(history[2].version, 1);
+    }
+
+    // ==================== TEAM METADATA PERSISTENCE TESTS ====================
+
+    #[tokio::test]
+    async fn test_create_artifact_with_team_metadata_persists() {
+        let conn = setup_test_db();
+        let repo = SqliteArtifactRepository::new(conn);
+
+        let mut artifact = create_test_artifact();
+        artifact.metadata.team_metadata = Some(TeamArtifactMetadata {
+            team_name: "ideation-team".to_string(),
+            author_teammate: "researcher".to_string(),
+            session_id: Some("session-123".to_string()),
+            team_phase: Some("active".to_string()),
+        });
+
+        repo.create(artifact.clone()).await.unwrap();
+
+        let loaded = repo.get_by_id(&artifact.id).await.unwrap().unwrap();
+        let tm = loaded.metadata.team_metadata.expect("team_metadata should be persisted");
+        assert_eq!(tm.team_name, "ideation-team");
+        assert_eq!(tm.author_teammate, "researcher");
+        assert_eq!(tm.session_id, Some("session-123".to_string()));
+        assert_eq!(tm.team_phase, Some("active".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_artifact_without_team_metadata_loads_none() {
+        let conn = setup_test_db();
+        let repo = SqliteArtifactRepository::new(conn);
+
+        let artifact = create_test_artifact();
+        repo.create(artifact.clone()).await.unwrap();
+
+        let loaded = repo.get_by_id(&artifact.id).await.unwrap().unwrap();
+        assert!(loaded.metadata.team_metadata.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_update_artifact_preserves_team_metadata() {
+        let conn = setup_test_db();
+        let repo = SqliteArtifactRepository::new(conn);
+
+        let mut artifact = create_test_artifact();
+        artifact.metadata.team_metadata = Some(TeamArtifactMetadata {
+            team_name: "team-alpha".to_string(),
+            author_teammate: "worker-1".to_string(),
+            session_id: None,
+            team_phase: None,
+        });
+
+        repo.create(artifact.clone()).await.unwrap();
+
+        artifact.name = "Updated Name".to_string();
+        repo.update(&artifact).await.unwrap();
+
+        let loaded = repo.get_by_id(&artifact.id).await.unwrap().unwrap();
+        assert_eq!(loaded.name, "Updated Name");
+        let tm = loaded.metadata.team_metadata.expect("team_metadata should survive update");
+        assert_eq!(tm.team_name, "team-alpha");
+        assert_eq!(tm.author_teammate, "worker-1");
     }
 }
