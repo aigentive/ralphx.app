@@ -325,6 +325,7 @@ export function ExecutionControlBar({
               active={mergePipelineData.active}
               waiting={mergePipelineData.waiting}
               needsAttention={mergePipelineData.needsAttention}
+              runningCount={runningCount}
               alignOffset={POPOVER_ALIGN_TO_SEPARATOR_DOT}
             >
               <button
