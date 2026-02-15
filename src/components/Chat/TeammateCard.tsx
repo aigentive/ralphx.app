@@ -1,0 +1,135 @@
+/**
+ * TeammateCard — Individual teammate status card
+ *
+ * Shows: color dot + name + model badge, role description,
+ * current activity, per-teammate cost, action buttons.
+ */
+
+import React from "react";
+import { MessageSquare, Square } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import type { TeammateState, TeammateStatus } from "@/stores/teamStore";
+
+interface TeammateCardProps {
+  teammate: TeammateState;
+  onMessage?: ((name: string) => void) | undefined;
+  onStop?: ((name: string) => void) | undefined;
+}
+
+const STATUS_CONFIG: Record<TeammateStatus, { label: string; dotColor: string }> = {
+  spawning: { label: "Spawning", dotColor: "hsl(220 10% 50%)" },
+  running: { label: "Running", dotColor: "hsl(142 71% 45%)" },
+  idle: { label: "Idle", dotColor: "hsl(48 96% 53%)" },
+  completed: { label: "Done", dotColor: "hsl(220 10% 40%)" },
+  failed: { label: "Failed", dotColor: "hsl(0 84% 60%)" },
+  shutdown: { label: "Stopped", dotColor: "hsl(220 10% 30%)" },
+};
+
+function formatCost(usd: number): string {
+  return usd < 0.01 ? "<$0.01" : `$${usd.toFixed(2)}`;
+}
+
+function formatTokens(tokens: number): string {
+  if (tokens < 1000) return `${tokens}`;
+  return `~${Math.round(tokens / 1000)}K`;
+}
+
+export const TeammateCard = React.memo(function TeammateCard({
+  teammate,
+  onMessage,
+  onStop,
+}: TeammateCardProps) {
+  const { name, color, model, roleDescription, status, currentActivity, tokensUsed, estimatedCostUsd } = teammate;
+  const statusConfig = STATUS_CONFIG[status];
+  const isShutdown = status === "shutdown";
+  const canStop = status === "running" || status === "idle";
+
+  return (
+    <div
+      className="rounded-lg px-3 py-2.5"
+      style={{
+        backgroundColor: isShutdown ? "hsl(220 10% 10%)" : "hsl(220 10% 12%)",
+        border: `1px solid hsl(220 10% ${isShutdown ? "13" : "16"}%)`,
+        opacity: isShutdown ? 0.6 : 1,
+      }}
+    >
+      {/* Header: color dot + name + model + status */}
+      <div className="flex items-center gap-2 mb-1">
+        <span
+          className="w-2 h-2 rounded-full shrink-0"
+          style={{ backgroundColor: color }}
+        />
+        <span className="text-[12px] font-medium" style={{ color: "hsl(220 10% 85%)" }}>
+          {name}
+        </span>
+        <span
+          className="text-[10px] px-1.5 py-0 rounded"
+          style={{
+            backgroundColor: "hsl(220 10% 16%)",
+            color: "hsl(220 10% 50%)",
+          }}
+        >
+          {model}
+        </span>
+        <div className="flex items-center gap-1 ml-auto">
+          <span
+            className="w-1.5 h-1.5 rounded-full"
+            style={{ backgroundColor: statusConfig.dotColor }}
+          />
+          <span className="text-[10px]" style={{ color: "hsl(220 10% 50%)" }}>
+            {statusConfig.label}
+          </span>
+        </div>
+      </div>
+
+      {/* Role description */}
+      {roleDescription && (
+        <p className="text-[11px] mb-1 truncate" style={{ color: "hsl(220 10% 50%)" }}>
+          {roleDescription}
+        </p>
+      )}
+
+      {/* Current activity */}
+      {currentActivity && status !== "shutdown" && (
+        <p className="text-[11px] mb-1 truncate" style={{ color: "hsl(220 10% 45%)" }}>
+          {currentActivity}
+        </p>
+      )}
+
+      {/* Cost */}
+      <div className="flex items-center justify-between mt-1.5">
+        <span className="text-[10px]" style={{ color: "hsl(220 10% 40%)" }}>
+          {formatTokens(tokensUsed)} tokens | {formatCost(estimatedCostUsd)}
+        </span>
+
+        {/* Actions */}
+        {!isShutdown && (
+          <div className="flex items-center gap-1">
+            {onMessage && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => onMessage(name)}
+                aria-label={`Message ${name}`}
+                className="h-5 w-5"
+              >
+                <MessageSquare className="w-3 h-3" />
+              </Button>
+            )}
+            {canStop && onStop && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => onStop(name)}
+                aria-label={`Stop ${name}`}
+                className="h-5 w-5"
+              >
+                <Square className="w-3 h-3" />
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});

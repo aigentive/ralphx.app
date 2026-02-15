@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useChat, chatKeys } from "@/hooks/useChat";
-import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId } from "@/stores/chatStore";
+import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, selectIsTeamActive } from "@/stores/chatStore";
+import { useTeamStore, selectTeammates } from "@/stores/teamStore";
 import { useUiStore } from "@/stores/uiStore";
 import type { ChatContext } from "@/types/chat";
 
@@ -38,6 +39,9 @@ import { useAskUserQuestion } from "@/hooks/useAskUserQuestion";
 import { useQuestionInput } from "@/hooks/useQuestionInput";
 import { useAgentHookEvents, useHookEventsStore } from "@/hooks/useAgentHookEvents";
 import { useChatAttachments } from "@/hooks/useChatAttachments";
+import { useTeamEvents } from "@/hooks/useTeamEvents";
+import { TeamFilterTabs, type TeamFilterValue } from "./TeamFilterTabs";
+import { TargetSelector, type TargetValue } from "./TargetSelector";
 
 const COLLAPSED_WIDTH = 40;
 
@@ -198,6 +202,17 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     [contextType, contextId]
   );
   const isExecutionMode = contextType === "task_execution";
+
+  // Team mode state
+  const isTeamActiveSelector = useMemo(() => selectIsTeamActive(contextKey), [contextKey]);
+  const isTeamActive = useChatStore(isTeamActiveSelector);
+  const teammatesSelector = useMemo(() => selectTeammates(contextKey), [contextKey]);
+  const teammates = useTeamStore(teammatesSelector);
+  const [teamFilter, setTeamFilter] = useState<TeamFilterValue>("all");
+  const [sendTarget, setSendTarget] = useState<TargetValue>("lead");
+
+  // Team events subscription
+  useTeamEvents(isTeamActive ? contextKey : null);
 
   // Use context-aware selectors - unified queue works for all modes
   const queuedMessagesSelector = useMemo(() => selectQueuedMessages(contextKey), [contextKey]);
@@ -479,6 +494,15 @@ function ChatPanelContent({ context }: ChatPanelProps) {
           </div>
         </div>
 
+        {/* Team Filter Tabs (team mode only) */}
+        {isTeamActive && teammates.length > 0 && (
+          <TeamFilterTabs
+            teammates={teammates}
+            activeFilter={teamFilter}
+            onFilterChange={setTeamFilter}
+          />
+        )}
+
         {/* Messages Area */}
         {isLoading ? (
           <div data-testid="chat-panel-messages" className="flex-1 flex items-center justify-center">
@@ -535,6 +559,17 @@ function ChatPanelContent({ context }: ChatPanelProps) {
               answeredValue={answeredQuestion}
               onDismissAnswered={clearAnswered}
             />
+          )}
+
+          {/* Target Selector (team mode only) */}
+          {isTeamActive && teammates.length > 0 && (
+            <div className="px-3 pt-2">
+              <TargetSelector
+                teammates={teammates}
+                value={sendTarget}
+                onChange={setSendTarget}
+              />
+            </div>
           )}
 
           {/* Chat Input */}
