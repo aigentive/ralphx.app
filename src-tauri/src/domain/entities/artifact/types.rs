@@ -134,6 +134,10 @@ pub enum ArtifactType {
     ActivityLog,
     Alert,
     Intervention,
+    // Team artifacts (agent teams collaboration)
+    TeamResearch,
+    TeamAnalysis,
+    TeamSummary,
 }
 
 impl ArtifactType {
@@ -158,6 +162,9 @@ impl ArtifactType {
             ArtifactType::ActivityLog,
             ArtifactType::Alert,
             ArtifactType::Intervention,
+            ArtifactType::TeamResearch,
+            ArtifactType::TeamAnalysis,
+            ArtifactType::TeamSummary,
         ]
     }
 
@@ -182,6 +189,9 @@ impl ArtifactType {
             ArtifactType::ActivityLog => "activity_log",
             ArtifactType::Alert => "alert",
             ArtifactType::Intervention => "intervention",
+            ArtifactType::TeamResearch => "team_research",
+            ArtifactType::TeamAnalysis => "team_analysis",
+            ArtifactType::TeamSummary => "team_summary",
         }
     }
 }
@@ -229,6 +239,9 @@ impl FromStr for ArtifactType {
             "activity_log" => Ok(ArtifactType::ActivityLog),
             "alert" => Ok(ArtifactType::Alert),
             "intervention" => Ok(ArtifactType::Intervention),
+            "team_research" => Ok(ArtifactType::TeamResearch),
+            "team_analysis" => Ok(ArtifactType::TeamAnalysis),
+            "team_summary" => Ok(ArtifactType::TeamSummary),
             _ => Err(ParseArtifactTypeError {
                 value: s.to_string(),
             }),
@@ -292,6 +305,9 @@ pub struct ArtifactMetadata {
     /// Version number (starts at 1)
     #[serde(default = "default_version")]
     pub version: u32,
+    /// Optional team-specific metadata (for artifacts from agent teams)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub team_metadata: Option<TeamArtifactMetadata>,
 }
 
 fn default_version() -> u32 {
@@ -307,6 +323,7 @@ impl ArtifactMetadata {
             task_id: None,
             process_id: None,
             version: 1,
+            team_metadata: None,
         }
     }
 
@@ -325,6 +342,12 @@ impl ArtifactMetadata {
     /// Sets the version number
     pub fn with_version(mut self, version: u32) -> Self {
         self.version = version;
+        self
+    }
+
+    /// Sets team-specific metadata
+    pub fn with_team_metadata(mut self, team_metadata: TeamArtifactMetadata) -> Self {
+        self.team_metadata = Some(team_metadata);
         self
     }
 }
@@ -541,8 +564,31 @@ impl ArtifactBucket {
                 ])
                 .with_writer("orchestrator")
                 .with_writer("user"),
+            ArtifactBucket::system("team-findings", "Team Findings")
+                .accepts_all([
+                    ArtifactType::TeamResearch,
+                    ArtifactType::TeamAnalysis,
+                    ArtifactType::TeamSummary,
+                ])
+                .with_writer("team-lead")
+                .with_writer("system"),
         ]
     }
+}
+
+/// Team-specific metadata for artifacts produced by agent teams
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TeamArtifactMetadata {
+    /// Name of the team that produced this artifact
+    pub team_name: String,
+    /// Name of the teammate who created it
+    pub author_teammate: String,
+    /// Ideation session or context this artifact belongs to
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    /// Phase of the team when artifact was created
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub team_phase: Option<String>,
 }
 
 /// The type of relation between artifacts

@@ -27,6 +27,7 @@ pub mod task_commands;
 pub mod task_context_commands;
 pub mod task_step_commands;
 pub mod task_step_commands_types;
+pub mod team_commands;
 pub mod test_data_commands;
 pub mod unified_chat_commands;
 pub mod workflow_commands;
@@ -125,6 +126,11 @@ pub use workflow_commands::{
     get_workflow, get_workflows, seed_builtin_workflows, set_default_workflow, update_workflow,
     CreateWorkflowInput, UpdateWorkflowInput, WorkflowColumnInput, WorkflowColumnResponse,
     WorkflowResponse,
+};
+// Team commands (agent teams collaboration)
+pub use team_commands::{
+    get_team_messages, get_team_status, get_teammate_cost, send_team_message, stop_team,
+    stop_teammate, SendTeamMessageInput,
 };
 // Unified chat commands (consolidates context_chat + execution_chat)
 pub use unified_chat_commands::{

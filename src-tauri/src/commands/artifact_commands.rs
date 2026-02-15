@@ -682,12 +682,13 @@ mod tests {
             .await
             .expect("Failed to get system buckets in test");
 
-        assert_eq!(result.len(), 4);
+        assert_eq!(result.len(), 5);
 
         let names: Vec<&str> = result.iter().map(|b| b.name.as_str()).collect();
         assert!(names.contains(&"Research Outputs"));
         assert!(names.contains(&"Work Context"));
         assert!(names.contains(&"Code Changes"));
         assert!(names.contains(&"PRD Library"));
+        assert!(names.contains(&"Team Findings"));
     }
 }

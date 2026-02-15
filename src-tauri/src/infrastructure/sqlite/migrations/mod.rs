@@ -55,6 +55,7 @@ mod v33_agent_run_chain_ids;
 mod v34_chat_attachments;
 mod v35_step_substeps;
 mod v36_spawn_orchestrator_jobs;
+mod v37_team_sessions;
 mod v3_add_activity_events;
 mod v4_add_blocked_reason;
 mod v5_add_review_summary_issues;
@@ -114,6 +115,8 @@ mod v34_chat_attachments_tests;
 #[cfg(test)]
 mod v35_step_substeps_tests;
 #[cfg(test)]
+mod v37_team_sessions_tests;
+#[cfg(test)]
 mod v3_add_activity_events_tests;
 #[cfg(test)]
 mod v4_add_blocked_reason_tests;
@@ -127,7 +130,7 @@ mod v8_task_git_fields_tests;
 mod v9_project_git_fields_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 36;
+pub const SCHEMA_VERSION: i32 = 37;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -321,6 +324,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 36,
         name: "spawn_orchestrator_jobs",
         migrate: v36_spawn_orchestrator_jobs::migrate,
+    },
+    Migration {
+        version: 37,
+        name: "team_sessions",
+        migrate: v37_team_sessions::migrate,
     },
 ];
 

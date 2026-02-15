@@ -556,6 +556,7 @@ pub fn run() {
         })
         .manage(execution_state)
         .manage(active_project_state)
+        .manage(application::TeamStateTracker::new())
         .invoke_handler(tauri::generate_handler![
             greet,
             commands::health::health_check,
@@ -800,7 +801,14 @@ pub fn run() {
             commands::plan_commands::get_active_plan,
             commands::plan_commands::set_active_plan,
             commands::plan_commands::clear_active_plan,
-            commands::plan_commands::list_plan_selector_candidates
+            commands::plan_commands::list_plan_selector_candidates,
+            // Team commands (agent teams collaboration)
+            commands::team_commands::get_team_status,
+            commands::team_commands::send_team_message,
+            commands::team_commands::stop_teammate,
+            commands::team_commands::stop_team,
+            commands::team_commands::get_team_messages,
+            commands::team_commands::get_teammate_cost,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
