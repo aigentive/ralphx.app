@@ -382,17 +382,21 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     clearAttachments,
   } = useChatAttachments(activeConversationId ?? "");
 
-  // Wrapper for send that handles attachments
+  // Wrapper for send that handles attachments and team target
   const handleSendWithAttachments = useCallback(async (content: string) => {
     // Collect attachment IDs before sending
     const attachmentIds = attachments.map((a) => a.id);
 
-    // Send message with attachment IDs
-    await handleSend(content, attachmentIds.length > 0 ? attachmentIds : undefined);
+    // Send message with attachment IDs and team target
+    await handleSend(
+      content,
+      attachmentIds.length > 0 ? attachmentIds : undefined,
+      isTeamActive ? sendTarget : undefined
+    );
 
     // Clear attachments after successful send
     clearAttachments();
-  }, [handleSend, clearAttachments, attachments]);
+  }, [handleSend, clearAttachments, attachments, isTeamActive, sendTarget]);
 
   // Close with animation
   const handleClose = useCallback(() => {
@@ -532,6 +536,8 @@ function ChatPanelContent({ context }: ChatPanelProps) {
               hookEvents={hookEvents}
               activeHooks={activeHooksList}
               finalizingConversationRef={finalizingConversationRef}
+              teamFilter={isTeamActive ? teamFilter : undefined}
+              contextKey={isTeamActive ? contextKey : undefined}
             />
           </div>
         )}
@@ -576,7 +582,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
           <div className="p-3">
             <ChatInput
               onSend={activeQuestion ? handleQuestionSend : handleSendWithAttachments}
-              onQueue={handleQueue}
+              onQueue={isTeamActive ? (content) => handleQueue(content, sendTarget) : handleQueue}
               onStop={handleStopAgentWrapper}
               isAgentRunning={isAgentRunning}
               isSending={isSending || isSubmittingAnswer}
