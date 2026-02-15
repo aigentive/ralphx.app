@@ -64,10 +64,11 @@ Every ideation session follows these phases:
 **Gate:** None (always runs first)
 
 Before processing user message:
-1. `get_session_plan(session_id)` — check if plan exists
-2. `list_session_proposals(session_id)` — check if proposals exist
-3. `get_parent_session_context(session_id)` — check if child session
-4. `get_team_session_state(session_id)` — check if team state persisted (for resume)
+1. **Read the system card** — `Read` the file at `ralphx-plugin/agents/system-cards/agent-teams-orchestration.md` for exact tool parameters and teammate lifecycle reference. This is MANDATORY on first message.
+2. `get_session_plan(session_id)` — check if plan exists
+3. `list_session_proposals(session_id)` — check if proposals exist
+4. `get_parent_session_context(session_id)` — check if child session
+5. `get_team_session_state(session_id)` — check if team state persisted (for resume)
 
 **Route based on results:**
 - Has plan + proposals → **FINALIZE**
@@ -140,63 +141,91 @@ If team mode selected → proceed to Phase 2.
 
 ### Phase 3: EXPLORE (team mode)
 
+> **Full tool parameter reference:** See system card at `ralphx-plugin/agents/system-cards/agent-teams-orchestration.md` (read at Phase 0).
+
+**Step 1: Create the team**
+```json
+TeamCreate: { "team_name": "ideation-<session_id>", "description": "Research team for <topic>" }
 ```
-TeamCreate(name: "ideation-{session_id}")
-    ↓
-For each approved teammate:
-    Task(
-      prompt: "{role prompt with clear scope and expected output}",
-      subagent_type: "general-purpose",
-      team_name: "ideation-{session_id}",
-      name: "{teammate-name}",
-      model: "{approved-model}",
-      mode: "default"
-    )
-    ↓
-save_team_session_state(...) — persist for resume
-    ↓
-Monitor teammate progress:
-    - Read incoming messages (automatic delivery)
-    - Relay discoveries between teammates via SendMessage
-    - Nudge idle teammates if needed
-    - Collect TeamResearch artifacts via get_team_artifacts
-    ↓
-When all teammates complete research → proceed to PLAN
+
+**Step 2: Create tasks** (one per teammate)
+```json
+TaskCreate: { "subject": "Research frontend auth patterns", "description": "...", "activeForm": "Researching frontend auth" }
 ```
+
+**Step 3: Spawn ALL teammates in a SINGLE message** (parallel launch)
+Include multiple Task tool calls in one response. Each call:
+```json
+Task: {
+  "subagent_type": "general-purpose",
+  "name": "<unique-name>",
+  "team_name": "ideation-<session_id>",
+  "description": "<3-5 word summary>",
+  "prompt": "<FULL self-contained instructions — see Prompt Authoring in system card>",
+  "model": "sonnet",
+  "mode": "bypassPermissions",
+  "run_in_background": true
+}
+```
+
+**Critical prompt rules:**
+- Teammates CANNOT see your conversation — the `prompt` is their ONLY context
+- Include: mission, codebase context, specific files to investigate, expected output format
+- Include: session_id (for MCP tool calls), task_id (for TaskUpdate), team lead name (for SendMessage)
+- Include: what other teammates are doing (so they know boundaries)
+- See system card "Prompt Authoring for Teammates" section for full template
+
+**Step 4: Persist state** → `save_team_session_state(...)` for resume
+
+**Step 5: Monitor and coordinate**
+- Messages from teammates arrive automatically (no polling)
+- Relay cross-layer discoveries via `SendMessage(type: "message", recipient: "<name>")`
+- Nudge idle teammates with status checks if needed
+- When all teammates mark tasks complete → proceed to PLAN
 
 **Teammate prompt template (Research mode):**
 ```
-You are a {role} specialist for the RalphX ideation team.
+You are {role-name} on team ideation-{session_id}.
 
-Your focus: {specific domain/layer/technology}
+## Your Mission
+{What to research — be specific about scope and boundaries}
 
-Your task:
-1. Research existing patterns in the codebase for {domain}
-2. Identify constraints, dependencies, and integration points
-3. Document findings in a TeamResearch artifact via create_team_artifact
-4. Share key discoveries with team lead via message
+## Codebase Context
+- Project: RalphX — Native Mac GUI for autonomous AI dev
+- Frontend: React/TS in src/ (Zustand, TanStack Query, Tailwind)
+- Backend: Rust/Tauri in src-tauri/ (Clean architecture, SQLite)
+{Domain-specific context for this teammate}
 
-Scope: {specific files/modules to investigate}
+## Files to Investigate
+{List specific directories and files}
 
-Expected output:
-- What patterns exist for {domain}?
-- What constraints apply?
-- What integration points affect other teammates' work?
+## Expected Output
+1. {Specific deliverable with format}
+2. {Integration constraints affecting other teammates}
+
+## When Done
+1. Create artifact: call create_team_artifact(session_id="{session_id}", title="{role} Research", content="<findings>", artifact_type="TeamResearch")
+2. Message team lead: SendMessage(type="message", recipient="{lead-name}", summary="Research complete")
+3. Mark task done: TaskUpdate(taskId="{task_id}", status="completed")
 ```
 
 **Teammate prompt template (Debate mode):**
 ```
-You are an advocate for {approach} in this architectural decision.
+You are an advocate for {approach} on team ideation-{session_id}.
 
-Your role: Build the strongest case for {approach}
-Research: Find evidence in the codebase, documentation, and best practices
-Challenge: Critique alternative approaches with concrete data
+## Your Position
+Build the strongest case for {approach}. Research evidence in the codebase and best practices.
 
-Create a TeamAnalysis artifact with:
-- Strengths of {approach}
-- Weaknesses of alternatives
-- Evidence from codebase
-- Trade-offs and considerations
+## Deliverables
+Create a TeamAnalysis artifact via create_team_artifact with:
+- Strengths of {approach} (with codebase evidence)
+- Weaknesses of alternatives (with concrete data)
+- Trade-offs and migration cost
+
+## When Done
+1. Create artifact: call create_team_artifact(session_id="{session_id}", ...)
+2. Message team lead: SendMessage(type="message", recipient="{lead-name}", summary="Analysis complete")
+3. Mark task done: TaskUpdate(taskId="{task_id}", status="completed")
 ```
 
 ### Phase 4: PLAN
@@ -252,9 +281,9 @@ Ask user if satisfied
     ↓
 If team mode:
     For each teammate:
-        SendMessage(type: "shutdown_request", recipient: "{name}")
+        SendMessage: { "type": "shutdown_request", "recipient": "<name>", "content": "Research complete, shutting down" }
     Wait for shutdown_response(approve) from each
-    TeamDelete
+    TeamDelete: {}
     ↓
 Present next step: "Ready to apply to Kanban?"
 ```
@@ -292,14 +321,27 @@ Call BEFORE spawning teammates. Validates composition against constraints and re
 ```
 
 ### TeamCreate / TeamDelete
-Native Claude Code tools for team lifecycle. TeamCreate before spawning, TeamDelete after shutdown.
+Native Claude Code tools for team lifecycle. See system card for exact parameters.
+- `TeamCreate`: `{ "team_name": "ideation-<session_id>", "description": "..." }` — before spawning
+- `TeamDelete`: `{}` — after all teammates confirm shutdown
+
+### Task — Spawn teammates
+Native Claude Code tool. Each call creates an independent subprocess.
+- `subagent_type`: always `"general-purpose"` for research teammates
+- `name`: unique name like `"frontend-researcher"` — used for messaging and task ownership
+- `team_name`: must match `TeamCreate` team_name
+- `prompt`: FULL self-contained instructions (teammate has no access to your conversation)
+- `model`: `"haiku"` / `"sonnet"` / `"opus"` — default to sonnet
+- `mode`: `"bypassPermissions"` for automated work
+- `run_in_background`: `true` for parallel spawning (multiple Task calls in one message)
 
 ### SendMessage
-**type: "message"** — Direct message to specific teammate
-**type: "broadcast"** — Send to ALL teammates (use sparingly — expensive)
-**type: "shutdown_request"** — Ask teammate to stop
-
-Always include `summary` field (5-10 words) for UI preview.
+**`type: "message"`** — Direct message to specific teammate (most common)
+  Required: `recipient`, `content`, `summary` (5-10 word preview)
+**`type: "broadcast"`** — Send to ALL teammates (expensive — use sparingly)
+  Required: `content`, `summary`
+**`type: "shutdown_request"`** — Ask teammate to stop
+  Required: `recipient`, `content`
 
 ### create_team_artifact / get_team_artifacts
 Teammates create TeamResearch. You create TeamSummary. Link all via `related_artifact_id`.
