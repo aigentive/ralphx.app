@@ -74,11 +74,6 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
   }, [onNewSession]);
 
   const handleStartSession = async () => {
-    if (!isTeamMode) {
-      onNewSession();
-      return;
-    }
-
     if (!activeProjectId) {
       toast.error("No active project selected");
       return;
@@ -86,15 +81,18 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
 
     setIsCreatingTeamSession(true);
     try {
-      const session = await createSession.mutateAsync({
+      const params: Parameters<typeof createSession.mutateAsync>[0] = {
         projectId: activeProjectId,
-        teamMode,
-        teamConfig,
-      });
+      };
+      if (isTeamMode) {
+        params.teamMode = teamMode;
+        params.teamConfig = teamConfig;
+      }
+      const session = await createSession.mutateAsync(params);
       addSession(session);
       setActiveSession(session.id);
     } catch {
-      toast.error("Failed to create team session");
+      toast.error("Failed to create session");
     } finally {
       setIsCreatingTeamSession(false);
     }

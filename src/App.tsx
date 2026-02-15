@@ -49,7 +49,6 @@ import { useProjects, projectKeys } from "@/hooks/useProjects";
 import {
   useIdeationSession,
   useIdeationSessions,
-  useCreateIdeationSession,
   useArchiveIdeationSession,
   useDeleteIdeationSession,
 } from "@/hooks/useIdeation";
@@ -173,7 +172,6 @@ function AppContent() {
   // Ideation state
   const activeSession = useIdeationStore(selectActiveSession);
   const setActiveSession = useIdeationStore((s) => s.setActiveSession);
-  const addSession = useIdeationStore((s) => s.addSession);
   const selectSession = useIdeationStore((s) => s.selectSession);
   const removeSession = useIdeationStore((s) => s.removeSession);
   const activeSessionId = activeSession?.id ?? "";
@@ -245,7 +243,6 @@ function AppContent() {
   // Ideation hooks
   const { data: sessionData, isLoading: isSessionLoading } = useIdeationSession(activeSession?.id ?? "");
   const { data: allSessions = [] } = useIdeationSessions(currentProjectId);
-  const createSession = useCreateIdeationSession();
   const archiveSession = useArchiveIdeationSession();
   const deleteSession = useDeleteIdeationSession();
   const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
@@ -493,18 +490,10 @@ function AppContent() {
   }, [battleModeActive, currentView, exitBattleMode]);
 
   // Ideation handlers
-  const handleNewSession = useCallback(async () => {
-    try {
-      const session = await createSession.mutateAsync({
-        projectId: currentProjectId,
-      });
-      // Add session to store immediate (don't wait for refetch)
-      addSession(session);
-      setActiveSession(session.id);
-    } catch {
-      toast.error("Failed to create new session");
-    }
-  }, [createSession, addSession, setActiveSession, currentProjectId]);
+  const handleNewSession = useCallback(() => {
+    // Clear active session to show StartSessionPanel with mode selector
+    setActiveSession(null);
+  }, [setActiveSession]);
 
   const handleArchiveSession = useCallback(async (sessionId: string) => {
     try {
