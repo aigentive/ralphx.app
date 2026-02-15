@@ -1548,4 +1548,69 @@ mod tests {
         let legacy_restored = ProviderErrorMetadata::from_task_metadata(Some(&metadata_str)).unwrap();
         assert_eq!(legacy_restored.resume_attempts, 2);
     }
+
+    // =========================================================================
+    // Per-task resume previous_status tests
+    // =========================================================================
+
+    #[test]
+    fn test_pause_reason_previous_status_accessor() {
+        let user = PauseReason::UserInitiated {
+            previous_status: "reviewing".to_string(),
+            paused_at: "2026-02-15T09:00:00+00:00".to_string(),
+            scope: "task".to_string(),
+        };
+        assert_eq!(user.previous_status(), "reviewing");
+
+        let provider = PauseReason::ProviderError {
+            category: ProviderErrorCategory::RateLimit,
+            message: "limit".to_string(),
+            retry_after: None,
+            previous_status: "merging".to_string(),
+            paused_at: "2026-02-15T09:00:00+00:00".to_string(),
+            auto_resumable: true,
+            resume_attempts: 0,
+        };
+        assert_eq!(provider.previous_status(), "merging");
+    }
+
+    #[test]
+    fn test_pause_reason_previous_status_parses_to_internal_status() {
+        let statuses = vec![
+            ("executing", InternalStatus::Executing),
+            ("re_executing", InternalStatus::ReExecuting),
+            ("reviewing", InternalStatus::Reviewing),
+            ("merging", InternalStatus::Merging),
+            ("qa_refining", InternalStatus::QaRefining),
+            ("qa_testing", InternalStatus::QaTesting),
+        ];
+
+        for (status_str, expected) in statuses {
+            let reason = PauseReason::UserInitiated {
+                previous_status: status_str.to_string(),
+                paused_at: "2026-02-15T09:00:00+00:00".to_string(),
+                scope: "task".to_string(),
+            };
+            let parsed: InternalStatus = reason.previous_status().parse().unwrap();
+            assert_eq!(parsed, expected, "Failed to parse '{}'", status_str);
+        }
+    }
+
+    #[test]
+    fn test_backward_compat_old_key_writes_always_use_new_key() {
+        // Writing always uses the new pause_reason key
+        let reason = PauseReason::ProviderError {
+            category: ProviderErrorCategory::RateLimit,
+            message: "limit".to_string(),
+            retry_after: None,
+            previous_status: "executing".to_string(),
+            paused_at: "2026-02-15T09:00:00+00:00".to_string(),
+            auto_resumable: true,
+            resume_attempts: 0,
+        };
+        let json_str = reason.write_to_task_metadata(None);
+        let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        assert!(parsed.get("pause_reason").is_some(), "Should write pause_reason key");
+        assert!(parsed.get("provider_error").is_none(), "Should NOT write provider_error key");
+    }
 }
