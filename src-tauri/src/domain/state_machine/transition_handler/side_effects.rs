@@ -12,7 +12,7 @@ pub use super::merge_helpers::resolve_merge_branches;
 
 pub(crate) use super::merge_helpers::{
     clear_merge_deferred_metadata, clear_trigger_origin,
-    get_trigger_origin, has_branch_missing_metadata, has_main_merge_deferred_metadata,
+    get_trigger_origin, has_branch_missing_metadata,
     has_merge_deferred_metadata, parse_metadata, set_trigger_origin,
 };
 pub(crate) use super::merge_validation::{
@@ -327,6 +327,7 @@ impl<'a> super::TransitionHandler<'a> {
                     &mut task,
                     &project,
                     &target_sha,
+                    &target_branch,
                     task_repo,
                     self.machine.context.services.app_handle.as_ref(),
                 )
@@ -374,6 +375,7 @@ impl<'a> super::TransitionHandler<'a> {
                         &mut task,
                         &project,
                         &target_sha,
+                        &target_branch,
                         task_repo,
                         self.machine.context.services.app_handle.as_ref(),
                     )
@@ -1106,6 +1108,7 @@ impl<'a> super::TransitionHandler<'a> {
                                 &mut task,
                                 &project,
                                 &commit_sha,
+                                &target_branch,
                                 task_repo,
                                 app_handle,
                             )
@@ -1428,6 +1431,7 @@ impl<'a> super::TransitionHandler<'a> {
                                 &mut task,
                                 &project,
                                 &commit_sha,
+                                &target_branch,
                                 task_repo,
                                 app_handle,
                             )
@@ -1895,6 +1899,7 @@ impl<'a> super::TransitionHandler<'a> {
                             &mut task,
                             &project,
                             &commit_sha,
+                            &target_branch,
                             task_repo,
                             app_handle,
                         )
@@ -2331,6 +2336,7 @@ impl<'a> super::TransitionHandler<'a> {
                             &mut task,
                             &project,
                             &commit_sha,
+                            &target_branch,
                             task_repo,
                             app_handle,
                         )
@@ -2735,6 +2741,7 @@ impl<'a> super::TransitionHandler<'a> {
                                 &mut task,
                                 &project,
                                 &commit_sha,
+                                &target_branch,
                                 task_repo,
                                 app_handle,
                             )
@@ -3005,6 +3012,7 @@ impl<'a> super::TransitionHandler<'a> {
                                 &mut task,
                                 &project,
                                 &commit_sha,
+                                &target_branch,
                                 task_repo,
                                 app_handle,
                             )
@@ -3349,6 +3357,7 @@ impl<'a> super::TransitionHandler<'a> {
                             &mut task,
                             &project,
                             &commit_sha,
+                            &target_branch,
                             task_repo,
                             app_handle,
                         )
@@ -3708,6 +3717,7 @@ impl<'a> super::TransitionHandler<'a> {
                             &mut task,
                             &project,
                             &commit_sha,
+                            &target_branch,
                             task_repo,
                             app_handle,
                         )
@@ -4074,6 +4084,7 @@ impl<'a> super::TransitionHandler<'a> {
                             &mut task,
                             &project,
                             &commit_sha,
+                            &target_branch,
                             task_repo,
                             app_handle,
                         )
@@ -4472,6 +4483,7 @@ impl<'a> super::TransitionHandler<'a> {
                                 &mut task,
                                 &project,
                                 &commit_sha,
+                                &target_branch,
                                 task_repo,
                                 app_handle,
                             )
@@ -4726,6 +4738,7 @@ impl<'a> super::TransitionHandler<'a> {
                                 &mut task,
                                 &project,
                                 &commit_sha,
+                                &target_branch,
                                 task_repo,
                                 app_handle,
                             )

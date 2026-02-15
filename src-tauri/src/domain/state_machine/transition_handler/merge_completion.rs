@@ -17,7 +17,7 @@ use crate::domain::entities::{
     GitMode, InternalStatus, Project, Task,
 };
 use crate::domain::repositories::TaskRepository;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 
 use super::merge_validation::emit_merge_progress;
 
@@ -31,7 +31,8 @@ use super::merge_validation::emit_merge_progress;
 /// # Arguments
 /// * `task` - Mutable task to update (must be in appropriate state)
 /// * `project` - Project for branch/worktree cleanup info
-/// * `commit_sha` - The merge commit SHA
+/// * `commit_sha` - The merge commit SHA (must be on target_branch)
+/// * `target_branch` - The branch the merge was supposed to happen on
 /// * `task_repo` - Repository to persist task changes
 /// * `app_handle` - Optional Tauri handle for emitting events
 ///
@@ -42,10 +43,14 @@ use super::merge_validation::emit_merge_progress;
 /// 4. Deletes worktree (if Worktree mode)
 /// 5. Deletes task branch
 /// 6. Emits task:merged and task:status_changed events
+///
+/// # Errors
+/// Returns `AppError::InvalidState` if the commit is not on the target branch.
 pub async fn complete_merge_internal<R: tauri::Runtime>(
     task: &mut Task,
     project: &Project,
     commit_sha: &str,
+    target_branch: &str,
     task_repo: &Arc<dyn TaskRepository>,
     app_handle: Option<&AppHandle<R>>,
 ) -> AppResult<()> {
@@ -53,6 +58,42 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
     let task_id = task.id.clone();
     let task_id_str = task_id.as_str();
     let old_status = task.internal_status.clone();
+    let repo_path = Path::new(&project.working_directory);
+
+    // VERIFY: Commit must be on target branch to prevent false merges
+    match GitService::is_commit_on_branch(repo_path, commit_sha, target_branch) {
+        Ok(true) => {
+            tracing::debug!(
+                task_id = task_id_str,
+                commit_sha = %commit_sha,
+                target_branch = %target_branch,
+                "complete_merge_internal: commit verified on target branch"
+            );
+        }
+        Ok(false) => {
+            tracing::error!(
+                task_id = task_id_str,
+                commit_sha = %commit_sha,
+                target_branch = %target_branch,
+                "complete_merge_internal: commit NOT on target branch - rejecting false merge"
+            );
+            return Err(AppError::Validation(format!(
+                "Commit {} is not on target branch {} - merge verification failed",
+                commit_sha, target_branch
+            )));
+        }
+        Err(e) => {
+            tracing::warn!(
+                task_id = task_id_str,
+                error = %e,
+                commit_sha = %commit_sha,
+                target_branch = %target_branch,
+                "complete_merge_internal: failed to verify commit on target branch, proceeding (non-fatal)"
+            );
+            // Non-fatal: git verification failed, but we don't want to block legitimate merges
+            // The caller has already verified the merge in most cases
+        }
+    }
 
     tracing::info!(
         task_id = task_id_str,
