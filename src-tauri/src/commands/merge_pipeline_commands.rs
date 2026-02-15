@@ -12,7 +12,7 @@ use crate::commands::execution_commands::ActiveProjectState;
 use crate::domain::entities::ProjectId;
 use crate::domain::entities::{InternalStatus, Task};
 use crate::domain::state_machine::transition_handler::{
-    has_merge_deferred_metadata, resolve_merge_branches,
+    has_main_merge_deferred_metadata, has_merge_deferred_metadata, resolve_merge_branches,
 };
 
 /// A task in the merge pipeline
@@ -30,6 +30,8 @@ pub struct MergePipelineTask {
     pub target_branch: String,
     /// Whether this merge is deferred (waiting for another merge)
     pub is_deferred: bool,
+    /// Whether this merge to main is deferred because agents are still running
+    pub is_main_merge_deferred: bool,
     /// Blocking branch name (for deferred merges)
     pub blocking_branch: Option<String>,
     /// Conflict file paths (for merge_conflict tasks)
@@ -138,7 +140,8 @@ pub async fn get_merge_pipeline(
                     .await;
 
             // Check if deferred
-            let is_deferred = has_merge_deferred_metadata(&task);
+            let is_main_merge_deferred = has_main_merge_deferred_metadata(&task);
+            let is_deferred = has_merge_deferred_metadata(&task) || is_main_merge_deferred;
 
             // Extract merge metadata
             let (conflict_files, error_context) = extract_merge_metadata(&task);
@@ -164,6 +167,7 @@ pub async fn get_merge_pipeline(
                 source_branch,
                 target_branch,
                 is_deferred,
+                is_main_merge_deferred,
                 blocking_branch,
                 conflict_files,
                 error_context,

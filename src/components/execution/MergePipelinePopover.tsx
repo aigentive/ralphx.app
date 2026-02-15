@@ -28,6 +28,8 @@ interface MergePipelinePopoverProps {
   waiting: MergePipelineTask[];
   /** Tasks needing attention (conflicts/incomplete) */
   needsAttention: MergePipelineTask[];
+  /** Number of currently running agents (for deferred merge indicator) */
+  runningCount?: number;
   /** Trigger element (e.g., merge count button) */
   children: React.ReactNode;
   /** Optional horizontal alignment offset for popover content */
@@ -77,6 +79,7 @@ export function MergePipelinePopover({
   active,
   waiting,
   needsAttention,
+  runningCount,
   children,
   alignOffset = -24,
 }: MergePipelinePopoverProps) {
@@ -188,7 +191,7 @@ export function MergePipelinePopover({
               />
               {sections.waiting &&
                 waiting.map((task) => (
-                  <WaitingMergeCard key={task.taskId} task={task} />
+                  <WaitingMergeCard key={task.taskId} task={task} runningCount={runningCount} />
                 ))}
             </div>
           )}

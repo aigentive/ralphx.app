@@ -23,6 +23,7 @@ export function transformMergePipelineTask(
     sourceBranch: raw.source_branch,
     targetBranch: raw.target_branch,
     isDeferred: raw.is_deferred,
+    isMainMergeDeferred: raw.is_main_merge_deferred,
     blockingBranch: raw.blocking_branch,
     conflictFiles: raw.conflict_files,
     errorContext: raw.error_context,
