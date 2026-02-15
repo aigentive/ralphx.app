@@ -810,7 +810,7 @@ async fn fix_full_pipeline_squash_merge_to_plan_branch() {
         .output()
         .expect("git rev-list failed");
     let parent_line = String::from_utf8_lossy(&parent_output.stdout);
-    let parts: Vec<&str> = parent_line.trim().split_whitespace().collect();
+    let parts: Vec<&str> = parent_line.split_whitespace().collect();
     // Format: <commit_sha> <parent1> [<parent2>...]
     // Squash commits should have exactly 1 parent (2 parts total: commit + 1 parent)
     assert_eq!(
@@ -1125,5 +1125,298 @@ async fn fix_plan_branch_then_to_main() {
     assert!(
         repo.join("task.txt").exists(),
         "task.txt should exist on main"
+    );
+}
+
+// ============================================================================
+// Group 7: Merge Verification Edge Cases — 3 tests
+// ============================================================================
+
+#[tokio::test]
+async fn gap_non_merge_commit_with_merge_message() {
+    // GAP: Regular (non-merge) commit with "Merge" in message but only 1 parent
+    // This was the actual bug scenario (commit ad643ec5)
+    let temp_dir = setup_test_repo();
+    let repo = temp_dir.path();
+
+    // Create task branch with a commit
+    create_branch_with_change(repo, "task-branch", "task.txt", "Task content\n");
+
+    // Get the task branch SHA
+    Command::new("git")
+        .args(["checkout", "task-branch"])
+        .current_dir(repo)
+        .output()
+        .expect("git checkout failed");
+
+    let sha_output = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(repo)
+        .output()
+        .expect("git rev-parse failed");
+    let task_sha = String::from_utf8_lossy(&sha_output.stdout)
+        .trim()
+        .to_string();
+
+    // Create a non-merge commit on main with a "Merge" message
+    Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(repo)
+        .output()
+        .expect("git checkout failed");
+
+    fs::write(repo.join("fake-merge.txt"), "Not a real merge\n").expect("write failed");
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .expect("git add failed");
+
+    Command::new("git")
+        .args(["commit", "-m", "Merge plan into main"])
+        .current_dir(repo)
+        .output()
+        .expect("git commit failed");
+
+    let fake_merge_sha = String::from_utf8_lossy(
+        &Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo)
+            .output()
+            .expect("git rev-parse failed")
+            .stdout,
+    )
+    .trim()
+    .to_string();
+
+    // Verify: this commit has a "Merge" message but only 1 parent
+    let parent_output = Command::new("git")
+        .args(["rev-list", "--parents", "-n", "1", &fake_merge_sha])
+        .current_dir(repo)
+        .output()
+        .expect("git rev-list failed");
+    let parent_line = String::from_utf8_lossy(&parent_output.stdout);
+    let parts: Vec<&str> = parent_line.split_whitespace().collect();
+
+    assert_eq!(
+        parts.len(),
+        2,
+        "Fake merge commit should have exactly 1 parent, got {} parts: {:?}",
+        parts.len(),
+        parts
+    );
+
+    // GAP: is_commit_on_branch correctly identifies it's NOT a merge
+    // (it's on the branch, but it's not a merge commit from task-branch)
+    let is_fake_on_main = GitService::is_commit_on_branch(repo, &fake_merge_sha, "main")
+        .expect("is_commit_on_branch failed");
+    assert!(is_fake_on_main, "Fake merge should be on main");
+
+    // The task SHA should NOT be on main (task-branch was never merged)
+    let is_task_on_main = GitService::is_commit_on_branch(repo, &task_sha, "main")
+        .expect("is_commit_on_branch failed");
+    assert!(
+        !is_task_on_main,
+        "GAP: task SHA should NOT be on main (task-branch was never actually merged)"
+    );
+}
+
+#[tokio::test]
+async fn fix_concurrent_merge_attempts_sequential() {
+    // FIX: Two tasks trying to merge to the same plan branch
+    // Tests sequential merges (since true concurrency is hard in tests)
+    let temp_dir = setup_test_repo();
+    let repo = temp_dir.path();
+
+    // Create plan branch from main
+    create_branch_with_change(repo, "plan/feature", "plan.txt", "Plan content\n");
+
+    // Create first task branch from plan/feature
+    Command::new("git")
+        .args(["checkout", "plan/feature"])
+        .current_dir(repo)
+        .output()
+        .expect("git checkout failed");
+
+    create_branch_with_change(repo, "task-1", "task1.txt", "Task 1 content\n");
+
+    // Create second task branch from plan/feature (independent)
+    Command::new("git")
+        .args(["checkout", "plan/feature"])
+        .current_dir(repo)
+        .output()
+        .expect("git checkout failed");
+
+    create_branch_with_change(repo, "task-2", "task2.txt", "Task 2 content\n");
+
+    // Go back to main
+    Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(repo)
+        .output()
+        .expect("git checkout failed");
+
+    // Create project and setup plan branch repo
+    let project = create_test_project("test-project", repo);
+    let session_id = IdeationSessionId::from_string("session-concurrent".to_string());
+    let _plan_repo = setup_plan_branch_repo(
+        session_id.clone(),
+        project.id.clone(),
+        "plan/feature",
+        None,
+    )
+    .await;
+
+    // Merge first task
+    let merge_1_result = try_merge_checkout_free(repo, "task-1", "plan/feature")
+        .expect("merge task-1 failed");
+    let commit_1_sha = match merge_1_result {
+        CheckoutFreeMergeResult::Success { commit_sha } => commit_sha,
+        CheckoutFreeMergeResult::Conflict { .. } => panic!("Unexpected conflict in task-1"),
+    };
+
+    // Complete merge for task-1
+    let mut task_1 = create_pending_merge_task(&project, "task-1");
+    task_1.ideation_session_id = Some(session_id.clone());
+    let task_repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::new());
+
+    let result_1 = complete_merge_internal::<tauri::test::MockRuntime>(
+        &mut task_1,
+        &project,
+        &commit_1_sha,
+        "plan/feature",
+        &task_repo,
+        None,
+    )
+    .await;
+
+    assert!(result_1.is_ok(), "Task-1 merge should succeed: {:?}", result_1);
+    assert_eq!(task_1.internal_status, InternalStatus::Merged);
+
+    // Merge second task (after first task already merged)
+    let merge_2_result = try_merge_checkout_free(repo, "task-2", "plan/feature")
+        .expect("merge task-2 failed");
+    let commit_2_sha = match merge_2_result {
+        CheckoutFreeMergeResult::Success { commit_sha } => commit_sha,
+        CheckoutFreeMergeResult::Conflict { .. } => panic!("Unexpected conflict in task-2"),
+    };
+
+    // Complete merge for task-2
+    let mut task_2 = create_pending_merge_task(&project, "task-2");
+    task_2.ideation_session_id = Some(session_id);
+
+    let result_2 = complete_merge_internal::<tauri::test::MockRuntime>(
+        &mut task_2,
+        &project,
+        &commit_2_sha,
+        "plan/feature",
+        &task_repo,
+        None,
+    )
+    .await;
+
+    assert!(result_2.is_ok(), "Task-2 merge should succeed: {:?}", result_2);
+    assert_eq!(task_2.internal_status, InternalStatus::Merged);
+
+    // Verify: both commits are on plan/feature
+    let is_1_on_plan = GitService::is_commit_on_branch(repo, &commit_1_sha, "plan/feature")
+        .expect("is_commit_on_branch failed");
+    assert!(is_1_on_plan, "Task-1 commit should be on plan/feature");
+
+    let is_2_on_plan = GitService::is_commit_on_branch(repo, &commit_2_sha, "plan/feature")
+        .expect("is_commit_on_branch failed");
+    assert!(is_2_on_plan, "Task-2 commit should be on plan/feature");
+
+    // Verify: both commits are NOT on main
+    let is_1_on_main = GitService::is_commit_on_branch(repo, &commit_1_sha, "main")
+        .expect("is_commit_on_branch failed");
+    assert!(!is_1_on_main, "Task-1 commit should NOT be on main");
+
+    let is_2_on_main = GitService::is_commit_on_branch(repo, &commit_2_sha, "main")
+        .expect("is_commit_on_branch failed");
+    assert!(!is_2_on_main, "Task-2 commit should NOT be on main");
+}
+
+#[tokio::test]
+async fn gap_plan_merge_verification_failure() {
+    // GAP: Plan branch → main merge attempt with wrong SHA
+    // SHA is on plan branch but target is "main" (plan hasn't been merged yet)
+    let temp_dir = setup_test_repo();
+    let repo = temp_dir.path();
+
+    // Create plan branch with commits
+    create_branch_with_change(repo, "plan/feature", "plan.txt", "Plan content\n");
+
+    // Get the plan branch SHA
+    Command::new("git")
+        .args(["checkout", "plan/feature"])
+        .current_dir(repo)
+        .output()
+        .expect("git checkout failed");
+
+    let plan_sha = String::from_utf8_lossy(
+        &Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo)
+            .output()
+            .expect("git rev-parse failed")
+            .stdout,
+    )
+    .trim()
+    .to_string();
+
+    // Go back to main
+    Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(repo)
+        .output()
+        .expect("git checkout failed");
+
+    // Create project and plan merge task
+    let project = create_test_project("test-project", repo);
+    let session_id = IdeationSessionId::from_string("session-plan-gap".to_string());
+    let task_id = TaskId::new();
+    let mut task = create_pending_merge_task(&project, "plan/feature");
+    task.id = task_id.clone();
+    task.category = "plan_merge".to_string();
+    task.ideation_session_id = Some(session_id.clone());
+
+    let _plan_repo = setup_plan_branch_repo(
+        session_id,
+        project.id.clone(),
+        "plan/feature",
+        Some(task_id),
+    )
+    .await;
+
+    // Verify plan SHA is on plan/feature but NOT on main
+    let is_on_plan = GitService::is_commit_on_branch(repo, &plan_sha, "plan/feature")
+        .expect("is_commit_on_branch failed");
+    assert!(is_on_plan, "Plan SHA should be on plan/feature");
+
+    let is_on_main = GitService::is_commit_on_branch(repo, &plan_sha, "main")
+        .expect("is_commit_on_branch failed");
+    assert!(!is_on_main, "Plan SHA should NOT be on main yet");
+
+    // Attempt complete_merge_internal with a SHA on plan branch but target="main"
+    // (without actually merging plan to main first)
+    let task_repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::new());
+    let result = complete_merge_internal::<tauri::test::MockRuntime>(
+        &mut task,
+        &project,
+        &plan_sha,
+        "main",
+        &task_repo,
+        None,
+    )
+    .await;
+
+    // Should reject with Validation error
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        matches!(err, ralphx_lib::error::AppError::Validation(_)),
+        "Expected Validation error, got: {:?}",
+        err
     );
 }
