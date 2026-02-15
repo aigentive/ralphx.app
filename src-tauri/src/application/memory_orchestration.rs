@@ -588,8 +588,10 @@ mod tests {
     fn test_resolve_pipelines_parallel_spawn_both_enabled() {
         // "execution" is in both maintenance_categories AND capture_categories by default
         let project_id = ProjectId::from_string("proj-123".to_string());
-        let mut settings = ProjectMemorySettings::default();
-        settings.enabled = true;
+        let settings = ProjectMemorySettings {
+            enabled: true,
+            ..Default::default()
+        };
 
         let result = resolve_pipelines(
             ChatContextType::TaskExecution,

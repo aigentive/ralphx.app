@@ -88,6 +88,16 @@ pub fn run() {
     let execution_state = Arc::new(commands::ExecutionState::new());
     // Create active project state for per-project execution scoping (Phase 82)
     let active_project_state = Arc::new(commands::ActiveProjectState::new());
+    // Create team state tracker for agent teams (must be managed early for HTTP server)
+    let team_tracker = application::TeamStateTracker::new();
+
+    // Clone for usage inside setup closure before closure borrows them
+    let init_execution_state = Arc::clone(&execution_state);
+    let startup_execution_state = Arc::clone(&execution_state);
+    let startup_active_project_state = Arc::clone(&active_project_state);
+    let http_execution_state = Arc::clone(&execution_state);
+    let http_team_tracker = team_tracker.clone();
+    let service_team_tracker = team_tracker.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -133,7 +143,6 @@ pub fn run() {
 
             // Load execution settings from database and apply to ExecutionState
             // This must happen before HTTP server starts to ensure consistent configuration
-            let init_execution_state = app.state::<Arc<commands::ExecutionState>>().inner().clone();
             let init_settings_repo = Arc::clone(&app_state.execution_settings_repo);
             let init_global_settings_repo = Arc::clone(&app_state.global_execution_settings_repo);
             tauri::async_runtime::block_on(async move {
@@ -196,9 +205,7 @@ pub fn run() {
             http_app_state_inner.permission_state = shared_permission_state;
             http_app_state_inner.message_queue = shared_message_queue;
             let http_app_state = Arc::new(http_app_state_inner);
-            // Clone execution_state and team_tracker from Tauri state for HTTP server
-            let http_execution_state = app.state::<Arc<commands::ExecutionState>>().inner().clone();
-            let http_team_tracker = app.state::<application::TeamStateTracker>().inner().clone();
+            // Spawn HTTP server with pre-cloned state
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = http_server::start_http_server(http_app_state, http_execution_state, http_team_tracker).await {
                     tracing::error!("HTTP server failed: {}", e);
@@ -238,8 +245,6 @@ pub fn run() {
             let startup_message_queue = Arc::clone(&app_state.message_queue);
             let startup_running_agent_registry = Arc::clone(&app_state.running_agent_registry);
             let startup_memory_event_repo = Arc::clone(&app_state.memory_event_repo);
-            let startup_execution_state = app.state::<Arc<commands::ExecutionState>>().inner().clone();
-            let startup_active_project_state = app.state::<Arc<commands::ActiveProjectState>>().inner().clone();
             let startup_app_state_repo = Arc::clone(&app_state.app_state_repo);
             let startup_memory_archive_repo = Arc::clone(&app_state.memory_archive_repo);
             let startup_memory_entry_repo = Arc::clone(&app_state.memory_entry_repo);
@@ -553,19 +558,18 @@ pub fn run() {
             // Register app_state with Tauri's state management
             app.manage(app_state);
 
-            // Register team state tracker and service (service needs AppHandle for events)
-            let team_tracker = application::TeamStateTracker::new();
+            // Register team service (wraps tracker with event emission)
             let team_service = application::TeamService::new(
-                std::sync::Arc::new(team_tracker.clone()),
+                std::sync::Arc::new(service_team_tracker),
                 app.handle().clone(),
             );
-            app.manage(team_tracker);
             app.manage(team_service);
 
             Ok(())
         })
         .manage(execution_state)
         .manage(active_project_state)
+        .manage(team_tracker)
         .invoke_handler(tauri::generate_handler![
             greet,
             commands::health::health_check,
