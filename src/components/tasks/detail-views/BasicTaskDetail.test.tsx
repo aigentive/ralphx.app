@@ -412,7 +412,7 @@ describe("BasicTaskDetail", () => {
       await user.click(button);
 
       await waitFor(() => {
-        expect(mockApiTasksMove).toHaveBeenCalledWith(task.id, "ready");
+        expect(mockApiTasksMove).toHaveBeenCalledWith(task.id, "ready", undefined);
       });
     });
   });

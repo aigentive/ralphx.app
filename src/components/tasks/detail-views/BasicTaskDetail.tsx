@@ -5,7 +5,7 @@
  * Features native vibrancy materials and refined typography.
  */
 
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { StepList } from "../StepList";
 import { SectionTitle, TwoColumnLayout, DetailCard } from "./shared";
@@ -13,9 +13,11 @@ import { useTaskSteps } from "@/hooks/useTaskSteps";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { taskKeys } from "@/hooks/useTasks";
 import { api } from "@/lib/tauri";
-import { Loader2, RotateCcw } from "lucide-react";
+import { Loader2, RotateCcw, User, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Task } from "@/types/task";
+
+type ExecutionMode = "solo" | "team";
 
 // Task statuses that can be restarted
 const RESTARTABLE_STATUSES = new Set(["failed", "stopped", "cancelled", "paused"]);
@@ -28,6 +30,60 @@ interface BasicTaskDetailProps {
 /**
  * ActionButtonsCard - Restart button for terminal/suspended states
  */
+/**
+ * ExecutionModeSelector - Solo/Team radio toggle for execution mode
+ */
+function ExecutionModeSelector({
+  mode,
+  onChange,
+  disabled,
+}: {
+  mode: ExecutionMode;
+  onChange: (mode: ExecutionMode) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-1" data-testid="execution-mode-selector">
+      <span
+        className="text-[11px] font-medium mr-1.5"
+        style={{ color: "hsl(220 10% 50%)" }}
+      >
+        Mode
+      </span>
+      {(["solo", "team"] as const).map((m) => {
+        const isSelected = mode === m;
+        const Icon = m === "solo" ? User : Users;
+        return (
+          <button
+            key={m}
+            data-testid={`mode-${m}`}
+            type="button"
+            disabled={disabled}
+            onClick={() => onChange(m)}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors disabled:opacity-40"
+            style={{
+              backgroundColor: isSelected
+                ? m === "team"
+                  ? "hsla(14 100% 60% / 0.15)"
+                  : "hsla(220 10% 100% / 0.08)"
+                : "transparent",
+              color: isSelected
+                ? m === "team"
+                  ? "hsl(14 100% 60%)"
+                  : "hsl(220 10% 80%)"
+                : "hsl(220 10% 45%)",
+              border: `1px solid ${isSelected ? (m === "team" ? "hsla(14 100% 60% / 0.3)" : "hsla(220 10% 100% / 0.12)") : "transparent"}`,
+            }}
+          >
+            <Icon className="w-3 h-3" />
+            {m === "solo" ? "Solo" : "Team"}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function ActionButtonsCard({
   taskId,
   status,
@@ -37,10 +93,15 @@ function ActionButtonsCard({
 }) {
   const queryClient = useQueryClient();
   const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
+  const [executionMode, setExecutionMode] = useState<ExecutionMode>("solo");
 
   const restartMutation = useMutation({
     mutationFn: async () => {
-      await api.tasks.move(taskId, "ready");
+      await api.tasks.move(
+        taskId,
+        "ready",
+        executionMode === "team" ? "team" : undefined
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
@@ -56,16 +117,17 @@ function ActionButtonsCard({
     };
     const actionLabel = statusLabels[status] || "Restart";
     const taskLabel = status === "paused" ? "paused task" : "failed task";
+    const modeNote = executionMode === "team" ? " in team mode" : "";
 
     const confirmed = await confirm({
       title: `${actionLabel} this ${taskLabel}?`,
-      description: `The task will be moved to ready status and can be executed again.`,
+      description: `The task will be moved to ready status and can be executed again${modeNote}.`,
       confirmText: actionLabel,
       variant: "default",
     });
     if (!confirmed) return;
     restartMutation.mutate();
-  }, [confirm, status, restartMutation]);
+  }, [confirm, status, restartMutation, executionMode]);
 
   return (
     <DetailCard data-testid="action-buttons">
@@ -93,6 +155,15 @@ function ActionButtonsCard({
           )}
           {status === "paused" ? "Resume" : "Restart"}
         </Button>
+      </div>
+
+      {/* Execution Mode Selector */}
+      <div className="mt-3 pt-3" style={{ borderTop: "1px solid hsla(220 10% 100% / 0.06)" }}>
+        <ExecutionModeSelector
+          mode={executionMode}
+          onChange={setExecutionMode}
+          disabled={restartMutation.isPending}
+        />
       </div>
 
       {/* Error display */}

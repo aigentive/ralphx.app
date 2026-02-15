@@ -20,6 +20,15 @@ import { useChatStore } from "@/stores/chatStore";
 import { buildStoreKey } from "@/lib/chat-context-registry";
 import type { ContextType } from "@/types/chat-conversation";
 import type { Unsubscribe } from "@/lib/event-bus";
+import type {
+  TeamCreatedPayload,
+  TeamDisbandedPayload,
+  TeamTeammateSpawnedPayload,
+  TeamTeammateIdlePayload,
+  TeamTeammateShutdownPayload,
+  TeamMessagePayload,
+  TeamCostUpdatePayload,
+} from "@/types/events";
 
 export function useTeamEvents(contextKey: string | null) {
   const bus = useEventBus();
@@ -60,12 +69,7 @@ export function useTeamEvents(contextKey: string | null) {
 
     // team:created — lead_name may not be in payload; default to team_name
     unsubs.push(
-      bus.subscribe<{
-        context_type: string;
-        context_id: string;
-        team_name: string;
-        lead_name?: string;
-      }>("team:created", (payload) => {
+      bus.subscribe<TeamCreatedPayload & { lead_name?: string }>("team:created", (payload) => {
         if (matchKey(payload)) {
           createTeam(contextKey, payload.team_name, payload.lead_name ?? payload.team_name);
           setTeamActive(contextKey, true);
@@ -75,10 +79,7 @@ export function useTeamEvents(contextKey: string | null) {
 
     // team:disbanded
     unsubs.push(
-      bus.subscribe<{
-        context_type: string;
-        context_id: string;
-      }>("team:disbanded", (payload) => {
+      bus.subscribe<TeamDisbandedPayload>("team:disbanded", (payload) => {
         if (matchKey(payload)) {
           disbandTeam(contextKey);
           setTeamActive(contextKey, false);
@@ -97,15 +98,7 @@ export function useTeamEvents(contextKey: string | null) {
 
     // team:teammate_spawned — backend sends `role`, not `role_description`
     unsubs.push(
-      bus.subscribe<{
-        context_type: string;
-        context_id: string;
-        team_name: string;
-        teammate_name: string;
-        role: string;
-        color: string;
-        model: string;
-      }>("team:teammate_spawned", (payload) => {
+      bus.subscribe<TeamTeammateSpawnedPayload>("team:teammate_spawned", (payload) => {
         if (matchKey(payload)) {
           addTeammate(contextKey, {
             name: payload.teammate_name,
@@ -151,12 +144,7 @@ export function useTeamEvents(contextKey: string | null) {
 
     // team:teammate_idle
     unsubs.push(
-      bus.subscribe<{
-        context_type: string;
-        context_id: string;
-        teammate_name: string;
-        last_activity?: string;
-      }>("team:teammate_idle", (payload) => {
+      bus.subscribe<TeamTeammateIdlePayload & { last_activity?: string }>("team:teammate_idle", (payload) => {
         if (matchKey(payload)) {
           updateTeammateStatus(
             contextKey,
@@ -170,19 +158,12 @@ export function useTeamEvents(contextKey: string | null) {
 
     // team:message — backend sends `sender`/`recipient`, not `from`/`to`
     unsubs.push(
-      bus.subscribe<{
-        context_type: string;
-        context_id: string;
-        sender: string;
-        recipient: string;
-        content: string;
-        timestamp: string;
-      }>("team:message", (payload) => {
+      bus.subscribe<TeamMessagePayload>("team:message", (payload) => {
         if (matchKey(payload)) {
           addTeamMessage(contextKey, {
-            id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            id: payload.message_id ?? `msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
             from: payload.sender,
-            to: payload.recipient,
+            to: payload.recipient ?? "*",
             content: payload.content,
             timestamp: payload.timestamp,
           });
@@ -192,14 +173,7 @@ export function useTeamEvents(contextKey: string | null) {
 
     // team:cost_update — backend sends `input_tokens`+`output_tokens` and `estimated_usd`
     unsubs.push(
-      bus.subscribe<{
-        context_type: string;
-        context_id: string;
-        teammate_name: string;
-        input_tokens: number;
-        output_tokens: number;
-        estimated_usd: number;
-      }>("team:cost_update", (payload) => {
+      bus.subscribe<TeamCostUpdatePayload>("team:cost_update", (payload) => {
         if (matchKey(payload)) {
           updateTeammateCost(
             contextKey,
@@ -213,11 +187,7 @@ export function useTeamEvents(contextKey: string | null) {
 
     // team:teammate_shutdown
     unsubs.push(
-      bus.subscribe<{
-        context_type: string;
-        context_id: string;
-        teammate_name: string;
-      }>("team:teammate_shutdown", (payload) => {
+      bus.subscribe<TeamTeammateShutdownPayload>("team:teammate_shutdown", (payload) => {
         if (matchKey(payload)) {
           updateTeammateStatus(contextKey, payload.teammate_name, "shutdown");
         }

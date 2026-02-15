@@ -20,6 +20,17 @@ export const StepProgressSummarySchema = z.object({
 });
 
 /**
+ * Teammate summary schema from Rust (snake_case)
+ */
+export const TeammateSummarySchema = z.object({
+  name: z.string(),
+  status: z.string(),
+  step: z.string().optional(),
+  model: z.string().optional(),
+  color: z.string().optional(),
+});
+
+/**
  * Running process schema from Rust (snake_case)
  */
 export const RunningProcessSchema = z.object({
@@ -30,6 +41,8 @@ export const RunningProcessSchema = z.object({
   elapsed_seconds: z.number().int().nullable(),
   trigger_origin: z.string().nullable(),
   task_branch: z.string().nullable(),
+  team_name: z.string().optional(),
+  teammates: z.array(TeammateSummarySchema).optional(),
 });
 
 /**

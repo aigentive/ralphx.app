@@ -209,3 +209,14 @@ export const selectActiveTeam = (contextKey: string) =>
 export const selectIsTeamActive = (contextKey: string) =>
   (state: TeamState): boolean =>
     contextKey in state.activeTeams;
+
+/** Returns true if any team is active across all contexts */
+export const selectHasAnyActiveTeam = (state: TeamState): boolean =>
+  Object.keys(state.activeTeams).length > 0;
+
+/** Returns total teammate count across all active teams */
+export const selectTotalTeammateCount = (state: TeamState): number =>
+  Object.values(state.activeTeams).reduce(
+    (sum, team) => sum + Object.keys(team.teammates).length,
+    0,
+  );

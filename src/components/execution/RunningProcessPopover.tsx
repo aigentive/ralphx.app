@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/popover";
 import { Settings } from "lucide-react";
 import { ProcessCard } from "./ProcessCard";
+import { TeamProcessGroup } from "./TeamProcessGroup";
 import type { RunningProcess } from "@/api/running-processes";
 import { cn } from "@/lib/utils";
 
@@ -114,14 +115,23 @@ export function RunningProcessPopover({
               No running processes
             </div>
           ) : (
-            processes.map((process) => (
-              <ProcessCard
-                key={process.taskId}
-                process={process}
-                onPause={onPauseProcess}
-                onStop={onStopProcess}
-              />
-            ))
+            processes.map((process) =>
+              process.teamName ? (
+                <TeamProcessGroup
+                  key={process.taskId}
+                  process={process}
+                  onPause={onPauseProcess}
+                  onStop={onStopProcess}
+                />
+              ) : (
+                <ProcessCard
+                  key={process.taskId}
+                  process={process}
+                  onPause={onPauseProcess}
+                  onStop={onStopProcess}
+                />
+              )
+            )
           )}
         </div>
 

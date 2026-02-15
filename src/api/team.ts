@@ -75,10 +75,11 @@ export async function getTeamStatus(
 
 export async function sendTeamMessage(
   teamName: string,
+  target: string,
   content: string,
 ): Promise<TeamMessageResponse> {
   const result = await invoke("send_team_message", {
-    input: { teamName, content },
+    input: { teamName, target, content },
   });
   return TeamMessageSchema.parse(result);
 }

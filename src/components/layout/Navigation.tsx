@@ -15,8 +15,10 @@ import {
   Puzzle,
   Activity,
   SlidersHorizontal,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTeamStore, selectHasAnyActiveTeam, selectTotalTeammateCount } from "@/stores/teamStore";
 import type { ViewType } from "@/types/chat";
 
 // Navigation items configuration
@@ -41,6 +43,9 @@ interface NavigationProps {
 }
 
 export function Navigation({ currentView, onViewChange }: NavigationProps) {
+  const hasActiveTeam = useTeamStore(selectHasAnyActiveTeam);
+  const teammateCount = useTeamStore(selectTotalTeammateCount);
+
   return (
     <nav
       className="flex items-center gap-1"
@@ -86,6 +91,22 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
           </Tooltip>
         );
       })}
+
+      {/* Team active indicator */}
+      {hasActiveTeam && (
+        <div
+          className="flex items-center gap-1.5 h-7 px-2.5 rounded-full ml-1"
+          style={{
+            background: "hsla(14 100% 60% / 0.1)",
+            border: "1px solid hsla(14 100% 60% / 0.2)",
+          }}
+        >
+          <Users className="w-3.5 h-3.5" style={{ color: "hsl(14 100% 60%)" }} />
+          <span className="text-xs font-medium" style={{ color: "hsl(14 100% 60%)" }}>
+            {teammateCount}
+          </span>
+        </div>
+      )}
     </nav>
   );
 }
