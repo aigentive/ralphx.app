@@ -32,7 +32,10 @@ export function usePaneEvents(
 
   // Use ref for autoFocus to avoid re-subscribing on toggle
   const autoFocusRef = useRef(autoFocus);
-  autoFocusRef.current = autoFocus;
+
+  useEffect(() => {
+    autoFocusRef.current = autoFocus;
+  }, [autoFocus]);
 
   useEffect(() => {
     if (!contextKey || !teammateName) return;

@@ -399,5 +399,6 @@ export function useChatEvents({
     bus, queryClient, activeConversationId, contextId, contextType,
     supportsStreamingText, supportsSubagentTasks,
     setStreamingToolCalls, setStreamingContentBlocks, setStreamingTasks,
+    finalizingConversationRef,
   ]);
 }
