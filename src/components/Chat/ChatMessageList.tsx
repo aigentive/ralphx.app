@@ -29,7 +29,9 @@ import { useMessageAttachments } from "@/hooks/useMessageAttachments";
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { MessageAttachment } from "./MessageAttachments";
-import { useTeamStore, selectTeammateByName } from "@/stores/teamStore";
+import { useTeamStore, selectTeammateByName, selectTeamMessages } from "@/stores/teamStore";
+import type { TeamMessage } from "@/stores/teamStore";
+import { TeamSystemEvent } from "./TeamSystemEvent";
 
 // ============================================================================
 // Constants
@@ -48,6 +50,7 @@ const contentContainerStyle: React.CSSProperties = {
 /** Stable empty arrays — avoids new refs on each render when props are omitted */
 const EMPTY_HOOK_EVENTS: HookEvent[] = [];
 const EMPTY_ACTIVE_HOOKS: HookStartedEvent[] = [];
+const EMPTY_TEAM_MESSAGES: TeamMessage[] = [];
 
 // ============================================================================
 // Types
@@ -67,7 +70,8 @@ export interface ChatMessageData {
 /** Discriminated union for timeline items when hook events are interleaved */
 type TimelineItem =
   | { kind: "message"; data: ChatMessageData; sortTime: number }
-  | { kind: "hook"; data: HookEvent | HookStartedEvent; sortTime: number };
+  | { kind: "hook"; data: HookEvent | HookStartedEvent; sortTime: number }
+  | { kind: "team_event"; data: TeamMessage; sortTime: number };
 
 interface ChatMessageListProps {
   messages: ChatMessageData[];
@@ -137,6 +141,13 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     useEffect(() => {
       setIsFinalizing(finalizingConversationRef?.current === conversationId);
     }, [finalizingConversationRef, conversationId]);
+
+    // Team system messages for inline display
+    const teamMsgSelector = useMemo(
+      () => contextKey ? selectTeamMessages(contextKey) : () => EMPTY_TEAM_MESSAGES,
+      [contextKey],
+    );
+    const teamMessages = useTeamStore(teamMsgSelector);
 
     // Fetch attachments for all messages
     const { data: attachmentsMap } = useMessageAttachments(messages, conversationId);
@@ -271,11 +282,26 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         for (const ev of activeHooks) {
           items.push({ kind: "hook", data: ev, sortTime: ev.timestamp });
         }
+      }
+
+      // Interleave team system messages
+      if (teamMessages.length > 0) {
+        for (const msg of teamMessages) {
+          items.push({
+            kind: "team_event",
+            data: msg,
+            sortTime: new Date(msg.timestamp).getTime(),
+          });
+        }
+      }
+
+      // Sort if we interleaved any non-message items
+      if (hasHookEvents || teamMessages.length > 0) {
         items.sort((a, b) => a.sortTime - b.sortTime);
       }
 
       return items;
-    }, [messages, hookEvents, activeHooks, hasHookEvents, shouldFilterLastAssistant, streamingContentBlocks, streamingTasks, conversationId, attachmentsMap, teamFilter]);
+    }, [messages, hookEvents, activeHooks, hasHookEvents, shouldFilterLastAssistant, streamingContentBlocks, streamingTasks, conversationId, attachmentsMap, teamFilter, teamMessages]);
 
     // Memoize Virtuoso components to prevent infinite re-render loop.
     // Inline object literals create new references every render, causing Virtuoso
@@ -377,6 +403,15 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
           </div>
         );
       }
+      if (item.kind === "team_event") {
+        const teamMsg = item.data;
+        return (
+          <TeamSystemEvent
+            message={`${teamMsg.from} → ${teamMsg.to}: ${teamMsg.content}`}
+            timestamp={teamMsg.timestamp}
+          />
+        );
+      }
       const msg = item.data;
 
       // Look up teammate info if sender is present and message is from assistant
@@ -418,6 +453,16 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                 <div key={`${item.kind}-${item.sortTime}-${index}`} className="px-3 w-full" style={contentContainerStyle}>
                   <HookEventMessage event={item.data} />
                 </div>
+              );
+            }
+            if (item.kind === "team_event") {
+              const teamMsg = item.data;
+              return (
+                <TeamSystemEvent
+                  key={`team-${teamMsg.id}`}
+                  message={`${teamMsg.from} → ${teamMsg.to}: ${teamMsg.content}`}
+                  timestamp={teamMsg.timestamp}
+                />
               );
             }
             const msg = item.data;
