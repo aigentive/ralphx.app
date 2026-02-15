@@ -64,6 +64,7 @@
 #   Prefer `settings_profile` + `settings_profiles` for profile-based config.
 # - settings_profile:
 #   Selected profile name from `settings_profiles` for `--settings` payload.
+#   Can be overridden at runtime by env: `RALPHX_CLAUDE_SETTINGS_PROFILE`.
 # - settings_profile_defaults:
 #   Optional settings merged into every selected profile.
 # - settings_profiles:
