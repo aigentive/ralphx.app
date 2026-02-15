@@ -906,10 +906,45 @@ impl<R: Runtime> ReconciliationRunner<R> {
     }
 
     async fn reconcile_pending_merge_task(&self, task: &Task, status: InternalStatus) -> bool {
-        use crate::domain::state_machine::transition_handler::has_merge_deferred_metadata;
+        use crate::domain::state_machine::transition_handler::{
+            has_main_merge_deferred_metadata, has_merge_deferred_metadata,
+        };
 
         if status != InternalStatus::PendingMerge {
             return false;
+        }
+
+        // Phase 4: Handle main-merge-deferred tasks (deferred because agents were running)
+        // If no agents are running now, retry the merge. If agents are still running, skip.
+        if has_main_merge_deferred_metadata(task) {
+            let running_count = self.execution_state.running_count();
+            if running_count == 0 {
+                tracing::info!(
+                    task_id = task.id.as_str(),
+                    "Main-merge-deferred task ready to retry: all agents completed"
+                );
+                return self
+                    .apply_recovery_decision(
+                        task,
+                        status,
+                        RecoveryContext::PendingMerge,
+                        RecoveryDecision {
+                            action: RecoveryActionKind::ExecuteEntryActions,
+                            reason: Some(
+                                "Main merge deferred while agents running — now retrying.".to_string(),
+                            ),
+                        },
+                    )
+                    .await;
+            } else {
+                tracing::debug!(
+                    task_id = task.id.as_str(),
+                    running_count = running_count,
+                    "Main-merge-deferred task waiting for global idle: agents still running"
+                );
+                // Task is correctly deferred, not orphaned — skip reconciliation
+                return true;
+            }
         }
 
         let age = match self.latest_status_transition_age(task, status).await {

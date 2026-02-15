@@ -338,6 +338,17 @@ impl<R: Runtime> StartupJobRunner<R> {
                         continue;
                     }
 
+                    // Skip main-merge-deferred tasks when agents are still running.
+                    // These are correctly deferred, not orphaned — reconciliation will retry when agents complete.
+                    if Self::is_waiting_for_global_idle(&task, self.execution_state.running_count()) {
+                        debug!(
+                            task_id = task.id.as_str(),
+                            running_count = self.execution_state.running_count(),
+                            "Skipping main-merge-deferred task: agents still running"
+                        );
+                        continue;
+                    }
+
                     let reconciled = self.reconciler.reconcile_task(&task, *status).await;
 
                     if reconciled {
@@ -583,6 +594,18 @@ impl<R: Runtime> StartupJobRunner<R> {
             }
         }
         true
+    }
+
+    /// Check if a task is waiting for global idle (no agents running) before retrying.
+    ///
+    /// Used for main-merge-deferred tasks that should not be resumed on startup
+    /// when agents are still running. Returns true only if:
+    /// - Task has `main_merge_deferred` metadata flag set
+    /// - There are agents currently running (running_count > 0)
+    fn is_waiting_for_global_idle(task: &crate::domain::entities::Task, running_count: u32) -> bool {
+        use crate::domain::state_machine::transition_handler::has_main_merge_deferred_metadata;
+
+        has_main_merge_deferred_metadata(task) && running_count > 0
     }
 }
 
