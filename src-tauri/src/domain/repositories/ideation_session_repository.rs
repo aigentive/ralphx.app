@@ -261,6 +261,8 @@ mod tests {
             updated_at: Utc::now(),
             archived_at: None,
             converted_at: None,
+            team_mode: None,
+            team_config_json: None,
         }
     }
 

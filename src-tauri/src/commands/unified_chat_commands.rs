@@ -19,7 +19,7 @@ use tauri::State;
 
 use crate::application::{AppState, ChatService, ClaudeChatService, SendResult};
 use crate::commands::ExecutionState;
-use crate::domain::entities::{ChatContextType, ChatConversation};
+use crate::domain::entities::{ChatContextType, ChatConversation, IdeationSessionId};
 use crate::domain::services::QueuedMessage;
 
 // ============================================================================
@@ -203,7 +203,21 @@ pub async fn send_agent_message(
 ) -> Result<SendAgentMessageResponse, String> {
     let context_type = parse_context_type(&input.context_type)?;
 
-    let service = create_chat_service(&state, app, &execution_state);
+    let mut service = create_chat_service(&state, app, &execution_state);
+
+    // For ideation contexts, check if the session has team_mode enabled
+    if context_type == ChatContextType::Ideation {
+        let session_id = IdeationSessionId::from_string(&input.context_id);
+        if let Ok(Some(session)) = state.ideation_session_repo.get_by_id(&session_id).await {
+            let is_team = session
+                .team_mode
+                .as_deref()
+                .is_some_and(|m| m != "solo");
+            if is_team {
+                service = service.with_team_mode(true);
+            }
+        }
+    }
 
     if !service.is_available().await {
         return Err(

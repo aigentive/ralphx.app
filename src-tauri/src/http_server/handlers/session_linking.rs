@@ -101,6 +101,8 @@ pub async fn create_child_session(
         updated_at: chrono::Utc::now(),
         archived_at: None,
         converted_at: None,
+        team_mode: None,
+        team_config_json: None,
     };
 
     let child_id = child_session.id.clone();
