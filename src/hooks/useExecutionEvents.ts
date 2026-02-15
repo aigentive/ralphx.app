@@ -130,15 +130,28 @@ export function useExecutionEvents() {
 
     // Listen for task:provider_error_paused events
     // Updates the task in the store to reflect the paused status immediately
+    // Stores in new pause_reason format for unified parsing
     unsubscribes.push(
       bus.subscribe<ProviderErrorPausedEvent>("task:provider_error_paused", (payload) => {
         const { task_id } = payload;
         const task = useTaskStore.getState().tasks[task_id];
         if (task) {
+          const existingMeta = task.metadata ? JSON.parse(task.metadata) : {};
           updateTask(task_id, {
             internalStatus: "paused" as InternalStatus,
             metadata: JSON.stringify({
-              ...(task.metadata ? JSON.parse(task.metadata) : {}),
+              ...existingMeta,
+              pause_reason: {
+                type: "provider_error",
+                category: payload.category,
+                message: payload.message,
+                retry_after: payload.retry_after,
+                previous_status: task.internalStatus,
+                paused_at: new Date().toISOString(),
+                auto_resumable: payload.retry_after !== null,
+                resume_attempts: 0,
+              },
+              // Keep legacy key for backward compat
               provider_error: {
                 category: payload.category,
                 message: payload.message,

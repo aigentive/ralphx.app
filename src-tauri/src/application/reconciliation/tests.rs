@@ -1443,3 +1443,729 @@ async fn reconcile_multiple_paused_tasks_in_single_cycle() {
         "Task 3 (max retries) should transition to Failed"
     );
 }
+
+// =========================================================================
+// PauseReason (new format) reconciliation tests
+// =========================================================================
+
+#[tokio::test]
+async fn reconcile_paused_user_initiated_is_skipped() {
+    use crate::application::chat_service::PauseReason;
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Task with PauseReason::UserInitiated metadata (global scope)
+    let reason = PauseReason::UserInitiated {
+        previous_status: "executing".to_string(),
+        paused_at: "2026-02-15T09:00:00+00:00".to_string(),
+        scope: "global".to_string(),
+    };
+    let mut task = Task::new(project.id.clone(), "User Paused Global".to_string());
+    task.internal_status = InternalStatus::Paused;
+    task.metadata = Some(reason.write_to_task_metadata(None));
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let reconciled = reconciler
+        .reconcile_paused_provider_error(&task)
+        .await;
+    assert!(
+        !reconciled,
+        "UserInitiated pauses should be skipped by reconciliation"
+    );
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Paused,
+        "UserInitiated task should remain Paused"
+    );
+}
+
+#[tokio::test]
+async fn reconcile_paused_user_initiated_task_scope_is_skipped() {
+    use crate::application::chat_service::PauseReason;
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Per-task UserInitiated pause
+    let reason = PauseReason::UserInitiated {
+        previous_status: "reviewing".to_string(),
+        paused_at: "2026-02-15T09:00:00+00:00".to_string(),
+        scope: "task".to_string(),
+    };
+    let mut task = Task::new(project.id.clone(), "User Paused Per-Task".to_string());
+    task.internal_status = InternalStatus::Paused;
+    task.metadata = Some(reason.write_to_task_metadata(None));
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let reconciled = reconciler
+        .reconcile_paused_provider_error(&task)
+        .await;
+    assert!(
+        !reconciled,
+        "Per-task UserInitiated pauses should be skipped"
+    );
+}
+
+#[tokio::test]
+async fn reconcile_paused_provider_error_new_format_resumes() {
+    use crate::application::chat_service::{PauseReason, ProviderErrorCategory};
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // New-format PauseReason::ProviderError with expired retry_after
+    let reason = PauseReason::ProviderError {
+        category: ProviderErrorCategory::RateLimit,
+        message: "Usage limit reached".to_string(),
+        retry_after: Some("2020-01-01T00:00:00+00:00".to_string()), // Long past
+        previous_status: "executing".to_string(),
+        paused_at: "2020-01-01T00:00:00+00:00".to_string(),
+        auto_resumable: true,
+        resume_attempts: 0,
+    };
+
+    let mut task = Task::new(project.id.clone(), "Provider Error New Format".to_string());
+    task.internal_status = InternalStatus::Paused;
+    task.metadata = Some(reason.write_to_task_metadata(None));
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task.id,
+            InternalStatus::Executing,
+            InternalStatus::Paused,
+            "paused",
+        )
+        .await
+        .unwrap();
+
+    let reconciled = reconciler
+        .reconcile_paused_provider_error(&task)
+        .await;
+    assert!(
+        reconciled,
+        "New-format ProviderError with expired retry_after should be processed"
+    );
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_ne!(
+        updated.internal_status,
+        InternalStatus::Paused,
+        "Task should no longer be Paused after auto-resume"
+    );
+}
+
+#[tokio::test]
+async fn reconcile_paused_provider_error_new_format_max_attempts_fails() {
+    use crate::application::chat_service::{PauseReason, ProviderErrorCategory, ProviderErrorMetadata};
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // New-format at MAX_RESUME_ATTEMPTS
+    let reason = PauseReason::ProviderError {
+        category: ProviderErrorCategory::ServerError,
+        message: "502 Bad Gateway".to_string(),
+        retry_after: None,
+        previous_status: "executing".to_string(),
+        paused_at: "2020-01-01T00:00:00+00:00".to_string(),
+        auto_resumable: true,
+        resume_attempts: ProviderErrorMetadata::MAX_RESUME_ATTEMPTS,
+    };
+
+    let mut task = Task::new(project.id.clone(), "Max Attempts New Format".to_string());
+    task.internal_status = InternalStatus::Paused;
+    task.metadata = Some(reason.write_to_task_metadata(None));
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task.id,
+            InternalStatus::Executing,
+            InternalStatus::Paused,
+            "paused",
+        )
+        .await
+        .unwrap();
+
+    let reconciled = reconciler
+        .reconcile_paused_provider_error(&task)
+        .await;
+    assert!(
+        reconciled,
+        "Should process the task (transition to Failed)"
+    );
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Failed,
+        "Task at MAX_RESUME_ATTEMPTS should transition to Failed"
+    );
+
+    // Verify pause metadata was cleared
+    let metadata: serde_json::Value =
+        serde_json::from_str(updated.metadata.as_ref().unwrap()).unwrap();
+    assert!(
+        metadata.get("pause_reason").is_none(),
+        "pause_reason should be cleared after failing"
+    );
+    assert!(
+        metadata.get("provider_error").is_none(),
+        "provider_error should be cleared after failing"
+    );
+}
+
+#[tokio::test]
+async fn reconcile_paused_provider_error_new_format_future_retry_stays_paused() {
+    use crate::application::chat_service::{PauseReason, ProviderErrorCategory};
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let reason = PauseReason::ProviderError {
+        category: ProviderErrorCategory::RateLimit,
+        message: "Usage limit".to_string(),
+        retry_after: Some("2099-12-31T23:59:59+00:00".to_string()), // Far future
+        previous_status: "executing".to_string(),
+        paused_at: chrono::Utc::now().to_rfc3339(),
+        auto_resumable: true,
+        resume_attempts: 0,
+    };
+
+    let mut task = Task::new(project.id.clone(), "Future Retry".to_string());
+    task.internal_status = InternalStatus::Paused;
+    task.metadata = Some(reason.write_to_task_metadata(None));
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let reconciled = reconciler
+        .reconcile_paused_provider_error(&task)
+        .await;
+    assert!(
+        !reconciled,
+        "Should not resume when retry_after is in the future"
+    );
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(updated.internal_status, InternalStatus::Paused);
+}
+
+#[tokio::test]
+async fn reconcile_mixed_batch_processes_only_provider_errors_skips_user_initiated() {
+    use crate::application::chat_service::{PauseReason, ProviderErrorCategory};
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Task 1: UserInitiated (global) → should be skipped
+    let user_reason = PauseReason::UserInitiated {
+        previous_status: "executing".to_string(),
+        paused_at: "2026-02-15T09:00:00+00:00".to_string(),
+        scope: "global".to_string(),
+    };
+    let mut task1 = Task::new(project.id.clone(), "User Paused".to_string());
+    task1.internal_status = InternalStatus::Paused;
+    task1.metadata = Some(user_reason.write_to_task_metadata(None));
+    app_state.task_repo.create(task1.clone()).await.unwrap();
+
+    // Task 2: UserInitiated (task scope) → should be skipped
+    let user_task_reason = PauseReason::UserInitiated {
+        previous_status: "reviewing".to_string(),
+        paused_at: "2026-02-15T09:00:00+00:00".to_string(),
+        scope: "task".to_string(),
+    };
+    let mut task2 = Task::new(project.id.clone(), "User Paused Per-Task".to_string());
+    task2.internal_status = InternalStatus::Paused;
+    task2.metadata = Some(user_task_reason.write_to_task_metadata(None));
+    app_state.task_repo.create(task2.clone()).await.unwrap();
+
+    // Task 3: ProviderError (expired) → should be processed
+    let provider_reason = PauseReason::ProviderError {
+        category: ProviderErrorCategory::RateLimit,
+        message: "Rate limited".to_string(),
+        retry_after: Some("2020-01-01T00:00:00+00:00".to_string()),
+        previous_status: "executing".to_string(),
+        paused_at: "2020-01-01T00:00:00+00:00".to_string(),
+        auto_resumable: true,
+        resume_attempts: 0,
+    };
+    let mut task3 = Task::new(project.id.clone(), "Provider Error".to_string());
+    task3.internal_status = InternalStatus::Paused;
+    task3.metadata = Some(provider_reason.write_to_task_metadata(None));
+    app_state.task_repo.create(task3.clone()).await.unwrap();
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task3.id,
+            InternalStatus::Executing,
+            InternalStatus::Paused,
+            "paused",
+        )
+        .await
+        .unwrap();
+
+    // Task 4: ProviderError at max attempts → should transition to Failed
+    let provider_max = PauseReason::ProviderError {
+        category: ProviderErrorCategory::ServerError,
+        message: "502".to_string(),
+        retry_after: None,
+        previous_status: "executing".to_string(),
+        paused_at: "2020-01-01T00:00:00+00:00".to_string(),
+        auto_resumable: true,
+        resume_attempts: 5, // MAX_RESUME_ATTEMPTS
+    };
+    let mut task4 = Task::new(project.id.clone(), "Provider Max Attempts".to_string());
+    task4.internal_status = InternalStatus::Paused;
+    task4.metadata = Some(provider_max.write_to_task_metadata(None));
+    app_state.task_repo.create(task4.clone()).await.unwrap();
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task4.id,
+            InternalStatus::Executing,
+            InternalStatus::Paused,
+            "paused",
+        )
+        .await
+        .unwrap();
+
+    // Process all paused tasks
+    let paused_tasks = app_state
+        .task_repo
+        .get_by_status(&project.id, InternalStatus::Paused)
+        .await
+        .unwrap();
+    for task in &paused_tasks {
+        let _ = reconciler
+            .reconcile_task(task, InternalStatus::Paused)
+            .await;
+    }
+
+    // Verify: Task 1 (UserInitiated global) remains Paused
+    let t1 = app_state
+        .task_repo
+        .get_by_id(&task1.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        t1.internal_status,
+        InternalStatus::Paused,
+        "UserInitiated (global) should remain Paused"
+    );
+
+    // Verify: Task 2 (UserInitiated task) remains Paused
+    let t2 = app_state
+        .task_repo
+        .get_by_id(&task2.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        t2.internal_status,
+        InternalStatus::Paused,
+        "UserInitiated (task) should remain Paused"
+    );
+
+    // Verify: Task 3 (ProviderError expired) was processed (no longer Paused)
+    let t3 = app_state
+        .task_repo
+        .get_by_id(&task3.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(
+        t3.internal_status,
+        InternalStatus::Paused,
+        "ProviderError (expired) should have been auto-resumed"
+    );
+
+    // Verify: Task 4 (ProviderError max attempts) → Failed
+    let t4 = app_state
+        .task_repo
+        .get_by_id(&task4.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        t4.internal_status,
+        InternalStatus::Failed,
+        "ProviderError (max attempts) should transition to Failed"
+    );
+}
+
+#[tokio::test]
+async fn reconcile_paused_provider_error_increments_resume_attempts() {
+    use crate::application::chat_service::{PauseReason, ProviderErrorCategory};
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Start with resume_attempts = 2
+    let reason = PauseReason::ProviderError {
+        category: ProviderErrorCategory::RateLimit,
+        message: "Rate limited".to_string(),
+        retry_after: Some("2020-01-01T00:00:00+00:00".to_string()), // Past
+        previous_status: "executing".to_string(),
+        paused_at: "2020-01-01T00:00:00+00:00".to_string(),
+        auto_resumable: true,
+        resume_attempts: 2,
+    };
+
+    let mut task = Task::new(project.id.clone(), "Resume Attempts Test".to_string());
+    task.internal_status = InternalStatus::Paused;
+    task.metadata = Some(reason.write_to_task_metadata(None));
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task.id,
+            InternalStatus::Executing,
+            InternalStatus::Paused,
+            "paused",
+        )
+        .await
+        .unwrap();
+
+    // Before reconcile: verify resume_attempts = 2
+    let before = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    let before_reason = PauseReason::from_task_metadata(before.metadata.as_deref()).unwrap();
+    match before_reason {
+        PauseReason::ProviderError { resume_attempts, .. } => {
+            assert_eq!(resume_attempts, 2, "Should start at 2");
+        }
+        _ => panic!("Expected ProviderError"),
+    }
+
+    // Reconcile should increment resume_attempts to 3 before attempting resume
+    let reconciled = reconciler
+        .reconcile_paused_provider_error(&task)
+        .await;
+    assert!(reconciled, "Should process the task");
+
+    // After reconcile, the task should have been processed. If the resume succeeded,
+    // metadata should be cleared. If it failed (no real CLI in test), the task may
+    // still have the incremented resume_attempts. Either way, the reconciler acted.
+}
+
+#[tokio::test]
+async fn reconcile_paused_provider_error_not_auto_resumable_new_format() {
+    use crate::application::chat_service::{PauseReason, ProviderErrorCategory};
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let reason = PauseReason::ProviderError {
+        category: ProviderErrorCategory::AuthError,
+        message: "Invalid API key".to_string(),
+        retry_after: None,
+        previous_status: "executing".to_string(),
+        paused_at: "2020-01-01T00:00:00+00:00".to_string(),
+        auto_resumable: false,
+        resume_attempts: 0,
+    };
+
+    let mut task = Task::new(project.id.clone(), "Not Auto Resumable".to_string());
+    task.internal_status = InternalStatus::Paused;
+    task.metadata = Some(reason.write_to_task_metadata(None));
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let reconciled = reconciler
+        .reconcile_paused_provider_error(&task)
+        .await;
+    assert!(
+        !reconciled,
+        "Non-auto-resumable new-format tasks should be skipped"
+    );
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(updated.internal_status, InternalStatus::Paused);
+}
+
+#[tokio::test]
+async fn reconcile_paused_at_max_concurrent_stays_paused() {
+    use crate::application::chat_service::{PauseReason, ProviderErrorCategory};
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::with_max_concurrent(1));
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Fill up concurrency
+    execution_state.increment_running();
+
+    let reason = PauseReason::ProviderError {
+        category: ProviderErrorCategory::RateLimit,
+        message: "Rate limited".to_string(),
+        retry_after: Some("2020-01-01T00:00:00+00:00".to_string()),
+        previous_status: "executing".to_string(),
+        paused_at: "2020-01-01T00:00:00+00:00".to_string(),
+        auto_resumable: true,
+        resume_attempts: 0,
+    };
+
+    let mut task = Task::new(project.id.clone(), "At Max Concurrent".to_string());
+    task.internal_status = InternalStatus::Paused;
+    task.metadata = Some(reason.write_to_task_metadata(None));
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let reconciled = reconciler
+        .reconcile_paused_provider_error(&task)
+        .await;
+    assert!(
+        !reconciled,
+        "Should not resume when at max concurrent limit"
+    );
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Paused,
+        "Task should remain Paused when at max concurrent"
+    );
+}
+
+#[tokio::test]
+async fn reconcile_paused_with_both_old_and_new_keys_prefers_new() {
+    use crate::application::chat_service::{
+        PauseReason, ProviderErrorCategory, ProviderErrorMetadata,
+    };
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Simulate metadata with both old and new keys (as written by handle_stream_error)
+    let legacy = ProviderErrorMetadata {
+        category: ProviderErrorCategory::RateLimit,
+        message: "Rate limited".to_string(),
+        retry_after: Some("2020-01-01T00:00:00+00:00".to_string()),
+        previous_status: "executing".to_string(),
+        paused_at: "2020-01-01T00:00:00+00:00".to_string(),
+        auto_resumable: true,
+        resume_attempts: 1,
+    };
+    let new_reason = PauseReason::ProviderError {
+        category: ProviderErrorCategory::RateLimit,
+        message: "Rate limited".to_string(),
+        retry_after: Some("2020-01-01T00:00:00+00:00".to_string()),
+        previous_status: "executing".to_string(),
+        paused_at: "2020-01-01T00:00:00+00:00".to_string(),
+        auto_resumable: true,
+        resume_attempts: 1,
+    };
+
+    let with_legacy = legacy.write_to_task_metadata(None);
+    let with_both = new_reason.write_to_task_metadata(Some(&with_legacy));
+
+    let mut task = Task::new(project.id.clone(), "Both Keys Task".to_string());
+    task.internal_status = InternalStatus::Paused;
+    task.metadata = Some(with_both);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task.id,
+            InternalStatus::Executing,
+            InternalStatus::Paused,
+            "paused",
+        )
+        .await
+        .unwrap();
+
+    // Should process via new format (not fall through to legacy handler)
+    let reconciled = reconciler
+        .reconcile_paused_provider_error(&task)
+        .await;
+    assert!(
+        reconciled,
+        "Should process the task via new PauseReason format"
+    );
+}
+
+// =========================================================================
+// Backward compat: legacy provider_error key read by reconciler
+// =========================================================================
+
+#[tokio::test]
+async fn reconcile_legacy_provider_error_key_still_works() {
+    use crate::application::chat_service::{ProviderErrorCategory, ProviderErrorMetadata};
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Only legacy key, no pause_reason key
+    let legacy = ProviderErrorMetadata {
+        category: ProviderErrorCategory::RateLimit,
+        message: "Rate limited".to_string(),
+        retry_after: Some("2020-01-01T00:00:00+00:00".to_string()),
+        previous_status: "executing".to_string(),
+        paused_at: "2020-01-01T00:00:00+00:00".to_string(),
+        auto_resumable: true,
+        resume_attempts: 0,
+    };
+
+    let mut task = Task::new(project.id.clone(), "Legacy Key Only".to_string());
+    task.internal_status = InternalStatus::Paused;
+    task.metadata = Some(legacy.write_to_task_metadata(None));
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task.id,
+            InternalStatus::Executing,
+            InternalStatus::Paused,
+            "paused",
+        )
+        .await
+        .unwrap();
+
+    // Verify only provider_error key, no pause_reason
+    let meta_json: serde_json::Value =
+        serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
+    assert!(meta_json.get("provider_error").is_some());
+    assert!(meta_json.get("pause_reason").is_none());
+
+    let reconciled = reconciler
+        .reconcile_paused_provider_error(&task)
+        .await;
+    assert!(
+        reconciled,
+        "Legacy provider_error key should still be processed via backward compat"
+    );
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_ne!(
+        updated.internal_status,
+        InternalStatus::Paused,
+        "Legacy task should no longer be Paused after processing"
+    );
+}

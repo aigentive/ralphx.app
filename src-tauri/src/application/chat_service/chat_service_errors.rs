@@ -1613,4 +1613,308 @@ mod tests {
         assert!(parsed.get("pause_reason").is_some(), "Should write pause_reason key");
         assert!(parsed.get("provider_error").is_none(), "Should NOT write provider_error key");
     }
+
+    // =========================================================================
+    // Global pause stores UserInitiated with scope "global" on each task
+    // =========================================================================
+
+    #[test]
+    fn test_user_initiated_global_scope_metadata() {
+        let reason = PauseReason::UserInitiated {
+            previous_status: "executing".to_string(),
+            paused_at: "2026-02-15T09:00:00+00:00".to_string(),
+            scope: "global".to_string(),
+        };
+
+        let json = reason.write_to_task_metadata(None);
+        let restored = PauseReason::from_task_metadata(Some(&json)).unwrap();
+
+        assert!(!restored.is_provider_error());
+        match restored {
+            PauseReason::UserInitiated { scope, previous_status, paused_at } => {
+                assert_eq!(scope, "global");
+                assert_eq!(previous_status, "executing");
+                assert_eq!(paused_at, "2026-02-15T09:00:00+00:00");
+            }
+            _ => panic!("Expected UserInitiated"),
+        }
+    }
+
+    // =========================================================================
+    // ProviderError metadata stored correctly with all fields
+    // =========================================================================
+
+    #[test]
+    fn test_provider_error_pause_reason_all_fields_persist() {
+        let reason = PauseReason::ProviderError {
+            category: ProviderErrorCategory::Overloaded,
+            message: "API overloaded, please try again".to_string(),
+            retry_after: Some("2026-02-15T14:00:00+00:00".to_string()),
+            previous_status: "re_executing".to_string(),
+            paused_at: "2026-02-15T09:30:00+00:00".to_string(),
+            auto_resumable: true,
+            resume_attempts: 2,
+        };
+
+        let json = reason.write_to_task_metadata(Some(r#"{"existing":"data"}"#));
+        let restored = PauseReason::from_task_metadata(Some(&json)).unwrap();
+
+        assert!(restored.is_provider_error());
+        match restored {
+            PauseReason::ProviderError {
+                category,
+                message,
+                retry_after,
+                previous_status,
+                paused_at,
+                auto_resumable,
+                resume_attempts,
+            } => {
+                assert_eq!(category, ProviderErrorCategory::Overloaded);
+                assert_eq!(message, "API overloaded, please try again");
+                assert_eq!(retry_after, Some("2026-02-15T14:00:00+00:00".to_string()));
+                assert_eq!(previous_status, "re_executing");
+                assert_eq!(paused_at, "2026-02-15T09:30:00+00:00");
+                assert!(auto_resumable);
+                assert_eq!(resume_attempts, 2);
+            }
+            _ => panic!("Expected ProviderError"),
+        }
+
+        // Verify existing metadata preserved
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.get("existing").unwrap().as_str().unwrap(), "data");
+    }
+
+    // =========================================================================
+    // Handle_stream_error writes both keys — verify dual-key read/clear
+    // =========================================================================
+
+    #[test]
+    fn test_dual_key_write_simulates_handle_stream_error() {
+        // handle_stream_error writes both legacy provider_error AND new pause_reason
+        let legacy_meta = ProviderErrorMetadata {
+            category: ProviderErrorCategory::RateLimit,
+            message: "Usage limit".to_string(),
+            retry_after: Some("2026-02-15T14:00:00+00:00".to_string()),
+            previous_status: "executing".to_string(),
+            paused_at: "2026-02-15T09:00:00+00:00".to_string(),
+            auto_resumable: true,
+            resume_attempts: 1,
+        };
+        let pause_reason = PauseReason::ProviderError {
+            category: ProviderErrorCategory::RateLimit,
+            message: "Usage limit".to_string(),
+            retry_after: Some("2026-02-15T14:00:00+00:00".to_string()),
+            previous_status: "executing".to_string(),
+            paused_at: "2026-02-15T09:00:00+00:00".to_string(),
+            auto_resumable: true,
+            resume_attempts: 1,
+        };
+
+        // Write both keys (as handle_stream_error does)
+        let with_legacy = legacy_meta.write_to_task_metadata(None);
+        let with_both = pause_reason.write_to_task_metadata(Some(&with_legacy));
+
+        // Verify both keys present
+        let parsed: serde_json::Value = serde_json::from_str(&with_both).unwrap();
+        assert!(parsed.get("provider_error").is_some());
+        assert!(parsed.get("pause_reason").is_some());
+
+        // PauseReason::from_task_metadata should prefer pause_reason key
+        let restored = PauseReason::from_task_metadata(Some(&with_both)).unwrap();
+        assert!(restored.is_provider_error());
+        assert_eq!(restored.previous_status(), "executing");
+
+        // ProviderErrorMetadata::from_task_metadata should still work (legacy)
+        let legacy_restored = ProviderErrorMetadata::from_task_metadata(Some(&with_both)).unwrap();
+        assert_eq!(legacy_restored.resume_attempts, 1);
+
+        // Clear should remove BOTH keys
+        let cleared = PauseReason::clear_from_task_metadata(Some(&with_both));
+        let parsed: serde_json::Value = serde_json::from_str(&cleared).unwrap();
+        assert!(parsed.get("provider_error").is_none());
+        assert!(parsed.get("pause_reason").is_none());
+    }
+
+    // =========================================================================
+    // Resume attempts increment across re-pause cycles
+    // =========================================================================
+
+    #[test]
+    fn test_resume_attempts_increment_across_cycles() {
+        // Cycle 1: fresh provider error → resume_attempts = 0
+        let cycle1 = PauseReason::ProviderError {
+            category: ProviderErrorCategory::RateLimit,
+            message: "limit".to_string(),
+            retry_after: None,
+            previous_status: "executing".to_string(),
+            paused_at: "2026-02-15T09:00:00+00:00".to_string(),
+            auto_resumable: true,
+            resume_attempts: 0,
+        };
+        let meta1 = cycle1.write_to_task_metadata(None);
+
+        // Read back, increment, write as cycle 2
+        let restored1 = PauseReason::from_task_metadata(Some(&meta1)).unwrap();
+        let attempts1 = match &restored1 {
+            PauseReason::ProviderError { resume_attempts, .. } => *resume_attempts,
+            _ => panic!("Expected ProviderError"),
+        };
+        assert_eq!(attempts1, 0);
+
+        let cycle2 = PauseReason::ProviderError {
+            category: ProviderErrorCategory::RateLimit,
+            message: "limit again".to_string(),
+            retry_after: None,
+            previous_status: "executing".to_string(),
+            paused_at: "2026-02-15T10:00:00+00:00".to_string(),
+            auto_resumable: true,
+            resume_attempts: attempts1 + 1, // Carried forward + 1
+        };
+        let meta2 = cycle2.write_to_task_metadata(None);
+
+        let restored2 = PauseReason::from_task_metadata(Some(&meta2)).unwrap();
+        match restored2 {
+            PauseReason::ProviderError { resume_attempts, .. } => {
+                assert_eq!(resume_attempts, 1, "Should be 1 after first re-pause");
+            }
+            _ => panic!("Expected ProviderError"),
+        }
+
+        // Cycle 3: increment again
+        let cycle3 = PauseReason::ProviderError {
+            category: ProviderErrorCategory::RateLimit,
+            message: "limit yet again".to_string(),
+            retry_after: None,
+            previous_status: "executing".to_string(),
+            paused_at: "2026-02-15T11:00:00+00:00".to_string(),
+            auto_resumable: true,
+            resume_attempts: 2,
+        };
+        let meta3 = cycle3.write_to_task_metadata(None);
+
+        let restored3 = PauseReason::from_task_metadata(Some(&meta3)).unwrap();
+        match restored3 {
+            PauseReason::ProviderError { resume_attempts, .. } => {
+                assert_eq!(resume_attempts, 2, "Should be 2 after second re-pause");
+            }
+            _ => panic!("Expected ProviderError"),
+        }
+    }
+
+    // =========================================================================
+    // Resume task from various previous statuses
+    // =========================================================================
+
+    #[test]
+    fn test_pause_reason_roundtrip_for_all_agent_active_statuses() {
+        let agent_active = vec![
+            "executing",
+            "re_executing",
+            "reviewing",
+            "merging",
+            "qa_refining",
+            "qa_testing",
+        ];
+
+        for status_str in agent_active {
+            // UserInitiated from each status
+            let user_reason = PauseReason::UserInitiated {
+                previous_status: status_str.to_string(),
+                paused_at: "2026-02-15T09:00:00+00:00".to_string(),
+                scope: "task".to_string(),
+            };
+            let json = user_reason.write_to_task_metadata(None);
+            let restored = PauseReason::from_task_metadata(Some(&json)).unwrap();
+            assert_eq!(
+                restored.previous_status(), status_str,
+                "UserInitiated: previous_status mismatch for {}",
+                status_str
+            );
+            let parsed: InternalStatus = restored.previous_status().parse().unwrap();
+            assert!(!parsed.is_terminal(), "{} should not be terminal", status_str);
+
+            // ProviderError from each status
+            let provider_reason = PauseReason::ProviderError {
+                category: ProviderErrorCategory::ServerError,
+                message: "error".to_string(),
+                retry_after: None,
+                previous_status: status_str.to_string(),
+                paused_at: "2026-02-15T09:00:00+00:00".to_string(),
+                auto_resumable: true,
+                resume_attempts: 0,
+            };
+            let json = provider_reason.write_to_task_metadata(None);
+            let restored = PauseReason::from_task_metadata(Some(&json)).unwrap();
+            assert_eq!(
+                restored.previous_status(), status_str,
+                "ProviderError: previous_status mismatch for {}",
+                status_str
+            );
+        }
+    }
+
+    // =========================================================================
+    // Edge case: resume with no pause metadata falls back
+    // =========================================================================
+
+    #[test]
+    fn test_no_pause_metadata_returns_none() {
+        // Empty metadata
+        assert!(PauseReason::from_task_metadata(Some("{}")).is_none());
+        // Metadata with unrelated keys
+        assert!(PauseReason::from_task_metadata(Some(r#"{"stop_metadata":{}}"#)).is_none());
+        // None input
+        assert!(PauseReason::from_task_metadata(None).is_none());
+    }
+
+    // =========================================================================
+    // Pause already-paused task: metadata overwrite
+    // =========================================================================
+
+    #[test]
+    fn test_writing_pause_reason_overwrites_previous() {
+        // First pause: UserInitiated from executing
+        let first = PauseReason::UserInitiated {
+            previous_status: "executing".to_string(),
+            paused_at: "2026-02-15T09:00:00+00:00".to_string(),
+            scope: "task".to_string(),
+        };
+        let json1 = first.write_to_task_metadata(None);
+
+        // Second pause: overwrite with different reason
+        let second = PauseReason::ProviderError {
+            category: ProviderErrorCategory::RateLimit,
+            message: "rate limited".to_string(),
+            retry_after: None,
+            previous_status: "executing".to_string(),
+            paused_at: "2026-02-15T10:00:00+00:00".to_string(),
+            auto_resumable: true,
+            resume_attempts: 0,
+        };
+        let json2 = second.write_to_task_metadata(Some(&json1));
+
+        // Should read the latest
+        let restored = PauseReason::from_task_metadata(Some(&json2)).unwrap();
+        assert!(restored.is_provider_error(), "Should read the latest PauseReason");
+    }
+
+    // =========================================================================
+    // Truncation of error messages
+    // =========================================================================
+
+    #[test]
+    fn test_truncate_error_message_long() {
+        let long_msg = "x".repeat(600);
+        let truncated = truncate_error_message(&long_msg);
+        assert_eq!(truncated.len(), 503); // 500 + "..."
+        assert!(truncated.ends_with("..."));
+    }
+
+    #[test]
+    fn test_truncate_error_message_short() {
+        let short = "short error";
+        assert_eq!(truncate_error_message(short), "short error");
+    }
 }
