@@ -72,9 +72,9 @@ fn process_id_from_string_preserves_value() {
 // ===== ArtifactType Tests =====
 
 #[test]
-fn artifact_type_all_returns_18_types() {
+fn artifact_type_all_returns_21_types() {
     let all = ArtifactType::all();
-    assert_eq!(all.len(), 18);
+    assert_eq!(all.len(), 21);
 }
 
 #[test]
@@ -349,15 +349,16 @@ fn artifact_bucket_with_reader() {
 }
 
 #[test]
-fn artifact_bucket_system_buckets_returns_4() {
+fn artifact_bucket_system_buckets_returns_5() {
     let buckets = ArtifactBucket::system_buckets();
-    assert_eq!(buckets.len(), 4);
+    assert_eq!(buckets.len(), 5);
 
     let ids: Vec<&str> = buckets.iter().map(|b| b.id.as_str()).collect();
     assert!(ids.contains(&"research-outputs"));
     assert!(ids.contains(&"work-context"));
     assert!(ids.contains(&"code-changes"));
     assert!(ids.contains(&"prd-library"));
+    assert!(ids.contains(&"team-findings"));
 }
 
 #[test]
