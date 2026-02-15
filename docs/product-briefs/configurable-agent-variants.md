@@ -1,10 +1,11 @@
 # Product Brief: Configurable Agent Variants and Dynamic Team Composition
 
-**Status:** DRAFT v4
+**Status:** DRAFT v5
 **Author:** agent-cataloger
 **Date:** 2026-02-15
 **Scope:** Infrastructure for solo ↔ team mode switching with agent-driven dynamic team composition
 **Depends on:** `docs/architecture/ralphx-yaml-config.md`, `docs/architecture/agent-catalog.md`
+**Revision:** v5 — Resolves: constrained mode shows predefined roles before spawn, team-ideated plan tagging, trust lead for prompt quality, per-teammate cost tracking, consistent with ideation brief v5 and worker brief v3 decisions
 
 ---
 
@@ -254,11 +255,24 @@ Dynamic mode:
   Lead → "I need a security-reviewer with tools [Read, Grep, Glob]"
   Backend → checks: tools ⊆ allowed_tools? model ≤ model_cap? count ≤ max?
   Backend → spawns teammate with lead-provided prompt + validated tools
+  (No quality checks on lead-generated prompts — trust the lead fully.)
 
 Constrained mode:
   Lead → "I need a ralphx-coder"
   Backend → checks: "ralphx-coder" ∈ presets? count ≤ max?
   Backend → spawns teammate with predefined config from agents[]
+```
+
+**RESOLVED: Constrained mode UX — show predefined roles before spawn.** When the user selects constrained mode in the session/task creation UI, the available preset roles from `presets` are displayed so the user knows what the lead can work with. This improves visibility and trust:
+
+```
+[Constrained mode selected]
+┌──────────────────────────────────────┐
+│ Available preset roles:              │
+│  ✓ ralphx-coder (implementation)    │
+│  ✓ ralphx-reviewer (code review)    │
+│ ⓘ Lead will select from these only. │
+└──────────────────────────────────────┘
 ```
 
 ### 3.5 Agent Variant Inheritance (extends)
@@ -596,6 +610,20 @@ pub fn resolve_process_agent(
 }
 ```
 
+#### D. Team-Ideated Plan Tagging
+
+**RESOLVED:** When a plan is created through a team-mode ideation session, the plan artifact is tagged with metadata:
+
+```rust
+pub struct PlanMetadata {
+    pub team_ideated: bool,           // true if created via team mode
+    pub team_mode: Option<String>,    // "research" | "debate"
+    pub teammate_count: Option<u8>,   // how many teammates contributed
+}
+```
+
+This enables downstream visibility — reviewers can see that a plan had multi-perspective input, and analytics can correlate plan quality with team usage over time.
+
 #### D. Variant Selection at Spawn Time
 
 | Priority | Source | Example |
@@ -744,6 +772,23 @@ This way:
 - **Predefined agents** continue using the hardcoded `TOOL_ALLOWLIST` (no change)
 - **Dynamic teammates** get their MCP tools from the env var, set by the Rust backend when spawning the teammate's Claude CLI process
 - **Agent prompt frontmatter** (Layer 3) still applies — the teammate's system prompt can further restrict MCP tools
+
+### 3.9.1 Per-Teammate Cost Tracking
+
+**RESOLVED:** The backend tracks token usage per-teammate (not just aggregate). This enables:
+- UI displays per-teammate cost breakdown in the team activity panel
+- Users can identify which specialist roles provide the most value
+- Budget enforcement (when configured) can be per-team not just per-teammate
+
+The `TeamStatusResponse` already includes `total_tokens` and `estimated_cost_usd` at the team level. Per-teammate tracking adds:
+
+```rust
+pub struct TeammateStatus {
+    // ... existing fields ...
+    pub tokens_used: u64,           // NEW: per-teammate token count
+    pub estimated_cost_usd: f64,    // NEW: per-teammate cost estimate
+}
+```
 
 ### 3.10 Environment Variable Overrides
 

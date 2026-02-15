@@ -1,10 +1,10 @@
 # Product Brief: Agent Teams at Orchestrator-Ideation Level
 
-**Status:** DRAFT v4
+**Status:** DRAFT v5
 **Author:** product-researcher
 **Date:** 2026-02-15
 **Scope:** Integrating Claude Code Agent Teams into RalphX's ideation workflow
-**Revision:** v4 — Resolves open questions: team lead identity evaluation, 5 default specialists, side-by-side debate UI, artifact model for multi-agent contribution, team resume in RECOVER phase
+**Revision:** v5 — Resolves ALL remaining open questions: per-teammate cost display, model selection confirmed, team-ideated plan tagging, trust lead for prompt quality, show predefined roles in constrained mode, indefinite artifact retention, lead-synthesized summary strategy for resume context, stacked cards for narrow viewport debate UI, worker artifact documentation confirmed
 
 ---
 
@@ -434,6 +434,17 @@ Spawn approved → build CLI args → spawn process
 │  │   roles to create based on your task.         │   │
 │  └──────────────────────────────────────────────┘   │
 │                                                      │
+│  [When Constrained selected, show available roles:]  │
+│  ┌──────────────────────────────────────────────┐   │
+│  │ Available specialist roles:                   │   │
+│  │  ✓ frontend-specialist (React/TS/Tailwind)   │   │
+│  │  ✓ backend-specialist (Rust/Tauri/SQLite)    │   │
+│  │  ✓ infra-specialist (DB/MCP/config/git)      │   │
+│  │  ✓ advocate (approach advocacy)              │   │
+│  │  ✓ critic (adversarial stress-testing)       │   │
+│  │ ⓘ Lead will select from these roles only.    │   │
+│  └──────────────────────────────────────────────┘   │
+│                                                      │
 │  [Start Session]                                     │
 └─────────────────────────────────────────────────────┘
 ```
@@ -481,15 +492,25 @@ When team mode is active, the ideation view gets a new panel showing teammate ac
 
 ### 5.3 Cost Indicator
 
-Team sessions show a cost indicator in the session header:
+**RESOLVED: Per-teammate cost breakdown.** Team sessions show per-teammate token usage so users can understand which roles are most valuable.
 
 ```
-┌────────────────────────────────────────────┐
-│  Session: "Add real-time collaboration"    │
-│  Mode: Research Team (3 specialists)       │
-│  Tokens: ~450K  |  Est. Cost: $3.20       │
-└────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  Session: "Add real-time collaboration"                  │
+│  Mode: Research Team (3 specialists)                     │
+│  Total: ~450K tokens  |  Est. Cost: $3.20               │
+│                                                          │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │ Per-teammate breakdown:                          │   │
+│  │  Lead (Opus):                    ~120K  $1.20    │   │
+│  │  realtime-transport-researcher:  ~110K  $0.65    │   │
+│  │  react-state-sync-researcher:    ~130K  $0.80    │   │
+│  │  event-system-researcher:         ~90K  $0.55    │   │
+│  └──────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────┘
 ```
+
+This helps users identify which specialist roles provide the most value, informing future team composition choices.
 
 ### 5.4 Plan Presentation (Enhanced)
 
@@ -507,6 +528,9 @@ When the lead presents the plan after team research, the plan display includes a
 
 ### Architecture
 [Plan content — same format as today]
+
+**Plan metadata:** `{ team_ideated: true, team_mode: "research"|"debate", teammate_count: N }`
+(Tagged for downstream visibility — correlates plan quality with team usage.)
 
 ### Debate Summary (Debate mode only — side-by-side layout)
 
@@ -531,6 +555,27 @@ When the lead presents the plan after team research, the plan display includes a
 └─────────────────────────┴─────────────────────────┴─────────────────────────┘
 
 ★ Winner: WebSockets — Lead justification: bidirectional needed for collab editing, existing hook provides foundation.
+```
+
+**RESOLVED: Narrow viewport fallback — stacked cards.** On narrow viewports (< 768px), the side-by-side layout collapses to vertically stacked cards. Each advocate's case becomes a collapsible card with the same row structure (strengths, weaknesses, evidence, critic challenge). The winner indicator stays at the bottom.
+
+```
+[Narrow viewport layout]
+┌─────────────────────────────┐
+│ ▼ WebSockets (Advocate A)   │
+│   Strengths: ...            │
+│   Weaknesses: ...           │
+│   Evidence: ...             │
+│   Critic: ...               │
+├─────────────────────────────┤
+│ ▶ SSE (Advocate B)          │
+│   [collapsed — tap to expand]│
+├─────────────────────────────┤
+│ ▶ Sync Layer (Advocate C)   │
+│   [collapsed — tap to expand]│
+├─────────────────────────────┤
+│ ★ Winner: WebSockets        │
+└─────────────────────────────┘
 ```
 
 ---
@@ -638,51 +683,155 @@ No structural MCP server changes — the existing tool filtering system works. T
 
 ### 6.4 Artifact Model for Multi-Agent Contribution
 
-**RESOLVED: Teammates create supporting artifacts. Master artifact unchanged.**
+**RESOLVED: Extend existing artifact system. NO new tables.**
 
-The current artifact model uses one versioned master plan artifact per ideation session (`create_plan_artifact` / `update_plan_artifact`). This stays as-is — the lead owns the master artifact and creates it during the PLAN phase after synthesizing team findings.
+**v5 REDESIGN:** The original v4 proposed a new `supporting_artifacts` table. After deep review of the existing artifact system, this is unnecessary. RalphX already has a comprehensive artifact system with buckets, relations, version chaining, and an **unused `metadata_json` column** — all of which can be extended for multi-agent contribution with minimal changes.
 
-**New: Supporting artifacts.** Teammates create supporting documentation artifacts (research findings, approach analyses, comparison tables) that link back to the master artifact. These are reference material for the lead's synthesis and for user review.
+#### Existing System (What We Leverage)
 
-**Proposed MCP tool changes:**
+| Component | Existing Capability | How We Use It |
+|-----------|-------------------|---------------|
+| `artifacts` table | 18 types, bucket assignment, `created_by`, `task_id`, `process_id` | Store team findings as regular artifacts |
+| `artifact_buckets` | Type acceptance, writer/reader ACL, system buckets | New `team-findings` system bucket |
+| `artifact_relations` | `DerivedFrom`, `RelatedTo` between any two artifacts | Link team findings → master plan artifact |
+| `metadata_json` column | **Currently unused** | Store team-specific metadata (contributor name, team mode, session ID) |
+| `previous_version_id` | Version chaining for immutable history | Team summary artifacts can be versioned as research progresses |
+| `ArtifactService` | Bucket validation, version creation, relation management | Reuse for all team artifact operations |
 
-| Tool | Agent Access | Description |
-|------|-------------|-------------|
-| `create_supporting_artifact` | `ideation-team-member` | Create a supporting artifact linked to the session. Params: `session_id`, `title`, `content`, `artifact_type` ("research" \| "analysis" \| "comparison"), `parent_artifact_id` (optional — links to master plan). |
-| `get_supporting_artifacts` | `ideation-team-lead`, `ideation-team-member` | List/retrieve supporting artifacts for a session. Filterable by `artifact_type` and `author`. |
+#### Changes Required
 
-**Linking mechanism — `parent_artifact_id`:**
-- Supporting artifacts can optionally reference the master plan artifact via `parent_artifact_id`
-- If no master artifact exists yet (EXPLORE phase, before PLAN), supporting artifacts are session-scoped only
-- When the lead creates the master plan, they can reference supporting artifact IDs in the plan content
-- UI displays supporting artifacts as expandable references under the master plan
+**1. Add 3 new artifact types to `ArtifactType` enum:**
 
-**Schema addition:**
-```sql
-CREATE TABLE supporting_artifacts (
-    id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL REFERENCES ideation_sessions(id),
-    parent_artifact_id TEXT REFERENCES plan_artifacts(id),  -- optional link to master
-    author_name TEXT NOT NULL,        -- teammate name who created it
-    title TEXT NOT NULL,
-    content TEXT NOT NULL,
-    artifact_type TEXT NOT NULL,       -- 'research' | 'analysis' | 'comparison'
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
+```rust
+// In domain/entities/artifact/types.rs — add to existing enum:
+pub enum ArtifactType {
+    // ... existing 18 types ...
+    TeamResearch,      // Research findings from team specialists
+    TeamAnalysis,      // Comparison/analysis documents (debate mode)
+    TeamSummary,       // Lead-synthesized summary of all team findings
+}
 ```
 
-**Impact on YAML `mcp_tool_ceiling`:** Add `create_supporting_artifact` and `get_supporting_artifacts` to the teammate ceiling:
+**2. Add 1 new system bucket: `team-findings`**
+
+```rust
+// In ArtifactBucket::system_buckets() — add 5th bucket:
+ArtifactBucket {
+    id: ArtifactBucketId("team-findings".into()),
+    name: "Team Findings".into(),
+    accepted_types: vec![
+        ArtifactType::TeamResearch,
+        ArtifactType::TeamAnalysis,
+        ArtifactType::TeamSummary,
+        ArtifactType::Findings,           // Reuse existing type too
+        ArtifactType::Recommendations,    // Reuse existing type too
+    ],
+    writers: vec![
+        "ideation-team-lead".into(),
+        "ideation-team-member".into(),
+        "worker-team-member".into(),      // Worker teams can document decisions
+    ],
+    readers: vec!["all".into()],
+    is_system: true,
+}
+```
+
+**3. Use `metadata_json` for team-specific fields:**
+
+```json
+{
+    "contributor_name": "realtime-transport-researcher",
+    "team_session_id": "ideation-abc123",
+    "team_mode": "research",
+    "artifact_subtype": "research"
+}
+```
+
+No schema migration needed — `metadata_json` column already exists and is unused. The `ArtifactMetadata` struct gains an optional team metadata field:
+
+```rust
+// Extend existing ArtifactMetadata
+pub struct ArtifactMetadata {
+    pub created_at: DateTime<Utc>,
+    pub created_by: String,
+    pub task_id: Option<TaskId>,
+    pub process_id: Option<ProcessId>,
+    pub version: u32,
+    // NEW — team contribution metadata (stored in metadata_json column):
+    pub team_metadata: Option<TeamArtifactMetadata>,
+}
+
+pub struct TeamArtifactMetadata {
+    pub contributor_name: String,      // Teammate display name
+    pub team_session_id: String,       // Links to ideation/execution session
+    pub team_mode: String,             // "research" | "debate"
+}
+```
+
+**4. Link team findings to master plan via existing `artifact_relations`:**
+
+```
+[TeamResearch artifact by transport-researcher]
+    ──RelatedTo──▶ [Specification artifact (master plan)]
+
+[TeamAnalysis artifact by state-sync-researcher]
+    ──RelatedTo──▶ [Specification artifact (master plan)]
+
+[TeamSummary artifact by lead]
+    ──DerivedFrom──▶ [TeamResearch artifact A]
+    ──DerivedFrom──▶ [TeamResearch artifact B]
+    ──RelatedTo──▶ [Specification artifact (master plan)]
+```
+
+- Before PLAN phase (no master plan yet): team findings are session-scoped via `metadata_json.team_session_id`
+- After PLAN phase: lead creates `RelatedTo` relations linking findings to the master plan
+- UI displays team findings as expandable references under the master plan (queried via `get_related()`)
+
+#### MCP Tool Changes (Minimal)
+
+**Reuse existing endpoints where possible. Only 2 new thin wrappers needed:**
+
+| Tool | Agent Access | Implementation |
+|------|-------------|----------------|
+| `create_team_artifact` | `ideation-team-member`, `worker-team-member` | Thin wrapper around existing `create_artifact`. Sets `bucket_id = team-findings`, populates `metadata_json` with team metadata, optionally adds `RelatedTo` relation to plan artifact. |
+| `get_team_artifacts` | `ideation-team-lead`, `ideation-team-member` | Thin wrapper around existing `get_by_bucket(team-findings)` + filter by `metadata_json.team_session_id`. |
+
+**Existing tools that already work (no changes):**
+
+| Tool | Works Because |
+|------|--------------|
+| `get_plan_artifact` | Team findings linked via relations; plan artifact unchanged |
+| `get_session_plan` | Master plan still owned by lead; same flow |
+| Generic `artifact/:id` endpoint | Team artifacts are regular artifacts, fully queryable |
+| `artifacts/related/:id` endpoint | Returns all team findings linked to the master plan |
+
+#### Why This Is Better Than v4's Approach
+
+| Aspect | v4 (New Table) | v5 (Extend Existing) |
+|--------|---------------|---------------------|
+| Schema changes | New `supporting_artifacts` table + migration | **None** — uses existing columns |
+| New MCP tools | 2 entirely new tools + handlers | 2 thin wrappers over existing service |
+| New HTTP endpoints | 2+ new endpoints in Tauri backend | 2 thin endpoints delegating to `ArtifactService` |
+| Bucket integration | None (separate table) | Full bucket ACL + type validation |
+| Version history | Must build from scratch | **Free** — existing version chaining works |
+| Relation tracking | Must build from scratch | **Free** — existing `artifact_relations` table |
+| Querying | Custom queries for new table | Existing `get_by_bucket`, `get_by_task`, `get_related` |
+| Flow system | Not integrated | **Free** — `artifact_flows` can trigger on team artifacts |
+| Code reuse | Low — new repo, new service, new handlers | High — reuses `ArtifactService`, `ArtifactRepository` |
+
+**RESOLVED: Supporting artifacts persist indefinitely.** They are regular artifacts in the `team-findings` bucket — same lifecycle as all other artifacts. No automatic cleanup; users can manually delete if needed.
+
+**Impact on YAML `mcp_tool_ceiling`:** Add `create_team_artifact` and `get_team_artifacts` to the teammate ceiling:
 ```yaml
 mcp_tool_ceiling:
   - get_session_plan
   - list_session_proposals
   - get_plan_artifact
-  - create_supporting_artifact   # NEW
-  - get_supporting_artifacts     # NEW
+  - create_team_artifact       # NEW (thin wrapper)
+  - get_team_artifacts         # NEW (thin wrapper)
 ```
 
-**FLAG:** This is the most significant MCP change in this brief. Requires: new MCP tools registered in `ralphx-mcp-server`, new HTTP endpoints in Tauri backend, new DB table, updated `tools.ts` allowlist. Recommend treating artifact model as a dedicated implementation task within Phase 1.
+**Complexity assessment:** This is now a **small-to-medium** implementation task — 3 enum variants, 1 system bucket, 2 thin MCP wrappers, team metadata in an existing unused column. Compare to v4's assessment: "most significant MCP change... new DB table, new HTTP endpoints." The extension approach reduces scope by ~60%.
 
 ---
 
@@ -840,7 +989,7 @@ When a team ideation session is interrupted (user closes app, lead crashes, sess
 | Data | Storage | Purpose |
 |------|---------|---------|
 | Team composition | `team_sessions` table: lead ID, teammate names/roles/prompts | Re-spawn teammates with same roles |
-| Supporting artifacts | `supporting_artifacts` table (Section 6.4) | Research findings survive crashes |
+| Team artifacts | `artifacts` table, `team-findings` bucket (Section 6.4) | Research findings survive crashes |
 | Master plan artifact | Existing `plan_artifacts` table | Plan-in-progress preserved |
 | Team messages | `team_messages` table: sender, recipient, content, timestamp | Conversation history for context reconstruction |
 | Phase progress | Existing session state | Which phase the team was in |
@@ -854,14 +1003,14 @@ Lead enters RECOVER phase
   │
   ▼
 Lead reads team state from DB via MCP:
-  - get_team_session_state(session_id) → team composition, phase, artifacts
+  - get_team_session_state(session_id) → team composition, phase, team artifacts
   │
   ▼
 Lead evaluates resume strategy:
   │
   ├─ Phase was EXPLORE (teammates still researching)
   │  → Re-spawn teammates with SAME roles/prompts from DB
-  │  → Inject context: "You are resuming research. Prior findings: [supporting artifacts]"
+  │  → Inject context: "You are resuming research. Prior findings: [team artifacts]"
   │  → Teammates continue where they left off (read-only, so no state corruption risk)
   │
   ├─ Phase was PLAN (lead was synthesizing)
@@ -879,7 +1028,26 @@ Lead evaluates resume strategy:
 | `get_team_session_state` | `ideation-team-lead` | Retrieve persisted team composition, phase, and artifact IDs for a session |
 | `save_team_session_state` | `ideation-team-lead` | Persist current team composition to DB (called after spawning teammates) |
 
-**Key constraint:** Claude Code `--resume` flag resumes a single session, NOT a team. Team resume is managed by the lead agent reading persisted state and re-spawning teammates. The lead itself CAN be resumed with `--resume` (its session ID is stable), but teammates get fresh sessions with injected context from supporting artifacts.
+**Key constraint:** Claude Code `--resume` flag resumes a single session, NOT a team. Team resume is managed by the lead agent reading persisted state and re-spawning teammates. The lead itself CAN be resumed with `--resume` (its session ID is stable), but teammates get fresh sessions with injected context from team artifacts.
+
+**RESOLVED: Summary strategy for resume context injection.** Full message history may exceed context windows for long sessions. The lead uses a **structured summary artifact** approach:
+
+1. **Before shutdown** (or periodically during long EXPLORE phases): The lead creates a `team_summary` artifact that synthesizes all teammate findings into a structured format:
+   ```
+   ## Team Research Summary (auto-generated by lead)
+   ### Per-Teammate Findings
+   - transport-researcher: [2-3 sentence summary of key findings]
+   - state-sync-researcher: [2-3 sentence summary]
+   - event-system-researcher: [2-3 sentence summary]
+   ### Cross-Cutting Discoveries
+   - [Interface/integration issues found across teammates]
+   ### Open Questions
+   - [Unresolved items from teammate research]
+   ```
+2. **On resume:** The lead injects ONLY the summary artifact (not full message history) into re-spawned teammate prompts. Each teammate also gets their own team artifacts (their prior research findings).
+3. **Context budget:** Summary artifact targets ≤2000 tokens. Per-teammate team artifacts are already concise (research findings, not raw conversation). Total injected context per resumed teammate: ≤4000 tokens.
+
+This ensures resumed teammates get sufficient context without hitting context window limits, even for sessions with extensive prior inter-agent discussion.
 
 **Why this works:** Because all ideation teammates are **read-only**, there's no risk of duplicate writes or state corruption on resume. The worst case is a teammate re-reads files it already analyzed — which produces the same findings.
 
@@ -944,7 +1112,7 @@ MCP servers are stdio-based, per-process. They work regardless of whether the ag
 | **MCP tool scoping for dynamic roles** | Medium | "team-member" allowlist in tools.ts as ceiling (Section 4.5). Validated against YAML constraints. |
 | **Teammate context divergence** | Medium | Teammates share findings via messaging. Lead synthesizes into unified plan. User can intervene directly. |
 | **Team coordination overhead** | Medium | Lead manages coordination. User can redirect individual teammates if needed. |
-| **Session recovery complexity** | Medium | Teams don't support `--resume`. Lead re-spawns teammates with injected context from supporting artifacts (Section 7.5). Backend persists team state for RECOVER phase. |
+| **Session recovery complexity** | Medium | Teams don't support `--resume`. Lead re-spawns teammates with injected context from team artifacts (Section 7.5). Backend persists team state for RECOVER phase. |
 | **Increased latency** | Low | Research phase takes longer (3-5 min vs 1-2 min), but plan quality improves. User notified via progress UI. |
 | **File conflicts** | None | All ideation agents are read-only. No file writes in ideation workflow. |
 
@@ -995,12 +1163,12 @@ MCP servers are stdio-based, per-process. They work regardless of whether the ag
 - **Backend:** Team lifecycle management, constraint validation engine, teammate spawning
 - **Backend:** Team config + task list directory management (Hybrid model)
 - **Backend:** User-to-teammate message routing
-- **Backend:** Supporting artifacts DB table + CRUD (Section 6.4)
+- **Backend:** Team artifact support — 3 new `ArtifactType` variants, `team-findings` system bucket, `metadata_json` for team metadata (Section 6.4, NO new tables)
 - **Backend:** Team session state persistence for resume (Section 7.5)
 - **Config:** `team_constraints` in ralphx.yaml, `compositionMode` (dynamic/constrained)
 - **Agent:** `ideation-team-lead` prompt + system card (new lightweight coordinator — Section 3.5)
 - **MCP:** `ideation-team-member` allowlist in tools.ts, `request_teammate_spawn` tool
-- **MCP:** `create_supporting_artifact`, `get_supporting_artifacts` tools (Section 6.4)
+- **MCP:** `create_team_artifact`, `get_team_artifacts` thin wrappers over existing ArtifactService (Section 6.4)
 - **MCP:** `get_team_session_state`, `save_team_session_state` tools (Section 7.5)
 - **UI:** Team mode selector in session creation (Research + Debate)
 - **UI:** Team activity panel with dynamic role names
@@ -1034,30 +1202,28 @@ MCP servers are stdio-based, per-process. They work regardless of whether the ag
 - ~~Hybrid approach~~ → **RESOLVED v4:** Confirmed. Dynamic default + constrained opt-in.
 - ~~Specialist count~~ → **RESOLVED v4:** Default 5 specialists. No budget cap by default; configurable via `team_constraints.budget_limit`.
 - ~~Debate UI layout~~ → **RESOLVED v4:** Side-by-side preferred (Section 5.4). Open to iteration.
-- ~~Team findings persistence~~ → **RESOLVED v4:** Supporting artifacts model (Section 6.4). Teammates create linked supporting artifacts; master plan artifact unchanged.
+- ~~Team findings persistence~~ → **RESOLVED v4:** Supporting artifacts model (Section 6.4). Teammates create linked team artifacts; master plan artifact unchanged.
 - ~~Team resume~~ → **RESOLVED v4:** YES — team sessions resume in RECOVER phase via persisted team state (Section 7.5).
 
-**Remaining open questions:**
+**ALL open questions resolved (v5):**
 
-1. **Cost presentation:** Should we show per-teammate token usage breakdown, or just aggregate? (Per-teammate helps users understand which roles are most valuable.)
+1. ~~Cost presentation~~ → **RESOLVED v5:** Per-teammate token usage breakdown (Section 5.3). Helps users understand which specialist roles provide the most value.
 
-2. **Lead model selection:** Is Opus the right default for the team lead? It's more expensive but better at coordination. Alternative: Sonnet lead for research teams, Opus only for debate teams.
+2. ~~Lead model selection~~ → **RESOLVED v5:** Go with the brief's existing suggestion — Opus for team leads. Better coordination justifies the cost. Can revisit if needed.
 
-3. **Integration with Active Plan:** When a team-ideated plan is accepted, should it be tagged as "team-ideated" for downstream visibility? This could help correlate plan quality with team usage.
+3. ~~Integration with Active Plan~~ → **RESOLVED v5:** YES — tag team-ideated plans as `team_ideated: true` for downstream visibility. Enables correlating plan quality with team usage over time.
 
-4. **Dynamic role guardrails:** In dynamic mode, should there be a minimum prompt length or quality check for lead-generated teammate prompts? Or trust the lead fully?
+4. ~~Dynamic role guardrails~~ → **RESOLVED v5:** Trust the lead fully. No minimum prompt length or quality checks on lead-generated teammate prompts. The lead's system prompt includes role-creation best practices and examples. Over-constraining the lead defeats the purpose of dynamic composition.
 
-5. **Constrained mode UX:** When constrained mode is selected, should the user see and approve the predefined roles before the lead spawns them?
+5. ~~Constrained mode UX~~ → **RESOLVED v5:** YES — show predefined roles to the user before the lead spawns them. When constrained mode is selected, the session creation UI displays the available preset roles from `team_templates` so the user knows what the lead can work with. Good for visibility and trust.
 
-**NEW questions surfaced by v4 decisions:**
+6. ~~Supporting artifact retention~~ → **RESOLVED v5:** Keep indefinitely (Section 6.4). Supporting artifacts are valuable reference material for future sessions and downstream work. No automatic cleanup.
 
-6. **Supporting artifact retention:** How long should supporting artifacts persist? Options: (a) Delete when session closes, (b) Keep for N days, (c) Keep indefinitely. Affects storage and searchability.
+7. ~~Resume teammate context injection~~ → **RESOLVED v5:** Lead synthesizes all teammate findings into a structured summary artifact (≤2000 tokens) before shutdown. On resume, only the summary + per-teammate team artifacts are injected — not full message history. Total injected context ≤4000 tokens per resumed teammate. See Section 7.5.
 
-7. **Resume teammate context injection:** When re-spawning teammates in RECOVER, how much prior context should be injected? Full message history may exceed context window for long sessions. May need a summary strategy.
+8. ~~Side-by-side debate UI — narrow viewport~~ → **RESOLVED v5:** Stacked collapsible cards for narrow viewports (< 768px). Each advocate's case becomes a vertically stacked card with the same row structure. See Section 5.4.
 
-8. **Side-by-side debate UI — mobile/narrow viewport:** The side-by-side layout works on wide screens. What's the fallback for narrow viewports? Stacked cards? Tabbed view?
-
-9. **Supporting artifact MCP tool scope:** Should the `create_supporting_artifact` tool be available to worker teammates too (in the worker integration brief)? Or ideation-only?
+9. ~~Supporting artifact MCP tool scope~~ → **RESOLVED v5:** YES — worker teammates can document implementation decisions, architecture rationales, and other notes via team artifacts. This gives reviewers structured context beyond just code diffs. See worker integration brief v3.
 
 ---
 
