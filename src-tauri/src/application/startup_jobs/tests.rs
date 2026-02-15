@@ -1587,7 +1587,7 @@ async fn startup_skips_main_merge_deferred_when_agents_running() {
     // Run startup - should skip the main-merge-deferred task
     runner.run().await;
 
-    // Task should transition to MergeIncomplete (indicates merge requires manual completion)
+    // Task should remain in PendingMerge with deferred flag preserved
     let updated = app_state
         .task_repo
         .get_by_id(&task.id)
@@ -1596,8 +1596,15 @@ async fn startup_skips_main_merge_deferred_when_agents_running() {
         .unwrap();
     assert_eq!(
         updated.internal_status,
-        InternalStatus::MergeIncomplete,
-        "Main-merge-deferred task should be in MergeIncomplete state"
+        InternalStatus::PendingMerge,
+        "Main-merge-deferred task should stay in PendingMerge when agents running"
+    );
+    // Verify deferred flag is preserved (not cleared or lost)
+    let metadata: serde_json::Value =
+        serde_json::from_str(updated.metadata.as_ref().unwrap()).unwrap();
+    assert_eq!(
+        metadata["main_merge_deferred"], true,
+        "main_merge_deferred flag should be preserved across startup"
     );
 }
 

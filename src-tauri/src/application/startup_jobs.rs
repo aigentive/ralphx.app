@@ -413,6 +413,18 @@ impl<R: Runtime> StartupJobRunner<R> {
                         continue;
                     }
 
+                    // Skip main-merge-deferred tasks when agents are still running.
+                    // These tasks are correctly deferred and will be retried when all agents
+                    // complete (via try_retry_main_merges on global idle).
+                    if Self::is_waiting_for_global_idle(&task, self.execution_state.running_count()) {
+                        debug!(
+                            task_id = task.id.as_str(),
+                            running_count = self.execution_state.running_count(),
+                            "Skipping main-merge-deferred task in auto-transition recovery: agents still running"
+                        );
+                        continue;
+                    }
+
                     // Check max_concurrent before triggering (auto-transitions may spawn agents)
                     if !self.execution_state.can_start_task() {
                         info!(
