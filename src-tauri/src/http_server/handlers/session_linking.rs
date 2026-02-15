@@ -223,6 +223,7 @@ pub async fn create_child_session(
         let app = &state.app_state;
         let mut chat_service = ClaudeChatService::new(
             Arc::clone(&app.chat_message_repo),
+            Arc::clone(&app.chat_attachment_repo),
             Arc::clone(&app.chat_conversation_repo),
             Arc::clone(&app.agent_run_repo),
             Arc::clone(&app.project_repo),

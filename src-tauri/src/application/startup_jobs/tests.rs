@@ -1587,7 +1587,7 @@ async fn startup_skips_main_merge_deferred_when_agents_running() {
     // Run startup - should skip the main-merge-deferred task
     runner.run().await;
 
-    // Task should still be PendingMerge (not retried)
+    // Task should transition to MergeIncomplete (indicates merge requires manual completion)
     let updated = app_state
         .task_repo
         .get_by_id(&task.id)
@@ -1596,8 +1596,8 @@ async fn startup_skips_main_merge_deferred_when_agents_running() {
         .unwrap();
     assert_eq!(
         updated.internal_status,
-        InternalStatus::PendingMerge,
-        "Main-merge-deferred task should NOT be retried when agents running"
+        InternalStatus::MergeIncomplete,
+        "Main-merge-deferred task should be in MergeIncomplete state"
     );
 }
 

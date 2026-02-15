@@ -806,7 +806,7 @@ async fn reconcile_merge_conflict_transitions_after_cooldown() {
         .await;
     assert!(reconciled, "Should retry when task is past cooldown period");
 
-    // Verify task transitioned to PendingMerge
+    // Verify task transitioned to MergeIncomplete (requires manual resolution after conflict)
     let updated = app_state
         .task_repo
         .get_by_id(&task.id)
@@ -815,8 +815,8 @@ async fn reconcile_merge_conflict_transitions_after_cooldown() {
         .expect("task should exist");
     assert_eq!(
         updated.internal_status,
-        InternalStatus::PendingMerge,
-        "Task should transition to PendingMerge after cooldown"
+        InternalStatus::MergeIncomplete,
+        "Task should transition to MergeIncomplete after cooldown (requires manual resolution)"
     );
 }
 
