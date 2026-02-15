@@ -91,16 +91,16 @@ describe("ProjectCreationWizard", () => {
   // ==========================================================================
 
   describe("git mode selection", () => {
-    it("local mode is not selected by default", () => {
+    it("local mode is selected by default", () => {
       renderWizard();
       const localOption = screen.getByTestId("git-mode-local");
-      expect(localOption).toHaveAttribute("data-selected", "false");
+      expect(localOption).toHaveAttribute("data-selected", "true");
     });
 
-    it("worktree mode is selected by default", () => {
+    it("worktree mode is not selected by default", () => {
       renderWizard();
       const worktreeOption = screen.getByTestId("git-mode-worktree");
-      expect(worktreeOption).toHaveAttribute("data-selected", "true");
+      expect(worktreeOption).toHaveAttribute("data-selected", "false");
     });
 
     it("shows worktree fields when worktree mode is selected", async () => {
@@ -140,13 +140,13 @@ describe("ProjectCreationWizard", () => {
       const localOption = screen.getByTestId("git-mode-local");
       const worktreeOption = screen.getByTestId("git-mode-worktree");
 
-      expect(localOption).toHaveAttribute("data-selected", "false");
-      expect(worktreeOption).toHaveAttribute("data-selected", "true");
-
-      await user.click(localOption);
-
       expect(localOption).toHaveAttribute("data-selected", "true");
       expect(worktreeOption).toHaveAttribute("data-selected", "false");
+
+      await user.click(worktreeOption);
+
+      expect(localOption).toHaveAttribute("data-selected", "false");
+      expect(worktreeOption).toHaveAttribute("data-selected", "true");
     });
   });
 
@@ -468,9 +468,9 @@ describe("ProjectCreationWizard", () => {
       const user = userEvent.setup();
       const { rerender } = renderWizard();
 
-      // Switch away from default mode
-      await user.click(screen.getByTestId("git-mode-local"));
-      expect(screen.getByTestId("git-mode-local")).toHaveAttribute("data-selected", "true");
+      // Switch away from default mode (local → worktree)
+      await user.click(screen.getByTestId("git-mode-worktree"));
+      expect(screen.getByTestId("git-mode-worktree")).toHaveAttribute("data-selected", "true");
 
       // Close and reopen
       rerender(
@@ -480,9 +480,9 @@ describe("ProjectCreationWizard", () => {
         <ProjectCreationWizard {...defaultProps} isOpen={true} />
       );
 
-      // Check git mode is reset to default worktree
-      expect(screen.getByTestId("git-mode-local")).toHaveAttribute("data-selected", "false");
-      expect(screen.getByTestId("git-mode-worktree")).toHaveAttribute("data-selected", "true");
+      // Check git mode is reset to default local
+      expect(screen.getByTestId("git-mode-local")).toHaveAttribute("data-selected", "true");
+      expect(screen.getByTestId("git-mode-worktree")).toHaveAttribute("data-selected", "false");
     });
   });
 });

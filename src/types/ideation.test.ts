@@ -56,6 +56,7 @@ describe("IdeationSessionSchema", () => {
     status: "active" as const,
     planArtifactId: null,
     seedTaskId: null,
+    parentSessionId: null,
     createdAt: "2026-01-24T12:00:00Z",
     updatedAt: "2026-01-24T12:00:00Z",
     archivedAt: null,

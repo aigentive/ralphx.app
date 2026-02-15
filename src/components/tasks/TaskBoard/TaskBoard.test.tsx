@@ -82,6 +82,15 @@ vi.mock("@/providers/EventProvider", () => ({
   }),
 }));
 
+// Mock useColumnCollapse to keep all columns expanded
+vi.mock("./useColumnCollapse", () => ({
+  useColumnCollapse: () => ({
+    isCollapsed: () => false,
+    toggleCollapse: vi.fn(),
+    expandColumn: vi.fn(),
+  }),
+}));
+
 import { getActiveWorkflowColumns } from "@/lib/api/workflows";
 import { useInfiniteTasksQuery } from "@/hooks/useInfiniteTasksQuery";
 

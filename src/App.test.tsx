@@ -144,6 +144,21 @@ vi.mock("@/hooks/useExecutionEvents", () => ({
   useExecutionEvents: vi.fn(),
 }));
 
+// Mock Tauri global-shortcut plugin (used by useAppKeyboardShortcuts)
+vi.mock("@tauri-apps/plugin-global-shortcut", () => ({
+  register: vi.fn().mockResolvedValue(undefined),
+  unregister: vi.fn().mockResolvedValue(undefined),
+}));
+
+// Mock hooks that make Tauri API calls
+vi.mock("@/hooks/useRunningProcesses", () => ({
+  useRunningProcesses: vi.fn().mockReturnValue({ data: undefined }),
+}));
+
+vi.mock("@/hooks/useMergePipeline", () => ({
+  useMergePipeline: vi.fn().mockReturnValue({ data: undefined }),
+}));
+
 // Mock other required hooks
 vi.mock("@/hooks/useReviews", () => ({
   reviewKeys: {
@@ -177,7 +192,7 @@ vi.mock("@/hooks/useReviewMutations", () => ({
 
 vi.mock("@/hooks/useProjects", () => ({
   useProjects: vi.fn().mockReturnValue({
-    data: [],
+    data: [{ id: "demo-project-1", name: "Demo Project", workingDirectory: "/tmp/demo", createdAt: "2024-01-01T00:00:00Z", updatedAt: "2024-01-01T00:00:00Z" }],
     isLoading: false,
   }),
   projectKeys: {
@@ -194,9 +209,9 @@ vi.mock("@/hooks/useConfirmation", () => ({
   }),
 }));
 
-vi.mock("@/hooks/useAppKeyboardShortcuts", () => ({
-  useAppKeyboardShortcuts: vi.fn(),
-}));
+// useAppKeyboardShortcuts is NOT mocked — let the real hook run
+// so keyboard shortcut tests work. @tauri-apps/plugin-global-shortcut
+// is mocked above to prevent Tauri API calls.
 
 vi.mock("@/hooks", () => ({
   useNavCompactBreakpoint: vi.fn().mockReturnValue({
@@ -255,9 +270,9 @@ function resetStores() {
   });
 
   useProjectStore.setState({
-    activeProjectId: null,
-    projects: {},
-    isInitialized: false,
+    activeProjectId: "demo-project-1",
+    projects: { "demo-project-1": { id: "demo-project-1", name: "Demo Project", workingDirectory: "/tmp/demo", createdAt: "2024-01-01T00:00:00Z", updatedAt: "2024-01-01T00:00:00Z" } as never },
+    isInitialized: true,
   });
 }
 
@@ -528,6 +543,7 @@ describe("App", () => {
       // This test verifies Phase 82 requirement: execution status queries are scoped to active project
       // When no project is set, activeProjectId is null, so currentProjectId = ""
       // and "" || undefined = undefined
+      useProjectStore.setState({ activeProjectId: null, projects: {}, isInitialized: false });
       render(<App />);
 
       // useExecutionStatus should be called with undefined (no active project)
