@@ -177,9 +177,11 @@ fn parse_config(yaml: &str) -> Option<LoadedConfig> {
 
     let mut seen_names = HashSet::new();
     let mut resolved = Vec::with_capacity(parsed.agents.len());
+    let global_profile_selection = runtime_settings_profile_override()
+        .or_else(|| parsed.claude.settings_profile.clone());
     let resolved_settings = resolve_claude_settings(
         &parsed.claude,
-        parsed.claude.settings_profile.as_deref(),
+        global_profile_selection.as_deref(),
     );
 
     for raw in &parsed.agents {
@@ -218,7 +220,7 @@ fn parse_config(yaml: &str) -> Option<LoadedConfig> {
     let mcp_server_name = parsed.claude.mcp_server_name.clone();
     let resolved_settings = resolve_claude_settings(
         &parsed.claude,
-        parsed.claude.settings_profile.as_deref(),
+        global_profile_selection.as_deref(),
     );
     let claude = ClaudeRuntimeConfig {
         mcp_server_name,
@@ -236,6 +238,23 @@ fn parse_config(yaml: &str) -> Option<LoadedConfig> {
     Some(LoadedConfig {
         agents: resolved,
         claude,
+    })
+}
+
+fn runtime_settings_profile_override() -> Option<String> {
+    runtime_settings_profile_override_with(&|name| std::env::var(name).ok())
+}
+
+fn runtime_settings_profile_override_with(
+    lookup: &dyn Fn(&str) -> Option<String>,
+) -> Option<String> {
+    lookup("RALPHX_CLAUDE_SETTINGS_PROFILE").and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
     })
 }
 
@@ -787,6 +806,24 @@ agents:
             worker.settings, parsed.claude.settings,
             "unknown agent profile should inherit global settings"
         );
+    }
+
+    #[test]
+    fn test_runtime_settings_profile_override_reads_env_value() {
+        let selection = runtime_settings_profile_override_with(&|name| match name {
+            "RALPHX_CLAUDE_SETTINGS_PROFILE" => Some("z_ai".to_string()),
+            _ => None,
+        });
+        assert_eq!(selection.as_deref(), Some("z_ai"));
+    }
+
+    #[test]
+    fn test_runtime_settings_profile_override_ignores_blank_value() {
+        let selection = runtime_settings_profile_override_with(&|name| match name {
+            "RALPHX_CLAUDE_SETTINGS_PROFILE" => Some("   ".to_string()),
+            _ => None,
+        });
+        assert_eq!(selection, None);
     }
 
     #[test]
