@@ -16,7 +16,7 @@ export const IdeationSessionResponseSchema = z.object({
   team_config: z.object({
     max_teammates: z.number(),
     model_ceiling: z.string(),
-    budget_limit: z.number().optional(),
+    budget_limit: z.number().nullable().optional(),
     composition_mode: z.string(),
   }).nullable().optional(),
   created_at: z.string(),

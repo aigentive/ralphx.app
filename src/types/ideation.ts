@@ -38,7 +38,7 @@ export const IdeationSessionSchema = z.object({
   teamConfig: z.object({
     maxTeammates: z.number().min(2).max(8),
     modelCeiling: z.string(),
-    budgetLimit: z.number().optional(),
+    budgetLimit: z.number().nullable().optional(),
     compositionMode: z.enum(["dynamic", "constrained"]),
   }).nullable().optional(),
 });
