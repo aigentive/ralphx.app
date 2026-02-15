@@ -83,6 +83,78 @@
 tool_sets:
   base_tools: [Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill]
 
+# process_mapping:
+#   Maps logical process slots to agent variants. Each slot has a `default`
+#   agent (solo mode) and optional named variants (e.g. `team`, `readonly`).
+#   Both sections are OPTIONAL — if absent, falls back to hardcoded constants.
+#
+#   Env override: RALPHX_PROCESS_VARIANT_<PROCESS>=<variant>
+process_mapping:
+  ideation:
+    default: orchestrator-ideation
+    readonly: orchestrator-ideation-readonly
+    team: ideation-team-lead
+  execution:
+    default: ralphx-worker
+    team: ralphx-worker-team
+  review:
+    default: ralphx-reviewer
+    chat: ralphx-review-chat
+    history: ralphx-review-history
+  merge:
+    default: ralphx-merger
+  qa_prep:
+    default: ralphx-qa-prep
+  qa_refine:
+    default: ralphx-qa-executor
+  qa_test:
+    default: ralphx-qa-executor
+  chat_task:
+    default: chat-task
+  chat_project:
+    default: chat-project
+
+# team_constraints:
+#   Per-process guardrails for dynamic team composition.
+#   Team leads must operate within these bounds when composing teams.
+#   _defaults apply to any process without explicit constraints.
+#
+#   Env overrides:
+#     RALPHX_TEAM_MODE_<PROCESS>=dynamic|constrained
+#     RALPHX_TEAM_MAX_<PROCESS>=<number>
+#     RALPHX_TEAM_MODEL_CAP_<PROCESS>=haiku|sonnet|opus
+team_constraints:
+  _defaults:
+    max_teammates: 5
+    model_cap: sonnet
+    mode: dynamic
+    timeout_minutes: 20
+    budget_limit: null
+
+  ideation:
+    max_teammates: 5
+    allowed_tools: [Read, Grep, Glob, Bash, WebFetch, WebSearch]
+    model_cap: sonnet
+    mode: dynamic
+    presets: [researcher, critic]
+
+  execution:
+    max_teammates: 5
+    allowed_tools: [Read, Write, Edit, Bash, Grep, Glob, WebFetch, WebSearch]
+    allowed_mcp_tools: [get_task_context, get_artifact_content, start_step, complete_step]
+    model_cap: sonnet
+    mode: dynamic
+    presets: [ralphx-coder]
+    timeout_minutes: 30
+    budget_limit: null
+
+  review:
+    max_teammates: 2
+    allowed_tools: [Read, Grep, Glob, Bash]
+    model_cap: sonnet
+    mode: constrained
+    presets: [ralphx-reviewer]
+
 claude:
   mcp_server_name: ralphx
   setting_sources: [user, project, local]
@@ -484,3 +556,16 @@ agents:
       ]
     preapproved_cli_tools:
       [Read, Grep, Glob, WebFetch, WebSearch, Bash, Write, Edit]
+
+  # --- Team lead variants (extends base agents) ---
+
+  - name: ideation-team-lead
+    extends: orchestrator-ideation
+    system_prompt_file: ralphx-plugin/agents/ideation-team-lead.md
+    # inherits: model (opus), tools, mcp_tools from orchestrator-ideation
+
+  - name: ralphx-worker-team
+    extends: ralphx-worker
+    system_prompt_file: ralphx-plugin/agents/worker-team.md
+    model: opus
+    # inherits: tools, mcp_tools, preapproved_cli_tools from ralphx-worker
