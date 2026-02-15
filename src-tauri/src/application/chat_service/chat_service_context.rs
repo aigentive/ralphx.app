@@ -447,9 +447,9 @@ pub async fn build_command(
         spawnable.env("RALPHX_PROJECT_ID", pid);
     }
 
-    // Add team mode env vars when enabled
+    // Enable agent teams feature for team lead (without CLAUDECODE which triggers nesting protection).
+    // CLAUDECODE=1 is only set on teammate processes spawned via spawn_teammate_interactive().
     if team_mode {
-        spawnable.env("CLAUDECODE", "1");
         spawnable.env("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
     }
 
@@ -547,9 +547,9 @@ pub async fn build_resume_command(
         spawnable.env("RALPHX_PROJECT_ID", pid);
     }
 
-    // Add team mode env vars when enabled
+    // Enable agent teams feature for team lead (without CLAUDECODE which triggers nesting protection).
+    // CLAUDECODE=1 is only set on teammate processes spawned via spawn_teammate_interactive().
     if team_mode {
-        spawnable.env("CLAUDECODE", "1");
         spawnable.env("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
     }
 
