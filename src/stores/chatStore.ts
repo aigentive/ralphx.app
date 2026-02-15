@@ -63,6 +63,8 @@ interface ChatState {
   isAgentRunning: Record<string, boolean>;
   /** Whether a message is currently being sent, keyed by context key */
   isSending: Record<string, boolean>;
+  /** Whether a team is active for a context key (enables team UI) */
+  isTeamActive: Record<string, boolean>;
 }
 
 // ============================================================================
@@ -102,6 +104,8 @@ interface ChatActions {
   startEditingQueuedMessage: (contextKey: string, id: string) => void;
   /** Stop editing a queued message */
   stopEditingQueuedMessage: (contextKey: string, id: string) => void;
+  /** Set team active state for a context */
+  setTeamActive: (contextKey: string, isActive: boolean) => void;
 }
 
 // ============================================================================
@@ -119,6 +123,7 @@ export const useChatStore = create<ChatState & ChatActions>()(
     queuedMessages: {},
     isAgentRunning: {},
     isSending: {},
+    isTeamActive: {},
 
     // Actions
     setContext: (context) =>
@@ -254,6 +259,15 @@ export const useChatStore = create<ChatState & ChatActions>()(
         }
       }),
 
+    setTeamActive: (contextKey, isActive) =>
+      set((state) => {
+        if (isActive) {
+          state.isTeamActive[contextKey] = true;
+        } else {
+          delete state.isTeamActive[contextKey];
+        }
+      }),
+
     processQueue: async (contextKey) => {
       const state = get();
       const messages = state.queuedMessages[contextKey];
@@ -355,6 +369,16 @@ export const selectIsSending =
 export const selectActiveConversationId = (
   state: ChatState & ChatActions
 ): string | null => state.activeConversationId;
+
+/**
+ * Select whether a team is active for a context
+ * @param contextKey - The context key to check
+ * @returns Selector function returning team active state
+ */
+export const selectIsTeamActive =
+  (contextKey: string) =>
+  (state: ChatState): boolean =>
+    state.isTeamActive[contextKey] ?? false;
 
 // Stable empty arrays to avoid creating new references
 const EMPTY_MESSAGES: ChatMessage[] = [];
