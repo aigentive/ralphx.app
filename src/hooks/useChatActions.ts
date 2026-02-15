@@ -69,7 +69,7 @@ export function useChatActions({
 
   // ── Send ─────────────────────────────────────────────────────────
   const handleSend = useCallback(
-    async (content: string, attachmentIds?: string[]) => {
+    async (content: string, attachmentIds?: string[], target?: string) => {
       if (!content.trim() || sendMessage.isPending) return;
 
       // Capture first message state before sending (for auto-naming trigger)
@@ -80,7 +80,7 @@ export function useChatActions({
         if (contextType === "review" && selectedTaskId) {
           setAgentRunning(storeContextKey, true);
 
-          const result = await chatApi.sendAgentMessage("review", selectedTaskId, content, attachmentIds);
+          const result = await chatApi.sendAgentMessage("review", selectedTaskId, content, attachmentIds, target);
 
           queryClient.invalidateQueries({
             queryKey: chatKeys.conversationList("review", selectedTaskId),
@@ -120,7 +120,7 @@ export function useChatActions({
 
   // ── Queue ────────────────────────────────────────────────────────
   const handleQueue = useCallback(
-    async (content: string) => {
+    async (content: string, target?: string) => {
       if (!content.trim()) return;
 
       const messageId = generateQueuedMessageId();
@@ -130,7 +130,7 @@ export function useChatActions({
 
       // Also queue to backend so it gets processed when agent completes
       try {
-        await chatApi.queueAgentMessage(contextType, contextId, content, messageId);
+        await chatApi.queueAgentMessage(contextType, contextId, content, messageId, undefined, target);
       } catch {
         // Message is already in local store — it just won't be processed by backend
       }

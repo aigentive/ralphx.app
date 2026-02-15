@@ -361,20 +361,24 @@ export function IntegratedChatPanel({
     messageCount: messagesData.length,
   });
 
-  // Wrap handleSend to include attachment IDs and clear attachments after send
+  // Wrap handleSend to include attachment IDs, team target, and clear attachments after send
   const handleSend = useCallback(async (message: string) => {
     // Collect attachment IDs before sending
     const attachmentIds = attachments.map(a => a.id);
 
-    // Call the base handler with attachment IDs
-    await handleSendBase(message, attachmentIds.length > 0 ? attachmentIds : undefined);
+    // Call the base handler with attachment IDs and team target
+    await handleSendBase(
+      message,
+      attachmentIds.length > 0 ? attachmentIds : undefined,
+      isTeamActive ? sendTarget : undefined
+    );
 
     // Clear attachments after successful send
     // Note: If send fails, attachments are preserved for retry
     if (attachmentIds.length > 0) {
       clearAttachments();
     }
-  }, [attachments, handleSendBase, clearAttachments]);
+  }, [attachments, handleSendBase, clearAttachments, isTeamActive, sendTarget]);
 
   // Wrapper for handleEditLastQueued that provides the queued messages
   const handleEditLastQueuedWrapper = () => {
@@ -611,6 +615,8 @@ export function IntegratedChatPanel({
               streamingContentBlocks={streamingContentBlocks}
               scrollToTimestamp={isHistoryMode ? taskHistoryState?.timestamp : null}
               finalizingConversationRef={finalizingConversationRef}
+              teamFilter={isTeamActive ? teamFilter : undefined}
+              contextKey={isTeamActive ? storeContextKey : undefined}
             />
           )}
 
@@ -684,7 +690,7 @@ export function IntegratedChatPanel({
             <div className="p-3">
               <ChatInput
                 onSend={activeQuestion ? handleQuestionSend : handleSend}
-                onQueue={handleQueue}
+                onQueue={isTeamActive ? (content) => handleQueue(content, sendTarget) : handleQueue}
                 onStop={handleStopAgentWrapper}
                 isAgentRunning={isAgentRunning}
                 isSending={isSending || isSubmittingAnswer}
