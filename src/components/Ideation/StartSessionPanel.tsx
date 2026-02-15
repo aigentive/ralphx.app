@@ -10,21 +10,42 @@ import { Lightbulb, Zap, FileText, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { TaskPickerDialog } from "./TaskPickerDialog";
+import { TeamConfigPanel } from "./TeamConfigPanel";
 import { useCreateIdeationSession } from "@/hooks/useIdeation";
 import { useIdeationStore } from "@/stores/ideationStore";
+import { useProjectStore } from "@/stores/projectStore";
 import type { Task } from "@/types/task";
+import type { TeamMode, TeamConfig } from "@/types/ideation";
 
 interface StartSessionPanelProps {
   onNewSession: () => void;
 }
 
+const TEAM_MODES: { value: TeamMode; label: string; recommended?: boolean }[] = [
+  { value: "solo", label: "Solo" },
+  { value: "research", label: "Research Team", recommended: true },
+  { value: "debate", label: "Debate Team", recommended: true },
+];
+
+const DEFAULT_TEAM_CONFIG: TeamConfig = {
+  maxTeammates: 5,
+  modelCeiling: "sonnet",
+  compositionMode: "dynamic",
+};
+
 export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
   const [showTaskPicker, setShowTaskPicker] = useState(false);
   const [isCreatingFromTask, setIsCreatingFromTask] = useState(false);
+  const [teamMode, setTeamMode] = useState<TeamMode>("solo");
+  const [teamConfig, setTeamConfig] = useState<TeamConfig>(DEFAULT_TEAM_CONFIG);
+  const [isCreatingTeamSession, setIsCreatingTeamSession] = useState(false);
 
   const createSession = useCreateIdeationSession();
   const addSession = useIdeationStore((state) => state.addSession);
   const setActiveSession = useIdeationStore((state) => state.setActiveSession);
+  const activeProjectId = useProjectStore((state) => state.activeProjectId);
+
+  const isTeamMode = teamMode !== "solo";
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -52,23 +73,56 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onNewSession]);
 
-  const handleSeedFromTask = async (task: Task) => {
-    setIsCreatingFromTask(true);
+  const handleStartSession = async () => {
+    if (!isTeamMode) {
+      onNewSession();
+      return;
+    }
+
+    if (!activeProjectId) {
+      toast.error("No active project selected");
+      return;
+    }
+
+    setIsCreatingTeamSession(true);
     try {
       const session = await createSession.mutateAsync({
-        projectId: task.projectId,
-        title: `Ideation: ${task.title}`,
-        seedTaskId: task.id,
+        projectId: activeProjectId,
+        teamMode,
+        teamConfig,
       });
       addSession(session);
       setActiveSession(session.id);
-    } catch (error) {
-      console.error("Failed to create ideation session:", error);
+    } catch {
+      toast.error("Failed to create team session");
+    } finally {
+      setIsCreatingTeamSession(false);
+    }
+  };
+
+  const handleSeedFromTask = async (task: Task) => {
+    setIsCreatingFromTask(true);
+    try {
+      const params: Parameters<typeof createSession.mutateAsync>[0] = {
+        projectId: task.projectId,
+        title: `Ideation: ${task.title}`,
+        seedTaskId: task.id,
+      };
+      if (isTeamMode) {
+        params.teamMode = teamMode;
+        params.teamConfig = teamConfig;
+      }
+      const session = await createSession.mutateAsync(params);
+      addSession(session);
+      setActiveSession(session.id);
+    } catch {
       toast.error("Failed to start ideation session");
     } finally {
       setIsCreatingFromTask(false);
     }
   };
+
+  const isCreating = isCreatingTeamSession || createSession.isPending;
 
   return (
     <>
@@ -88,7 +142,7 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
           }}
         />
 
-        <div className="relative z-10 text-center max-w-sm">
+        <div className="relative z-10 text-center max-w-md">
           {/* Icon */}
           <div className="relative mb-8">
             <div
@@ -110,29 +164,101 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
             Ideation Studio
           </h1>
           <p
-            className="text-[14px] leading-relaxed mb-8 max-w-xs mx-auto"
+            className="text-[14px] leading-relaxed mb-6 max-w-xs mx-auto"
             style={{ color: "hsl(220 10% 60%)" }}
           >
             Select a session from the sidebar or start a new brainstorming session.
           </p>
 
+          {/* Team Mode Selector */}
+          <div className="mb-6">
+            <p
+              className="text-[12px] font-medium tracking-wide uppercase mb-3"
+              style={{ color: "hsl(220 10% 50%)" }}
+            >
+              Ideation Mode
+            </p>
+            <div className="flex items-center justify-center gap-2">
+              {TEAM_MODES.map((mode) => {
+                const isSelected = teamMode === mode.value;
+                return (
+                  <button
+                    key={mode.value}
+                    onClick={() => setTeamMode(mode.value)}
+                    className="px-4 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150"
+                    style={{
+                      background: isSelected ? "hsla(14 100% 60% / 0.15)" : "hsla(220 10% 100% / 0.03)",
+                      border: `1px solid ${isSelected ? "hsl(14 100% 60%)" : "hsla(220 10% 100% / 0.08)"}`,
+                      color: isSelected ? "hsl(14 100% 60%)" : "hsl(220 10% 60%)",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isSelected) {
+                        e.currentTarget.style.borderColor = "hsla(220 10% 100% / 0.15)";
+                        e.currentTarget.style.color = "hsl(220 10% 80%)";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isSelected) {
+                        e.currentTarget.style.borderColor = "hsla(220 10% 100% / 0.08)";
+                        e.currentTarget.style.color = "hsl(220 10% 60%)";
+                      }
+                    }}
+                  >
+                    {mode.recommended && "\u2605 "}
+                    {mode.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Team Config Panel (animated) */}
+          <div
+            className="overflow-hidden transition-all duration-200 ease-out"
+            style={{
+              maxHeight: isTeamMode ? "280px" : "0px",
+              opacity: isTeamMode ? 1 : 0,
+            }}
+          >
+            <TeamConfigPanel config={teamConfig} onChange={setTeamConfig} />
+
+            {/* Info text */}
+            <p
+              className="text-[12px] mt-3 flex items-center justify-center gap-1.5"
+              style={{ color: "hsl(220 10% 50%)" }}
+            >
+              <span className="text-[14px]">&#9432;</span>
+              The lead agent will decide what specialist roles to create based on your task.
+            </p>
+          </div>
+
           {/* Primary Action */}
           <Button
-            onClick={onNewSession}
-            className="h-11 px-6 text-[14px] font-semibold tracking-[-0.01em] border-0 transition-colors duration-150"
+            onClick={handleStartSession}
+            disabled={isCreating}
+            className="h-11 px-6 text-[14px] font-semibold tracking-[-0.01em] border-0 transition-colors duration-150 mt-4"
             style={{
-              background: "hsl(14 100% 60%)",
+              background: isCreating ? "hsl(14 100% 60% / 0.6)" : "hsl(14 100% 60%)",
               color: "white",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = "hsl(14 100% 55%)";
+              if (!isCreating) e.currentTarget.style.background = "hsl(14 100% 55%)";
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = "hsl(14 100% 60%)";
+              if (!isCreating) e.currentTarget.style.background = "hsl(14 100% 60%)";
             }}
           >
-            <Zap className="w-4 h-4 mr-2" />
-            Start New Session
+            {isCreating ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Creating...
+              </>
+            ) : (
+              <>
+                <Zap className="w-4 h-4 mr-2" />
+                {isTeamMode ? `Start ${teamMode === "research" ? "Research" : "Debate"} Session` : "Start New Session"}
+              </>
+            )}
           </Button>
 
           {/* Secondary Action */}

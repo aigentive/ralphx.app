@@ -91,12 +91,35 @@ export const ideationApi = {
      * @param projectId The project ID
      * @param title Optional session title
      * @param seedTaskId Optional draft task ID to seed the session
+     * @param teamMode Optional team mode ('solo' | 'research' | 'debate')
+     * @param teamConfig Optional team configuration
      * @returns The created session
      */
-    create: async (projectId: string, title?: string, seedTaskId?: string): Promise<IdeationSessionResponse> => {
+    create: async (
+      projectId: string,
+      title?: string,
+      seedTaskId?: string,
+      teamMode?: string,
+      teamConfig?: { maxTeammates: number; modelCeiling: string; budgetLimit?: number | undefined; compositionMode: string },
+    ): Promise<IdeationSessionResponse> => {
       const raw = await typedInvoke(
         "create_ideation_session",
-        { input: { project_id: projectId, title, seed_task_id: seedTaskId } },
+        {
+          input: {
+            project_id: projectId,
+            title,
+            seed_task_id: seedTaskId,
+            ...(teamMode !== undefined && { team_mode: teamMode }),
+            ...(teamConfig !== undefined && {
+              team_config: {
+                max_teammates: teamConfig.maxTeammates,
+                model_ceiling: teamConfig.modelCeiling,
+                ...(teamConfig.budgetLimit !== undefined && { budget_limit: teamConfig.budgetLimit }),
+                composition_mode: teamConfig.compositionMode,
+              },
+            }),
+          },
+        },
         IdeationSessionResponseSchema
       );
       return transformSession(raw);

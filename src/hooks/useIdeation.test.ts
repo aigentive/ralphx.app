@@ -291,7 +291,7 @@ describe("useCreateIdeationSession", () => {
       await result.current.mutateAsync({ projectId: "project-1", title: "Test Session" });
     });
 
-    expect(ideationApi.sessions.create).toHaveBeenCalledWith("project-1", "Test Session", undefined);
+    expect(ideationApi.sessions.create).toHaveBeenCalledWith("project-1", "Test Session", undefined, undefined, undefined);
   });
 
   it("should create a session without title", async () => {
@@ -306,7 +306,7 @@ describe("useCreateIdeationSession", () => {
       await result.current.mutateAsync({ projectId: "project-1" });
     });
 
-    expect(ideationApi.sessions.create).toHaveBeenCalledWith("project-1", undefined, undefined);
+    expect(ideationApi.sessions.create).toHaveBeenCalledWith("project-1", undefined, undefined, undefined, undefined);
   });
 
   it("should handle creation error", async () => {
