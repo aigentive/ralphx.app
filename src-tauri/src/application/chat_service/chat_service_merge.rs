@@ -547,7 +547,7 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
     );
 
     if let Err(e) =
-        complete_merge_internal(&mut task, &project, &commit_sha, task_repo, app_handle).await
+        complete_merge_internal(&mut task, &project, &commit_sha, &target_branch, task_repo, app_handle).await
     {
         tracing::error!(
             task_id = task_id_str,
