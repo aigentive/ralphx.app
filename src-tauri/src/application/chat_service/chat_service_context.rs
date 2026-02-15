@@ -883,7 +883,13 @@ mod tests {
         async fn get_active_by_project(&self, _project_id: &ProjectId) -> AppResult<Vec<IdeationSession>> {
             unimplemented!()
         }
-        async fn count_by_status(&self, _project_id: &ProjectId, _status: IdeationSessionStatus) -> AppResult<usize> {
+        async fn count_by_status(&self, _project_id: &ProjectId, _status: IdeationSessionStatus) -> AppResult<u32> {
+            unimplemented!()
+        }
+        async fn update_plan_artifact_id(&self, _id: &IdeationSessionId, _plan_artifact_id: Option<String>) -> AppResult<()> {
+            unimplemented!()
+        }
+        async fn get_by_plan_artifact_id(&self, _plan_artifact_id: &str) -> AppResult<Vec<IdeationSession>> {
             unimplemented!()
         }
         async fn get_children(&self, _parent_id: &IdeationSessionId) -> AppResult<Vec<IdeationSession>> {
@@ -1069,7 +1075,7 @@ mod tests {
     async fn test_get_entity_status_for_resume_ideation_accepted() {
         let project_id = ProjectId::new();
         let session_id = IdeationSessionId::new();
-        let mut session = IdeationSession::new(project_id.clone(), "Test Session".to_string());
+        let mut session = IdeationSession::new(project_id.clone());
         session.id = session_id.clone();
         session.status = IdeationSessionStatus::Accepted;
 
@@ -1091,7 +1097,7 @@ mod tests {
     async fn test_get_entity_status_for_resume_ideation_active() {
         let project_id = ProjectId::new();
         let session_id = IdeationSessionId::new();
-        let mut session = IdeationSession::new(project_id.clone(), "Test Session".to_string());
+        let mut session = IdeationSession::new(project_id.clone());
         session.id = session_id.clone();
         session.status = IdeationSessionStatus::Active;
 
