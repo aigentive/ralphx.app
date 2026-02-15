@@ -179,8 +179,8 @@ export function IntegratedChatPanel({
   const [teamFilter, setTeamFilter] = useState<TeamFilterValue>("all");
   const [sendTarget, setSendTarget] = useState<TargetValue>("lead");
 
-  // Team events subscription
-  useTeamEvents(isTeamActive ? storeContextKey : null);
+  // Team events subscription — always pass contextKey so team:created is never missed
+  useTeamEvents(storeContextKey);
 
   // Team actions
   const teamActions = useTeamActions(

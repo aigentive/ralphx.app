@@ -40,6 +40,8 @@ import { useQuestionInput } from "@/hooks/useQuestionInput";
 import { useAgentHookEvents, useHookEventsStore } from "@/hooks/useAgentHookEvents";
 import { useChatAttachments } from "@/hooks/useChatAttachments";
 import { useTeamEvents } from "@/hooks/useTeamEvents";
+import { useTeamActions } from "@/hooks/useTeamActions";
+import { TeamActivityPanel } from "./TeamActivityPanel";
 import { TeamFilterTabs, type TeamFilterValue } from "./TeamFilterTabs";
 import { TargetSelector, type TargetValue } from "./TargetSelector";
 
@@ -211,8 +213,11 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   const [teamFilter, setTeamFilter] = useState<TeamFilterValue>("all");
   const [sendTarget, setSendTarget] = useState<TargetValue>("lead");
 
-  // Team events subscription
-  useTeamEvents(isTeamActive ? contextKey : null);
+  // Team events subscription — always pass contextKey so team:created is never missed
+  useTeamEvents(contextKey);
+
+  // Team actions
+  const teamActions = useTeamActions(contextType, contextId);
 
   // Use context-aware selectors - unified queue works for all modes
   const queuedMessagesSelector = useMemo(() => selectQueuedMessages(contextKey), [contextKey]);
@@ -540,6 +545,22 @@ function ChatPanelContent({ context }: ChatPanelProps) {
               contextKey={isTeamActive ? contextKey : undefined}
             />
           </div>
+        )}
+
+        {/* Team Activity Panel (team mode only) */}
+        {isTeamActive && teammates.length > 0 && (
+          <TeamActivityPanel
+            contextKey={contextKey}
+            onMessageTeammate={(name) => {
+              setSendTarget(name);
+            }}
+            onStopTeammate={(name) => {
+              teamActions.stopTeammate.mutate(name);
+            }}
+            onStopAll={() => {
+              teamActions.stopTeam.mutate();
+            }}
+          />
         )}
 
         {/* Input Area */}
