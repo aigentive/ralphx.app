@@ -65,6 +65,9 @@
 # - settings_profile:
 #   Selected profile name from `settings_profiles` for `--settings` payload.
 #   Can be overridden at runtime by env: `RALPHX_CLAUDE_SETTINGS_PROFILE`.
+#   Per-agent override via env:
+#   `RALPHX_CLAUDE_SETTINGS_PROFILE_<AGENT_NAME>` where non-alnum chars become `_`
+#   and name is uppercased (e.g. orchestrator-ideation → ORCHESTRATOR_IDEATION).
 # - settings_profile_defaults:
 #   Optional settings merged into every selected profile.
 # - settings_profiles:
