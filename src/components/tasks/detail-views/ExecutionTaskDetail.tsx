@@ -38,6 +38,10 @@ import { Button } from "@/components/ui/button";
 import type { Task } from "@/types/task";
 import type { ReviewNoteResponse } from "@/lib/tauri";
 import { useValidationEvents } from "@/hooks/useValidationEvents";
+import { useChatStore, selectIsTeamActive } from "@/stores/chatStore";
+import { useTeamStore, selectTeammates } from "@/stores/teamStore";
+import { buildStoreKey } from "@/lib/chat-context-registry";
+import type { TeammateState } from "@/stores/teamStore";
 
 interface ExecutionTaskDetailProps {
   task: Task;
@@ -247,6 +251,53 @@ function RevisionFeedbackCard({
   );
 }
 
+/**
+ * TeamProgressSection - Per-teammate progress cards (team mode only)
+ */
+function TeamProgressSection({ teammates }: { teammates: TeammateState[] }) {
+  if (teammates.length === 0) return null;
+
+  return (
+    <section data-testid="team-progress-section">
+      <SectionTitle>Team Progress</SectionTitle>
+      <div className="space-y-2">
+        {teammates.map((mate) => (
+          <DetailCard key={mate.name}>
+            <div className="flex items-center gap-2">
+              <span
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: mate.color }}
+              />
+              <span className="text-[12px] font-medium" style={{ color: "hsl(220 10% 85%)" }}>
+                {mate.name}
+              </span>
+              <span className="text-[10px] px-1.5 rounded" style={{ backgroundColor: "hsl(220 10% 16%)", color: "hsl(220 10% 50%)" }}>
+                {mate.model}
+              </span>
+              <StatusPill
+                icon={mate.status === "running" ? Radio : Loader2}
+                label={mate.status}
+                variant={mate.status === "running" ? "accent" : mate.status === "failed" ? "error" : "neutral"}
+                size="sm"
+              />
+            </div>
+            {mate.roleDescription && (
+              <p className="text-[11px] mt-1 truncate" style={{ color: "hsl(220 10% 50%)" }}>
+                {mate.roleDescription}
+              </p>
+            )}
+            {mate.currentActivity && (
+              <p className="text-[11px] mt-0.5 truncate" style={{ color: "hsl(220 10% 45%)" }}>
+                {mate.currentActivity}
+              </p>
+            )}
+          </DetailCard>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function ExecutionTaskDetail({ task, isHistorical }: ExecutionTaskDetailProps) {
   const { data: steps, isLoading: stepsLoading } = useTaskSteps(task.id);
   const { data: progress } = useStepProgress(task.id, { isExecuting: !isHistorical });
@@ -264,6 +315,11 @@ export function ExecutionTaskDetail({ task, isHistorical }: ExecutionTaskDetailP
 
   // Live validation events for setup/install progress
   const liveValidationSteps = useValidationEvents(task.id, "execution");
+
+  // Team mode state
+  const contextKey = buildStoreKey("task_execution", task.id);
+  const isTeamActive = useChatStore(selectIsTeamActive(contextKey));
+  const teammates = useTeamStore(selectTeammates(contextKey));
 
   const hasSteps = (steps?.length ?? 0) > 0;
   const isReExecuting = task.internalStatus === "re_executing";
@@ -312,6 +368,9 @@ export function ExecutionTaskDetail({ task, isHistorical }: ExecutionTaskDetailP
           </DetailCard>
         </section>
       )}
+
+      {/* Team Progress (team mode only) */}
+      {isTeamActive && <TeamProgressSection teammates={teammates} />}
 
       {/* Setup/Install Progress (live validation events) */}
       <ValidationProgress
