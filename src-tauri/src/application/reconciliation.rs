@@ -402,6 +402,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 InternalStatus::MergeConflict,
                 InternalStatus::QaRefining,
                 InternalStatus::QaTesting,
+                InternalStatus::Paused,
             ] {
                 let tasks = match self.task_repo.get_by_status(&project.id, status).await {
                     Ok(tasks) => tasks,
@@ -553,6 +554,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             InternalStatus::QaRefining | InternalStatus::QaTesting => {
                 self.reconcile_qa_task(task, status).await
             }
+            InternalStatus::Paused => self.reconcile_paused_provider_error(task).await,
             _ => false,
         }
     }
@@ -1091,6 +1093,139 @@ impl<R: Runtime> ReconciliationRunner<R> {
                     task_id = task.id.as_str(),
                     error = %e,
                     "Failed to transition MergeConflict -> PendingMerge during recovery"
+                );
+                false
+            }
+        }
+    }
+
+    /// Auto-resume paused tasks that were paused due to recoverable provider errors.
+    ///
+    /// Checks provider_error metadata in task.metadata:
+    /// - If retry_after has passed and resume_attempts < MAX → resume via entry actions
+    /// - If max attempts exceeded → transition to Failed
+    /// - If no provider_error metadata → skip (user-paused task)
+    async fn reconcile_paused_provider_error(&self, task: &Task) -> bool {
+        use crate::application::chat_service::ProviderErrorMetadata;
+
+        let meta = match ProviderErrorMetadata::from_task_metadata(task.metadata.as_deref()) {
+            Some(meta) => meta,
+            None => return false, // No provider error metadata — user-paused, skip
+        };
+
+        if !meta.auto_resumable {
+            return false;
+        }
+
+        // Check if max resume attempts exceeded → transition to Failed
+        if meta.resume_attempts >= ProviderErrorMetadata::MAX_RESUME_ATTEMPTS {
+            warn!(
+                task_id = task.id.as_str(),
+                attempts = meta.resume_attempts,
+                max = ProviderErrorMetadata::MAX_RESUME_ATTEMPTS,
+                category = %meta.category,
+                "Provider error auto-resume limit reached — transitioning to Failed"
+            );
+            // Clear provider_error metadata and transition to Failed
+            let mut updated = task.clone();
+            updated.metadata = Some(ProviderErrorMetadata::clear_from_task_metadata(
+                updated.metadata.as_deref(),
+            ));
+            updated.touch();
+            let _ = self.task_repo.update(&updated).await;
+
+            let _ = self
+                .transition_service
+                .transition_task(&task.id, InternalStatus::Failed)
+                .await;
+            return true;
+        }
+
+        // Check if retry_after time has passed
+        if !meta.is_retry_eligible() {
+            return false; // Not eligible yet — wait for retry_after
+        }
+
+        // Can we start a task right now?
+        if !self.execution_state.can_start_task() {
+            return false; // At max concurrency — retry on next reconciliation cycle
+        }
+
+        // Increment resume attempts
+        let mut updated_meta = meta.clone();
+        updated_meta.resume_attempts += 1;
+        let mut updated_task = task.clone();
+        updated_task.metadata = Some(
+            updated_meta.write_to_task_metadata(updated_task.metadata.as_deref()),
+        );
+        updated_task.touch();
+        if let Err(e) = self.task_repo.update(&updated_task).await {
+            warn!(
+                task_id = task.id.as_str(),
+                error = %e,
+                "Failed to update resume attempt count"
+            );
+            return false;
+        }
+
+        // Determine the target state to resume to (from previous_status)
+        let resume_status = match meta.previous_status.as_str() {
+            "executing" => InternalStatus::Executing,
+            "re_executing" => InternalStatus::ReExecuting,
+            "qa_refining" => InternalStatus::QaRefining,
+            "qa_testing" => InternalStatus::QaTesting,
+            "reviewing" => InternalStatus::Reviewing,
+            "merging" => InternalStatus::Merging,
+            _ => InternalStatus::Executing, // Safe default
+        };
+
+        tracing::info!(
+            task_id = task.id.as_str(),
+            category = %meta.category,
+            resume_status = %resume_status,
+            attempt = updated_meta.resume_attempts,
+            "Auto-resuming provider-error-paused task"
+        );
+
+        // Emit event for frontend
+        if let Some(ref handle) = self.app_handle {
+            let _ = handle.emit(
+                "task:provider_error_resuming",
+                serde_json::json!({
+                    "task_id": task.id.as_str(),
+                    "category": meta.category.to_string(),
+                    "resume_status": resume_status.to_string(),
+                    "attempt": updated_meta.resume_attempts,
+                }),
+            );
+        }
+
+        // Transition back to the previous active state
+        // The TransitionHandler's on_enter will re-spawn the agent
+        match self
+            .transition_service
+            .transition_task(&task.id, resume_status)
+            .await
+        {
+            Ok(_) => {
+                // Clear provider_error metadata on successful resume
+                let mut cleared_task = match self.task_repo.get_by_id(&task.id).await {
+                    Ok(Some(t)) => t,
+                    _ => return true,
+                };
+                cleared_task.metadata = Some(ProviderErrorMetadata::clear_from_task_metadata(
+                    cleared_task.metadata.as_deref(),
+                ));
+                cleared_task.touch();
+                let _ = self.task_repo.update(&cleared_task).await;
+                true
+            }
+            Err(e) => {
+                warn!(
+                    task_id = task.id.as_str(),
+                    error = %e,
+                    resume_status = %resume_status,
+                    "Failed to auto-resume provider-error-paused task"
                 );
                 false
             }
