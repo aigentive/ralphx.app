@@ -425,6 +425,59 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // POST /api/projects/:project_id/analysis
       const { project_id, entries } = args as { project_id: string; entries: unknown[] };
       result = await callTauri(`projects/${project_id}/analysis`, { entries });
+    } else if (name === "request_team_plan") {
+      // POST /api/team/plan
+      const { process, teammates } = args as { process: string; teammates: unknown[] };
+      result = await callTauri("team/plan", { process, teammates });
+    } else if (name === "request_teammate_spawn") {
+      // POST /api/team/spawn
+      const { role, prompt, model, tools, mcp_tools, preset } = args as {
+        role: string;
+        prompt: string;
+        model: string;
+        tools: string[];
+        mcp_tools: string[];
+        preset?: string;
+      };
+      result = await callTauri("team/spawn", { role, prompt, model, tools, mcp_tools, preset });
+    } else if (name === "create_team_artifact") {
+      // POST /api/team/artifact
+      const { session_id, title, content, artifact_type, related_artifact_id } = args as {
+        session_id: string;
+        title: string;
+        content: string;
+        artifact_type: string;
+        related_artifact_id?: string;
+      };
+      result = await callTauri("team/artifact", {
+        session_id,
+        title,
+        content,
+        artifact_type,
+        related_artifact_id,
+      });
+    } else if (name === "get_team_artifacts") {
+      // GET /api/team/artifacts/:session_id
+      const { session_id } = args as { session_id: string };
+      result = await callTauriGet(`team/artifacts/${session_id}`);
+    } else if (name === "get_team_session_state") {
+      // GET /api/team/session_state/:session_id
+      const { session_id } = args as { session_id: string };
+      result = await callTauriGet(`team/session_state/${session_id}`);
+    } else if (name === "save_team_session_state") {
+      // POST /api/team/session_state
+      const { session_id, team_composition, phase, artifact_ids } = args as {
+        session_id: string;
+        team_composition: unknown[];
+        phase: string;
+        artifact_ids?: string[];
+      };
+      result = await callTauri("team/session_state", {
+        session_id,
+        team_composition,
+        phase,
+        artifact_ids,
+      });
     } else {
       // Default: POST request
       result = await callTauri(name, (args as Record<string, unknown>) || {});
