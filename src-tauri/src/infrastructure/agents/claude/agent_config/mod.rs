@@ -27,6 +27,8 @@ pub struct AgentConfig {
     pub preapproved_cli_tools: Vec<String>,
     pub system_prompt_file: String,
     pub model: Option<String>,
+    /// Effective settings JSON for this agent (if any), resolved from settings_profile.
+    pub settings: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone)]
@@ -61,6 +63,7 @@ struct AgentConfigRaw {
     preapproved_cli_tools: Vec<String>,
     system_prompt_file: String,
     model: Option<String>,
+    settings_profile: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -72,7 +75,15 @@ struct ClaudeRuntimeConfigRaw {
     dangerously_skip_permissions: bool,
     permission_prompt_tool: String,
     append_system_prompt_file: bool,
+    /// Optional profile selector for claude settings (`settings_profiles.<name>`).
+    settings_profile: Option<String>,
+    /// Optional settings merged into every selected profile.
+    settings_profile_defaults: Option<serde_json::Value>,
+    /// Named claude settings profiles passed via --settings.
+    #[serde(default)]
+    settings_profiles: HashMap<String, serde_json::Value>,
     /// Optional settings passed to claude CLI via --settings (see docs/claude-code/settings.md).
+    /// Legacy field kept for backwards compatibility when profiles are not configured.
     settings: Option<serde_json::Value>,
 }
 
@@ -85,6 +96,9 @@ impl Default for ClaudeRuntimeConfigRaw {
             dangerously_skip_permissions: false,
             permission_prompt_tool: "permission_request".to_string(),
             append_system_prompt_file: true,
+            settings_profile: None,
+            settings_profile_defaults: None,
+            settings_profiles: HashMap::new(),
             settings: None,
         }
     }
@@ -163,6 +177,10 @@ fn parse_config(yaml: &str) -> Option<LoadedConfig> {
 
     let mut seen_names = HashSet::new();
     let mut resolved = Vec::with_capacity(parsed.agents.len());
+    let resolved_settings = resolve_claude_settings(
+        &parsed.claude,
+        parsed.claude.settings_profile.as_deref(),
+    );
 
     for raw in &parsed.agents {
         if !seen_names.insert(raw.name.clone()) {
@@ -171,6 +189,20 @@ fn parse_config(yaml: &str) -> Option<LoadedConfig> {
         }
 
         let cli_tools = resolve_tools(raw, &parsed.tool_sets);
+        let agent_settings = if let Some(profile_name) = raw.settings_profile.as_deref() {
+            if parsed.claude.settings_profiles.contains_key(profile_name) {
+                resolve_claude_settings(&parsed.claude, Some(profile_name))
+            } else {
+                tracing::warn!(
+                    agent = %raw.name,
+                    profile = profile_name,
+                    "Unknown agent settings_profile; falling back to global settings profile"
+                );
+                resolved_settings.clone()
+            }
+        } else {
+            resolved_settings.clone()
+        };
         resolved.push(AgentConfig {
             name: raw.name.clone(),
             mcp_only: raw.tools.mcp_only,
@@ -179,10 +211,15 @@ fn parse_config(yaml: &str) -> Option<LoadedConfig> {
             preapproved_cli_tools: raw.preapproved_cli_tools.clone(),
             system_prompt_file: raw.system_prompt_file.clone(),
             model: raw.model.clone(),
+            settings: agent_settings,
         });
     }
 
     let mcp_server_name = parsed.claude.mcp_server_name.clone();
+    let resolved_settings = resolve_claude_settings(
+        &parsed.claude,
+        parsed.claude.settings_profile.as_deref(),
+    );
     let claude = ClaudeRuntimeConfig {
         mcp_server_name,
         setting_sources: parsed.claude.setting_sources,
@@ -193,13 +230,159 @@ fn parse_config(yaml: &str) -> Option<LoadedConfig> {
             &parsed.claude.mcp_server_name,
         ),
         use_append_system_prompt_file: parsed.claude.append_system_prompt_file,
-        settings: parsed.claude.settings,
+        settings: resolved_settings,
     };
 
     Some(LoadedConfig {
         agents: resolved,
         claude,
     })
+}
+
+fn resolve_claude_settings(
+    raw: &ClaudeRuntimeConfigRaw,
+    profile_selection: Option<&str>,
+) -> Option<serde_json::Value> {
+    let mut selected = if let Some(profile_name) = profile_selection {
+        resolve_profile_settings(raw, profile_name)
+    } else if raw.settings_profiles.contains_key("default") {
+        resolve_profile_settings(raw, "default")
+    } else {
+        raw.settings.clone()
+    };
+
+    if let Some(defaults) = raw.settings_profile_defaults.clone() {
+        selected = Some(match selected {
+            Some(profile) => merge_settings(defaults, profile),
+            None => defaults,
+        });
+    }
+
+    if let Some(ref mut value) = selected {
+        apply_prefixed_env_overrides(value);
+        if value.as_object().is_some_and(|obj| obj.is_empty()) {
+            return None;
+        }
+    }
+
+    selected
+}
+
+fn resolve_profile_settings(raw: &ClaudeRuntimeConfigRaw, profile_name: &str) -> Option<serde_json::Value> {
+    let mut stack = Vec::<String>::new();
+    resolve_profile_settings_inner(raw, profile_name, &mut stack)
+}
+
+fn resolve_profile_settings_inner(
+    raw: &ClaudeRuntimeConfigRaw,
+    profile_name: &str,
+    stack: &mut Vec<String>,
+) -> Option<serde_json::Value> {
+    if stack.iter().any(|v| v == profile_name) {
+        tracing::warn!(
+            profile = profile_name,
+            chain = ?stack,
+            "Cycle detected while resolving claude settings profile extends"
+        );
+        return None;
+    }
+
+    let profile = match raw.settings_profiles.get(profile_name) {
+        Some(v) => v.clone(),
+        None => {
+            tracing::warn!(
+                profile = profile_name,
+                "Unknown claude.settings_profile; falling back to no custom settings"
+            );
+            return None;
+        }
+    };
+
+    stack.push(profile_name.to_string());
+
+    let mut merged = serde_json::json!({});
+    let mut current_profile = profile;
+
+    if let Some(current_obj) = current_profile.as_object_mut() {
+        let extends_value = current_obj.remove("extends");
+        if let Some(extends_list) = parse_extends_list(extends_value.as_ref(), profile_name) {
+            for base_name in extends_list {
+                if let Some(base) = resolve_profile_settings_inner(raw, &base_name, stack) {
+                    merged = merge_settings(merged, base);
+                }
+            }
+        }
+    }
+
+    stack.pop();
+    Some(merge_settings(merged, current_profile))
+}
+
+fn parse_extends_list(extends_value: Option<&serde_json::Value>, profile_name: &str) -> Option<Vec<String>> {
+    let value = extends_value?;
+    match value {
+        serde_json::Value::String(s) => Some(vec![s.clone()]),
+        serde_json::Value::Array(items) => {
+            let mut out = Vec::new();
+            for item in items {
+                if let Some(name) = item.as_str() {
+                    out.push(name.to_string());
+                } else {
+                    tracing::warn!(
+                        profile = profile_name,
+                        invalid = ?item,
+                        "Ignoring non-string entry in profile extends list"
+                    );
+                }
+            }
+            Some(out)
+        }
+        other => {
+            tracing::warn!(
+                profile = profile_name,
+                invalid = ?other,
+                "Ignoring invalid profile extends value; expected string or array"
+            );
+            None
+        }
+    }
+}
+
+fn merge_settings(base: serde_json::Value, overlay: serde_json::Value) -> serde_json::Value {
+    match (base, overlay) {
+        (serde_json::Value::Object(mut base_map), serde_json::Value::Object(overlay_map)) => {
+            for (key, overlay_value) in overlay_map {
+                let merged_value = if let Some(base_value) = base_map.remove(&key) {
+                    merge_settings(base_value, overlay_value)
+                } else {
+                    overlay_value
+                };
+                base_map.insert(key, merged_value);
+            }
+            serde_json::Value::Object(base_map)
+        }
+        (_, overlay_value) => overlay_value,
+    }
+}
+
+fn apply_prefixed_env_overrides(settings: &mut serde_json::Value) {
+    apply_prefixed_env_overrides_with(settings, &|name| std::env::var(name).ok());
+}
+
+fn apply_prefixed_env_overrides_with(
+    settings: &mut serde_json::Value,
+    lookup: &dyn Fn(&str) -> Option<String>,
+) {
+    let Some(env_settings) = settings.get_mut("env").and_then(|v| v.as_object_mut()) else {
+        return;
+    };
+
+    for (target_key, target_value) in env_settings.iter_mut() {
+        let source_key = format!("RALPHX_{target_key}");
+        if let Some(value) = lookup(&source_key) {
+            *target_value = serde_json::Value::String(value);
+        }
+    }
 }
 
 fn load_config() -> LoadedConfig {
@@ -249,6 +432,17 @@ pub fn claude_runtime_config() -> &'static ClaudeRuntimeConfig {
 pub fn get_agent_config(agent_name: &str) -> Option<&'static AgentConfig> {
     let lookup_name = agent_name.strip_prefix("ralphx:").unwrap_or(agent_name);
     agent_configs().iter().find(|c| c.name == lookup_name)
+}
+
+pub fn get_effective_settings(agent_name: Option<&str>) -> Option<&'static serde_json::Value> {
+    let loaded = LOADED_CONFIG_CELL.get_or_init(load_config);
+    if let Some(name) = agent_name {
+        let lookup_name = name.strip_prefix("ralphx:").unwrap_or(name);
+        if let Some(agent) = loaded.agents.iter().find(|c| c.name == lookup_name) {
+            return agent.settings.as_ref();
+        }
+    }
+    loaded.claude.settings.as_ref()
 }
 
 pub fn get_allowed_tools(agent_name: &str) -> Option<String> {
@@ -423,6 +617,253 @@ agents:
         assert_eq!(
             parsed.claude.permission_prompt_tool,
             "mcp__ralphx__permission_request"
+        );
+    }
+
+    #[test]
+    fn test_settings_profile_selection_uses_default_profile_payload() {
+        let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+  settings_profile: default
+  settings_profiles:
+    default:
+      sandbox:
+        enabled: false
+    z_ai:
+      env:
+        ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
+agents:
+  - name: ralphx-worker
+    tools:
+      extends: base_tools
+      include: [Write]
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: []
+    system_prompt_file: ralphx-plugin/agents/worker.md
+"#;
+        let parsed = parse_config(yaml).expect("config should parse");
+        assert_eq!(
+            parsed.claude.settings,
+            Some(serde_json::json!({
+                "sandbox": { "enabled": false }
+            }))
+        );
+    }
+
+    #[test]
+    fn test_settings_profile_resolves_prefixed_env_overrides() {
+        let mut settings = serde_json::json!({
+            "env": {
+                "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-5-air",
+                "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-5",
+                "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-5",
+            }
+        });
+
+        apply_prefixed_env_overrides_with(&mut settings, &|name| match name {
+            "RALPHX_ANTHROPIC_DEFAULT_HAIKU_MODEL" => Some("custom-haiku".to_string()),
+            "RALPHX_ANTHROPIC_DEFAULT_SONNET_MODEL" => Some("custom-sonnet".to_string()),
+            _ => None,
+        });
+
+        assert_eq!(
+            settings
+                .get("env")
+                .and_then(|v| v.get("ANTHROPIC_DEFAULT_HAIKU_MODEL"))
+                .and_then(|v| v.as_str()),
+            Some("custom-haiku")
+        );
+        assert_eq!(
+            settings
+                .get("env")
+                .and_then(|v| v.get("ANTHROPIC_DEFAULT_SONNET_MODEL"))
+                .and_then(|v| v.as_str()),
+            Some("custom-sonnet")
+        );
+        assert_eq!(
+            settings
+                .get("env")
+                .and_then(|v| v.get("ANTHROPIC_DEFAULT_OPUS_MODEL"))
+                .and_then(|v| v.as_str()),
+            Some("glm-5")
+        );
+    }
+
+    #[test]
+    fn test_agent_settings_profile_overrides_global_profile() {
+        let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+  settings_profile: z_ai
+  settings_profiles:
+    default:
+      sandbox:
+        enabled: false
+    z_ai:
+      env:
+        ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
+agents:
+  - name: ralphx-worker
+    settings_profile: default
+    tools:
+      extends: base_tools
+      include: [Write]
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: []
+    system_prompt_file: ralphx-plugin/agents/worker.md
+  - name: ralphx-coder
+    tools:
+      extends: base_tools
+      include: [Write]
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: []
+    system_prompt_file: ralphx-plugin/agents/coder.md
+"#;
+        let parsed = parse_config(yaml).expect("config should parse");
+
+        assert!(parsed.claude.settings.is_some(), "global z_ai should be active");
+
+        let worker = parsed
+            .agents
+            .iter()
+            .find(|a| a.name == "ralphx-worker")
+            .expect("worker should exist");
+        assert_eq!(
+            worker.settings,
+            Some(serde_json::json!({
+                "sandbox": { "enabled": false }
+            })),
+            "worker should override to default profile"
+        );
+
+        let coder = parsed
+            .agents
+            .iter()
+            .find(|a| a.name == "ralphx-coder")
+            .expect("coder should exist");
+        assert!(
+            coder.settings.is_some(),
+            "coder should inherit global z_ai profile"
+        );
+    }
+
+    #[test]
+    fn test_unknown_agent_settings_profile_falls_back_to_global() {
+        let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+  settings_profile: z_ai
+  settings_profiles:
+    z_ai:
+      env:
+        ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
+agents:
+  - name: ralphx-worker
+    settings_profile: missing_profile
+    tools:
+      extends: base_tools
+      include: [Write]
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: []
+    system_prompt_file: ralphx-plugin/agents/worker.md
+"#;
+        let parsed = parse_config(yaml).expect("config should parse");
+        let worker = parsed
+            .agents
+            .iter()
+            .find(|a| a.name == "ralphx-worker")
+            .expect("worker should exist");
+        assert_eq!(
+            worker.settings, parsed.claude.settings,
+            "unknown agent profile should inherit global settings"
+        );
+    }
+
+    #[test]
+    fn test_settings_profile_defaults_apply_to_selected_profile() {
+        let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+  settings_profile: z_ai
+  settings_profile_defaults:
+    permissions:
+      deny:
+        - Read(./.env)
+  settings_profiles:
+    z_ai:
+      env:
+        ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
+agents:
+  - name: ralphx-worker
+    tools:
+      extends: base_tools
+      include: [Write]
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: []
+    system_prompt_file: ralphx-plugin/agents/worker.md
+"#;
+        let parsed = parse_config(yaml).expect("config should parse");
+        assert_eq!(
+            parsed.claude.settings,
+            Some(serde_json::json!({
+                "permissions": { "deny": ["Read(./.env)"] },
+                "env": { "ANTHROPIC_BASE_URL": "https://api.z.ai/api/anthropic" }
+            }))
+        );
+    }
+
+    #[test]
+    fn test_settings_profile_extends_supports_base_profile() {
+        let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+  settings_profile: z_ai
+  settings_profiles:
+    locked_down:
+      permissions:
+        deny:
+          - Read(./.env)
+          - Edit(./.env)
+    z_ai:
+      extends: locked_down
+      env:
+        ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
+agents:
+  - name: ralphx-worker
+    tools:
+      extends: base_tools
+      include: [Write]
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: []
+    system_prompt_file: ralphx-plugin/agents/worker.md
+"#;
+        let parsed = parse_config(yaml).expect("config should parse");
+        assert_eq!(
+            parsed.claude.settings,
+            Some(serde_json::json!({
+                "permissions": {
+                    "deny": ["Read(./.env)", "Edit(./.env)"]
+                },
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://api.z.ai/api/anthropic"
+                }
+            }))
         );
     }
 

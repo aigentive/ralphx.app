@@ -17,6 +17,10 @@
 # - model:
 #   Optional Claude model alias passed as `--model` for this agent
 #   (e.g. `haiku`, `sonnet`, `opus`).
+# - settings_profile:
+#   Optional per-agent override for `claude.settings_profile`.
+#   When set, this agent uses `claude.settings_profiles.<name>`.
+#   When omitted, agent inherits the global `claude.settings_profile`.
 # - tools:
 #   CLI tool strategy for this agent:
 #   - mcp_only: true
@@ -56,9 +60,17 @@
 #   If true, pass `--append-system-prompt-file <path>` using `system_prompt_file`.
 #   If false, inline prompt content via `--append-system-prompt`.
 # - settings:
-#   Optional Claude Code settings passed via `--settings` (JSON). Merged with
-#   user/project/local settings per docs/claude-code/settings.md. Example:
-#   sandbox.enabled: false to disable bash sandboxing for spawned agents.
+#   Optional legacy Claude Code settings passed via `--settings` (JSON).
+#   Prefer `settings_profile` + `settings_profiles` for profile-based config.
+# - settings_profile:
+#   Selected profile name from `settings_profiles` for `--settings` payload.
+# - settings_profile_defaults:
+#   Optional settings merged into every selected profile.
+# - settings_profiles:
+#   Named `--settings` JSON objects.
+#   Profiles can use `extends: <profile>` or `extends: [profile_a, profile_b]`.
+#   `settings.env.<KEY>` values can be overridden by local env var:
+#   `RALPHX_<KEY>` (e.g. `RALPHX_ANTHROPIC_DEFAULT_HAIKU_MODEL`).
 #
 # Notes:
 # - Unknown attributes are ignored by the current parser.
@@ -75,9 +87,37 @@ claude:
   permission_prompt_tool: permission_request
   append_system_prompt_file: true
   # Passed to claude CLI via --settings (JSON). See docs/claude-code/settings.md.
-  settings:
-    sandbox:
-      enabled: false
+  settings_profile: default
+  settings_profile_defaults:
+    permissions:
+      deny:
+        - Read(./.env)
+        - Read(./.env.*)
+        - Edit(./.env)
+        - Edit(./.env.*)
+        - Write(./.env)
+        - Write(./.env.*)
+  settings_profiles:
+    # Preserve existing default behavior: sandbox disabled.
+    default:
+      sandbox:
+        enabled: false
+    # Z.AI integration profile. Values can be overridden via src-tauri/.env:
+    # RALPHX_ANTHROPIC_AUTH_TOKEN=...
+    # RALPHX_ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic
+    # RALPHX_API_TIMEOUT_MS=3000000
+    # RALPHX_ANTHROPIC_DEFAULT_HAIKU_MODEL=glm-5-air
+    # RALPHX_ANTHROPIC_DEFAULT_SONNET_MODEL=glm-5
+    # RALPHX_ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5
+    z_ai:
+      extends: default
+      env:
+        ANTHROPIC_AUTH_TOKEN: your_zai_api_key
+        ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
+        API_TIMEOUT_MS: "3000000"
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: glm-5-air
+        ANTHROPIC_DEFAULT_SONNET_MODEL: glm-5
+        ANTHROPIC_DEFAULT_OPUS_MODEL: glm-5
 
 agents:
   - name: orchestrator-ideation

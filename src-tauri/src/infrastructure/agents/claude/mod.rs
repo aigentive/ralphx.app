@@ -8,7 +8,7 @@ mod stream_processor;
 
 pub use agent_config::{
     agent_configs, claude_runtime_config, get_agent_config, get_allowed_tools,
-    get_preapproved_tools, AgentConfig,
+    get_effective_settings, get_preapproved_tools, AgentConfig,
 };
 pub use claude_code_client::ClaudeCodeClient;
 pub use claude_code_client::{StreamEvent as ClientStreamEvent, StreamingSpawnResult};
@@ -137,8 +137,9 @@ pub fn build_base_cli_command(
     if runtime.dangerously_skip_permissions {
         cmd.arg("--dangerously-skip-permissions");
     }
-    // Optional settings JSON passed to claude CLI via --settings (e.g. sandbox.enabled: false).
-    if let Some(ref s) = runtime.settings {
+    // Optional settings JSON passed to claude CLI via --settings.
+    // Agent-specific profile overrides global profile when configured.
+    if let Some(s) = get_effective_settings(agent_type) {
         if let Ok(json) = serde_json::to_string(s) {
             cmd.args(["--settings", &json]);
         }

@@ -25,7 +25,7 @@ use crate::domain::agents::{
 
 use super::{
     apply_common_spawn_env, claude_runtime_config, create_mcp_config, ensure_claude_spawn_allowed,
-    get_allowed_tools, get_preapproved_tools, sanitize_claude_user_state,
+    get_allowed_tools, get_effective_settings, get_preapproved_tools, sanitize_claude_user_state,
 };
 
 // ============================================================================
@@ -203,8 +203,9 @@ impl AgenticClient for ClaudeCodeClient {
         if runtime.dangerously_skip_permissions {
             args.push("--dangerously-skip-permissions".to_string());
         }
-        // Optional settings JSON passed to claude CLI via --settings (e.g. sandbox.enabled: false).
-        if let Some(ref s) = runtime.settings {
+        // Optional settings JSON passed to claude CLI via --settings.
+        // Agent-specific profile overrides global profile when configured.
+        if let Some(s) = get_effective_settings(config.agent.as_deref()) {
             if let Ok(json) = serde_json::to_string(s) {
                 args.extend(["--settings".to_string(), json]);
             }
@@ -431,8 +432,9 @@ impl ClaudeCodeClient {
         if runtime.dangerously_skip_permissions {
             args.push("--dangerously-skip-permissions".to_string());
         }
-        // Optional settings JSON passed to claude CLI via --settings (e.g. sandbox.enabled: false).
-        if let Some(ref s) = runtime.settings {
+        // Optional settings JSON passed to claude CLI via --settings.
+        // Agent-specific profile overrides global profile when configured.
+        if let Some(s) = get_effective_settings(config.agent.as_deref()) {
             if let Ok(json) = serde_json::to_string(s) {
                 args.extend(["--settings".to_string(), json]);
             }

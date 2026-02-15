@@ -39,6 +39,7 @@ mod tests;
 
 use std::sync::Arc;
 use std::time::Duration;
+use std::path::PathBuf;
 use tauri::Manager;
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
@@ -64,6 +65,24 @@ pub fn run() {
                 .unwrap_or_else(|_| EnvFilter::new("ralphx=info,warn")),
         )
         .init();
+
+    // Load local runtime overrides from project-root/.env and src-tauri/.env when present.
+    // These can drive claude settings profile env mappings (RALPHX_* -> settings.env.*).
+    let dotenv_paths = [
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.env"),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".env"),
+    ];
+    for dotenv_path in dotenv_paths {
+        match dotenvy::from_path(&dotenv_path) {
+            Ok(_) => info!(path = %dotenv_path.display(), "Loaded local environment overrides"),
+            Err(dotenvy::Error::Io(err)) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => warn!(
+                path = %dotenv_path.display(),
+                error = %err,
+                "Failed to load local environment overrides"
+            ),
+        }
+    }
 
     // Create execution state for global execution control
     let execution_state = Arc::new(commands::ExecutionState::new());
