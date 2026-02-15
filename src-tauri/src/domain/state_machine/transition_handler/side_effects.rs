@@ -204,6 +204,50 @@ impl<'a> super::TransitionHandler<'a> {
             return;
         }
 
+        // --- Main-merge deferral check ---
+        // If target is main/base branch and agents are running, defer the merge
+        // to avoid interrupting them with an app rebuild. Retry when all agents go idle.
+        let base_branch = project.base_branch.as_deref().unwrap_or("main");
+        if target_branch == base_branch {
+            if let Some(ref execution_state) = self.machine.context.services.execution_state {
+                if execution_state.running_count() > 0 {
+                    tracing::info!(
+                        task_id = task_id_str,
+                        source_branch = %source_branch,
+                        target_branch = %target_branch,
+                        running_count = execution_state.running_count(),
+                        "Deferring main-branch merge: {} agents still running — \
+                         merge will be retried when all agents complete",
+                        execution_state.running_count()
+                    );
+
+                    // Set main_merge_deferred metadata flag
+                    super::merge_helpers::set_main_merge_deferred_metadata(&mut task);
+                    task.touch();
+
+                    if let Err(e) = task_repo.update(&task).await {
+                        tracing::error!(error = %e, "Failed to set main_merge_deferred metadata");
+                        return;
+                    }
+
+                    // Emit merge progress event for UI visibility
+                    emit_merge_progress(
+                        self.machine.context.services.app_handle.as_ref(),
+                        task_id_str,
+                        MergePhase::ProgrammaticMerge,
+                        MergePhaseStatus::Started,
+                        format!(
+                            "Deferred merge to {} — waiting for {} agent(s) to complete",
+                            target_branch,
+                            execution_state.running_count()
+                        ),
+                    );
+
+                    return;
+                }
+            }
+        }
+
         let repo_path = Path::new(&project.working_directory);
 
         // Ensure plan branch exists as git ref (lazy creation for merge target).
