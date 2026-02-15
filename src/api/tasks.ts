@@ -203,10 +203,11 @@ export const tasksApi = {
    * Stop a running task
    * Transitions the task to Stopped state (terminal, requires manual restart)
    * @param taskId The task ID
+   * @param reason Optional reason for stopping (captured in metadata for smart resume)
    * @returns The stopped task
    */
-  stop: (taskId: string): Promise<Task> =>
-    typedInvokeWithTransform("stop_task", { taskId }, TaskSchema, transformTask),
+  stop: (taskId: string, reason?: string): Promise<Task> =>
+    typedInvokeWithTransform("stop_task", { taskId, reason }, TaskSchema, transformTask),
 
   /**
    * Permanently delete a task (only works on archived tasks)

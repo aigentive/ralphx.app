@@ -24,6 +24,22 @@ pub trait TaskStopper: Send + Sync {
     /// Transition a task to Stopped, triggering on_exit side effects
     /// (decrement running_count, emit events, etc.).
     async fn transition_to_stopped(&self, task_id: &TaskId) -> AppResult<()>;
+
+    /// Transition a task to Stopped with context capture for smart resume.
+    ///
+    /// This method captures the from_status and optional reason in metadata,
+    /// enabling the "smart resume" feature to restore context when restarted.
+    ///
+    /// # Arguments
+    /// * `task_id` - The task to stop
+    /// * `from_status` - The status the task was in when stopped
+    /// * `reason` - Optional reason for stopping
+    async fn transition_to_stopped_with_context(
+        &self,
+        task_id: &TaskId,
+        from_status: InternalStatus,
+        reason: Option<String>,
+    ) -> AppResult<()>;
 }
 
 /// Controls how running agents are stopped during cleanup.

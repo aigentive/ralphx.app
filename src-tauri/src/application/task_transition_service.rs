@@ -29,7 +29,7 @@ use crate::domain::state_machine::services::{
     TaskScheduler,
 };
 use crate::domain::state_machine::transition_handler::metadata_builder::{
-    build_trigger_origin_metadata, MetadataUpdate,
+    build_stop_metadata, build_trigger_origin_metadata, MetadataUpdate,
 };
 use crate::domain::state_machine::transition_handler::set_trigger_origin;
 use crate::error::{AppError, AppResult};
@@ -660,6 +660,41 @@ impl<R: Runtime> TaskTransitionService<R> {
         Ok(task)
     }
 
+    /// Transition a task to Stopped status with context capture for smart resume.
+    ///
+    /// This method is specifically for stopping tasks mid-execution. It captures
+    /// the current status and optional reason in the task's metadata, enabling
+    /// the "smart resume" feature to restore context when the task is restarted.
+    ///
+    /// # Arguments
+    /// * `task_id` - The ID of the task to stop
+    /// * `from_status` - The status the task was in when stopped (captured for resume)
+    /// * `reason` - Optional reason for stopping (captured for resume)
+    ///
+    /// # Returns
+    /// * `Ok(Task)` - The stopped task with stop metadata
+    /// * `Err(AppError)` - If the task is not found or transition is invalid
+    pub async fn transition_to_stopped_with_context(
+        &self,
+        task_id: &TaskId,
+        from_status: InternalStatus,
+        reason: Option<String>,
+    ) -> AppResult<Task> {
+        tracing::info!(
+            task_id = task_id.as_str(),
+            from_status = from_status.as_str(),
+            reason = ?reason,
+            "Stopping task with context capture"
+        );
+
+        // Build stop metadata
+        let stop_metadata = build_stop_metadata(from_status, reason);
+
+        // Transition to Stopped with metadata
+        self.transition_task_with_metadata(task_id, InternalStatus::Stopped, Some(stop_metadata))
+            .await
+    }
+
     /// Execute entry actions for a given status, including auto-transitions.
     ///
     /// This method delegates to TransitionHandler::on_enter() to ensure we use
@@ -927,6 +962,17 @@ fn auto_metadata_for_status(status: InternalStatus) -> Option<MetadataUpdate> {
 impl<R: Runtime> crate::application::TaskStopper for TaskTransitionService<R> {
     async fn transition_to_stopped(&self, task_id: &TaskId) -> AppResult<()> {
         self.transition_task(task_id, InternalStatus::Stopped)
+            .await
+            .map(|_| ())
+    }
+
+    async fn transition_to_stopped_with_context(
+        &self,
+        task_id: &TaskId,
+        from_status: InternalStatus,
+        reason: Option<String>,
+    ) -> AppResult<()> {
+        self.transition_to_stopped_with_context(task_id, from_status, reason)
             .await
             .map(|_| ())
     }
