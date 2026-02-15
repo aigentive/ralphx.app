@@ -19,7 +19,6 @@ import { PlanCandidateItem } from "./PlanCandidateItem";
 import { PlanClearAction } from "./PlanClearAction";
 import { QuickActionRow } from "./QuickActionRow";
 import { cn } from "@/lib/utils";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import type { SelectionSource } from "@/api/plan";
 
@@ -201,7 +200,7 @@ export function PlanQuickSwitcherPalette({
                 onViewEntity={quickActionFlow.viewEntity}
               />
             ) : hasItems ? (
-              <ScrollArea className="max-h-[400px]" type="auto">
+              <div className="max-h-[400px] overflow-y-auto">
                 {showQuickAction && (
                   <QuickActionRow
                     action={quickAction}
@@ -254,7 +253,7 @@ export function PlanQuickSwitcherPalette({
                     />
                   );
                 })}
-              </ScrollArea>
+              </div>
             ) : (
               /* Empty state */
               <div className="p-8 text-center text-muted-foreground transition-colors">
