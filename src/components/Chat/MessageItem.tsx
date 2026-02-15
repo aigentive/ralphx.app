@@ -49,6 +49,10 @@ export interface MessageItemProps {
   contentBlocks?: ContentBlockItem[] | null;
   /** File attachments for user messages */
   attachments?: MessageAttachment[];
+  /** Teammate name for team mode messages */
+  teammateName?: string | null | undefined;
+  /** Teammate color for left-border indicator */
+  teammateColor?: string | null | undefined;
 }
 
 // ============================================================================
@@ -62,6 +66,8 @@ export const MessageItem = React.memo(function MessageItem({
   toolCalls,
   contentBlocks,
   attachments,
+  teammateName,
+  teammateColor,
 }: MessageItemProps) {
   const isUser = role === "user";
 
@@ -103,10 +109,22 @@ export const MessageItem = React.memo(function MessageItem({
         "flex min-w-0 mb-5",
         isUser ? "justify-end" : "justify-start"
       )}
+      style={teammateColor ? { borderLeft: `2px solid ${teammateColor}`, paddingLeft: "8px" } : undefined}
     >
       {/* Agent indicator for assistant messages */}
-      {!isUser && (
+      {!isUser && !teammateName && (
         <Bot className="w-3.5 h-3.5 mt-2 mr-2 shrink-0 text-white/40" />
+      )}
+      {/* Teammate name badge */}
+      {!isUser && teammateName && (
+        <div className="flex items-center gap-1 mt-2 mr-2 shrink-0">
+          {teammateColor && (
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: teammateColor }} />
+          )}
+          <span className="text-[10px] font-medium" style={{ color: teammateColor ?? "hsl(220 10% 50%)" }}>
+            {teammateName}
+          </span>
+        </div>
       )}
 
       <div className="flex flex-col gap-3 min-w-0 w-full">
@@ -173,5 +191,7 @@ export const MessageItem = React.memo(function MessageItem({
     && prev.createdAt === next.createdAt
     && prev.toolCalls === next.toolCalls
     && prev.contentBlocks === next.contentBlocks
-    && prev.attachments === next.attachments;
+    && prev.attachments === next.attachments
+    && prev.teammateName === next.teammateName
+    && prev.teammateColor === next.teammateColor;
 });

@@ -51,6 +51,13 @@ import { ChildSessionNotification } from "./ChildSessionNotification";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useChatAttachments } from "@/hooks/useChatAttachments";
 import { ideationApi } from "@/api/ideation";
+import { selectIsTeamActive } from "@/stores/chatStore";
+import { useTeamStore, selectTeammates } from "@/stores/teamStore";
+import { useTeamEvents } from "@/hooks/useTeamEvents";
+import { useTeamActions } from "@/hooks/useTeamActions";
+import { TeamActivityPanel } from "./TeamActivityPanel";
+import { TeamFilterTabs, type TeamFilterValue } from "./TeamFilterTabs";
+import { TargetSelector, type TargetValue } from "./TargetSelector";
 
 // Stable empty array to avoid new reference on every render when tasks query returns undefined
 const EMPTY_TASKS: never[] = [];
@@ -163,6 +170,23 @@ export function IntegratedChatPanel({
   });
 
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
+
+  // Team mode state
+  const isTeamActiveSelector = useMemo(() => selectIsTeamActive(storeContextKey), [storeContextKey]);
+  const isTeamActive = useChatStore(isTeamActiveSelector);
+  const teammatesSelector = useMemo(() => selectTeammates(storeContextKey), [storeContextKey]);
+  const teammates = useTeamStore(teammatesSelector);
+  const [teamFilter, setTeamFilter] = useState<TeamFilterValue>("all");
+  const [sendTarget, setSendTarget] = useState<TargetValue>("lead");
+
+  // Team events subscription
+  useTeamEvents(isTeamActive ? storeContextKey : null);
+
+  // Team actions
+  const teamActions = useTeamActions(
+    currentContextType as ContextType,
+    currentContextId,
+  );
 
   // Agent lifecycle events (useAgentEvents) are handled inside useChat — no duplicate subscription needed.
 
@@ -550,6 +574,15 @@ export function IntegratedChatPanel({
             />
           </div>
 
+          {/* Team Filter Tabs (team mode only) */}
+          {isTeamActive && teammates.length > 0 && (
+            <TeamFilterTabs
+              teammates={teammates}
+              activeFilter={teamFilter}
+              onFilterChange={setTeamFilter}
+            />
+          )}
+
           {/* Messages Area */}
           {isLoading ? (
             <div className="flex-1 flex items-center justify-center" data-testid="integrated-chat-messages">
@@ -578,6 +611,22 @@ export function IntegratedChatPanel({
               streamingContentBlocks={streamingContentBlocks}
               scrollToTimestamp={isHistoryMode ? taskHistoryState?.timestamp : null}
               finalizingConversationRef={finalizingConversationRef}
+            />
+          )}
+
+          {/* Team Activity Panel (team mode only) */}
+          {isTeamActive && teammates.length > 0 && (
+            <TeamActivityPanel
+              contextKey={storeContextKey}
+              onMessageTeammate={(name) => {
+                setSendTarget(name);
+              }}
+              onStopTeammate={(name) => {
+                teamActions.stopTeammate.mutate(name);
+              }}
+              onStopAll={() => {
+                teamActions.stopTeam.mutate();
+              }}
             />
           )}
 
@@ -618,6 +667,17 @@ export function IntegratedChatPanel({
                 answeredValue={answeredQuestion}
                 onDismissAnswered={clearAnswered}
               />
+            )}
+
+            {/* Target Selector (team mode only) */}
+            {isTeamActive && teammates.length > 0 && !isHistoryMode && (
+              <div className="px-3 pt-2">
+                <TargetSelector
+                  teammates={teammates}
+                  value={sendTarget}
+                  onChange={setSendTarget}
+                />
+              </div>
             )}
 
             {/* Chat Input */}
