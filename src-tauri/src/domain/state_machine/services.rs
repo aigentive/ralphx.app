@@ -193,6 +193,13 @@ pub trait TaskScheduler: Send + Sync {
     /// Finds tasks in PendingMerge with `merge_deferred` metadata, clears the flag,
     /// and re-invokes their entry actions so `attempt_programmatic_merge()` runs again.
     async fn try_retry_deferred_merges(&self, project_id: &str);
+
+    /// Retry main-branch merges that were deferred because agents were running.
+    ///
+    /// Called when the global running_count transitions to 0 (all agents idle).
+    /// Finds tasks in PendingMerge with `main_merge_deferred` metadata, clears the flag,
+    /// and re-invokes their entry actions to retry the main-branch merge.
+    async fn try_retry_main_merges(&self);
 }
 
 #[cfg(test)]

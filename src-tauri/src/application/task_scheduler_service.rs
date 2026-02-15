@@ -497,6 +497,159 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
             break;
         }
     }
+
+    /// Retry main-branch merges that were deferred because agents were running.
+    ///
+    /// Called when the global running_count transitions to 0 (all agents idle).
+    /// Finds tasks in PendingMerge with `main_merge_deferred` metadata, clears the flag,
+    /// and re-invokes their entry actions to retry the main-branch merge.
+    async fn try_retry_main_merges(&self) {
+        use crate::domain::state_machine::transition_handler::{
+            clear_main_merge_deferred_metadata, has_main_merge_deferred_metadata,
+        };
+
+        // Query all projects for main-merge-deferred tasks
+        let projects = match self.project_repo.get_all().await {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "Failed to fetch projects for main merge retry"
+                );
+                return;
+            }
+        };
+
+        let mut deferred_tasks: Vec<Task> = Vec::new();
+
+        for project in &projects {
+            let tasks = match self.task_repo.get_by_project(&project.id).await {
+                Ok(t) => t,
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        project_id = project.id.as_str(),
+                        "Failed to fetch tasks for main merge retry"
+                    );
+                    continue;
+                }
+            };
+
+            for task in tasks {
+                if task.internal_status == InternalStatus::PendingMerge
+                    && has_main_merge_deferred_metadata(&task)
+                {
+                    deferred_tasks.push(task);
+                }
+            }
+        }
+
+        let deferred_count = deferred_tasks.len();
+
+        if deferred_count == 0 {
+            tracing::debug!("No main-merge-deferred tasks to retry");
+            return;
+        }
+
+        tracing::info!(
+            deferred_count = deferred_count,
+            "Found main-merge-deferred tasks to retry (all agents now idle)"
+        );
+
+        for task in deferred_tasks {
+            tracing::info!(
+                event = "main_merge_retry_attempt",
+                task_id = task.id.as_str(),
+                project_id = task.project_id.as_str(),
+                "Retrying deferred main merge (agents now idle)"
+            );
+
+            // Append main_merge_retry event before clearing deferred flag
+            let mut updated = task.clone();
+
+            // Get or create merge recovery metadata
+            let mut recovery =
+                MergeRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
+                    .unwrap_or(None)
+                    .unwrap_or_else(MergeRecoveryMetadata::new);
+
+            // Count previous main merge retry attempts from events
+            let attempt_count = recovery
+                .events
+                .iter()
+                .filter(|e| matches!(e.kind, MergeRecoveryEventKind::MainMergeRetry))
+                .count() as u32
+                + 1;
+
+            // Create main_merge_retry event
+            // Extract target_branch from metadata if available
+            let target_branch = updated
+                .metadata
+                .as_ref()
+                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                .and_then(|v| v.get("target_branch").and_then(|t| t.as_str()).map(|s| s.to_string()))
+                .unwrap_or_else(|| "main".to_string());
+
+            let retry_event = MergeRecoveryEvent::new(
+                MergeRecoveryEventKind::MainMergeRetry,
+                MergeRecoverySource::Auto,
+                MergeRecoveryReasonCode::AgentsRunning,
+                format!(
+                    "Main merge retry attempt {}: all agents now idle",
+                    attempt_count
+                ),
+            )
+            .with_target_branch(&target_branch)
+            .with_attempt(attempt_count);
+
+            // Append event and update state to Retrying
+            recovery.append_event_with_state(retry_event, MergeRecoveryState::Retrying);
+
+            // Update task metadata
+            match recovery.update_task_metadata(updated.metadata.as_deref()) {
+                Ok(updated_json) => {
+                    updated.metadata = Some(updated_json);
+                }
+                Err(e) => {
+                    tracing::error!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Failed to serialize merge recovery metadata during main merge retry"
+                    );
+                }
+            }
+
+            // Clear the main_merge_deferred flag
+            clear_main_merge_deferred_metadata(&mut updated);
+            updated.touch();
+
+            if let Err(e) = self.task_repo.update(&updated).await {
+                tracing::warn!(
+                    event = "main_merge_retry_failed",
+                    error = %e,
+                    task_id = task.id.as_str(),
+                    reason = "metadata_update_failed",
+                    "Failed to update task metadata, skipping main merge retry"
+                );
+                continue;
+            }
+
+            tracing::info!(
+                task_id = task.id.as_str(),
+                attempt = attempt_count,
+                "Appended main_merge_retry event, re-invoking merge attempt"
+            );
+
+            // Re-invoke entry actions for PendingMerge to re-run attempt_programmatic_merge
+            let transition_service = self.build_transition_service();
+            transition_service
+                .execute_entry_actions(&task.id, &updated, InternalStatus::PendingMerge)
+                .await;
+
+            // Only retry one main merge at a time to serialize them properly
+            break;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1535,6 +1688,245 @@ mod tests {
             updated_p1.internal_status,
             InternalStatus::Failed,
             "Project 1 task should also be Failed after ExecutionBlocked when no active project (max_concurrent=10)"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Main Merge Retry Tests (Global Idle)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    #[tokio::test]
+    async fn test_retry_main_merges_skips_non_pending_merge_tasks() {
+        let (execution_state, app_state) = setup_test_state().await;
+
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
+
+        // Create a task in Executing state with main_merge_deferred metadata (shouldn't happen
+        // in practice, but tests the status filter)
+        let mut task = Task::new(project.id.clone(), "Executing Task".to_string());
+        task.internal_status = InternalStatus::Executing;
+        task.metadata = Some(r#"{"main_merge_deferred": true}"#.to_string());
+        app_state.task_repo.create(task.clone()).await.unwrap();
+
+        let scheduler = build_scheduler(&app_state, &execution_state);
+        scheduler.try_retry_main_merges().await;
+
+        // Task should still have main_merge_deferred metadata (not touched)
+        let updated = app_state
+            .task_repo
+            .get_by_id(&task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(updated.internal_status, InternalStatus::Executing);
+        assert!(updated
+            .metadata
+            .as_deref()
+            .unwrap()
+            .contains("main_merge_deferred"));
+    }
+
+    #[tokio::test]
+    async fn test_retry_main_merges_skips_pending_merge_without_flag() {
+        let (execution_state, app_state) = setup_test_state().await;
+
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
+
+        // Create a PendingMerge task without main_merge_deferred metadata
+        let mut task = Task::new(project.id.clone(), "Pending Merge Task".to_string());
+        task.internal_status = InternalStatus::PendingMerge;
+        app_state.task_repo.create(task.clone()).await.unwrap();
+
+        let scheduler = build_scheduler(&app_state, &execution_state);
+        scheduler.try_retry_main_merges().await;
+
+        // Task should still be PendingMerge with no metadata changes
+        let updated = app_state
+            .task_repo
+            .get_by_id(&task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(updated.internal_status, InternalStatus::PendingMerge);
+        assert!(updated.metadata.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_retry_main_merges_clears_flag_on_deferred_task() {
+        let (execution_state, app_state) = setup_test_state().await;
+
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
+
+        // Create a PendingMerge task WITH main_merge_deferred metadata
+        let mut task = Task::new(project.id.clone(), "Deferred Main Merge".to_string());
+        task.internal_status = InternalStatus::PendingMerge;
+        task.metadata = Some(
+            r#"{"main_merge_deferred": true, "main_merge_deferred_at": "2026-02-15T00:00:00Z"}"#
+                .to_string(),
+        );
+        app_state.task_repo.create(task.clone()).await.unwrap();
+
+        let scheduler = build_scheduler(&app_state, &execution_state);
+        scheduler.try_retry_main_merges().await;
+
+        // The main_merge_deferred flag should be cleared
+        let updated = app_state
+            .task_repo
+            .get_by_id(&task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        // Metadata should not contain main_merge_deferred
+        assert!(
+            updated.metadata.is_none()
+                || !updated
+                    .metadata
+                    .as_deref()
+                    .unwrap_or("")
+                    .contains("main_merge_deferred"),
+            "main_merge_deferred flag should be cleared"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_retry_main_merges_only_retries_one_at_a_time() {
+        let (execution_state, app_state) = setup_test_state().await;
+
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
+
+        // Create two PendingMerge tasks with main_merge_deferred metadata
+        let mut task1 = Task::new(project.id.clone(), "Deferred Main Merge 1".to_string());
+        task1.internal_status = InternalStatus::PendingMerge;
+        task1.metadata = Some(r#"{"main_merge_deferred": true}"#.to_string());
+        app_state.task_repo.create(task1.clone()).await.unwrap();
+
+        let mut task2 = Task::new(project.id.clone(), "Deferred Main Merge 2".to_string());
+        task2.internal_status = InternalStatus::PendingMerge;
+        task2.metadata = Some(r#"{"main_merge_deferred": true}"#.to_string());
+        app_state.task_repo.create(task2.clone()).await.unwrap();
+
+        let scheduler = build_scheduler(&app_state, &execution_state);
+        scheduler.try_retry_main_merges().await;
+
+        // Only one task should have its flag cleared (serialization)
+        let updated1 = app_state
+            .task_repo
+            .get_by_id(&task1.id)
+            .await
+            .unwrap()
+            .unwrap();
+        let updated2 = app_state
+            .task_repo
+            .get_by_id(&task2.id)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let flag1_cleared = updated1.metadata.is_none()
+            || !updated1
+                .metadata
+                .as_deref()
+                .unwrap_or("")
+                .contains("main_merge_deferred");
+        let flag2_cleared = updated2.metadata.is_none()
+            || !updated2
+                .metadata
+                .as_deref()
+                .unwrap_or("")
+                .contains("main_merge_deferred");
+
+        assert!(
+            flag1_cleared ^ flag2_cleared,
+            "Exactly one task should have its flag cleared (serialization). \
+             task1 cleared={}, task2 cleared={}",
+            flag1_cleared,
+            flag2_cleared
+        );
+    }
+
+    #[tokio::test]
+    async fn test_retry_main_merges_finds_tasks_across_all_projects() {
+        let (execution_state, app_state) = setup_test_state().await;
+
+        let project1 = Project::new("Project 1".to_string(), "/test/path1".to_string());
+        app_state
+            .project_repo
+            .create(project1.clone())
+            .await
+            .unwrap();
+
+        let project2 = Project::new("Project 2".to_string(), "/test/path2".to_string());
+        app_state
+            .project_repo
+            .create(project2.clone())
+            .await
+            .unwrap();
+
+        // Create a main-merge-deferred task in each project
+        let mut task1 = Task::new(project1.id.clone(), "Deferred Main Merge P1".to_string());
+        task1.internal_status = InternalStatus::PendingMerge;
+        task1.metadata = Some(r#"{"main_merge_deferred": true}"#.to_string());
+        app_state.task_repo.create(task1.clone()).await.unwrap();
+
+        let mut task2 = Task::new(project2.id.clone(), "Deferred Main Merge P2".to_string());
+        task2.internal_status = InternalStatus::PendingMerge;
+        task2.metadata = Some(r#"{"main_merge_deferred": true}"#.to_string());
+        app_state.task_repo.create(task2.clone()).await.unwrap();
+
+        let scheduler = build_scheduler(&app_state, &execution_state);
+        scheduler.try_retry_main_merges().await;
+
+        // At least one task from any project should have its flag cleared
+        let updated1 = app_state
+            .task_repo
+            .get_by_id(&task1.id)
+            .await
+            .unwrap()
+            .unwrap();
+        let updated2 = app_state
+            .task_repo
+            .get_by_id(&task2.id)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let flag1_cleared = updated1.metadata.is_none()
+            || !updated1
+                .metadata
+                .as_deref()
+                .unwrap_or("")
+                .contains("main_merge_deferred");
+        let flag2_cleared = updated2.metadata.is_none()
+            || !updated2
+                .metadata
+                .as_deref()
+                .unwrap_or("")
+                .contains("main_merge_deferred");
+
+        // At least one should be cleared (method scans all projects)
+        assert!(
+            flag1_cleared || flag2_cleared,
+            "At least one task across all projects should have its flag cleared"
         );
     }
 }

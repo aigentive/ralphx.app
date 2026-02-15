@@ -30,6 +30,10 @@ pub(crate) use side_effects::clear_merge_deferred_metadata;
 pub(crate) use side_effects::has_branch_missing_metadata;
 pub(crate) use side_effects::has_merge_deferred_metadata;
 
+// Re-export main merge deferred metadata helpers for global idle retry
+pub(crate) use merge_helpers::clear_main_merge_deferred_metadata;
+pub(crate) use merge_helpers::has_main_merge_deferred_metadata;
+
 // Re-export trigger origin metadata helpers for execution tracking
 pub(crate) use side_effects::clear_trigger_origin;
 pub(crate) use side_effects::get_trigger_origin;
@@ -181,16 +185,26 @@ impl<'a> TransitionHandler<'a> {
             | State::Merging => {
                 if let Some(ref exec) = self.machine.context.services.execution_state {
                     exec.decrement_running();
+                    let new_count = exec.running_count();
                     tracing::debug!(
                         task_id = %self.machine.context.task_id,
                         from_state = ?from,
-                        new_count = exec.running_count(),
+                        new_count = new_count,
                         "Decremented running count on state exit"
                     );
 
                     // Emit real-time status update event to frontend
                     if let Some(ref handle) = self.machine.context.services.app_handle {
                         exec.emit_status_changed(handle, "task_completed");
+                    }
+
+                    // If all agents are now idle, retry any main-merge-deferred tasks
+                    if new_count == 0 {
+                        tracing::info!(
+                            task_id = %self.machine.context.task_id,
+                            "All agents idle, triggering main merge retry"
+                        );
+                        self.try_retry_main_merges().await;
                     }
 
                     // Try to schedule next Ready task now that a slot is free
@@ -306,6 +320,23 @@ impl<'a> TransitionHandler<'a> {
                 "Triggering ready task scheduling"
             );
             scheduler.try_schedule_ready_tasks().await;
+        }
+    }
+
+    /// Retry main-branch merges that were deferred because agents were running.
+    ///
+    /// This method delegates to the TaskScheduler service if available.
+    /// Called from on_exit() when running_count transitions to 0 (all agents idle).
+    ///
+    /// The scheduler will find tasks with main_merge_deferred metadata and
+    /// re-invoke their entry actions to retry the main-branch merge.
+    pub async fn try_retry_main_merges(&self) {
+        if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
+            tracing::debug!(
+                task_id = %self.machine.context.task_id,
+                "Triggering main merge retry (all agents idle)"
+            );
+            scheduler.try_retry_main_merges().await;
         }
     }
 
