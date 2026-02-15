@@ -1,10 +1,10 @@
 # Product Brief: Agent Teams at Orchestrator-Ideation Level
 
-**Status:** DRAFT v2
+**Status:** DRAFT v4
 **Author:** product-researcher
 **Date:** 2026-02-15
 **Scope:** Integrating Claude Code Agent Teams into RalphX's ideation workflow
-**Revision:** Incorporates user feedback — dynamic team roles, direct teammate messaging, team-recommended for complex work
+**Revision:** v4 — Resolves open questions: team lead identity evaluation, 5 default specialists, side-by-side debate UI, artifact model for multi-agent contribution, team resume in RECOVER phase
 
 ---
 
@@ -66,8 +66,8 @@ Two new ideation modes, selectable per session:
 | Mode | Agents | Best For | Token Cost | Default? |
 |------|--------|----------|------------|----------|
 | **Solo** (current default) | 1 orchestrator + subagents | Simple features, quick tasks, bug fixes | 1x (baseline) | Default for simple tasks |
-| **Research Team** | 1 lead + dynamically-chosen teammates | Complex features, cross-layer work | 3-4x | **Recommended** for complex tasks |
-| **Debate Team** | 1 lead + dynamically-chosen perspective teammates | Architectural decisions, high-stakes planning | 4-6x | **Recommended** for architecture decisions |
+| **Research Team** | 1 lead + up to 5 dynamically-chosen teammates | Complex features, cross-layer work | 3-5x | **Recommended** for complex tasks |
+| **Debate Team** | 1 lead + up to 5 dynamically-chosen perspective teammates | Architectural decisions, high-stakes planning | 4-6x | **Recommended** for architecture decisions |
 
 **Team composition is dynamic:** The lead agent analyzes the task and decides what specialist roles to create. A frontend-heavy feature might get 2 UI specialists + 1 state management specialist. An infrastructure feature might get a DB specialist + a config specialist + a migration specialist. The lead constructs each teammate's role, prompt, and tool set on the fly.
 
@@ -80,7 +80,7 @@ Two new ideation modes, selectable per session:
 User (can message lead or ANY teammate directly)
   │
   ▼
-Ideation Lead (orchestrator-ideation-team-lead — Opus)
+Ideation Lead (ideation-team-lead — Opus)
   │  1. Analyzes task → decides what specialist roles are needed
   │  2. Creates team, spawns teammates with dynamic roles/prompts
   │  3. Synthesizes findings, creates plan artifact + proposals
@@ -128,7 +128,7 @@ I'll spawn:
 User (can message lead or ANY advocate directly — e.g., "Advocate B, what about caching?")
   │
   ▼
-Ideation Lead (orchestrator-ideation-team-lead — Opus, delegate mode)
+Ideation Lead (ideation-team-lead — Opus, delegate mode)
   │  1. Identifies competing approaches from task analysis
   │  2. Dynamically creates advocate roles + prompts for each approach
   │  3. Always includes a devil's advocate role
@@ -172,7 +172,7 @@ cache, or introduce a real-time sync layer. I'll spawn:
 
 | Agent | Model | Purpose |
 |-------|-------|---------|
-| `orchestrator-ideation-team-lead` | Opus | Creates team, dynamically decides roles, spawns teammates with custom prompts, synthesizes findings, creates plan/proposals. Has delegate mode active. |
+| `ideation-team-lead` | Opus | Creates team, dynamically decides roles, spawns teammates with custom prompts, synthesizes findings, creates plan/proposals. Has delegate mode active. |
 
 **All other teammates are dynamically created by the lead.** The lead uses the Task tool to spawn each teammate with:
 - A custom `prompt` describing the role, focus area, and expected output
@@ -193,6 +193,25 @@ The lead MAY use predefined agent prompt templates from `ralphx-plugin/agents/` 
 | `ideation-critic.md` | Adversarial stress-testing | Lead creates devil's advocate |
 
 **All ideation teammates are READ-ONLY** (no Write/Edit) — enforced by the constraint configuration, not by predefined agent configs.
+
+### 3.5 Team Lead Identity: Lightweight Coordinator vs Reusing Orchestrator-Ideation
+
+**RESOLVED: Use a new lightweight coordinator agent (`ideation-team-lead`).**
+
+| Option | Pros | Cons |
+|--------|------|------|
+| **A: New lightweight coordinator** | Minimal system prompt (coordination-only). Lower token overhead per turn. Cleaner separation of concerns — solo flow untouched. Can use Opus without bloating the solo agent's cost profile. | New agent to maintain. Duplicates some UNDERSTAND phase logic. |
+| **B: Reuse orchestrator-ideation** | Zero duplication — same UNDERSTAND/PLAN logic. One agent to maintain. | Bloated system prompt (solo + team instructions). orchestrator-ideation is Sonnet — team lead benefits from Opus for coordination. Solo sessions pay token cost for team instructions they never use. Harder to evolve independently. |
+
+**Recommendation: Option A.** The team lead has fundamentally different responsibilities (spawn teammates, coordinate messaging, synthesize cross-agent findings) vs the solo orchestrator (sequential subagent dispatch). Keeping them separate avoids prompt bloat, allows the lead to use Opus for superior coordination, and means changes to team logic never risk breaking the solo flow.
+
+The new agent is named `ideation-team-lead` (dropping the `orchestrator-` prefix to signal it's a coordinator, not a solo orchestrator). Its system prompt focuses on:
+1. Task analysis → dynamic role selection
+2. Teammate spawning with well-scoped prompts
+3. Cross-agent synthesis and debate moderation
+4. Plan artifact creation from team findings
+
+The solo `orchestrator-ideation` agent remains **completely unchanged**.
 
 ---
 
@@ -218,9 +237,9 @@ interface IdeationSessionConfig {
   // Existing fields...
   teamMode: 'solo' | 'research' | 'debate';  // NEW - default: 'solo'
   teamConfig?: {
-    maxTeammates: number;       // 2-5, default: 3
+    maxTeammates: number;       // 2-8, default: 5
     modelCeiling: string;       // max model any teammate can use, default: 'sonnet'
-    costBudget?: number;        // Max USD for team session (optional)
+    budgetLimit?: number;       // Max USD for team session (disabled by default, configurable via team_constraints.budget_limit)
     compositionMode: 'dynamic' | 'constrained';  // default: 'dynamic'
   };
 }
@@ -233,8 +252,8 @@ agents:
   # Existing orchestrator-ideation unchanged...
 
   # === TEAM LEAD (the only predefined agent required) ===
-  - name: orchestrator-ideation-team-lead
-    system_prompt_file: ralphx-plugin/agents/orchestrator-ideation-team-lead.md
+  - name: ideation-team-lead
+    system_prompt_file: ralphx-plugin/agents/ideation-team-lead.md
     model: opus
     tools:
       extends: base_tools
@@ -406,8 +425,8 @@ Spawn approved → build CLI args → spawn process
 │                                                      │
 │  [When Research or Debate selected:]                 │
 │  ┌──────────────────────────────────────────────┐   │
-│  │ Max teammates: 3 ▾  Model ceiling: Sonnet ▾  │   │
-│  │ Budget: $5.00 (optional)                      │   │
+│  │ Max teammates: 5 ▾  Model ceiling: Sonnet ▾  │   │
+│  │ Budget limit: None ▾ (optional)               │   │
 │  │ Composition: ● Dynamic  ○ Constrained         │   │
 │  └──────────────────────────────────────────────┘   │
 │  ┌──────────────────────────────────────────────┐   │
@@ -489,12 +508,29 @@ When the lead presents the plan after team research, the plan display includes a
 ### Architecture
 [Plan content — same format as today]
 
-### Debate Summary (Debate mode only)
-| Approach | Advocate | Strengths | Weaknesses |
-|----------|----------|-----------|------------|
-| WebSockets | Advocate A | Real-time, bidirectional | Complexity, state mgmt |
-| SSE | Advocate B | Simple, HTTP-based | One-directional |
-| Winner: WebSockets — justification: ...
+### Debate Summary (Debate mode only — side-by-side layout)
+
+**RESOLVED: Side-by-side presentation preferred.** Each advocate's case is shown as a column with comparable rows (strengths, weaknesses, evidence, cost). The user can scan horizontally to compare. Open to iteration on exact layout.
+
+┌─────────────────────────┬─────────────────────────┬─────────────────────────┐
+│ WebSockets (Advocate A) │ SSE (Advocate B)        │ Sync Layer (Advocate C) │
+├─────────────────────────┼─────────────────────────┼─────────────────────────┤
+│ **Strengths**           │ **Strengths**           │ **Strengths**           │
+│ - Real-time, bidir.     │ - Simple, HTTP-based    │ - Abstractable          │
+│ - Low latency           │ - Auto-reconnect        │ - Framework-agnostic    │
+├─────────────────────────┼─────────────────────────┼─────────────────────────┤
+│ **Weaknesses**          │ **Weaknesses**          │ **Weaknesses**          │
+│ - State mgmt complex    │ - One-directional       │ - Over-engineering risk │
+│ - Connection handling    │ - No binary support     │ - New abstraction layer │
+├─────────────────────────┼─────────────────────────┼─────────────────────────┤
+│ **Evidence**            │ **Evidence**            │ **Evidence**            │
+│ - Existing useWS hook   │ - No SSE infra exists   │ - No precedent in repo  │
+├─────────────────────────┼─────────────────────────┼─────────────────────────┤
+│ **Critic Challenge**    │ **Critic Challenge**    │ **Critic Challenge**    │
+│ "Reconnect handling?"   │ "Server→client only?"   │ "Premature abstraction" │
+└─────────────────────────┴─────────────────────────┴─────────────────────────┘
+
+★ Winner: WebSockets — Lead justification: bidirectional needed for collab editing, existing hook provides foundation.
 ```
 
 ---
@@ -516,9 +552,9 @@ When the lead presents the plan after team research, the plan display includes a
 
 ```rust
 pub struct TeamConfig {
-    pub max_teammates: u32,           // 2-5
+    pub max_teammates: u32,           // 2-8, default: 5
     pub model_ceiling: String,        // "sonnet" | "haiku" | "opus"
-    pub cost_budget_usd: Option<f64>,
+    pub budget_limit_usd: Option<f64>, // Disabled by default, configurable via team_constraints.budget_limit
     pub composition_mode: CompositionMode,  // Dynamic | Constrained
 }
 
@@ -600,6 +636,54 @@ export function useSendTeamMessage(sessionId: string) { ... }
 
 No structural MCP server changes — the existing tool filtering system works. The new `ideation-team-member` agent type acts as the ceiling for all dynamically-spawned ideation teammates.
 
+### 6.4 Artifact Model for Multi-Agent Contribution
+
+**RESOLVED: Teammates create supporting artifacts. Master artifact unchanged.**
+
+The current artifact model uses one versioned master plan artifact per ideation session (`create_plan_artifact` / `update_plan_artifact`). This stays as-is — the lead owns the master artifact and creates it during the PLAN phase after synthesizing team findings.
+
+**New: Supporting artifacts.** Teammates create supporting documentation artifacts (research findings, approach analyses, comparison tables) that link back to the master artifact. These are reference material for the lead's synthesis and for user review.
+
+**Proposed MCP tool changes:**
+
+| Tool | Agent Access | Description |
+|------|-------------|-------------|
+| `create_supporting_artifact` | `ideation-team-member` | Create a supporting artifact linked to the session. Params: `session_id`, `title`, `content`, `artifact_type` ("research" \| "analysis" \| "comparison"), `parent_artifact_id` (optional — links to master plan). |
+| `get_supporting_artifacts` | `ideation-team-lead`, `ideation-team-member` | List/retrieve supporting artifacts for a session. Filterable by `artifact_type` and `author`. |
+
+**Linking mechanism — `parent_artifact_id`:**
+- Supporting artifacts can optionally reference the master plan artifact via `parent_artifact_id`
+- If no master artifact exists yet (EXPLORE phase, before PLAN), supporting artifacts are session-scoped only
+- When the lead creates the master plan, they can reference supporting artifact IDs in the plan content
+- UI displays supporting artifacts as expandable references under the master plan
+
+**Schema addition:**
+```sql
+CREATE TABLE supporting_artifacts (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES ideation_sessions(id),
+    parent_artifact_id TEXT REFERENCES plan_artifacts(id),  -- optional link to master
+    author_name TEXT NOT NULL,        -- teammate name who created it
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    artifact_type TEXT NOT NULL,       -- 'research' | 'analysis' | 'comparison'
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+```
+
+**Impact on YAML `mcp_tool_ceiling`:** Add `create_supporting_artifact` and `get_supporting_artifacts` to the teammate ceiling:
+```yaml
+mcp_tool_ceiling:
+  - get_session_plan
+  - list_session_proposals
+  - get_plan_artifact
+  - create_supporting_artifact   # NEW
+  - get_supporting_artifacts     # NEW
+```
+
+**FLAG:** This is the most significant MCP change in this brief. Requires: new MCP tools registered in `ralphx-mcp-server`, new HTTP endpoints in Tauri backend, new DB table, updated `tools.ts` allowlist. Recommend treating artifact model as a dedicated implementation task within Phase 1.
+
 ---
 
 ## 7. Backend Architecture
@@ -613,7 +697,7 @@ User creates session (teamMode: "research", compositionMode: "dynamic")
 Backend creates ideation session (existing flow)
   │
   ▼
-Backend spawns team lead (orchestrator-ideation-team-lead) in INTERACTIVE mode
+Backend spawns team lead (ideation-team-lead) in INTERACTIVE mode
   │  Lead has team CLI flags: --team-name ideation-{session_id}
   │
   ▼
@@ -745,6 +829,60 @@ Team sessions count against `max_concurrent_tasks` as follows:
 
 **Important:** The exact slot count is dynamic because the lead decides how many teammates to spawn. The backend enforces `max_teammates` from YAML constraints, and total slots are capped by `max_concurrent_tasks` in execution settings.
 
+### 7.5 Team Resume in RECOVER Phase
+
+**RESOLVED: YES — team sessions support resume in RECOVER.**
+
+When a team ideation session is interrupted (user closes app, lead crashes, session expires), the RECOVER phase must handle team state reconstruction.
+
+**Team state persisted to DB (for resume):**
+
+| Data | Storage | Purpose |
+|------|---------|---------|
+| Team composition | `team_sessions` table: lead ID, teammate names/roles/prompts | Re-spawn teammates with same roles |
+| Supporting artifacts | `supporting_artifacts` table (Section 6.4) | Research findings survive crashes |
+| Master plan artifact | Existing `plan_artifacts` table | Plan-in-progress preserved |
+| Team messages | `team_messages` table: sender, recipient, content, timestamp | Conversation history for context reconstruction |
+| Phase progress | Existing session state | Which phase the team was in |
+
+**Resume flow:**
+```
+User reopens session (or lead detects expired teammates)
+  │
+  ▼
+Lead enters RECOVER phase
+  │
+  ▼
+Lead reads team state from DB via MCP:
+  - get_team_session_state(session_id) → team composition, phase, artifacts
+  │
+  ▼
+Lead evaluates resume strategy:
+  │
+  ├─ Phase was EXPLORE (teammates still researching)
+  │  → Re-spawn teammates with SAME roles/prompts from DB
+  │  → Inject context: "You are resuming research. Prior findings: [supporting artifacts]"
+  │  → Teammates continue where they left off (read-only, so no state corruption risk)
+  │
+  ├─ Phase was PLAN (lead was synthesizing)
+  │  → No teammates needed — lead resumes synthesis from artifacts + messages
+  │  → Supporting artifacts contain all teammate research
+  │
+  └─ Phase was CONFIRM/PROPOSE/FINALIZE (lead was presenting)
+     → No teammates needed — lead resumes solo from plan artifact
+```
+
+**New MCP tools for resume:**
+
+| Tool | Agent | Description |
+|------|-------|-------------|
+| `get_team_session_state` | `ideation-team-lead` | Retrieve persisted team composition, phase, and artifact IDs for a session |
+| `save_team_session_state` | `ideation-team-lead` | Persist current team composition to DB (called after spawning teammates) |
+
+**Key constraint:** Claude Code `--resume` flag resumes a single session, NOT a team. Team resume is managed by the lead agent reading persisted state and re-spawning teammates. The lead itself CAN be resumed with `--resume` (its session ID is stable), but teammates get fresh sessions with injected context from supporting artifacts.
+
+**Why this works:** Because all ideation teammates are **read-only**, there's no risk of duplicate writes or state corruption on resume. The worst case is a teammate re-reads files it already analyzed — which produces the same findings.
+
 ---
 
 ## 8. Critical Architecture Constraint: Interactive vs Print Mode
@@ -806,7 +944,7 @@ MCP servers are stdio-based, per-process. They work regardless of whether the ag
 | **MCP tool scoping for dynamic roles** | Medium | "team-member" allowlist in tools.ts as ceiling (Section 4.5). Validated against YAML constraints. |
 | **Teammate context divergence** | Medium | Teammates share findings via messaging. Lead synthesizes into unified plan. User can intervene directly. |
 | **Team coordination overhead** | Medium | Lead manages coordination. User can redirect individual teammates if needed. |
-| **Session recovery complexity** | Medium | Teams don't support `--resume`. If teammate crashes, re-spawn it. Backend tracks team state. |
+| **Session recovery complexity** | Medium | Teams don't support `--resume`. Lead re-spawns teammates with injected context from supporting artifacts (Section 7.5). Backend persists team state for RECOVER phase. |
 | **Increased latency** | Low | Research phase takes longer (3-5 min vs 1-2 min), but plan quality improves. User notified via progress UI. |
 | **File conflicts** | None | All ideation agents are read-only. No file writes in ideation workflow. |
 
@@ -857,51 +995,69 @@ MCP servers are stdio-based, per-process. They work regardless of whether the ag
 - **Backend:** Team lifecycle management, constraint validation engine, teammate spawning
 - **Backend:** Team config + task list directory management (Hybrid model)
 - **Backend:** User-to-teammate message routing
+- **Backend:** Supporting artifacts DB table + CRUD (Section 6.4)
+- **Backend:** Team session state persistence for resume (Section 7.5)
 - **Config:** `team_constraints` in ralphx.yaml, `compositionMode` (dynamic/constrained)
-- **Agent:** `orchestrator-ideation-team-lead` prompt + system card
+- **Agent:** `ideation-team-lead` prompt + system card (new lightweight coordinator — Section 3.5)
 - **MCP:** `ideation-team-member` allowlist in tools.ts, `request_teammate_spawn` tool
+- **MCP:** `create_supporting_artifact`, `get_supporting_artifacts` tools (Section 6.4)
+- **MCP:** `get_team_session_state`, `save_team_session_state` tools (Section 7.5)
 - **UI:** Team mode selector in session creation (Research + Debate)
 - **UI:** Team activity panel with dynamic role names
 - **UI:** User-to-teammate direct messaging
-- **Scope:** Research Team with dynamic composition. Lead decides roles.
+- **Scope:** Research Team with dynamic composition. Lead decides roles. Team resume in RECOVER.
 
 ### Phase 2: Debate Mode + Full Lifecycle
 - Debate Team mode with dynamically-created advocate roles
-- UI: Competing plans side-by-side presentation
+- UI: Side-by-side competing plans presentation (Section 5.4)
 - Teammates persist through PLAN phase for feedback
-- Cost tracking and budget enforcement
+- Cost tracking and optional budget enforcement
 - Template library for common ideation patterns (optional presets)
 
 ### Phase 3: Advanced Control
 - Per-project team mode defaults (e.g., "always use Research Team for this project")
 - User-defined constraint overrides per session
-- Team session recovery (re-spawn teammates on crash)
 - Analytics: team vs solo quality comparison dashboard
+- Supporting artifact search/filtering in UI
 
 ---
 
 ## 12. Open Questions for Product Review
 
-**Answered (incorporated into brief):**
+**RESOLVED (v2→v4):**
 - ~~User-to-teammate messaging~~ → YES, users can message both lead and individual teammates (Section 5.2, 7.3)
 - ~~Cost tolerance~~ → Both tiered. Team recommended for complex, solo for simple (Section 3.1, 10)
 - ~~Phase scope~~ → Both ideation and worker in same phase (Section 11)
 - ~~Flow preservation~~ → Confirmed opt-in, current flows untouched (Section 1)
 - ~~Dynamic vs predefined roles~~ → Dynamic default, constrained opt-in (Section 4.1)
+- ~~Team lead identity~~ → **RESOLVED v4:** New lightweight coordinator `ideation-team-lead` (Section 3.5). Cleaner separation from solo orchestrator.
+- ~~Hybrid approach~~ → **RESOLVED v4:** Confirmed. Dynamic default + constrained opt-in.
+- ~~Specialist count~~ → **RESOLVED v4:** Default 5 specialists. No budget cap by default; configurable via `team_constraints.budget_limit`.
+- ~~Debate UI layout~~ → **RESOLVED v4:** Side-by-side preferred (Section 5.4). Open to iteration.
+- ~~Team findings persistence~~ → **RESOLVED v4:** Supporting artifacts model (Section 6.4). Teammates create linked supporting artifacts; master plan artifact unchanged.
+- ~~Team resume~~ → **RESOLVED v4:** YES — team sessions resume in RECOVER phase via persisted team state (Section 7.5).
 
 **Remaining open questions:**
 
-1. **Team findings persistence:** Currently plan artifacts persist but teammate research doesn't. Should we store teammate findings as additional artifacts? Or are they ephemeral (only the synthesized plan matters)?
+1. **Cost presentation:** Should we show per-teammate token usage breakdown, or just aggregate? (Per-teammate helps users understand which roles are most valuable.)
 
-2. **Cost presentation:** Should we show per-teammate token usage breakdown, or just aggregate? (Per-teammate helps users understand which roles are most valuable.)
+2. **Lead model selection:** Is Opus the right default for the team lead? It's more expensive but better at coordination. Alternative: Sonnet lead for research teams, Opus only for debate teams.
 
-3. **Lead model selection:** Is Opus the right default for the team lead? It's more expensive but better at coordination. Alternative: Sonnet lead for research teams, Opus only for debate teams.
+3. **Integration with Active Plan:** When a team-ideated plan is accepted, should it be tagged as "team-ideated" for downstream visibility? This could help correlate plan quality with team usage.
 
-4. **Integration with Active Plan:** When a team-ideated plan is accepted, should it be tagged as "team-ideated" for downstream visibility? This could help correlate plan quality with team usage.
+4. **Dynamic role guardrails:** In dynamic mode, should there be a minimum prompt length or quality check for lead-generated teammate prompts? Or trust the lead fully?
 
-5. **Dynamic role guardrails:** In dynamic mode, should there be a minimum prompt length or quality check for lead-generated teammate prompts? Or trust the lead fully?
+5. **Constrained mode UX:** When constrained mode is selected, should the user see and approve the predefined roles before the lead spawns them?
 
-6. **Constrained mode UX:** When constrained mode is selected, should the user see and approve the predefined roles before the lead spawns them?
+**NEW questions surfaced by v4 decisions:**
+
+6. **Supporting artifact retention:** How long should supporting artifacts persist? Options: (a) Delete when session closes, (b) Keep for N days, (c) Keep indefinitely. Affects storage and searchability.
+
+7. **Resume teammate context injection:** When re-spawning teammates in RECOVER, how much prior context should be injected? Full message history may exceed context window for long sessions. May need a summary strategy.
+
+8. **Side-by-side debate UI — mobile/narrow viewport:** The side-by-side layout works on wide screens. What's the fallback for narrow viewports? Stacked cards? Tabbed view?
+
+9. **Supporting artifact MCP tool scope:** Should the `create_supporting_artifact` tool be available to worker teammates too (in the worker integration brief)? Or ideation-only?
 
 ---
 
