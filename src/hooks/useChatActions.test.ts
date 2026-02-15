@@ -170,7 +170,7 @@ describe("useChatActions", () => {
 
       // Should use direct API, NOT the mutation
       expect(mutateAsync).not.toHaveBeenCalled();
-      expect(mockSendAgentMessage).toHaveBeenCalledWith("review", "task-42", "looks good", undefined);
+      expect(mockSendAgentMessage).toHaveBeenCalledWith("review", "task-42", "looks good", undefined, undefined);
       expect(mockActions.setAgentRunning).toHaveBeenCalledWith("review:task-42", true);
       expect(mockInvalidateQueries).toHaveBeenCalled();
     });
@@ -249,7 +249,9 @@ describe("useChatActions", () => {
         "task",
         "task-1",
         "queued msg",
-        expect.stringMatching(/^queued-\d+-[a-z0-9]+$/)
+        expect.stringMatching(/^queued-\d+-[a-z0-9]+$/),
+        undefined,
+        undefined
       );
     });
 

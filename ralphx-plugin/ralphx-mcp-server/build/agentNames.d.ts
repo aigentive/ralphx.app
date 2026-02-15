@@ -22,4 +22,7 @@ export declare const ORCHESTRATOR = "ralphx-orchestrator";
 export declare const DEEP_RESEARCHER = "ralphx-deep-researcher";
 export declare const MEMORY_MAINTAINER = "memory-maintainer";
 export declare const MEMORY_CAPTURE = "memory-capture";
+export declare const IDEATION_TEAM_LEAD = "ideation-team-lead";
+export declare const IDEATION_TEAM_MEMBER = "ideation-team-member";
+export declare const WORKER_TEAM_MEMBER = "worker-team-member";
 //# sourceMappingURL=agentNames.d.ts.map
