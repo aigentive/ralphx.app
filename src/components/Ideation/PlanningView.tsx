@@ -888,22 +888,25 @@ export function PlanningView({
               )}
             </div>
 
-            {/* Resize Handle */}
+            {/* Resize Handle - only when session active */}
+            {session && (
             <ResizeHandle
               isResizing={isResizing}
               onMouseDown={handleResizeStart}
               testId="ideation-resize-handle"
             />
+            )}
 
-            {/* Conversation Panel (Right) - Using IntegratedChatPanel */}
+            {/* Conversation Panel (Right) - Only shown when session is active */}
+            {session && (
             <div
               data-testid="conversation-panel"
               className="flex flex-col shrink-0"
               style={{ width: `${chatPanelWidth}px` }}
             >
               <IntegratedChatPanel
-                projectId={session?.projectId || ""}
-                ideationSessionId={session?.id || ""}
+                projectId={session.projectId}
+                ideationSessionId={session.id}
                 emptyState={<ConversationEmptyState />}
                 showHelperTextAlways={true}
                 headerContent={
@@ -914,6 +917,7 @@ export function PlanningView({
                 }
               />
             </div>
+            )}
           </div>
           </div>
         </div>
