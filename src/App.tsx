@@ -26,6 +26,7 @@ import { ProjectSelector } from "@/components/projects/ProjectSelector";
 import { ProjectCreationWizard } from "@/components/projects/ProjectCreationWizard";
 import { PlanQuickSwitcherPalette } from "@/components/plan/PlanQuickSwitcherPalette";
 import { useUiStore } from "@/stores/uiStore";
+import { useTaskStore, selectTasksByStatus } from "@/stores/taskStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useIdeationStore, selectActiveSession } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
@@ -232,6 +233,10 @@ function AppContent() {
   const hasAttentionMerges = useMemo(() => {
     return (mergePipelineData?.needsAttention.length ?? 0) > 0;
   }, [mergePipelineData]);
+
+  // Paused tasks (provider errors)
+  const pausedTasks = useTaskStore(selectTasksByStatus("paused"));
+  const pausedCount = pausedTasks.length;
 
   // Ideation hooks
   const { data: sessionData, isLoading: isSessionLoading } = useIdeationSession(activeSession?.id ?? "");
@@ -947,6 +952,8 @@ function AppContent() {
                       runningCount={executionStatus.runningCount}
                       maxConcurrent={executionStatus.maxConcurrent}
                       queuedCount={executionStatus.queuedCount}
+                      pausedCount={pausedCount}
+                      pausedTasks={pausedTasks}
                       mergingCount={mergingCount}
                       hasAttentionMerges={hasAttentionMerges}
                       mergePipelineData={mergePipelineData ?? null}
@@ -978,6 +985,8 @@ function AppContent() {
                       runningCount={executionStatus.runningCount}
                       maxConcurrent={executionStatus.maxConcurrent}
                       queuedCount={executionStatus.queuedCount}
+                      pausedCount={pausedCount}
+                      pausedTasks={pausedTasks}
                       mergingCount={mergingCount}
                       hasAttentionMerges={hasAttentionMerges}
                       mergePipelineData={mergePipelineData ?? null}
@@ -1016,6 +1025,8 @@ function AppContent() {
                       runningCount={executionStatus.runningCount}
                       maxConcurrent={executionStatus.maxConcurrent}
                       queuedCount={executionStatus.queuedCount}
+                      pausedCount={pausedCount}
+                      pausedTasks={pausedTasks}
                       mergingCount={mergingCount}
                       hasAttentionMerges={hasAttentionMerges}
                       mergePipelineData={mergePipelineData ?? null}

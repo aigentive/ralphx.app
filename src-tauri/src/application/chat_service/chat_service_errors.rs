@@ -6,6 +6,112 @@
 
 use crate::domain::entities::{ChatContextType, ChatConversationId, InternalStatus};
 use crate::error::AppError;
+use serde::{Deserialize, Serialize};
+
+/// Category of provider/API error for recovery decisions.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderErrorCategory {
+    /// HTTP 429 or usage limit exceeded
+    RateLimit,
+    /// HTTP 401/403 or invalid API key
+    AuthError,
+    /// HTTP 5xx from provider
+    ServerError,
+    /// Connection refused, DNS failure, network timeout
+    NetworkError,
+    /// Overloaded API (Claude-specific overloaded_error)
+    Overloaded,
+}
+
+impl std::fmt::Display for ProviderErrorCategory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::RateLimit => write!(f, "rate_limit"),
+            Self::AuthError => write!(f, "auth_error"),
+            Self::ServerError => write!(f, "server_error"),
+            Self::NetworkError => write!(f, "network_error"),
+            Self::Overloaded => write!(f, "overloaded"),
+        }
+    }
+}
+
+/// Metadata stored in task.metadata when paused due to provider error.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderErrorMetadata {
+    pub category: ProviderErrorCategory,
+    pub message: String,
+    /// ISO 8601 timestamp when the error's limit resets (parsed from error message)
+    pub retry_after: Option<String>,
+    /// The task status before pausing (for resuming to correct state)
+    pub previous_status: String,
+    /// When the task was paused
+    pub paused_at: String,
+    /// Whether the system should auto-resume this task
+    pub auto_resumable: bool,
+    /// Number of auto-resume attempts so far
+    #[serde(default)]
+    pub resume_attempts: u32,
+}
+
+impl ProviderErrorMetadata {
+    /// Maximum auto-resume attempts before giving up
+    pub const MAX_RESUME_ATTEMPTS: u32 = 5;
+
+    /// Read provider_error metadata from task metadata JSON string.
+    pub fn from_task_metadata(metadata: Option<&str>) -> Option<Self> {
+        let json: serde_json::Value = serde_json::from_str(metadata?).ok()?;
+        let provider_error = json.get("provider_error")?;
+        serde_json::from_value(provider_error.clone()).ok()
+    }
+
+    /// Write provider_error metadata into task metadata JSON string.
+    pub fn write_to_task_metadata(&self, existing_metadata: Option<&str>) -> String {
+        let mut json: serde_json::Value = existing_metadata
+            .and_then(|m| serde_json::from_str(m).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        if let Some(obj) = json.as_object_mut() {
+            obj.insert(
+                "provider_error".to_string(),
+                serde_json::to_value(self).unwrap_or_default(),
+            );
+        }
+
+        json.to_string()
+    }
+
+    /// Remove provider_error metadata from task metadata (on successful resume).
+    pub fn clear_from_task_metadata(existing_metadata: Option<&str>) -> String {
+        let mut json: serde_json::Value = existing_metadata
+            .and_then(|m| serde_json::from_str(m).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        if let Some(obj) = json.as_object_mut() {
+            obj.remove("provider_error");
+        }
+
+        json.to_string()
+    }
+
+    /// Check if retry_after time has passed.
+    pub fn is_retry_eligible(&self) -> bool {
+        if self.resume_attempts >= Self::MAX_RESUME_ATTEMPTS {
+            return false;
+        }
+        if !self.auto_resumable {
+            return false;
+        }
+        match &self.retry_after {
+            Some(retry_after_str) => {
+                chrono::DateTime::parse_from_rfc3339(retry_after_str)
+                    .map(|dt| chrono::Utc::now() >= dt)
+                    .unwrap_or(true) // If can't parse, allow retry
+            }
+            None => true, // No retry_after means retry immediately
+        }
+    }
+}
 
 /// Typed error for stream processing failures.
 ///
@@ -38,6 +144,14 @@ pub enum StreamError {
     NoOutput { context_type: ChatContextType },
     /// Agent run was cancelled (e.g., user-initiated stop).
     Cancelled,
+    /// Provider/API error that is potentially recoverable (rate limits, server errors, etc.).
+    /// Task should be paused rather than failed, and auto-resumed when conditions improve.
+    ProviderError {
+        category: ProviderErrorCategory,
+        message: String,
+        /// ISO 8601 timestamp when the provider limit resets
+        retry_after: Option<String>,
+    },
 }
 
 impl std::fmt::Display for StreamError {
@@ -86,6 +200,9 @@ impl std::fmt::Display for StreamError {
                 )
             }
             Self::Cancelled => write!(f, "Agent run was cancelled"),
+            Self::ProviderError {
+                category, message, ..
+            } => write!(f, "Provider error ({}): {}", category, message),
         }
     }
 }
@@ -98,6 +215,7 @@ impl StreamError {
     /// Timeout and ParseStall may succeed on retry (transient stalls).
     /// SessionNotFound is retryable via session recovery.
     /// AgentExit may be retryable depending on the exit code.
+    /// ProviderError is retryable after the retry_after period.
     pub fn is_retryable(&self) -> bool {
         matches!(
             self,
@@ -105,6 +223,7 @@ impl StreamError {
                 | Self::ParseStall { .. }
                 | Self::SessionNotFound { .. }
                 | Self::AgentExit { .. }
+                | Self::ProviderError { .. }
         )
     }
 
@@ -112,6 +231,7 @@ impl StreamError {
     ///
     /// SessionNotFound means the session is stale and must be cleared.
     /// Timeout/ParseStall may indicate a stuck session that should be reset.
+    /// ProviderError does NOT require session clear — session is still valid.
     pub fn requires_session_clear(&self) -> bool {
         matches!(
             self,
@@ -123,9 +243,11 @@ impl StreamError {
     ///
     /// Returns `None` for non-task contexts or when no transition is appropriate.
     /// `Failed` is the default for most errors; `Cancelled` for user-initiated stops.
+    /// `Paused` for recoverable provider errors (rate limits, server errors, etc.).
     pub fn suggested_task_status(&self) -> Option<InternalStatus> {
         match self {
             Self::Cancelled => Some(InternalStatus::Cancelled),
+            Self::ProviderError { .. } => Some(InternalStatus::Paused),
             Self::Timeout { .. }
             | Self::ParseStall { .. }
             | Self::AgentExit { .. }
@@ -133,6 +255,156 @@ impl StreamError {
             | Self::ProcessSpawnFailed { .. }
             | Self::NoOutput { .. } => Some(InternalStatus::Failed),
         }
+    }
+
+    /// Whether this is a provider/API error that should pause rather than fail.
+    pub fn is_provider_error(&self) -> bool {
+        matches!(self, Self::ProviderError { .. })
+    }
+
+    /// Build ProviderErrorMetadata for storing in task metadata.
+    /// Only valid for ProviderError variants.
+    pub fn provider_error_metadata(
+        &self,
+        previous_status: InternalStatus,
+    ) -> Option<ProviderErrorMetadata> {
+        match self {
+            Self::ProviderError {
+                category,
+                message,
+                retry_after,
+            } => Some(ProviderErrorMetadata {
+                category: category.clone(),
+                message: message.clone(),
+                retry_after: retry_after.clone(),
+                previous_status: previous_status.to_string(),
+                paused_at: chrono::Utc::now().to_rfc3339(),
+                auto_resumable: true,
+                resume_attempts: 0,
+            }),
+            _ => None,
+        }
+    }
+}
+
+/// Classify an error string from agent stderr/result as a provider error if applicable.
+///
+/// Detects patterns like:
+/// - `429 {"error":{"code":"1308","message":"Usage limit reached..."}}`
+/// - `Rate limit exceeded`
+/// - `overloaded_error`
+/// - `API_TIMEOUT_MS`
+/// - HTTP status codes 401, 403, 429, 500, 502, 503, 504
+pub fn classify_provider_error(error_text: &str) -> Option<StreamError> {
+    let lower = error_text.to_lowercase();
+
+    // 429 rate limit (z.ai style: "429 {"error":{"code":"1308","message":"Usage limit..."}}")
+    if lower.contains("429") && (lower.contains("usage limit") || lower.contains("rate limit")) {
+        let retry_after = parse_retry_after_from_message(error_text);
+        return Some(StreamError::ProviderError {
+            category: ProviderErrorCategory::RateLimit,
+            message: truncate_error_message(error_text),
+            retry_after,
+        });
+    }
+
+    // Generic rate limit patterns
+    if lower.contains("rate limit")
+        || lower.contains("rate_limit")
+        || lower.contains("too many requests")
+    {
+        let retry_after = parse_retry_after_from_message(error_text);
+        return Some(StreamError::ProviderError {
+            category: ProviderErrorCategory::RateLimit,
+            message: truncate_error_message(error_text),
+            retry_after,
+        });
+    }
+
+    // Claude overloaded
+    if lower.contains("overloaded_error") || lower.contains("overloaded") {
+        return Some(StreamError::ProviderError {
+            category: ProviderErrorCategory::Overloaded,
+            message: truncate_error_message(error_text),
+            retry_after: None,
+        });
+    }
+
+    // Auth errors
+    if lower.contains("401") && (lower.contains("unauthorized") || lower.contains("invalid"))
+        || lower.contains("403") && lower.contains("forbidden")
+        || lower.contains("invalid api key")
+        || lower.contains("invalid_api_key")
+    {
+        return Some(StreamError::ProviderError {
+            category: ProviderErrorCategory::AuthError,
+            message: truncate_error_message(error_text),
+            retry_after: None,
+        });
+    }
+
+    // Server errors (5xx)
+    for code in ["500", "502", "503", "504"] {
+        if lower.contains(code)
+            && (lower.contains("internal server error")
+                || lower.contains("bad gateway")
+                || lower.contains("service unavailable")
+                || lower.contains("gateway timeout")
+                || lower.contains("server error"))
+        {
+            return Some(StreamError::ProviderError {
+                category: ProviderErrorCategory::ServerError,
+                message: truncate_error_message(error_text),
+                retry_after: None,
+            });
+        }
+    }
+
+    // Network errors
+    if lower.contains("connection refused")
+        || lower.contains("connection reset")
+        || lower.contains("dns resolution failed")
+        || lower.contains("network is unreachable")
+        || (lower.contains("api_timeout_ms") && lower.contains("try increasing"))
+    {
+        return Some(StreamError::ProviderError {
+            category: ProviderErrorCategory::NetworkError,
+            message: truncate_error_message(error_text),
+            retry_after: None,
+        });
+    }
+
+    None
+}
+
+/// Parse a retry-after timestamp from error messages.
+/// Looks for patterns like "will reset at 2026-02-15 14:15:20"
+fn parse_retry_after_from_message(error_text: &str) -> Option<String> {
+    // Pattern: "reset at YYYY-MM-DD HH:MM:SS"
+    if let Some(idx) = error_text.find("reset at ") {
+        let after = &error_text[idx + "reset at ".len()..];
+        // Try to grab "YYYY-MM-DD HH:MM:SS" (19 chars)
+        if after.len() >= 19 {
+            let candidate = &after[..19];
+            // Validate it looks like a datetime
+            if candidate.chars().nth(4) == Some('-') && candidate.chars().nth(10) == Some(' ') {
+                // Convert to RFC3339
+                let rfc3339 = format!("{}T{}+00:00", &candidate[..10], &candidate[11..]);
+                if chrono::DateTime::parse_from_rfc3339(&rfc3339).is_ok() {
+                    return Some(rfc3339);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Truncate error message to reasonable length for storage.
+fn truncate_error_message(msg: &str) -> String {
+    if msg.len() > 500 {
+        format!("{}...", &msg[..500])
+    } else {
+        msg.to_string()
     }
 }
 
@@ -350,6 +622,17 @@ mod tests {
             Some(InternalStatus::Cancelled)
         );
 
+        // ProviderError → Paused status
+        assert_eq!(
+            StreamError::ProviderError {
+                category: ProviderErrorCategory::RateLimit,
+                message: "rate limited".to_string(),
+                retry_after: None,
+            }
+            .suggested_task_status(),
+            Some(InternalStatus::Paused)
+        );
+
         // All other errors → Failed status
         let failed_errors = vec![
             StreamError::Timeout {
@@ -420,5 +703,499 @@ mod tests {
 
         let cancelled = StreamError::Cancelled;
         assert!(cancelled.to_string().contains("cancelled"));
+
+        let provider_err = StreamError::ProviderError {
+            category: ProviderErrorCategory::RateLimit,
+            message: "Usage limit reached".to_string(),
+            retry_after: None,
+        };
+        assert!(provider_err.to_string().contains("rate_limit"));
+        assert!(provider_err.to_string().contains("Usage limit reached"));
+    }
+
+    // =========================================================================
+    // ProviderError classification tests
+    // =========================================================================
+
+    #[test]
+    fn test_classify_429_rate_limit_zai_format() {
+        let error = r#"429 {"error":{"code":"1308","message":"Usage limit reached for 5 hour. Your limit will reset at 2026-02-15 14:15:20"},"request_id":"20260215122056..."}"#;
+        let result = classify_provider_error(error);
+        assert!(result.is_some(), "Should classify 429 rate limit");
+        let err = result.unwrap();
+        assert!(matches!(
+            err,
+            StreamError::ProviderError {
+                category: ProviderErrorCategory::RateLimit,
+                ..
+            }
+        ));
+        // Should parse retry_after
+        if let StreamError::ProviderError { retry_after, .. } = &err {
+            assert!(retry_after.is_some(), "Should parse retry_after timestamp");
+            assert!(retry_after.as_ref().unwrap().contains("2026-02-15"));
+        }
+    }
+
+    #[test]
+    fn test_classify_generic_rate_limit() {
+        let result = classify_provider_error("Rate limit exceeded");
+        assert!(result.is_some());
+        if let Some(StreamError::ProviderError { category, .. }) = result {
+            assert_eq!(category, ProviderErrorCategory::RateLimit);
+        }
+    }
+
+    #[test]
+    fn test_classify_too_many_requests() {
+        let result = classify_provider_error("HTTP 429: Too Many Requests");
+        assert!(result.is_some());
+        if let Some(StreamError::ProviderError { category, .. }) = result {
+            assert_eq!(category, ProviderErrorCategory::RateLimit);
+        }
+    }
+
+    #[test]
+    fn test_classify_overloaded() {
+        let result = classify_provider_error("overloaded_error: API is overloaded");
+        assert!(result.is_some());
+        if let Some(StreamError::ProviderError { category, .. }) = result {
+            assert_eq!(category, ProviderErrorCategory::Overloaded);
+        }
+    }
+
+    #[test]
+    fn test_classify_auth_error() {
+        let result = classify_provider_error("401 Unauthorized: Invalid API key");
+        assert!(result.is_some());
+        if let Some(StreamError::ProviderError { category, .. }) = result {
+            assert_eq!(category, ProviderErrorCategory::AuthError);
+        }
+    }
+
+    #[test]
+    fn test_classify_server_error() {
+        let result = classify_provider_error("502 Bad Gateway");
+        assert!(result.is_some());
+        if let Some(StreamError::ProviderError { category, .. }) = result {
+            assert_eq!(category, ProviderErrorCategory::ServerError);
+        }
+    }
+
+    #[test]
+    fn test_classify_network_error() {
+        let result = classify_provider_error("Connection refused");
+        assert!(result.is_some());
+        if let Some(StreamError::ProviderError { category, .. }) = result {
+            assert_eq!(category, ProviderErrorCategory::NetworkError);
+        }
+    }
+
+    #[test]
+    fn test_classify_api_timeout_network_error() {
+        let result =
+            classify_provider_error("API_TIMEOUT_MS=3000000ms, try increasing it");
+        assert!(result.is_some());
+        if let Some(StreamError::ProviderError { category, .. }) = result {
+            assert_eq!(category, ProviderErrorCategory::NetworkError);
+        }
+    }
+
+    #[test]
+    fn test_classify_normal_error_not_provider() {
+        let result = classify_provider_error("Build failed: compilation error on line 42");
+        assert!(result.is_none(), "Normal errors should not be classified as provider errors");
+    }
+
+    #[test]
+    fn test_classify_empty_string() {
+        assert!(classify_provider_error("").is_none());
+    }
+
+    #[test]
+    fn test_provider_error_suggests_paused() {
+        let err = StreamError::ProviderError {
+            category: ProviderErrorCategory::RateLimit,
+            message: "test".to_string(),
+            retry_after: None,
+        };
+        assert_eq!(err.suggested_task_status(), Some(InternalStatus::Paused));
+        assert!(err.is_provider_error());
+        assert!(err.is_retryable());
+        assert!(!err.requires_session_clear());
+    }
+
+    #[test]
+    fn test_provider_error_metadata_build() {
+        let err = StreamError::ProviderError {
+            category: ProviderErrorCategory::RateLimit,
+            message: "Usage limit reached".to_string(),
+            retry_after: Some("2026-02-15T14:15:20+00:00".to_string()),
+        };
+        let meta = err
+            .provider_error_metadata(InternalStatus::Executing)
+            .expect("Should build metadata");
+        assert_eq!(meta.category, ProviderErrorCategory::RateLimit);
+        assert_eq!(meta.previous_status, "executing");
+        assert!(meta.auto_resumable);
+        assert_eq!(meta.resume_attempts, 0);
+    }
+
+    // =========================================================================
+    // ProviderErrorMetadata tests
+    // =========================================================================
+
+    #[test]
+    fn test_provider_error_metadata_roundtrip() {
+        let meta = ProviderErrorMetadata {
+            category: ProviderErrorCategory::RateLimit,
+            message: "test".to_string(),
+            retry_after: Some("2026-02-15T14:15:20+00:00".to_string()),
+            previous_status: "executing".to_string(),
+            paused_at: "2026-02-15T09:15:20+00:00".to_string(),
+            auto_resumable: true,
+            resume_attempts: 0,
+        };
+
+        let json = meta.write_to_task_metadata(None);
+        let restored = ProviderErrorMetadata::from_task_metadata(Some(&json));
+        assert!(restored.is_some());
+        let restored = restored.unwrap();
+        assert_eq!(restored.category, ProviderErrorCategory::RateLimit);
+        assert_eq!(restored.previous_status, "executing");
+    }
+
+    #[test]
+    fn test_provider_error_metadata_preserves_existing() {
+        let existing = r#"{"some_key": "some_value"}"#;
+        let meta = ProviderErrorMetadata {
+            category: ProviderErrorCategory::ServerError,
+            message: "502".to_string(),
+            retry_after: None,
+            previous_status: "reviewing".to_string(),
+            paused_at: "2026-02-15T09:00:00+00:00".to_string(),
+            auto_resumable: true,
+            resume_attempts: 1,
+        };
+
+        let json = meta.write_to_task_metadata(Some(existing));
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(parsed.get("some_key").is_some(), "Should preserve existing metadata");
+        assert!(parsed.get("provider_error").is_some());
+    }
+
+    #[test]
+    fn test_provider_error_metadata_clear() {
+        let with_error = r#"{"some_key": "val", "provider_error": {"category": "rate_limit"}}"#;
+        let cleared = ProviderErrorMetadata::clear_from_task_metadata(Some(with_error));
+        let parsed: serde_json::Value = serde_json::from_str(&cleared).unwrap();
+        assert!(parsed.get("provider_error").is_none(), "Should remove provider_error");
+        assert!(parsed.get("some_key").is_some(), "Should preserve other keys");
+    }
+
+    #[test]
+    fn test_retry_eligibility_future_time() {
+        let meta = ProviderErrorMetadata {
+            category: ProviderErrorCategory::RateLimit,
+            message: "test".to_string(),
+            retry_after: Some("2099-12-31T23:59:59+00:00".to_string()),
+            previous_status: "executing".to_string(),
+            paused_at: "2026-02-15T09:00:00+00:00".to_string(),
+            auto_resumable: true,
+            resume_attempts: 0,
+        };
+        assert!(!meta.is_retry_eligible(), "Should not be eligible with future retry_after");
+    }
+
+    #[test]
+    fn test_retry_eligibility_past_time() {
+        let meta = ProviderErrorMetadata {
+            category: ProviderErrorCategory::RateLimit,
+            message: "test".to_string(),
+            retry_after: Some("2020-01-01T00:00:00+00:00".to_string()),
+            previous_status: "executing".to_string(),
+            paused_at: "2026-02-15T09:00:00+00:00".to_string(),
+            auto_resumable: true,
+            resume_attempts: 0,
+        };
+        assert!(meta.is_retry_eligible(), "Should be eligible with past retry_after");
+    }
+
+    #[test]
+    fn test_retry_eligibility_max_attempts_exceeded() {
+        let meta = ProviderErrorMetadata {
+            category: ProviderErrorCategory::RateLimit,
+            message: "test".to_string(),
+            retry_after: None,
+            previous_status: "executing".to_string(),
+            paused_at: "2026-02-15T09:00:00+00:00".to_string(),
+            auto_resumable: true,
+            resume_attempts: ProviderErrorMetadata::MAX_RESUME_ATTEMPTS,
+        };
+        assert!(!meta.is_retry_eligible(), "Should not be eligible at max attempts");
+    }
+
+    #[test]
+    fn test_retry_eligibility_not_auto_resumable() {
+        let meta = ProviderErrorMetadata {
+            category: ProviderErrorCategory::AuthError,
+            message: "test".to_string(),
+            retry_after: None,
+            previous_status: "executing".to_string(),
+            paused_at: "2026-02-15T09:00:00+00:00".to_string(),
+            auto_resumable: false,
+            resume_attempts: 0,
+        };
+        assert!(!meta.is_retry_eligible(), "Should not be eligible when not auto_resumable");
+    }
+
+    #[test]
+    fn test_parse_retry_after_from_message() {
+        let msg = r#"Usage limit reached for 5 hour. Your limit will reset at 2026-02-15 14:15:20"#;
+        let result = parse_retry_after_from_message(msg);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), "2026-02-15T14:15:20+00:00");
+    }
+
+    #[test]
+    fn test_parse_retry_after_no_match() {
+        let result = parse_retry_after_from_message("Rate limit exceeded");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_provider_error_is_retryable() {
+        let err = StreamError::ProviderError {
+            category: ProviderErrorCategory::RateLimit,
+            message: "test".to_string(),
+            retry_after: None,
+        };
+        assert!(err.is_retryable());
+    }
+
+    // =========================================================================
+    // Additional classify_provider_error coverage
+    // =========================================================================
+
+    #[test]
+    fn test_classify_403_forbidden_auth_error() {
+        let result = classify_provider_error("403 Forbidden: Access denied");
+        assert!(result.is_some());
+        if let Some(StreamError::ProviderError { category, .. }) = result {
+            assert_eq!(category, ProviderErrorCategory::AuthError);
+        }
+    }
+
+    #[test]
+    fn test_classify_invalid_api_key_auth_error() {
+        let result = classify_provider_error("Error: invalid_api_key");
+        assert!(result.is_some());
+        if let Some(StreamError::ProviderError { category, .. }) = result {
+            assert_eq!(category, ProviderErrorCategory::AuthError);
+        }
+    }
+
+    #[test]
+    fn test_classify_500_internal_server_error() {
+        let result = classify_provider_error("500 Internal Server Error");
+        assert!(result.is_some());
+        if let Some(StreamError::ProviderError { category, .. }) = result {
+            assert_eq!(category, ProviderErrorCategory::ServerError);
+        }
+    }
+
+    #[test]
+    fn test_classify_503_service_unavailable() {
+        let result = classify_provider_error("503 Service Unavailable");
+        assert!(result.is_some());
+        if let Some(StreamError::ProviderError { category, .. }) = result {
+            assert_eq!(category, ProviderErrorCategory::ServerError);
+        }
+    }
+
+    #[test]
+    fn test_classify_504_gateway_timeout() {
+        let result = classify_provider_error("504 Gateway Timeout");
+        assert!(result.is_some());
+        if let Some(StreamError::ProviderError { category, .. }) = result {
+            assert_eq!(category, ProviderErrorCategory::ServerError);
+        }
+    }
+
+    #[test]
+    fn test_classify_connection_reset_network_error() {
+        let result = classify_provider_error("Connection reset by peer");
+        assert!(result.is_some());
+        if let Some(StreamError::ProviderError { category, .. }) = result {
+            assert_eq!(category, ProviderErrorCategory::NetworkError);
+        }
+    }
+
+    #[test]
+    fn test_classify_dns_resolution_failed_network_error() {
+        let result = classify_provider_error("DNS resolution failed for api.anthropic.com");
+        assert!(result.is_some());
+        if let Some(StreamError::ProviderError { category, .. }) = result {
+            assert_eq!(category, ProviderErrorCategory::NetworkError);
+        }
+    }
+
+    #[test]
+    fn test_classify_network_unreachable() {
+        let result = classify_provider_error("Network is unreachable");
+        assert!(result.is_some());
+        if let Some(StreamError::ProviderError { category, .. }) = result {
+            assert_eq!(category, ProviderErrorCategory::NetworkError);
+        }
+    }
+
+    // =========================================================================
+    // Additional ProviderErrorMetadata edge cases
+    // =========================================================================
+
+    #[test]
+    fn test_from_task_metadata_no_provider_error_key() {
+        let metadata = r#"{"some_other_key": "value"}"#;
+        let result = ProviderErrorMetadata::from_task_metadata(Some(metadata));
+        assert!(result.is_none(), "Should return None when provider_error key is absent");
+    }
+
+    #[test]
+    fn test_from_task_metadata_none_input() {
+        let result = ProviderErrorMetadata::from_task_metadata(None);
+        assert!(result.is_none(), "Should return None when metadata is None");
+    }
+
+    #[test]
+    fn test_from_task_metadata_corrupt_json() {
+        let result = ProviderErrorMetadata::from_task_metadata(Some("not valid json {{{"));
+        assert!(result.is_none(), "Should return None gracefully for corrupt JSON");
+    }
+
+    #[test]
+    fn test_from_task_metadata_corrupt_provider_error_value() {
+        let metadata = r#"{"provider_error": "not_an_object"}"#;
+        let result = ProviderErrorMetadata::from_task_metadata(Some(metadata));
+        assert!(result.is_none(), "Should return None when provider_error is not a valid object");
+    }
+
+    // =========================================================================
+    // Additional StreamError integration tests
+    // =========================================================================
+
+    #[test]
+    fn test_agent_exit_is_not_provider_error() {
+        let err = StreamError::AgentExit {
+            exit_code: Some(1),
+            stderr: "compilation failed".to_string(),
+        };
+        assert!(!err.is_provider_error());
+    }
+
+    #[test]
+    fn test_timeout_is_not_provider_error() {
+        let err = StreamError::Timeout {
+            context_type: ChatContextType::TaskExecution,
+            elapsed_secs: 600,
+        };
+        assert!(!err.is_provider_error());
+    }
+
+    #[test]
+    fn test_cancelled_is_not_provider_error() {
+        assert!(!StreamError::Cancelled.is_provider_error());
+    }
+
+    #[test]
+    fn test_provider_error_metadata_returns_none_for_non_provider_variant() {
+        let err = StreamError::AgentExit {
+            exit_code: Some(1),
+            stderr: "failed".to_string(),
+        };
+        assert!(
+            err.provider_error_metadata(InternalStatus::Executing).is_none(),
+            "Non-ProviderError variants should return None"
+        );
+    }
+
+    #[test]
+    fn test_provider_error_does_not_require_session_clear() {
+        let err = StreamError::ProviderError {
+            category: ProviderErrorCategory::ServerError,
+            message: "502 Bad Gateway".to_string(),
+            retry_after: None,
+        };
+        assert!(
+            !err.requires_session_clear(),
+            "ProviderError should NOT require session clear"
+        );
+    }
+
+    #[test]
+    fn test_provider_error_metadata_roundtrip_all_fields() {
+        let meta = ProviderErrorMetadata {
+            category: ProviderErrorCategory::Overloaded,
+            message: "API overloaded".to_string(),
+            retry_after: Some("2026-12-31T23:59:59+00:00".to_string()),
+            previous_status: "re_executing".to_string(),
+            paused_at: "2026-02-15T10:00:00+00:00".to_string(),
+            auto_resumable: false,
+            resume_attempts: 3,
+        };
+
+        let json = meta.write_to_task_metadata(None);
+        let restored = ProviderErrorMetadata::from_task_metadata(Some(&json)).unwrap();
+
+        assert_eq!(restored.category, ProviderErrorCategory::Overloaded);
+        assert_eq!(restored.message, "API overloaded");
+        assert_eq!(restored.retry_after, Some("2026-12-31T23:59:59+00:00".to_string()));
+        assert_eq!(restored.previous_status, "re_executing");
+        assert_eq!(restored.paused_at, "2026-02-15T10:00:00+00:00");
+        assert!(!restored.auto_resumable);
+        assert_eq!(restored.resume_attempts, 3);
+    }
+
+    #[test]
+    fn test_retry_eligible_within_max_attempts_no_retry_after() {
+        let meta = ProviderErrorMetadata {
+            category: ProviderErrorCategory::RateLimit,
+            message: "test".to_string(),
+            retry_after: None,
+            previous_status: "executing".to_string(),
+            paused_at: "2026-02-15T09:00:00+00:00".to_string(),
+            auto_resumable: true,
+            resume_attempts: 2,
+        };
+        assert!(meta.is_retry_eligible(), "Should be eligible with attempts below max and no retry_after");
+    }
+
+    #[test]
+    fn test_retry_eligible_at_max_minus_one() {
+        let meta = ProviderErrorMetadata {
+            category: ProviderErrorCategory::RateLimit,
+            message: "test".to_string(),
+            retry_after: None,
+            previous_status: "executing".to_string(),
+            paused_at: "2026-02-15T09:00:00+00:00".to_string(),
+            auto_resumable: true,
+            resume_attempts: ProviderErrorMetadata::MAX_RESUME_ATTEMPTS - 1,
+        };
+        assert!(meta.is_retry_eligible(), "Should be eligible at MAX - 1 attempts");
+    }
+
+    #[test]
+    fn test_clear_from_task_metadata_with_none() {
+        let cleared = ProviderErrorMetadata::clear_from_task_metadata(None);
+        let parsed: serde_json::Value = serde_json::from_str(&cleared).unwrap();
+        assert!(parsed.get("provider_error").is_none());
+    }
+
+    #[test]
+    fn test_classify_rate_limit_underscore_format() {
+        let result = classify_provider_error("Error: rate_limit_exceeded");
+        assert!(result.is_some());
+        if let Some(StreamError::ProviderError { category, .. }) = result {
+            assert_eq!(category, ProviderErrorCategory::RateLimit);
+        }
     }
 }

@@ -481,6 +481,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
 
     // For worker execution failures, transition task out of active execution
     // Use StreamError::suggested_task_status() for precise transition when available
+    // For ProviderErrors, store metadata and pause instead of failing
     if context_type == ChatContextType::TaskExecution {
         if let Some(ref exec_state) = execution_state {
             let task_id = TaskId::from_string(context_id.to_string());
@@ -492,6 +493,52 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     if task.internal_status == InternalStatus::Executing
                         || task.internal_status == InternalStatus::ReExecuting =>
                 {
+                    // If this is a provider error → store metadata before pausing
+                    if let Some(se) = stream_error {
+                        if se.is_provider_error() {
+                            if let Some(meta) =
+                                se.provider_error_metadata(task.internal_status)
+                            {
+                                let mut updated_task = task.clone();
+                                updated_task.metadata = Some(
+                                    meta.write_to_task_metadata(
+                                        updated_task.metadata.as_deref(),
+                                    ),
+                                );
+                                updated_task.touch();
+                                if let Err(e) = task_repo.update(&updated_task).await {
+                                    tracing::error!(
+                                        task_id = task_id.as_str(),
+                                        error = %e,
+                                        "Failed to store provider error metadata"
+                                    );
+                                } else {
+                                    tracing::info!(
+                                        task_id = task_id.as_str(),
+                                        category = %meta.category,
+                                        retry_after = ?meta.retry_after,
+                                        "Stored provider error metadata, will pause task"
+                                    );
+                                }
+
+                                // Emit provider error event for frontend
+                                if let Some(ref handle) = app_handle {
+                                    let _ = handle.emit(
+                                        "task:provider_error_paused",
+                                        serde_json::json!({
+                                            "task_id": task_id.as_str(),
+                                            "category": meta.category.to_string(),
+                                            "message": meta.message,
+                                            "retry_after": meta.retry_after,
+                                            "previous_status": meta.previous_status,
+                                            "auto_resumable": meta.auto_resumable,
+                                        }),
+                                    );
+                                }
+                            }
+                        }
+                    }
+
                     let transition_service = TaskTransitionService::new(
                         Arc::clone(task_repo),
                         Arc::clone(task_dependency_repo),

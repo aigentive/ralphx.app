@@ -25,8 +25,10 @@ import type { RunningProcess } from "@/api/running-processes";
 import { MergePipelinePopover } from "./MergePipelinePopover";
 import type { MergePipelineResponse } from "@/api/merge-pipeline";
 import { QueuedTasksPopover } from "./QueuedTasksPopover";
+import { PausedTasksPopover } from "./PausedTasksPopover";
 import { InfoTooltip } from "./InfoTooltip";
 import { getStatusIconConfig } from "@/types/status-icons";
+import type { Task } from "@/types/task";
 
 interface ExecutionControlBarProps {
   /** The project ID */
@@ -37,6 +39,10 @@ interface ExecutionControlBarProps {
   maxConcurrent: number;
   /** Number of queued (planned) tasks */
   queuedCount: number;
+  /** Number of tasks paused due to provider errors */
+  pausedCount?: number;
+  /** Tasks paused due to provider errors (for popover) */
+  pausedTasks?: Task[];
   /** Number of tasks in the merge pipeline */
   mergingCount: number;
   /** Whether any merge tasks need attention (conflict/incomplete) */
@@ -103,6 +109,8 @@ export function ExecutionControlBar({
   runningCount,
   maxConcurrent,
   queuedCount,
+  pausedCount = 0,
+  pausedTasks = [],
   mergingCount,
   hasAttentionMerges,
   mergePipelineData,
@@ -148,6 +156,7 @@ export function ExecutionControlBar({
   // Label formatting based on breakpoint
   const runningLabel = breakpoint === "wide" ? "Running: " : breakpoint === "medium" ? "R: " : "";
   const queuedLabel = breakpoint === "wide" ? "Queued: " : breakpoint === "medium" ? "Q: " : "";
+  const pausedLabel = breakpoint === "wide" ? "Paused: " : breakpoint === "medium" ? "P: " : "";
   const mergingLabel = breakpoint === "wide" ? "Merging: " : breakpoint === "medium" ? "M: " : "";
 
   return (
@@ -181,7 +190,7 @@ export function ExecutionControlBar({
         {/* Status Section (Left) */}
         <div
           className="flex items-center gap-4"
-          aria-label={`${runningCount} tasks running out of ${maxConcurrent}, ${queuedCount} queued, ${mergingCount} merging`}
+          aria-label={`${runningCount} tasks running out of ${maxConcurrent}, ${queuedCount} queued, ${pausedCount} paused, ${mergingCount} merging`}
         >
           {/* Animated Status Indicator (anchor for all popovers) */}
           <div
@@ -285,6 +294,27 @@ export function ExecutionControlBar({
               }
             />
           </div>
+
+          {/* Paused Count (Clickable Popover) - only visible when > 0 */}
+          {pausedCount > 0 && (
+            <>
+              <span style={{ color: "hsl(220 10% 45%)" }}>•</span>
+              <PausedTasksPopover
+                pausedTasks={pausedTasks}
+                alignOffset={POPOVER_ALIGN_TO_SEPARATOR_DOT}
+              >
+                <button
+                  data-testid="paused-count"
+                  className="text-[13px] cursor-pointer hover:opacity-80 transition-opacity"
+                  style={{ color: STATUS_COLORS.paused }}
+                  aria-label="View paused tasks"
+                  aria-haspopup="dialog"
+                >
+                  {pausedLabel}{pausedCount}
+                </button>
+              </PausedTasksPopover>
+            </>
+          )}
 
           {/* Separator */}
           <span style={{ color: "hsl(220 10% 45%)" }}>•</span>
