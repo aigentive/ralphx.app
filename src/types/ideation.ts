@@ -34,6 +34,13 @@ export const IdeationSessionSchema = z.object({
   updatedAt: z.string().datetime(),
   archivedAt: z.string().datetime().nullable(),
   convertedAt: z.string().datetime().nullable(),
+  teamMode: z.enum(["solo", "research", "debate"]).nullable().optional(),
+  teamConfig: z.object({
+    maxTeammates: z.number().min(2).max(8),
+    modelCeiling: z.string(),
+    budgetLimit: z.number().optional(),
+    compositionMode: z.enum(["dynamic", "constrained"]),
+  }).nullable().optional(),
 });
 
 export type IdeationSession = z.infer<typeof IdeationSessionSchema>;

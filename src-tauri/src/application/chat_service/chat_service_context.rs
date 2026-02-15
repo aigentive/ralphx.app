@@ -363,6 +363,7 @@ pub(super) async fn format_attachments_for_agent(
 ///
 /// `entity_status` is optional and enables dynamic agent resolution based on state.
 /// For example, a review context with status "review_passed" will use the review-chat agent.
+/// `team_mode` enables agent teams feature by setting CLAUDECODE=1 and CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1.
 pub async fn build_command(
     cli_path: &Path,
     plugin_dir: &Path,
@@ -371,6 +372,7 @@ pub async fn build_command(
     working_directory: &Path,
     entity_status: Option<&str>,
     project_id: Option<&str>,
+    team_mode: bool,
     chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
 ) -> Result<SpawnableCommand, String> {
     // Compute agent_name using the resolution system (context type + optional status)
@@ -445,6 +447,12 @@ pub async fn build_command(
         spawnable.env("RALPHX_PROJECT_ID", pid);
     }
 
+    // Add team mode env vars when enabled
+    if team_mode {
+        spawnable.env("CLAUDECODE", "1");
+        spawnable.env("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
+    }
+
     Ok(spawnable)
 }
 
@@ -490,6 +498,7 @@ pub async fn get_entity_status_for_resume(
 ///
 /// Like `build_command()`, but always resumes with the given session_id.
 /// Fetches entity status to enable status-aware agent resolution (e.g., readonly for accepted ideation sessions).
+/// `team_mode` enables agent teams feature by setting CLAUDECODE=1 and CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1.
 pub async fn build_resume_command(
     cli_path: &Path,
     plugin_dir: &Path,
@@ -499,6 +508,7 @@ pub async fn build_resume_command(
     working_directory: &Path,
     session_id: &str,
     project_id: Option<&str>,
+    team_mode: bool,
     _chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     task_repo: Arc<dyn TaskRepository>,
@@ -535,6 +545,12 @@ pub async fn build_resume_command(
     }
     if let Some(pid) = project_id {
         spawnable.env("RALPHX_PROJECT_ID", pid);
+    }
+
+    // Add team mode env vars when enabled
+    if team_mode {
+        spawnable.env("CLAUDECODE", "1");
+        spawnable.env("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
     }
 
     Ok(spawnable)
@@ -1148,5 +1164,115 @@ mod tests {
 
         // Project context doesn't have status-based agent resolution
         assert_eq!(status, None);
+    }
+
+    use crate::infrastructure::memory::MemoryChatAttachmentRepository;
+
+    #[tokio::test]
+    async fn test_build_command_with_team_mode_true() {
+        // Test that build_command accepts team_mode=true parameter
+        // (function will return error in test env due to missing CLI, but that's expected)
+        let cli_path = std::path::PathBuf::from("/usr/bin/claude");
+        let plugin_dir = std::path::PathBuf::from("/tmp/plugin");
+        let working_dir = std::path::PathBuf::from("/tmp");
+
+        let session_id = IdeationSessionId::from_string("test-session-id");
+        let conversation = ChatConversation::new_ideation(session_id);
+
+        let chat_attachment_repo = Arc::new(MemoryChatAttachmentRepository::new());
+
+        // Should not panic with team_mode=true
+        // The function will error in test env, but we're just testing the signature works
+        let _result = build_command(
+            &cli_path,
+            &plugin_dir,
+            &conversation,
+            "test message",
+            &working_dir,
+            None,
+            None,
+            true, // team_mode=true
+            chat_attachment_repo,
+        )
+        .await;
+
+        // Test passes if no panic occurred (Err result is expected in test env)
+    }
+
+    #[tokio::test]
+    async fn test_build_command_with_team_mode_false() {
+        // Test that build_command accepts team_mode=false parameter
+        let cli_path = std::path::PathBuf::from("/usr/bin/claude");
+        let plugin_dir = std::path::PathBuf::from("/tmp/plugin");
+        let working_dir = std::path::PathBuf::from("/tmp");
+
+        let session_id = IdeationSessionId::from_string("test-session-id");
+        let conversation = ChatConversation::new_ideation(session_id);
+
+        let chat_attachment_repo = Arc::new(MemoryChatAttachmentRepository::new());
+
+        // Should not panic with team_mode=false
+        let _result = build_command(
+            &cli_path,
+            &plugin_dir,
+            &conversation,
+            "test message",
+            &working_dir,
+            None,
+            None,
+            false, // team_mode=false
+            chat_attachment_repo,
+        )
+        .await;
+
+        // Test passes if no panic occurred
+    }
+
+    #[tokio::test]
+    async fn test_build_resume_command_with_team_mode() {
+        // Test that build_resume_command accepts team_mode parameter
+        let cli_path = std::path::PathBuf::from("/usr/bin/claude");
+        let plugin_dir = std::path::PathBuf::from("/tmp/plugin");
+        let working_dir = std::path::PathBuf::from("/tmp");
+
+        let chat_attachment_repo = Arc::new(MemoryChatAttachmentRepository::new());
+        let ideation_repo = Arc::new(MockIdeationRepo::empty());
+        let task_repo = Arc::new(MockTaskRepo);
+
+        // Test with team_mode=true
+        let _result = build_resume_command(
+            &cli_path,
+            &plugin_dir,
+            ChatContextType::Ideation,
+            "test-session-id",
+            "test message",
+            &working_dir,
+            "session-123",
+            None,
+            true, // team_mode=true
+            chat_attachment_repo.clone(),
+            ideation_repo.clone(),
+            task_repo.clone(),
+        )
+        .await;
+
+        // Test with team_mode=false
+        let _result = build_resume_command(
+            &cli_path,
+            &plugin_dir,
+            ChatContextType::Ideation,
+            "test-session-id",
+            "test message",
+            &working_dir,
+            "session-123",
+            None,
+            false, // team_mode=false
+            chat_attachment_repo,
+            ideation_repo,
+            task_repo,
+        )
+        .await;
+
+        // Test passes if no panics occurred
     }
 }

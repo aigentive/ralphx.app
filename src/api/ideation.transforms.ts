@@ -43,6 +43,15 @@ export function transformSession(raw: z.infer<typeof IdeationSessionResponseSche
     status: raw.status as IdeationSessionStatus,
     planArtifactId: raw.plan_artifact_id,
     parentSessionId: raw.parent_session_id,
+    ...(raw.team_mode !== undefined && { teamMode: raw.team_mode }),
+    ...(raw.team_config !== undefined && {
+      teamConfig: raw.team_config ? {
+        maxTeammates: raw.team_config.max_teammates,
+        modelCeiling: raw.team_config.model_ceiling,
+        ...(raw.team_config.budget_limit !== undefined && { budgetLimit: raw.team_config.budget_limit }),
+        compositionMode: raw.team_config.composition_mode as "dynamic" | "constrained",
+      } : null,
+    }),
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
     archivedAt: raw.archived_at,

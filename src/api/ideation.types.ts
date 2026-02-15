@@ -1,6 +1,6 @@
 // Frontend types for ideation API responses (camelCase)
 
-import type { IdeationSessionStatus } from "../types/ideation";
+import type { IdeationSessionStatus, TeamMode, TeamConfig } from "../types/ideation";
 
 export interface IdeationSessionResponse {
   id: string;
@@ -10,6 +10,8 @@ export interface IdeationSessionResponse {
   planArtifactId: string | null;
   seedTaskId?: string | null;
   parentSessionId: string | null;
+  teamMode?: TeamMode | null;
+  teamConfig?: TeamConfig | null;
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;

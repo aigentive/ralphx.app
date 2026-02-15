@@ -228,6 +228,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
     plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
     app_handle: &Option<AppHandle<R>>,
     agent_name: Option<&str>,
+    team_mode: bool,
     run_chain_id: Option<String>,
 ) -> bool {
     // Handle cancellation: skip all recovery/transitions, just mark as stopped
@@ -315,6 +316,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     plugin_dir,
                     working_directory,
                     resolved_project_id.clone(),
+                    team_mode,
                     Arc::clone(chat_message_repo),
                     Arc::clone(conversation_repo),
                     Arc::clone(chat_attachment_repo),
@@ -354,6 +356,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                             working_directory,
                             None,
                             resolved_project_id.as_deref(),
+                            team_mode,
                             Arc::clone(chat_attachment_repo),
                         )
                         .await
@@ -402,10 +405,12 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                             .map(|s| s.to_string()),
                                         conversation: Some(retry_conv),
                                         agent_name: agent_name.map(|s| s.to_string()),
+                                        team_mode,
                                         cancellation_token:
                                             tokio_util::sync::CancellationToken::new(),
                                     },
                                 );
+
                                 return true; // Recovery spawned retry, caller should return early
                             }
                         }
