@@ -289,6 +289,13 @@ impl<'a> super::TransitionHandler<'a> {
                     self.machine.context.services.app_handle.as_ref(),
                 ).await {
                     tracing::error!(error = %e, "Failed to complete already-merged task");
+                } else {
+                    self.post_merge_cleanup(
+                        task_id_str,
+                        &task_id,
+                        repo_path,
+                        plan_branch_repo,
+                    ).await;
                 }
                 return;
             }
@@ -331,6 +338,13 @@ impl<'a> super::TransitionHandler<'a> {
                         self.machine.context.services.app_handle.as_ref(),
                     ).await {
                         tracing::error!(error = %e, "Failed to complete merge for recovered task");
+                    } else {
+                        self.post_merge_cleanup(
+                            task_id_str,
+                            &task_id,
+                            repo_path,
+                            plan_branch_repo,
+                        ).await;
                     }
                     return;
                 }
