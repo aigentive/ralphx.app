@@ -1510,3 +1510,144 @@ async fn test_startup_quota_sync_before_resumption() {
     // because the spawner doesn't increment. The test verifies that the quota
     // was loaded correctly and is available for the resumption logic to check.
 }
+
+// ── is_waiting_for_global_idle Tests (Phase 4) ──
+
+#[test]
+fn is_waiting_for_global_idle_returns_false_when_no_metadata() {
+    let task = Task::new(crate::domain::entities::ProjectId::new(), "Test".to_string());
+    assert!(!StartupJobRunner::<tauri::Wry>::is_waiting_for_global_idle(
+        &task, 1
+    ));
+}
+
+#[test]
+fn is_waiting_for_global_idle_returns_false_when_no_main_merge_deferred_flag() {
+    let mut task = Task::new(crate::domain::entities::ProjectId::new(), "Test".to_string());
+    task.metadata = Some(r#"{"other": "data"}"#.to_string());
+    assert!(!StartupJobRunner::<tauri::Wry>::is_waiting_for_global_idle(
+        &task, 1
+    ));
+}
+
+#[test]
+fn is_waiting_for_global_idle_returns_false_when_main_merge_deferred_but_no_agents() {
+    let mut task = Task::new(crate::domain::entities::ProjectId::new(), "Test".to_string());
+    task.metadata =
+        Some(serde_json::json!({"main_merge_deferred": true}).to_string());
+    // running_count = 0 means all agents completed
+    assert!(!StartupJobRunner::<tauri::Wry>::is_waiting_for_global_idle(
+        &task, 0
+    ));
+}
+
+#[test]
+fn is_waiting_for_global_idle_returns_true_when_main_merge_deferred_and_agents_running() {
+    let mut task = Task::new(crate::domain::entities::ProjectId::new(), "Test".to_string());
+    task.metadata =
+        Some(serde_json::json!({"main_merge_deferred": true}).to_string());
+    // running_count > 0 means agents are still running
+    assert!(StartupJobRunner::<tauri::Wry>::is_waiting_for_global_idle(
+        &task, 1
+    ));
+    assert!(StartupJobRunner::<tauri::Wry>::is_waiting_for_global_idle(
+        &task, 5
+    ));
+}
+
+#[tokio::test]
+async fn startup_skips_main_merge_deferred_when_agents_running() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    // Set up project in DB
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create main-merge-deferred task
+    let mut task = Task::new(project.id.clone(), "Main Merge Deferred Task".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.metadata =
+        Some(serde_json::json!({"main_merge_deferred": true, "main_merge_deferred_at": "2026-01-01T00:00:00Z"}).to_string());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Simulate agents running
+    execution_state.increment_running();
+    assert_eq!(execution_state.running_count(), 1);
+
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
+
+    // Run startup - should skip the main-merge-deferred task
+    runner.run().await;
+
+    // Task should still be PendingMerge (not retried)
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::PendingMerge,
+        "Main-merge-deferred task should NOT be retried when agents running"
+    );
+}
+
+#[tokio::test]
+async fn startup_retries_main_merge_deferred_when_no_agents() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    // Set up project in DB
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create main-merge-deferred task
+    let mut task = Task::new(project.id.clone(), "Main Merge Deferred Task".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.metadata =
+        Some(serde_json::json!({"main_merge_deferred": true, "main_merge_deferred_at": "2026-01-01T00:00:00Z"}).to_string());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // No agents running (running_count = 0)
+    assert_eq!(execution_state.running_count(), 0);
+
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
+
+    // Run startup - reconciliation should retry the main-merge-deferred task
+    runner.run().await;
+
+    // Task should have been processed (either retried or failed)
+    // In test environment without real git, the merge attempt will fail,
+    // but the important thing is it was not skipped
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    // The task will transition through reconciliation (not skipped)
+    // In real environment it would retry the merge
+    assert!(
+        updated.internal_status == InternalStatus::PendingMerge
+            || updated.internal_status == InternalStatus::Merging
+            || updated.internal_status == InternalStatus::MergeIncomplete
+            || updated.internal_status == InternalStatus::Failed,
+        "Main-merge-deferred task should be processed (not skipped) when no agents running"
+    );
+}

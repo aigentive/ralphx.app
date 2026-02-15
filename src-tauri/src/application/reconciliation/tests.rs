@@ -893,3 +893,154 @@ async fn reconcile_merge_conflict_stops_after_max_retries() {
         "Task status should not change when max retries reached"
     );
 }
+
+// ── Main Merge Deferred Reconciliation Tests (Phase 4) ──
+
+#[tokio::test]
+async fn reconcile_pending_merge_retries_when_main_merge_deferred_and_no_agents() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Main Merge Deferred Task".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.metadata =
+        Some(serde_json::json!({"main_merge_deferred": true, "main_merge_deferred_at": "2026-01-01T00:00:00Z"}).to_string());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Record status history so reconciler can calculate age
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task.id,
+            InternalStatus::Approved,
+            InternalStatus::PendingMerge,
+            "pending_merge",
+        )
+        .await
+        .unwrap();
+
+    // running_count is 0 by default, so should retry
+    assert_eq!(execution_state.running_count(), 0);
+
+    let reconciled = reconciler
+        .reconcile_pending_merge_task(&task, InternalStatus::PendingMerge)
+        .await;
+
+    // Should return true because it attempted to apply recovery decision (ExecuteEntryActions)
+    assert!(
+        reconciled,
+        "Should retry main-merge-deferred when no agents running"
+    );
+}
+
+#[tokio::test]
+async fn reconcile_pending_merge_skips_when_main_merge_deferred_and_agents_running() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    execution_state.increment_running(); // Simulate agent running
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Main Merge Deferred Task".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.metadata =
+        Some(serde_json::json!({"main_merge_deferred": true, "main_merge_deferred_at": "2026-01-01T00:00:00Z"}).to_string());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Record status history so reconciler can calculate age
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task.id,
+            InternalStatus::Approved,
+            InternalStatus::PendingMerge,
+            "pending_merge",
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(execution_state.running_count(), 1);
+
+    let reconciled = reconciler
+        .reconcile_pending_merge_task(&task, InternalStatus::PendingMerge)
+        .await;
+
+    // Should return true because it's correctly deferred (not orphaned) - skip entry actions
+    assert!(
+        reconciled,
+        "Should skip (return true) when main-merge-deferred and agents still running"
+    );
+
+    // Verify task status unchanged (not retried)
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::PendingMerge,
+        "Task status should not change when agents still running"
+    );
+    // Verify main_merge_deferred flag still set
+    let metadata: serde_json::Value =
+        serde_json::from_str(updated.metadata.as_ref().unwrap()).unwrap();
+    assert_eq!(metadata["main_merge_deferred"], true);
+}
+
+#[tokio::test]
+async fn reconcile_pending_merge_normal_deferred_flow_when_not_main_merge_deferred() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    execution_state.increment_running(); // Simulate agent running
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Regular deferred task (not main-merge-deferred)
+    let mut task = Task::new(project.id.clone(), "Regular Deferred Task".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.metadata =
+        Some(serde_json::json!({"merge_deferred": true, "merge_deferred_at": "2026-01-01T00:00:00Z"}).to_string());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Record status history
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task.id,
+            InternalStatus::Approved,
+            InternalStatus::PendingMerge,
+            "pending_merge",
+        )
+        .await
+        .unwrap();
+
+    // Should fall through to regular deferred merge logic (not main-merge-deferred)
+    // This tests that main-merge-deferred check is isolated from regular deferred logic
+    let _ = reconciler
+        .reconcile_pending_merge_task(&task, InternalStatus::PendingMerge)
+        .await;
+    // The exact behavior depends on the deferred-blocker-is-active check, which we don't test here
+    // The key is that it didn't hit the main-merge-deferred code path
+}

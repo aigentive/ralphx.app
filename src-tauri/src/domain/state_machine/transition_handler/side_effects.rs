@@ -11,8 +11,9 @@ pub use super::merge_completion::complete_merge_internal;
 pub use super::merge_helpers::resolve_merge_branches;
 
 pub(crate) use super::merge_helpers::{
-    clear_merge_deferred_metadata, clear_trigger_origin, get_trigger_origin,
-    has_branch_missing_metadata, has_merge_deferred_metadata, parse_metadata, set_trigger_origin,
+    clear_merge_deferred_metadata, clear_trigger_origin,
+    get_trigger_origin, has_branch_missing_metadata, has_main_merge_deferred_metadata,
+    has_merge_deferred_metadata, parse_metadata, set_trigger_origin,
 };
 pub(crate) use super::merge_validation::{
     format_validation_error_metadata, run_validation_commands, ValidationLogEntry,
