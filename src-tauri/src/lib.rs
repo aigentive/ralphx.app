@@ -553,11 +553,19 @@ pub fn run() {
             // Register app_state with Tauri's state management
             app.manage(app_state);
 
+            // Register team state tracker and service (service needs AppHandle for events)
+            let team_tracker = application::TeamStateTracker::new();
+            let team_service = application::TeamService::new(
+                std::sync::Arc::new(team_tracker.clone()),
+                app.handle().clone(),
+            );
+            app.manage(team_tracker);
+            app.manage(team_service);
+
             Ok(())
         })
         .manage(execution_state)
         .manage(active_project_state)
-        .manage(application::TeamStateTracker::new())
         .invoke_handler(tauri::generate_handler![
             greet,
             commands::health::health_check,
@@ -804,6 +812,8 @@ pub fn run() {
             commands::plan_commands::clear_active_plan,
             commands::plan_commands::list_plan_selector_candidates,
             // Team commands (agent teams collaboration)
+            commands::team_commands::create_team,
+            commands::team_commands::disband_team,
             commands::team_commands::get_team_status,
             commands::team_commands::send_team_message,
             commands::team_commands::stop_teammate,
