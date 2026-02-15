@@ -240,7 +240,7 @@ describe('New team tool definitions', () => {
     });
 
     it('should have teammates array with correct item schema', () => {
-      const teammates = tool?.inputSchema.properties?.teammates;
+      const teammates = tool?.inputSchema.properties?.teammates as any;
       expect(teammates).toBeDefined();
       expect(teammates.type).toBe('array');
       expect(teammates.items).toBeDefined();
@@ -276,7 +276,7 @@ describe('New team tool definitions', () => {
     });
 
     it('should have model enum constraint', () => {
-      const model = tool?.inputSchema.properties?.model;
+      const model = tool?.inputSchema.properties?.model as any;
       expect(model).toBeDefined();
       expect(model.enum).toEqual(['haiku', 'sonnet', 'opus']);
     });
@@ -303,7 +303,7 @@ describe('New team tool definitions', () => {
     });
 
     it('should have artifact_type enum constraint', () => {
-      const artifactType = tool?.inputSchema.properties?.artifact_type;
+      const artifactType = tool?.inputSchema.properties?.artifact_type as any;
       expect(artifactType).toBeDefined();
       expect(artifactType.enum).toEqual(['TeamResearch', 'TeamAnalysis', 'TeamSummary']);
     });
@@ -358,7 +358,7 @@ describe('New team tool definitions', () => {
     });
 
     it('should have team_composition array with correct item schema', () => {
-      const teamComp = tool?.inputSchema.properties?.team_composition;
+      const teamComp = tool?.inputSchema.properties?.team_composition as any;
       expect(teamComp).toBeDefined();
       expect(teamComp.type).toBe('array');
       expect(teamComp.items).toBeDefined();

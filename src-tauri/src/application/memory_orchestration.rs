@@ -433,7 +433,7 @@ mod tests {
     #[test]
     fn test_default_settings() {
         let settings = ProjectMemorySettings::default();
-        assert!(settings.enabled);
+        assert!(!settings.enabled);
         assert!(settings
             .maintenance_categories
             .contains(&"execution".to_string()));
@@ -588,7 +588,8 @@ mod tests {
     fn test_resolve_pipelines_parallel_spawn_both_enabled() {
         // "execution" is in both maintenance_categories AND capture_categories by default
         let project_id = ProjectId::from_string("proj-123".to_string());
-        let settings = ProjectMemorySettings::default();
+        let mut settings = ProjectMemorySettings::default();
+        settings.enabled = true;
 
         let result = resolve_pipelines(
             ChatContextType::TaskExecution,
