@@ -49,7 +49,9 @@ use which::which;
 pub use chat_service_errors::{
     classify_agent_error, PauseReason, ProviderErrorCategory, ProviderErrorMetadata, StreamError,
 };
-pub use chat_service_helpers::{get_agent_name, get_assistant_role};
+pub use chat_service_helpers::{
+    context_type_to_process, get_agent_name, get_assistant_role, resolve_agent_with_team_mode,
+};
 pub(crate) use chat_service_merge::reconcile_merge_auto_complete;
 pub use chat_service_mock::{MockChatResponse, MockChatService};
 pub use chat_service_replay::{build_rehydration_prompt, ConversationReplay, ReplayBuilder, Turn};
@@ -225,6 +227,8 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     question_state: Option<Arc<QuestionState>>,
     plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
     model: String,
+    /// When true, agent resolution uses team-lead variants if configured.
+    team_mode: bool,
 }
 
 impl<R: Runtime> ClaudeChatService<R> {
@@ -274,6 +278,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             question_state: None,
             plan_branch_repo: None,
             model: "sonnet".to_string(),
+            team_mode: false,
         }
     }
 
@@ -309,6 +314,11 @@ impl<R: Runtime> ClaudeChatService<R> {
 
     pub fn with_model(mut self, model: impl Into<String>) -> Self {
         self.model = model.into();
+        self
+    }
+
+    pub fn with_team_mode(mut self, team_mode: bool) -> Self {
+        self.team_mode = team_mode;
         self
     }
 
@@ -625,9 +635,12 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         }
 
         // 8. Build background context and spawn
-        let resolved_agent_name =
-            chat_service_helpers::resolve_agent(&context_type, entity_status.as_deref())
-                .to_string();
+        let resolved_agent_name = chat_service_helpers::resolve_agent_with_team_mode(
+            &context_type,
+            entity_status.as_deref(),
+            self.team_mode,
+        )
+        .to_string();
 
         let bg_ctx = chat_service_send_background::BackgroundRunContext {
             child,
