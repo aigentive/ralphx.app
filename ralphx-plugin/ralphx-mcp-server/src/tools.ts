@@ -29,6 +29,9 @@ import {
   DEEP_RESEARCHER,
   MEMORY_MAINTAINER,
   MEMORY_CAPTURE,
+  IDEATION_TEAM_LEAD,
+  IDEATION_TEAM_MEMBER,
+  WORKER_TEAM_MEMBER,
 } from "./agentNames.js";
 
 /**
@@ -369,6 +372,219 @@ export const ALL_TOOLS: Tool[] = [
         },
       },
       required: ["session_id"],
+    },
+  },
+
+  // ========================================================================
+  // TEAM TOOLS (team lead agents)
+  // ========================================================================
+  {
+    name: "request_team_plan",
+    description:
+      "Request approval for a team plan before spawning teammates. " +
+      "The plan includes the process type, teammate roles/models/tools, and execution strategy. " +
+      "User approval is required before teammates can be spawned.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        process: {
+          type: "string",
+          description: "Process type: 'ideation-research', 'ideation-debate', 'worker-parallel'",
+        },
+        teammates: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              role: {
+                type: "string",
+                description: "Teammate role name (e.g., 'frontend-researcher', 'coder-1')",
+              },
+              tools: {
+                type: "array",
+                items: { type: "string" },
+                description: "CLI tools for this teammate (e.g., ['Read', 'Grep', 'Glob'])",
+              },
+              mcp_tools: {
+                type: "array",
+                items: { type: "string" },
+                description: "MCP tools for this teammate (e.g., ['get_session_plan'])",
+              },
+              model: {
+                type: "string",
+                description: "Model to use: 'haiku', 'sonnet', or 'opus'",
+              },
+              preset: {
+                type: "string",
+                description: "Optional predefined agent template (for constrained mode)",
+              },
+              prompt_summary: {
+                type: "string",
+                description: "Brief summary of what this teammate will do",
+              },
+            },
+            required: ["role", "tools", "mcp_tools", "model", "prompt_summary"],
+          },
+          description: "Array of teammate configurations to spawn",
+        },
+      },
+      required: ["process", "teammates"],
+    },
+  },
+  {
+    name: "request_teammate_spawn",
+    description:
+      "Request to spawn a single teammate. " +
+      "The backend validates the request against team constraints, then spawns the teammate if approved.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        role: {
+          type: "string",
+          description: "Teammate role name (e.g., 'frontend-researcher', 'coder-1')",
+        },
+        prompt: {
+          type: "string",
+          description: "Full prompt for the teammate describing their role and expected output",
+        },
+        model: {
+          type: "string",
+          enum: ["haiku", "sonnet", "opus"],
+          description: "Model to use (must be within model_ceiling constraint)",
+        },
+        tools: {
+          type: "array",
+          items: { type: "string" },
+          description: "Requested CLI tools (intersected with tool_ceiling)",
+        },
+        mcp_tools: {
+          type: "array",
+          items: { type: "string" },
+          description: "Requested MCP tools (intersected with mcp_tool_ceiling)",
+        },
+        preset: {
+          type: "string",
+          description: "Optional predefined agent template to use (for constrained mode)",
+        },
+      },
+      required: ["role", "prompt", "model", "tools", "mcp_tools"],
+    },
+  },
+  {
+    name: "create_team_artifact",
+    description:
+      "Create a team artifact documenting research findings, analysis, or summary. " +
+      "Automatically sets bucket_id='team-findings' and populates metadata with team info. " +
+      "Use for documenting team discoveries, debate analyses, or lead-synthesized summaries.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: {
+          type: "string",
+          description: "The ideation or execution session ID",
+        },
+        title: {
+          type: "string",
+          description: "Clear, concise title for the artifact",
+        },
+        content: {
+          type: "string",
+          description: "Markdown content with research findings or analysis",
+        },
+        artifact_type: {
+          type: "string",
+          enum: ["TeamResearch", "TeamAnalysis", "TeamSummary"],
+          description: "Type: TeamResearch (specialist findings), TeamAnalysis (comparison/debate), TeamSummary (lead synthesis)",
+        },
+        related_artifact_id: {
+          type: "string",
+          description: "Optional artifact ID to link to (e.g., master plan artifact)",
+        },
+      },
+      required: ["session_id", "title", "content", "artifact_type"],
+    },
+  },
+  {
+    name: "get_team_artifacts",
+    description:
+      "Retrieve all team artifacts for a session. " +
+      "Returns artifacts from the 'team-findings' bucket filtered by session ID.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: {
+          type: "string",
+          description: "The ideation or execution session ID",
+        },
+      },
+      required: ["session_id"],
+    },
+  },
+  {
+    name: "get_team_session_state",
+    description:
+      "Retrieve persisted team composition and phase progress for session recovery. " +
+      "Returns team composition (teammate names/roles/prompts), current phase, and artifact IDs.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: {
+          type: "string",
+          description: "The ideation or execution session ID",
+        },
+      },
+      required: ["session_id"],
+    },
+  },
+  {
+    name: "save_team_session_state",
+    description:
+      "Persist current team composition to database for session recovery. " +
+      "Called after spawning teammates to enable resume if session is interrupted.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: {
+          type: "string",
+          description: "The ideation or execution session ID",
+        },
+        team_composition: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: {
+                type: "string",
+                description: "Teammate name",
+              },
+              role: {
+                type: "string",
+                description: "Teammate role description",
+              },
+              prompt: {
+                type: "string",
+                description: "Full prompt used to spawn this teammate",
+              },
+              model: {
+                type: "string",
+                description: "Model used for this teammate",
+              },
+            },
+            required: ["name", "role", "prompt", "model"],
+          },
+          description: "Array of teammate configurations",
+        },
+        phase: {
+          type: "string",
+          description: "Current workflow phase (e.g., 'EXPLORE', 'PLAN', 'CONFIRM')",
+        },
+        artifact_ids: {
+          type: "array",
+          items: { type: "string" },
+          description: "IDs of team artifacts created so far",
+        },
+      },
+      required: ["session_id", "team_composition", "phase"],
     },
   },
 
@@ -1283,6 +1499,83 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_memories_for_paths",
     "get_conversation_transcript",
   ],
+  // Team lead agents - coordinate team execution
+  [IDEATION_TEAM_LEAD]: [
+    // Team coordination tools
+    "request_team_plan",
+    "request_teammate_spawn",
+    "create_team_artifact",
+    "get_team_artifacts",
+    "get_team_session_state",
+    "save_team_session_state",
+    // Existing ideation tools
+    "create_task_proposal",
+    "update_task_proposal",
+    "delete_task_proposal",
+    "list_session_proposals",
+    "get_proposal",
+    "analyze_session_dependencies",
+    "create_plan_artifact",
+    "update_plan_artifact",
+    "get_plan_artifact",
+    "link_proposals_to_plan",
+    "get_session_plan",
+    "ask_user_question",
+    // Session linking tools
+    "create_child_session",
+    "get_parent_session_context",
+    // Memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
+  ],
+  // Ideation team members - research and analysis (read-only)
+  [IDEATION_TEAM_MEMBER]: [
+    // Team artifact tools
+    "create_team_artifact",
+    "get_team_artifacts",
+    // Plan/proposal access (read-only)
+    "get_session_plan",
+    "list_session_proposals",
+    "get_plan_artifact",
+    // Memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
+  ],
+  // Worker team members - implementation with team coordination
+  [WORKER_TEAM_MEMBER]: [
+    // Team artifact tools (document decisions)
+    "create_team_artifact",
+    "get_team_artifacts",
+    // Step management tools
+    "start_step",
+    "complete_step",
+    "skip_step",
+    "fail_step",
+    "add_step",
+    "get_step_progress",
+    "get_step_context",
+    "get_sub_steps",
+    // Issue tools (re-execution workflow)
+    "get_task_issues",
+    "mark_issue_in_progress",
+    "mark_issue_addressed",
+    // Project analysis tools
+    "get_project_analysis",
+    // Common context tools
+    "get_task_context",
+    "get_artifact",
+    "get_artifact_version",
+    "get_related_artifacts",
+    "search_project_artifacts",
+    "get_review_notes",
+    "get_task_steps",
+    // Memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
+  ],
   // Debug mode: shows ALL tools (use RALPHX_AGENT_TYPE=debug)
   debug: ALL_TOOLS.map((t) => t.name),
 };
@@ -1316,6 +1609,13 @@ export function getAgentType(): string {
  * @returns Array of tool names this agent is allowed to use
  */
 export function getAllowedToolNames(): string[] {
+  // Check for env var override (used for dynamic teammate tool scoping)
+  const envAllowedTools = process.env.RALPHX_ALLOWED_MCP_TOOLS;
+  if (envAllowedTools) {
+    return envAllowedTools.split(',').map(t => t.trim()).filter(t => t.length > 0);
+  }
+
+  // Default: use agent type from TOOL_ALLOWLIST
   const agentType = getAgentType();
   return TOOL_ALLOWLIST[agentType] || [];
 }
