@@ -178,6 +178,18 @@ Team Shutdown:
          → team:disbanded { team_name: "task-abc" }
 ```
 
+### 3.5 Implementation Notes: API Field Name Drift
+
+> **Note:** The backend event payloads use different field names than specified above. The frontend hook `useTeamEvents.ts` handles the translation. When consuming these events, use the actual backend field names:
+
+| Brief Field Name | Actual Backend Field | Event | Translation in `useTeamEvents.ts` |
+|-----------------|---------------------|-------|-----------------------------------|
+| `role_description` | `role` | `team:teammate_spawned` | `payload.role` → `roleDescription` |
+| `from` | `sender` | `team:message` | `payload.sender` → `from` |
+| `to` | `recipient` | `team:message` | `payload.recipient` → `to` |
+| `tokens_used` | `input_tokens` + `output_tokens` | `team:cost_update` | Summed: `payload.input_tokens + payload.output_tokens` → `tokens` |
+| `estimated_cost_usd` | `estimated_usd` | `team:cost_update` | `payload.estimated_usd` → `costUsd` |
+
 ---
 
 ## 4. Extension Area 2: Chat UI for Team Visibility

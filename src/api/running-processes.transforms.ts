@@ -47,6 +47,9 @@ export function transformTeammateSummary(
     ...(raw.step !== undefined && { step: raw.step }),
     ...(raw.model !== undefined && { model: raw.model }),
     ...(raw.color !== undefined && { color: raw.color }),
+    ...(raw.steps_completed !== undefined && { stepsCompleted: raw.steps_completed }),
+    ...(raw.steps_total !== undefined && { stepsTotal: raw.steps_total }),
+    ...(raw.wave !== undefined && { wave: raw.wave }),
   };
 }
 
@@ -70,6 +73,8 @@ export function transformRunningProcess(
     ...(raw.teammates !== undefined && {
       teammates: raw.teammates.map(transformTeammateSummary),
     }),
+    ...(raw.current_wave !== undefined && { currentWave: raw.current_wave }),
+    ...(raw.total_waves !== undefined && { totalWaves: raw.total_waves }),
   };
 }
 
