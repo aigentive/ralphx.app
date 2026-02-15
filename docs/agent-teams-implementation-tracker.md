@@ -8,10 +8,10 @@
 
 | Worktree | Branch | Worker | Focus | Status |
 |----------|--------|--------|-------|--------|
-| `ralphx-wt-config` | `feat/agent-teams-config` | rust-config | YAML config, process_mapping, team_constraints, extends | PENDING |
-| `ralphx-wt-services` | `feat/agent-teams-services` | rust-services | TeamStateTracker, artifact model, ChatService, IPC commands | PENDING |
-| `ralphx-wt-mcp` | `feat/agent-teams-mcp` | mcp-prompts | MCP server changes + agent prompt files | PENDING |
-| `ralphx-wt-frontend` | `feat/agent-teams-frontend` | frontend | Stores, events, hooks, UI components | PENDING |
+| `ralphx-wt-config` | `feat/agent-teams-config` | rust-config | YAML config, process_mapping, team_constraints, extends | IN PROGRESS (running clippy) |
+| `ralphx-wt-services` | `feat/agent-teams-services` | rust-services | TeamStateTracker, artifact model, ChatService, IPC commands | DONE (`a6dc8716`) |
+| `ralphx-wt-mcp` | `feat/agent-teams-mcp` | mcp-prompts | MCP server changes + agent prompt files | DONE (`d83ad3de`, 37 tests) |
+| `ralphx-wt-frontend` | `feat/agent-teams-frontend` | frontend | Stores, events, hooks, UI components | DONE impl (`e782af77`), tests in progress (10 files) |
 
 ## Phase 1A: Foundation (Parallel)
 
@@ -45,24 +45,25 @@
 - [ ] `team_messages` DB table
 - [ ] Unit tests
 
-### mcp-prompts (Sonnet)
-- [ ] `ideation-team-member` allowlist in `tools.ts`
-- [ ] `worker-team-member` allowlist in `tools.ts`
-- [ ] `RALPHX_ALLOWED_MCP_TOOLS` env var support in `getToolAllowlist()`
-- [ ] `request_team_plan` MCP tool definition + handler
-- [ ] `create_team_artifact` MCP tool (thin wrapper)
-- [ ] `get_team_artifacts` MCP tool (thin wrapper)
-- [ ] `get_team_session_state` MCP tool
-- [ ] `save_team_session_state` MCP tool
-- [ ] `request_teammate_spawn` MCP tool
-- [ ] HTTP endpoint routing for new tools
-- [ ] `ideation-team-lead.md` agent prompt
-- [ ] `worker-team.md` agent prompt
-- [ ] `ideation-specialist-frontend.md` template
-- [ ] `ideation-specialist-backend.md` template
-- [ ] `ideation-specialist-infra.md` template
-- [ ] `ideation-advocate.md` template
-- [ ] `ideation-critic.md` template
+### mcp-prompts (Sonnet) — DONE ✓
+- [x] `ideation-team-member` allowlist in `tools.ts`
+- [x] `worker-team-member` allowlist in `tools.ts`
+- [x] `RALPHX_ALLOWED_MCP_TOOLS` env var support in `getToolAllowlist()`
+- [x] `request_team_plan` MCP tool definition + handler
+- [x] `create_team_artifact` MCP tool (thin wrapper)
+- [x] `get_team_artifacts` MCP tool (thin wrapper)
+- [x] `get_team_session_state` MCP tool
+- [x] `save_team_session_state` MCP tool
+- [x] `request_teammate_spawn` MCP tool
+- [x] HTTP endpoint routing for new tools
+- [x] `ideation-team-lead.md` agent prompt
+- [x] `worker-team.md` agent prompt
+- [x] `ideation-specialist-frontend.md` template
+- [x] `ideation-specialist-backend.md` template
+- [x] `ideation-specialist-infra.md` template
+- [x] `ideation-advocate.md` template
+- [x] `ideation-critic.md` template
+- [x] 37 vitest unit tests (`src/__tests__/tools.test.ts`)
 
 ### frontend (Opus)
 - [ ] `team:*` event constants in `src/lib/events.ts`
