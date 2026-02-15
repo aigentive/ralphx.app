@@ -8,7 +8,13 @@ mod stream_processor;
 
 pub use agent_config::{
     agent_configs, claude_runtime_config, get_agent_config, get_allowed_tools,
-    get_effective_settings, get_preapproved_tools, AgentConfig,
+    get_effective_settings, get_preapproved_tools, process_mapping, team_constraints_config,
+    AgentConfig,
+};
+#[allow(unused_imports)]
+pub use agent_config::team_config::{
+    ApprovedTeamPlan, ApprovedTeammate, ProcessMapping, ProcessSlot, TeamConstraintError,
+    TeamConstraints, TeamConstraintsConfig, TeamMode, TeammateSpawnRequest,
 };
 pub use claude_code_client::ClaudeCodeClient;
 pub use claude_code_client::{StreamEvent as ClientStreamEvent, StreamingSpawnResult};

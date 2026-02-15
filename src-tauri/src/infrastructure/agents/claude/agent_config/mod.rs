@@ -1,7 +1,15 @@
+pub mod team_config;
+
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::OnceLock;
+
+#[allow(unused_imports)]
+pub use team_config::{
+    ApprovedTeamPlan, ApprovedTeammate, ProcessMapping, ProcessSlot, TeamConstraints,
+    TeamConstraintError, TeamConstraintsConfig, TeamMode, TeammateSpawnRequest,
+};
 
 const MEMORY_SKILLS: &[&str] = &[
     "Skill(ralphx:rule-manager)",
@@ -55,13 +63,17 @@ struct AgentToolsSpec {
 #[derive(Debug, Clone, Deserialize)]
 struct AgentConfigRaw {
     name: String,
+    /// Parent agent name for config inheritance. Child fields override parent.
+    #[serde(default)]
+    extends: Option<String>,
     #[serde(default)]
     tools: AgentToolsSpec,
     #[serde(default)]
     mcp_tools: Vec<String>,
     #[serde(default)]
     preapproved_cli_tools: Vec<String>,
-    system_prompt_file: String,
+    #[serde(default)]
+    system_prompt_file: Option<String>,
     model: Option<String>,
     settings_profile: Option<String>,
 }
@@ -110,7 +122,12 @@ struct RalphxConfig {
     tool_sets: HashMap<String, Vec<String>>,
     #[serde(default)]
     claude: ClaudeRuntimeConfigRaw,
+    #[serde(default)]
     agents: Vec<AgentConfigRaw>,
+    #[serde(default)]
+    process_mapping: ProcessMapping,
+    #[serde(default)]
+    team_constraints: TeamConstraintsConfig,
 }
 
 const EMBEDDED_CONFIG: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../ralphx.yaml"));
@@ -118,6 +135,8 @@ const EMBEDDED_CONFIG: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "
 struct LoadedConfig {
     agents: Vec<AgentConfig>,
     claude: ClaudeRuntimeConfig,
+    process_mapping: ProcessMapping,
+    team_constraints: TeamConstraintsConfig,
 }
 
 static LOADED_CONFIG_CELL: OnceLock<LoadedConfig> = OnceLock::new();
@@ -166,6 +185,86 @@ fn resolve_tools(raw: &AgentConfigRaw, tool_sets: &HashMap<String, Vec<String>>)
     out
 }
 
+// ── Agent config inheritance (extends) ──────────────────────────────────
+
+/// Check if a tools spec has any explicit user-provided values.
+fn tools_spec_is_default(spec: &AgentToolsSpec) -> bool {
+    !spec.mcp_only && spec.extends.is_none() && spec.include.is_empty()
+}
+
+/// Recursively resolve agent inheritance via `extends` field.
+///
+/// Child fields override parent; missing/default fields fall through.
+/// Circular extends detected via stack tracking.
+fn resolve_agent_extends(
+    raw: &AgentConfigRaw,
+    all_agents: &[AgentConfigRaw],
+    stack: &mut Vec<String>,
+) -> AgentConfigRaw {
+    let parent_name = match &raw.extends {
+        Some(name) => name,
+        None => return raw.clone(),
+    };
+
+    if stack.contains(parent_name) {
+        tracing::warn!(
+            agent = %raw.name,
+            parent = %parent_name,
+            chain = ?stack,
+            "Circular agent extends detected"
+        );
+        return raw.clone();
+    }
+
+    stack.push(parent_name.clone());
+    let parent = all_agents.iter().find(|a| a.name == *parent_name);
+    let result = if let Some(parent) = parent {
+        let resolved_parent = resolve_agent_extends(parent, all_agents, stack);
+        merge_agent_configs(&resolved_parent, raw)
+    } else {
+        tracing::warn!(
+            agent = %raw.name,
+            parent = %parent_name,
+            "Agent extends references unknown parent"
+        );
+        raw.clone()
+    };
+    stack.pop();
+    result
+}
+
+/// Merge parent and child agent configs. Child fields override parent.
+fn merge_agent_configs(parent: &AgentConfigRaw, child: &AgentConfigRaw) -> AgentConfigRaw {
+    AgentConfigRaw {
+        name: child.name.clone(),
+        extends: None, // inheritance resolved
+        system_prompt_file: child
+            .system_prompt_file
+            .clone()
+            .or_else(|| parent.system_prompt_file.clone()),
+        model: child.model.clone().or_else(|| parent.model.clone()),
+        tools: if tools_spec_is_default(&child.tools) {
+            parent.tools.clone()
+        } else {
+            child.tools.clone()
+        },
+        mcp_tools: if child.mcp_tools.is_empty() {
+            parent.mcp_tools.clone()
+        } else {
+            child.mcp_tools.clone()
+        },
+        preapproved_cli_tools: if child.preapproved_cli_tools.is_empty() {
+            parent.preapproved_cli_tools.clone()
+        } else {
+            child.preapproved_cli_tools.clone()
+        },
+        settings_profile: child
+            .settings_profile
+            .clone()
+            .or_else(|| parent.settings_profile.clone()),
+    }
+}
+
 fn parse_config(yaml: &str) -> Option<LoadedConfig> {
     let parsed: RalphxConfig = match serde_yaml::from_str(yaml) {
         Ok(v) => v,
@@ -175,18 +274,39 @@ fn parse_config(yaml: &str) -> Option<LoadedConfig> {
         }
     };
 
+    // Phase 1: resolve extends inheritance for all agents
+    let resolved_raw_agents: Vec<AgentConfigRaw> = parsed
+        .agents
+        .iter()
+        .map(|raw| {
+            let mut stack = Vec::new();
+            resolve_agent_extends(raw, &parsed.agents, &mut stack)
+        })
+        .collect();
+
     let mut seen_names = HashSet::new();
-    let mut resolved = Vec::with_capacity(parsed.agents.len());
+    let mut resolved = Vec::with_capacity(resolved_raw_agents.len());
     let global_profile_selection =
         runtime_settings_profile_override().or_else(|| parsed.claude.settings_profile.clone());
     let resolved_settings =
         resolve_claude_settings(&parsed.claude, global_profile_selection.as_deref());
 
-    for raw in &parsed.agents {
+    for raw in &resolved_raw_agents {
         if !seen_names.insert(raw.name.clone()) {
             tracing::warn!(agent = %raw.name, "Duplicate agent name in config");
             return None;
         }
+
+        let system_prompt = match &raw.system_prompt_file {
+            Some(path) => path.clone(),
+            None => {
+                tracing::warn!(
+                    agent = %raw.name,
+                    "Agent has no system_prompt_file (even after extends resolution)"
+                );
+                String::new()
+            }
+        };
 
         let cli_tools = resolve_tools(raw, &parsed.tool_sets);
         let agent_profile_selection =
@@ -212,7 +332,7 @@ fn parse_config(yaml: &str) -> Option<LoadedConfig> {
             resolved_cli_tools: cli_tools,
             allowed_mcp_tools: raw.mcp_tools.clone(),
             preapproved_cli_tools: raw.preapproved_cli_tools.clone(),
-            system_prompt_file: raw.system_prompt_file.clone(),
+            system_prompt_file: system_prompt,
             model: raw.model.clone(),
             settings: agent_settings,
         });
@@ -237,6 +357,8 @@ fn parse_config(yaml: &str) -> Option<LoadedConfig> {
     Some(LoadedConfig {
         agents: resolved,
         claude,
+        process_mapping: parsed.process_mapping,
+        team_constraints: parsed.team_constraints,
     })
 }
 
@@ -471,6 +593,8 @@ fn load_config() -> LoadedConfig {
             use_append_system_prompt_file: true,
             settings: None,
         },
+        process_mapping: ProcessMapping::default(),
+        team_constraints: TeamConstraintsConfig::default(),
     })
 }
 
@@ -509,6 +633,16 @@ pub fn get_allowed_tools(agent_name: &str) -> Option<String> {
             c.resolved_cli_tools.join(",")
         }
     })
+}
+
+pub fn process_mapping() -> &'static ProcessMapping {
+    &LOADED_CONFIG_CELL.get_or_init(load_config).process_mapping
+}
+
+pub fn team_constraints_config() -> &'static TeamConstraintsConfig {
+    &LOADED_CONFIG_CELL
+        .get_or_init(load_config)
+        .team_constraints
 }
 
 pub fn get_preapproved_tools(agent_name: &str) -> Option<String> {
@@ -553,11 +687,11 @@ mod tests {
     use super::*;
     use crate::infrastructure::agents::claude::agent_names::{
         SHORT_CHAT_PROJECT, SHORT_CHAT_TASK, SHORT_CODER, SHORT_DEEP_RESEARCHER,
-        SHORT_DEPENDENCY_SUGGESTER, SHORT_MEMORY_CAPTURE, SHORT_MEMORY_MAINTAINER, SHORT_MERGER,
-        SHORT_ORCHESTRATOR, SHORT_ORCHESTRATOR_IDEATION, SHORT_ORCHESTRATOR_IDEATION_READONLY,
-        SHORT_PROJECT_ANALYZER, SHORT_QA_EXECUTOR, SHORT_QA_PREP, SHORT_REVIEWER,
-        SHORT_REVIEW_CHAT, SHORT_REVIEW_HISTORY, SHORT_SESSION_NAMER, SHORT_SUPERVISOR,
-        SHORT_WORKER,
+        SHORT_DEPENDENCY_SUGGESTER, SHORT_IDEATION_TEAM_LEAD, SHORT_MEMORY_CAPTURE,
+        SHORT_MEMORY_MAINTAINER, SHORT_MERGER, SHORT_ORCHESTRATOR, SHORT_ORCHESTRATOR_IDEATION,
+        SHORT_ORCHESTRATOR_IDEATION_READONLY, SHORT_PROJECT_ANALYZER, SHORT_QA_EXECUTOR,
+        SHORT_QA_PREP, SHORT_REVIEWER, SHORT_REVIEW_CHAT, SHORT_REVIEW_HISTORY,
+        SHORT_SESSION_NAMER, SHORT_SUPERVISOR, SHORT_WORKER, SHORT_WORKER_TEAM,
     };
     use std::collections::HashSet;
 
@@ -626,6 +760,9 @@ mod tests {
             SHORT_MERGER,
             SHORT_MEMORY_MAINTAINER,
             SHORT_MEMORY_CAPTURE,
+            // Team lead variants
+            SHORT_IDEATION_TEAM_LEAD,
+            SHORT_WORKER_TEAM,
         ]);
 
         for agent in agent_configs() {
@@ -1180,5 +1317,283 @@ agents:
         if let Some(config) = get_agent_config("memory-capture") {
             assert!(!config.mcp_only, "memory-capture should have CLI tools");
         }
+    }
+
+    // ── Agent extends inheritance tests ─────────────────────────────
+
+    #[test]
+    fn test_extends_inherits_parent_tools() {
+        let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+agents:
+  - name: base-worker
+    system_prompt_file: ralphx-plugin/agents/worker.md
+    model: sonnet
+    tools: { extends: base_tools, include: [Write, Edit, Task] }
+    mcp_tools: [start_step, complete_step]
+    preapproved_cli_tools: [Write, Edit, Bash]
+  - name: worker-team
+    extends: base-worker
+    system_prompt_file: ralphx-plugin/agents/worker-team.md
+    model: opus
+"#;
+        let parsed = parse_config(yaml).expect("config should parse");
+        let team = parsed
+            .agents
+            .iter()
+            .find(|a| a.name == "worker-team")
+            .expect("worker-team should exist");
+
+        // model overridden by child
+        assert_eq!(team.model.as_deref(), Some("opus"));
+        // system_prompt_file overridden by child
+        assert_eq!(team.system_prompt_file, "ralphx-plugin/agents/worker-team.md");
+        // tools inherited from parent (child didn't specify)
+        assert!(team.resolved_cli_tools.contains(&"Write".to_string()));
+        assert!(team.resolved_cli_tools.contains(&"Edit".to_string()));
+        assert!(team.resolved_cli_tools.contains(&"Task".to_string()));
+        // mcp_tools inherited from parent
+        assert!(team.allowed_mcp_tools.contains(&"start_step".to_string()));
+        assert!(team.allowed_mcp_tools.contains(&"complete_step".to_string()));
+        // preapproved_cli_tools inherited from parent
+        assert!(team.preapproved_cli_tools.contains(&"Write".to_string()));
+    }
+
+    #[test]
+    fn test_extends_child_overrides_mcp_tools() {
+        let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+agents:
+  - name: base-worker
+    system_prompt_file: ralphx-plugin/agents/worker.md
+    model: sonnet
+    tools: { extends: base_tools, include: [Write] }
+    mcp_tools: [start_step, complete_step]
+    preapproved_cli_tools: [Write]
+  - name: custom-worker
+    extends: base-worker
+    mcp_tools: [get_task_context]
+"#;
+        let parsed = parse_config(yaml).expect("config should parse");
+        let custom = parsed
+            .agents
+            .iter()
+            .find(|a| a.name == "custom-worker")
+            .expect("custom-worker should exist");
+
+        // mcp_tools overridden by child
+        assert_eq!(custom.allowed_mcp_tools, vec!["get_task_context"]);
+        // model inherited
+        assert_eq!(custom.model.as_deref(), Some("sonnet"));
+        // system_prompt_file inherited
+        assert_eq!(custom.system_prompt_file, "ralphx-plugin/agents/worker.md");
+    }
+
+    #[test]
+    fn test_extends_circular_detection() {
+        let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+agents:
+  - name: agent-a
+    extends: agent-b
+    system_prompt_file: ralphx-plugin/agents/worker.md
+  - name: agent-b
+    extends: agent-a
+    system_prompt_file: ralphx-plugin/agents/worker.md
+"#;
+        // Should parse without panic (circular breaks with warning)
+        let parsed = parse_config(yaml).expect("config should parse despite circular extends");
+        assert_eq!(parsed.agents.len(), 2);
+    }
+
+    #[test]
+    fn test_extends_unknown_parent_keeps_child_as_is() {
+        let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+agents:
+  - name: orphan-agent
+    extends: nonexistent-parent
+    system_prompt_file: ralphx-plugin/agents/worker.md
+    model: haiku
+"#;
+        let parsed = parse_config(yaml).expect("config should parse");
+        let agent = parsed
+            .agents
+            .iter()
+            .find(|a| a.name == "orphan-agent")
+            .expect("orphan-agent should exist");
+        assert_eq!(agent.model.as_deref(), Some("haiku"));
+    }
+
+    #[test]
+    fn test_extends_chained_inheritance() {
+        let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+agents:
+  - name: grandparent
+    system_prompt_file: ralphx-plugin/agents/worker.md
+    model: haiku
+    mcp_tools: [tool_a]
+    preapproved_cli_tools: [Bash]
+  - name: parent
+    extends: grandparent
+    model: sonnet
+    mcp_tools: [tool_b]
+  - name: child
+    extends: parent
+    model: opus
+"#;
+        let parsed = parse_config(yaml).expect("config should parse");
+        let child = parsed
+            .agents
+            .iter()
+            .find(|a| a.name == "child")
+            .expect("child should exist");
+
+        // model from child
+        assert_eq!(child.model.as_deref(), Some("opus"));
+        // mcp_tools from parent (overrides grandparent)
+        assert_eq!(child.allowed_mcp_tools, vec!["tool_b"]);
+        // system_prompt_file from grandparent (inherited through chain)
+        assert_eq!(child.system_prompt_file, "ralphx-plugin/agents/worker.md");
+        // preapproved_cli_tools from grandparent
+        assert!(child.preapproved_cli_tools.contains(&"Bash".to_string()));
+    }
+
+    #[test]
+    fn test_no_extends_backward_compatible() {
+        // Agents without extends should work exactly as before
+        let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+agents:
+  - name: standalone
+    system_prompt_file: ralphx-plugin/agents/worker.md
+    model: sonnet
+    tools: { extends: base_tools, include: [Write] }
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: [Write, Bash]
+"#;
+        let parsed = parse_config(yaml).expect("config should parse");
+        let agent = parsed
+            .agents
+            .iter()
+            .find(|a| a.name == "standalone")
+            .expect("standalone should exist");
+        assert_eq!(agent.model.as_deref(), Some("sonnet"));
+        assert!(agent.resolved_cli_tools.contains(&"Write".to_string()));
+    }
+
+    // ── Process mapping + team constraints integration tests ────────
+
+    #[test]
+    fn test_process_mapping_parsed_from_full_config() {
+        let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+process_mapping:
+  execution:
+    default: ralphx-worker
+    team: ralphx-worker-team
+  ideation:
+    default: orchestrator-ideation
+agents:
+  - name: ralphx-worker
+    system_prompt_file: ralphx-plugin/agents/worker.md
+    tools: { extends: base_tools, include: [Write] }
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: []
+"#;
+        let parsed = parse_config(yaml).expect("config should parse");
+        assert_eq!(parsed.process_mapping.slots.len(), 2);
+        assert_eq!(
+            parsed.process_mapping.slots["execution"].default,
+            "ralphx-worker"
+        );
+        assert_eq!(
+            parsed.process_mapping.slots["execution"]
+                .variants
+                .get("team")
+                .unwrap(),
+            "ralphx-worker-team"
+        );
+    }
+
+    #[test]
+    fn test_team_constraints_parsed_from_full_config() {
+        let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+team_constraints:
+  _defaults:
+    max_teammates: 5
+    model_cap: sonnet
+  execution:
+    max_teammates: 3
+    mode: dynamic
+    timeout_minutes: 30
+agents:
+  - name: ralphx-worker
+    system_prompt_file: ralphx-plugin/agents/worker.md
+    tools: { extends: base_tools, include: [Write] }
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: []
+"#;
+        let parsed = parse_config(yaml).expect("config should parse");
+        let defaults = parsed.team_constraints.defaults.as_ref().unwrap();
+        assert_eq!(defaults.max_teammates, 5);
+        let exec = &parsed.team_constraints.processes["execution"];
+        assert_eq!(exec.max_teammates, 3);
+        assert_eq!(exec.timeout_minutes, 30);
+    }
+
+    #[test]
+    fn test_missing_process_mapping_uses_empty_default() {
+        let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+agents:
+  - name: ralphx-worker
+    system_prompt_file: ralphx-plugin/agents/worker.md
+    tools: { extends: base_tools, include: [Write] }
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: []
+"#;
+        let parsed = parse_config(yaml).expect("config should parse");
+        assert!(parsed.process_mapping.slots.is_empty());
+        assert!(parsed.team_constraints.processes.is_empty());
+        assert!(parsed.team_constraints.defaults.is_none());
     }
 }
