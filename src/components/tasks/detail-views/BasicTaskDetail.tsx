@@ -5,7 +5,7 @@
  * Features native vibrancy materials and refined typography.
  */
 
-import { useCallback } from "react";
+import { useCallback, useState, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { StepList } from "../StepList";
 import { SectionTitle, TwoColumnLayout, DetailCard } from "./shared";
@@ -15,10 +15,22 @@ import { taskKeys } from "@/hooks/useTasks";
 import { api } from "@/lib/tauri";
 import { Loader2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { Task } from "@/types/task";
+import {
+  ResumeValidationDialog,
+  type ValidationWarning,
+} from "@/components/ui/ResumeValidationDialog";
+import type { Task, StopMetadata, TaskMetadata } from "@/types/task";
 
 // Task statuses that can be restarted
 const RESTARTABLE_STATUSES = new Set(["failed", "stopped", "cancelled", "paused"]);
+
+// States that need validation before resuming (merge-related states)
+const VALIDATED_RESUME_STATES = new Set([
+  "merging",
+  "pending_merge",
+  "merge_conflict",
+  "merge_incomplete",
+]);
 
 interface BasicTaskDetailProps {
   task: Task;
@@ -30,13 +42,19 @@ interface BasicTaskDetailProps {
  */
 function ActionButtonsCard({
   taskId,
+  taskTitle,
   status,
+  stopMetadata,
 }: {
   taskId: string;
+  taskTitle: string;
   status: string;
+  stopMetadata?: StopMetadata | null;
 }) {
   const queryClient = useQueryClient();
   const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
+  const [showValidationDialog, setShowValidationDialog] = useState(false);
+  const [isResuming, setIsResuming] = useState(false);
 
   const restartMutation = useMutation({
     mutationFn: async () => {
@@ -47,7 +65,48 @@ function ActionButtonsCard({
     },
   });
 
+  // Generate validation warnings based on stopped-from state
+  const validationWarnings = useMemo((): ValidationWarning[] => {
+    if (!stopMetadata) return [];
+
+    const warnings: ValidationWarning[] = [];
+    const stoppedFrom = stopMetadata.stopped_from_status;
+
+    // Check if this was a merge-related state
+    if (VALIDATED_RESUME_STATES.has(stoppedFrom)) {
+      warnings.push({
+        id: "git-state",
+        message: `Task was stopped during ${stoppedFrom.replace("_", " ")} phase. Git state may have changed since then.`,
+        severity: "warning",
+      });
+
+      warnings.push({
+        id: "branch-check",
+        message: "The task branch and worktree should be verified before resuming.",
+        severity: "warning",
+      });
+    }
+
+    // Add stop reason as context if available
+    if (stopMetadata.stop_reason) {
+      warnings.push({
+        id: "stop-reason",
+        message: `Original stop reason: "${stopMetadata.stop_reason}"`,
+        severity: "warning",
+      });
+    }
+
+    return warnings;
+  }, [stopMetadata]);
+
   const handleRestart = useCallback(async () => {
+    // If task was stopped from a validated state, show validation dialog
+    if (stopMetadata && validationWarnings.length > 0) {
+      setShowValidationDialog(true);
+      return;
+    }
+
+    // Otherwise, use standard confirmation
     const statusLabels: Record<string, string> = {
       failed: "Restart",
       stopped: "Restart",
@@ -65,7 +124,31 @@ function ActionButtonsCard({
     });
     if (!confirmed) return;
     restartMutation.mutate();
-  }, [confirm, status, restartMutation]);
+  }, [confirm, status, restartMutation, stopMetadata, validationWarnings.length]);
+
+  // Handle force resume from validation dialog
+  const handleForceResume = useCallback(async () => {
+    setIsResuming(true);
+    try {
+      await api.tasks.move(taskId, "ready");
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      setShowValidationDialog(false);
+    } finally {
+      setIsResuming(false);
+    }
+  }, [taskId, queryClient]);
+
+  // Handle go to ready from validation dialog
+  const handleGoToReady = useCallback(async () => {
+    setIsResuming(true);
+    try {
+      await api.tasks.move(taskId, "ready");
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      setShowValidationDialog(false);
+    } finally {
+      setIsResuming(false);
+    }
+  }, [taskId, queryClient]);
 
   return (
     <DetailCard data-testid="action-buttons">
@@ -79,14 +162,14 @@ function ActionButtonsCard({
         <Button
           data-testid="restart-button"
           onClick={handleRestart}
-          disabled={restartMutation.isPending}
+          disabled={restartMutation.isPending || isResuming}
           className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px] transition-colors"
           style={{
             backgroundColor: "hsl(217 90% 60%)",
             color: "white",
           }}
         >
-          {restartMutation.isPending ? (
+          {restartMutation.isPending || isResuming ? (
             <Loader2 className="w-4 h-4 animate-spin" />
           ) : (
             <RotateCcw className="w-4 h-4" />
@@ -103,6 +186,18 @@ function ActionButtonsCard({
       )}
 
       <ConfirmationDialog {...confirmationDialogProps} />
+
+      {/* Resume Validation Dialog */}
+      <ResumeValidationDialog
+        isOpen={showValidationDialog}
+        onClose={() => setShowValidationDialog(false)}
+        onForceResume={handleForceResume}
+        onGoToReady={handleGoToReady}
+        taskTitle={taskTitle}
+        stoppedFromStatus={stopMetadata?.stopped_from_status}
+        warnings={validationWarnings}
+        isLoading={isResuming}
+      />
     </DetailCard>
   );
 }
@@ -111,6 +206,19 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
   const { data: steps, isLoading: stepsLoading } = useTaskSteps(task.id);
   const hasSteps = (steps?.length ?? 0) > 0;
   const isRestartable = RESTARTABLE_STATUSES.has(task.internalStatus);
+
+  // Parse stop metadata from task (for smart resume validation)
+  let stopMetadata: StopMetadata | null = null;
+  if (task.metadata) {
+    try {
+      const metadata: TaskMetadata = JSON.parse(task.metadata);
+      if (metadata.stop) {
+        stopMetadata = metadata.stop;
+      }
+    } catch {
+      // JSON parse failed - ignore
+    }
+  }
 
   // Parse failure info from task metadata when task is failed or qa_failed
   let failureInfo: {
@@ -207,7 +315,12 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
       {/* Action Buttons (hidden in historical mode) */}
       {!isHistorical && isRestartable && (
         <section>
-          <ActionButtonsCard taskId={task.id} status={task.internalStatus} />
+          <ActionButtonsCard
+            taskId={task.id}
+            taskTitle={task.title}
+            status={task.internalStatus}
+            stopMetadata={stopMetadata}
+          />
         </section>
       )}
     </TwoColumnLayout>
