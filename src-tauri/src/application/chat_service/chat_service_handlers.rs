@@ -496,14 +496,39 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     // If this is a provider error → store metadata before pausing
                     if let Some(se) = stream_error {
                         if se.is_provider_error() {
-                            if let Some(meta) =
+                            if let Some(mut meta) =
                                 se.provider_error_metadata(task.internal_status)
                             {
+                                // Carry forward resume_attempts from existing metadata
+                                // so the MAX_RESUME_ATTEMPTS limit works across re-pause cycles
+                                if let Some(existing) = super::PauseReason::from_task_metadata(
+                                    task.metadata.as_deref(),
+                                ) {
+                                    if let super::PauseReason::ProviderError { resume_attempts, .. } = existing {
+                                        meta.resume_attempts = resume_attempts;
+                                    }
+                                } else if let Some(existing) = super::ProviderErrorMetadata::from_task_metadata(
+                                    task.metadata.as_deref(),
+                                ) {
+                                    meta.resume_attempts = existing.resume_attempts;
+                                }
+
+                                // Write both legacy provider_error and new pause_reason keys
+                                let pause_reason = super::PauseReason::ProviderError {
+                                    category: meta.category.clone(),
+                                    message: meta.message.clone(),
+                                    retry_after: meta.retry_after.clone(),
+                                    previous_status: meta.previous_status.clone(),
+                                    paused_at: meta.paused_at.clone(),
+                                    auto_resumable: meta.auto_resumable,
+                                    resume_attempts: meta.resume_attempts,
+                                };
                                 let mut updated_task = task.clone();
+                                let with_legacy = meta.write_to_task_metadata(
+                                    updated_task.metadata.as_deref(),
+                                );
                                 updated_task.metadata = Some(
-                                    meta.write_to_task_metadata(
-                                        updated_task.metadata.as_deref(),
-                                    ),
+                                    pause_reason.write_to_task_metadata(Some(&with_legacy)),
                                 );
                                 updated_task.touch();
                                 if let Err(e) = task_repo.update(&updated_task).await {
