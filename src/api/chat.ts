@@ -44,6 +44,8 @@ export interface ChatMessageResponse {
   toolCalls: ToolCall[] | null;
   /** Pre-parsed content blocks array (parsed from JSON at API layer) */
   contentBlocks: ContentBlockItem[] | null;
+  /** Sender name for team mode messages (teammate name or "lead") */
+  sender: string | null;
   createdAt: string;
 }
 
@@ -195,6 +197,7 @@ const AgentMessageSchema = z.object({
   content: z.string(),
   tool_calls: z.any().nullable(),
   content_blocks: z.any().nullable(),
+  sender: z.string().nullable().optional(),
   created_at: z.string(),
 });
 
@@ -207,6 +210,7 @@ function transformAgentMessage(raw: RawAgentMessage): ChatMessageResponse {
     projectId: null,
     taskId: null,
     role: raw.role,
+    sender: raw.sender ?? null,
     content: raw.content,
     metadata: null,
     parentMessageId: null,
@@ -389,7 +393,8 @@ export async function sendAgentMessage(
   contextType: ContextType,
   contextId: string,
   content: string,
-  attachmentIds?: string[]
+  attachmentIds?: string[],
+  target?: string
 ): Promise<SendAgentMessageResult> {
   const raw = await typedInvoke(
     "send_agent_message",
@@ -399,6 +404,7 @@ export async function sendAgentMessage(
         contextId,
         content,
         ...(attachmentIds !== undefined && attachmentIds.length > 0 && { attachmentIds }),
+        ...(target !== undefined && { target }),
       },
     },
     SendAgentMessageResponseSchema
@@ -420,7 +426,8 @@ export async function queueAgentMessage(
   contextId: string,
   content: string,
   clientId?: string,
-  attachmentIds?: string[]
+  attachmentIds?: string[],
+  target?: string
 ): Promise<QueuedMessageResponse> {
   const raw = await typedInvoke(
     "queue_agent_message",
@@ -431,6 +438,7 @@ export async function queueAgentMessage(
         content,
         ...(clientId !== undefined && { clientId }),
         ...(attachmentIds !== undefined && attachmentIds.length > 0 && { attachmentIds }),
+        ...(target !== undefined && { target }),
       },
     },
     QueuedMessageResponseSchema
