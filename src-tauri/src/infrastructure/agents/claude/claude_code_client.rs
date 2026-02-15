@@ -19,8 +19,8 @@ use tokio::process::Child;
 use tokio::sync::Mutex;
 
 use crate::domain::agents::{
-    AgentConfig, AgentError, AgentHandle, AgentOutput, AgentResponse, AgentResult, AgenticClient,
-    ClientCapabilities, ClientType, ResponseChunk,
+    AgentConfig, AgentError, AgentHandle, AgentOutput, AgentResponse, AgentResult, AgentRole,
+    AgenticClient, ClientCapabilities, ClientType, ResponseChunk,
 };
 
 use super::{
@@ -68,6 +68,136 @@ pub struct StreamingSpawnResult {
     pub handle: AgentHandle,
     /// The spawned child process (stdout is piped for stream processing)
     pub child: Child,
+}
+
+// ============================================================================
+// Teammate Interactive Spawn Types
+// ============================================================================
+
+/// Configuration for spawning a team teammate in interactive mode (no `-p` flag).
+///
+/// Unlike `AgentConfig` (print mode), teammates are long-lived interactive sessions
+/// that receive messages via Claude Code's native SendMessage tool. The process stays
+/// alive until a shutdown_request is received.
+#[derive(Debug, Clone)]
+pub struct TeammateSpawnConfig {
+    /// Teammate name (e.g., "transport-researcher")
+    pub name: String,
+    /// Team name (e.g., "ideation-abc123")
+    pub team_name: String,
+    /// Session ID of the team lead that spawned this teammate
+    pub parent_session_id: String,
+    /// Lead-generated role prompt (passed via --append-system-prompt)
+    pub prompt: String,
+    /// Model to use (within model ceiling, e.g. "sonnet")
+    pub model: String,
+    /// Approved CLI tools (e.g. ["Read", "Grep", "Glob"])
+    pub tools: Vec<String>,
+    /// Approved MCP tools (short names; will be prefixed with mcp__ralphx__)
+    pub mcp_tools: Vec<String>,
+    /// Agent color for terminal distinction (e.g. "blue", "green")
+    pub color: String,
+    /// Working directory for the teammate process
+    pub working_directory: PathBuf,
+    /// Plugin directory path for MCP server and agent discovery
+    pub plugin_dir: Option<PathBuf>,
+    /// Claude Code agent type controlling built-in tool set (default: "general-purpose")
+    pub agent_type: String,
+    /// MCP agent type for tool filtering (default: "ideation-team-member")
+    pub mcp_agent_type: String,
+    /// Additional environment variables
+    pub env: HashMap<String, String>,
+}
+
+impl TeammateSpawnConfig {
+    /// Create a new teammate config with required fields and sensible defaults.
+    pub fn new(
+        name: impl Into<String>,
+        team_name: impl Into<String>,
+        parent_session_id: impl Into<String>,
+        prompt: impl Into<String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            team_name: team_name.into(),
+            parent_session_id: parent_session_id.into(),
+            prompt: prompt.into(),
+            model: "sonnet".to_string(),
+            tools: Vec::new(),
+            mcp_tools: Vec::new(),
+            color: "blue".to_string(),
+            working_directory: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            plugin_dir: Some(PathBuf::from("./ralphx-plugin")),
+            agent_type: "general-purpose".to_string(),
+            mcp_agent_type: "ideation-team-member".to_string(),
+            env: HashMap::new(),
+        }
+    }
+
+    /// Set the model.
+    pub fn with_model(mut self, model: impl Into<String>) -> Self {
+        self.model = model.into();
+        self
+    }
+
+    /// Set the CLI tools.
+    pub fn with_tools(mut self, tools: Vec<String>) -> Self {
+        self.tools = tools;
+        self
+    }
+
+    /// Set the MCP tools.
+    pub fn with_mcp_tools(mut self, mcp_tools: Vec<String>) -> Self {
+        self.mcp_tools = mcp_tools;
+        self
+    }
+
+    /// Set the agent color.
+    pub fn with_color(mut self, color: impl Into<String>) -> Self {
+        self.color = color.into();
+        self
+    }
+
+    /// Set the working directory.
+    pub fn with_working_dir(mut self, path: impl Into<PathBuf>) -> Self {
+        self.working_directory = path.into();
+        self
+    }
+
+    /// Set the plugin directory.
+    pub fn with_plugin_dir(mut self, path: impl Into<PathBuf>) -> Self {
+        self.plugin_dir = Some(path.into());
+        self
+    }
+
+    /// Set the Claude Code agent type (controls built-in tool set).
+    pub fn with_agent_type(mut self, agent_type: impl Into<String>) -> Self {
+        self.agent_type = agent_type.into();
+        self
+    }
+
+    /// Set the MCP agent type (controls MCP-side tool filtering).
+    pub fn with_mcp_agent_type(mut self, mcp_agent_type: impl Into<String>) -> Self {
+        self.mcp_agent_type = mcp_agent_type.into();
+        self
+    }
+
+    /// Add an environment variable.
+    pub fn with_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.env.insert(key.into(), value.into());
+        self
+    }
+}
+
+/// Result from spawning a teammate in interactive mode.
+#[derive(Debug)]
+pub struct TeammateSpawnResult {
+    /// Handle to the spawned teammate
+    pub handle: AgentHandle,
+    /// The spawned child process (stdout piped for stream processing)
+    pub child: Child,
+    /// Stdin pipe for sending messages to the teammate
+    pub stdin: tokio::process::ChildStdin,
 }
 
 lazy_static! {
@@ -525,6 +655,207 @@ impl ClaudeCodeClient {
     }
 }
 
+// ============================================================================
+// Teammate Interactive Spawn Support
+// ============================================================================
+
+impl ClaudeCodeClient {
+    /// Build CLI arguments for an interactive teammate spawn.
+    ///
+    /// Key differences from `build_cli_args`:
+    /// - **No `-p` flag** — teammates are interactive sessions
+    /// - **Team CLI flags** — `--agent-id`, `--agent-name`, `--team-name`, etc.
+    /// - **`--append-system-prompt`** — lead-generated role prompt
+    /// - **`--dangerously-skip-permissions`** — automated teammates skip prompts
+    pub fn build_teammate_cli_args(&self, config: &TeammateSpawnConfig) -> Vec<String> {
+        sanitize_claude_user_state();
+        let mut args = Vec::new();
+
+        // Output format for streaming (same as other modes)
+        args.extend(["--output-format".to_string(), "stream-json".to_string()]);
+        args.push("--verbose".to_string());
+
+        // Setting sources from runtime config
+        if let Some(sources) = &claude_runtime_config().setting_sources {
+            if !sources.is_empty() {
+                args.extend(["--setting-sources".to_string(), sources.join(",")]);
+            }
+        }
+
+        // Avoid startup parser crashes in slash-command/skills loading path
+        args.push("--disable-slash-commands".to_string());
+
+        // Plugin directory for agent/skill discovery
+        if let Some(plugin_dir) = &config.plugin_dir {
+            args.extend(["--plugin-dir".to_string(), plugin_dir.display().to_string()]);
+
+            // Create dynamic MCP config with MCP agent type for tool filtering
+            // Uses mcp_agent_type (e.g., "ideation-team-member") not the Claude Code agent_type
+            if let Some(temp_path) = create_mcp_config(plugin_dir, &config.mcp_agent_type) {
+                args.extend([
+                    "--mcp-config".to_string(),
+                    temp_path.display().to_string(),
+                    "--strict-mcp-config".to_string(),
+                ]);
+            }
+        }
+
+        // --- Team-specific CLI flags ---
+        args.extend([
+            "--agent-id".to_string(),
+            format!("{}@{}", config.name, config.team_name),
+        ]);
+        args.extend(["--agent-name".to_string(), config.name.clone()]);
+        args.extend(["--team-name".to_string(), config.team_name.clone()]);
+        args.extend(["--agent-color".to_string(), config.color.clone()]);
+        args.extend([
+            "--parent-session-id".to_string(),
+            config.parent_session_id.clone(),
+        ]);
+        // Claude Code agent type controls built-in tool set (e.g., "general-purpose")
+        args.extend(["--agent-type".to_string(), config.agent_type.clone()]);
+
+        // Model selection (within model ceiling)
+        args.extend(["--model".to_string(), config.model.clone()]);
+
+        // CLI tools restriction
+        if !config.tools.is_empty() {
+            args.extend(["--tools".to_string(), config.tools.join(",")]);
+        }
+
+        // Pre-approved MCP tools (prefixed with mcp__ralphx__)
+        if !config.mcp_tools.is_empty() {
+            let mcp_server_name = &claude_runtime_config().mcp_server_name;
+            let prefixed: Vec<String> = config
+                .mcp_tools
+                .iter()
+                .map(|t| format!("mcp__{mcp_server_name}__{t}"))
+                .collect();
+            args.extend(["--allowedTools".to_string(), prefixed.join(",")]);
+        }
+
+        // Lead-generated role prompt via --append-system-prompt
+        args.extend(["--append-system-prompt".to_string(), config.prompt.clone()]);
+
+        // Skip permissions for automated teammates
+        args.push("--dangerously-skip-permissions".to_string());
+
+        args
+    }
+
+    /// Build environment variables for a teammate spawn.
+    ///
+    /// Returns the team-specific env vars that must be set on the process
+    /// in addition to the common spawn env.
+    pub fn build_teammate_env_vars(config: &TeammateSpawnConfig) -> HashMap<String, String> {
+        let mut env = HashMap::new();
+
+        // Team feature flags (required for agent teams)
+        env.insert("CLAUDECODE".to_string(), "1".to_string());
+        env.insert(
+            "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS".to_string(),
+            "1".to_string(),
+        );
+
+        // MCP agent type for tool filtering (also available as env fallback)
+        env.insert(
+            "RALPHX_AGENT_TYPE".to_string(),
+            config.mcp_agent_type.clone(),
+        );
+
+        // Merge in any custom env vars from config
+        for (key, value) in &config.env {
+            env.insert(key.clone(), value.clone());
+        }
+
+        env
+    }
+
+    /// Spawn a teammate in interactive mode for agent team participation.
+    ///
+    /// Unlike `spawn_agent` (print mode with `-p`), this spawns an interactive session:
+    /// - No `-p` flag — the teammate stays alive for multi-turn messaging
+    /// - stdin is piped for message injection
+    /// - Team env vars (`CLAUDECODE=1`, `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`)
+    /// - Team CLI flags (`--agent-id`, `--agent-name`, `--team-name`, etc.)
+    /// - Role prompt via `--append-system-prompt`
+    ///
+    /// The caller is responsible for:
+    /// 1. Writing messages to the returned stdin pipe
+    /// 2. Processing stdout for stream-json events
+    /// 3. Monitoring the process lifecycle
+    /// 4. Sending shutdown_request when done
+    pub async fn spawn_teammate_interactive(
+        &self,
+        config: TeammateSpawnConfig,
+    ) -> AgentResult<TeammateSpawnResult> {
+        if let Err(err) = ensure_claude_spawn_allowed() {
+            return Err(AgentError::SpawnNotAllowed(err));
+        }
+
+        // Check if CLI is available
+        if !self.cli_path.exists() && which::which(&self.cli_path).is_err() {
+            return Err(AgentError::CliNotAvailable(format!(
+                "claude CLI not found at {:?}",
+                self.cli_path
+            )));
+        }
+
+        let args = self.build_teammate_cli_args(&config);
+        let team_env = Self::build_teammate_env_vars(&config);
+
+        // Build command
+        let mut cmd = tokio::process::Command::new(&self.cli_path);
+        cmd.args(&args)
+            .current_dir(&config.working_directory)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .stdin(Stdio::piped()); // Piped for message injection (NOT null)
+
+        // Apply common RalphX spawn env vars
+        apply_common_spawn_env(&mut cmd);
+
+        // Plugin root env var
+        if let Some(plugin_dir) = &config.plugin_dir {
+            cmd.env("CLAUDE_PLUGIN_ROOT", plugin_dir);
+        }
+
+        // Team-specific env vars
+        for (key, value) in &team_env {
+            cmd.env(key, value);
+        }
+
+        // Spawn the process
+        tracing::info!(
+            teammate = %config.name,
+            team = %config.team_name,
+            model = %config.model,
+            agent_type = %config.agent_type,
+            "Spawning teammate (interactive)"
+        );
+
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| AgentError::SpawnFailed(e.to_string()))?;
+
+        // Take stdin pipe before returning
+        let stdin = child.stdin.take().ok_or_else(|| {
+            AgentError::SpawnFailed("Failed to capture stdin pipe for teammate".to_string())
+        })?;
+
+        let handle = AgentHandle::new(
+            ClientType::ClaudeCode,
+            AgentRole::Custom(format!("teammate:{}", config.name)),
+        );
+
+        Ok(TeammateSpawnResult {
+            handle,
+            child,
+            stdin,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -840,5 +1171,427 @@ mod tests {
         // StreamingSpawnResult is Debug
         fn assert_debug<T: std::fmt::Debug>() {}
         assert_debug::<StreamingSpawnResult>();
+    }
+
+    // ==================== Teammate Interactive Spawn Tests ====================
+
+    fn test_teammate_config() -> TeammateSpawnConfig {
+        TeammateSpawnConfig::new(
+            "transport-researcher",
+            "ideation-abc123",
+            "lead-session-uuid",
+            "You are a transport research specialist. Investigate WebSocket vs SSE.",
+        )
+        .with_model("sonnet")
+        .with_tools(vec![
+            "Read".to_string(),
+            "Grep".to_string(),
+            "Glob".to_string(),
+        ])
+        .with_mcp_tools(vec![
+            "get_session_plan".to_string(),
+            "list_session_proposals".to_string(),
+        ])
+        .with_color("blue")
+        .with_working_dir("/tmp/test")
+        .with_plugin_dir("/test/ralphx-plugin")
+    }
+
+    #[test]
+    fn test_teammate_spawn_config_new_defaults() {
+        let config = TeammateSpawnConfig::new("researcher", "team-1", "session-1", "Do research");
+
+        assert_eq!(config.name, "researcher");
+        assert_eq!(config.team_name, "team-1");
+        assert_eq!(config.parent_session_id, "session-1");
+        assert_eq!(config.prompt, "Do research");
+        assert_eq!(config.model, "sonnet");
+        assert_eq!(config.color, "blue");
+        assert_eq!(config.agent_type, "general-purpose");
+        assert_eq!(config.mcp_agent_type, "ideation-team-member");
+        assert!(config.tools.is_empty());
+        assert!(config.mcp_tools.is_empty());
+        assert!(config.env.is_empty());
+    }
+
+    #[test]
+    fn test_teammate_spawn_config_builder_chain() {
+        let config = TeammateSpawnConfig::new("dev", "team-x", "sess-1", "Code stuff")
+            .with_model("haiku")
+            .with_tools(vec!["Read".to_string()])
+            .with_mcp_tools(vec!["get_task_context".to_string()])
+            .with_color("green")
+            .with_working_dir("/work")
+            .with_plugin_dir("/plugins")
+            .with_agent_type("Bash")
+            .with_mcp_agent_type("worker-team-member")
+            .with_env("CUSTOM_VAR", "value");
+
+        assert_eq!(config.model, "haiku");
+        assert_eq!(config.tools, vec!["Read"]);
+        assert_eq!(config.mcp_tools, vec!["get_task_context"]);
+        assert_eq!(config.color, "green");
+        assert_eq!(config.working_directory, PathBuf::from("/work"));
+        assert_eq!(config.plugin_dir, Some(PathBuf::from("/plugins")));
+        assert_eq!(config.agent_type, "Bash");
+        assert_eq!(config.mcp_agent_type, "worker-team-member");
+        assert_eq!(config.env.get("CUSTOM_VAR"), Some(&"value".to_string()));
+    }
+
+    #[test]
+    fn test_build_teammate_cli_args_no_print_flag() {
+        let client = ClaudeCodeClient::new();
+        let config = test_teammate_config();
+        let args = client.build_teammate_cli_args(&config);
+
+        // CRITICAL: No -p flag — interactive mode
+        assert!(
+            !args.contains(&"-p".to_string()),
+            "Teammate args must NOT contain -p flag (interactive mode)"
+        );
+    }
+
+    #[test]
+    fn test_build_teammate_cli_args_has_output_format() {
+        let client = ClaudeCodeClient::new();
+        let config = test_teammate_config();
+        let args = client.build_teammate_cli_args(&config);
+
+        assert!(args.contains(&"--output-format".to_string()));
+        assert!(args.contains(&"stream-json".to_string()));
+        assert!(args.contains(&"--verbose".to_string()));
+    }
+
+    #[test]
+    fn test_build_teammate_cli_args_has_team_flags() {
+        let client = ClaudeCodeClient::new();
+        let config = test_teammate_config();
+        let args = client.build_teammate_cli_args(&config);
+
+        // --agent-id <name>@<team-name>
+        let agent_id_idx = args
+            .iter()
+            .position(|a| a == "--agent-id")
+            .expect("--agent-id flag must be present");
+        assert_eq!(
+            args[agent_id_idx + 1],
+            "transport-researcher@ideation-abc123"
+        );
+
+        // --agent-name
+        let agent_name_idx = args
+            .iter()
+            .position(|a| a == "--agent-name")
+            .expect("--agent-name flag must be present");
+        assert_eq!(args[agent_name_idx + 1], "transport-researcher");
+
+        // --team-name
+        let team_name_idx = args
+            .iter()
+            .position(|a| a == "--team-name")
+            .expect("--team-name flag must be present");
+        assert_eq!(args[team_name_idx + 1], "ideation-abc123");
+
+        // --agent-color
+        let color_idx = args
+            .iter()
+            .position(|a| a == "--agent-color")
+            .expect("--agent-color flag must be present");
+        assert_eq!(args[color_idx + 1], "blue");
+
+        // --parent-session-id
+        let parent_idx = args
+            .iter()
+            .position(|a| a == "--parent-session-id")
+            .expect("--parent-session-id flag must be present");
+        assert_eq!(args[parent_idx + 1], "lead-session-uuid");
+
+        // --agent-type (Claude Code built-in tool set)
+        let agent_type_idx = args
+            .iter()
+            .position(|a| a == "--agent-type")
+            .expect("--agent-type flag must be present");
+        assert_eq!(args[agent_type_idx + 1], "general-purpose");
+    }
+
+    #[test]
+    fn test_build_teammate_cli_args_has_model() {
+        let client = ClaudeCodeClient::new();
+        let config = test_teammate_config();
+        let args = client.build_teammate_cli_args(&config);
+
+        let model_idx = args
+            .iter()
+            .position(|a| a == "--model")
+            .expect("--model flag must be present");
+        assert_eq!(args[model_idx + 1], "sonnet");
+    }
+
+    #[test]
+    fn test_build_teammate_cli_args_has_tools() {
+        let client = ClaudeCodeClient::new();
+        let config = test_teammate_config();
+        let args = client.build_teammate_cli_args(&config);
+
+        let tools_idx = args
+            .iter()
+            .position(|a| a == "--tools")
+            .expect("--tools flag must be present");
+        assert_eq!(args[tools_idx + 1], "Read,Grep,Glob");
+    }
+
+    #[test]
+    fn test_build_teammate_cli_args_no_tools_when_empty() {
+        let client = ClaudeCodeClient::new();
+        let config = TeammateSpawnConfig::new("r", "t", "s", "p");
+        let args = client.build_teammate_cli_args(&config);
+
+        assert!(
+            !args.contains(&"--tools".to_string()),
+            "Empty tools should not produce --tools flag"
+        );
+    }
+
+    #[test]
+    fn test_build_teammate_cli_args_mcp_tools_prefixed() {
+        let client = ClaudeCodeClient::new();
+        let config = test_teammate_config();
+        let args = client.build_teammate_cli_args(&config);
+
+        let allowed_idx = args
+            .iter()
+            .position(|a| a == "--allowedTools")
+            .expect("--allowedTools flag must be present");
+        let allowed_value = &args[allowed_idx + 1];
+
+        // MCP tools should be prefixed with mcp__ralphx__
+        assert!(
+            allowed_value.contains("mcp__ralphx__get_session_plan"),
+            "MCP tools must be prefixed: got {allowed_value}"
+        );
+        assert!(
+            allowed_value.contains("mcp__ralphx__list_session_proposals"),
+            "MCP tools must be prefixed: got {allowed_value}"
+        );
+    }
+
+    #[test]
+    fn test_build_teammate_cli_args_no_allowed_tools_when_empty() {
+        let client = ClaudeCodeClient::new();
+        let config = TeammateSpawnConfig::new("r", "t", "s", "p");
+        let args = client.build_teammate_cli_args(&config);
+
+        assert!(
+            !args.contains(&"--allowedTools".to_string()),
+            "Empty MCP tools should not produce --allowedTools flag"
+        );
+    }
+
+    #[test]
+    fn test_build_teammate_cli_args_has_system_prompt() {
+        let client = ClaudeCodeClient::new();
+        let config = test_teammate_config();
+        let args = client.build_teammate_cli_args(&config);
+
+        let prompt_idx = args
+            .iter()
+            .position(|a| a == "--append-system-prompt")
+            .expect("--append-system-prompt flag must be present");
+        assert!(args[prompt_idx + 1].contains("transport research specialist"));
+    }
+
+    #[test]
+    fn test_build_teammate_cli_args_has_skip_permissions() {
+        let client = ClaudeCodeClient::new();
+        let config = test_teammate_config();
+        let args = client.build_teammate_cli_args(&config);
+
+        assert!(
+            args.contains(&"--dangerously-skip-permissions".to_string()),
+            "Teammates must skip permissions"
+        );
+    }
+
+    #[test]
+    fn test_build_teammate_cli_args_has_disable_slash_commands() {
+        let client = ClaudeCodeClient::new();
+        let config = test_teammate_config();
+        let args = client.build_teammate_cli_args(&config);
+
+        assert!(args.contains(&"--disable-slash-commands".to_string()));
+    }
+
+    #[test]
+    fn test_build_teammate_cli_args_has_plugin_dir() {
+        let client = ClaudeCodeClient::new();
+        let config = test_teammate_config();
+        let args = client.build_teammate_cli_args(&config);
+
+        assert!(args.contains(&"--plugin-dir".to_string()));
+        assert!(args.contains(&"/test/ralphx-plugin".to_string()));
+    }
+
+    #[test]
+    fn test_build_teammate_cli_args_custom_agent_type() {
+        let client = ClaudeCodeClient::new();
+        let config = test_teammate_config().with_agent_type("Bash");
+        let args = client.build_teammate_cli_args(&config);
+
+        let agent_type_idx = args
+            .iter()
+            .position(|a| a == "--agent-type")
+            .expect("--agent-type flag must be present");
+        assert_eq!(args[agent_type_idx + 1], "Bash");
+    }
+
+    #[test]
+    fn test_build_teammate_env_vars_has_team_flags() {
+        let config = test_teammate_config();
+        let env = ClaudeCodeClient::build_teammate_env_vars(&config);
+
+        assert_eq!(env.get("CLAUDECODE"), Some(&"1".to_string()));
+        assert_eq!(
+            env.get("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"),
+            Some(&"1".to_string())
+        );
+    }
+
+    #[test]
+    fn test_build_teammate_env_vars_has_agent_type() {
+        let config = test_teammate_config();
+        let env = ClaudeCodeClient::build_teammate_env_vars(&config);
+
+        assert_eq!(
+            env.get("RALPHX_AGENT_TYPE"),
+            Some(&"ideation-team-member".to_string())
+        );
+    }
+
+    #[test]
+    fn test_build_teammate_env_vars_custom_mcp_agent_type() {
+        let config = test_teammate_config().with_mcp_agent_type("worker-team-member");
+        let env = ClaudeCodeClient::build_teammate_env_vars(&config);
+
+        assert_eq!(
+            env.get("RALPHX_AGENT_TYPE"),
+            Some(&"worker-team-member".to_string())
+        );
+    }
+
+    #[test]
+    fn test_build_teammate_env_vars_includes_custom_env() {
+        let config = test_teammate_config()
+            .with_env("RALPHX_PROJECT_ID", "proj-123")
+            .with_env("RALPHX_SESSION_ID", "sess-456");
+        let env = ClaudeCodeClient::build_teammate_env_vars(&config);
+
+        assert_eq!(
+            env.get("RALPHX_PROJECT_ID"),
+            Some(&"proj-123".to_string())
+        );
+        assert_eq!(
+            env.get("RALPHX_SESSION_ID"),
+            Some(&"sess-456".to_string())
+        );
+        // Team flags still present
+        assert_eq!(env.get("CLAUDECODE"), Some(&"1".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_spawn_teammate_interactive_blocked_in_tests() {
+        let client =
+            ClaudeCodeClient::new().with_cli_path("/nonexistent/path/to/claude_binary_12345");
+        let config = test_teammate_config();
+
+        let result = client.spawn_teammate_interactive(config).await;
+        assert!(result.is_err());
+        assert!(matches!(result, Err(AgentError::SpawnNotAllowed(_))));
+    }
+
+    #[test]
+    fn test_teammate_spawn_result_debug() {
+        fn assert_debug<T: std::fmt::Debug>() {}
+        assert_debug::<TeammateSpawnResult>();
+    }
+
+    #[test]
+    fn test_teammate_spawn_config_debug_and_clone() {
+        let config = test_teammate_config();
+        let cloned = config.clone();
+        assert_eq!(cloned.name, "transport-researcher");
+        // Verify Debug is implemented (compile-time check)
+        let _debug = format!("{:?}", cloned);
+    }
+
+    #[test]
+    fn test_build_teammate_cli_args_full_integration() {
+        // Verify the complete arg list for a realistic teammate spawn
+        let client = ClaudeCodeClient::new();
+        let config = TeammateSpawnConfig::new(
+            "react-state-sync-researcher",
+            "ideation-session-789",
+            "c43c3747-44d8-437b-9a25-911032eec2ea",
+            "You are a React state management specialist. Analyze existing Zustand stores.",
+        )
+        .with_model("sonnet")
+        .with_tools(vec![
+            "Read".to_string(),
+            "Grep".to_string(),
+            "Glob".to_string(),
+            "WebSearch".to_string(),
+        ])
+        .with_mcp_tools(vec![
+            "get_session_plan".to_string(),
+            "get_plan_artifact".to_string(),
+        ])
+        .with_color("green")
+        .with_working_dir("/Users/test/project");
+
+        let args = client.build_teammate_cli_args(&config);
+
+        // Verify NO -p flag
+        assert!(!args.contains(&"-p".to_string()));
+
+        // Verify all required flags are present
+        let required_flags = vec![
+            "--output-format",
+            "--verbose",
+            "--disable-slash-commands",
+            "--agent-id",
+            "--agent-name",
+            "--team-name",
+            "--agent-color",
+            "--parent-session-id",
+            "--agent-type",
+            "--model",
+            "--tools",
+            "--allowedTools",
+            "--append-system-prompt",
+            "--dangerously-skip-permissions",
+        ];
+        for flag in &required_flags {
+            assert!(
+                args.contains(&flag.to_string()),
+                "Missing required flag: {flag}"
+            );
+        }
+
+        // Verify agent-id format: name@team-name
+        let agent_id_idx = args.iter().position(|a| a == "--agent-id").unwrap();
+        assert_eq!(
+            args[agent_id_idx + 1],
+            "react-state-sync-researcher@ideation-session-789"
+        );
+
+        // Verify tools are comma-separated
+        let tools_idx = args.iter().position(|a| a == "--tools").unwrap();
+        assert_eq!(args[tools_idx + 1], "Read,Grep,Glob,WebSearch");
+
+        // Verify MCP tools are prefixed and comma-separated
+        let allowed_idx = args.iter().position(|a| a == "--allowedTools").unwrap();
+        assert_eq!(
+            args[allowed_idx + 1],
+            "mcp__ralphx__get_session_plan,mcp__ralphx__get_plan_artifact"
+        );
     }
 }

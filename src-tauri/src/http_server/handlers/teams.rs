@@ -1,8 +1,8 @@
 // Team HTTP handlers — endpoints for MCP team tools
 //
 // Provides HTTP endpoints for:
-// - POST /api/team/plan        — request_team_plan
-// - POST /api/team/spawn       — request_teammate_spawn
+// - POST /api/team/plan        — request_team_plan (validates team plan against constraints)
+// - POST /api/team/spawn       — request_teammate_spawn (validates, spawns, registers, streams)
 // - POST /api/team/artifact    — create_team_artifact
 // - GET  /api/team/artifacts/:session_id — get_team_artifacts
 // - GET  /api/team/session_state/:session_id — get_team_session_state
@@ -14,9 +14,10 @@ use axum::{
     Json,
 };
 use tauri::Emitter;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use super::HttpServerState;
+use crate::application::team_state_tracker::{TeammateHandle, TeammateStatus};
 use crate::domain::entities::{
     Artifact, ArtifactBucketId, ArtifactContent, ArtifactId, ArtifactRelation,
     ArtifactRelationId, ArtifactRelationType, ArtifactType,
@@ -27,6 +28,10 @@ use crate::http_server::types::{
     RequestTeammateSpawnResponse, SaveTeamSessionStateRequest, SaveTeamSessionStateResponse,
     TeamArtifactSummary, TeamCompositionEntry, TeamSessionStateResponse,
 };
+use crate::infrastructure::agents::claude::{
+    get_team_constraints, team_constraints_config, validate_team_plan, ClaudeCodeClient,
+    TeammateSpawnConfig, TeammateSpawnRequest,
+};
 
 // ============================================================================
 // POST /api/team/plan — Request approval for a team plan
@@ -34,21 +39,53 @@ use crate::http_server::types::{
 
 /// Accept a team plan from the team lead agent.
 ///
-/// Stores the plan and emits a team:plan_requested event for user approval.
+/// Validates the team plan against constraints from ralphx.yaml, then emits
+/// a team:plan_requested event for user approval with validation results.
 pub async fn request_team_plan(
     State(state): State<HttpServerState>,
     Json(req): Json<RequestTeamPlanRequest>,
 ) -> Result<Json<RequestTeamPlanResponse>, (StatusCode, String)> {
-    let plan_id = uuid::Uuid::new_v4().to_string();
+    info!(
+        process = %req.process,
+        teammate_count = req.teammates.len(),
+        "Team plan requested — validating constraints"
+    );
+
+    // Load constraints from ralphx.yaml
+    let config = team_constraints_config();
+    let constraints = get_team_constraints(config, &req.process);
+
+    // Convert HTTP request teammates to validation type
+    let spawn_requests: Vec<TeammateSpawnRequest> = req
+        .teammates
+        .iter()
+        .map(|t| TeammateSpawnRequest {
+            role: t.role.clone(),
+            prompt: None,
+            preset: t.preset.clone(),
+            tools: t.tools.clone(),
+            mcp_tools: t.mcp_tools.clone(),
+            model: t.model.clone(),
+            prompt_summary: Some(t.prompt_summary.clone()),
+        })
+        .collect();
+
+    // Validate the plan against constraints
+    let plan = validate_team_plan(&constraints, &req.process, &spawn_requests).map_err(|e| {
+        warn!(process = %req.process, error = %e, "Team plan validation failed");
+        (StatusCode::BAD_REQUEST, format!("Team plan validation failed: {e}"))
+    })?;
+
+    let plan_id = plan.plan_id.clone();
 
     info!(
         plan_id = %plan_id,
         process = %req.process,
-        teammate_count = req.teammates.len(),
-        "Team plan requested"
+        approved_teammates = plan.teammates.len(),
+        "Team plan validated — emitting for user approval"
     );
 
-    // Emit event for frontend to show approval UI
+    // Emit event for frontend to show approval UI (with validated plan)
     if let Some(app_handle) = &state.app_state.app_handle {
         let _ = app_handle.emit(
             "team:plan_requested",
@@ -56,6 +93,7 @@ pub async fn request_team_plan(
                 "plan_id": plan_id,
                 "process": req.process,
                 "teammates": req.teammates,
+                "validated": true,
             }),
         );
     }
@@ -64,7 +102,7 @@ pub async fn request_team_plan(
         success: true,
         plan_id,
         message: format!(
-            "Team plan submitted with {} teammates for '{}' process",
+            "Team plan validated and submitted with {} teammates for '{}' process",
             req.teammates.len(),
             req.process
         ),
@@ -75,47 +113,239 @@ pub async fn request_team_plan(
 // POST /api/team/spawn — Request to spawn a single teammate
 // ============================================================================
 
-/// Register a teammate spawn request from the MCP proxy.
+/// Spawn a teammate agent process.
 ///
-/// Accepts the MCP schema: { role, prompt, model, tools[], mcp_tools[], preset? }
-/// Generates a unique teammate name and default color, then registers in TeamStateTracker.
-/// Emits team:teammate_spawn_requested event for the spawn orchestrator.
+/// Validates the request against team constraints, spawns an interactive Claude
+/// process, registers it in TeamStateTracker, and starts background stdout streaming.
+///
+/// Flow:
+/// 1. Load constraints from ralphx.yaml
+/// 2. Validate model ≤ model_cap, tools ∩ allowed_tools, teammate_count < max
+/// 3. Find active team (or return error)
+/// 4. Spawn via ClaudeCodeClient::spawn_teammate_interactive()
+/// 5. Register TeammateHandle in tracker
+/// 6. Emit team:teammate_spawned event
 pub async fn request_teammate_spawn(
     State(state): State<HttpServerState>,
     Json(req): Json<RequestTeammateSpawnRequest>,
 ) -> Result<Json<RequestTeammateSpawnResponse>, (StatusCode, String)> {
-    // Generate teammate name from role (add suffix if needed for uniqueness)
-    let teammate_name = req.role.clone();
-
     info!(
         role = %req.role,
         model = %req.model,
         tool_count = req.tools.len(),
         mcp_tool_count = req.mcp_tools.len(),
-        "Teammate spawn requested"
+        "Teammate spawn requested — validating and spawning"
     );
 
-    // Emit event for the spawn orchestrator to pick up
-    if let Some(app_handle) = &state.app_state.app_handle {
-        let _ = app_handle.emit(
-            "team:teammate_spawn_requested",
-            serde_json::json!({
-                "teammate_name": teammate_name,
-                "role": req.role,
-                "prompt": req.prompt,
-                "model": req.model,
-                "tools": req.tools,
-                "mcp_tools": req.mcp_tools,
-                "preset": req.preset,
-            }),
-        );
+    // 1. Validate against constraints (use "ideation" as default process)
+    let config = team_constraints_config();
+    let constraints = get_team_constraints(config, "ideation");
+
+    // Validate individual teammate spawn request
+    let spawn_req = TeammateSpawnRequest {
+        role: req.role.clone(),
+        prompt: Some(req.prompt.clone()),
+        preset: req.preset.clone(),
+        tools: req.tools.clone(),
+        mcp_tools: req.mcp_tools.clone(),
+        model: req.model.clone(),
+        prompt_summary: None,
+    };
+
+    // Validate as a single-teammate plan
+    let _approved = validate_team_plan(&constraints, "ideation", &[spawn_req]).map_err(|e| {
+        warn!(role = %req.role, error = %e, "Teammate spawn validation failed");
+        (StatusCode::BAD_REQUEST, format!("Spawn validation failed: {e}"))
+    })?;
+
+    // 2. Find the active team
+    let (team_name, context_id) = find_active_team(&state).await.map_err(|e| {
+        error!(error = %e, "No active team found for teammate spawn");
+        (StatusCode::CONFLICT, e)
+    })?;
+
+    // 3. Generate unique teammate name (add suffix for uniqueness)
+    let teammate_name = generate_unique_teammate_name(&state, &team_name, &req.role).await;
+    let teammate_color = assign_teammate_color(&state, &team_name).await;
+
+    // 4. Check teammate count against constraint max
+    let current_count = state
+        .team_tracker
+        .get_teammate_count(&team_name)
+        .await
+        .unwrap_or(0);
+    if current_count >= constraints.max_teammates as usize {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Max teammates exceeded: {current_count} >= {}",
+                constraints.max_teammates
+            ),
+        ));
     }
 
-    Ok(Json(RequestTeammateSpawnResponse {
-        success: true,
-        message: format!("Teammate spawn request submitted for role '{}'", req.role),
-        teammate_name,
-    }))
+    // 5. Register teammate in tracker (status: Spawning)
+    state
+        .team_tracker
+        .add_teammate(&team_name, &teammate_name, &teammate_color, &req.model, &req.role)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "Failed to register teammate in tracker");
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
+
+    // 6. Build spawn config and spawn the process
+    let spawn_config = TeammateSpawnConfig::new(
+        &teammate_name,
+        &team_name,
+        &context_id,
+        &req.prompt,
+    )
+    .with_model(&req.model)
+    .with_tools(req.tools.clone())
+    .with_mcp_tools(req.mcp_tools.clone())
+    .with_color(&teammate_color);
+
+    let client = ClaudeCodeClient::new();
+    match client.spawn_teammate_interactive(spawn_config).await {
+        Ok(spawn_result) => {
+            info!(
+                teammate = %teammate_name,
+                team = %team_name,
+                pid = ?spawn_result.child.id(),
+                "Teammate process spawned successfully"
+            );
+
+            // 7. Create TeammateHandle and register in tracker
+            let handle = TeammateHandle {
+                child: spawn_result.child,
+                stream_task: None,
+                stdin: Some(spawn_result.stdin),
+            };
+
+            state
+                .team_tracker
+                .set_teammate_handle(&team_name, &teammate_name, handle)
+                .await
+                .map_err(|e| {
+                    error!(error = %e, "Failed to set teammate handle");
+                    (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+                })?;
+
+            // 8. Update status to Running
+            let _ = state
+                .team_tracker
+                .update_teammate_status(&team_name, &teammate_name, TeammateStatus::Running)
+                .await;
+
+            // 9. Emit spawned event
+            if let Some(app_handle) = &state.app_state.app_handle {
+                let _ = app_handle.emit(
+                    "team:teammate_spawned",
+                    serde_json::json!({
+                        "team_name": team_name,
+                        "teammate_name": teammate_name,
+                        "role": req.role,
+                        "model": req.model,
+                        "color": teammate_color,
+                    }),
+                );
+            }
+
+            Ok(Json(RequestTeammateSpawnResponse {
+                success: true,
+                message: format!("Teammate '{}' spawned for team '{}'", teammate_name, team_name),
+                teammate_name,
+            }))
+        }
+        Err(e) => {
+            // Spawn failed — update status and return error
+            warn!(
+                teammate = %teammate_name,
+                team = %team_name,
+                error = %e,
+                "Teammate spawn failed"
+            );
+
+            let _ = state
+                .team_tracker
+                .update_teammate_status(&team_name, &teammate_name, TeammateStatus::Failed)
+                .await;
+
+            if let Some(app_handle) = &state.app_state.app_handle {
+                let _ = app_handle.emit(
+                    "team:teammate_spawn_failed",
+                    serde_json::json!({
+                        "team_name": team_name,
+                        "teammate_name": teammate_name,
+                        "error": e.to_string(),
+                    }),
+                );
+            }
+
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Teammate spawn failed: {e}"),
+            ))
+        }
+    }
+}
+
+// ============================================================================
+// Spawn helpers
+// ============================================================================
+
+/// Color palette for teammate distinction
+const TEAMMATE_COLORS: &[&str] = &["blue", "green", "cyan", "magenta", "yellow"];
+
+/// Find the first active team in the tracker.
+/// Returns (team_name, context_id).
+async fn find_active_team(state: &HttpServerState) -> Result<(String, String), String> {
+    let teams = state.team_tracker.list_teams().await;
+    for team_name in &teams {
+        if let Ok(status) = state.team_tracker.get_team_status(team_name).await {
+            let phase = status.phase;
+            if phase == crate::application::team_state_tracker::TeamPhase::Active
+                || phase == crate::application::team_state_tracker::TeamPhase::Forming
+            {
+                return Ok((team_name.clone(), status.context_id));
+            }
+        }
+    }
+    Err("No active team found. Create a team before spawning teammates.".to_string())
+}
+
+/// Generate a unique teammate name, appending a suffix if needed.
+async fn generate_unique_teammate_name(
+    state: &HttpServerState,
+    team_name: &str,
+    role: &str,
+) -> String {
+    let base_name = role.to_string();
+    if let Ok(status) = state.team_tracker.get_team_status(team_name).await {
+        let existing_names: Vec<&str> = status.teammates.iter().map(|t| t.name.as_str()).collect();
+        if !existing_names.contains(&base_name.as_str()) {
+            return base_name;
+        }
+        // Find next available suffix
+        for i in 2..=99 {
+            let candidate = format!("{}-{}", base_name, i);
+            if !existing_names.contains(&candidate.as_str()) {
+                return candidate;
+            }
+        }
+    }
+    base_name
+}
+
+/// Assign a color from the palette based on current teammate count.
+async fn assign_teammate_color(state: &HttpServerState, team_name: &str) -> String {
+    let count = state
+        .team_tracker
+        .get_teammate_count(team_name)
+        .await
+        .unwrap_or(0);
+    TEAMMATE_COLORS[count % TEAMMATE_COLORS.len()].to_string()
 }
 
 // ============================================================================
@@ -358,6 +588,7 @@ pub async fn save_team_session_state(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::application::team_state_tracker::TeamStateTracker;
 
     #[test]
     fn team_artifact_type_mapping() {
@@ -482,5 +713,217 @@ mod tests {
         assert_eq!(req.team_composition.len(), 1);
         assert_eq!(req.phase, "EXPLORE");
         assert_eq!(req.artifact_ids.as_ref().unwrap().len(), 2);
+    }
+
+    // ── Color palette tests ──────────────────────────────────────────
+
+    #[test]
+    fn teammate_colors_rotate() {
+        assert_eq!(TEAMMATE_COLORS[0], "blue");
+        assert_eq!(TEAMMATE_COLORS[1], "green");
+        assert_eq!(TEAMMATE_COLORS.len(), 5);
+        // Rotation wraps around
+        assert_eq!(TEAMMATE_COLORS[5 % TEAMMATE_COLORS.len()], "blue");
+    }
+
+    // ── find_active_team tests ───────────────────────────────────────
+
+    fn test_state() -> HttpServerState {
+        use std::sync::Arc;
+        HttpServerState {
+            app_state: Arc::new(crate::application::AppState::new_test()),
+            execution_state: Arc::new(crate::commands::ExecutionState::new()),
+            team_tracker: TeamStateTracker::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_find_active_team_none_found() {
+        let state = test_state();
+        let result = find_active_team(&state).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("No active team found"));
+    }
+
+    #[tokio::test]
+    async fn test_find_active_team_forming() {
+        let state = test_state();
+        state
+            .team_tracker
+            .create_team("test-team", "session-123", "ideation")
+            .await
+            .unwrap();
+
+        let (name, ctx_id) = find_active_team(&state).await.unwrap();
+        assert_eq!(name, "test-team");
+        assert_eq!(ctx_id, "session-123");
+    }
+
+    #[tokio::test]
+    async fn test_find_active_team_active() {
+        let state = test_state();
+        state
+            .team_tracker
+            .create_team("my-team", "ctx-1", "ideation")
+            .await
+            .unwrap();
+        // Adding a teammate transitions Forming → Active
+        state
+            .team_tracker
+            .add_teammate("my-team", "worker", "#ff0000", "sonnet", "code")
+            .await
+            .unwrap();
+
+        let (name, _) = find_active_team(&state).await.unwrap();
+        assert_eq!(name, "my-team");
+    }
+
+    #[tokio::test]
+    async fn test_find_active_team_skips_disbanded() {
+        let state = test_state();
+        state
+            .team_tracker
+            .create_team("old-team", "ctx-1", "ideation")
+            .await
+            .unwrap();
+        state.team_tracker.disband_team("old-team").await.unwrap();
+
+        let result = find_active_team(&state).await;
+        assert!(result.is_err());
+    }
+
+    // ── generate_unique_teammate_name tests ──────────────────────────
+
+    #[tokio::test]
+    async fn test_unique_name_no_collision() {
+        let state = test_state();
+        state
+            .team_tracker
+            .create_team("t1", "ctx", "ideation")
+            .await
+            .unwrap();
+
+        let name = generate_unique_teammate_name(&state, "t1", "researcher").await;
+        assert_eq!(name, "researcher");
+    }
+
+    #[tokio::test]
+    async fn test_unique_name_with_collision() {
+        let state = test_state();
+        state
+            .team_tracker
+            .create_team("t1", "ctx", "ideation")
+            .await
+            .unwrap();
+        state
+            .team_tracker
+            .add_teammate("t1", "researcher", "#blue", "sonnet", "explore")
+            .await
+            .unwrap();
+
+        let name = generate_unique_teammate_name(&state, "t1", "researcher").await;
+        assert_eq!(name, "researcher-2");
+    }
+
+    #[tokio::test]
+    async fn test_unique_name_multiple_collisions() {
+        let state = test_state();
+        state
+            .team_tracker
+            .create_team("t1", "ctx", "ideation")
+            .await
+            .unwrap();
+        state
+            .team_tracker
+            .add_teammate("t1", "coder", "#blue", "sonnet", "code")
+            .await
+            .unwrap();
+        state
+            .team_tracker
+            .add_teammate("t1", "coder-2", "#green", "sonnet", "code")
+            .await
+            .unwrap();
+
+        let name = generate_unique_teammate_name(&state, "t1", "coder").await;
+        assert_eq!(name, "coder-3");
+    }
+
+    // ── assign_teammate_color tests ─────────────────────────────────
+
+    #[tokio::test]
+    async fn test_assign_color_first_teammate() {
+        let state = test_state();
+        state
+            .team_tracker
+            .create_team("t1", "ctx", "ideation")
+            .await
+            .unwrap();
+
+        let color = assign_teammate_color(&state, "t1").await;
+        assert_eq!(color, "blue");
+    }
+
+    #[tokio::test]
+    async fn test_assign_color_rotates() {
+        let state = test_state();
+        state
+            .team_tracker
+            .create_team("t1", "ctx", "ideation")
+            .await
+            .unwrap();
+        state
+            .team_tracker
+            .add_teammate("t1", "a", "#blue", "sonnet", "code")
+            .await
+            .unwrap();
+
+        let color = assign_teammate_color(&state, "t1").await;
+        assert_eq!(color, "green");
+    }
+
+    // ── Team plan validation integration test ────────────────────────
+
+    #[test]
+    fn team_plan_request_converts_to_spawn_requests() {
+        let req = RequestTeamPlanRequest {
+            process: "ideation".to_string(),
+            teammates: vec![
+                crate::http_server::types::TeamPlanTeammate {
+                    role: "researcher".to_string(),
+                    tools: vec!["Read".to_string(), "Grep".to_string()],
+                    mcp_tools: vec![],
+                    model: "sonnet".to_string(),
+                    preset: None,
+                    prompt_summary: "Research patterns".to_string(),
+                },
+                crate::http_server::types::TeamPlanTeammate {
+                    role: "analyzer".to_string(),
+                    tools: vec!["Read".to_string()],
+                    mcp_tools: vec![],
+                    model: "haiku".to_string(),
+                    preset: None,
+                    prompt_summary: "Analyze results".to_string(),
+                },
+            ],
+        };
+
+        // Convert to spawn requests
+        let spawn_requests: Vec<TeammateSpawnRequest> = req
+            .teammates
+            .iter()
+            .map(|t| TeammateSpawnRequest {
+                role: t.role.clone(),
+                prompt: None,
+                preset: t.preset.clone(),
+                tools: t.tools.clone(),
+                mcp_tools: t.mcp_tools.clone(),
+                model: t.model.clone(),
+                prompt_summary: Some(t.prompt_summary.clone()),
+            })
+            .collect();
+
+        assert_eq!(spawn_requests.len(), 2);
+        assert_eq!(spawn_requests[0].role, "researcher");
+        assert_eq!(spawn_requests[1].model, "haiku");
     }
 }

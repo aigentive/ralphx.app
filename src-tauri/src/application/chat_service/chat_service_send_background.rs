@@ -73,6 +73,7 @@ pub(super) struct BackgroundRunContext<R: Runtime> {
     pub user_message_content: Option<String>,
     pub conversation: Option<ChatConversation>,
     pub agent_name: Option<String>,
+    pub team_mode: bool,
     // Cancellation
     pub cancellation_token: CancellationToken,
 }
@@ -147,6 +148,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             user_message_content,
             conversation,
             agent_name,
+            team_mode,
             cancellation_token,
         } = ctx;
         let BackgroundRunRepos {
@@ -379,6 +381,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                         question_state.clone(),
                         app_handle.clone(),
                         resolved_project_id.as_deref(),
+                        ctx.team_mode,
                         cancellation_token.clone(),
                         run_chain_id.as_deref(),
                         Some(&agent_run_id),
@@ -466,6 +469,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     &plan_branch_repo,
                     &app_handle,
                     agent_name.as_deref(),
+                    team_mode,
                     run_chain_id.clone(),
                 )
                 .await;

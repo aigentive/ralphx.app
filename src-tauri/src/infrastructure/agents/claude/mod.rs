@@ -13,11 +13,15 @@ pub use agent_config::{
 };
 #[allow(unused_imports)]
 pub use agent_config::team_config::{
-    ApprovedTeamPlan, ApprovedTeammate, ProcessMapping, ProcessSlot, TeamConstraintError,
-    TeamConstraints, TeamConstraintsConfig, TeamMode, TeammateSpawnRequest,
+    get_team_constraints, validate_team_plan, ApprovedTeamPlan, ApprovedTeammate, ProcessMapping,
+    ProcessSlot, TeamConstraintError, TeamConstraints, TeamConstraintsConfig, TeamMode,
+    TeammateSpawnRequest,
 };
 pub use claude_code_client::ClaudeCodeClient;
-pub use claude_code_client::{StreamEvent as ClientStreamEvent, StreamingSpawnResult};
+pub use claude_code_client::{
+    StreamEvent as ClientStreamEvent, StreamingSpawnResult, TeammateSpawnConfig,
+    TeammateSpawnResult,
+};
 
 // Re-export stream processor types for use by services
 pub use stream_processor::{

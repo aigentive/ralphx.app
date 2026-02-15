@@ -368,6 +368,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             working_directory,
             entity_status,
             project_id,
+            self.team_mode,
             Arc::clone(&self.chat_attachment_repo),
         )
         .await
@@ -675,6 +676,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             user_message_content: Some(message.to_string()),
             conversation: Some(conversation.clone()),
             agent_name: Some(resolved_agent_name),
+            team_mode: self.team_mode,
             cancellation_token,
         };
 

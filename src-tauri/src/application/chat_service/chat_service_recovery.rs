@@ -45,6 +45,7 @@ pub(super) async fn attempt_session_recovery(
     plugin_dir: &Path,
     working_directory: &Path,
     _resolved_project_id: Option<String>,
+    team_mode: bool,
     chat_message_repo: Arc<dyn ChatMessageRepository>,
     conversation_repo: Arc<dyn ChatConversationRepository>,
     chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
@@ -96,6 +97,7 @@ pub(super) async fn attempt_session_recovery(
         working_directory,
         None, // entity_status
         _resolved_project_id.as_deref(),
+        team_mode,
         chat_attachment_repo,
     )
     .await

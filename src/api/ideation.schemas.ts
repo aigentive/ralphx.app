@@ -12,6 +12,13 @@ export const IdeationSessionResponseSchema = z.object({
   status: z.string(),
   plan_artifact_id: z.string().nullable(),
   parent_session_id: z.string().nullable(),
+  team_mode: z.enum(["solo", "research", "debate"]).nullable().optional(),
+  team_config: z.object({
+    max_teammates: z.number(),
+    model_ceiling: z.string(),
+    budget_limit: z.number().optional(),
+    composition_mode: z.string(),
+  }).nullable().optional(),
   created_at: z.string(),
   updated_at: z.string(),
   archived_at: z.string().nullable(),
