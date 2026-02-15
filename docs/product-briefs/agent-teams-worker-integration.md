@@ -1,9 +1,10 @@
 # Product Brief: Agent Teams at Worker Level for Parallel Task Execution
 
-**Status:** DRAFT v2
+**Status:** DRAFT v3
 **Date:** 2026-02-15
 **Author:** system-card-writer (agent-teams-research team)
 **Depends on:** Agent Teams System Card (`docs/agent-teams-system-card.md`)
+**Revision:** v3 — Resolves: worker teammates can document decisions via team artifacts; per-teammate cost display; consistent with ideation brief v5 decisions
 
 ---
 
@@ -400,7 +401,7 @@ When a worker team execution is interrupted (coder crash, session expiry, app re
 | Team composition | DB: teammate names, roles, prompts, file ownership | Re-spawn coders with same scope |
 | Wave progress | Existing step tracking via MCP | Which waves completed |
 | File changes | Git working tree (uncommitted files survive) | Resume from last state |
-| Coder findings | Supporting artifacts (if applicable) | Context for re-spawned coders |
+| Coder findings | Team artifacts in `team-findings` bucket (if applicable) | Context for re-spawned coders |
 
 **Resume flow:**
 - Worker-lead detects missing teammates on restart
@@ -412,15 +413,33 @@ When a worker team execution is interrupted (coder crash, session expiry, app re
 
 ### 7.5 Artifact Model Implications for Worker Teams
 
-**Cross-reference:** Ideation brief Section 6.4 introduces a supporting artifacts model. For worker teams, the implications are:
+**Cross-reference:** Ideation brief Section 6.4 extends the existing artifact system (NO new tables — uses existing `artifacts` table + new `team-findings` bucket + `metadata_json` for team metadata). For worker teams, the implications are:
 
 | Aspect | Ideation Teams | Worker Teams |
 |--------|---------------|-------------|
-| Artifact type | Research findings, analysis docs | Code changes, test results |
+| Artifact type | Research findings, analysis docs | Code changes, implementation notes, architecture decisions |
 | Read-only concern | All teammates read-only | Teammates have Write/Edit (file ownership prevents conflicts) |
-| Supporting artifacts useful? | Yes — persist research for resume | **Future consideration** — worker coders could log implementation notes as supporting artifacts for reviewer context |
+| Supporting artifacts useful? | Yes — persist research for resume | **YES — workers document implementation decisions** |
 
-**Decision:** Worker teams do NOT require `create_supporting_artifact` in Phase 1. The code itself (committed via wave commits) serves as the artifact. Consider adding it later if reviewer teams need structured coder notes.
+**RESOLVED (v3): Worker teammates CAN create team artifacts.** Worker coders can document:
+- **Architecture decisions** — "Chose X pattern over Y because..." (gives reviewers context beyond code diffs)
+- **Implementation notes** — "This handler uses retry logic because the upstream API is flaky"
+- **Integration observations** — "Discovered shared interface needs `email` field for Coder B's endpoint"
+- **Test rationale** — "Edge case X is tested because the original issue mentioned it"
+
+These artifacts persist indefinitely (consistent with ideation brief) and provide structured reviewer context that code comments alone cannot capture. The `create_team_artifact` MCP tool is added to the worker-team-member tool ceiling.
+
+**MCP tool addition for worker teammates:**
+```yaml
+team_constraints:
+  ralphx-worker-team:
+    mcp_tool_ceiling:
+      - get_task_context
+      - start_step
+      - complete_step
+      - create_team_artifact   # NEW — document decisions
+      - get_team_artifacts     # NEW — read team findings
+```
 
 ---
 
@@ -443,6 +462,10 @@ Current `ExecutionTaskDetail` shows single-agent progress. For team execution:
 |-------|---------|-----------------|
 | Process list | 1 entry per task | 1 group per task, sub-entries per teammate |
 | Status | "Executing step 3/8" | "Wave 2: Coder A (step 3), Coder B (step 4), Coder C (done)" |
+
+### 8.2.1 Per-Teammate Cost Display
+
+**Consistent with ideation brief:** Team execution shows per-teammate token usage breakdown in the execution panel. This helps users identify which coder roles consume the most tokens and whether team execution is cost-effective for the task type.
 
 ### 8.3 Intervention Capability
 
