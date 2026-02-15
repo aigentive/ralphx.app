@@ -48,7 +48,7 @@ export function transformSession(raw: z.infer<typeof IdeationSessionResponseSche
       teamConfig: raw.team_config ? {
         maxTeammates: raw.team_config.max_teammates,
         modelCeiling: raw.team_config.model_ceiling,
-        ...(raw.team_config.budget_limit !== undefined && { budgetLimit: raw.team_config.budget_limit }),
+        ...(raw.team_config.budget_limit != null && { budgetLimit: raw.team_config.budget_limit }),
         compositionMode: raw.team_config.composition_mode as "dynamic" | "constrained",
       } : null,
     }),
