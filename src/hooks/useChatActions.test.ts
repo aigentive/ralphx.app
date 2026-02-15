@@ -20,7 +20,7 @@ const mockActions = {
   setAgentRunning: vi.fn(),
 };
 vi.mock("@/stores/chatStore", () => ({
-  useChatStore: () => mockActions,
+  useChatStore: (selector: (state: typeof mockActions) => unknown) => selector(mockActions),
 }));
 
 const mockSendAgentMessage = vi.fn();
