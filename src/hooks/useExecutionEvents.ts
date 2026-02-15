@@ -17,8 +17,10 @@
 import { useEffect } from "react";
 import { useEventBus } from "@/providers/EventProvider";
 import { useUiStore } from "@/stores/uiStore";
+import { useTaskStore } from "@/stores/taskStore";
 import { useProjectStore } from "@/stores/projectStore";
 import type { Unsubscribe } from "@/lib/event-bus";
+import type { InternalStatus } from "@/types/status";
 
 /**
  * Event payload for execution:status_changed
@@ -42,6 +44,17 @@ interface ExecutionQueueEvent {
   queuedCount: number;
   projectId?: string;
   timestamp: string;
+}
+
+/**
+ * Event payload for task:provider_error_paused
+ * Emitted when a task is paused due to a provider error
+ */
+interface ProviderErrorPausedEvent {
+  task_id: string;
+  category: string;
+  message: string;
+  retry_after: string | null;
 }
 
 /**
@@ -70,6 +83,7 @@ export function useExecutionEvents() {
   const setExecutionQueuedCount = useUiStore(
     (state) => state.setExecutionQueuedCount
   );
+  const updateTask = useTaskStore((state) => state.updateTask);
 
   useEffect(() => {
     const unsubscribes: Unsubscribe[] = [];
@@ -114,8 +128,34 @@ export function useExecutionEvents() {
       })
     );
 
+    // Listen for task:provider_error_paused events
+    // Updates the task in the store to reflect the paused status immediately
+    unsubscribes.push(
+      bus.subscribe<ProviderErrorPausedEvent>("task:provider_error_paused", (payload) => {
+        const { task_id } = payload;
+        const task = useTaskStore.getState().tasks[task_id];
+        if (task) {
+          updateTask(task_id, {
+            internalStatus: "paused" as InternalStatus,
+            metadata: JSON.stringify({
+              ...(task.metadata ? JSON.parse(task.metadata) : {}),
+              provider_error: {
+                category: payload.category,
+                message: payload.message,
+                retry_after: payload.retry_after,
+                previous_status: task.internalStatus,
+                paused_at: new Date().toISOString(),
+                auto_resumable: payload.retry_after !== null,
+                resume_attempts: 0,
+              },
+            }),
+          });
+        }
+      })
+    );
+
     return () => {
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [bus, setExecutionStatus, setExecutionQueuedCount]);
+  }, [bus, setExecutionStatus, setExecutionQueuedCount, updateTask]);
 }
