@@ -189,7 +189,10 @@ fn parse_config(yaml: &str) -> Option<LoadedConfig> {
         }
 
         let cli_tools = resolve_tools(raw, &parsed.tool_sets);
-        let agent_settings = if let Some(profile_name) = raw.settings_profile.as_deref() {
+        let agent_profile_selection =
+            runtime_settings_profile_override_for_agent(&raw.name)
+                .or_else(|| raw.settings_profile.clone());
+        let agent_settings = if let Some(profile_name) = agent_profile_selection.as_deref() {
             if parsed.claude.settings_profiles.contains_key(profile_name) {
                 resolve_claude_settings(&parsed.claude, Some(profile_name))
             } else {
@@ -252,6 +255,38 @@ fn runtime_settings_profile_override_with(
             Some(trimmed.to_string())
         }
     })
+}
+
+fn runtime_settings_profile_override_for_agent(agent_name: &str) -> Option<String> {
+    runtime_settings_profile_override_for_agent_with(agent_name, &|name| std::env::var(name).ok())
+}
+
+fn runtime_settings_profile_override_for_agent_with(
+    agent_name: &str,
+    lookup: &dyn Fn(&str) -> Option<String>,
+) -> Option<String> {
+    let normalized = normalize_agent_name_for_env(agent_name);
+    let key = format!("RALPHX_CLAUDE_SETTINGS_PROFILE_{}", normalized);
+    lookup(&key).and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+fn normalize_agent_name_for_env(agent_name: &str) -> String {
+    let mut out = String::with_capacity(agent_name.len());
+    for ch in agent_name.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_uppercase());
+        } else {
+            out.push('_');
+        }
+    }
+    out
 }
 
 fn resolve_claude_settings(
@@ -829,6 +864,28 @@ agents:
             _ => None,
         });
         assert_eq!(selection, None);
+    }
+
+    #[test]
+    fn test_runtime_settings_profile_override_for_agent_uses_normalized_key() {
+        let selection = runtime_settings_profile_override_for_agent_with(
+            "orchestrator-ideation",
+            &|name| match name {
+                "RALPHX_CLAUDE_SETTINGS_PROFILE_ORCHESTRATOR_IDEATION" => {
+                    Some("default".to_string())
+                }
+                _ => None,
+            },
+        );
+        assert_eq!(selection.as_deref(), Some("default"));
+    }
+
+    #[test]
+    fn test_normalize_agent_name_for_env_replaces_symbols() {
+        assert_eq!(
+            normalize_agent_name_for_env("ralphx:session-namer"),
+            "RALPHX_SESSION_NAMER"
+        );
     }
 
     #[test]
