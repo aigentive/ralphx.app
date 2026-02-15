@@ -3,10 +3,13 @@
  *
  * Polls team status every 5s when a team is active. Driven by chatStore's
  * isTeamActive flag to enable/disable polling.
+ *
+ * Resolves team_name from teamStore (set by team:created event).
  */
 
 import { useQuery } from "@tanstack/react-query";
 import { useChatStore, selectIsTeamActive } from "@/stores/chatStore";
+import { useTeamStore } from "@/stores/teamStore";
 import { buildStoreKey } from "@/lib/chat-context-registry";
 import { getTeamStatus } from "@/api/team";
 import type { ContextType } from "@/types/chat-conversation";
@@ -31,15 +34,16 @@ export const teamKeys = {
 export function useTeamStatus(contextType: ContextType, contextId: string) {
   const contextKey = useMemo(
     () => buildStoreKey(contextType, contextId),
-    [contextType, contextId]
+    [contextType, contextId],
   );
   const isTeamActiveSelector = useMemo(() => selectIsTeamActive(contextKey), [contextKey]);
   const isTeamActive = useChatStore(isTeamActiveSelector);
+  const teamName = useTeamStore((s) => s.activeTeams[contextKey]?.teamName ?? "");
 
   return useQuery({
     queryKey: teamKeys.status(contextType, contextId),
-    queryFn: () => getTeamStatus(contextType, contextId),
-    enabled: isTeamActive,
+    queryFn: () => getTeamStatus(teamName),
+    enabled: isTeamActive && !!teamName,
     refetchInterval: 5000,
   });
 }

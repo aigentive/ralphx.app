@@ -4,10 +4,16 @@
  * Subscribes to team:* events and agent:* events with teammate_name.
  * Routes events to teamStore actions, filtered by contextKey.
  *
+ * Split into two effects to fix the chicken-and-egg problem:
+ *   Effect 1 (always active): team:created + team:disbanded — runs whenever
+ *     contextKey is non-null so creation events are never missed.
+ *   Effect 2 (gated by isTeamActive): all other team events — only subscribes
+ *     once the team exists in the store.
+ *
  * Uses EventBus abstraction for browser/Tauri compatibility.
  */
 
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { useEventBus } from "@/providers/EventProvider";
 import { useTeamStore } from "@/stores/teamStore";
 import { useChatStore } from "@/stores/chatStore";
@@ -27,40 +33,76 @@ export function useTeamEvents(contextKey: string | null) {
   const disbandTeam = useTeamStore((s) => s.disbandTeam);
   const setTeamActive = useChatStore((s) => s.setTeamActive);
 
+  // Derive isTeamActive from the teamStore so effect 2 re-runs when team is created
+  const selectActive = useCallback(
+    (s: { activeTeams: Record<string, unknown> }) =>
+      contextKey ? contextKey in s.activeTeams : false,
+    [contextKey],
+  );
+  const isTeamActive = useTeamStore(selectActive);
+
+  // Helper: build key from event payload and check match
+  const matchKey = useCallback(
+    (payload: { context_type: string; context_id: string }): boolean => {
+      if (!contextKey) return false;
+      const key = buildStoreKey(payload.context_type as ContextType, payload.context_id);
+      return key === contextKey;
+    },
+    [contextKey],
+  );
+
+  // ── Effect 1: Always subscribe to team:created + team:disbanded ──────────
+  // These must fire even before a team exists so we catch the creation event.
   useEffect(() => {
     if (!contextKey) return;
 
     const unsubs: Unsubscribe[] = [];
 
-    // Helper: build key from event payload and check match
-    const matchKey = (payload: { context_type: string; context_id: string }): boolean => {
-      const key = buildStoreKey(payload.context_type as ContextType, payload.context_id);
-      return key === contextKey;
-    };
-
-    // team:created
+    // team:created — lead_name may not be in payload; default to team_name
     unsubs.push(
       bus.subscribe<{
         context_type: string;
         context_id: string;
         team_name: string;
-        lead_name: string;
+        lead_name?: string;
       }>("team:created", (payload) => {
         if (matchKey(payload)) {
-          createTeam(contextKey, payload.team_name, payload.lead_name);
+          createTeam(contextKey, payload.team_name, payload.lead_name ?? payload.team_name);
           setTeamActive(contextKey, true);
         }
-      })
+      }),
     );
 
-    // team:teammate_spawned
+    // team:disbanded
+    unsubs.push(
+      bus.subscribe<{
+        context_type: string;
+        context_id: string;
+      }>("team:disbanded", (payload) => {
+        if (matchKey(payload)) {
+          disbandTeam(contextKey);
+          setTeamActive(contextKey, false);
+        }
+      }),
+    );
+
+    return () => unsubs.forEach((u) => u());
+  }, [bus, contextKey, matchKey, createTeam, disbandTeam, setTeamActive]);
+
+  // ── Effect 2: Subscribe to remaining events when team is active ──────────
+  useEffect(() => {
+    if (!contextKey || !isTeamActive) return;
+
+    const unsubs: Unsubscribe[] = [];
+
+    // team:teammate_spawned — backend sends `role`, not `role_description`
     unsubs.push(
       bus.subscribe<{
         context_type: string;
         context_id: string;
         team_name: string;
         teammate_name: string;
-        role_description: string;
+        role: string;
         color: string;
         model: string;
       }>("team:teammate_spawned", (payload) => {
@@ -69,7 +111,7 @@ export function useTeamEvents(contextKey: string | null) {
             name: payload.teammate_name,
             color: payload.color,
             model: payload.model,
-            roleDescription: payload.role_description,
+            roleDescription: payload.role,
             status: "spawning",
             currentActivity: null,
             tokensUsed: 0,
@@ -77,7 +119,7 @@ export function useTeamEvents(contextKey: string | null) {
             streamingText: "",
           });
         }
-      })
+      }),
     );
 
     // agent:run_started — route to teammate status when teammate_name present
@@ -90,7 +132,7 @@ export function useTeamEvents(contextKey: string | null) {
         if (payload.teammate_name && matchKey(payload)) {
           updateTeammateStatus(contextKey, payload.teammate_name, "running");
         }
-      })
+      }),
     );
 
     // agent:run_completed — teammate idle
@@ -104,7 +146,7 @@ export function useTeamEvents(contextKey: string | null) {
           updateTeammateStatus(contextKey, payload.teammate_name, "idle");
           clearTeammateStream(contextKey, payload.teammate_name);
         }
-      })
+      }),
     );
 
     // team:teammate_idle
@@ -123,49 +165,50 @@ export function useTeamEvents(contextKey: string | null) {
             payload.last_activity,
           );
         }
-      })
+      }),
     );
 
-    // team:message
+    // team:message — backend sends `sender`/`recipient`, not `from`/`to`
     unsubs.push(
       bus.subscribe<{
         context_type: string;
         context_id: string;
-        from: string;
-        to: string;
+        sender: string;
+        recipient: string;
         content: string;
         timestamp: string;
       }>("team:message", (payload) => {
         if (matchKey(payload)) {
           addTeamMessage(contextKey, {
             id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            from: payload.from,
-            to: payload.to,
+            from: payload.sender,
+            to: payload.recipient,
             content: payload.content,
             timestamp: payload.timestamp,
           });
         }
-      })
+      }),
     );
 
-    // team:cost_update
+    // team:cost_update — backend sends `input_tokens`+`output_tokens` and `estimated_usd`
     unsubs.push(
       bus.subscribe<{
         context_type: string;
         context_id: string;
         teammate_name: string;
-        tokens_used: number;
-        estimated_cost_usd: number;
+        input_tokens: number;
+        output_tokens: number;
+        estimated_usd: number;
       }>("team:cost_update", (payload) => {
         if (matchKey(payload)) {
           updateTeammateCost(
             contextKey,
             payload.teammate_name,
-            payload.tokens_used,
-            payload.estimated_cost_usd,
+            payload.input_tokens + payload.output_tokens,
+            payload.estimated_usd,
           );
         }
-      })
+      }),
     );
 
     // team:teammate_shutdown
@@ -178,20 +221,7 @@ export function useTeamEvents(contextKey: string | null) {
         if (matchKey(payload)) {
           updateTeammateStatus(contextKey, payload.teammate_name, "shutdown");
         }
-      })
-    );
-
-    // team:disbanded
-    unsubs.push(
-      bus.subscribe<{
-        context_type: string;
-        context_id: string;
-      }>("team:disbanded", (payload) => {
-        if (matchKey(payload)) {
-          disbandTeam(contextKey);
-          setTeamActive(contextKey, false);
-        }
-      })
+      }),
     );
 
     // agent:chunk — route teammate streaming text
@@ -205,14 +235,14 @@ export function useTeamEvents(contextKey: string | null) {
         if (payload.teammate_name && matchKey(payload)) {
           appendTeammateChunk(contextKey, payload.teammate_name, payload.text);
         }
-      })
+      }),
     );
 
     return () => unsubs.forEach((u) => u());
   }, [
-    bus, contextKey,
-    createTeam, addTeammate, updateTeammateStatus,
+    bus, contextKey, isTeamActive, matchKey,
+    addTeammate, updateTeammateStatus,
     appendTeammateChunk, clearTeammateStream, updateTeammateCost,
-    addTeamMessage, disbandTeam, setTeamActive,
+    addTeamMessage,
   ]);
 }

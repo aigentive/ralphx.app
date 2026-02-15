@@ -12,7 +12,7 @@ describe("team API schemas", () => {
         name: "coder-1",
         color: "#3b82f6",
         model: "sonnet",
-        role_description: "Auth middleware",
+        role: "Auth middleware",
         status: "running",
         current_activity: "Writing auth.ts",
         tokens_used: 50000,
@@ -28,7 +28,7 @@ describe("team API schemas", () => {
         name: "coder-1",
         color: "#3b82f6",
         model: "sonnet",
-        role_description: "Auth middleware",
+        role: "Auth middleware",
         status: "idle",
         current_activity: null,
         tokens_used: 0,
@@ -42,7 +42,7 @@ describe("team API schemas", () => {
       const data = {
         color: "#3b82f6",
         model: "sonnet",
-        role_description: "Auth",
+        role: "Auth",
         status: "running",
         current_activity: null,
         tokens_used: 0,
@@ -56,14 +56,14 @@ describe("team API schemas", () => {
     it("parses valid message", () => {
       const data = {
         id: "msg-1",
-        from: "coder-1",
-        to: "coder-2",
+        sender: "coder-1",
+        recipient: "coder-2",
         content: "Session type exported",
         timestamp: "2026-02-15T10:00:00Z",
       };
       const result = TeamMessageSchema.parse(data);
-      expect(result.from).toBe("coder-1");
-      expect(result.to).toBe("coder-2");
+      expect(result.sender).toBe("coder-1");
+      expect(result.recipient).toBe("coder-2");
     });
 
     it("rejects missing fields", () => {
@@ -83,7 +83,7 @@ describe("team API schemas", () => {
             name: "coder-1",
             color: "#3b82f6",
             model: "sonnet",
-            role_description: "Auth",
+            role: "Auth",
             status: "running",
             current_activity: null,
             tokens_used: 50000,
@@ -109,7 +109,7 @@ describe("team API schemas", () => {
         lead_name: "lead-agent",
         teammates: [],
         messages: [
-          { id: "m1", from: "a", to: "b", content: "hi", timestamp: "2026-02-15T10:00:00Z" },
+          { id: "m1", sender: "a", recipient: "b", content: "hi", timestamp: "2026-02-15T10:00:00Z" },
         ],
         total_tokens: 0,
         estimated_cost_usd: 0,
