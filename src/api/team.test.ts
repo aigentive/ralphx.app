@@ -14,28 +14,19 @@ describe("team API schemas", () => {
         model: "sonnet",
         role: "Auth middleware",
         status: "running",
-        current_activity: "Writing auth.ts",
-        tokens_used: 50000,
-        estimated_cost_usd: 0.30,
+        cost: {
+          input_tokens: 50000,
+          output_tokens: 10000,
+          cache_creation_tokens: 2000,
+          cache_read_tokens: 1000,
+          estimated_usd: 0.30,
+        },
+        spawned_at: "2026-02-15T10:00:00Z",
+        last_activity_at: "2026-02-15T10:05:00Z",
       };
       const result = TeammateStatusSchema.parse(data);
       expect(result.name).toBe("coder-1");
-      expect(result.current_activity).toBe("Writing auth.ts");
-    });
-
-    it("accepts null current_activity", () => {
-      const data = {
-        name: "coder-1",
-        color: "#3b82f6",
-        model: "sonnet",
-        role: "Auth middleware",
-        status: "idle",
-        current_activity: null,
-        tokens_used: 0,
-        estimated_cost_usd: 0,
-      };
-      const result = TeammateStatusSchema.parse(data);
-      expect(result.current_activity).toBeNull();
+      expect(result.cost.estimated_usd).toBe(0.30);
     });
 
     it("rejects missing name", () => {
@@ -44,9 +35,15 @@ describe("team API schemas", () => {
         model: "sonnet",
         role: "Auth",
         status: "running",
-        current_activity: null,
-        tokens_used: 0,
-        estimated_cost_usd: 0,
+        cost: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation_tokens: 0,
+          cache_read_tokens: 0,
+          estimated_usd: 0,
+        },
+        spawned_at: "2026-02-15T10:00:00Z",
+        last_activity_at: "2026-02-15T10:00:00Z",
       };
       expect(() => TeammateStatusSchema.parse(data)).toThrow();
     });
@@ -59,11 +56,25 @@ describe("team API schemas", () => {
         sender: "coder-1",
         recipient: "coder-2",
         content: "Session type exported",
+        message_type: "teammate_message",
         timestamp: "2026-02-15T10:00:00Z",
       };
       const result = TeamMessageSchema.parse(data);
       expect(result.sender).toBe("coder-1");
       expect(result.recipient).toBe("coder-2");
+    });
+
+    it("accepts null recipient", () => {
+      const data = {
+        id: "msg-2",
+        sender: "coder-1",
+        recipient: null,
+        content: "Broadcast message",
+        message_type: "broadcast",
+        timestamp: "2026-02-15T10:00:00Z",
+      };
+      const result = TeamMessageSchema.parse(data);
+      expect(result.recipient).toBeNull();
     });
 
     it("rejects missing fields", () => {
@@ -74,7 +85,7 @@ describe("team API schemas", () => {
   describe("TeamStatusSchema", () => {
     it("parses valid team status", () => {
       const data = {
-        team_name: "task-abc",
+        name: "task-abc",
         context_type: "task_execution",
         context_id: "abc",
         lead_name: "lead-agent",
@@ -85,42 +96,44 @@ describe("team API schemas", () => {
             model: "sonnet",
             role: "Auth",
             status: "running",
-            current_activity: null,
-            tokens_used: 50000,
-            estimated_cost_usd: 0.30,
+            cost: {
+              input_tokens: 50000,
+              output_tokens: 10000,
+              cache_creation_tokens: 0,
+              cache_read_tokens: 0,
+              estimated_usd: 0.30,
+            },
+            spawned_at: "2026-02-15T10:00:00Z",
+            last_activity_at: "2026-02-15T10:05:00Z",
           },
         ],
-        messages: [],
-        total_tokens: 50000,
-        estimated_cost_usd: 0.30,
+        phase: "active",
         created_at: "2026-02-15T10:00:00Z",
+        message_count: 5,
       };
       const result = TeamStatusSchema.parse(data);
-      expect(result.team_name).toBe("task-abc");
+      expect(result.name).toBe("task-abc");
       expect(result.teammates).toHaveLength(1);
-      expect(result.messages).toHaveLength(0);
+      expect(result.message_count).toBe(5);
     });
 
-    it("parses with messages", () => {
+    it("accepts null lead_name", () => {
       const data = {
-        team_name: "task-abc",
+        name: "task-abc",
         context_type: "task_execution",
         context_id: "abc",
-        lead_name: "lead-agent",
+        lead_name: null,
         teammates: [],
-        messages: [
-          { id: "m1", sender: "a", recipient: "b", content: "hi", timestamp: "2026-02-15T10:00:00Z" },
-        ],
-        total_tokens: 0,
-        estimated_cost_usd: 0,
+        phase: "forming",
         created_at: "2026-02-15T10:00:00Z",
+        message_count: 0,
       };
       const result = TeamStatusSchema.parse(data);
-      expect(result.messages).toHaveLength(1);
+      expect(result.lead_name).toBeNull();
     });
 
     it("rejects invalid structure", () => {
-      expect(() => TeamStatusSchema.parse({ team_name: "x" })).toThrow();
+      expect(() => TeamStatusSchema.parse({ name: "x" })).toThrow();
     });
   });
 });

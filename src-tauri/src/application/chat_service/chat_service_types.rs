@@ -237,6 +237,8 @@ pub struct TeamTeammateSpawnedPayload {
     pub color: String,
     pub model: String,
     pub role: String,
+    pub context_type: String,
+    pub context_id: String,
 }
 
 /// Payload for team:teammate_idle event
@@ -244,6 +246,8 @@ pub struct TeamTeammateSpawnedPayload {
 pub struct TeamTeammateIdlePayload {
     pub team_name: String,
     pub teammate_name: String,
+    pub context_type: String,
+    pub context_id: String,
 }
 
 /// Payload for team:teammate_shutdown event
@@ -251,6 +255,8 @@ pub struct TeamTeammateIdlePayload {
 pub struct TeamTeammateShutdownPayload {
     pub team_name: String,
     pub teammate_name: String,
+    pub context_type: String,
+    pub context_id: String,
 }
 
 /// Payload for team:message event
@@ -263,12 +269,16 @@ pub struct TeamMessagePayload {
     pub content: String,
     pub message_type: String,
     pub timestamp: String,
+    pub context_type: String,
+    pub context_id: String,
 }
 
 /// Payload for team:disbanded event
 #[derive(Debug, Clone, Serialize)]
 pub struct TeamDisbandedPayload {
     pub team_name: String,
+    pub context_type: String,
+    pub context_id: String,
 }
 
 /// Payload for team:cost_update event
@@ -279,6 +289,8 @@ pub struct TeamCostUpdatePayload {
     pub input_tokens: u64,
     pub output_tokens: u64,
     pub estimated_usd: f64,
+    pub context_type: String,
+    pub context_id: String,
 }
 
 // ============================================================================

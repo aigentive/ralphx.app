@@ -171,10 +171,15 @@ pub async fn start_http_server(
             post(get_conversation_transcript),
         )
         // Team endpoints (agent teams)
+        .route("/api/team/plan", post(request_team_plan))
+        .route("/api/team/spawn", post(request_teammate_spawn))
+        .route("/api/team/artifact", post(create_team_artifact))
+        .route("/api/team/artifacts/:session_id", get(get_team_artifacts))
         .route(
-            "/api/request_teammate_spawn",
-            post(request_teammate_spawn),
+            "/api/team/session_state/:session_id",
+            get(get_team_session_state),
         )
+        .route("/api/team/session_state", post(save_team_session_state))
         .with_state(state)
         .layer(
             CorsLayer::new()

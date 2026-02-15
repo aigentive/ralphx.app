@@ -845,6 +845,117 @@ pub struct GetConversationTranscriptResponse {
 }
 
 // ============================================================================
+// Request/Response Types - Team Endpoints
+// ============================================================================
+
+/// POST /api/team/plan — request approval for a team plan
+#[derive(Debug, Deserialize)]
+pub struct RequestTeamPlanRequest {
+    pub process: String,
+    pub teammates: Vec<TeamPlanTeammate>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TeamPlanTeammate {
+    pub role: String,
+    pub tools: Vec<String>,
+    pub mcp_tools: Vec<String>,
+    pub model: String,
+    pub preset: Option<String>,
+    pub prompt_summary: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RequestTeamPlanResponse {
+    pub success: bool,
+    pub plan_id: String,
+    pub message: String,
+}
+
+/// POST /api/team/spawn — request to spawn a single teammate
+#[derive(Debug, Deserialize)]
+pub struct RequestTeammateSpawnRequest {
+    pub role: String,
+    pub prompt: String,
+    pub model: String,
+    pub tools: Vec<String>,
+    pub mcp_tools: Vec<String>,
+    pub preset: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RequestTeammateSpawnResponse {
+    pub success: bool,
+    pub message: String,
+    pub teammate_name: String,
+}
+
+/// POST /api/team/artifact — create a team artifact
+#[derive(Debug, Deserialize)]
+pub struct CreateTeamArtifactRequest {
+    pub session_id: String,
+    pub title: String,
+    pub content: String,
+    pub artifact_type: String,
+    pub related_artifact_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CreateTeamArtifactResponse {
+    pub artifact_id: String,
+}
+
+/// GET /api/team/artifacts/:session_id response
+#[derive(Debug, Serialize)]
+pub struct TeamArtifactSummary {
+    pub id: String,
+    pub name: String,
+    pub artifact_type: String,
+    pub version: u32,
+    pub content_preview: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GetTeamArtifactsResponse {
+    pub artifacts: Vec<TeamArtifactSummary>,
+    pub count: usize,
+}
+
+/// GET /api/team/session_state/:session_id response
+#[derive(Debug, Serialize)]
+pub struct TeamSessionStateResponse {
+    pub session_id: String,
+    pub team_name: Option<String>,
+    pub phase: String,
+    pub team_composition: Vec<TeamCompositionEntry>,
+    pub artifact_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TeamCompositionEntry {
+    pub name: String,
+    pub role: String,
+    pub prompt: String,
+    pub model: String,
+}
+
+/// POST /api/team/session_state — save team session state
+#[derive(Debug, Deserialize)]
+pub struct SaveTeamSessionStateRequest {
+    pub session_id: String,
+    pub team_composition: Vec<TeamCompositionEntry>,
+    pub phase: String,
+    pub artifact_ids: Option<Vec<String>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SaveTeamSessionStateResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+// ============================================================================
 // Common Response Types
 // ============================================================================
 

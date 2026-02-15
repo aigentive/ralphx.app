@@ -37,6 +37,8 @@ pub fn emit_teammate_spawned<R: Runtime>(
     color: &str,
     model: &str,
     role: &str,
+    context_type: &str,
+    context_id: &str,
 ) {
     let _ = app_handle.emit(
         events::TEAM_TEAMMATE_SPAWNED,
@@ -46,6 +48,8 @@ pub fn emit_teammate_spawned<R: Runtime>(
             color: color.to_string(),
             model: model.to_string(),
             role: role.to_string(),
+            context_type: context_type.to_string(),
+            context_id: context_id.to_string(),
         },
     );
 }
@@ -55,12 +59,16 @@ pub fn emit_teammate_idle<R: Runtime>(
     app_handle: &AppHandle<R>,
     team_name: &str,
     teammate_name: &str,
+    context_type: &str,
+    context_id: &str,
 ) {
     let _ = app_handle.emit(
         events::TEAM_TEAMMATE_IDLE,
         TeamTeammateIdlePayload {
             team_name: team_name.to_string(),
             teammate_name: teammate_name.to_string(),
+            context_type: context_type.to_string(),
+            context_id: context_id.to_string(),
         },
     );
 }
@@ -70,18 +78,27 @@ pub fn emit_teammate_shutdown<R: Runtime>(
     app_handle: &AppHandle<R>,
     team_name: &str,
     teammate_name: &str,
+    context_type: &str,
+    context_id: &str,
 ) {
     let _ = app_handle.emit(
         events::TEAM_TEAMMATE_SHUTDOWN,
         TeamTeammateShutdownPayload {
             team_name: team_name.to_string(),
             teammate_name: teammate_name.to_string(),
+            context_type: context_type.to_string(),
+            context_id: context_id.to_string(),
         },
     );
 }
 
 /// Emit a team:message event
-pub fn emit_team_message<R: Runtime>(app_handle: &AppHandle<R>, message: &TeamMessage) {
+pub fn emit_team_message<R: Runtime>(
+    app_handle: &AppHandle<R>,
+    message: &TeamMessage,
+    context_type: &str,
+    context_id: &str,
+) {
     let _ = app_handle.emit(
         events::TEAM_MESSAGE,
         TeamMessagePayload {
@@ -97,16 +114,25 @@ pub fn emit_team_message<R: Runtime>(app_handle: &AppHandle<R>, message: &TeamMe
                 TeamMessageType::System => "system".to_string(),
             },
             timestamp: message.timestamp.to_rfc3339(),
+            context_type: context_type.to_string(),
+            context_id: context_id.to_string(),
         },
     );
 }
 
 /// Emit a team:disbanded event
-pub fn emit_team_disbanded<R: Runtime>(app_handle: &AppHandle<R>, team_name: &str) {
+pub fn emit_team_disbanded<R: Runtime>(
+    app_handle: &AppHandle<R>,
+    team_name: &str,
+    context_type: &str,
+    context_id: &str,
+) {
     let _ = app_handle.emit(
         events::TEAM_DISBANDED,
         TeamDisbandedPayload {
             team_name: team_name.to_string(),
+            context_type: context_type.to_string(),
+            context_id: context_id.to_string(),
         },
     );
 }
@@ -119,6 +145,8 @@ pub fn emit_team_cost_update<R: Runtime>(
     input_tokens: u64,
     output_tokens: u64,
     estimated_usd: f64,
+    context_type: &str,
+    context_id: &str,
 ) {
     let _ = app_handle.emit(
         events::TEAM_COST_UPDATE,
@@ -128,6 +156,8 @@ pub fn emit_team_cost_update<R: Runtime>(
             input_tokens,
             output_tokens,
             estimated_usd,
+            context_type: context_type.to_string(),
+            context_id: context_id.to_string(),
         },
     );
 }
@@ -138,11 +168,21 @@ pub fn emit_teammate_status_change<R: Runtime>(
     team_name: &str,
     teammate_name: &str,
     status: TeammateStatus,
+    context_type: &str,
+    context_id: &str,
 ) {
     match status {
-        TeammateStatus::Idle => emit_teammate_idle(app_handle, team_name, teammate_name),
+        TeammateStatus::Idle => {
+            emit_teammate_idle(app_handle, team_name, teammate_name, context_type, context_id)
+        }
         TeammateStatus::Shutdown | TeammateStatus::Failed => {
-            emit_teammate_shutdown(app_handle, team_name, teammate_name);
+            emit_teammate_shutdown(
+                app_handle,
+                team_name,
+                teammate_name,
+                context_type,
+                context_id,
+            );
         }
         // Running, Spawning, Completed don't have dedicated events
         _ => {}

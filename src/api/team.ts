@@ -4,15 +4,24 @@
  * Provides typed API functions for team lifecycle, messaging, and status queries.
  * Uses Zod schemas for response validation following the project API pattern.
  *
- * All commands accept `team_name` to identify the team (matches backend expectation).
+ * Param naming: Tauri 2.0 auto-renames snake_case Rust params to camelCase.
+ * Struct params (e.g. SendTeamMessageInput) are wrapped in the param name.
  */
 
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
 
 // ============================================================================
-// Schemas
+// Schemas (match Rust TeamStateTracker response structs)
 // ============================================================================
+
+const TeammateCostSchema = z.object({
+  input_tokens: z.number(),
+  output_tokens: z.number(),
+  cache_creation_tokens: z.number(),
+  cache_read_tokens: z.number(),
+  estimated_usd: z.number(),
+});
 
 export const TeammateStatusSchema = z.object({
   name: z.string(),
@@ -20,29 +29,29 @@ export const TeammateStatusSchema = z.object({
   model: z.string(),
   role: z.string(),
   status: z.string(),
-  current_activity: z.string().nullable(),
-  tokens_used: z.number(),
-  estimated_cost_usd: z.number(),
+  cost: TeammateCostSchema,
+  spawned_at: z.string(),
+  last_activity_at: z.string(),
 });
 
 export const TeamMessageSchema = z.object({
   id: z.string(),
   sender: z.string(),
-  recipient: z.string(),
+  recipient: z.string().nullable(),
   content: z.string(),
+  message_type: z.string(),
   timestamp: z.string(),
 });
 
 export const TeamStatusSchema = z.object({
-  team_name: z.string(),
+  name: z.string(),
   context_type: z.string(),
   context_id: z.string(),
-  lead_name: z.string(),
+  lead_name: z.string().nullable(),
   teammates: z.array(TeammateStatusSchema),
-  messages: z.array(TeamMessageSchema),
-  total_tokens: z.number(),
-  estimated_cost_usd: z.number(),
+  phase: z.string(),
   created_at: z.string(),
+  message_count: z.number(),
 });
 
 // ============================================================================
@@ -60,43 +69,57 @@ export type TeamMessageResponse = z.infer<typeof TeamMessageSchema>;
 export async function getTeamStatus(
   teamName: string,
 ): Promise<TeamStatusResponse | null> {
-  const result = await invoke("get_team_status", { team_name: teamName });
+  const result = await invoke("get_team_status", { teamName });
   return result ? TeamStatusSchema.parse(result) : null;
 }
 
 export async function sendTeamMessage(
   teamName: string,
-  target: string,
   content: string,
-): Promise<void> {
-  await invoke("send_team_message", { team_name: teamName, content, target });
+): Promise<TeamMessageResponse> {
+  const result = await invoke("send_team_message", {
+    input: { teamName, content },
+  });
+  return TeamMessageSchema.parse(result);
 }
 
 export async function stopTeammate(
   teamName: string,
   teammateName: string,
-): Promise<boolean> {
-  return z.boolean().parse(
-    await invoke("stop_teammate", { team_name: teamName, teammate_name: teammateName }),
-  );
+): Promise<void> {
+  await invoke("stop_teammate", { teamName, teammateName });
 }
 
 export async function stopTeam(
   teamName: string,
-): Promise<boolean> {
-  return z.boolean().parse(
-    await invoke("stop_team", { team_name: teamName }),
-  );
+): Promise<void> {
+  await invoke("stop_team", { teamName });
 }
 
 export async function getTeamMessages(
   teamName: string,
-  since?: string,
+  limit?: number,
 ): Promise<TeamMessageResponse[]> {
   return z.array(TeamMessageSchema).parse(
     await invoke("get_team_messages", {
-      team_name: teamName,
-      ...(since !== undefined && { since }),
+      teamName,
+      ...(limit !== undefined && { limit }),
     }),
+  );
+}
+
+export async function getTeammateCost(
+  teamName: string,
+  teammateName: string,
+): Promise<{ teammate_name: string; input_tokens: number; output_tokens: number; cache_creation_tokens: number; cache_read_tokens: number; estimated_usd: number }> {
+  return z.object({
+    teammate_name: z.string(),
+    input_tokens: z.number(),
+    output_tokens: z.number(),
+    cache_creation_tokens: z.number(),
+    cache_read_tokens: z.number(),
+    estimated_usd: z.number(),
+  }).parse(
+    await invoke("get_teammate_cost", { teamName, teammateName }),
   );
 }

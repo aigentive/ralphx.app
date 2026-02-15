@@ -1,11 +1,13 @@
-// Team IPC commands — thin Tauri wrappers for TeamStateTracker operations
+// Team IPC commands — thin Tauri wrappers for TeamService operations
 //
-// These commands bridge the frontend to the TeamStateTracker service
-// for managing agent team lifecycle, status, and messaging.
+// These commands bridge the frontend to the TeamService for managing
+// agent team lifecycle, status, and messaging. Mutation commands use
+// TeamService (which emits events), read-only commands use raw tracker.
 
 use serde::Deserialize;
 use tauri::State;
 
+use crate::application::team_service::TeamService;
 use crate::application::team_state_tracker::{
     TeamMessageResponse, TeamStateTracker, TeamStatusResponse, TeammateCostResponse,
 };
@@ -13,6 +15,15 @@ use crate::application::team_state_tracker::{
 // ============================================================================
 // Request types
 // ============================================================================
+
+/// Input for create_team command
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateTeamInput {
+    pub team_name: String,
+    pub context_type: String,
+    pub context_id: String,
+}
 
 /// Input for send_team_message command
 #[derive(Debug, Deserialize)]
@@ -23,32 +34,32 @@ pub struct SendTeamMessageInput {
 }
 
 // ============================================================================
-// Commands
+// Mutation commands (via TeamService — emits events)
 // ============================================================================
 
-/// Get the status of an active team
+/// Create a new team
 ///
-/// Returns team name, teammates with their statuses, phase, and message count.
+/// Registers the team in the tracker and emits team:created.
 #[tauri::command]
-pub async fn get_team_status(
-    team_name: String,
-    tracker: State<'_, TeamStateTracker>,
-) -> Result<TeamStatusResponse, String> {
-    tracker
-        .get_team_status(&team_name)
+pub async fn create_team(
+    input: CreateTeamInput,
+    service: State<'_, TeamService>,
+) -> Result<(), String> {
+    service
+        .create_team(&input.team_name, &input.context_id, &input.context_type)
         .await
         .map_err(|e| e.to_string())
 }
 
 /// Send a user message to a team
 ///
-/// The message is stored in the TeamStateTracker and a team:message event is emitted.
+/// The message is stored in the tracker and a team:message event is emitted.
 #[tauri::command]
 pub async fn send_team_message(
     input: SendTeamMessageInput,
-    tracker: State<'_, TeamStateTracker>,
+    service: State<'_, TeamService>,
 ) -> Result<TeamMessageResponse, String> {
-    let msg = tracker
+    let msg = service
         .send_user_message(&input.team_name, &input.content)
         .await
         .map_err(|e| e.to_string())?;
@@ -65,14 +76,15 @@ pub async fn send_team_message(
 
 /// Stop a specific teammate in a team
 ///
-/// Kills the teammate's child process and marks them as Shutdown.
+/// Kills the teammate's child process, marks them as Shutdown,
+/// and emits team:teammate_shutdown.
 #[tauri::command]
 pub async fn stop_teammate(
     team_name: String,
     teammate_name: String,
-    tracker: State<'_, TeamStateTracker>,
+    service: State<'_, TeamService>,
 ) -> Result<(), String> {
-    tracker
+    service
         .stop_teammate(&team_name, &teammate_name)
         .await
         .map_err(|e| e.to_string())
@@ -80,14 +92,48 @@ pub async fn stop_teammate(
 
 /// Stop all teammates in a team
 ///
-/// Kills all child processes and transitions the team to Winding phase.
+/// Kills all child processes, transitions to Winding phase,
+/// and emits per-teammate shutdown events.
 #[tauri::command]
 pub async fn stop_team(
     team_name: String,
-    tracker: State<'_, TeamStateTracker>,
+    service: State<'_, TeamService>,
 ) -> Result<(), String> {
-    tracker
+    service
         .stop_team(&team_name)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Disband a team
+///
+/// Stops all teammates, marks the team as Disbanded,
+/// and emits team:disbanded.
+#[tauri::command]
+pub async fn disband_team(
+    team_name: String,
+    service: State<'_, TeamService>,
+) -> Result<(), String> {
+    service
+        .disband_team(&team_name)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+// ============================================================================
+// Read-only commands (via raw TeamStateTracker — no events needed)
+// ============================================================================
+
+/// Get the status of an active team
+///
+/// Returns team name, teammates with their statuses, phase, and message count.
+#[tauri::command]
+pub async fn get_team_status(
+    team_name: String,
+    tracker: State<'_, TeamStateTracker>,
+) -> Result<TeamStatusResponse, String> {
+    tracker
+        .get_team_status(&team_name)
         .await
         .map_err(|e| e.to_string())
 }
@@ -130,5 +176,14 @@ mod tests {
         let input: SendTeamMessageInput = serde_json::from_str(json).unwrap();
         assert_eq!(input.team_name, "my-team");
         assert_eq!(input.content, "Hello");
+    }
+
+    #[test]
+    fn test_create_team_input_deserialize() {
+        let json = r#"{"teamName":"alpha","contextType":"ideation","contextId":"session-123"}"#;
+        let input: CreateTeamInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.team_name, "alpha");
+        assert_eq!(input.context_type, "ideation");
+        assert_eq!(input.context_id, "session-123");
     }
 }
