@@ -300,16 +300,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_all_four_system_buckets() {
+    async fn test_all_five_system_buckets() {
         let system_buckets = ArtifactBucket::system_buckets();
 
-        assert_eq!(system_buckets.len(), 4);
+        assert_eq!(system_buckets.len(), 5);
 
         let ids: Vec<&str> = system_buckets.iter().map(|b| b.id.as_str()).collect();
         assert!(ids.contains(&"research-outputs"));
         assert!(ids.contains(&"work-context"));
         assert!(ids.contains(&"code-changes"));
         assert!(ids.contains(&"prd-library"));
+        assert!(ids.contains(&"team-findings"));
 
         // All should be system buckets
         for bucket in &system_buckets {

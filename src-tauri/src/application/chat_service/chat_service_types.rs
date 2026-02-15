@@ -36,6 +36,22 @@ pub mod events {
     pub const AGENT_TASK_COMPLETED: &str = "agent:task_completed";
     /// Agent hook event (started/completed/block)
     pub const AGENT_HOOK: &str = "agent:hook";
+
+    // Team events (agent teams collaboration)
+    /// Team created event
+    pub const TEAM_CREATED: &str = "team:created";
+    /// Teammate spawned event
+    pub const TEAM_TEAMMATE_SPAWNED: &str = "team:teammate_spawned";
+    /// Teammate idle event
+    pub const TEAM_TEAMMATE_IDLE: &str = "team:teammate_idle";
+    /// Teammate shutdown event
+    pub const TEAM_TEAMMATE_SHUTDOWN: &str = "team:teammate_shutdown";
+    /// Team message event (teammate → teammate or user → team)
+    pub const TEAM_MESSAGE: &str = "team:message";
+    /// Team disbanded event
+    pub const TEAM_DISBANDED: &str = "team:disbanded";
+    /// Team cost update event
+    pub const TEAM_COST_UPDATE: &str = "team:cost_update";
 }
 
 // ============================================================================
@@ -199,6 +215,70 @@ pub struct AgentHookPayload {
     pub context_type: String,
     pub context_id: String,
     pub timestamp: i64,
+}
+
+// ============================================================================
+// Team Event Payloads
+// ============================================================================
+
+/// Payload for team:created event
+#[derive(Debug, Clone, Serialize)]
+pub struct TeamCreatedPayload {
+    pub team_name: String,
+    pub context_id: String,
+    pub context_type: String,
+}
+
+/// Payload for team:teammate_spawned event
+#[derive(Debug, Clone, Serialize)]
+pub struct TeamTeammateSpawnedPayload {
+    pub team_name: String,
+    pub teammate_name: String,
+    pub color: String,
+    pub model: String,
+    pub role: String,
+}
+
+/// Payload for team:teammate_idle event
+#[derive(Debug, Clone, Serialize)]
+pub struct TeamTeammateIdlePayload {
+    pub team_name: String,
+    pub teammate_name: String,
+}
+
+/// Payload for team:teammate_shutdown event
+#[derive(Debug, Clone, Serialize)]
+pub struct TeamTeammateShutdownPayload {
+    pub team_name: String,
+    pub teammate_name: String,
+}
+
+/// Payload for team:message event
+#[derive(Debug, Clone, Serialize)]
+pub struct TeamMessagePayload {
+    pub team_name: String,
+    pub message_id: String,
+    pub sender: String,
+    pub recipient: Option<String>,
+    pub content: String,
+    pub message_type: String,
+    pub timestamp: String,
+}
+
+/// Payload for team:disbanded event
+#[derive(Debug, Clone, Serialize)]
+pub struct TeamDisbandedPayload {
+    pub team_name: String,
+}
+
+/// Payload for team:cost_update event
+#[derive(Debug, Clone, Serialize)]
+pub struct TeamCostUpdatePayload {
+    pub team_name: String,
+    pub teammate_name: String,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub estimated_usd: f64,
 }
 
 // ============================================================================
