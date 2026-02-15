@@ -26,6 +26,7 @@ pub mod startup_jobs;
 pub mod supervisor_service;
 pub mod task_cleanup_service;
 pub mod task_context_service;
+pub mod resume_validator;
 pub mod task_scheduler_service;
 pub mod team_events;
 pub mod team_state_tracker;
@@ -67,6 +68,7 @@ pub use task_cleanup_service::{
     CleanupReport, StopMode, TaskCleanupService, TaskGroup, TaskStopper,
 };
 pub use task_context_service::TaskContextService;
+pub use resume_validator::{ResumeValidationResult, ResumeValidator};
 pub use task_scheduler_service::TaskSchedulerService;
 pub use team_state_tracker::TeamStateTracker;
 pub use task_transition_service::TaskTransitionService;

@@ -9,6 +9,7 @@ use tokio::sync::Mutex;
 
 use crate::application::PermissionState;
 use crate::application::QuestionState;
+use crate::application::ResumeValidator;
 use crate::domain::agents::AgenticClient;
 use crate::domain::entities::IdeationSessionId;
 use crate::domain::qa::QASettings;
@@ -609,6 +610,11 @@ impl AppState {
     pub fn with_qa_settings(mut self, settings: QASettings) -> Self {
         self.qa_settings = Arc::new(tokio::sync::RwLock::new(settings));
         self
+    }
+
+    /// Create a ResumeValidator for task resume validation
+    pub fn resume_validator(&self) -> ResumeValidator {
+        ResumeValidator::new(Arc::clone(&self.running_agent_registry))
     }
 }
 
