@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tower_http::cors::{Any, CorsLayer};
 
-use crate::application::AppState;
+use crate::application::{AppState, TeamStateTracker};
 use crate::commands::ExecutionState;
 use crate::error::AppResult;
 
@@ -27,10 +27,12 @@ pub use types::*;
 pub async fn start_http_server(
     app_state: Arc<AppState>,
     execution_state: Arc<ExecutionState>,
+    team_tracker: TeamStateTracker,
 ) -> AppResult<()> {
     let state = HttpServerState {
         app_state,
         execution_state,
+        team_tracker,
     };
 
     let app = Router::new()
@@ -167,6 +169,11 @@ pub async fn start_http_server(
         .route(
             "/api/get_conversation_transcript",
             post(get_conversation_transcript),
+        )
+        // Team endpoints (agent teams)
+        .route(
+            "/api/request_teammate_spawn",
+            post(request_teammate_spawn),
         )
         .with_state(state)
         .layer(

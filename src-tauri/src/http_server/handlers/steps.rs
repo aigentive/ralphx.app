@@ -516,6 +516,7 @@ mod tests {
         HttpServerState {
             app_state,
             execution_state,
+            team_tracker: crate::application::TeamStateTracker::new(),
         }
     }
 

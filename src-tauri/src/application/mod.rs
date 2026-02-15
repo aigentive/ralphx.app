@@ -27,6 +27,7 @@ pub mod supervisor_service;
 pub mod task_cleanup_service;
 pub mod task_context_service;
 pub mod task_scheduler_service;
+pub mod team_events;
 pub mod team_state_tracker;
 pub mod task_transition_service;
 
