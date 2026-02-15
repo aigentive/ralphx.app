@@ -38,6 +38,14 @@ pub const SHORT_MEMORY_CAPTURE: &str = "memory-capture";
 pub const SHORT_IDEATION_TEAM_LEAD: &str = "ideation-team-lead";
 pub const SHORT_WORKER_TEAM: &str = "ralphx-worker-team";
 
+// ── ChatService team agents (team_mode=true → resolve_agent_with_team_mode) ──
+
+/// Ideation team lead (ChatContextType::Ideation + team_mode)
+pub const AGENT_IDEATION_TEAM_LEAD: &str = "ralphx:ideation-team-lead";
+
+/// Worker team lead (ChatContextType::TaskExecution + team_mode)
+pub const AGENT_WORKER_TEAM: &str = "ralphx:ralphx-worker-team";
+
 // ── ChatService agents (resolve_agent → build_command → --agent flag) ─────
 
 /// Ideation orchestrator (default for ChatContextType::Ideation)

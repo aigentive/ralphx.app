@@ -12,12 +12,23 @@ pub use crate::commands::chat_responses::ChatMessageResponse;
 // Session Types
 // ============================================================================
 
+/// Team configuration input for ideation sessions
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TeamConfigInput {
+    pub max_teammates: u32,
+    pub model_ceiling: String,
+    pub budget_limit: Option<f64>,
+    pub composition_mode: String,
+}
+
 /// Input for creating a new ideation session
 #[derive(Debug, Deserialize)]
 pub struct CreateSessionInput {
     pub project_id: String,
     pub title: Option<String>,
     pub seed_task_id: Option<String>,
+    pub team_mode: Option<String>,
+    pub team_config: Option<TeamConfigInput>,
 }
 
 /// Response wrapper for ideation session operations
@@ -34,6 +45,8 @@ pub struct IdeationSessionResponse {
     pub updated_at: String,
     pub archived_at: Option<String>,
     pub converted_at: Option<String>,
+    pub team_mode: Option<String>,
+    pub team_config: Option<serde_json::Value>,
 }
 
 impl From<IdeationSession> for IdeationSessionResponse {
@@ -50,6 +63,10 @@ impl From<IdeationSession> for IdeationSessionResponse {
             updated_at: session.updated_at.to_rfc3339(),
             archived_at: session.archived_at.map(|dt| dt.to_rfc3339()),
             converted_at: session.converted_at.map(|dt| dt.to_rfc3339()),
+            team_mode: session.team_mode,
+            team_config: session
+                .team_config_json
+                .and_then(|s| serde_json::from_str(&s).ok()),
         }
     }
 }

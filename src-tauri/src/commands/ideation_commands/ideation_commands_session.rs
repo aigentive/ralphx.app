@@ -41,6 +41,15 @@ pub async fn create_ideation_session(
         builder = builder.seed_task_id(task_id);
     }
 
+    if let Some(ref team_mode) = input.team_mode {
+        builder = builder.team_mode(team_mode.clone());
+    }
+
+    if let Some(ref team_config) = input.team_config {
+        let config_json = serde_json::to_string(team_config).map_err(|e| e.to_string())?;
+        builder = builder.team_config_json(config_json);
+    }
+
     let session = builder.build();
 
     state

@@ -58,6 +58,10 @@ pub struct IdeationSession {
     pub archived_at: Option<DateTime<Utc>>,
     /// When all proposals were converted to tasks (if applicable)
     pub converted_at: Option<DateTime<Utc>>,
+    /// Team mode: "solo" | "research" | "debate"
+    pub team_mode: Option<String>,
+    /// Serialized JSON team configuration
+    pub team_config_json: Option<String>,
 }
 
 /// Builder for creating IdeationSession instances
@@ -74,6 +78,8 @@ pub struct IdeationSessionBuilder {
     updated_at: Option<DateTime<Utc>>,
     archived_at: Option<DateTime<Utc>>,
     converted_at: Option<DateTime<Utc>>,
+    team_mode: Option<String>,
+    team_config_json: Option<String>,
 }
 
 impl IdeationSessionBuilder {
@@ -148,6 +154,18 @@ impl IdeationSessionBuilder {
         self
     }
 
+    /// Set the team mode
+    pub fn team_mode(mut self, team_mode: impl Into<String>) -> Self {
+        self.team_mode = Some(team_mode.into());
+        self
+    }
+
+    /// Set the team config JSON
+    pub fn team_config_json(mut self, team_config_json: impl Into<String>) -> Self {
+        self.team_config_json = Some(team_config_json.into());
+        self
+    }
+
     /// Build the IdeationSession
     /// Panics if project_id is not set
     pub fn build(self) -> IdeationSession {
@@ -164,6 +182,8 @@ impl IdeationSessionBuilder {
             updated_at: self.updated_at.unwrap_or(now),
             archived_at: self.archived_at,
             converted_at: self.converted_at,
+            team_mode: self.team_mode,
+            team_config_json: self.team_config_json,
         }
     }
 }
@@ -267,6 +287,8 @@ impl IdeationSession {
             converted_at: row
                 .get::<_, Option<String>>("converted_at")?
                 .map(Self::parse_datetime),
+            team_mode: row.get::<_, Option<String>>("team_mode").unwrap_or(None),
+            team_config_json: row.get::<_, Option<String>>("team_config_json").unwrap_or(None),
         })
     }
 

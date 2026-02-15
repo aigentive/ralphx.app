@@ -3,7 +3,11 @@
 // Extracted from chat_service.rs to improve modularity and reduce file size.
 
 use crate::domain::entities::{ChatContextType, MessageRole};
-use crate::infrastructure::agents::claude::agent_names::*;
+use crate::infrastructure::agents::claude::agent_names::{
+    AGENT_CHAT_PROJECT, AGENT_CHAT_TASK, AGENT_IDEATION_TEAM_LEAD, AGENT_MERGER,
+    AGENT_ORCHESTRATOR_IDEATION, AGENT_ORCHESTRATOR_IDEATION_READONLY, AGENT_REVIEWER,
+    AGENT_REVIEW_CHAT, AGENT_REVIEW_HISTORY, AGENT_WORKER, AGENT_WORKER_TEAM,
+};
 
 /// Agent Resolution System
 ///
@@ -57,13 +61,17 @@ pub fn resolve_agent_with_team_mode(
     }
 
     // Team mode: resolve to team-lead variant
-    // When process_mapping is configured in ralphx.yaml, team variants are resolved
-    // dynamically. For now, fall through to defaults (team agents not yet configured).
     if team_mode {
-        tracing::debug!(
-            context_type = %context_type,
-            "resolve_agent: team_mode=true, no team variant configured — using default"
-        );
+        match context_type {
+            ChatContextType::Ideation => return AGENT_IDEATION_TEAM_LEAD,
+            ChatContextType::TaskExecution => return AGENT_WORKER_TEAM,
+            _ => {
+                tracing::debug!(
+                    context_type = %context_type,
+                    "resolve_agent: team_mode=true, no team variant for context — using default"
+                );
+            }
+        }
     }
 
     // Default rules (context-only, backward compatible)
@@ -140,11 +148,25 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_agent_team_mode_defaults_without_mapping() {
-        // Without process_mapping configured, team_mode falls back to defaults
+    fn test_resolve_agent_team_mode_ideation_returns_team_lead() {
+        let agent =
+            resolve_agent_with_team_mode(&ChatContextType::Ideation, None, true);
+        assert_eq!(agent, AGENT_IDEATION_TEAM_LEAD);
+    }
+
+    #[test]
+    fn test_resolve_agent_team_mode_execution_returns_worker_team() {
         let agent =
             resolve_agent_with_team_mode(&ChatContextType::TaskExecution, None, true);
-        assert_eq!(agent, AGENT_WORKER);
+        assert_eq!(agent, AGENT_WORKER_TEAM);
+    }
+
+    #[test]
+    fn test_resolve_agent_team_mode_project_falls_back_to_default() {
+        // Contexts without team variants fall back to defaults
+        let agent =
+            resolve_agent_with_team_mode(&ChatContextType::Project, None, true);
+        assert_eq!(agent, AGENT_CHAT_PROJECT);
     }
 
     #[test]
@@ -152,6 +174,14 @@ mod tests {
         let agent =
             resolve_agent_with_team_mode(&ChatContextType::Ideation, None, false);
         assert_eq!(agent, AGENT_ORCHESTRATOR_IDEATION);
+    }
+
+    #[test]
+    fn test_resolve_agent_team_mode_status_overrides_team() {
+        // Status-specific rules take priority over team_mode
+        let agent =
+            resolve_agent_with_team_mode(&ChatContextType::Ideation, Some("accepted"), true);
+        assert_eq!(agent, AGENT_ORCHESTRATOR_IDEATION_READONLY);
     }
 
     #[test]
