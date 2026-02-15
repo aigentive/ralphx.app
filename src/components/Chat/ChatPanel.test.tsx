@@ -147,6 +147,12 @@ vi.mock("@/stores/chatStore", () => ({
   selectQueuedMessages: vi.fn(() => () => []),
   selectIsAgentRunning: vi.fn(() => () => false),
   selectActiveConversationId: vi.fn((state: typeof mockChatStoreState) => state.activeConversationId || null),
+  selectIsTeamActive: vi.fn(() => () => false),
+}));
+
+vi.mock("@/stores/teamStore", () => ({
+  useTeamStore: vi.fn(() => ({ teammates: [] })),
+  selectTeammates: vi.fn(() => () => []),
 }));
 
 vi.mock("@/stores/uiStore", () => ({

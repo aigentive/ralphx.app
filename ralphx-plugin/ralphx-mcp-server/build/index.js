@@ -359,6 +359,47 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const { project_id, entries } = args;
             result = await callTauri(`projects/${project_id}/analysis`, { entries });
         }
+        else if (name === "request_team_plan") {
+            // POST /api/team/plan
+            const { process, teammates } = args;
+            result = await callTauri("team/plan", { process, teammates });
+        }
+        else if (name === "request_teammate_spawn") {
+            // POST /api/team/spawn
+            const { role, prompt, model, tools, mcp_tools, preset } = args;
+            result = await callTauri("team/spawn", { role, prompt, model, tools, mcp_tools, preset });
+        }
+        else if (name === "create_team_artifact") {
+            // POST /api/team/artifact
+            const { session_id, title, content, artifact_type, related_artifact_id } = args;
+            result = await callTauri("team/artifact", {
+                session_id,
+                title,
+                content,
+                artifact_type,
+                related_artifact_id,
+            });
+        }
+        else if (name === "get_team_artifacts") {
+            // GET /api/team/artifacts/:session_id
+            const { session_id } = args;
+            result = await callTauriGet(`team/artifacts/${session_id}`);
+        }
+        else if (name === "get_team_session_state") {
+            // GET /api/team/session_state/:session_id
+            const { session_id } = args;
+            result = await callTauriGet(`team/session_state/${session_id}`);
+        }
+        else if (name === "save_team_session_state") {
+            // POST /api/team/session_state
+            const { session_id, team_composition, phase, artifact_ids } = args;
+            result = await callTauri("team/session_state", {
+                session_id,
+                team_composition,
+                phase,
+                artifact_ids,
+            });
+        }
         else {
             // Default: POST request
             result = await callTauri(name, args || {});

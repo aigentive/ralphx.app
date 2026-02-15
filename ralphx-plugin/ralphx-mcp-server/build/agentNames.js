@@ -22,4 +22,7 @@ export const ORCHESTRATOR = "ralphx-orchestrator";
 export const DEEP_RESEARCHER = "ralphx-deep-researcher";
 export const MEMORY_MAINTAINER = "memory-maintainer";
 export const MEMORY_CAPTURE = "memory-capture";
+export const IDEATION_TEAM_LEAD = "ideation-team-lead";
+export const IDEATION_TEAM_MEMBER = "ideation-team-member";
+export const WORKER_TEAM_MEMBER = "worker-team-member";
 //# sourceMappingURL=agentNames.js.map

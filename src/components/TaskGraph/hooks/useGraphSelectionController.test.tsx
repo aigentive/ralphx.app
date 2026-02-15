@@ -91,13 +91,11 @@ function TestHarness({
   });
 
   return (
-    /* eslint-disable react-hooks/refs -- passing ref/handler to JSX is standard React */
     <div
       id={containerId}
       ref={containerRef}
       onKeyDown={onKeyDown}
     />
-    /* eslint-enable react-hooks/refs */
   );
 }
 
