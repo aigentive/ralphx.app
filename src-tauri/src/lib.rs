@@ -640,6 +640,7 @@ pub fn run() {
             commands::execution_commands::pause_execution,
             commands::execution_commands::resume_execution,
             commands::execution_commands::stop_execution,
+            commands::execution_commands::restart_task,
             commands::execution_commands::recover_task_execution,
             commands::execution_commands::resolve_recovery_prompt,
             commands::execution_commands::set_max_concurrent,
