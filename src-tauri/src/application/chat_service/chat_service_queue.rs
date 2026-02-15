@@ -16,7 +16,7 @@ use super::chat_service_types::{
 use super::has_meaningful_output;
 use crate::application::question_state::QuestionState;
 use crate::domain::entities::{ChatContextType, ChatConversationId};
-use crate::domain::repositories::{ActivityEventRepository, ChatMessageRepository, TaskRepository};
+use crate::domain::repositories::{ActivityEventRepository, ChatMessageRepository, IdeationSessionRepository, TaskRepository};
 use crate::domain::services::MessageQueue;
 use tokio_util::sync::CancellationToken;
 
@@ -37,6 +37,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
     chat_attachment_repo: &Arc<dyn crate::domain::repositories::ChatAttachmentRepository>,
     activity_event_repo: &Arc<dyn ActivityEventRepository>,
     task_repo: &Arc<dyn TaskRepository>,
+    ideation_session_repo: &Arc<dyn IdeationSessionRepository>,
     cli_path: &Path,
     plugin_dir: &Path,
     working_directory: &Path,
@@ -203,6 +204,8 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                 session_id,
                 project_id,
                 Arc::clone(chat_attachment_repo),
+                Arc::clone(ideation_session_repo),
+                Arc::clone(task_repo),
             )
             .await
             {
