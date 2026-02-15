@@ -1,6 +1,6 @@
 # Product Brief: Configurable Agent Variants and Dynamic Team Composition
 
-**Status:** DRAFT v3
+**Status:** DRAFT v4
 **Author:** agent-cataloger
 **Date:** 2026-02-15
 **Scope:** Infrastructure for solo ↔ team mode switching with agent-driven dynamic team composition
@@ -108,7 +108,7 @@ The fundamental insight: **the agent is best positioned to decide what teammates
 │  ┌──────────────────┐  ┌─────────────────────────────┐  │
 │  │ process_mapping   │  │ team_constraints             │  │
 │  │ ideation:         │  │ execution:                   │  │
-│  │   default: solo   │  │   max_teammates: 4           │  │
+│  │   default: solo   │  │   max_teammates: 5           │  │
 │  │   team: team-lead │  │   allowed_tools: [R,W,E,B]  │  │
 │  │ execution:        │  │   model_cap: sonnet          │  │
 │  │   default: solo   │  │   mode: dynamic              │  │
@@ -127,11 +127,13 @@ The fundamental insight: **the agent is best positioned to decide what teammates
 │    └── Teammate 3: coder (from preset)                   │
 │                                                           │
 │  Constraints enforced:                                    │
-│    ✅ 3 teammates ≤ max_teammates (4)                    │
+│    ✅ 3 teammates ≤ max_teammates (5)                    │
 │    ✅ All tools within allowed_tools                     │
 │    ✅ All models ≤ model_cap (sonnet)                    │
 └─────────────────────────────────────────────────────────┘
 ```
+
+**Note on team lead identity (RESOLVED in ideation brief v4):** Team leads are **new lightweight coordinator agents** — not the solo agents reused with extra capabilities. This means `ideation-team-lead` is a separate agent from `orchestrator-ideation`, with a focused coordination-only system prompt. Same principle applies to `ralphx-worker-team` vs `ralphx-worker`. The `extends` mechanism (Section 3.5) allows inheriting base config while overriding the system prompt.
 
 ### 3.2 YAML Schema: `process_mapping` Section
 
@@ -142,7 +144,7 @@ process_mapping:
   ideation:
     default: orchestrator-ideation           # solo mode
     readonly: orchestrator-ideation-readonly  # read-only mode
-    team: orchestrator-ideation-team         # team lead (composes own team)
+    team: ideation-team-lead         # team lead (composes own team)
 
   execution:
     default: ralphx-worker                   # solo mode
@@ -180,7 +182,7 @@ Defines guardrails that team leads must operate within. This is the safety layer
 team_constraints:
   # Per-process constraints
   ideation:
-    max_teammates: 3                         # max simultaneous teammates
+    max_teammates: 5                         # max simultaneous teammates (default: 5)
     allowed_tools:                            # tools teammates can use
       - Read
       - Grep
@@ -195,7 +197,7 @@ team_constraints:
       - critic
 
   execution:
-    max_teammates: 4
+    max_teammates: 5
     allowed_tools:
       - Read
       - Write
@@ -215,6 +217,7 @@ team_constraints:
     presets:
       - ralphx-coder                         # predefined coder template
     timeout_minutes: 30                      # max team runtime
+    budget_limit: null                       # no budget cap by default
 
   review:
     max_teammates: 2
@@ -226,10 +229,11 @@ team_constraints:
 
   # Global defaults (applied when process-specific not set)
   _defaults:
-    max_teammates: 3
+    max_teammates: 5
     model_cap: sonnet
     mode: dynamic
     timeout_minutes: 20
+    budget_limit: null               # No budget cap by default; configurable per-process
 ```
 
 ### 3.4 Dynamic vs. Constrained Mode
@@ -329,6 +333,8 @@ struct TeamConstraints {
     presets: Vec<String>,                    // agent names from agents[]
     #[serde(default = "default_timeout")]
     timeout_minutes: u32,
+    #[serde(default)]
+    budget_limit: Option<f64>,               // Max USD for team session (None = no cap)
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -852,7 +858,7 @@ team_constraints lookup
 
 1. Implement `request_team_plan` MCP tool (pre-flight validation)
 2. Implement `validate_team_plan()` in Rust backend
-3. Create team lead system prompts (`worker-team.md`, `orchestrator-ideation-team.md`)
+3. Create team lead system prompts (`worker-team.md`, `ideation-team-lead.md`)
 4. Prompts instruct leads: analyze task → `request_team_plan` → spawn via `Task` → coordinate
 5. Add `team` variants to `process_mapping`
 6. Add `team_constraints` with sensible defaults
@@ -897,13 +903,14 @@ team_constraints lookup
 | `process_mapping.<slot>` | `default` | `String` | required | Default (solo) agent |
 | `process_mapping.<slot>` | `team` | `String` | — | Team lead agent |
 | `process_mapping.<slot>` | `<variant>` | `String` | — | Other named variants |
-| `team_constraints.<process>` | `max_teammates` | `u8` | `3` | Max simultaneous teammates |
+| `team_constraints.<process>` | `max_teammates` | `u8` | `5` | Max simultaneous teammates |
 | `team_constraints.<process>` | `allowed_tools` | `Vec<String>` | all base tools | Tools teammates can use |
 | `team_constraints.<process>` | `allowed_mcp_tools` | `Vec<String>` | `[]` | MCP tools teammates can access |
 | `team_constraints.<process>` | `model_cap` | `String` | `"sonnet"` | Max model tier for teammates |
 | `team_constraints.<process>` | `mode` | `"dynamic"\|"constrained"` | `"dynamic"` | Dynamic or preset-only |
 | `team_constraints.<process>` | `presets` | `Vec<String>` | `[]` | Agent templates from `agents[]` |
 | `team_constraints.<process>` | `timeout_minutes` | `u32` | `20` | Max team runtime |
+| `team_constraints.<process>` | `budget_limit` | `Option<f64>` | `null` | Max USD cost for team session (disabled by default) |
 | `team_constraints._defaults` | (all above) | — | — | Defaults for unspecified processes |
 | `agents[]` | `extends` | `String?` | `null` | Parent agent for config inheritance |
 
@@ -956,7 +963,7 @@ process_mapping:
   ideation:
     default: orchestrator-ideation
     readonly: orchestrator-ideation-readonly
-    team: orchestrator-ideation-team
+    team: ideation-team-lead
   execution:
     default: ralphx-worker
     team: ralphx-worker-team
@@ -973,26 +980,28 @@ process_mapping:
 
 team_constraints:
   _defaults:
-    max_teammates: 3
+    max_teammates: 5
     model_cap: sonnet
     mode: dynamic
     timeout_minutes: 20
+    budget_limit: null               # No budget cap by default
 
   ideation:
-    max_teammates: 3
+    max_teammates: 5
     allowed_tools: [Read, Grep, Glob, Bash, WebFetch, WebSearch]
     model_cap: sonnet
     mode: dynamic
     presets: [researcher, critic]
 
   execution:
-    max_teammates: 4
+    max_teammates: 5
     allowed_tools: [Read, Write, Edit, Bash, Grep, Glob, WebFetch, WebSearch]
     allowed_mcp_tools: [get_task_context, get_artifact_content, start_step, complete_step]
     model_cap: sonnet
     mode: dynamic
     presets: [ralphx-coder]
     timeout_minutes: 30
+    budget_limit: null
 
   review:
     max_teammates: 2
@@ -1021,9 +1030,9 @@ agents:
     mcp_tools: [start_step, complete_step, ...]
 
   # --- Team lead variants ---
-  - name: orchestrator-ideation-team
+  - name: ideation-team-lead
     extends: orchestrator-ideation
-    system_prompt_file: ralphx-plugin/agents/orchestrator-ideation-team.md
+    system_prompt_file: ralphx-plugin/agents/ideation-team-lead.md
     # inherits: model, tools, mcp_tools
 
   - name: ralphx-worker-team

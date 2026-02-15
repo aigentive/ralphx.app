@@ -1,6 +1,6 @@
 # Product Brief: Agent Teams at Worker Level for Parallel Task Execution
 
-**Status:** Draft
+**Status:** DRAFT v2
 **Date:** 2026-02-15
 **Author:** system-card-writer (agent-teams-research team)
 **Depends on:** Agent Teams System Card (`docs/agent-teams-system-card.md`)
@@ -111,10 +111,11 @@ For teams that want guardrails, `ralphx.yaml` can constrain what the worker-lead
 ```yaml
 team_constraints:
   ralphx-worker-team:
-    max_teammates: 4
+    max_teammates: 5                         # Default: 5 (consistent with ideation brief)
     allowed_models: [sonnet, haiku]          # No opus (cost control)
     allowed_agent_types: [general-purpose]    # Restrict agent types
     required_mcp_tools: [start_step, complete_step]  # All teammates must have these
+    budget_limit: null                       # No budget cap by default; configurable
 ```
 
 The worker-lead operates freely within these constraints. Configuration provides **boundaries**, not rigid definitions.
@@ -170,9 +171,10 @@ agents:
 # Optional: Constrain what worker-lead can spawn (default: unconstrained)
 team_constraints:
   ralphx-worker-team:
-    max_teammates: 4
+    max_teammates: 5                         # Default: 5
     allowed_models: [sonnet, haiku]
     required_mcp_tools: [start_step, complete_step, get_task_context]
+    budget_limit: null                       # No budget cap by default
 ```
 
 ### 3.3 Process Mapping (Configurable)
@@ -387,6 +389,39 @@ User retries → system selects ralphx-worker (sequential fallback)
 Sequential execution completes normally
 ```
 
+### 7.4 Team Resume for Failed/Interrupted Worker Teams
+
+**NOTE:** Consistent with ideation brief (Section 7.5) — team sessions support resume.
+
+When a worker team execution is interrupted (coder crash, session expiry, app restart), the worker-lead can resume:
+
+| State Persisted | Storage | Purpose |
+|----------------|---------|---------|
+| Team composition | DB: teammate names, roles, prompts, file ownership | Re-spawn coders with same scope |
+| Wave progress | Existing step tracking via MCP | Which waves completed |
+| File changes | Git working tree (uncommitted files survive) | Resume from last state |
+| Coder findings | Supporting artifacts (if applicable) | Context for re-spawned coders |
+
+**Resume flow:**
+- Worker-lead detects missing teammates on restart
+- Reads persisted team state from DB
+- Re-spawns crashed coders with injected context: "You are resuming. Completed waves: [X]. Your file ownership: [Y]. Continue from where the previous coder left off."
+- Since file ownership is exclusive, no conflict risk on resume
+
+**Key difference from ideation resume:** Worker teammates produce **code artifacts** (file writes), not just research. This means resume must account for partial file changes in the working tree. The worker-lead should run a validation gate (typecheck/lint) before resuming to detect inconsistent state.
+
+### 7.5 Artifact Model Implications for Worker Teams
+
+**Cross-reference:** Ideation brief Section 6.4 introduces a supporting artifacts model. For worker teams, the implications are:
+
+| Aspect | Ideation Teams | Worker Teams |
+|--------|---------------|-------------|
+| Artifact type | Research findings, analysis docs | Code changes, test results |
+| Read-only concern | All teammates read-only | Teammates have Write/Edit (file ownership prevents conflicts) |
+| Supporting artifacts useful? | Yes — persist research for resume | **Future consideration** — worker coders could log implementation notes as supporting artifacts for reviewer context |
+
+**Decision:** Worker teams do NOT require `create_supporting_artifact` in Phase 1. The code itself (committed via wave commits) serves as the artifact. Consider adding it later if reviewer teams need structured coder notes.
+
 ---
 
 ## 8. UI/UX Considerations
@@ -547,9 +582,9 @@ New events for team execution:
 | 2 | Should the lead be in strict delegate mode or allowed to write files? | Delegate (clean separation), Full (can fix things) | Delegate with fallback to direct fixes |
 | 3 | How should team execution interact with the reviewer? | Same reviewer flow (team is transparent), Team includes reviewer | Same flow — reviewer doesn't need to know about team internals |
 | 4 | Should cross-coder messages go through the lead or be direct? | Through lead (controlled), Direct (faster) | Direct for discoveries, through lead for scope changes |
-| 5 | What's the max team size? | 3 (current coder limit), 5 (more parallelism), Dynamic | Start with 3, expand based on data |
+| 5 | What's the max team size? | 3 (current coder limit), 5 (more parallelism), Dynamic | **RESOLVED v2:** Default 5 (consistent with ideation brief). Configurable via `team_constraints.max_teammates`. |
 | 6 | How does QA phase interact with team execution? | QA after team completes (current), QA teammate in team | QA after (keep phases separate) |
-| 7 | How much autonomy should the worker-lead have in choosing teammate composition? | Full dynamic (default), Constrained by YAML, Hybrid | Hybrid — dynamic by default with optional YAML constraints |
+| 7 | How much autonomy should the worker-lead have in choosing teammate composition? | Full dynamic (default), Constrained by YAML, Hybrid | **RESOLVED v2:** Dynamic default + constrained opt-in (consistent with ideation brief Section 4.1). |
 
 ---
 
@@ -579,7 +614,7 @@ New events for team execution:
 | File conflict prevention | Sub-step scope_context | Explicit file ownership in tasks |
 | Validation | Worker runs gates | Lead runs gates (same logic) |
 | Commit strategy | Worker commits | Lead commits (delegate mode) |
-| Max coders | 3 (subagent limit) | 3-5 (configurable) |
+| Max coders | 3 (subagent limit) | Up to 5 (default, configurable via `team_constraints.max_teammates`) |
 | Failure recovery | Worker retries scope | Lead re-assigns or re-spawns |
 | Token efficiency | Results summarized to worker | Full context per teammate |
 | Time efficiency | Sequential wave processing | Parallel with peer coordination |
