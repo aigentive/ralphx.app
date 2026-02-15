@@ -8,7 +8,7 @@
  * - Streaming tool calls / typing indicator footer
  */
 
-import React, { forwardRef, useCallback, useEffect, useMemo, useRef, useImperativeHandle } from "react";
+import React, { forwardRef, useCallback, useEffect, useMemo, useRef, useImperativeHandle, useState } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { MessageItem } from "./MessageItem";
 import { StreamingToolIndicator } from "./StreamingToolIndicator";
@@ -132,6 +132,12 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     // Forward the ref to parent
     useImperativeHandle(ref, () => virtuosoRef.current!, []);
 
+    // Track finalizing state to avoid accessing ref during render
+    const [isFinalizing, setIsFinalizing] = useState(false);
+    useEffect(() => {
+      setIsFinalizing(finalizingConversationRef?.current === conversationId);
+    }, [finalizingConversationRef, conversationId]);
+
     // Fetch attachments for all messages
     const { data: attachmentsMap } = useMessageAttachments(messages, conversationId);
 
@@ -207,7 +213,6 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     // that critical window.
     const hasActiveStreaming = (streamingContentBlocks && streamingContentBlocks.length > 0) ||
                               (streamingTasks && streamingTasks.size > 0);
-    const isFinalizing = finalizingConversationRef?.current === conversationId;
     const shouldFilterLastAssistant = hasActiveStreaming || isFinalizing;
 
     const timeline = useMemo((): TimelineItem[] => {
