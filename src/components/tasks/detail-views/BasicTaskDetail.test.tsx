@@ -416,5 +416,86 @@ describe("BasicTaskDetail", () => {
       });
     });
   });
+
+  describe("execution mode selector", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      mockUseTaskSteps.mockReturnValue({
+        data: [],
+        isLoading: false,
+        isError: false,
+      } as ReturnType<typeof useTaskSteps>);
+      mockConfirmation.confirm = vi.fn(async () => true);
+    });
+
+    it("renders ExecutionModeSelector for ready state", () => {
+      const task = createTestTask({ internalStatus: "ready" });
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByTestId("execution-mode-selector")).toBeInTheDocument();
+      expect(screen.getByTestId("mode-solo")).toBeInTheDocument();
+      expect(screen.getByTestId("mode-team")).toBeInTheDocument();
+    });
+
+    it("renders ExecutionModeSelector for failed state", () => {
+      const task = createTestTask({ internalStatus: "failed" });
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByTestId("execution-mode-selector")).toBeInTheDocument();
+    });
+
+    it("defaults to solo mode", () => {
+      const task = createTestTask({ internalStatus: "ready" });
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      const soloBtn = screen.getByTestId("mode-solo");
+      // Solo button should have non-transparent background (selected state)
+      expect(soloBtn).toHaveStyle({ backgroundColor: "hsla(220 10% 100% / 0.08)" });
+    });
+
+    it("switches to team mode with orange styling on click", async () => {
+      const user = userEvent.setup();
+      const task = createTestTask({ internalStatus: "ready" });
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      const teamBtn = screen.getByTestId("mode-team");
+      await user.click(teamBtn);
+
+      // Team button should have warm orange background when selected
+      expect(teamBtn).toHaveStyle({ backgroundColor: "hsla(14 100% 60% / 0.15)" });
+    });
+
+    it("passes 'team' agentVariant to API when team mode selected", async () => {
+      const user = userEvent.setup();
+      const task = createTestTask({ internalStatus: "ready" });
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      // Select team mode
+      await user.click(screen.getByTestId("mode-team"));
+      // Click start
+      await user.click(screen.getByTestId("start-button"));
+
+      await waitFor(() => {
+        expect(mockApiTasksMove).toHaveBeenCalledWith(task.id, "ready", "team");
+      });
+    });
+
+    it("confirmation dialog includes mode note for team mode", async () => {
+      const user = userEvent.setup();
+      const task = createTestTask({ internalStatus: "ready" });
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      await user.click(screen.getByTestId("mode-team"));
+      await user.click(screen.getByTestId("start-button"));
+
+      await waitFor(() => {
+        expect(mockConfirmation.confirm).toHaveBeenCalledWith(
+          expect.objectContaining({
+            description: expect.stringContaining("in team mode"),
+          }),
+        );
+      });
+    });
+  });
 });
 
