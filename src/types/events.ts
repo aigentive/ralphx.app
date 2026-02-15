@@ -362,3 +362,40 @@ export const MergeProgressEventSchema = z.object({
 });
 
 export type MergeProgressEvent = z.infer<typeof MergeProgressEventSchema>;
+
+// ============================================================================
+// Team Event Payload Types
+// ============================================================================
+
+export interface TeamCreatedPayload {
+  team_name: string; context_id: string; context_type: string;
+}
+
+export interface TeamTeammateSpawnedPayload {
+  team_name: string; teammate_name: string; color: string;
+  model: string; role: string; context_type: string; context_id: string;
+}
+
+export interface TeamTeammateIdlePayload {
+  team_name: string; teammate_name: string; context_type: string; context_id: string;
+}
+
+export interface TeamTeammateShutdownPayload {
+  team_name: string; teammate_name: string; context_type: string; context_id: string;
+}
+
+export interface TeamMessagePayload {
+  team_name: string; message_id: string; sender: string;
+  recipient?: string; content: string; message_type: string;
+  timestamp: string; context_type: string; context_id: string;
+}
+
+export interface TeamDisbandedPayload {
+  team_name: string; context_type: string; context_id: string;
+}
+
+export interface TeamCostUpdatePayload {
+  team_name: string; teammate_name: string; input_tokens: number;
+  output_tokens: number; estimated_usd: number;
+  context_type: string; context_id: string;
+}

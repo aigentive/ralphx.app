@@ -252,10 +252,16 @@ export const tasksApi = {
    * Move a task to a new status
    * @param taskId The task ID
    * @param toStatus The target status
+   * @param agentVariant Optional agent variant (e.g. "team" for parallel agents)
    * @returns The updated task
    */
-  move: (taskId: string, toStatus: string): Promise<Task> =>
-    typedInvokeWithTransform("move_task", { taskId, toStatus }, TaskSchema, transformTask),
+  move: (taskId: string, toStatus: string, agentVariant?: string): Promise<Task> =>
+    typedInvokeWithTransform(
+      "move_task",
+      { taskId, toStatus, ...(agentVariant !== undefined && { agentVariant }) },
+      TaskSchema,
+      transformTask
+    ),
 
   /**
    * Inject a task mid-loop

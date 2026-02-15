@@ -11,6 +11,7 @@ export type {
   StepProgressSummary,
   RunningProcess,
   RunningProcessesResponse,
+  TeammateSummary,
 } from "./running-processes.types";
 
 // Re-export schemas for consumers that need validation
@@ -18,11 +19,13 @@ export {
   StepProgressSummarySchema,
   RunningProcessSchema,
   RunningProcessesResponseSchema,
+  TeammateSummarySchema,
 } from "./running-processes.schemas";
 
 // Re-export transforms for consumers that need manual transformation
 export {
   transformStepProgressSummary,
+  transformTeammateSummary,
   transformRunningProcess,
   transformRunningProcessesResponse,
 } from "./running-processes.transforms";

@@ -5,11 +5,13 @@ import {
   StepProgressSummarySchema,
   RunningProcessSchema,
   RunningProcessesResponseSchema,
+  TeammateSummarySchema,
 } from "./running-processes.schemas";
 import type {
   StepProgressSummary,
   RunningProcess,
   RunningProcessesResponse,
+  TeammateSummary,
 } from "./running-processes.types";
 import { transformTaskStep } from "@/types/task-step";
 
@@ -34,6 +36,21 @@ export function transformStepProgressSummary(
 }
 
 /**
+ * Transform TeammateSummarySchema (snake_case) → TeammateSummary (camelCase)
+ */
+export function transformTeammateSummary(
+  raw: z.infer<typeof TeammateSummarySchema>
+): TeammateSummary {
+  return {
+    name: raw.name,
+    status: raw.status,
+    ...(raw.step !== undefined && { step: raw.step }),
+    ...(raw.model !== undefined && { model: raw.model }),
+    ...(raw.color !== undefined && { color: raw.color }),
+  };
+}
+
+/**
  * Transform RunningProcessSchema (snake_case) → RunningProcess (camelCase)
  */
 export function transformRunningProcess(
@@ -49,6 +66,10 @@ export function transformRunningProcess(
     elapsedSeconds: raw.elapsed_seconds,
     triggerOrigin: raw.trigger_origin,
     taskBranch: raw.task_branch,
+    ...(raw.team_name !== undefined && { teamName: raw.team_name }),
+    ...(raw.teammates !== undefined && {
+      teammates: raw.teammates.map(transformTeammateSummary),
+    }),
   };
 }
 

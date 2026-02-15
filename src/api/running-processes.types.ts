@@ -19,6 +19,17 @@ export interface StepProgressSummary {
 }
 
 /**
+ * Teammate info within a team process group
+ */
+export interface TeammateSummary {
+  name: string;
+  status: string;
+  step?: string;
+  model?: string;
+  color?: string;
+}
+
+/**
  * Running process - frontend representation (camelCase)
  */
 export interface RunningProcess {
@@ -29,6 +40,8 @@ export interface RunningProcess {
   elapsedSeconds: number | null;
   triggerOrigin: string | null;
   taskBranch: string | null;
+  teamName?: string;
+  teammates?: TeammateSummary[];
 }
 
 /**

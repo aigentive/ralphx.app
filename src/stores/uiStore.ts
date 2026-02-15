@@ -41,6 +41,7 @@ const DEFAULT_CHAT_VISIBILITY: Record<ViewType, boolean> = {
   activity: false,
   settings: false,
   task_detail: false,
+  team: false, // team view has its own split layout
 };
 
 function loadChatVisibility(): Record<ViewType, boolean> {
@@ -184,6 +185,8 @@ interface UiState {
   showWelcomeOverlay: boolean;
   /** View to return to when closing manually-opened welcome screen */
   welcomeOverlayReturnView: ViewType | null;
+  /** View to return to when leaving team split view */
+  previousView: ViewType | null;
   /** Filter for activity view navigation (set by StatusActivityBadge) */
   activityFilter: ActivityFilter;
   /** Set of collapsed column IDs (persisted to localStorage) */
@@ -302,6 +305,8 @@ interface UiActions {
   expandColumn: (columnId: string) => void;
   /** Replace the entire collapsed columns set */
   setCollapsedColumns: (columns: Set<string>) => void;
+  /** Set the view to return to when leaving team split view */
+  setPreviousView: (view: ViewType | null) => void;
 }
 
 // ============================================================================
@@ -346,6 +351,7 @@ export const useUiStore = create<UiState & UiActions>()(
     chatVisibleByView: loadChatVisibility(),
     showWelcomeOverlay: false,
     welcomeOverlayReturnView: null,
+    previousView: null,
     activityFilter: { taskId: null, sessionId: null },
     collapsedColumns: loadCollapsedColumns(),
 
@@ -669,6 +675,11 @@ export const useUiStore = create<UiState & UiActions>()(
       set((state) => {
         state.collapsedColumns = columns;
         saveCollapsedColumns(state.collapsedColumns);
+      }),
+
+    setPreviousView: (view) =>
+      set((state) => {
+        state.previousView = view;
       }),
   }))
 );

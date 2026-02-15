@@ -101,14 +101,30 @@ export function TeamConfigPanel({ config, onChange }: TeamConfigPanelProps) {
         </div>
       </div>
 
-      {/* Constrained info */}
+      {/* Constrained preset roles */}
       {config.compositionMode === "constrained" && (
-        <p
-          className="text-[12px] mt-2 pl-1"
-          style={{ color: "hsl(220 10% 50%)" }}
-        >
-          Lead will select from preset roles only.
-        </p>
+        <div className="mt-3 pl-1">
+          <p
+            className="text-[12px] mb-1.5"
+            style={{ color: "hsl(220 10% 55%)" }}
+          >
+            Available specialist roles:
+          </p>
+          <div className="flex flex-col gap-1 ml-1">
+            <span className="text-[12px]" style={{ color: "hsl(220 10% 65%)" }}>
+              ✓ researcher <span style={{ color: "hsl(220 10% 45%)" }}>(codebase research)</span>
+            </span>
+            <span className="text-[12px]" style={{ color: "hsl(220 10% 65%)" }}>
+              ✓ critic <span style={{ color: "hsl(220 10% 45%)" }}>(adversarial stress-testing)</span>
+            </span>
+          </div>
+          <p
+            className="text-[11px] mt-1.5"
+            style={{ color: "hsl(220 10% 45%)" }}
+          >
+            ⓘ Lead will select from these roles only.
+          </p>
+        </div>
       )}
     </div>
   );

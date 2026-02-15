@@ -279,10 +279,12 @@ export function useChatEvents({
     }
 
     // ── agent:chunk (streaming text) ─────────────────────────────────
+    // Skip chunks with teammate_name — those route to teamStore via useTeamEvents
     if (supportsStreamingText) {
       unsubscribes.push(
-        bus.subscribe<{ text: string; conversation_id: string; context_id?: string; context_type?: string }>(
+        bus.subscribe<{ text: string; conversation_id: string; context_id?: string; context_type?: string; teammate_name?: string | null }>(
           "agent:chunk", (payload) => {
+            if (payload.teammate_name) return;
             if (!isRelevant(payload)) return;
             setStreamingContentBlocks((prev) => {
               const lastBlock = prev[prev.length - 1];

@@ -36,7 +36,7 @@ interface UseChatActionsProps {
   /** Send message mutation from useChat or useTaskChat */
   sendMessage: {
     isPending: boolean;
-    mutateAsync: (params: { content: string; attachmentIds?: string[] }) => Promise<unknown>;
+    mutateAsync: (params: { content: string; attachmentIds?: string[]; target?: string }) => Promise<unknown>;
   };
   /** Current message count (for first-message detection in ideation) */
   messageCount?: number;
@@ -95,11 +95,14 @@ export function useChatActions({
             }
           }
         } else {
-          await sendMessage.mutateAsync(
-            attachmentIds !== undefined
-              ? { content, attachmentIds }
-              : { content }
-          );
+          const params: { content: string; attachmentIds?: string[]; target?: string } = { content };
+          if (attachmentIds !== undefined) {
+            params.attachmentIds = attachmentIds;
+          }
+          if (target !== undefined) {
+            params.target = target;
+          }
+          await sendMessage.mutateAsync(params);
         }
 
         // Trigger session auto-naming on first ideation message (fire-and-forget)

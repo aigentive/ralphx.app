@@ -34,8 +34,8 @@ export function useTeamActions(contextType: ContextType, contextId: string) {
   };
 
   const sendMessage = useMutation({
-    mutationFn: (content: string) =>
-      sendTeamMessage(teamName, content),
+    mutationFn: ({ content, target }: { content: string; target: string }) =>
+      sendTeamMessage(teamName, target, content),
     onSuccess: invalidateTeamStatus,
   });
 
