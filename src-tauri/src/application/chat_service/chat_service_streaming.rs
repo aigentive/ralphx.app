@@ -798,6 +798,18 @@ pub async fn process_stream_background<R: Runtime>(
         } else {
             "Agent failed during execution".to_string()
         };
+        // Check for recoverable provider errors before returning generic AgentExit
+        if let Some(provider_err) =
+            super::chat_service_errors::classify_provider_error(&error_msg)
+        {
+            return Err(provider_err);
+        }
+        // Also check stderr for provider error patterns
+        if let Some(provider_err) =
+            super::chat_service_errors::classify_provider_error(&stderr_content)
+        {
+            return Err(provider_err);
+        }
         return Err(StreamError::AgentExit {
             exit_code: status.code(),
             stderr: error_msg,
@@ -805,9 +817,16 @@ pub async fn process_stream_background<R: Runtime>(
     }
 
     if !status.success() && !has_output {
+        let stderr_trimmed = stderr_content.trim().to_string();
+        // Check for recoverable provider errors in stderr
+        if let Some(provider_err) =
+            super::chat_service_errors::classify_provider_error(&stderr_trimmed)
+        {
+            return Err(provider_err);
+        }
         return Err(StreamError::AgentExit {
             exit_code: status.code(),
-            stderr: stderr_content.trim().to_string(),
+            stderr: stderr_trimmed,
         });
     }
 

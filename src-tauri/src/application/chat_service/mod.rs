@@ -46,7 +46,9 @@ use tokio_util::sync::CancellationToken;
 use which::which;
 
 // Re-exports from extracted modules
-pub use chat_service_errors::{classify_agent_error, StreamError};
+pub use chat_service_errors::{
+    classify_agent_error, ProviderErrorCategory, ProviderErrorMetadata, StreamError,
+};
 pub use chat_service_helpers::{get_agent_name, get_assistant_role};
 pub(crate) use chat_service_merge::reconcile_merge_auto_complete;
 pub use chat_service_mock::{MockChatResponse, MockChatService};
