@@ -21,7 +21,7 @@ use crate::infrastructure::agents::claude::{
 
 use crate::infrastructure::agents::claude::agent_names;
 
-use super::chat_service_helpers::resolve_agent;
+use super::chat_service_helpers::resolve_agent_with_team_mode;
 
 /// Resolve the project ID from a context
 ///
@@ -375,8 +375,8 @@ pub async fn build_command(
     team_mode: bool,
     chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
 ) -> Result<SpawnableCommand, String> {
-    // Compute agent_name using the resolution system (context type + optional status)
-    let agent_name = resolve_agent(&conversation.context_type, entity_status);
+    // Compute agent_name using the resolution system (context type + optional status + team mode)
+    let agent_name = resolve_agent_with_team_mode(&conversation.context_type, entity_status, team_mode);
     tracing::debug!(
         agent_name,
         context_type = ?conversation.context_type,
@@ -522,7 +522,7 @@ pub async fn build_resume_command(
     )
     .await;
 
-    let agent_name = resolve_agent(&context_type, entity_status.as_deref());
+    let agent_name = resolve_agent_with_team_mode(&context_type, entity_status.as_deref(), team_mode);
 
     let mut spawnable = build_spawnable_command(
         cli_path,
