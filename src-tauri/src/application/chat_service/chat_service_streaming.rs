@@ -37,8 +37,10 @@ pub struct StreamTimeoutConfig {
     /// Max time to tolerate stdout traffic with no parseable stream events.
     pub parse_stall_timeout: Duration,
     /// Teammate name (set when streaming a team member's output).
+    #[allow(dead_code)]
     pub teammate_name: Option<String>,
     /// Teammate display color (set when streaming a team member's output).
+    #[allow(dead_code)]
     pub teammate_color: Option<String>,
 }
 
@@ -69,6 +71,7 @@ impl StreamTimeoutConfig {
     }
 
     /// Attach team member identity to this config (builder pattern).
+    #[allow(dead_code)]
     pub fn with_teammate(mut self, name: String, color: String) -> Self {
         self.teammate_name = Some(name);
         self.teammate_color = Some(color);

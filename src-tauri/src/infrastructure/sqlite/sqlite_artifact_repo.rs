@@ -241,7 +241,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
             .prepare(
                 "SELECT id, type, name, content_type, content_text, content_path,
                         bucket_id, task_id, process_id, created_by, version,
-                        previous_version_id, created_at
+                        previous_version_id, created_at, metadata_json
                  FROM artifacts WHERE bucket_id = ?1
                  ORDER BY created_at DESC",
             )
@@ -263,7 +263,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
             .prepare(
                 "SELECT id, type, name, content_type, content_text, content_path,
                         bucket_id, task_id, process_id, created_by, version,
-                        previous_version_id, created_at
+                        previous_version_id, created_at, metadata_json
                  FROM artifacts WHERE type = ?1
                  ORDER BY created_at DESC",
             )
@@ -285,7 +285,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
             .prepare(
                 "SELECT id, type, name, content_type, content_text, content_path,
                         bucket_id, task_id, process_id, created_by, version,
-                        previous_version_id, created_at
+                        previous_version_id, created_at, metadata_json
                  FROM artifacts WHERE task_id = ?1
                  ORDER BY created_at DESC",
             )
@@ -307,7 +307,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
             .prepare(
                 "SELECT id, type, name, content_type, content_text, content_path,
                         bucket_id, task_id, process_id, created_by, version,
-                        previous_version_id, created_at
+                        previous_version_id, created_at, metadata_json
                  FROM artifacts WHERE process_id = ?1
                  ORDER BY created_at DESC",
             )
