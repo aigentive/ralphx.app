@@ -196,10 +196,11 @@ pub fn run() {
             http_app_state_inner.permission_state = shared_permission_state;
             http_app_state_inner.message_queue = shared_message_queue;
             let http_app_state = Arc::new(http_app_state_inner);
-            // Clone execution_state from Tauri state for HTTP server
+            // Clone execution_state and team_tracker from Tauri state for HTTP server
             let http_execution_state = app.state::<Arc<commands::ExecutionState>>().inner().clone();
+            let http_team_tracker = app.state::<application::TeamStateTracker>().inner().clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = http_server::start_http_server(http_app_state, http_execution_state).await {
+                if let Err(e) = http_server::start_http_server(http_app_state, http_execution_state, http_team_tracker).await {
                     tracing::error!("HTTP server failed: {}", e);
                 }
             });

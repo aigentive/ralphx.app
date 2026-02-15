@@ -36,6 +36,10 @@ pub struct StreamTimeoutConfig {
     pub line_read_timeout: Duration,
     /// Max time to tolerate stdout traffic with no parseable stream events.
     pub parse_stall_timeout: Duration,
+    /// Teammate name (set when streaming a team member's output).
+    pub teammate_name: Option<String>,
+    /// Teammate display color (set when streaming a team member's output).
+    pub teammate_color: Option<String>,
 }
 
 impl StreamTimeoutConfig {
@@ -45,17 +49,30 @@ impl StreamTimeoutConfig {
             ChatContextType::Merge => Self {
                 line_read_timeout: Duration::from_secs(180),
                 parse_stall_timeout: Duration::from_secs(90),
+                teammate_name: None,
+                teammate_color: None,
             },
             ChatContextType::Review => Self {
                 line_read_timeout: Duration::from_secs(300),
                 parse_stall_timeout: Duration::from_secs(120),
+                teammate_name: None,
+                teammate_color: None,
             },
             // TaskExecution, Ideation, Task, Project — generous defaults
             _ => Self {
                 line_read_timeout: Duration::from_secs(600),
                 parse_stall_timeout: Duration::from_secs(180),
+                teammate_name: None,
+                teammate_color: None,
             },
         }
+    }
+
+    /// Attach team member identity to this config (builder pattern).
+    pub fn with_teammate(mut self, name: String, color: String) -> Self {
+        self.teammate_name = Some(name);
+        self.teammate_color = Some(color);
+        self
     }
 }
 
@@ -877,6 +894,23 @@ mod tests {
         let config = StreamTimeoutConfig::for_context(&ChatContextType::Project);
         assert_eq!(config.line_read_timeout, Duration::from_secs(600));
         assert_eq!(config.parse_stall_timeout, Duration::from_secs(180));
+    }
+
+    #[test]
+    fn test_timeout_config_with_teammate() {
+        let config = StreamTimeoutConfig::for_context(&ChatContextType::Ideation)
+            .with_teammate("researcher".to_string(), "#ff6b35".to_string());
+        assert_eq!(config.teammate_name, Some("researcher".to_string()));
+        assert_eq!(config.teammate_color, Some("#ff6b35".to_string()));
+        // Timeouts should be unchanged
+        assert_eq!(config.line_read_timeout, Duration::from_secs(600));
+    }
+
+    #[test]
+    fn test_timeout_config_default_no_teammate() {
+        let config = StreamTimeoutConfig::for_context(&ChatContextType::Ideation);
+        assert!(config.teammate_name.is_none());
+        assert!(config.teammate_color.is_none());
     }
 
     #[test]
