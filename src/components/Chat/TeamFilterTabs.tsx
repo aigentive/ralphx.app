@@ -79,7 +79,7 @@ function FilterChip({ label, color, isActive, onClick }: FilterChipProps) {
       style={{
         backgroundColor: isActive ? "hsl(220 10% 18%)" : "transparent",
         color: isActive ? "hsl(220 10% 85%)" : "hsl(220 10% 50%)",
-        ...(isActive ? { focusRingColor: "hsla(220 80% 60% / 0.5)" } : {}),
+        ...(isActive ? { outline: "1px solid hsla(220 80% 60% / 0.5)" } : {}),
       }}
     >
       {color && (

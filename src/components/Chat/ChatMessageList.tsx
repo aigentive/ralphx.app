@@ -29,6 +29,7 @@ import { useMessageAttachments } from "@/hooks/useMessageAttachments";
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { MessageAttachment } from "./MessageAttachments";
+import { useTeamStore, selectTeammateByName } from "@/stores/teamStore";
 
 // ============================================================================
 // Constants
@@ -60,6 +61,7 @@ export interface ChatMessageData {
   toolCalls?: ToolCall[] | null;
   contentBlocks?: ContentBlockItem[] | null;
   attachments?: MessageAttachment[];
+  sender?: string | null;
 }
 
 /** Discriminated union for timeline items when hook events are interleaved */
@@ -92,6 +94,10 @@ interface ChatMessageListProps {
   activeHooks?: HookStartedEvent[];
   /** Ref to track conversation that's finalizing (between message_created and query refetch) */
   finalizingConversationRef?: React.MutableRefObject<string | null>;
+  /** Team filter for message filtering (team mode) */
+  teamFilter?: "all" | "lead" | string;
+  /** Context key for team store lookup (team mode) */
+  contextKey?: string;
 }
 
 // ============================================================================
@@ -114,6 +120,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       hookEvents = EMPTY_HOOK_EVENTS,
       activeHooks = EMPTY_ACTIVE_HOOKS,
       finalizingConversationRef,
+      teamFilter,
+      contextKey,
     },
     ref
   ) {
@@ -225,7 +233,19 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
           })()
         : messages;
 
-      for (const msg of filteredMessages) {
+      // Apply team filter if active
+      const teamFilteredMessages = teamFilter && teamFilter !== "all"
+        ? filteredMessages.filter((msg) => {
+            if (teamFilter === "lead") {
+              // Show lead messages (no sender or sender === "lead")
+              return !msg.sender || msg.sender === "lead";
+            }
+            // Show messages from specific teammate
+            return msg.sender === teamFilter;
+          })
+        : filteredMessages;
+
+      for (const msg of teamFilteredMessages) {
         // Enrich message with attachments if available
         const attachments = attachmentsMap?.get(msg.id);
         const enrichedMsg = attachments
@@ -250,7 +270,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       }
 
       return items;
-    }, [messages, hookEvents, activeHooks, hasHookEvents, shouldFilterLastAssistant, streamingContentBlocks, streamingTasks, conversationId, attachmentsMap]);
+    }, [messages, hookEvents, activeHooks, hasHookEvents, shouldFilterLastAssistant, streamingContentBlocks, streamingTasks, conversationId, attachmentsMap, teamFilter]);
 
     // Memoize Virtuoso components to prevent infinite re-render loop.
     // Inline object literals create new references every render, causing Virtuoso
@@ -330,8 +350,20 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       isSending, isAgentRunning,
     ]);
 
-    // Memoize itemContent — no closure variables change (item comes from args,
-    // contentContainerStyle is a module-level constant).
+    // Helper to look up teammate info from team store
+    const getTeammateInfo = useCallback((sender: string | null | undefined) => {
+      if (!sender || !contextKey) {
+        return { teammateName: null, teammateColor: null };
+      }
+      const selector = selectTeammateByName(contextKey, sender);
+      const teammate = useTeamStore.getState()(selector);
+      return {
+        teammateName: teammate?.name ?? null,
+        teammateColor: teammate?.color ?? null,
+      };
+    }, [contextKey]);
+
+    // Memoize itemContent — lookup teammate info for team mode messages
     const renderItem = useCallback((_: number, item: TimelineItem) => {
       if (item.kind === "hook") {
         return (
@@ -341,6 +373,12 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         );
       }
       const msg = item.data;
+
+      // Look up teammate info if sender is present and message is from assistant
+      const { teammateName, teammateColor } = msg.role === "assistant"
+        ? getTeammateInfo(msg.sender)
+        : { teammateName: null, teammateColor: null };
+
       return (
         <div className="px-3 w-full" style={contentContainerStyle}>
           <MessageItem
@@ -350,10 +388,12 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             toolCalls={msg.toolCalls ?? null}
             contentBlocks={msg.contentBlocks ?? null}
             {...(msg.attachments && { attachments: msg.attachments })}
+            teammateName={teammateName}
+            teammateColor={teammateColor}
           />
         </div>
       );
-    }, []);
+    }, [getTeammateInfo]);
 
     if (isTestEnv) {
       return (
@@ -367,22 +407,34 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             )}
           </div>
 
-          {timeline.map((item, index) => (
-            <div key={`${item.kind}-${item.sortTime}-${index}`} className="px-3 w-full" style={contentContainerStyle}>
-              {item.kind === "hook" ? (
-                <HookEventMessage event={item.data} />
-              ) : (
+          {timeline.map((item, index) => {
+            if (item.kind === "hook") {
+              return (
+                <div key={`${item.kind}-${item.sortTime}-${index}`} className="px-3 w-full" style={contentContainerStyle}>
+                  <HookEventMessage event={item.data} />
+                </div>
+              );
+            }
+            const msg = item.data;
+            const { teammateName, teammateColor } = msg.role === "assistant"
+              ? getTeammateInfo(msg.sender)
+              : { teammateName: null, teammateColor: null };
+
+            return (
+              <div key={`${item.kind}-${item.sortTime}-${index}`} className="px-3 w-full" style={contentContainerStyle}>
                 <MessageItem
-                  role={item.data.role}
-                  content={item.data.content}
-                  createdAt={item.data.createdAt}
-                  toolCalls={item.data.toolCalls ?? null}
-                  contentBlocks={item.data.contentBlocks ?? null}
-                  {...(item.data.attachments && { attachments: item.data.attachments })}
+                  role={msg.role}
+                  content={msg.content}
+                  createdAt={msg.createdAt}
+                  toolCalls={msg.toolCalls ?? null}
+                  contentBlocks={msg.contentBlocks ?? null}
+                  {...(msg.attachments && { attachments: msg.attachments })}
+                  teammateName={teammateName}
+                  teammateColor={teammateColor}
                 />
-              )}
-            </div>
-          ))}
+              </div>
+            );
+          })}
 
           <div className="px-3 pb-3 w-full" style={contentContainerStyle}>
             {/* Render streaming content blocks in order — text and tool calls interleaved */}
