@@ -98,6 +98,8 @@ interface CreateSessionInput {
   projectId: string;
   title?: string;
   seedTaskId?: string;
+  teamMode?: string;
+  teamConfig?: { maxTeammates: number; modelCeiling: string; budgetLimit?: number | undefined; compositionMode: string };
 }
 
 /**
@@ -122,7 +124,7 @@ export function useCreateIdeationSession() {
   const queryClient = useQueryClient();
 
   return useMutation<IdeationSessionResponse, Error, CreateSessionInput>({
-    mutationFn: ({ projectId, title, seedTaskId }) => ideationApi.sessions.create(projectId, title, seedTaskId),
+    mutationFn: ({ projectId, title, seedTaskId, teamMode, teamConfig }) => ideationApi.sessions.create(projectId, title, seedTaskId, teamMode, teamConfig),
     onSuccess: (newSession) => {
       // Invalidate session list for the project to trigger refetch
       queryClient.invalidateQueries({

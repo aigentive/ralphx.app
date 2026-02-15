@@ -142,6 +142,18 @@ export const ParentSessionContextResponseSchema = z.object({
 });
 
 /**
+ * Team mode and config schemas (snake_case from Rust)
+ */
+export const TeamModeResponseSchema = z.enum(["solo", "research", "debate"]);
+export const CompositionModeResponseSchema = z.enum(["dynamic", "constrained"]);
+export const TeamConfigResponseSchema = z.object({
+  max_teammates: z.number(),
+  model_ceiling: z.string(),
+  budget_limit: z.number().nullable().optional(),
+  composition_mode: z.string(),
+});
+
+/**
  * Create child session response (snake_case from Rust)
  */
 export const CreateChildSessionResponseSchema = z.object({

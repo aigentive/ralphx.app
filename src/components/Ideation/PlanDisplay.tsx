@@ -24,10 +24,19 @@ import {
 import { artifactApi } from "@/api/artifact";
 import type { Artifact } from "@/types/artifact";
 import { cn } from "@/lib/utils";
+import { TeamFindingsSection } from "./TeamFindingsSection";
+import type { TeamFinding } from "./TeamFindingsSection";
 
 // ============================================================================
 // Types
 // ============================================================================
+
+export interface TeamMetadata {
+  teamIdeated: boolean;
+  teamMode: "research" | "debate";
+  teammateCount: number;
+  findings: TeamFinding[];
+}
 
 export interface PlanDisplayProps {
   plan: Artifact;
@@ -43,6 +52,8 @@ export interface PlanDisplayProps {
   onExpandedChange?: (expanded: boolean) => void;
   /** @deprecated No longer used - version selection is now inline. Will be removed in Task 2. */
   onViewHistory?: () => void;
+  /** Team ideation metadata — shows findings section + badge when present */
+  teamMetadata?: TeamMetadata;
 }
 
 // ============================================================================
@@ -196,6 +207,7 @@ export function PlanDisplay({
   isApproved = false,
   isExpanded,
   onExpandedChange,
+  teamMetadata,
 }: PlanDisplayProps) {
   const [isHovered, setIsHovered] = useState(false);
   // Use controlled state if isExpanded prop is provided, otherwise use internal state
@@ -345,6 +357,19 @@ export function PlanDisplay({
                     >
                       v{plan.metadata.version}
                     </span>
+
+                    {teamMetadata?.teamIdeated && (
+                      <span
+                        className="text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0"
+                        style={{
+                          background: "hsla(14 100% 60% / 0.12)",
+                          border: "1px solid hsla(14 100% 60% / 0.25)",
+                          color: "hsl(14 100% 60%)",
+                        }}
+                      >
+                        {teamMetadata.teamMode === "research" ? "Research Team" : "Debate Team"}
+                      </span>
+                    )}
                   </div>
 
                   {linkedProposalsCount > 0 && (
@@ -524,6 +549,15 @@ export function PlanDisplay({
               borderLeft: "2px solid hsla(14 100% 60% / 0.15)",
             }}
           >
+            {/* Team findings section */}
+            {teamMetadata?.teamIdeated && teamMetadata.findings.length > 0 && (
+              <TeamFindingsSection
+                findings={teamMetadata.findings}
+                teamMode={teamMetadata.teamMode}
+                teammateCount={teamMetadata.teammateCount}
+              />
+            )}
+
             {/* Version banner when viewing historical */}
             {isViewingHistorical && (
               <div
