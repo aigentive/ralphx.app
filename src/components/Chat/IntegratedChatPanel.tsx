@@ -50,6 +50,7 @@ import { logger } from "@/lib/logger";
 import { ChildSessionNotification } from "./ChildSessionNotification";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useChatAttachments } from "@/hooks/useChatAttachments";
+import { ideationApi } from "@/api/ideation";
 
 // Stable empty array to avoid new reference on every render when tasks query returns undefined
 const EMPTY_TASKS: never[] = [];
@@ -408,10 +409,25 @@ export function IntegratedChatPanel({
   const allSessions = useIdeationStore(useShallow((s) => Object.values(s.sessions)));
 
   // Handler for navigating to child session
-  const handleNavigateToChildSession = useCallback((childSessionId: string) => {
+  // Fetches from backend if session not in local store (e.g., newly created child)
+  const handleNavigateToChildSession = useCallback(async (childSessionId: string) => {
+    // First check local store
     const session = allSessions.find((s) => s.id === childSessionId);
     if (session) {
       selectSession(session);
+      return;
+    }
+
+    // Session not in store - fetch from backend
+    try {
+      const fetchedSession = await ideationApi.sessions.get(childSessionId);
+      if (fetchedSession) {
+        selectSession(fetchedSession);
+      } else {
+        logger.warn("[IntegratedChatPanel] Child session not found:", childSessionId);
+      }
+    } catch (error) {
+      logger.warn("[IntegratedChatPanel] Failed to fetch child session:", { childSessionId, error });
     }
   }, [allSessions, selectSession]);
 
