@@ -1658,3 +1658,84 @@ async fn startup_retries_main_merge_deferred_when_no_agents() {
         "Main-merge-deferred task should be processed (not skipped) when no agents running"
     );
 }
+
+/// Verify that Paused tasks are NOT touched by startup recovery.
+/// Paused is intentionally excluded from AGENT_ACTIVE_STATUSES and AUTO_TRANSITION_STATES,
+/// so paused tasks persist across restarts with their metadata intact.
+#[tokio::test]
+async fn test_startup_does_not_touch_paused_tasks() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    // Create a project with a Paused task that has pause_reason metadata
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Paused Task".to_string());
+    task.internal_status = InternalStatus::Paused;
+    // Set pause metadata to verify it survives
+    task.metadata = Some(
+        r#"{"pause_reason":{"type":"provider_error","category":"rate_limit","message":"limit","retry_after":null,"previous_status":"executing","paused_at":"2026-02-15T09:00:00+00:00","auto_resumable":true,"resume_attempts":2}}"#.to_string(),
+    );
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task).await.unwrap();
+
+    // Also create an Executing task to verify normal resumption still works
+    let mut exec_task = Task::new(project.id.clone(), "Executing Task".to_string());
+    exec_task.internal_status = InternalStatus::Executing;
+    app_state.task_repo.create(exec_task).await.unwrap();
+
+    execution_state.set_max_concurrent(10);
+
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
+
+    runner.run().await;
+
+    // Verify the Paused task is still Paused with metadata intact
+    let paused = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        paused.internal_status,
+        InternalStatus::Paused,
+        "Paused task should remain Paused after startup"
+    );
+    assert!(
+        paused.metadata.is_some(),
+        "Paused task metadata should be preserved"
+    );
+    let meta_str = paused.metadata.unwrap();
+    assert!(
+        meta_str.contains("pause_reason"),
+        "pause_reason metadata should survive startup"
+    );
+    assert!(
+        meta_str.contains("resume_attempts"),
+        "resume_attempts should survive startup"
+    );
+}
+
+/// Verify that Paused is not in AGENT_ACTIVE_STATUSES or AUTO_TRANSITION_STATES
+#[test]
+fn test_paused_not_in_agent_active_or_auto_transition() {
+    use crate::commands::execution_commands::{AGENT_ACTIVE_STATUSES, AUTO_TRANSITION_STATES};
+
+    assert!(
+        !AGENT_ACTIVE_STATUSES.contains(&InternalStatus::Paused),
+        "Paused should NOT be in AGENT_ACTIVE_STATUSES"
+    );
+    assert!(
+        !AUTO_TRANSITION_STATES.contains(&InternalStatus::Paused),
+        "Paused should NOT be in AUTO_TRANSITION_STATES"
+    );
+}
