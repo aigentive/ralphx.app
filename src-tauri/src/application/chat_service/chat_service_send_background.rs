@@ -372,6 +372,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                         &chat_attachment_repo,
                         &activity_event_repo,
                         &task_repo,
+                        &ideation_session_repo,
                         &cli_path,
                         &plugin_dir,
                         &working_directory,
