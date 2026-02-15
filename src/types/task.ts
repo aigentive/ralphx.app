@@ -270,3 +270,142 @@ export interface TaskMetadata {
   /** Structured merge recovery timeline */
   merge_recovery?: MergeRecoveryState;
 }
+
+// ============================================================================
+// StopMetadata - Captures context when a task is stopped mid-execution
+// ============================================================================
+
+/**
+ * Metadata captured when a task is stopped mid-execution.
+ *
+ * Enables "smart resume" capability where the system can restore
+ * the task to its previous state with context about why it was stopped.
+ *
+ * Schema from backend:
+ * ```json
+ * {
+ *   "stopped_from_status": "merging",
+ *   "stop_reason": "User stopped to protect main branch",
+ *   "stopped_at": "2026-02-15T10:30:00Z"
+ * }
+ * ```
+ */
+export interface StopMetadata {
+  /** The status the task was in when stopped (snake_case string) */
+  stoppedFromStatus: string;
+  /** Optional reason provided by user for stopping */
+  stopReason?: string;
+  /** Timestamp when the task was stopped (RFC3339 format) */
+  stoppedAt: string;
+}
+
+/**
+ * Parse stop metadata from a task's metadata JSON string.
+ *
+ * @param metadata - The task.metadata JSON string (may be null)
+ * @returns StopMetadata if present and valid, null otherwise
+ */
+export function parseStopMetadata(metadata: string | null | undefined): StopMetadata | null {
+  if (!metadata) return null;
+  try {
+    const obj = JSON.parse(metadata);
+    const stopJson = obj?.stop_metadata;
+    if (!stopJson || typeof stopJson !== "string") return null;
+    const parsed = JSON.parse(stopJson);
+    if (!parsed?.stopped_from_status || !parsed?.stopped_at) return null;
+    return {
+      stoppedFromStatus: parsed.stopped_from_status,
+      stopReason: parsed.stop_reason ?? undefined,
+      stoppedAt: parsed.stopped_at,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ============================================================================
+// Restart Result Types
+// ============================================================================
+
+/**
+ * Category of resume behavior based on the stopped_from_status.
+ *
+ * - Direct: Resume directly to original state (spawn agent if needed)
+ * - Validated: Validate git state before resuming
+ * - Redirect: Resume to successor state
+ */
+export type ResumeCategory = "direct" | "validated" | "redirect";
+
+/**
+ * Validation warning for resume operations.
+ */
+export interface ResumeValidationWarning {
+  /** Warning code (e.g., "dirty_worktree", "base_branch_moved") */
+  code: string;
+  /** Human-readable warning message */
+  message: string;
+}
+
+/**
+ * Result of a restart_task command (frontend camelCase type).
+ *
+ * Success variant: Task was successfully restarted
+ * ValidationFailed variant: Validation failed (only for Validated category)
+ */
+export type RestartResult =
+  | {
+      type: "Success";
+      task: Record<string, unknown>;
+      category: ResumeCategory;
+      resumedToStatus: string;
+    }
+  | {
+      type: "ValidationFailed";
+      warnings: ResumeValidationWarning[];
+      stoppedFromStatus: string;
+    };
+
+// Zod schemas for restart result validation (snake_case from backend)
+
+export const ResumeValidationWarningSchema = z.object({
+  code: z.string(),
+  message: z.string(),
+});
+
+export const ResumeCategorySchema = z.enum(["direct", "validated", "redirect"]);
+
+/** Raw schema for backend response (snake_case) */
+export const RestartResultSchemaRaw = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("Success"),
+    task: z.record(z.string(), z.unknown()),
+    category: ResumeCategorySchema,
+    resumed_to_status: z.string(),
+  }),
+  z.object({
+    type: z.literal("ValidationFailed"),
+    warnings: z.array(ResumeValidationWarningSchema),
+    stopped_from_status: z.string(),
+  }),
+]);
+
+export type RestartResultRaw = z.infer<typeof RestartResultSchemaRaw>;
+
+/**
+ * Transform snake_case RestartResult to camelCase.
+ */
+export function transformRestartResult(raw: RestartResultRaw): RestartResult {
+  if (raw.type === "Success") {
+    return {
+      type: "Success",
+      task: raw.task,
+      category: raw.category,
+      resumedToStatus: raw.resumed_to_status,
+    };
+  }
+  return {
+    type: "ValidationFailed",
+    warnings: raw.warnings,
+    stoppedFromStatus: raw.stopped_from_status,
+  };
+}

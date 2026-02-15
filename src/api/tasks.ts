@@ -7,12 +7,15 @@ import {
   TaskListSchema,
   TaskListResponseSchema,
   StatusTransitionSchema,
+  RestartResultSchemaRaw,
   transformTask,
   transformTaskListResponse,
+  transformRestartResult,
   type CreateTask,
   type UpdateTask,
   type Task,
   type TaskListResponse,
+  type RestartResult,
 } from "@/types/task";
 import {
   TaskStepResponseSchema,
@@ -217,6 +220,28 @@ export const tasksApi = {
    */
   stop: (taskId: string, reason?: string): Promise<Task> =>
     typedInvokeWithTransform("stop_task", { taskId, reason }, TaskSchema, transformTask),
+
+  /**
+   * Smart resume for stopped tasks.
+   *
+   * Restarts a task that was stopped mid-execution, using the captured stop metadata
+   * to determine the appropriate resume behavior:
+   *
+   * - **Direct**: Resume directly to the original state (Executing, ReExecuting, Reviewing, etc.)
+   * - **Validated**: Validate git state before resuming (Merging, PendingMerge, etc.)
+   * - **Redirect**: Resume to successor state (QaPassed→PendingReview, RevisionNeeded→ReExecuting)
+   *
+   * @param taskId The task ID
+   * @param force If true, skip validation (use with caution)
+   * @returns RestartResult with Success or ValidationFailed variants
+   */
+  restart: (taskId: string, force?: boolean): Promise<RestartResult> =>
+    typedInvokeWithTransform(
+      "restart_task",
+      { taskId, force: force ?? false },
+      RestartResultSchemaRaw,
+      transformRestartResult
+    ),
 
   /**
    * Permanently delete a task (only works on archived tasks)
