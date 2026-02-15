@@ -6,14 +6,14 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::domain::entities::{ChatConversation, ChatConversationId, ChatContextType};
+use super::chat_service_context;
+use super::chat_service_replay::{build_rehydration_prompt, ReplayBuilder};
+use super::chat_service_streaming::process_stream_background;
+use crate::domain::entities::{ChatContextType, ChatConversation, ChatConversationId};
 use crate::domain::repositories::{
     ChatAttachmentRepository, ChatConversationRepository, ChatMessageRepository,
 };
 use crate::error::{AppError, AppResult};
-use super::chat_service_context;
-use super::chat_service_replay::{build_rehydration_prompt, ReplayBuilder};
-use super::chat_service_streaming::process_stream_background;
 
 /// Attempt to recover from a stale Claude session by rebuilding conversation history
 /// and spawning a fresh session.
@@ -123,12 +123,12 @@ pub(super) async fn attempt_session_recovery(
         context_type,
         context_id,
         conversation_id,
-        None, // no app_handle, silent recovery
-        None, // no activity persistence
-        None, // no task repo
-        None, // no incremental message update
-        None, // no assistant message ID
-        None, // no question state
+        None,                                       // no app_handle, silent recovery
+        None,                                       // no activity persistence
+        None,                                       // no task repo
+        None,                                       // no incremental message update
+        None,                                       // no assistant message ID
+        None,                                       // no question state
         tokio_util::sync::CancellationToken::new(), // standalone token for recovery
     )
     .await

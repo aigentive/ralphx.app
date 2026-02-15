@@ -342,9 +342,7 @@ impl GitService {
             ])
             .current_dir(repo)
             .output()
-            .map_err(|e| {
-                AppError::GitOperation(format!("Failed to run git log --grep: {}", e))
-            })?;
+            .map_err(|e| AppError::GitOperation(format!("Failed to run git log --grep: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);

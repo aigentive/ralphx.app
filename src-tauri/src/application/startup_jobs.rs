@@ -24,8 +24,8 @@ use crate::commands::execution_commands::{
 };
 use crate::domain::entities::InternalStatus;
 use crate::domain::repositories::{
-    AgentRunRepository, AppStateRepository, ChatConversationRepository, ExecutionSettingsRepository,
-    ProjectRepository, TaskDependencyRepository, TaskRepository,
+    AgentRunRepository, AppStateRepository, ChatConversationRepository,
+    ExecutionSettingsRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
 };
 use crate::domain::state_machine::services::TaskScheduler;
 
@@ -42,9 +42,15 @@ fn is_startup_recovery_disabled_var(value: Option<&std::ffi::OsStr>) -> bool {
 /// Always returns false in test builds to avoid env-var leakage from outer processes.
 pub fn is_startup_recovery_disabled() -> bool {
     #[cfg(test)]
-    { false }
+    {
+        false
+    }
     #[cfg(not(test))]
-    { is_startup_recovery_disabled_var(std::env::var_os(RALPHX_DISABLE_STARTUP_RECOVERY_ENV).as_deref()) }
+    {
+        is_startup_recovery_disabled_var(
+            std::env::var_os(RALPHX_DISABLE_STARTUP_RECOVERY_ENV).as_deref(),
+        )
+    }
 }
 
 /// Runs startup jobs, primarily task resumption.
@@ -239,7 +245,8 @@ impl<R: Runtime> StartupJobRunner<R> {
             match self.execution_settings_repo.get_settings(Some(pid)).await {
                 Ok(settings) => {
                     let old_max = self.execution_state.max_concurrent();
-                    self.execution_state.set_max_concurrent(settings.max_concurrent_tasks);
+                    self.execution_state
+                        .set_max_concurrent(settings.max_concurrent_tasks);
                     info!(
                         project_id = pid.as_str(),
                         old_max = old_max,

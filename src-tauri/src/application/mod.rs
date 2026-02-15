@@ -21,6 +21,7 @@ pub mod reconciliation;
 pub mod review_issue_service;
 pub mod review_service;
 pub mod session_reopen_service;
+pub mod spawn_orchestrator_worker;
 pub mod startup_jobs;
 pub mod supervisor_service;
 pub mod task_cleanup_service;
@@ -38,8 +39,8 @@ pub use chat_resumption::ChatResumptionRunner;
 pub use dependency_service::{DependencyAnalysis, DependencyService, ValidationResult};
 pub use diff_service::{DiffService, FileChange, FileChangeStatus, FileDiff};
 pub use git_service::{
-    CommitInfo, DiffStats, GitService, MergeAttemptResult, MergeResult, RebaseResult,
-    checkout_free::CheckoutFreeMergeResult,
+    checkout_free::CheckoutFreeMergeResult, CommitInfo, DiffStats, GitService, MergeAttemptResult,
+    MergeResult, RebaseResult,
 };
 pub use ideation_service::{
     CreateProposalOptions, IdeationService, SessionStats, SessionWithData, UpdateProposalOptions,
@@ -57,6 +58,7 @@ pub use reconciliation::ReconciliationRunner;
 pub use review_issue_service::{CreateIssueInput, ReviewIssueService};
 pub use review_service::ReviewService;
 pub use session_reopen_service::SessionReopenService;
+pub use spawn_orchestrator_worker::{run_worker_loop, SpawnOrchestratorWorker};
 pub use startup_jobs::StartupJobRunner;
 pub use supervisor_service::{SupervisorConfig, SupervisorService, TaskMonitorState};
 pub use task_cleanup_service::{

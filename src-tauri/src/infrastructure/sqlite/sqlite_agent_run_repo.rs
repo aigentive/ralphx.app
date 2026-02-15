@@ -38,9 +38,7 @@ fn row_to_agent_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<AgentRun> {
 
     Ok(AgentRun {
         id: AgentRunId::from_string(row.get::<_, String>("id")?),
-        conversation_id: ChatConversationId::from_string(
-            row.get::<_, String>("conversation_id")?,
-        ),
+        conversation_id: ChatConversationId::from_string(row.get::<_, String>("conversation_id")?),
         status: status_str.parse().unwrap_or(AgentRunStatus::Failed),
         started_at: parse_datetime(&started_at_str),
         completed_at: completed_at_str.map(|s| parse_datetime(&s)),

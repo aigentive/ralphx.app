@@ -8,8 +8,8 @@
 
 use rusqlite::Connection;
 
-use crate::error::{AppError, AppResult};
 use super::helpers;
+use crate::error::{AppError, AppResult};
 
 /// Migration v31: Add session linking schema
 pub fn migrate(conn: &Connection) -> AppResult<()> {

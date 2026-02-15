@@ -5,10 +5,10 @@
 
 use async_trait::async_trait;
 
+use crate::domain::entities::types::ProjectId;
 use crate::domain::entities::{
     ArchiveJobStatus, ArchiveJobType, MemoryArchiveJob, MemoryArchiveJobId,
 };
-use crate::domain::entities::types::ProjectId;
 use crate::error::AppResult;
 
 /// Repository trait for MemoryArchiveJob persistence.

@@ -331,11 +331,7 @@ async fn test_d5_on_exit_decrements_for_all_agent_active_states() {
             },
             "Reviewing",
         ),
-        (
-            State::Merging,
-            TaskEvent::MergeAgentError,
-            "Merging",
-        ),
+        (State::Merging, TaskEvent::MergeAgentError, "Merging"),
         (
             State::QaRefining,
             TaskEvent::QaRefinementComplete,
@@ -358,7 +354,11 @@ async fn test_d5_on_exit_decrements_for_all_agent_active_states() {
         let mut handler = create_transition_handler(&mut machine);
 
         let result = handler.handle_transition(&from_state, &event).await;
-        assert!(result.is_success(), "Transition from {} should succeed", label);
+        assert!(
+            result.is_success(),
+            "Transition from {} should succeed",
+            label
+        );
 
         assert_eq!(
             s.execution_state.running_count(),
@@ -378,11 +378,8 @@ async fn test_d5_direct_status_update_bypassing_handler_leaves_count_wrong() {
     assert_eq!(s.execution_state.running_count(), 1);
 
     let project_id = ProjectId::from_string("proj-d5".to_string());
-    let mut task = create_test_task_with_status(
-        &project_id,
-        "Direct update task",
-        InternalStatus::Executing,
-    );
+    let mut task =
+        create_test_task_with_status(&project_id, "Direct update task", InternalStatus::Executing);
 
     // Direct status change (the anti-pattern)
     task.internal_status = InternalStatus::PendingReview;

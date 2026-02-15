@@ -9,12 +9,16 @@ use tauri::{AppHandle, Emitter, Runtime};
 use tokio::process::Child;
 use tracing::Instrument;
 
-use crate::application::question_state::QuestionState;
+use super::chat_service_context;
+use super::chat_service_helpers::get_assistant_role;
+use super::chat_service_streaming::process_stream_background;
+use super::chat_service_types::{AgentMessageCreatedPayload, AgentRunCompletedPayload};
+use super::{event_context, has_meaningful_output, EventContextPayload};
 use crate::application::memory_orchestration::trigger_memory_pipelines;
+use crate::application::question_state::QuestionState;
 use crate::commands::ExecutionState;
-use crate::domain::entities::{
-    AgentRunId, ChatConversationId, ChatContextType,
-};
+use crate::domain::entities::ChatConversation;
+use crate::domain::entities::{AgentRunId, ChatContextType, ChatConversationId};
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
@@ -23,14 +27,6 @@ use crate::domain::repositories::{
 };
 use crate::domain::services::{MessageQueue, RunningAgentKey, RunningAgentRegistry};
 use tokio_util::sync::CancellationToken;
-use super::chat_service_context;
-use super::chat_service_helpers::get_assistant_role;
-use super::chat_service_streaming::process_stream_background;
-use super::chat_service_types::{
-    AgentMessageCreatedPayload, AgentRunCompletedPayload,
-};
-use super::{event_context, has_meaningful_output, EventContextPayload};
-use crate::domain::entities::ChatConversation;
 
 /// All repository and service dependencies grouped together.
 pub(super) struct BackgroundRunRepos {

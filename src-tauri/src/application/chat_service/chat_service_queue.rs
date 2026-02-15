@@ -203,7 +203,9 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                 session_id,
                 project_id,
                 Arc::clone(chat_attachment_repo),
-            ).await {
+            )
+            .await
+            {
                 Ok(cmd) => cmd,
                 Err(err) => {
                     tracing::warn!(
@@ -252,8 +254,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                             let blocks = outcome.content_blocks;
                             if has_meaningful_output(&response, tools.len()) {
                                 let tool_calls_json = serde_json::to_string(&tools).ok();
-                                let content_blocks_json =
-                                    serde_json::to_string(&blocks).ok();
+                                let content_blocks_json = serde_json::to_string(&blocks).ok();
                                 let _ = chat_message_repo
                                     .update_content(
                                         &crate::domain::entities::ChatMessageId::from_string(
@@ -271,9 +272,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                                         "agent:message_created",
                                         AgentMessageCreatedPayload {
                                             message_id: queue_assistant_msg_id,
-                                            conversation_id: conversation_id
-                                                .as_str()
-                                                .to_string(),
+                                            conversation_id: conversation_id.as_str().to_string(),
                                             context_type: context_type.to_string(),
                                             context_id: context_id.to_string(),
                                             role: get_assistant_role(&context_type).to_string(),
@@ -289,15 +288,16 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                         }
                         Err(e) => {
                             let error_string = e.to_string();
-                            tracing::error!("Failed to process queued message stream: {}", error_string);
+                            tracing::error!(
+                                "Failed to process queued message stream: {}",
+                                error_string
+                            );
                             // Emit error event
                             if let Some(ref handle) = app_handle {
                                 let _ = handle.emit(
                                     "agent:error",
                                     AgentErrorPayload {
-                                        conversation_id: Some(
-                                            conversation_id.as_str().to_string(),
-                                        ),
+                                        conversation_id: Some(conversation_id.as_str().to_string()),
                                         context_type: context_type.to_string(),
                                         context_id: context_id.to_string(),
                                         error: error_string.clone(),

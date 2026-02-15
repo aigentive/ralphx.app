@@ -6,9 +6,12 @@ use axum::{
     Json,
 };
 use tauri::Emitter;
-use tracing::error;
+use tracing::{error, info};
 
-use crate::domain::entities::{IdeationSession, IdeationSessionId, SessionLink, SessionRelationship};
+use crate::domain::entities::{
+    IdeationSession, IdeationSessionId, IdeationSessionStatus, SessionLink, SessionRelationship,
+    SpawnOrchestratorJob,
+};
 
 use super::super::types::{
     CreateChildSessionRequest, CreateChildSessionResponse, HttpServerState, ParentContextResponse,
@@ -38,7 +41,11 @@ pub async fn create_child_session(
         .get_by_id(&parent_id)
         .await
         .map_err(|e| {
-            error!("Failed to fetch parent session {}: {}", parent_id.as_str(), e);
+            error!(
+                "Failed to fetch parent session {}: {}",
+                parent_id.as_str(),
+                e
+            );
             json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to fetch parent session: {}", e),
@@ -56,7 +63,11 @@ pub async fn create_child_session(
         .get_ancestor_chain(&parent_id)
         .await
         .map_err(|e| {
-            error!("Failed to get ancestor chain for {}: {}", parent_id.as_str(), e);
+            error!(
+                "Failed to get ancestor chain for {}: {}",
+                parent_id.as_str(),
+                e
+            );
             json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to check for cycles: {}", e),
@@ -76,8 +87,12 @@ pub async fn create_child_session(
         id: IdeationSessionId::new(),
         project_id: parent.project_id.clone(),
         title: req.title.clone(),
-        status: parent.status.clone(),
-        plan_artifact_id: None,
+        status: IdeationSessionStatus::Active,
+        plan_artifact_id: if req.inherit_context {
+            parent.plan_artifact_id.clone()
+        } else {
+            None
+        },
         seed_task_id: None,
         parent_session_id: Some(parent_id.clone()),
         created_at: chrono::Utc::now(),
@@ -105,7 +120,11 @@ pub async fn create_child_session(
         })?;
 
     // Create the SessionLink row
-    let link = SessionLink::new(parent_id.clone(), child_id.clone(), SessionRelationship::FollowOn);
+    let link = SessionLink::new(
+        parent_id.clone(),
+        child_id.clone(),
+        SessionRelationship::FollowOn,
+    );
 
     state
         .app_state
@@ -192,13 +211,49 @@ pub async fn create_child_session(
         );
     }
 
+    // If description is provided, enqueue a SpawnOrchestratorJob for async processing
+    let orchestration_triggered = if let Some(ref desc) = req.description {
+        if !desc.trim().is_empty() {
+            let job = SpawnOrchestratorJob::new(
+                child_id.clone(),
+                parent.project_id.clone(),
+                desc.clone(),
+            );
+
+            match state.app_state.spawn_orchestrator_job_repo.create(job).await {
+                Ok(_) => {
+                    info!(
+                        session_id = %child_id,
+                        "Enqueued spawn orchestrator job for child session"
+                    );
+                    true
+                }
+                Err(e) => {
+                    error!(
+                        session_id = %child_id,
+                        error = %e,
+                        "Failed to enqueue spawn orchestrator job"
+                    );
+                    // Don't fail the request - the session was created successfully
+                    false
+                }
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
     Ok(Json(CreateChildSessionResponse {
         session_id: child_session_str,
         parent_session_id: parent_session_str,
         title,
         status: created_session.status.to_string(),
         created_at: created_session.created_at.to_rfc3339(),
+        inherited_plan_id: created_session.plan_artifact_id.map(|id| id.to_string()),
         parent_context,
+        orchestration_triggered,
     }))
 }
 
@@ -232,10 +287,7 @@ pub async fn get_parent_session_context(
 
     // Verify the session has a parent
     let parent_id = session.parent_session_id.ok_or_else(|| {
-        error!(
-            "Session {} does not have a parent",
-            session_id.as_str()
-        );
+        error!("Session {} does not have a parent", session_id.as_str());
         json_error(
             StatusCode::NOT_FOUND,
             "Session does not have a parent session",
@@ -249,7 +301,11 @@ pub async fn get_parent_session_context(
         .get_by_id(&parent_id)
         .await
         .map_err(|e| {
-            error!("Failed to fetch parent session {}: {}", parent_id.as_str(), e);
+            error!(
+                "Failed to fetch parent session {}: {}",
+                parent_id.as_str(),
+                e
+            );
             json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to fetch parent session: {}", e),
@@ -270,7 +326,8 @@ pub async fn get_parent_session_context(
             .ok()
             .flatten()
             .and_then(|artifact| {
-                if let crate::domain::entities::ArtifactContent::Inline { text } = artifact.content {
+                if let crate::domain::entities::ArtifactContent::Inline { text } = artifact.content
+                {
                     Some(text)
                 } else {
                     None

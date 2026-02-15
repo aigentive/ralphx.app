@@ -288,7 +288,10 @@ export const ALL_TOOLS = [
     // ========================================================================
     {
         name: "create_child_session",
-        description: "Create a new ideation session as a child of an existing session. Use when you want to create follow-on work that inherits context from the parent session.",
+        description: "Create a new ideation session as a child of an existing session. Use when you want to create follow-on work that inherits context from the parent session. " +
+            "The child session starts with 'active' status. " +
+            "When inherit_context is true (default), the child references the parent's plan artifact by ID (copy-on-write: modifications create a new version). " +
+            "Parent proposals are NOT copied to the child — use get_parent_session_context to access them.",
         inputSchema: {
             type: "object",
             properties: {
@@ -302,11 +305,11 @@ export const ALL_TOOLS = [
                 },
                 description: {
                     type: "string",
-                    description: "Optional description of the child session",
+                    description: "Optional description of the child session. When provided, an orchestrator-ideation agent is automatically spawned in the background to process this description and generate task proposals.",
                 },
                 inherit_context: {
                     type: "boolean",
-                    description: "If true, inherit parent session's plan and proposals context. Default: true.",
+                    description: "If true, child references parent's plan artifact by ID. Parent proposals accessible via get_parent_session_context. Default: true.",
                 },
             },
             required: ["parent_session_id"],

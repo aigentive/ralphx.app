@@ -119,8 +119,11 @@ fn test_has_conflict_markers_detects_unstaged_markers() {
         .output()
         .unwrap();
 
-    std::fs::write(repo.join("file.txt"), "<<<<<<< ours\nline\n=======\nline\n>>>>>>> theirs\n")
-        .unwrap();
+    std::fs::write(
+        repo.join("file.txt"),
+        "<<<<<<< ours\nline\n=======\nline\n>>>>>>> theirs\n",
+    )
+    .unwrap();
 
     let has_markers = GitService::has_conflict_markers(repo).unwrap();
     assert!(
@@ -159,8 +162,7 @@ fn test_branches_have_same_content_identical() {
         .output()
         .unwrap();
 
-    let result =
-        GitService::branches_have_same_content(repo, "main", "feature").unwrap();
+    let result = GitService::branches_have_same_content(repo, "main", "feature").unwrap();
     assert!(result, "Branches at same commit should be identical");
 }
 
@@ -201,7 +203,9 @@ fn test_branches_have_same_content_diverged() {
         .output()
         .unwrap();
 
-    let result =
-        GitService::branches_have_same_content(repo, "main", "feature").unwrap();
-    assert!(!result, "Branches with different content should not be identical");
+    let result = GitService::branches_have_same_content(repo, "main", "feature").unwrap();
+    assert!(
+        !result,
+        "Branches with different content should not be identical"
+    );
 }

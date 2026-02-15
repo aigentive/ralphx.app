@@ -188,7 +188,10 @@ fn test_verify_merge_plan_branch_merged() {
         MergeVerification::Merged(sha) => {
             assert!(!sha.is_empty(), "Merge commit SHA should not be empty");
         }
-        _ => panic!("Expected Merged for task merged to plan branch, got: {:?}", result),
+        _ => panic!(
+            "Expected Merged for task merged to plan branch, got: {:?}",
+            result
+        ),
     }
 }
 

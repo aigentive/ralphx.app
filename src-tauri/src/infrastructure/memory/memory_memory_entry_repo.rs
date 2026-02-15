@@ -6,8 +6,8 @@ use tokio::sync::RwLock;
 
 use async_trait::async_trait;
 
-use crate::domain::entities::{MemoryBucket, MemoryEntry, MemoryEntryId, MemoryStatus};
 use crate::domain::entities::types::ProjectId;
+use crate::domain::entities::{MemoryBucket, MemoryEntry, MemoryEntryId, MemoryStatus};
 use crate::domain::repositories::MemoryEntryRepository;
 use crate::error::{AppError, AppResult};
 
@@ -108,8 +108,7 @@ impl MemoryEntryRepository for InMemoryMemoryEntryRepository {
         Ok(entries
             .values()
             .filter(|e| {
-                e.project_id == *project_id
-                    && e.source_rule_file.as_deref() == Some(rule_file)
+                e.project_id == *project_id && e.source_rule_file.as_deref() == Some(rule_file)
             })
             .cloned()
             .collect())
@@ -132,7 +131,10 @@ impl MemoryEntryRepository for InMemoryMemoryEntryRepository {
                 entry.updated_at = chrono::Utc::now();
                 Ok(())
             }
-            None => Err(AppError::NotFound(format!("Memory entry not found: {}", id))),
+            None => Err(AppError::NotFound(format!(
+                "Memory entry not found: {}",
+                id
+            ))),
         }
     }
 
@@ -154,7 +156,10 @@ impl MemoryEntryRepository for InMemoryMemoryEntryRepository {
         if entries.remove(id).is_some() {
             Ok(())
         } else {
-            Err(AppError::NotFound(format!("Memory entry not found: {}", id)))
+            Err(AppError::NotFound(format!(
+                "Memory entry not found: {}",
+                id
+            )))
         }
     }
 

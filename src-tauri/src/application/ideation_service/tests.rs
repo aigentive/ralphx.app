@@ -162,7 +162,10 @@ impl IdeationSessionRepository for MockSessionRepository {
             .collect())
     }
 
-    async fn get_ancestor_chain(&self, _session_id: &IdeationSessionId) -> AppResult<Vec<IdeationSession>> {
+    async fn get_ancestor_chain(
+        &self,
+        _session_id: &IdeationSessionId,
+    ) -> AppResult<Vec<IdeationSession>> {
         Ok(Vec::new())
     }
 

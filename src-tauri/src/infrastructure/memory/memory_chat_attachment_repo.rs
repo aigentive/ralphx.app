@@ -43,12 +43,7 @@ impl ChatAttachmentRepository for MemoryChatAttachmentRepository {
     }
 
     async fn get_by_id(&self, id: &ChatAttachmentId) -> AppResult<Option<ChatAttachment>> {
-        Ok(self
-            .attachments
-            .read()
-            .unwrap()
-            .get(&id.as_str())
-            .cloned())
+        Ok(self.attachments.read().unwrap().get(&id.as_str()).cloned())
     }
 
     async fn find_by_conversation_id(
@@ -169,7 +164,10 @@ mod tests {
         repo.create(attachment1).await.unwrap();
         repo.create(attachment2).await.unwrap();
 
-        let attachments = repo.find_by_conversation_id(&conversation_id).await.unwrap();
+        let attachments = repo
+            .find_by_conversation_id(&conversation_id)
+            .await
+            .unwrap();
         assert_eq!(attachments.len(), 2);
     }
 
@@ -177,13 +175,8 @@ mod tests {
     async fn test_update_message_id() {
         let repo = MemoryChatAttachmentRepository::new();
         let conversation_id = ChatConversationId::new();
-        let attachment = ChatAttachment::new(
-            conversation_id,
-            "test.txt",
-            "/path/to/test.txt",
-            1024,
-            None,
-        );
+        let attachment =
+            ChatAttachment::new(conversation_id, "test.txt", "/path/to/test.txt", 1024, None);
 
         let created = repo.create(attachment.clone()).await.unwrap();
         assert_eq!(created.message_id, None);
@@ -201,13 +194,8 @@ mod tests {
     async fn test_delete() {
         let repo = MemoryChatAttachmentRepository::new();
         let conversation_id = ChatConversationId::new();
-        let attachment = ChatAttachment::new(
-            conversation_id,
-            "test.txt",
-            "/path/to/test.txt",
-            1024,
-            None,
-        );
+        let attachment =
+            ChatAttachment::new(conversation_id, "test.txt", "/path/to/test.txt", 1024, None);
 
         repo.create(attachment.clone()).await.unwrap();
         assert!(repo.get_by_id(&attachment.id).await.unwrap().is_some());
@@ -239,14 +227,20 @@ mod tests {
         repo.create(attachment1).await.unwrap();
         repo.create(attachment2).await.unwrap();
 
-        let attachments = repo.find_by_conversation_id(&conversation_id).await.unwrap();
+        let attachments = repo
+            .find_by_conversation_id(&conversation_id)
+            .await
+            .unwrap();
         assert_eq!(attachments.len(), 2);
 
         repo.delete_by_conversation_id(&conversation_id)
             .await
             .unwrap();
 
-        let attachments = repo.find_by_conversation_id(&conversation_id).await.unwrap();
+        let attachments = repo
+            .find_by_conversation_id(&conversation_id)
+            .await
+            .unwrap();
         assert_eq!(attachments.len(), 0);
     }
 }

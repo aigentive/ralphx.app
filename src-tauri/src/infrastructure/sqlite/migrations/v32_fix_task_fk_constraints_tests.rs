@@ -36,7 +36,12 @@ fn create_session(conn: &rusqlite::Connection, id: &str, project_id: &str) {
 }
 
 /// Helper to create a task proposal
-fn create_proposal(conn: &rusqlite::Connection, id: &str, session_id: &str, created_task_id: Option<&str>) {
+fn create_proposal(
+    conn: &rusqlite::Connection,
+    id: &str,
+    session_id: &str,
+    created_task_id: Option<&str>,
+) {
     conn.execute(
         "INSERT INTO task_proposals (id, session_id, title, category, suggested_priority)
          VALUES (?1, ?2, 'Test Proposal', 'feature', 'medium')",
@@ -339,8 +344,15 @@ fn test_v32_data_preserved_in_artifacts() {
     .unwrap();
 
     // Query and verify all data is preserved
-    let (type_val, name, content_type, content_text, created_by, version, task_id):
-        (String, String, String, Option<String>, String, i32, Option<String>) = conn
+    let (type_val, name, content_type, content_text, created_by, version, task_id): (
+        String,
+        String,
+        String,
+        Option<String>,
+        String,
+        i32,
+        Option<String>,
+    ) = conn
         .query_row(
             "SELECT type, name, content_type, content_text, created_by, version, task_id
              FROM artifacts WHERE id = 'art-1'",

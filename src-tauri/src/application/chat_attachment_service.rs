@@ -48,8 +48,9 @@ impl<R: ChatAttachmentRepository> ChatAttachmentService<R> {
 
         // Create parent directories
         if let Some(parent) = file_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| AppError::Infrastructure(format!("Failed to create directory: {}", e)))?;
+            std::fs::create_dir_all(parent).map_err(|e| {
+                AppError::Infrastructure(format!("Failed to create directory: {}", e))
+            })?;
         }
 
         // Write file to disk
@@ -253,7 +254,12 @@ mod tests {
         let file_data = b"Hello, world!";
 
         let result = service
-            .upload(&conversation_id, "test.txt", file_data, Some("text/plain".to_string()))
+            .upload(
+                &conversation_id,
+                "test.txt",
+                file_data,
+                Some("text/plain".to_string()),
+            )
             .await;
 
         assert!(result.is_ok());
@@ -311,7 +317,10 @@ mod tests {
             .await
             .unwrap();
 
-        let attachments = service.list_for_conversation(&conversation_id).await.unwrap();
+        let attachments = service
+            .list_for_conversation(&conversation_id)
+            .await
+            .unwrap();
         assert_eq!(attachments.len(), 2);
     }
 

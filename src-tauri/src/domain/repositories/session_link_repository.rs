@@ -31,8 +31,8 @@ pub trait SessionLinkRepository: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use crate::domain::entities::SessionRelationship;
+    use std::sync::Arc;
 
     // Mock implementation for testing trait object usage
     struct MockSessionLinkRepository {
@@ -41,9 +41,7 @@ mod tests {
 
     impl MockSessionLinkRepository {
         fn new() -> Self {
-            Self {
-                links: vec![],
-            }
+            Self { links: vec![] }
         }
 
         fn with_links(links: Vec<SessionLink>) -> Self {
@@ -57,7 +55,10 @@ mod tests {
             Ok(link)
         }
 
-        async fn get_by_parent(&self, parent_id: &IdeationSessionId) -> AppResult<Vec<SessionLink>> {
+        async fn get_by_parent(
+            &self,
+            parent_id: &IdeationSessionId,
+        ) -> AppResult<Vec<SessionLink>> {
             Ok(self
                 .links
                 .iter()

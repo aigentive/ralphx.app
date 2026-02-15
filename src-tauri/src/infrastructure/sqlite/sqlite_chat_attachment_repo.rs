@@ -246,11 +246,8 @@ impl ChatAttachmentRepository for SqliteChatAttachmentRepository {
     async fn delete(&self, id: &ChatAttachmentId) -> AppResult<()> {
         let conn = self.conn.lock().await;
 
-        conn.execute(
-            "DELETE FROM chat_attachments WHERE id = ?1",
-            [id.as_str()],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
+        conn.execute("DELETE FROM chat_attachments WHERE id = ?1", [id.as_str()])
+            .map_err(|e| AppError::Database(e.to_string()))?;
 
         Ok(())
     }

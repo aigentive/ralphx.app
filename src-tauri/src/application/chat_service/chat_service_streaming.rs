@@ -9,6 +9,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::time::{timeout, Duration};
 use tracing::info;
 
+use crate::application::question_state::QuestionState;
 use crate::domain::entities::{
     ActivityEvent, ActivityEventType, ChatContextType, ChatConversationId, ChatMessageId, TaskId,
 };
@@ -16,7 +17,6 @@ use crate::domain::repositories::{ActivityEventRepository, ChatMessageRepository
 use crate::infrastructure::agents::claude::{
     ContentBlockItem, DiffContext, StreamEvent, StreamProcessor, ToolCall,
 };
-use crate::application::question_state::QuestionState;
 use tokio_util::sync::CancellationToken;
 
 use super::chat_service_errors::StreamError;
@@ -112,15 +112,21 @@ pub async fn process_stream_background<R: Runtime>(
         parse_stall_timeout_secs = timeout_config.parse_stall_timeout.as_secs(),
         "process_stream_background start"
     );
-    let stdout = child.stdout.take().ok_or_else(|| StreamError::ProcessSpawnFailed {
-        command: "claude".to_string(),
-        error: "Failed to capture stdout".to_string(),
-    })?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| StreamError::ProcessSpawnFailed {
+            command: "claude".to_string(),
+            error: "Failed to capture stdout".to_string(),
+        })?;
 
-    let stderr = child.stderr.take().ok_or_else(|| StreamError::ProcessSpawnFailed {
-        command: "claude".to_string(),
-        error: "Failed to capture stderr".to_string(),
-    })?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| StreamError::ProcessSpawnFailed {
+            command: "claude".to_string(),
+            error: "Failed to capture stderr".to_string(),
+        })?;
 
     let event_ctx = event_context(conversation_id, &context_type, context_id);
     let conversation_id_str = event_ctx.conversation_id.clone();

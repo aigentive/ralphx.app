@@ -164,12 +164,14 @@ impl ArchiveJobPayload {
 
     /// Serialize to JSON string for database storage
     pub fn to_json(&self) -> AppResult<String> {
-        serde_json::to_string(self).map_err(|e| AppError::Infrastructure(format!("JSON serialization error: {}", e)))
+        serde_json::to_string(self)
+            .map_err(|e| AppError::Infrastructure(format!("JSON serialization error: {}", e)))
     }
 
     /// Deserialize from JSON string
     pub fn from_json(json: &str) -> AppResult<Self> {
-        serde_json::from_str(json).map_err(|e| AppError::Infrastructure(format!("JSON deserialization error: {}", e)))
+        serde_json::from_str(json)
+            .map_err(|e| AppError::Infrastructure(format!("JSON deserialization error: {}", e)))
     }
 }
 

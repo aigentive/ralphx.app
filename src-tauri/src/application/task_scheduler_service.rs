@@ -1096,7 +1096,10 @@ mod tests {
             executing_count, 5,
             "All tasks Failed after ExecutionBlocked (capacity check requires Executing state)"
         );
-        assert_eq!(ready_count, 0, "No tasks remain Ready (all attempted scheduling)");
+        assert_eq!(
+            ready_count, 0,
+            "No tasks remain Ready (all attempted scheduling)"
+        );
     }
 
     #[tokio::test]
@@ -1155,7 +1158,10 @@ mod tests {
             executing_count, 3,
             "All tasks Failed after ExecutionBlocked (capacity check requires Executing state)"
         );
-        assert_eq!(ready_count, 0, "No tasks remain Ready (all attempted scheduling)");
+        assert_eq!(
+            ready_count, 0,
+            "No tasks remain Ready (all attempted scheduling)"
+        );
 
         // Running count stays at pre-filled value (tasks failed, not executing)
         assert_eq!(
@@ -1420,22 +1426,14 @@ mod tests {
         // Create older Ready task in project 1
         let mut p1_task = Task::new(project1.id.clone(), "Project 1 Task".to_string());
         p1_task.internal_status = InternalStatus::Ready;
-        app_state
-            .task_repo
-            .create(p1_task.clone())
-            .await
-            .unwrap();
+        app_state.task_repo.create(p1_task.clone()).await.unwrap();
 
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Create newer Ready task in project 2 (chronologically newer but should be ignored)
         let mut p2_task = Task::new(project2.id.clone(), "Project 2 Task".to_string());
         p2_task.internal_status = InternalStatus::Ready;
-        app_state
-            .task_repo
-            .create(p2_task.clone())
-            .await
-            .unwrap();
+        app_state.task_repo.create(p2_task.clone()).await.unwrap();
 
         let scheduler = build_scheduler(&app_state, &execution_state);
 
@@ -1497,22 +1495,14 @@ mod tests {
         // Create older Ready task in project 2
         let mut p2_task = Task::new(project2.id.clone(), "Project 2 Task".to_string());
         p2_task.internal_status = InternalStatus::Ready;
-        app_state
-            .task_repo
-            .create(p2_task.clone())
-            .await
-            .unwrap();
+        app_state.task_repo.create(p2_task.clone()).await.unwrap();
 
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Create newer Ready task in project 1
         let mut p1_task = Task::new(project1.id.clone(), "Project 1 Task".to_string());
         p1_task.internal_status = InternalStatus::Ready;
-        app_state
-            .task_repo
-            .create(p1_task.clone())
-            .await
-            .unwrap();
+        app_state.task_repo.create(p1_task.clone()).await.unwrap();
 
         let scheduler = build_scheduler(&app_state, &execution_state);
 

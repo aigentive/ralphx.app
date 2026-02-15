@@ -29,11 +29,8 @@ async fn test_f1_task_with_worktree_can_enter_pending_merge() {
     let s = create_hardening_services();
 
     let project_id = ProjectId::from_string("proj-f1".to_string());
-    let mut task = create_test_task_with_status(
-        &project_id,
-        "Task with worktree",
-        InternalStatus::Approved,
-    );
+    let mut task =
+        create_test_task_with_status(&project_id, "Task with worktree", InternalStatus::Approved);
     task.task_branch = Some("ralphx/test-project/task-f1".to_string());
     task.worktree_path = Some("/tmp/ralphx-worktrees/task-f1".to_string());
     s.task_repo.create(task.clone()).await.unwrap();
@@ -104,10 +101,7 @@ async fn test_f2_pending_merge_to_merged_transition_works() {
         .handle_transition(&State::PendingMerge, &TaskEvent::MergeComplete)
         .await;
 
-    assert!(
-        result.is_success(),
-        "PendingMerge -> Merged should succeed"
-    );
+    assert!(result.is_success(), "PendingMerge -> Merged should succeed");
     assert_eq!(
         result.state(),
         Some(&State::Merged),
@@ -129,10 +123,7 @@ async fn test_f2_merged_accepts_retry_to_ready() {
         .handle_transition(&State::Merged, &TaskEvent::Retry)
         .await;
 
-    assert!(
-        result.is_success(),
-        "Merged should accept Retry -> Ready"
-    );
+    assert!(result.is_success(), "Merged should accept Retry -> Ready");
     assert_eq!(
         result.state(),
         Some(&State::Ready),
@@ -153,11 +144,8 @@ async fn test_f3_merge_incomplete_reachable_from_merging() {
     let s = create_hardening_services();
 
     let project_id = ProjectId::from_string("proj-f3".to_string());
-    let mut task = create_test_task_with_status(
-        &project_id,
-        "Merge failure task",
-        InternalStatus::Merging,
-    );
+    let mut task =
+        create_test_task_with_status(&project_id, "Merge failure task", InternalStatus::Merging);
     task.task_branch = Some("ralphx/test-project/task-f3".to_string());
     task.worktree_path = Some("/tmp/ralphx-worktrees/task-f3".to_string());
     s.task_repo.create(task.clone()).await.unwrap();
@@ -324,7 +312,8 @@ async fn test_f6_terminal_tasks_retain_branch_info_no_cleanup_job() {
             task.task_branch.is_some(),
             "GAP: Terminal task '{}' ({:?}) still has task_branch set — \
              no cleanup job removes stale branches",
-            task.title, task.internal_status
+            task.title,
+            task.internal_status
         );
     }
 
@@ -366,11 +355,8 @@ async fn test_f7_deleted_task_loses_branch_record() {
     let s = create_hardening_services();
     let project_id = ProjectId::from_string("proj-f7".to_string());
 
-    let mut task = create_test_task_with_status(
-        &project_id,
-        "Task to delete",
-        InternalStatus::Failed,
-    );
+    let mut task =
+        create_test_task_with_status(&project_id, "Task to delete", InternalStatus::Failed);
     let branch_name = "ralphx/test-project/task-f7".to_string();
     task.task_branch = Some(branch_name.clone());
     task.worktree_path = Some("/tmp/ralphx-worktrees/task-f7".to_string());
@@ -391,10 +377,7 @@ async fn test_f7_deleted_task_loses_branch_record() {
 
     // Task is gone — branch info is lost
     let after_delete = s.task_repo.get_by_id(&task_id).await.unwrap();
-    assert!(
-        after_delete.is_none(),
-        "Task should be deleted from repo"
-    );
+    assert!(after_delete.is_none(), "Task should be deleted from repo");
 
     // GAP: The git branch and its worktree are now orphaned with no DB record
     // to identify them for cleanup. No orphan tracking mechanism exists.

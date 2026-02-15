@@ -193,8 +193,7 @@ fn test_try_merge_checkout_free_clean() {
                 "Working tree should not be modified by checkout-free merge"
             );
             // But branch ref should be advanced
-            let main_sha =
-                super::super::GitService::get_branch_sha(repo, "main").unwrap();
+            let main_sha = super::super::GitService::get_branch_sha(repo, "main").unwrap();
             assert_eq!(main_sha, commit_sha);
         }
         CheckoutFreeMergeResult::Conflict { .. } => {
@@ -238,8 +237,7 @@ fn test_try_squash_merge_checkout_free() {
 
     create_branch_with_change(repo, "feature", "feature.txt", "feature content\n");
 
-    let result =
-        try_squash_merge_checkout_free(repo, "feature", "main", "squash: add feature");
+    let result = try_squash_merge_checkout_free(repo, "feature", "main", "squash: add feature");
     assert!(result.is_ok());
 
     match result.unwrap() {
@@ -285,8 +283,7 @@ fn test_try_fast_forward_checkout_free() {
         CheckoutFreeMergeResult::Success { commit_sha } => {
             assert_eq!(commit_sha, feature_sha);
             // Main ref should now equal feature
-            let main_sha =
-                super::super::GitService::get_branch_sha(repo, "main").unwrap();
+            let main_sha = super::super::GitService::get_branch_sha(repo, "main").unwrap();
             assert_eq!(main_sha, feature_sha);
         }
         CheckoutFreeMergeResult::Conflict { .. } => {

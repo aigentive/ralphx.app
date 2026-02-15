@@ -14,9 +14,9 @@ use tracing::warn;
 use crate::application::{chat_service::reconcile_merge_auto_complete, TaskTransitionService};
 use crate::commands::execution_commands::{ExecutionState, AGENT_ACTIVE_STATUSES};
 use crate::domain::entities::{
-    AgentRun, AgentRunId, AgentRunStatus, ChatContextType, InternalStatus,
-    MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
-    MergeRecoverySource, MergeRecoveryState, Task, TaskId,
+    AgentRun, AgentRunId, AgentRunStatus, ChatContextType, InternalStatus, MergeRecoveryEvent,
+    MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode, MergeRecoverySource,
+    MergeRecoveryState, Task, TaskId,
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
@@ -25,7 +25,9 @@ use crate::domain::repositories::{
     TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
-use crate::domain::state_machine::transition_handler::{has_branch_missing_metadata, set_trigger_origin};
+use crate::domain::state_machine::transition_handler::{
+    has_branch_missing_metadata, set_trigger_origin,
+};
 
 const MERGING_TIMEOUT_SECONDS: i64 = 300;
 const MERGING_MAX_AUTO_RETRIES: u32 = 3;
@@ -547,9 +549,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             InternalStatus::MergeIncomplete => {
                 self.reconcile_merge_incomplete_task(task, status).await
             }
-            InternalStatus::MergeConflict => {
-                self.reconcile_merge_conflict_task(task, status).await
-            }
+            InternalStatus::MergeConflict => self.reconcile_merge_conflict_task(task, status).await,
             InternalStatus::QaRefining | InternalStatus::QaTesting => {
                 self.reconcile_qa_task(task, status).await
             }
@@ -628,7 +628,10 @@ impl<R: Runtime> ReconciliationRunner<R> {
                     .await;
             }
             // Record the retry attempt
-            if let Err(e) = self.record_auto_retry_metadata(task, status, retry_count + 1).await {
+            if let Err(e) = self
+                .record_auto_retry_metadata(task, status, retry_count + 1)
+                .await
+            {
                 warn!(task_id = task.id.as_str(), error = %e, "Failed to record execution retry metadata");
             }
         }
@@ -709,7 +712,10 @@ impl<R: Runtime> ReconciliationRunner<R> {
                     )
                     .await;
             }
-            if let Err(e) = self.record_auto_retry_metadata(task, status, retry_count + 1).await {
+            if let Err(e) = self
+                .record_auto_retry_metadata(task, status, retry_count + 1)
+                .await
+            {
                 warn!(task_id = task.id.as_str(), error = %e, "Failed to record review retry metadata");
             }
         }
@@ -793,13 +799,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
         // Gap 3: After auto-complete, check if task is still stuck in Merging
         if decision.action == RecoveryActionKind::AttemptMergeAutoComplete {
-            self.apply_recovery_decision(
-                &updated_task,
-                status,
-                RecoveryContext::Merge,
-                decision,
-            )
-            .await;
+            self.apply_recovery_decision(&updated_task, status, RecoveryContext::Merge, decision)
+                .await;
             // Re-read to see if auto-complete transitioned the task
             if let Ok(Some(post_task)) = self.task_repo.get_by_id(&task.id).await {
                 if post_task.internal_status == InternalStatus::Merging {
@@ -892,7 +893,10 @@ impl<R: Runtime> ReconciliationRunner<R> {
                     )
                     .await;
             }
-            if let Err(e) = self.record_auto_retry_metadata(task, status, retry_count + 1).await {
+            if let Err(e) = self
+                .record_auto_retry_metadata(task, status, retry_count + 1)
+                .await
+            {
                 warn!(task_id = task.id.as_str(), error = %e, "Failed to record QA retry metadata");
             }
         }
@@ -1499,7 +1503,10 @@ impl<R: Runtime> ReconciliationRunner<R> {
         set_trigger_origin(&mut updated, "recovery");
         updated.touch();
 
-        self.task_repo.update(&updated).await.map_err(|e| e.to_string())
+        self.task_repo
+            .update(&updated)
+            .await
+            .map_err(|e| e.to_string())
     }
 
     async fn record_merge_timeout_event(&self, task: &Task, age: chrono::Duration) {

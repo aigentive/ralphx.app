@@ -12,8 +12,8 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 
 use crate::application::question_state::QuestionState;
-use crate::application::task_transition_service::TaskTransitionService;
 use crate::application::task_scheduler_service::TaskSchedulerService;
+use crate::application::task_transition_service::TaskTransitionService;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
     AgentRunId, ChatContextType, ChatConversation, ChatConversationId, InternalStatus, TaskId,
@@ -89,13 +89,11 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                         app_handle.clone(),
                     );
                     if let Some(ref repo) = plan_branch_repo {
-                        scheduler_svc =
-                            scheduler_svc.with_plan_branch_repo(Arc::clone(repo));
+                        scheduler_svc = scheduler_svc.with_plan_branch_repo(Arc::clone(repo));
                     }
                     let scheduler_concrete = Arc::new(scheduler_svc);
-                    scheduler_concrete.set_self_ref(
-                        Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>,
-                    );
+                    scheduler_concrete
+                        .set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
                     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
                     let transition_service = TaskTransitionService::new(
@@ -241,7 +239,10 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
             "Stream cancelled — skipping error recovery and fallback transitions"
         );
         let _ = agent_run_repo
-            .fail(&AgentRunId::from_string(agent_run_id), "Agent stopped by user")
+            .fail(
+                &AgentRunId::from_string(agent_run_id),
+                "Agent stopped by user",
+            )
             .await;
 
         // Update pre-created message so UI doesn't show "..." forever
@@ -272,8 +273,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
     }
 
     // Classify error to detect stale session
-    let classified_error =
-        classify_agent_error(error, &conversation_id, stored_session_id);
+    let classified_error = classify_agent_error(error, &conversation_id, stored_session_id);
 
     match classified_error {
         AppError::StaleSession { session_id, .. } => {
@@ -355,7 +355,9 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                             None,
                             resolved_project_id.as_deref(),
                             Arc::clone(chat_attachment_repo),
-                        ).await {
+                        )
+                        .await
+                        {
                             if let Ok(retry_child) = spawnable.spawn().await {
                                 use super::chat_service_send_background::{
                                     BackgroundRunContext, BackgroundRunRepos,
@@ -380,11 +382,15 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                             task_repo: Arc::clone(task_repo),
                                             task_dependency_repo: Arc::clone(task_dependency_repo),
                                             project_repo: Arc::clone(project_repo),
-                                            ideation_session_repo: Arc::clone(ideation_session_repo),
+                                            ideation_session_repo: Arc::clone(
+                                                ideation_session_repo,
+                                            ),
                                             activity_event_repo: Arc::clone(activity_event_repo),
                                             memory_event_repo: Arc::clone(memory_event_repo),
                                             message_queue: Arc::clone(message_queue),
-                                            running_agent_registry: Arc::clone(running_agent_registry),
+                                            running_agent_registry: Arc::clone(
+                                                running_agent_registry,
+                                            ),
                                         },
                                         execution_state: execution_state.clone(),
                                         question_state: question_state.clone(),
@@ -392,10 +398,12 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                         app_handle: app_handle.clone(),
                                         run_chain_id: run_chain_id.clone(),
                                         is_retry_attempt: true,
-                                        user_message_content: user_message_content.map(|s| s.to_string()),
+                                        user_message_content: user_message_content
+                                            .map(|s| s.to_string()),
                                         conversation: Some(retry_conv),
                                         agent_name: agent_name.map(|s| s.to_string()),
-                                        cancellation_token: tokio_util::sync::CancellationToken::new(),
+                                        cancellation_token:
+                                            tokio_util::sync::CancellationToken::new(),
                                     },
                                 );
                                 return true; // Recovery spawned retry, caller should return early

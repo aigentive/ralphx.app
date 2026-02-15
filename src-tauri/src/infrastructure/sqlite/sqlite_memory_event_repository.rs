@@ -33,29 +33,25 @@ impl SqliteMemoryEventRepository {
     /// Helper to parse a row into a MemoryEvent
     fn row_to_memory_event(row: &rusqlite::Row) -> rusqlite::Result<MemoryEvent> {
         let actor_type_str: String = row.get(3)?;
-        let actor_type = actor_type_str.parse::<MemoryActorType>()
-            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
-                3,
-                rusqlite::types::Type::Text,
-                Box::new(e),
-            ))?;
+        let actor_type = actor_type_str.parse::<MemoryActorType>().map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(3, rusqlite::types::Type::Text, Box::new(e))
+        })?;
 
         let details_json_str: String = row.get(4)?;
-        let details: JsonValue = serde_json::from_str(&details_json_str)
-            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
-                4,
-                rusqlite::types::Type::Text,
-                Box::new(e),
-            ))?;
+        let details: JsonValue = serde_json::from_str(&details_json_str).map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(4, rusqlite::types::Type::Text, Box::new(e))
+        })?;
 
         let created_at_str: String = row.get(5)?;
         let created_at = DateTime::parse_from_rfc3339(&created_at_str)
             .map(|dt| dt.with_timezone(&Utc))
-            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
-                5,
-                rusqlite::types::Type::Text,
-                Box::new(e),
-            ))?;
+            .map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    5,
+                    rusqlite::types::Type::Text,
+                    Box::new(e),
+                )
+            })?;
 
         Ok(MemoryEvent {
             id: MemoryEventId::from_string(row.get::<_, String>(0)?),
@@ -97,13 +93,14 @@ impl MemoryEventRepository for SqliteMemoryEventRepository {
     async fn get_by_project(&self, project_id: &ProjectId) -> AppResult<Vec<MemoryEvent>> {
         let conn = self.conn.lock().await;
 
-        let mut stmt = conn.prepare(
-            "SELECT id, project_id, event_type, actor_type, details_json, created_at
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, project_id, event_type, actor_type, details_json, created_at
              FROM memory_events
              WHERE project_id = ?1
-             ORDER BY created_at DESC"
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
+             ORDER BY created_at DESC",
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
 
         let events = stmt
             .query_map([project_id.as_str()], Self::row_to_memory_event)
@@ -117,13 +114,14 @@ impl MemoryEventRepository for SqliteMemoryEventRepository {
     async fn get_by_type(&self, event_type: &str) -> AppResult<Vec<MemoryEvent>> {
         let conn = self.conn.lock().await;
 
-        let mut stmt = conn.prepare(
-            "SELECT id, project_id, event_type, actor_type, details_json, created_at
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, project_id, event_type, actor_type, details_json, created_at
              FROM memory_events
              WHERE event_type = ?1
-             ORDER BY created_at DESC"
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
+             ORDER BY created_at DESC",
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
 
         let events = stmt
             .query_map([event_type], Self::row_to_memory_event)

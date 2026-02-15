@@ -565,9 +565,8 @@ fn test_is_branch_lock_error_fatal_branch_checked_out() {
 
 #[test]
 fn test_is_branch_lock_error_case_insensitive() {
-    let error = AppError::GitOperation(
-        "FATAL: 'main' IS ALREADY USED BY WORKTREE at '/path'".to_string(),
-    );
+    let error =
+        AppError::GitOperation("FATAL: 'main' IS ALREADY USED BY WORKTREE at '/path'".to_string());
     assert!(GitService::is_branch_lock_error(&error));
 }
 
@@ -595,8 +594,7 @@ fn test_is_branch_lock_error_false_positive_avoided() {
     // This error contains "fatal", "branch", and "checked out" but is NOT a branch lock error.
     // The old pattern would have incorrectly classified this as deferrable.
     let error = AppError::GitOperation(
-        "fatal: could not read branch configuration, checked out files may be corrupt"
-            .to_string(),
+        "fatal: could not read branch configuration, checked out files may be corrupt".to_string(),
     );
     assert!(!GitService::is_branch_lock_error(&error));
 }

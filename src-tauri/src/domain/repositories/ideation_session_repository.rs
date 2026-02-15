@@ -68,7 +68,10 @@ pub trait IdeationSessionRepository: Send + Sync {
 
     /// Get the ancestor chain for a session (parents, grandparents, etc.)
     /// Returns sessions in order from direct parent to root ancestor
-    async fn get_ancestor_chain(&self, session_id: &IdeationSessionId) -> AppResult<Vec<IdeationSession>>;
+    async fn get_ancestor_chain(
+        &self,
+        session_id: &IdeationSessionId,
+    ) -> AppResult<Vec<IdeationSession>>;
 
     /// Set the parent session ID for a session
     async fn set_parent(
@@ -200,7 +203,10 @@ mod tests {
                 .collect())
         }
 
-        async fn get_children(&self, parent_id: &IdeationSessionId) -> AppResult<Vec<IdeationSession>> {
+        async fn get_children(
+            &self,
+            parent_id: &IdeationSessionId,
+        ) -> AppResult<Vec<IdeationSession>> {
             Ok(self
                 .sessions
                 .iter()

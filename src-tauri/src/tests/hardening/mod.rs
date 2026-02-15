@@ -8,12 +8,12 @@
 // Covered scenarios (should pass) verify existing safety measures.
 // Gap scenarios (expected to fail) serve as executable spec for fixes needed.
 
-pub(crate) mod helpers;
-mod git_isolation_tests;
-mod agent_spawning_tests;
 mod agent_runtime_tests;
-mod completion_transition_tests;
-mod reconciliation_tests;
+mod agent_spawning_tests;
 mod cleanup_tests;
+mod completion_transition_tests;
 mod concurrency_tests;
 mod error_visibility_tests;
+mod git_isolation_tests;
+pub(crate) mod helpers;
+mod reconciliation_tests;

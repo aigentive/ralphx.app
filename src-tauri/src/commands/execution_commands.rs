@@ -34,8 +34,8 @@ pub const AGENT_ACTIVE_STATUSES: &[InternalStatus] = &[
     InternalStatus::QaTesting,
     InternalStatus::Reviewing,
     InternalStatus::ReExecuting,
-    InternalStatus::Merging,       // spawns merger agent
-    InternalStatus::PendingMerge,  // runs attempt_programmatic_merge async side effect
+    InternalStatus::Merging,      // spawns merger agent
+    InternalStatus::PendingMerge, // runs attempt_programmatic_merge async side effect
 ];
 
 /// States that have automatic transitions on entry.
@@ -802,7 +802,9 @@ pub async fn resume_execution(
     );
     scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
     // Set active project scope before scheduling to prevent cross-project scheduling
-    scheduler.set_active_project(effective_project_id.clone()).await;
+    scheduler
+        .set_active_project(effective_project_id.clone())
+        .await;
     scheduler.try_schedule_ready_tasks().await;
 
     // Get current status
@@ -1944,8 +1946,16 @@ mod tests {
         let project1 = Project::new("Project 1".to_string(), "/path1".to_string());
         let project2 = Project::new("Project 2".to_string(), "/path2".to_string());
 
-        app_state.project_repo.create(project1.clone()).await.unwrap();
-        app_state.project_repo.create(project2.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project1.clone())
+            .await
+            .unwrap();
+        app_state
+            .project_repo
+            .create(project2.clone())
+            .await
+            .unwrap();
 
         // Set different quotas for each project
         let settings1 = ExecutionSettings {
@@ -1959,8 +1969,16 @@ mod tests {
             pause_on_failure: true,
         };
 
-        app_state.execution_settings_repo.update_settings(Some(&project1.id), &settings1).await.unwrap();
-        app_state.execution_settings_repo.update_settings(Some(&project2.id), &settings2).await.unwrap();
+        app_state
+            .execution_settings_repo
+            .update_settings(Some(&project1.id), &settings1)
+            .await
+            .unwrap();
+        app_state
+            .execution_settings_repo
+            .update_settings(Some(&project2.id), &settings2)
+            .await
+            .unwrap();
 
         // Set project1 as active
         active_project_state.set(Some(project1.id.clone())).await;
@@ -1971,7 +1989,9 @@ mod tests {
             &active_project_state,
             &execution_state,
             &app_state,
-        ).await.unwrap();
+        )
+        .await
+        .unwrap();
 
         // Should use explicit project2 (quota 10), not active project1 (quota 5)
         assert_eq!(result.project_id, Some(project2.id));
@@ -1987,25 +2007,30 @@ mod tests {
 
         // Create project with custom quota
         let project = Project::new("Active Project".to_string(), "/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         let settings = ExecutionSettings {
             max_concurrent_tasks: 7,
             auto_commit: true,
             pause_on_failure: true,
         };
-        app_state.execution_settings_repo.update_settings(Some(&project.id), &settings).await.unwrap();
+        app_state
+            .execution_settings_repo
+            .update_settings(Some(&project.id), &settings)
+            .await
+            .unwrap();
 
         // Set as active project
         active_project_state.set(Some(project.id.clone())).await;
 
         // Call sync without explicit project - should use active project
-        let result = sync_project_quota(
-            None,
-            &active_project_state,
-            &execution_state,
-            &app_state,
-        ).await.unwrap();
+        let result = sync_project_quota(None, &active_project_state, &execution_state, &app_state)
+            .await
+            .unwrap();
 
         assert_eq!(result.project_id, Some(project.id));
         assert_eq!(result.max_concurrent, 7);
@@ -2020,12 +2045,9 @@ mod tests {
 
         // No explicit project, no active project
         // Should use global default (project_id = None)
-        let result = sync_project_quota(
-            None,
-            &active_project_state,
-            &execution_state,
-            &app_state,
-        ).await.unwrap();
+        let result = sync_project_quota(None, &active_project_state, &execution_state, &app_state)
+            .await
+            .unwrap();
 
         assert_eq!(result.project_id, None);
         // Default quota is 10 (from ExecutionSettings::default())
@@ -2040,14 +2062,22 @@ mod tests {
         let active_project_state = Arc::new(ActiveProjectState::new());
 
         let project = Project::new("Test Project".to_string(), "/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         let settings = ExecutionSettings {
             max_concurrent_tasks: 15,
             auto_commit: true,
             pause_on_failure: true,
         };
-        app_state.execution_settings_repo.update_settings(Some(&project.id), &settings).await.unwrap();
+        app_state
+            .execution_settings_repo
+            .update_settings(Some(&project.id), &settings)
+            .await
+            .unwrap();
 
         // Before sync, execution_state has old value
         assert_eq!(execution_state.max_concurrent(), 99);
@@ -2058,7 +2088,9 @@ mod tests {
             &active_project_state,
             &execution_state,
             &app_state,
-        ).await.unwrap();
+        )
+        .await
+        .unwrap();
 
         // After sync, execution_state should have new value
         assert_eq!(execution_state.max_concurrent(), 15);
@@ -2071,14 +2103,22 @@ mod tests {
         let active_project_state = Arc::new(ActiveProjectState::new());
 
         let project = Project::new("Test Project".to_string(), "/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         let settings = ExecutionSettings {
             max_concurrent_tasks: 8,
             auto_commit: true,
             pause_on_failure: true,
         };
-        app_state.execution_settings_repo.update_settings(Some(&project.id), &settings).await.unwrap();
+        app_state
+            .execution_settings_repo
+            .update_settings(Some(&project.id), &settings)
+            .await
+            .unwrap();
 
         // Call sync multiple times
         for _ in 0..3 {
@@ -2087,7 +2127,9 @@ mod tests {
                 &active_project_state,
                 &execution_state,
                 &app_state,
-            ).await.unwrap();
+            )
+            .await
+            .unwrap();
 
             assert_eq!(result.project_id, Some(project.id.clone()));
             assert_eq!(result.max_concurrent, 8);
@@ -2104,8 +2146,16 @@ mod tests {
         let project1 = Project::new("Project 1".to_string(), "/path1".to_string());
         let project2 = Project::new("Project 2".to_string(), "/path2".to_string());
 
-        app_state.project_repo.create(project1.clone()).await.unwrap();
-        app_state.project_repo.create(project2.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project1.clone())
+            .await
+            .unwrap();
+        app_state
+            .project_repo
+            .create(project2.clone())
+            .await
+            .unwrap();
 
         let settings1 = ExecutionSettings {
             max_concurrent_tasks: 3,
@@ -2118,19 +2168,48 @@ mod tests {
             pause_on_failure: true,
         };
 
-        app_state.execution_settings_repo.update_settings(Some(&project1.id), &settings1).await.unwrap();
-        app_state.execution_settings_repo.update_settings(Some(&project2.id), &settings2).await.unwrap();
+        app_state
+            .execution_settings_repo
+            .update_settings(Some(&project1.id), &settings1)
+            .await
+            .unwrap();
+        app_state
+            .execution_settings_repo
+            .update_settings(Some(&project2.id), &settings2)
+            .await
+            .unwrap();
 
         // Sync to project1
-        sync_project_quota(Some(project1.id.clone()), &active_project_state, &execution_state, &app_state).await.unwrap();
+        sync_project_quota(
+            Some(project1.id.clone()),
+            &active_project_state,
+            &execution_state,
+            &app_state,
+        )
+        .await
+        .unwrap();
         assert_eq!(execution_state.max_concurrent(), 3);
 
         // Switch to project2
-        sync_project_quota(Some(project2.id.clone()), &active_project_state, &execution_state, &app_state).await.unwrap();
+        sync_project_quota(
+            Some(project2.id.clone()),
+            &active_project_state,
+            &execution_state,
+            &app_state,
+        )
+        .await
+        .unwrap();
         assert_eq!(execution_state.max_concurrent(), 12);
 
         // Switch back to project1
-        sync_project_quota(Some(project1.id.clone()), &active_project_state, &execution_state, &app_state).await.unwrap();
+        sync_project_quota(
+            Some(project1.id.clone()),
+            &active_project_state,
+            &execution_state,
+            &app_state,
+        )
+        .await
+        .unwrap();
         assert_eq!(execution_state.max_concurrent(), 3);
     }
 
@@ -3222,8 +3301,7 @@ mod tests {
             assert_eq!(
                 task.internal_status, expected_status,
                 "Task should transition to {:?} (was {:?})",
-                expected_status,
-                original_statuses[i]
+                expected_status, original_statuses[i]
             );
         }
     }
@@ -3348,7 +3426,11 @@ mod tests {
 
         // Create a project with specific execution settings
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         // Set project-specific max_concurrent_tasks = 8
         let settings = ExecutionSettings {
@@ -3389,7 +3471,11 @@ mod tests {
 
         // Create a project with max_concurrent_tasks = 10
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         let settings = ExecutionSettings {
             max_concurrent_tasks: 10,
@@ -3432,7 +3518,11 @@ mod tests {
 
         // Create a project with max_concurrent_tasks = 7
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         let settings = ExecutionSettings {
             max_concurrent_tasks: 7,
@@ -3472,7 +3562,11 @@ mod tests {
 
         // Create a project with max_concurrent_tasks = 6
         let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         let settings = ExecutionSettings {
             max_concurrent_tasks: 6,
@@ -3512,7 +3606,11 @@ mod tests {
 
         // Create two projects with different max_concurrent settings
         let project1 = Project::new("Project 1".to_string(), "/test/path1".to_string());
-        app_state.project_repo.create(project1.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project1.clone())
+            .await
+            .unwrap();
 
         let settings1 = ExecutionSettings {
             max_concurrent_tasks: 5,
@@ -3526,7 +3624,11 @@ mod tests {
             .unwrap();
 
         let project2 = Project::new("Project 2".to_string(), "/test/path2".to_string());
-        app_state.project_repo.create(project2.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project2.clone())
+            .await
+            .unwrap();
 
         let settings2 = ExecutionSettings {
             max_concurrent_tasks: 12,
@@ -3556,7 +3658,11 @@ mod tests {
 
         // Verify: active project set and quota synced to project1's max (5)
         assert_eq!(
-            active_project_state.get().await.as_ref().map(|p| p.as_str()),
+            active_project_state
+                .get()
+                .await
+                .as_ref()
+                .map(|p| p.as_str()),
             Some(project1.id.as_str())
         );
         assert_eq!(max1, 5);
@@ -3575,7 +3681,11 @@ mod tests {
 
         // Verify: active project switched and quota synced to project2's max (12)
         assert_eq!(
-            active_project_state.get().await.as_ref().map(|p| p.as_str()),
+            active_project_state
+                .get()
+                .await
+                .as_ref()
+                .map(|p| p.as_str()),
             Some(project2.id.as_str())
         );
         assert_eq!(max2, 12);
@@ -3630,19 +3740,11 @@ mod tests {
         // Create Ready tasks in both projects
         let mut p1_task = Task::new(project1.id.clone(), "Project 1 Task".to_string());
         p1_task.internal_status = InternalStatus::Ready;
-        app_state
-            .task_repo
-            .create(p1_task.clone())
-            .await
-            .unwrap();
+        app_state.task_repo.create(p1_task.clone()).await.unwrap();
 
         let mut p2_task = Task::new(project2.id.clone(), "Project 2 Task".to_string());
         p2_task.internal_status = InternalStatus::Ready;
-        app_state
-            .task_repo
-            .create(p2_task.clone())
-            .await
-            .unwrap();
+        app_state.task_repo.create(p2_task.clone()).await.unwrap();
 
         // Set active project to project 1
         active_project_state.set(Some(project1.id.clone())).await;

@@ -12,8 +12,14 @@ fn test_c5_fix_wall_clock_timeout_constants_reasonable() {
     let reviewing_minutes: i64 = 30;
     let qa_minutes: i64 = 15;
 
-    assert!(executing_minutes > reviewing_minutes, "Execution should have longer timeout than review");
-    assert!(reviewing_minutes > qa_minutes, "Review should have longer timeout than QA");
+    assert!(
+        executing_minutes > reviewing_minutes,
+        "Execution should have longer timeout than review"
+    );
+    assert!(
+        reviewing_minutes > qa_minutes,
+        "Review should have longer timeout than QA"
+    );
     assert!(qa_minutes > 0, "QA timeout should be positive");
 }
 

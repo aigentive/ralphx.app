@@ -2,10 +2,10 @@
 //
 // Rebuilds conversation history from database for rehydrating fresh Claude sessions.
 
-use std::sync::Arc;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::domain::entities::{ChatConversationId, ChatContextType, MessageRole};
+use crate::domain::entities::{ChatContextType, ChatConversationId, MessageRole};
 use crate::domain::repositories::ChatMessageRepository;
 use crate::error::AppResult;
 
@@ -81,12 +81,11 @@ impl ReplayBuilder {
         false
     }
 
-    fn message_to_turn(
-        msg: &crate::domain::entities::ChatMessage,
-    ) -> AppResult<Turn> {
+    fn message_to_turn(msg: &crate::domain::entities::ChatMessage) -> AppResult<Turn> {
         let tool_calls = if let Some(ref tc_json) = msg.tool_calls {
-            serde_json::from_str(tc_json)
-                .map_err(|e| crate::error::AppError::Infrastructure(format!("Failed to parse tool_calls: {}", e)))?
+            serde_json::from_str(tc_json).map_err(|e| {
+                crate::error::AppError::Infrastructure(format!("Failed to parse tool_calls: {}", e))
+            })?
         } else {
             vec![]
         };

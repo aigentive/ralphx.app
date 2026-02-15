@@ -86,7 +86,7 @@ fn recreate_task_proposals(conn: &Connection) -> AppResult<()> {
         CREATE INDEX IF NOT EXISTS idx_task_proposals_sort_order
             ON task_proposals(session_id, sort_order);
         CREATE INDEX IF NOT EXISTS idx_task_proposals_created_task_id
-            ON task_proposals(created_task_id);"
+            ON task_proposals(created_task_id);",
     )
     .map_err(|e| AppError::Database(e.to_string()))?;
 
@@ -130,7 +130,7 @@ fn recreate_artifacts(conn: &Connection) -> AppResult<()> {
         CREATE INDEX IF NOT EXISTS idx_artifacts_type
             ON artifacts(type);
         CREATE INDEX IF NOT EXISTS idx_artifacts_task
-            ON artifacts(task_id);"
+            ON artifacts(task_id);",
     )
     .map_err(|e| AppError::Database(e.to_string()))?;
 

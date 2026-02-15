@@ -116,8 +116,12 @@ mod tests {
         let link1 = create_test_link(&parent_id, &child_id1);
         let link2 = create_test_link(&parent_id, &child_id2);
 
-        repo.create(link1.clone()).await.expect("Failed to create link1");
-        repo.create(link2.clone()).await.expect("Failed to create link2");
+        repo.create(link1.clone())
+            .await
+            .expect("Failed to create link1");
+        repo.create(link2.clone())
+            .await
+            .expect("Failed to create link2");
 
         let result = repo.get_by_parent(&parent_id).await;
         assert!(result.is_ok());
@@ -145,8 +149,12 @@ mod tests {
         let link1 = create_test_link(&parent_id1, &child_id);
         let link2 = create_test_link(&parent_id2, &child_id);
 
-        repo.create(link1.clone()).await.expect("Failed to create link1");
-        repo.create(link2.clone()).await.expect("Failed to create link2");
+        repo.create(link1.clone())
+            .await
+            .expect("Failed to create link1");
+        repo.create(link2.clone())
+            .await
+            .expect("Failed to create link2");
 
         let result = repo.get_by_child(&child_id).await;
         assert!(result.is_ok());
@@ -212,10 +220,7 @@ mod tests {
             .expect("Failed to create link2");
 
         // Verify both exist
-        let links = repo
-            .get_by_child(&child_id)
-            .await
-            .expect("Failed to query");
+        let links = repo.get_by_child(&child_id).await.expect("Failed to query");
         assert_eq!(links.len(), 2);
 
         // Delete all links where child is child_id
@@ -223,10 +228,7 @@ mod tests {
         assert!(result.is_ok());
 
         // Verify all are gone
-        let links = repo
-            .get_by_child(&child_id)
-            .await
-            .expect("Failed to query");
+        let links = repo.get_by_child(&child_id).await.expect("Failed to query");
         assert_eq!(links.len(), 0);
     }
 

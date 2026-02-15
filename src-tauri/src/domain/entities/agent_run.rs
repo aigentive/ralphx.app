@@ -318,11 +318,7 @@ mod tests {
         let conversation_id = ChatConversationId::new();
         let chain_id = "chain-123".to_string();
         let parent_id = "parent-456".to_string();
-        let run = AgentRun::new_continuation(
-            conversation_id,
-            chain_id.clone(),
-            parent_id.clone(),
-        );
+        let run = AgentRun::new_continuation(conversation_id, chain_id.clone(), parent_id.clone());
 
         assert_eq!(run.conversation_id, conversation_id);
         assert_eq!(run.status, AgentRunStatus::Running);

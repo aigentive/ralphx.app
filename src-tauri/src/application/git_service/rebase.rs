@@ -122,10 +122,17 @@ impl GitService {
     /// * `path` - Path to the git repository or worktree
     pub fn try_continue_rebase(path: &Path) -> AppResult<RebaseResult> {
         const MAX_ITERATIONS: u32 = 50;
-        debug!("Attempting to continue rebase in {:?} (max {} iterations)", path, MAX_ITERATIONS);
+        debug!(
+            "Attempting to continue rebase in {:?} (max {} iterations)",
+            path, MAX_ITERATIONS
+        );
 
         for iteration in 0..MAX_ITERATIONS {
-            debug!("try_continue_rebase iteration {} of {}", iteration + 1, MAX_ITERATIONS);
+            debug!(
+                "try_continue_rebase iteration {} of {}",
+                iteration + 1,
+                MAX_ITERATIONS
+            );
 
             // Stage all changes
             let add_output = Command::new("git")
@@ -136,7 +143,10 @@ impl GitService {
 
             if !add_output.status.success() {
                 let stderr = String::from_utf8_lossy(&add_output.stderr);
-                return Err(AppError::GitOperation(format!("git add failed: {}", stderr)));
+                return Err(AppError::GitOperation(format!(
+                    "git add failed: {}",
+                    stderr
+                )));
             }
 
             // Continue the rebase with GIT_EDITOR=true to auto-accept all prompts
@@ -145,11 +155,16 @@ impl GitService {
                 .env("GIT_EDITOR", "true")
                 .current_dir(path)
                 .output()
-                .map_err(|e| AppError::GitOperation(format!("Failed to run git rebase --continue: {}", e)))?;
+                .map_err(|e| {
+                    AppError::GitOperation(format!("Failed to run git rebase --continue: {}", e))
+                })?;
 
             // Check if rebase completed successfully
             if continue_output.status.success() {
-                debug!("Rebase completed successfully at iteration {}", iteration + 1);
+                debug!(
+                    "Rebase completed successfully at iteration {}",
+                    iteration + 1
+                );
                 return Ok(RebaseResult::Success);
             }
 
@@ -157,10 +172,17 @@ impl GitService {
             let stdout = String::from_utf8_lossy(&continue_output.stdout);
 
             // Check if there are real conflicts (unmerged files or conflict markers)
-            if stderr.contains("CONFLICT") || stderr.contains("conflict") || stdout.contains("CONFLICT") {
+            if stderr.contains("CONFLICT")
+                || stderr.contains("conflict")
+                || stdout.contains("CONFLICT")
+            {
                 let conflict_files = Self::get_conflict_files(path)?;
                 if !conflict_files.is_empty() {
-                    debug!("Real conflict detected at iteration {} with {} files", iteration + 1, conflict_files.len());
+                    debug!(
+                        "Real conflict detected at iteration {} with {} files",
+                        iteration + 1,
+                        conflict_files.len()
+                    );
                     return Ok(RebaseResult::Conflict {
                         files: conflict_files,
                     });
@@ -176,18 +198,25 @@ impl GitService {
                 }
 
                 // No real conflicts detected, auto-resolved step - continue looping
-                debug!("Auto-resolved step detected at iteration {}, continuing loop", iteration + 1);
+                debug!(
+                    "Auto-resolved step detected at iteration {}, continuing loop",
+                    iteration + 1
+                );
                 continue;
             }
 
             // Check for "No rebase in progress" - rebase already done
-            if stderr.contains("No rebase in progress") || stdout.contains("No rebase in progress") {
+            if stderr.contains("No rebase in progress") || stdout.contains("No rebase in progress")
+            {
                 debug!("No rebase in progress - rebase completed successfully");
                 return Ok(RebaseResult::Success);
             }
 
             // Unexpected error
-            let error_msg = format!("Rebase --continue failed: stderr={} stdout={}", stderr, stdout);
+            let error_msg = format!(
+                "Rebase --continue failed: stderr={} stdout={}",
+                stderr, stdout
+            );
             return Err(AppError::GitOperation(error_msg));
         }
 
@@ -241,21 +270,30 @@ impl GitService {
 
             // Check for conflict markers
             if Self::has_conflict_markers(worktree).unwrap_or(false) {
-                debug!("Conflict markers found in stale rebase iteration {}", iteration + 1);
+                debug!(
+                    "Conflict markers found in stale rebase iteration {}",
+                    iteration + 1
+                );
                 match Self::get_conflict_files(worktree) {
                     Ok(files) => {
                         return StaleRebaseResult::HasConflicts { files };
                     }
                     Err(e) => {
                         return StaleRebaseResult::Failed {
-                            reason: format!("Failed to get conflict files after marker check: {}", e),
+                            reason: format!(
+                                "Failed to get conflict files after marker check: {}",
+                                e
+                            ),
                         };
                     }
                 }
             }
 
             // No real conflicts - attempt to continue
-            debug!("No real conflicts in iteration {}, attempting to continue rebase", iteration + 1);
+            debug!(
+                "No real conflicts in iteration {}, attempting to continue rebase",
+                iteration + 1
+            );
 
             // Stage all changes
             let add_output = Command::new("git")
@@ -307,18 +345,25 @@ impl GitService {
 
             // Check if rebase completed
             if continue_status {
-                debug!("Stale rebase completed successfully at iteration {}", iteration + 1);
+                debug!(
+                    "Stale rebase completed successfully at iteration {}",
+                    iteration + 1
+                );
                 return StaleRebaseResult::Completed;
             }
 
             // Check if no rebase in progress (already done)
-            if stderr.contains("No rebase in progress") || stdout.contains("No rebase in progress") {
+            if stderr.contains("No rebase in progress") || stdout.contains("No rebase in progress")
+            {
                 debug!("No rebase in progress - rebase already completed");
                 return StaleRebaseResult::Completed;
             }
 
             // Check for conflict
-            if stderr.contains("CONFLICT") || stderr.contains("conflict") || stdout.contains("CONFLICT") {
+            if stderr.contains("CONFLICT")
+                || stderr.contains("conflict")
+                || stdout.contains("CONFLICT")
+            {
                 // Re-check for real conflicts
                 match Self::get_conflict_files(worktree) {
                     Ok(conflict_files) if !conflict_files.is_empty() => {
@@ -332,15 +377,15 @@ impl GitService {
                     }
                     Ok(_) => {
                         // Auto-resolved step, continue looping
-                        debug!("Auto-resolved step at iteration {}, continuing", iteration + 1);
+                        debug!(
+                            "Auto-resolved step at iteration {}, continuing",
+                            iteration + 1
+                        );
                         continue;
                     }
                     Err(e) => {
                         return StaleRebaseResult::Failed {
-                            reason: format!(
-                                "Failed to check conflicts after --continue: {}",
-                                e
-                            ),
+                            reason: format!("Failed to check conflicts after --continue: {}", e),
                         };
                     }
                 }

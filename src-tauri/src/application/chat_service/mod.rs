@@ -15,13 +15,13 @@ mod chat_service_context;
 mod chat_service_errors;
 mod chat_service_handlers;
 mod chat_service_helpers;
+mod chat_service_merge;
 mod chat_service_mock;
 mod chat_service_queue;
 mod chat_service_recovery;
 mod chat_service_replay;
 mod chat_service_repository;
 mod chat_service_send_background;
-mod chat_service_merge;
 mod chat_service_streaming;
 mod chat_service_types;
 
@@ -48,10 +48,10 @@ use which::which;
 // Re-exports from extracted modules
 pub use chat_service_errors::{classify_agent_error, StreamError};
 pub use chat_service_helpers::{get_agent_name, get_assistant_role};
+pub(crate) use chat_service_merge::reconcile_merge_auto_complete;
 pub use chat_service_mock::{MockChatResponse, MockChatService};
 pub use chat_service_replay::{build_rehydration_prompt, ConversationReplay, ReplayBuilder, Turn};
 pub use chat_service_streaming::process_stream_background;
-pub(crate) use chat_service_merge::reconcile_merge_auto_complete;
 pub use chat_service_types::{
     events, AgentChunkPayload, AgentErrorPayload, AgentHookPayload, AgentMessageCreatedPayload,
     AgentQueueSentPayload, AgentRunCompletedPayload, AgentRunStartedPayload,
@@ -246,9 +246,8 @@ impl<R: Runtime> ClaudeChatService<R> {
         } else {
             cwd
         };
-        let plugin_dir = crate::infrastructure::agents::claude::resolve_plugin_dir(
-            &default_working_directory,
-        );
+        let plugin_dir =
+            crate::infrastructure::agents::claude::resolve_plugin_dir(&default_working_directory);
 
         Self {
             cli_path,
@@ -499,10 +498,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         if !pending_attachments.is_empty() {
             let attachment_ids: Vec<_> = pending_attachments.iter().map(|a| a.id.clone()).collect();
             self.chat_attachment_repo
-                .update_message_ids(
-                    &attachment_ids,
-                    &ChatMessageId::from_string(&user_msg_id),
-                )
+                .update_message_ids(&attachment_ids, &ChatMessageId::from_string(&user_msg_id))
                 .await
                 .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?;
             tracing::debug!(
@@ -625,7 +621,9 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         }
 
         // 8. Build background context and spawn
-        let resolved_agent_name = chat_service_helpers::resolve_agent(&context_type, entity_status.as_deref()).to_string();
+        let resolved_agent_name =
+            chat_service_helpers::resolve_agent(&context_type, entity_status.as_deref())
+                .to_string();
 
         let bg_ctx = chat_service_send_background::BackgroundRunContext {
             child,

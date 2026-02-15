@@ -31,18 +31,11 @@ pub enum StreamError {
         stderr: String,
     },
     /// Session ID referenced in conversation not found on the Claude side.
-    SessionNotFound {
-        session_id: String,
-    },
+    SessionNotFound { session_id: String },
     /// Failed to spawn the agent CLI process.
-    ProcessSpawnFailed {
-        command: String,
-        error: String,
-    },
+    ProcessSpawnFailed { command: String, error: String },
     /// Agent completed but produced no meaningful output (no text, no tool calls).
-    NoOutput {
-        context_type: ChatContextType,
-    },
+    NoOutput { context_type: ChatContextType },
     /// Agent run was cancelled (e.g., user-initiated stop).
     Cancelled,
 }

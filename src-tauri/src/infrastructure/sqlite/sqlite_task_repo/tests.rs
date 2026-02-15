@@ -1045,18 +1045,16 @@ async fn test_clear_task_references_nullifies_fk_columns() {
         let mut stmt = conn
             .prepare("SELECT created_task_id FROM task_proposals WHERE id = ?1")
             .unwrap();
-        let proposal_task_id: Option<String> = stmt
-            .query_row([proposal_id], |row| row.get(0))
-            .unwrap();
+        let proposal_task_id: Option<String> =
+            stmt.query_row([proposal_id], |row| row.get(0)).unwrap();
         assert!(proposal_task_id.is_some());
         assert_eq!(proposal_task_id.unwrap(), task_id.as_str());
 
         let mut stmt = conn
             .prepare("SELECT task_id FROM artifacts WHERE id = ?1")
             .unwrap();
-        let artifact_task_id: Option<String> = stmt
-            .query_row([artifact_id], |row| row.get(0))
-            .unwrap();
+        let artifact_task_id: Option<String> =
+            stmt.query_row([artifact_id], |row| row.get(0)).unwrap();
         assert!(artifact_task_id.is_some());
         assert_eq!(artifact_task_id.unwrap(), task_id.as_str());
     }
@@ -1070,17 +1068,15 @@ async fn test_clear_task_references_nullifies_fk_columns() {
         let mut stmt = conn
             .prepare("SELECT created_task_id FROM task_proposals WHERE id = ?1")
             .unwrap();
-        let proposal_task_id: Option<String> = stmt
-            .query_row([proposal_id], |row| row.get(0))
-            .unwrap();
+        let proposal_task_id: Option<String> =
+            stmt.query_row([proposal_id], |row| row.get(0)).unwrap();
         assert!(proposal_task_id.is_none());
 
         let mut stmt = conn
             .prepare("SELECT task_id FROM artifacts WHERE id = ?1")
             .unwrap();
-        let artifact_task_id: Option<String> = stmt
-            .query_row([artifact_id], |row| row.get(0))
-            .unwrap();
+        let artifact_task_id: Option<String> =
+            stmt.query_row([artifact_id], |row| row.get(0)).unwrap();
         assert!(artifact_task_id.is_none());
     }
 
@@ -1106,7 +1102,9 @@ async fn test_update_metadata_sets_metadata_on_task_with_no_prior_metadata() {
 
     // Update metadata
     let metadata = r#"{"failure_error":"Task execution failed"}"#;
-    let result = repo.update_metadata(&task.id, Some(metadata.to_string())).await;
+    let result = repo
+        .update_metadata(&task.id, Some(metadata.to_string()))
+        .await;
 
     assert!(result.is_ok());
 
@@ -1128,7 +1126,9 @@ async fn test_update_metadata_replaces_existing_metadata() {
 
     // Replace with new metadata
     let new_metadata = r#"{"failure_error":"Task execution failed"}"#;
-    let result = repo.update_metadata(&task.id, Some(new_metadata.to_string())).await;
+    let result = repo
+        .update_metadata(&task.id, Some(new_metadata.to_string()))
+        .await;
 
     assert!(result.is_ok());
 
@@ -1170,7 +1170,9 @@ async fn test_update_metadata_does_not_change_internal_status() {
 
     // Update metadata
     let metadata = r#"{"key":"value"}"#;
-    let result = repo.update_metadata(&task.id, Some(metadata.to_string())).await;
+    let result = repo
+        .update_metadata(&task.id, Some(metadata.to_string()))
+        .await;
 
     assert!(result.is_ok());
 
@@ -1198,18 +1200,26 @@ async fn test_update_metadata_does_not_change_other_columns() {
 
     // Update metadata
     let metadata = r#"{"key":"value"}"#;
-    let result = repo.update_metadata(&task.id, Some(metadata.to_string())).await;
+    let result = repo
+        .update_metadata(&task.id, Some(metadata.to_string()))
+        .await;
 
     assert!(result.is_ok());
 
     // Verify other columns were not changed
     let updated = repo.get_by_id(&task.id).await.unwrap().unwrap();
-    assert_eq!(updated.description, Some("Original description".to_string()));
+    assert_eq!(
+        updated.description,
+        Some("Original description".to_string())
+    );
     assert_eq!(updated.priority, 42);
     assert_eq!(updated.internal_status, InternalStatus::Ready);
     assert_eq!(updated.task_branch, Some("feature/test".to_string()));
     assert_eq!(updated.worktree_path, Some("/path/to/worktree".to_string()));
-    assert_eq!(updated.blocked_reason, Some("Blocked by dependency".to_string()));
+    assert_eq!(
+        updated.blocked_reason,
+        Some("Blocked by dependency".to_string())
+    );
     assert_eq!(updated.metadata.unwrap(), metadata);
 }
 

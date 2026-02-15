@@ -4,10 +4,10 @@
 // it returns Err(ExecutionBlocked(...)) instead of silently swallowing the error.
 // TaskTransitionService catches ExecutionBlocked and transitions to Failed.
 
-use crate::tests::hardening_fixes::helpers::*;
 use crate::domain::state_machine::events::TaskEvent;
 use crate::domain::state_machine::machine::State;
 use crate::error::AppError;
+use crate::tests::hardening_fixes::helpers::*;
 
 #[tokio::test]
 async fn test_b1_fix_send_message_error_returns_execution_blocked() {
@@ -44,7 +44,12 @@ async fn test_b1_fix_send_message_error_returns_execution_blocked() {
     let events = svc.emitter.get_events();
     let error_events: Vec<_> = events
         .iter()
-        .filter(|e| e.args.first().map(|s| s == "task:on_enter_error").unwrap_or(false))
+        .filter(|e| {
+            e.args
+                .first()
+                .map(|s| s == "task:on_enter_error")
+                .unwrap_or(false)
+        })
         .collect();
     assert!(
         !error_events.is_empty(),
@@ -67,9 +72,8 @@ async fn test_b1_fix_re_executing_also_returns_error() {
         svc.chat_service.clone() as _,
     )
     .with_execution_state(svc.execution_state.clone())
-    .with_task_scheduler(
-        svc.scheduler.clone() as std::sync::Arc<dyn crate::domain::state_machine::services::TaskScheduler>,
-    );
+    .with_task_scheduler(svc.scheduler.clone()
+        as std::sync::Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
 
     let mut machine = create_state_machine("task-b1-reexec-fix", "proj-b1-fix", services);
     machine.context.review_feedback = Some("Fix tests".to_string());
@@ -96,7 +100,12 @@ async fn test_b1_fix_re_executing_also_returns_error() {
     let events = svc.emitter.get_events();
     let error_events: Vec<_> = events
         .iter()
-        .filter(|e| e.args.first().map(|s| s == "task:on_enter_error").unwrap_or(false))
+        .filter(|e| {
+            e.args
+                .first()
+                .map(|s| s == "task:on_enter_error")
+                .unwrap_or(false)
+        })
         .collect();
     assert!(
         !error_events.is_empty(),
@@ -107,9 +116,11 @@ async fn test_b1_fix_re_executing_also_returns_error() {
 #[tokio::test]
 async fn test_b1_fix_execution_blocked_error_carries_message() {
     // Verify the ExecutionBlocked error message includes useful context
-    let error = AppError::ExecutionBlocked(
-        "Failed to start agent: Chat service unavailable".to_string(),
-    );
+    let error =
+        AppError::ExecutionBlocked("Failed to start agent: Chat service unavailable".to_string());
     let msg = error.to_string();
-    assert!(msg.contains("Failed to start agent"), "Error should include agent failure context");
+    assert!(
+        msg.contains("Failed to start agent"),
+        "Error should include agent failure context"
+    );
 }

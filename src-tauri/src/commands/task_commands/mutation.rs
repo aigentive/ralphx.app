@@ -1060,7 +1060,9 @@ pub async fn cancel_tasks_in_group(
     // Determine the group and fetch tasks
     let tasks = match group_kind.as_str() {
         "status" => {
-            let internal_status: InternalStatus = group_id.parse().map_err(|_| format!("Invalid status: {}", group_id))?;
+            let internal_status: InternalStatus = group_id
+                .parse()
+                .map_err(|_| format!("Invalid status: {}", group_id))?;
             state
                 .task_repo
                 .get_by_status(&project_id_obj, internal_status)
@@ -1153,7 +1155,5 @@ pub async fn cancel_tasks_in_group(
         }),
     );
 
-    Ok(super::types::BulkCancelResponse {
-        cancelled_count,
-    })
+    Ok(super::types::BulkCancelResponse { cancelled_count })
 }
