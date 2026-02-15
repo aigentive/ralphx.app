@@ -441,6 +441,13 @@ impl TaskScheduler for MockTaskScheduler {
             vec![project_id.to_string()],
         ));
     }
+
+    async fn try_retry_main_merges(&self) {
+        self.calls.lock().unwrap().push(ServiceCall::new(
+            "try_retry_main_merges",
+            vec![],
+        ));
+    }
 }
 
 #[cfg(test)]

@@ -807,4 +807,5 @@ pub(crate) fn verify_merge_on_target(
 }
 
 #[cfg(test)]
+#[path = "chat_service_merge_tests.rs"]
 mod chat_service_merge_tests;

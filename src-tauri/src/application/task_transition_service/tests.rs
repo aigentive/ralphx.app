@@ -101,6 +101,7 @@ fn build_test_service(app_state: &AppState) -> TaskTransitionService<tauri::Wry>
         Arc::clone(&app_state.task_dependency_repo),
         Arc::clone(&app_state.project_repo),
         Arc::clone(&app_state.chat_message_repo),
+        Arc::clone(&app_state.chat_attachment_repo),
         Arc::clone(&app_state.chat_conversation_repo),
         Arc::clone(&app_state.agent_run_repo),
         Arc::clone(&app_state.ideation_session_repo),

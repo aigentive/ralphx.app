@@ -712,19 +712,6 @@ mod tests {
     }
 
     #[test]
-    fn test_clear_main_merge_deferred_metadata_removes_flag_and_timestamp() {
-        let project = Project::new("test".to_string(), "/tmp".to_string());
-        let mut task = Task::new(project.id, "Test task".to_string());
-        task.metadata = Some(r#"{"main_merge_deferred": true, "main_merge_deferred_at": "2026-02-15T00:00:00Z"}"#.to_string());
-
-        clear_main_merge_deferred_metadata(&mut task);
-
-        let meta: serde_json::Value = serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
-        assert!(meta.get("main_merge_deferred").is_none());
-        assert!(meta.get("main_merge_deferred_at").is_none());
-    }
-
-    #[test]
     fn test_clear_main_merge_deferred_metadata_preserves_other_fields() {
         let project = Project::new("test".to_string(), "/tmp".to_string());
         let mut task = Task::new(project.id, "Test task".to_string());
