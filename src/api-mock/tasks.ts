@@ -175,6 +175,15 @@ export const mockTasksApi = {
     return { ...task, internalStatus: "paused" as InternalStatus };
   },
 
+  resume: async (taskId: string): Promise<Task> => {
+    const store = getStore();
+    const task = store.tasks.get(taskId);
+    if (!task) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+    return { ...task, internalStatus: "executing" as InternalStatus };
+  },
+
   stop: async (taskId: string): Promise<Task> => {
     const store = getStore();
     const task = store.tasks.get(taskId);
