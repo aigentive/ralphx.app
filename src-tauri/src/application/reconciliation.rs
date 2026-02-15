@@ -1101,34 +1101,60 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
     /// Auto-resume paused tasks that were paused due to recoverable provider errors.
     ///
-    /// Checks provider_error metadata in task.metadata:
-    /// - If retry_after has passed and resume_attempts < MAX → resume via entry actions
-    /// - If max attempts exceeded → transition to Failed
-    /// - If no provider_error metadata → skip (user-paused task)
+    /// Checks pause_reason metadata in task.metadata (with backward compat for provider_error):
+    /// - UserInitiated → skip (user-paused tasks stay paused until user resumes)
+    /// - ProviderError with retry_after passed and resume_attempts < MAX → resume via entry actions
+    /// - ProviderError with max attempts exceeded → transition to Failed
+    /// - No metadata → skip (user-paused task)
     async fn reconcile_paused_provider_error(&self, task: &Task) -> bool {
-        use crate::application::chat_service::ProviderErrorMetadata;
+        use crate::application::chat_service::{PauseReason, ProviderErrorMetadata};
 
-        let meta = match ProviderErrorMetadata::from_task_metadata(task.metadata.as_deref()) {
-            Some(meta) => meta,
-            None => return false, // No provider error metadata — user-paused, skip
+        // Read from new pause_reason key (with backward compat for old provider_error key)
+        let pause_reason = match PauseReason::from_task_metadata(task.metadata.as_deref()) {
+            Some(reason) => reason,
+            None => {
+                // Also try legacy ProviderErrorMetadata directly
+                match ProviderErrorMetadata::from_task_metadata(task.metadata.as_deref()) {
+                    Some(_) => {
+                        // Fall through to legacy handling below
+                        return self.reconcile_paused_provider_error_legacy(task).await;
+                    }
+                    None => return false, // No metadata — user-paused, skip
+                }
+            }
         };
 
-        if !meta.auto_resumable {
+        // UserInitiated pauses should NOT be auto-resumed
+        let (category, message, retry_after, previous_status, auto_resumable, resume_attempts) =
+            match pause_reason {
+                PauseReason::UserInitiated { .. } => return false,
+                PauseReason::ProviderError {
+                    category,
+                    message,
+                    retry_after,
+                    previous_status,
+                    auto_resumable,
+                    resume_attempts,
+                    ..
+                } => (category, message, retry_after, previous_status, auto_resumable, resume_attempts),
+            };
+
+        if !auto_resumable {
             return false;
         }
 
         // Check if max resume attempts exceeded → transition to Failed
-        if meta.resume_attempts >= ProviderErrorMetadata::MAX_RESUME_ATTEMPTS {
+        if resume_attempts >= ProviderErrorMetadata::MAX_RESUME_ATTEMPTS {
             warn!(
                 task_id = task.id.as_str(),
-                attempts = meta.resume_attempts,
+                attempts = resume_attempts,
                 max = ProviderErrorMetadata::MAX_RESUME_ATTEMPTS,
-                category = %meta.category,
+                category = %category,
                 "Provider error auto-resume limit reached — transitioning to Failed"
             );
-            // Clear provider_error metadata and transition to Failed
+            // Clear pause metadata and transition to Failed
             let mut updated = task.clone();
-            updated.metadata = Some(ProviderErrorMetadata::clear_from_task_metadata(
+            updated.metadata = Some(PauseReason::clear_from_task_metadata(
                 updated.metadata.as_deref(),
             ));
             updated.touch();
@@ -1141,6 +1167,17 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return true;
         }
 
+        // Build a ProviderErrorMetadata to check retry eligibility
+        let meta = ProviderErrorMetadata {
+            category: category.clone(),
+            message: message.clone(),
+            retry_after: retry_after.clone(),
+            previous_status: previous_status.clone(),
+            paused_at: String::new(),
+            auto_resumable,
+            resume_attempts,
+        };
+
         // Check if retry_after time has passed
         if !meta.is_retry_eligible() {
             return false; // Not eligible yet — wait for retry_after
@@ -1152,11 +1189,18 @@ impl<R: Runtime> ReconciliationRunner<R> {
         }
 
         // Increment resume attempts
-        let mut updated_meta = meta.clone();
-        updated_meta.resume_attempts += 1;
+        let updated_reason = PauseReason::ProviderError {
+            category: category.clone(),
+            message,
+            retry_after,
+            previous_status: previous_status.clone(),
+            paused_at: chrono::Utc::now().to_rfc3339(),
+            auto_resumable,
+            resume_attempts: resume_attempts + 1,
+        };
         let mut updated_task = task.clone();
         updated_task.metadata = Some(
-            updated_meta.write_to_task_metadata(updated_task.metadata.as_deref()),
+            updated_reason.write_to_task_metadata(updated_task.metadata.as_deref()),
         );
         updated_task.touch();
         if let Err(e) = self.task_repo.update(&updated_task).await {
@@ -1169,7 +1213,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         }
 
         // Determine the target state to resume to (from previous_status)
-        let resume_status = match meta.previous_status.as_str() {
+        let resume_status = match previous_status.as_str() {
             "executing" => InternalStatus::Executing,
             "re_executing" => InternalStatus::ReExecuting,
             "qa_refining" => InternalStatus::QaRefining,
@@ -1181,9 +1225,9 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
         tracing::info!(
             task_id = task.id.as_str(),
-            category = %meta.category,
+            category = %category,
             resume_status = %resume_status,
-            attempt = updated_meta.resume_attempts,
+            attempt = resume_attempts + 1,
             "Auto-resuming provider-error-paused task"
         );
 
@@ -1193,9 +1237,9 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 "task:provider_error_resuming",
                 serde_json::json!({
                     "task_id": task.id.as_str(),
-                    "category": meta.category.to_string(),
+                    "category": category.to_string(),
                     "resume_status": resume_status.to_string(),
-                    "attempt": updated_meta.resume_attempts,
+                    "attempt": resume_attempts + 1,
                 }),
             );
         }
@@ -1208,12 +1252,12 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .await
         {
             Ok(_) => {
-                // Clear provider_error metadata on successful resume
+                // Clear pause metadata on successful resume
                 let mut cleared_task = match self.task_repo.get_by_id(&task.id).await {
                     Ok(Some(t)) => t,
                     _ => return true,
                 };
-                cleared_task.metadata = Some(ProviderErrorMetadata::clear_from_task_metadata(
+                cleared_task.metadata = Some(PauseReason::clear_from_task_metadata(
                     cleared_task.metadata.as_deref(),
                 ));
                 cleared_task.touch();
@@ -1227,6 +1271,88 @@ impl<R: Runtime> ReconciliationRunner<R> {
                     resume_status = %resume_status,
                     "Failed to auto-resume provider-error-paused task"
                 );
+                false
+            }
+        }
+    }
+
+    /// Legacy handler for tasks with old provider_error key (backward compat).
+    async fn reconcile_paused_provider_error_legacy(&self, task: &Task) -> bool {
+        use crate::application::chat_service::ProviderErrorMetadata;
+
+        let meta = match ProviderErrorMetadata::from_task_metadata(task.metadata.as_deref()) {
+            Some(meta) => meta,
+            None => return false,
+        };
+
+        if !meta.auto_resumable {
+            return false;
+        }
+
+        if meta.resume_attempts >= ProviderErrorMetadata::MAX_RESUME_ATTEMPTS {
+            warn!(
+                task_id = task.id.as_str(),
+                attempts = meta.resume_attempts,
+                "Legacy provider error auto-resume limit reached — transitioning to Failed"
+            );
+            let mut updated = task.clone();
+            updated.metadata = Some(ProviderErrorMetadata::clear_from_task_metadata(
+                updated.metadata.as_deref(),
+            ));
+            updated.touch();
+            let _ = self.task_repo.update(&updated).await;
+            let _ = self
+                .transition_service
+                .transition_task(&task.id, InternalStatus::Failed)
+                .await;
+            return true;
+        }
+
+        if !meta.is_retry_eligible() {
+            return false;
+        }
+
+        if !self.execution_state.can_start_task() {
+            return false;
+        }
+
+        let mut updated_meta = meta.clone();
+        updated_meta.resume_attempts += 1;
+        let mut updated_task = task.clone();
+        updated_task.metadata = Some(
+            updated_meta.write_to_task_metadata(updated_task.metadata.as_deref()),
+        );
+        updated_task.touch();
+        if let Err(e) = self.task_repo.update(&updated_task).await {
+            warn!(task_id = task.id.as_str(), error = %e, "Failed to update legacy resume attempts");
+            return false;
+        }
+
+        let resume_status = match meta.previous_status.as_str() {
+            "executing" => InternalStatus::Executing,
+            "re_executing" => InternalStatus::ReExecuting,
+            "qa_refining" => InternalStatus::QaRefining,
+            "qa_testing" => InternalStatus::QaTesting,
+            "reviewing" => InternalStatus::Reviewing,
+            "merging" => InternalStatus::Merging,
+            _ => InternalStatus::Executing,
+        };
+
+        match self.transition_service.transition_task(&task.id, resume_status).await {
+            Ok(_) => {
+                let mut cleared = match self.task_repo.get_by_id(&task.id).await {
+                    Ok(Some(t)) => t,
+                    _ => return true,
+                };
+                cleared.metadata = Some(ProviderErrorMetadata::clear_from_task_metadata(
+                    cleared.metadata.as_deref(),
+                ));
+                cleared.touch();
+                let _ = self.task_repo.update(&cleared).await;
+                true
+            }
+            Err(e) => {
+                warn!(task_id = task.id.as_str(), error = %e, "Failed legacy auto-resume");
                 false
             }
         }

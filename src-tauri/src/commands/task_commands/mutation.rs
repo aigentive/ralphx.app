@@ -948,12 +948,25 @@ pub async fn pause_task(
     let task_id = TaskId::from_string(task_id);
 
     // Verify task exists
-    let _ = state
+    let task = state
         .task_repo
         .get_by_id(&task_id)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Task not found: {}", task_id.as_str()))?;
+
+    // Store PauseReason::UserInitiated metadata before transitioning
+    let pause_reason = crate::application::chat_service::PauseReason::UserInitiated {
+        previous_status: task.internal_status.to_string(),
+        paused_at: chrono::Utc::now().to_rfc3339(),
+        scope: "task".to_string(),
+    };
+    let mut task_to_update = task.clone();
+    task_to_update.metadata = Some(
+        pause_reason.write_to_task_metadata(task_to_update.metadata.as_deref()),
+    );
+    task_to_update.touch();
+    let _ = state.task_repo.update(&task_to_update).await;
 
     // Build transition service
     let transition_service = TaskTransitionService::new(
@@ -1183,4 +1196,182 @@ pub async fn cancel_tasks_in_group(
     );
 
     Ok(super::types::BulkCancelResponse { cancelled_count })
+}
+
+/// Resume a single paused task back to its pre-pause status.
+///
+/// Reads pause_reason metadata to determine the previous status, falls back to
+/// status_history lookup. Clears pause metadata and re-executes entry actions
+/// to respawn the agent.
+///
+/// # Arguments
+/// * `task_id` - The task ID to resume
+///
+/// # Returns
+/// * `TaskResponse` - The resumed task
+#[tauri::command]
+pub async fn resume_task(
+    task_id: String,
+    state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
+    app: tauri::AppHandle,
+) -> Result<TaskResponse, String> {
+    use crate::application::{TaskSchedulerService, TaskTransitionService};
+    use crate::application::chat_service::PauseReason;
+    use crate::domain::state_machine::services::TaskScheduler;
+
+    let task_id = TaskId::from_string(task_id);
+
+    // Get the paused task
+    let task = state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Task not found: {}", task_id.as_str()))?;
+
+    if task.internal_status != InternalStatus::Paused {
+        return Err(format!(
+            "Task {} is not paused (current status: {})",
+            task_id.as_str(),
+            task.internal_status.as_str()
+        ));
+    }
+
+    // Determine restore status: prefer pause_reason metadata, fall back to status_history
+    let restore_status = if let Some(reason) =
+        PauseReason::from_task_metadata(task.metadata.as_deref())
+    {
+        match reason.previous_status().parse::<InternalStatus>() {
+            Ok(status) => status,
+            Err(_) => {
+                tracing::warn!(
+                    task_id = task_id.as_str(),
+                    previous_status = reason.previous_status(),
+                    "Invalid previous_status in pause metadata, falling back to history"
+                );
+                // Fall back to status history
+                get_restore_status_from_history(&state, &task_id).await?
+            }
+        }
+    } else {
+        get_restore_status_from_history(&state, &task_id).await?
+    };
+
+    // Check if execution can accept another task
+    if !execution_state.can_start_task() {
+        return Err("Cannot resume: max concurrent task limit reached".to_string());
+    }
+
+    // Build transition service
+    let scheduler_concrete = Arc::new(
+        TaskSchedulerService::new(
+            Arc::clone(&execution_state),
+            Arc::clone(&state.project_repo),
+            Arc::clone(&state.task_repo),
+            Arc::clone(&state.task_dependency_repo),
+            Arc::clone(&state.chat_message_repo),
+            Arc::clone(&state.chat_attachment_repo),
+            Arc::clone(&state.chat_conversation_repo),
+            Arc::clone(&state.agent_run_repo),
+            Arc::clone(&state.ideation_session_repo),
+            Arc::clone(&state.activity_event_repo),
+            Arc::clone(&state.message_queue),
+            Arc::clone(&state.running_agent_registry),
+            Arc::clone(&state.memory_event_repo),
+            Some(app.clone()),
+        )
+        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo)),
+    );
+    scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
+
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.task_dependency_repo),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.chat_message_repo),
+        Arc::clone(&state.chat_attachment_repo),
+        Arc::clone(&state.chat_conversation_repo),
+        Arc::clone(&state.agent_run_repo),
+        Arc::clone(&state.ideation_session_repo),
+        Arc::clone(&state.activity_event_repo),
+        Arc::clone(&state.message_queue),
+        Arc::clone(&state.running_agent_registry),
+        Arc::clone(&execution_state),
+        Some(app.clone()),
+        Arc::clone(&state.memory_event_repo),
+    )
+    .with_task_scheduler(scheduler_concrete as Arc<dyn TaskScheduler>)
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
+
+    // Transition to restore status
+    transition_service
+        .transition_task(&task_id, restore_status)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Fetch fresh task, clear metadata, execute entry actions
+    let mut restored_task = state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Task not found after transition: {}", task_id.as_str()))?;
+
+    // Clear pause metadata
+    restored_task.metadata = Some(PauseReason::clear_from_task_metadata(
+        restored_task.metadata.as_deref(),
+    ));
+    restored_task.touch();
+    state
+        .task_repo
+        .update(&restored_task)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Re-execute entry actions to respawn agent
+    transition_service
+        .execute_entry_actions(&task_id, &restored_task, restore_status)
+        .await;
+
+    // Emit lifecycle event
+    emit_task_lifecycle_event(
+        &app,
+        "task:resumed",
+        restored_task.id.as_str(),
+        restored_task.project_id.as_str(),
+    );
+
+    tracing::info!(
+        task_id = task_id.as_str(),
+        restored_to = ?restore_status,
+        "Successfully resumed paused task"
+    );
+
+    Ok(TaskResponse::from(restored_task))
+}
+
+/// Helper: get restore status from status_history for a paused task
+async fn get_restore_status_from_history(
+    state: &AppState,
+    task_id: &TaskId,
+) -> Result<InternalStatus, String> {
+    let status_history = state
+        .task_repo
+        .get_status_history(task_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let pause_transition = status_history
+        .iter()
+        .rev()
+        .find(|t| t.to == InternalStatus::Paused);
+
+    match pause_transition {
+        Some(transition) => Ok(transition.from),
+        None => Err(format!(
+            "No pause transition found in history for task {}",
+            task_id.as_str()
+        )),
+    }
 }
