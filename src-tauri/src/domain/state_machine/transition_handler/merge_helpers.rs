@@ -139,8 +139,6 @@ pub(crate) fn has_branch_missing_metadata(task: &Task) -> bool {
 
 /// Check if a task has the `main_merge_deferred` flag set in its metadata.
 /// This flag indicates a merge to main was deferred because agents were running.
-/// TODO(Phase 3): Used by try_retry_main_merges() when all agents go idle
-#[allow(dead_code)]
 pub(crate) fn has_main_merge_deferred_metadata(task: &Task) -> bool {
     parse_metadata(task)
         .and_then(|v| v.get("main_merge_deferred")?.as_bool())
