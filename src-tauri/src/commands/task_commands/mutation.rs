@@ -894,6 +894,18 @@ impl TaskStopper for TransitionTaskStopper {
             .await
             .map(|_| ())
     }
+
+    async fn transition_to_stopped_with_context(
+        &self,
+        task_id: &TaskId,
+        from_status: InternalStatus,
+        reason: Option<String>,
+    ) -> AppResult<()> {
+        self.transition_service
+            .transition_to_stopped_with_context(task_id, from_status, reason)
+            .await
+            .map(|_| ())
+    }
 }
 
 /// Build a TaskStopper from the standard Tauri state dependencies.
@@ -983,9 +995,17 @@ pub async fn pause_task(
 
 /// Stop a specific task
 /// Transitions the task to Stopped state (terminal, requires manual restart)
+///
+/// # Arguments
+/// * `task_id` - The task ID
+/// * `reason` - Optional reason for stopping (captured in stop metadata for smart resume)
+///
+/// # Returns
+/// * `TaskResponse` - The stopped task
 #[tauri::command]
 pub async fn stop_task(
     task_id: String,
+    reason: Option<String>,
     state: State<'_, AppState>,
     execution_state: State<'_, Arc<ExecutionState>>,
 ) -> Result<TaskResponse, String> {
@@ -993,13 +1013,15 @@ pub async fn stop_task(
 
     let task_id = TaskId::from_string(task_id);
 
-    // Verify task exists
-    let _ = state
+    // Get task to capture current status before stopping
+    let task = state
         .task_repo
         .get_by_id(&task_id)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Task not found: {}", task_id.as_str()))?;
+
+    let from_status = task.internal_status;
 
     // Build transition service
     let transition_service = TaskTransitionService::new(
@@ -1020,20 +1042,25 @@ pub async fn stop_task(
     )
     .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
 
-    // Transition to Stopped
+    // Transition to Stopped with context capture
     let updated_task = transition_service
-        .transition_task(&task_id, InternalStatus::Stopped)
+        .transition_to_stopped_with_context(&task_id, from_status, reason.clone())
         .await
         .map_err(|e| e.to_string())?;
 
-    // Emit lifecycle event
+    // Emit lifecycle event with stop context
     if let Some(ref app) = state.app_handle {
-        emit_task_lifecycle_event(
-            app,
+        app.emit(
             "task:stopped",
-            updated_task.id.as_str(),
-            updated_task.project_id.as_str(),
-        );
+            serde_json::json!({
+                "taskId": updated_task.id.as_str(),
+                "projectId": updated_task.project_id.as_str(),
+                "stoppedFromStatus": from_status.as_str(),
+                "stopReason": reason,
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+            }),
+        )
+        .map_err(|e| format!("Failed to emit task:stopped event: {}", e))?;
     }
 
     Ok(TaskResponse::from(updated_task))
