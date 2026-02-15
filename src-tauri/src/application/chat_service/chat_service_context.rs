@@ -448,10 +448,48 @@ pub async fn build_command(
     Ok(spawnable)
 }
 
+/// Fetch entity status for resume command context.
+///
+/// Mirrors the logic in `ClaudeChatService::get_entity_status` for use in the
+/// queue processing path, enabling status-aware agent resolution (e.g., readonly
+/// agent for accepted ideation sessions).
+pub async fn get_entity_status_for_resume(
+    context_type: ChatContextType,
+    context_id: &str,
+    ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    task_repo: Arc<dyn TaskRepository>,
+) -> Option<String> {
+    match context_type {
+        // Task-related contexts: look up task status
+        ChatContextType::Task
+        | ChatContextType::TaskExecution
+        | ChatContextType::Review
+        | ChatContextType::Merge => {
+            let task_id = TaskId::from_string(context_id.to_string());
+            if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await {
+                Some(task.internal_status.as_str().to_string())
+            } else {
+                None
+            }
+        }
+        // Ideation context: look up session status for read-only mode
+        ChatContextType::Ideation => {
+            let session_id = IdeationSessionId::from_string(context_id);
+            if let Ok(Some(session)) = ideation_session_repo.get_by_id(&session_id).await {
+                Some(session.status.to_string())
+            } else {
+                None
+            }
+        }
+        // Other contexts don't have status-based agent resolution
+        ChatContextType::Project => None,
+    }
+}
+
 /// Build a spawnable CLI command for resuming a session (queue messages).
 ///
-/// Like `build_command()`, but always resumes with the given session_id
-/// and uses static agent resolution (no entity_status needed for queue messages).
+/// Like `build_command()`, but always resumes with the given session_id.
+/// Fetches entity status to enable status-aware agent resolution (e.g., readonly for accepted ideation sessions).
 pub async fn build_resume_command(
     cli_path: &Path,
     plugin_dir: &Path,
@@ -462,8 +500,19 @@ pub async fn build_resume_command(
     session_id: &str,
     project_id: Option<&str>,
     _chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
+    ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    task_repo: Arc<dyn TaskRepository>,
 ) -> Result<SpawnableCommand, String> {
-    let agent_name = resolve_agent(&context_type, None);
+    // Fetch entity status for status-aware agent resolution
+    let entity_status = get_entity_status_for_resume(
+        context_type,
+        context_id,
+        ideation_session_repo,
+        task_repo,
+    )
+    .await;
+
+    let agent_name = resolve_agent(&context_type, entity_status.as_deref());
 
     let mut spawnable = build_spawnable_command(
         cli_path,
@@ -604,6 +653,7 @@ pub fn create_assistant_message(
 mod tests {
     use super::*;
     use crate::domain::entities::ChatAttachment;
+    use crate::domain::repositories::{StateHistoryMetadata, StatusTransition};
 
     #[test]
     fn test_is_text_file_by_mime_type() {
@@ -788,5 +838,309 @@ mod tests {
         let formatted = result.unwrap();
         assert!(formatted.contains("<filename>nonexistent.txt</filename>"));
         assert!(formatted.contains("<error>Failed to read file:"));
+    }
+
+    // Tests for get_entity_status_for_resume
+    use crate::domain::entities::{IdeationSession, IdeationSessionStatus, ProjectId};
+    use crate::domain::repositories::IdeationSessionRepository;
+    use async_trait::async_trait;
+    use crate::error::AppResult;
+
+    // Mock for testing
+    struct MockIdeationRepo {
+        session: Option<IdeationSession>,
+    }
+
+    impl MockIdeationRepo {
+        fn with_session(session: IdeationSession) -> Self {
+            Self { session: Some(session) }
+        }
+        fn empty() -> Self {
+            Self { session: None }
+        }
+    }
+
+    #[async_trait]
+    impl IdeationSessionRepository for MockIdeationRepo {
+        async fn create(&self, _session: IdeationSession) -> AppResult<IdeationSession> {
+            unimplemented!()
+        }
+        async fn get_by_id(&self, _id: &IdeationSessionId) -> AppResult<Option<IdeationSession>> {
+            Ok(self.session.clone())
+        }
+        async fn get_by_project(&self, _project_id: &ProjectId) -> AppResult<Vec<IdeationSession>> {
+            unimplemented!()
+        }
+        async fn update_status(&self, _id: &IdeationSessionId, _status: IdeationSessionStatus) -> AppResult<()> {
+            unimplemented!()
+        }
+        async fn update_title(&self, _id: &IdeationSessionId, _title: Option<String>) -> AppResult<()> {
+            unimplemented!()
+        }
+        async fn delete(&self, _id: &IdeationSessionId) -> AppResult<()> {
+            unimplemented!()
+        }
+        async fn get_active_by_project(&self, _project_id: &ProjectId) -> AppResult<Vec<IdeationSession>> {
+            unimplemented!()
+        }
+        async fn count_by_status(&self, _project_id: &ProjectId, _status: IdeationSessionStatus) -> AppResult<usize> {
+            unimplemented!()
+        }
+        async fn get_children(&self, _parent_id: &IdeationSessionId) -> AppResult<Vec<IdeationSession>> {
+            unimplemented!()
+        }
+        async fn get_ancestor_chain(&self, _session_id: &IdeationSessionId) -> AppResult<Vec<IdeationSession>> {
+            unimplemented!()
+        }
+        async fn set_parent(&self, _session_id: &IdeationSessionId, _parent_id: Option<&IdeationSessionId>) -> AppResult<()> {
+            unimplemented!()
+        }
+    }
+
+    struct MockTaskRepo;
+
+    #[async_trait]
+    impl TaskRepository for MockTaskRepo {
+        async fn create(&self, task: crate::domain::entities::Task) -> AppResult<crate::domain::entities::Task> {
+            Ok(task)
+        }
+
+        async fn get_by_id(&self, _id: &TaskId) -> AppResult<Option<crate::domain::entities::Task>> {
+            Ok(None)
+        }
+
+        async fn get_by_project(&self, _project_id: &ProjectId) -> AppResult<Vec<crate::domain::entities::Task>> {
+            Ok(vec![])
+        }
+
+        async fn update(&self, _task: &crate::domain::entities::Task) -> AppResult<()> {
+            Ok(())
+        }
+
+        async fn update_metadata(&self, _id: &TaskId, _metadata: Option<String>) -> AppResult<()> {
+            Ok(())
+        }
+
+        async fn delete(&self, _id: &TaskId) -> AppResult<()> {
+            Ok(())
+        }
+
+        async fn clear_task_references(&self, _id: &TaskId) -> AppResult<()> {
+            Ok(())
+        }
+
+        async fn get_by_status(
+            &self,
+            _project_id: &ProjectId,
+            _status: crate::domain::entities::InternalStatus,
+        ) -> AppResult<Vec<crate::domain::entities::Task>> {
+            Ok(vec![])
+        }
+
+        async fn persist_status_change(
+            &self,
+            _id: &TaskId,
+            _from: crate::domain::entities::InternalStatus,
+            _to: crate::domain::entities::InternalStatus,
+            _trigger: &str,
+        ) -> AppResult<()> {
+            Ok(())
+        }
+
+        async fn get_status_history(&self, _id: &TaskId) -> AppResult<Vec<StatusTransition>> {
+            Ok(vec![])
+        }
+
+        async fn get_status_entered_at(
+            &self,
+            _task_id: &TaskId,
+            _status: crate::domain::entities::InternalStatus,
+        ) -> AppResult<Option<chrono::DateTime<chrono::Utc>>> {
+            Ok(None)
+        }
+
+        async fn get_next_executable(&self, _project_id: &ProjectId) -> AppResult<Option<crate::domain::entities::Task>> {
+            Ok(None)
+        }
+
+        async fn get_blockers(&self, _id: &TaskId) -> AppResult<Vec<crate::domain::entities::Task>> {
+            Ok(vec![])
+        }
+
+        async fn get_dependents(&self, _id: &TaskId) -> AppResult<Vec<crate::domain::entities::Task>> {
+            Ok(vec![])
+        }
+
+        async fn add_blocker(&self, _task_id: &TaskId, _blocker_id: &TaskId) -> AppResult<()> {
+            Ok(())
+        }
+
+        async fn resolve_blocker(&self, _task_id: &TaskId, _blocker_id: &TaskId) -> AppResult<()> {
+            Ok(())
+        }
+
+        async fn get_by_ideation_session(
+            &self,
+            _session_id: &crate::domain::entities::IdeationSessionId,
+        ) -> AppResult<Vec<crate::domain::entities::Task>> {
+            Ok(vec![])
+        }
+
+        async fn get_by_project_filtered(
+            &self,
+            _project_id: &ProjectId,
+            _include_archived: bool,
+        ) -> AppResult<Vec<crate::domain::entities::Task>> {
+            Ok(vec![])
+        }
+
+        async fn archive(&self, _task_id: &TaskId) -> AppResult<crate::domain::entities::Task> {
+            unimplemented!()
+        }
+
+        async fn restore(&self, _task_id: &TaskId) -> AppResult<crate::domain::entities::Task> {
+            unimplemented!()
+        }
+
+        async fn get_archived_count(
+            &self,
+            _project_id: &ProjectId,
+            _ideation_session_id: Option<&str>,
+        ) -> AppResult<u32> {
+            Ok(0)
+        }
+
+        async fn list_paginated(
+            &self,
+            _project_id: &ProjectId,
+            _statuses: Option<Vec<crate::domain::entities::InternalStatus>>,
+            _offset: u32,
+            _limit: u32,
+            _include_archived: bool,
+            _ideation_session_id: Option<&str>,
+        ) -> AppResult<Vec<crate::domain::entities::Task>> {
+            Ok(vec![])
+        }
+
+        async fn count_tasks(
+            &self,
+            _project_id: &ProjectId,
+            _include_archived: bool,
+            _ideation_session_id: Option<&str>,
+        ) -> AppResult<u32> {
+            Ok(0)
+        }
+
+        async fn search(
+            &self,
+            _project_id: &ProjectId,
+            _query: &str,
+            _include_archived: bool,
+        ) -> AppResult<Vec<crate::domain::entities::Task>> {
+            Ok(vec![])
+        }
+
+        async fn get_oldest_ready_task(&self) -> AppResult<Option<crate::domain::entities::Task>> {
+            Ok(None)
+        }
+
+        async fn get_oldest_ready_tasks(&self, _limit: u32) -> AppResult<Vec<crate::domain::entities::Task>> {
+            Ok(vec![])
+        }
+
+        async fn update_latest_state_history_metadata(
+            &self,
+            _task_id: &TaskId,
+            _metadata: &StateHistoryMetadata,
+        ) -> AppResult<()> {
+            Ok(())
+        }
+
+        async fn has_task_in_states(
+            &self,
+            _project_id: &ProjectId,
+            _statuses: &[crate::domain::entities::InternalStatus],
+        ) -> AppResult<bool> {
+            Ok(false)
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_entity_status_for_resume_ideation_accepted() {
+        let project_id = ProjectId::new();
+        let session_id = IdeationSessionId::new();
+        let mut session = IdeationSession::new(project_id.clone(), "Test Session".to_string());
+        session.id = session_id.clone();
+        session.status = IdeationSessionStatus::Accepted;
+
+        let ideation_repo = Arc::new(MockIdeationRepo::with_session(session));
+        let task_repo = Arc::new(MockTaskRepo);
+
+        let status = get_entity_status_for_resume(
+            ChatContextType::Ideation,
+            session_id.as_str(),
+            ideation_repo,
+            task_repo,
+        )
+        .await;
+
+        assert_eq!(status, Some("accepted".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_entity_status_for_resume_ideation_active() {
+        let project_id = ProjectId::new();
+        let session_id = IdeationSessionId::new();
+        let mut session = IdeationSession::new(project_id.clone(), "Test Session".to_string());
+        session.id = session_id.clone();
+        session.status = IdeationSessionStatus::Active;
+
+        let ideation_repo = Arc::new(MockIdeationRepo::with_session(session));
+        let task_repo = Arc::new(MockTaskRepo);
+
+        let status = get_entity_status_for_resume(
+            ChatContextType::Ideation,
+            session_id.as_str(),
+            ideation_repo,
+            task_repo,
+        )
+        .await;
+
+        assert_eq!(status, Some("active".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_entity_status_for_resume_ideation_not_found() {
+        let session_id = IdeationSessionId::new();
+
+        let ideation_repo = Arc::new(MockIdeationRepo::empty());
+        let task_repo = Arc::new(MockTaskRepo);
+
+        let status = get_entity_status_for_resume(
+            ChatContextType::Ideation,
+            session_id.as_str(),
+            ideation_repo,
+            task_repo,
+        )
+        .await;
+
+        assert_eq!(status, None);
+    }
+
+    #[tokio::test]
+    async fn test_get_entity_status_for_resume_project_context() {
+        let ideation_repo = Arc::new(MockIdeationRepo::empty());
+        let task_repo = Arc::new(MockTaskRepo);
+
+        let status = get_entity_status_for_resume(
+            ChatContextType::Project,
+            "project-id",
+            ideation_repo,
+            task_repo,
+        )
+        .await;
+
+        // Project context doesn't have status-based agent resolution
+        assert_eq!(status, None);
     }
 }
