@@ -770,6 +770,7 @@ pub struct CreateChildSessionRequest {
     pub description: Option<String>,
     #[serde(default = "default_inherit_context")]
     pub inherit_context: bool,
+    pub initial_prompt: Option<String>,
 }
 
 fn default_inherit_context() -> bool {
@@ -785,6 +786,8 @@ pub struct CreateChildSessionResponse {
     pub created_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub inherited_plan_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub initial_prompt: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_context: Option<ParentContextResponse>,
     /// Whether an orchestrator job was enqueued (true when description is provided)
