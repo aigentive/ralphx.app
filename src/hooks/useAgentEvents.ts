@@ -118,6 +118,7 @@ export function useAgentEvents(activeConversationId: string | null) {
                   createdAt: new Date().toISOString(),
                   toolCalls: null,
                   contentBlocks: null,
+                  sender: null,
                 };
                 return { ...oldData, messages: [...oldData.messages, newMessage] };
               }

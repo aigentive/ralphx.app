@@ -95,9 +95,9 @@ interface ChatMessageListProps {
   /** Ref to track conversation that's finalizing (between message_created and query refetch) */
   finalizingConversationRef?: React.MutableRefObject<string | null>;
   /** Team filter for message filtering (team mode) */
-  teamFilter?: "all" | "lead" | string;
+  teamFilter?: "all" | "lead" | string | undefined;
   /** Context key for team store lookup (team mode) */
-  contextKey?: string;
+  contextKey?: string | undefined;
 }
 
 // ============================================================================
@@ -361,7 +361,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         return { teammateName: null, teammateColor: null };
       }
       const selector = selectTeammateByName(contextKey, sender);
-      const teammate = useTeamStore.getState()(selector);
+      const teammate = selector(useTeamStore.getState());
       return {
         teammateName: teammate?.name ?? null,
         teammateColor: teammate?.color ?? null,
