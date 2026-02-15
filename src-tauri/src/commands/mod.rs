@@ -49,8 +49,8 @@ pub use artifact_commands::{
 };
 pub use chat_attachment_commands::{
     delete_chat_attachment, link_attachments_to_message, list_conversation_attachments,
-    list_message_attachments, upload_chat_attachment, ChatAttachmentResponse,
-    LinkAttachmentsInput, UploadChatAttachmentInput,
+    list_message_attachments, upload_chat_attachment, ChatAttachmentResponse, LinkAttachmentsInput,
+    UploadChatAttachmentInput,
 };
 pub use chat_responses::ChatMessageResponse;
 pub use diff_commands::{get_file_diff, get_task_file_changes};
@@ -108,9 +108,8 @@ pub use review_commands::{
 pub use task_commands::{
     answer_user_question, archive_task, cancel_tasks_in_group, create_task, delete_task,
     emit_queue_changed, get_archived_count, get_task, get_task_state_transitions,
-    get_valid_transitions, inject_task, list_tasks, move_task, pause_task,
-    permanently_delete_task, restore_task, search_tasks, stop_task, update_task,
-    StateTransitionResponse,
+    get_valid_transitions, inject_task, list_tasks, move_task, pause_task, permanently_delete_task,
+    restore_task, search_tasks, stop_task, update_task, StateTransitionResponse,
 };
 pub use task_context_commands::{
     get_artifact_full, get_artifact_version, get_related_artifacts, get_task_context,

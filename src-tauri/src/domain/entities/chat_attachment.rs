@@ -175,13 +175,8 @@ mod tests {
     #[test]
     fn test_set_message_id() {
         let conversation_id = ChatConversationId::new();
-        let mut attachment = ChatAttachment::new(
-            conversation_id,
-            "test.txt",
-            "/path/to/test.txt",
-            1024,
-            None,
-        );
+        let mut attachment =
+            ChatAttachment::new(conversation_id, "test.txt", "/path/to/test.txt", 1024, None);
 
         assert!(!attachment.is_linked_to_message());
 
@@ -210,13 +205,8 @@ mod tests {
     fn test_extension() {
         let conversation_id = ChatConversationId::new();
 
-        let txt_attachment = ChatAttachment::new(
-            conversation_id,
-            "test.txt",
-            "/path/to/test.txt",
-            1024,
-            None,
-        );
+        let txt_attachment =
+            ChatAttachment::new(conversation_id, "test.txt", "/path/to/test.txt", 1024, None);
         assert_eq!(txt_attachment.extension(), Some("txt"));
 
         let pdf_attachment = ChatAttachment::new(
@@ -228,13 +218,8 @@ mod tests {
         );
         assert_eq!(pdf_attachment.extension(), Some("pdf"));
 
-        let no_ext_attachment = ChatAttachment::new(
-            conversation_id,
-            "README",
-            "/path/to/README",
-            512,
-            None,
-        );
+        let no_ext_attachment =
+            ChatAttachment::new(conversation_id, "README", "/path/to/README", 512, None);
         assert_eq!(no_ext_attachment.extension(), None);
     }
 }

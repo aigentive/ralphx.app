@@ -42,18 +42,19 @@ mod v21_questions_permissions;
 mod v22_project_active_plan;
 mod v23_plan_selection_stats;
 mod v24_memory_framework;
-mod v25_seed_artifact_buckets;
 mod v25_running_agent_worktree;
+mod v25_seed_artifact_buckets;
 mod v25_update_max_concurrent_default;
 mod v26_merge_strategy;
 mod v27_default_rebase_squash;
 mod v28_repair_schema_drift;
+mod v2_add_dependency_reason;
 mod v31_session_linking;
 mod v32_fix_task_fk_constraints;
 mod v33_agent_run_chain_ids;
 mod v34_chat_attachments;
 mod v35_step_substeps;
-mod v2_add_dependency_reason;
+mod v36_spawn_orchestrator_jobs;
 mod v3_add_activity_events;
 mod v4_add_blocked_reason;
 mod v5_add_review_summary_issues;
@@ -101,6 +102,8 @@ mod v25_running_agent_worktree_tests;
 #[cfg(test)]
 mod v26_merge_strategy_tests;
 #[cfg(test)]
+mod v2_add_dependency_reason_tests;
+#[cfg(test)]
 mod v31_session_linking_tests;
 #[cfg(test)]
 mod v32_fix_task_fk_constraints_tests;
@@ -110,8 +113,6 @@ mod v33_agent_run_chain_ids_tests;
 mod v34_chat_attachments_tests;
 #[cfg(test)]
 mod v35_step_substeps_tests;
-#[cfg(test)]
-mod v2_add_dependency_reason_tests;
 #[cfg(test)]
 mod v3_add_activity_events_tests;
 #[cfg(test)]
@@ -126,7 +127,7 @@ mod v8_task_git_fields_tests;
 mod v9_project_git_fields_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 35;
+pub const SCHEMA_VERSION: i32 = 36;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -315,6 +316,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 35,
         name: "step_substeps",
         migrate: v35_step_substeps::migrate,
+    },
+    Migration {
+        version: 36,
+        name: "spawn_orchestrator_jobs",
+        migrate: v36_spawn_orchestrator_jobs::migrate,
     },
 ];
 

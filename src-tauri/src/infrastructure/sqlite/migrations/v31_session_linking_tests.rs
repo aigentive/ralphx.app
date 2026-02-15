@@ -14,7 +14,12 @@ fn create_project(conn: &rusqlite::Connection, id: &str) {
 }
 
 /// Helper to create an ideation session
-fn create_session(conn: &rusqlite::Connection, id: &str, project_id: &str, parent_session_id: Option<&str>) {
+fn create_session(
+    conn: &rusqlite::Connection,
+    id: &str,
+    project_id: &str,
+    parent_session_id: Option<&str>,
+) {
     conn.execute(
         "INSERT INTO ideation_sessions (id, project_id, parent_session_id, status, created_at, updated_at)
          VALUES (?1, ?2, ?3, 'active',
@@ -175,11 +180,8 @@ fn test_v31_on_delete_cascade_for_session_links() {
     .unwrap();
 
     // Delete the parent session
-    conn.execute(
-        "DELETE FROM ideation_sessions WHERE id = 'parent-sess'",
-        [],
-    )
-    .unwrap();
+    conn.execute("DELETE FROM ideation_sessions WHERE id = 'parent-sess'", [])
+        .unwrap();
 
     // The session_link entry should also be deleted
     let count: i32 = conn
@@ -213,11 +215,8 @@ fn test_v31_on_delete_set_null_for_parent_session_id() {
     assert_eq!(parent_id, Some("parent-sess".to_string()));
 
     // Delete the parent session
-    conn.execute(
-        "DELETE FROM ideation_sessions WHERE id = 'parent-sess'",
-        [],
-    )
-    .unwrap();
+    conn.execute("DELETE FROM ideation_sessions WHERE id = 'parent-sess'", [])
+        .unwrap();
 
     // The child session's parent_session_id should now be NULL
     let parent_id: Option<String> = conn
@@ -236,10 +235,7 @@ fn test_v31_parent_session_id_index_exists() {
     let conn = open_memory_connection().unwrap();
     run_migrations(&conn).unwrap();
 
-    assert!(helpers::index_exists(
-        &conn,
-        "idx_ideation_sessions_parent"
-    ));
+    assert!(helpers::index_exists(&conn, "idx_ideation_sessions_parent"));
 }
 
 #[test]

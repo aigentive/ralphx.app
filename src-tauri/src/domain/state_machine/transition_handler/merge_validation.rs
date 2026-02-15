@@ -9,7 +9,9 @@ use std::process::Command;
 use tauri::{AppHandle, Emitter};
 
 use crate::domain::entities::{
-    merge_progress_event::{map_command_to_phase, MergePhase, MergePhaseStatus, MergeProgressEvent},
+    merge_progress_event::{
+        map_command_to_phase, MergePhase, MergePhaseStatus, MergeProgressEvent,
+    },
     Project, Task,
 };
 
@@ -95,12 +97,7 @@ pub(super) fn emit_merge_progress<R: tauri::Runtime>(
     message: String,
 ) {
     if let Some(handle) = app_handle {
-        let event = MergeProgressEvent::new(
-            task_id.to_string(),
-            phase,
-            status,
-            message,
-        );
+        let event = MergeProgressEvent::new(task_id.to_string(), phase, status, message);
         let _ = handle.emit("task:merge_progress", event);
     }
 }
@@ -699,15 +696,8 @@ pub(crate) async fn run_validation_commands(
     };
 
     // Phase 1: Setup
-    let (mut log, _setup_had_failures) = run_setup_phase(
-        &entries,
-        merge_cwd,
-        task_id_str,
-        app_handle,
-        &resolve,
-        None,
-    )
-    .await;
+    let (mut log, _setup_had_failures) =
+        run_setup_phase(&entries, merge_cwd, task_id_str, app_handle, &resolve, None).await;
 
     // Phase 2: Validate
     let (validate_log, failures, ran_any) = run_validate_phase(
@@ -823,7 +813,10 @@ pub(super) fn format_validation_warn_metadata(
 ///
 /// Note: Caching is effective in worktree mode. In local mode, rebase rewrites the source
 /// branch SHA on each retry, so cache hits are rare.
-pub(super) fn extract_cached_validation(task: &Task, current_sha: &str) -> Option<Vec<ValidationLogEntry>> {
+pub(super) fn extract_cached_validation(
+    task: &Task,
+    current_sha: &str,
+) -> Option<Vec<ValidationLogEntry>> {
     let meta_str = task.metadata.as_ref()?;
     let val: serde_json::Value = serde_json::from_str(meta_str).ok()?;
     let stored_sha = val.get("validation_source_sha")?.as_str()?;
@@ -1100,8 +1093,5 @@ pub(crate) async fn run_pre_execution_setup(
         "run_pre_execution_setup: completed pre-execution setup"
     );
 
-    Some(PreExecSetupResult {
-        success,
-        log,
-    })
+    Some(PreExecSetupResult { success, log })
 }

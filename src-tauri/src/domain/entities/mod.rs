@@ -22,6 +22,7 @@ pub mod project;
 pub mod research;
 pub mod review;
 pub mod review_issue;
+pub mod spawn_orchestrator_job;
 pub mod status;
 pub mod task;
 pub mod task_context;
@@ -67,6 +68,7 @@ pub use memory_archive_job::{MemoryArchiveJobStatus, MemoryArchiveJobType};
 pub use memory_entry::{MemoryBucket, MemoryEntry, MemoryEntryId, MemoryStatus};
 pub use memory_event::{MemoryActorType, MemoryEvent, MemoryEventId, ParseMemoryActorTypeError};
 pub use memory_rule_binding::MemoryRuleBinding;
+pub use merge_progress_event::{MergePhase, MergePhaseStatus, MergeProgressEvent};
 pub use methodology::{
     MethodologyExtension, MethodologyId, MethodologyPhase, MethodologyPlanArtifactConfig,
     MethodologyPlanTemplate, MethodologyStatus, MethodologyTemplate, ParseMethodologyStatusError,
@@ -89,10 +91,12 @@ pub use review_issue::{
     ParseIssueSeverityError, ParseIssueStatusError, ReviewIssue as ReviewIssueEntity,
     SeverityBreakdown, SeverityCount,
 };
+pub use spawn_orchestrator_job::{
+    SpawnOrchestratorJob, SpawnOrchestratorJobId, SpawnOrchestratorJobStatus,
+};
 pub use status::{InternalStatus, ParseInternalStatusError};
 pub use task::Task;
 pub use task_context::{ArtifactSummary, TaskContext, TaskDependencySummary, TaskProposalSummary};
-pub use merge_progress_event::{MergePhase, MergePhaseStatus, MergeProgressEvent};
 pub use task_metadata::{
     MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
     MergeRecoverySource, MergeRecoveryState,

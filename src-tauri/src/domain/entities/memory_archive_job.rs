@@ -5,6 +5,5 @@
 // The canonical types live in memory_archive.rs.
 
 pub use super::memory_archive::{
-    ArchiveJobStatus as MemoryArchiveJobStatus,
-    ArchiveJobType as MemoryArchiveJobType,
+    ArchiveJobStatus as MemoryArchiveJobStatus, ArchiveJobType as MemoryArchiveJobType,
 };

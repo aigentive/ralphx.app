@@ -66,10 +66,7 @@ impl RuleParser {
         // Check if content starts with ---
         if !content.trim_start().starts_with("---") {
             // No frontmatter, return empty frontmatter and full content
-            return Ok((
-                RuleFrontmatter { paths: vec![] },
-                content.to_string(),
-            ));
+            return Ok((RuleFrontmatter { paths: vec![] }, content.to_string()));
         }
 
         // Find the closing ---
@@ -87,10 +84,7 @@ impl RuleParser {
 
         if !found_closing {
             // Malformed frontmatter, treat as no frontmatter
-            return Ok((
-                RuleFrontmatter { paths: vec![] },
-                content.to_string(),
-            ));
+            return Ok((RuleFrontmatter { paths: vec![] }, content.to_string()));
         }
 
         // Extract frontmatter YAML
@@ -169,10 +163,7 @@ impl RuleParser {
         }
 
         // Extract title (text after the # symbols)
-        let title = trimmed[hash_count..]
-            .trim_start()
-            .trim_end()
-            .to_string();
+        let title = trimmed[hash_count..].trim_start().trim_end().to_string();
 
         if title.is_empty() {
             return None;

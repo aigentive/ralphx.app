@@ -21,8 +21,9 @@ use crate::domain::repositories::{
     MemoryEventRepository, MethodologyRepository, PlanBranchRepository,
     PlanSelectionStatsRepository, ProcessRepository, ProjectRepository,
     ProposalDependencyRepository, ReviewRepository, ReviewSettingsRepository,
-    SessionLinkRepository, TaskDependencyRepository, TaskProposalRepository, TaskQARepository,
-    TaskRepository, TaskStepRepository, WorkflowRepository,
+    SessionLinkRepository, SpawnOrchestratorJobRepository, TaskDependencyRepository,
+    TaskProposalRepository, TaskQARepository, TaskRepository, TaskStepRepository,
+    WorkflowRepository,
 };
 use crate::domain::services::{MemoryRunningAgentRegistry, MessageQueue, RunningAgentRegistry};
 use crate::error::AppResult;
@@ -47,16 +48,17 @@ use crate::infrastructure::sqlite::{
     SqliteActivePlanRepository, SqliteActivityEventRepository, SqliteAgentProfileRepository,
     SqliteAgentRunRepository, SqliteAppStateRepository, SqliteArtifactBucketRepository,
     SqliteArtifactFlowRepository, SqliteArtifactRepository, SqliteChatAttachmentRepository,
-    SqliteChatConversationRepository, SqliteChatMessageRepository, SqliteExecutionSettingsRepository,
-    SqliteGlobalExecutionSettingsRepository, SqliteIdeationSessionRepository,
-    SqliteIdeationSettingsRepository, SqliteMemoryArchiveRepository, SqliteMemoryEntryRepository,
-    SqliteMemoryEventRepository, SqliteMethodologyRepository, SqlitePermissionRepository,
-    SqlitePlanBranchRepository, SqlitePlanSelectionStatsRepository, SqliteProcessRepository,
-    SqliteProjectRepository, SqliteProposalDependencyRepository, SqliteQuestionRepository,
-    SqliteReviewIssueRepository, SqliteReviewRepository, SqliteReviewSettingsRepository,
-    SqliteRunningAgentRegistry, SqliteSessionLinkRepository, SqliteTaskDependencyRepository,
-    SqliteTaskProposalRepository, SqliteTaskQARepository, SqliteTaskRepository,
-    SqliteTaskStepRepository, SqliteWorkflowRepository,
+    SqliteChatConversationRepository, SqliteChatMessageRepository,
+    SqliteExecutionSettingsRepository, SqliteGlobalExecutionSettingsRepository,
+    SqliteIdeationSessionRepository, SqliteIdeationSettingsRepository,
+    SqliteMemoryArchiveRepository, SqliteMemoryEntryRepository, SqliteMemoryEventRepository,
+    SqliteMethodologyRepository, SqlitePermissionRepository, SqlitePlanBranchRepository,
+    SqlitePlanSelectionStatsRepository, SqliteProcessRepository, SqliteProjectRepository,
+    SqliteProposalDependencyRepository, SqliteQuestionRepository, SqliteReviewIssueRepository,
+    SqliteReviewRepository, SqliteReviewSettingsRepository, SqliteRunningAgentRegistry,
+    SqliteSessionLinkRepository, SqliteSpawnOrchestratorJobRepository,
+    SqliteTaskDependencyRepository, SqliteTaskProposalRepository, SqliteTaskQARepository,
+    SqliteTaskRepository, SqliteTaskStepRepository, SqliteWorkflowRepository,
 };
 use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
 
@@ -146,6 +148,8 @@ pub struct AppState {
     pub memory_event_repo: Arc<dyn MemoryEventRepository>,
     /// Memory archive repository for snapshot generation job queue
     pub memory_archive_repo: Arc<dyn MemoryArchiveRepository>,
+    /// Spawn orchestrator job repository for background orchestrator spawning
+    pub spawn_orchestrator_job_repo: Arc<dyn SpawnOrchestratorJobRepository>,
     /// Chat attachment repository for file uploads in chat
     pub chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     /// Storage path for chat attachments
@@ -289,6 +293,9 @@ impl AppState {
             memory_archive_repo: Arc::new(SqliteMemoryArchiveRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
+            spawn_orchestrator_job_repo: Arc::new(SqliteSpawnOrchestratorJobRepository::from_shared(
+                Arc::clone(&shared_conn),
+            )),
             chat_attachment_repo,
             attachment_storage_path,
             permission_state: Arc::new(PermissionState::with_repo(Arc::new(
@@ -428,6 +435,9 @@ impl AppState {
             memory_archive_repo: Arc::new(SqliteMemoryArchiveRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
+            spawn_orchestrator_job_repo: Arc::new(SqliteSpawnOrchestratorJobRepository::from_shared(
+                Arc::clone(&shared_conn),
+            )),
             chat_attachment_repo,
             attachment_storage_path,
             permission_state: Arc::new(PermissionState::with_repo(Arc::new(
@@ -493,7 +503,12 @@ impl AppState {
             memory_entry_repo: Arc::new(InMemoryMemoryEntryRepository::new()),
             memory_event_repo: Arc::new(InMemoryMemoryEventRepository::new()),
             memory_archive_repo: Arc::new(SqliteMemoryArchiveRepository::new(
-                open_connection(&PathBuf::from(":memory:")).expect("Failed to create in-memory connection")
+                open_connection(&PathBuf::from(":memory:"))
+                    .expect("Failed to create in-memory connection"),
+            )),
+            spawn_orchestrator_job_repo: Arc::new(SqliteSpawnOrchestratorJobRepository::new(
+                open_connection(&PathBuf::from(":memory:"))
+                    .expect("Failed to create in-memory connection"),
             )),
             chat_attachment_repo,
             attachment_storage_path,
@@ -562,7 +577,12 @@ impl AppState {
             memory_entry_repo: Arc::new(InMemoryMemoryEntryRepository::new()),
             memory_event_repo: Arc::new(InMemoryMemoryEventRepository::new()),
             memory_archive_repo: Arc::new(SqliteMemoryArchiveRepository::new(
-                open_connection(&PathBuf::from(":memory:")).expect("Failed to create in-memory connection")
+                open_connection(&PathBuf::from(":memory:"))
+                    .expect("Failed to create in-memory connection"),
+            )),
+            spawn_orchestrator_job_repo: Arc::new(SqliteSpawnOrchestratorJobRepository::new(
+                open_connection(&PathBuf::from(":memory:"))
+                    .expect("Failed to create in-memory connection"),
             )),
             chat_attachment_repo,
             attachment_storage_path,

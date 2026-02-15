@@ -168,9 +168,7 @@ impl QuestionState {
     /// Used to suppress stream monitor timeout kills while agent is waiting for user input
     pub async fn has_pending_for_session(&self, session_id: &str) -> bool {
         let pending = self.pending.lock().await;
-        pending
-            .values()
-            .any(|q| q.info.session_id == session_id)
+        pending.values().any(|q| q.info.session_id == session_id)
     }
 }
 

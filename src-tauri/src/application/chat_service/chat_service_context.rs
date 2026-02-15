@@ -281,15 +281,42 @@ pub(super) fn is_text_file(mime_type: Option<&str>, file_name: &str) -> bool {
     matches!(
         ext.as_deref(),
         Some(
-            "txt" | "md" | "rs" | "ts" | "tsx" | "js" | "jsx" | "json" | "yaml" | "yml" | "xml"
-                | "html" | "css" | "py" | "java" | "c" | "cpp" | "h" | "go" | "sh" | "toml"
-                | "csv" | "log" | "sql" | "graphql" | "env" | "gitignore" | "dockerfile"
+            "txt"
+                | "md"
+                | "rs"
+                | "ts"
+                | "tsx"
+                | "js"
+                | "jsx"
+                | "json"
+                | "yaml"
+                | "yml"
+                | "xml"
+                | "html"
+                | "css"
+                | "py"
+                | "java"
+                | "c"
+                | "cpp"
+                | "h"
+                | "go"
+                | "sh"
+                | "toml"
+                | "csv"
+                | "log"
+                | "sql"
+                | "graphql"
+                | "env"
+                | "gitignore"
+                | "dockerfile"
         )
     )
 }
 
 /// Format attachments for inclusion in agent context
-pub(super) async fn format_attachments_for_agent(attachments: &[ChatAttachment]) -> Result<String, String> {
+pub(super) async fn format_attachments_for_agent(
+    attachments: &[ChatAttachment],
+) -> Result<String, String> {
     if attachments.is_empty() {
         return Ok(String::new());
     }
@@ -379,7 +406,10 @@ pub async fn build_command(
         let session_id = conversation.claude_session_id.as_ref().unwrap();
         // For resume, append attachments to the user message
         let message_with_attachments = format!("{}{}", user_message, attachment_context);
-        (message_with_attachments, Some(session_id.as_str().to_string()))
+        (
+            message_with_attachments,
+            Some(session_id.as_str().to_string()),
+        )
     } else {
         let initial_prompt = build_initial_prompt(
             conversation.context_type,

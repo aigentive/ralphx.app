@@ -155,10 +155,19 @@ pub async fn start_http_server(
         .route("/api/get_memories_for_paths", post(get_memories_for_paths))
         .route("/api/upsert_memories", post(upsert_memories))
         .route("/api/mark_memory_obsolete", post(mark_memory_obsolete))
-        .route("/api/refresh_memory_rule_index", post(refresh_memory_rule_index))
+        .route(
+            "/api/refresh_memory_rule_index",
+            post(refresh_memory_rule_index),
+        )
         .route("/api/ingest_rule_file", post(ingest_rule_file))
-        .route("/api/rebuild_archive_snapshots", post(rebuild_archive_snapshots))
-        .route("/api/get_conversation_transcript", post(get_conversation_transcript))
+        .route(
+            "/api/rebuild_archive_snapshots",
+            post(rebuild_archive_snapshots),
+        )
+        .route(
+            "/api/get_conversation_transcript",
+            post(get_conversation_transcript),
+        )
         .with_state(state)
         .layer(
             CorsLayer::new()

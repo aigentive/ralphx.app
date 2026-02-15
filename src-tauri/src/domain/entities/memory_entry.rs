@@ -87,7 +87,10 @@ impl FromStr for MemoryBucket {
             "architecture_patterns" => Ok(Self::ArchitecturePatterns),
             "implementation_discoveries" => Ok(Self::ImplementationDiscoveries),
             "operational_playbooks" => Ok(Self::OperationalPlaybooks),
-            _ => Err(AppError::Validation(format!("Invalid memory bucket: {}", s))),
+            _ => Err(AppError::Validation(format!(
+                "Invalid memory bucket: {}",
+                s
+            ))),
         }
     }
 }
@@ -207,12 +210,14 @@ impl MemoryEntry {
 
     /// Serialize scope_paths to JSON for database storage
     pub fn scope_paths_to_json(&self) -> AppResult<String> {
-        serde_json::to_string(&self.scope_paths).map_err(|e| AppError::Infrastructure(format!("JSON serialization error: {}", e)))
+        serde_json::to_string(&self.scope_paths)
+            .map_err(|e| AppError::Infrastructure(format!("JSON serialization error: {}", e)))
     }
 
     /// Deserialize scope_paths from JSON
     pub fn scope_paths_from_json(json: &str) -> AppResult<Vec<String>> {
-        serde_json::from_str(json).map_err(|e| AppError::Infrastructure(format!("JSON deserialization error: {}", e)))
+        serde_json::from_str(json)
+            .map_err(|e| AppError::Infrastructure(format!("JSON deserialization error: {}", e)))
     }
 }
 
@@ -264,7 +269,10 @@ mod tests {
 
     #[test]
     fn test_memory_status_parsing() {
-        assert_eq!("active".parse::<MemoryStatus>().unwrap(), MemoryStatus::Active);
+        assert_eq!(
+            "active".parse::<MemoryStatus>().unwrap(),
+            MemoryStatus::Active
+        );
         assert_eq!(
             "obsolete".parse::<MemoryStatus>().unwrap(),
             MemoryStatus::Obsolete

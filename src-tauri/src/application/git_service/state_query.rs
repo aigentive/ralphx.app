@@ -89,11 +89,7 @@ impl GitService {
                 .current_dir(worktree)
                 .output()
                 .map_err(|e| {
-                    AppError::GitOperation(format!(
-                        "Failed to run git {}: {}",
-                        args.join(" "),
-                        e
-                    ))
+                    AppError::GitOperation(format!("Failed to run git {}: {}", args.join(" "), e))
                 })?;
 
             if !output.status.success() {

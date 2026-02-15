@@ -127,7 +127,10 @@ mod tests {
 
     #[test]
     fn session_relationship_default_is_follow_on() {
-        assert_eq!(SessionRelationship::default(), SessionRelationship::FollowOn);
+        assert_eq!(
+            SessionRelationship::default(),
+            SessionRelationship::FollowOn
+        );
     }
 
     #[test]
@@ -150,10 +153,7 @@ mod tests {
     fn session_relationship_from_str_returns_error_for_unknown() {
         let result = "unknown".parse::<SessionRelationship>();
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err(),
-            "Unknown session relationship: unknown"
-        );
+        assert_eq!(result.unwrap_err(), "Unknown session relationship: unknown");
     }
 
     #[test]
@@ -167,11 +167,7 @@ mod tests {
     fn session_link_new_creates_with_defaults() {
         let parent = IdeationSessionId::from_string("parent-123");
         let child = IdeationSessionId::from_string("child-456");
-        let link = SessionLink::new(
-            parent.clone(),
-            child.clone(),
-            SessionRelationship::FollowOn,
-        );
+        let link = SessionLink::new(parent.clone(), child.clone(), SessionRelationship::FollowOn);
 
         assert_eq!(link.parent_session_id, parent);
         assert_eq!(link.child_session_id, child);
@@ -194,10 +190,7 @@ mod tests {
         assert_eq!(link.parent_session_id, parent);
         assert_eq!(link.child_session_id, child);
         assert_eq!(link.relationship, SessionRelationship::Alternative);
-        assert_eq!(
-            link.notes.as_deref(),
-            Some("Exploring different approach")
-        );
+        assert_eq!(link.notes.as_deref(), Some("Exploring different approach"));
     }
 
     #[test]

@@ -3,7 +3,9 @@
 // Triggers background memory-maintainer and memory-capture agents
 // after agent run completion based on context type and project settings.
 
-use crate::domain::entities::{ChatContextType, ChatConversationId, ProjectId, MemoryEvent, MemoryActorType};
+use crate::domain::entities::{
+    ChatContextType, ChatConversationId, MemoryActorType, MemoryEvent, ProjectId,
+};
 use crate::domain::repositories::MemoryEventRepository;
 use crate::infrastructure::agents::claude::build_spawnable_command;
 use std::path::Path;
@@ -191,16 +193,8 @@ pub async fn trigger_memory_pipelines(
         let event_repo = memory_event_repo.clone();
 
         spawn_tasks.push(tokio::spawn(async move {
-            if let Err(e) = spawn_memory_maintainer(
-                &conv_id,
-                ctx,
-                &ctx_id,
-                &proj,
-                &cli,
-                &plugin,
-                &wd,
-            )
-            .await
+            if let Err(e) =
+                spawn_memory_maintainer(&conv_id, ctx, &ctx_id, &proj, &cli, &plugin, &wd).await
             {
                 tracing::error!(
                     error = %e,
@@ -243,16 +237,8 @@ pub async fn trigger_memory_pipelines(
         let event_repo = memory_event_repo.clone();
 
         spawn_tasks.push(tokio::spawn(async move {
-            if let Err(e) = spawn_memory_capture(
-                &conv_id,
-                ctx,
-                &ctx_id,
-                &proj,
-                &cli,
-                &plugin,
-                &wd,
-            )
-            .await
+            if let Err(e) =
+                spawn_memory_capture(&conv_id, ctx, &ctx_id, &proj, &cli, &plugin, &wd).await
             {
                 tracing::error!(
                     error = %e,
@@ -342,9 +328,10 @@ async fn spawn_memory_maintainer(
     cmd.env("RALPHX_PROJECT_ID", proj_id_str);
 
     // Spawn and ignore the child process (fire-and-forget)
-    let _child = cmd.spawn().await.map_err(|e| {
-        format!("Failed to spawn memory-maintainer: {}", e)
-    })?;
+    let _child = cmd
+        .spawn()
+        .await
+        .map_err(|e| format!("Failed to spawn memory-maintainer: {}", e))?;
 
     Ok(())
 }
@@ -375,10 +362,7 @@ async fn spawn_memory_capture(
 
     let prompt = format!(
         "Capture learning from conversation_id='{}' in project_id='{}' (context: {}, {})",
-        conv_id_str,
-        proj_id_str,
-        context_type,
-        context_id
+        conv_id_str, proj_id_str, context_type, context_id
     );
 
     let mut cmd = build_spawnable_command(
@@ -396,9 +380,10 @@ async fn spawn_memory_capture(
     cmd.env("RALPHX_PROJECT_ID", proj_id_str);
 
     // Spawn and ignore the child process (fire-and-forget)
-    let _child = cmd.spawn().await.map_err(|e| {
-        format!("Failed to spawn memory-capture: {}", e)
-    })?;
+    let _child = cmd
+        .spawn()
+        .await
+        .map_err(|e| format!("Failed to spawn memory-capture: {}", e))?;
 
     Ok(())
 }
@@ -449,11 +434,21 @@ mod tests {
     fn test_default_settings() {
         let settings = ProjectMemorySettings::default();
         assert!(settings.enabled);
-        assert!(settings.maintenance_categories.contains(&"execution".to_string()));
-        assert!(settings.maintenance_categories.contains(&"review".to_string()));
-        assert!(settings.maintenance_categories.contains(&"merge".to_string()));
-        assert!(settings.capture_categories.contains(&"planning".to_string()));
-        assert!(settings.capture_categories.contains(&"execution".to_string()));
+        assert!(settings
+            .maintenance_categories
+            .contains(&"execution".to_string()));
+        assert!(settings
+            .maintenance_categories
+            .contains(&"review".to_string()));
+        assert!(settings
+            .maintenance_categories
+            .contains(&"merge".to_string()));
+        assert!(settings
+            .capture_categories
+            .contains(&"planning".to_string()));
+        assert!(settings
+            .capture_categories
+            .contains(&"execution".to_string()));
         assert!(settings.capture_categories.contains(&"review".to_string()));
     }
 
@@ -602,9 +597,15 @@ mod tests {
             &settings,
         );
 
-        assert!(result.is_some(), "Should return Some when category is enabled");
+        assert!(
+            result.is_some(),
+            "Should return Some when category is enabled"
+        );
         let (should_maintain, should_capture) = result.unwrap();
-        assert!(should_maintain, "execution should be in maintenance_categories");
+        assert!(
+            should_maintain,
+            "execution should be in maintenance_categories"
+        );
         assert!(should_capture, "execution should be in capture_categories");
     }
 
@@ -623,6 +624,9 @@ mod tests {
             &settings,
         );
 
-        assert!(result.is_none(), "Should return None when memory is disabled");
+        assert!(
+            result.is_none(),
+            "Should return None when memory is disabled"
+        );
     }
 }

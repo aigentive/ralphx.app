@@ -105,31 +105,29 @@ pub fn build_task_services(s: &HardeningServices) -> TaskServices {
         s.notifier.clone() as Arc<dyn crate::domain::state_machine::services::Notifier>,
         s.dependency_manager.clone()
             as Arc<dyn crate::domain::state_machine::services::DependencyManager>,
-        s.review_starter.clone()
-            as Arc<dyn crate::domain::state_machine::services::ReviewStarter>,
+        s.review_starter.clone() as Arc<dyn crate::domain::state_machine::services::ReviewStarter>,
         s.chat_service.clone() as Arc<dyn crate::application::ChatService>,
     )
     .with_execution_state(s.execution_state.clone())
     .with_task_scheduler(
-        s.scheduler.clone() as Arc<dyn crate::domain::state_machine::services::TaskScheduler>,
+        s.scheduler.clone() as Arc<dyn crate::domain::state_machine::services::TaskScheduler>
     )
-    .with_task_repo(
-        s.task_repo.clone() as Arc<dyn crate::domain::repositories::TaskRepository>,
-    )
+    .with_task_repo(s.task_repo.clone() as Arc<dyn crate::domain::repositories::TaskRepository>)
     .with_project_repo(
-        s.project_repo.clone() as Arc<dyn crate::domain::repositories::ProjectRepository>,
+        s.project_repo.clone() as Arc<dyn crate::domain::repositories::ProjectRepository>
     )
     .with_plan_branch_repo(
-        s.plan_branch_repo.clone()
-            as Arc<dyn crate::domain::repositories::PlanBranchRepository>,
+        s.plan_branch_repo.clone() as Arc<dyn crate::domain::repositories::PlanBranchRepository>
     )
-    .with_step_repo(
-        s.step_repo.clone() as Arc<dyn crate::domain::repositories::TaskStepRepository>,
-    )
+    .with_step_repo(s.step_repo.clone() as Arc<dyn crate::domain::repositories::TaskStepRepository>)
 }
 
 /// Create a TaskStateMachine with the given context.
-pub fn create_state_machine(task_id: &str, project_id: &str, services: TaskServices) -> TaskStateMachine {
+pub fn create_state_machine(
+    task_id: &str,
+    project_id: &str,
+    services: TaskServices,
+) -> TaskStateMachine {
     let context = TaskContext::new(task_id, project_id, services);
     TaskStateMachine { context }
 }

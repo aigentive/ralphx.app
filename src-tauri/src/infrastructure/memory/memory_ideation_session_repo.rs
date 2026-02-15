@@ -167,7 +167,10 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
         Ok(children)
     }
 
-    async fn get_ancestor_chain(&self, session_id: &IdeationSessionId) -> AppResult<Vec<IdeationSession>> {
+    async fn get_ancestor_chain(
+        &self,
+        session_id: &IdeationSessionId,
+    ) -> AppResult<Vec<IdeationSession>> {
         let mut chain = Vec::new();
         let sessions_lock = self.sessions.read().unwrap();
         let mut current_id = session_id.clone();
@@ -362,19 +365,10 @@ mod tests {
         repo.create(parent.clone()).await.unwrap();
         repo.create(child.clone()).await.unwrap();
 
-        repo.set_parent(&child.id, Some(&parent.id))
-            .await
-            .unwrap();
+        repo.set_parent(&child.id, Some(&parent.id)).await.unwrap();
 
-        let updated_child = repo
-            .get_by_id(&child.id)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(
-            updated_child.parent_session_id,
-            Some(parent.id.clone())
-        );
+        let updated_child = repo.get_by_id(&child.id).await.unwrap().unwrap();
+        assert_eq!(updated_child.parent_session_id, Some(parent.id.clone()));
     }
 
     #[tokio::test]
@@ -391,11 +385,7 @@ mod tests {
 
         repo.set_parent(&child.id, None).await.unwrap();
 
-        let updated_child = repo
-            .get_by_id(&child.id)
-            .await
-            .unwrap()
-            .unwrap();
+        let updated_child = repo.get_by_id(&child.id).await.unwrap().unwrap();
         assert!(updated_child.parent_session_id.is_none());
     }
 }

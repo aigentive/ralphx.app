@@ -4,9 +4,9 @@
 // is emitted via event_emitter before logging. The transition still succeeds
 // but the error is now visible in the UI.
 
-use crate::tests::hardening_fixes::helpers::*;
 use crate::domain::state_machine::events::TaskEvent;
 use crate::domain::state_machine::machine::State;
+use crate::tests::hardening_fixes::helpers::*;
 
 #[tokio::test]
 async fn test_h2_fix_on_enter_error_emits_event() {
@@ -39,7 +39,12 @@ async fn test_h2_fix_on_enter_error_emits_event() {
     let events = svc.emitter.get_events();
     let on_enter_errors: Vec<_> = events
         .iter()
-        .filter(|e| e.args.first().map(|s| s == "task:on_enter_error").unwrap_or(false))
+        .filter(|e| {
+            e.args
+                .first()
+                .map(|s| s == "task:on_enter_error")
+                .unwrap_or(false)
+        })
         .collect();
     assert!(
         !on_enter_errors.is_empty(),
@@ -73,9 +78,12 @@ async fn test_h2_fix_on_enter_error_event_includes_state_and_error() {
 
     // Find the error event
     let events = svc.emitter.get_events();
-    let error_event = events
-        .iter()
-        .find(|e| e.args.first().map(|s| s == "task:on_enter_error").unwrap_or(false));
+    let error_event = events.iter().find(|e| {
+        e.args
+            .first()
+            .map(|s| s == "task:on_enter_error")
+            .unwrap_or(false)
+    });
 
     assert!(
         error_event.is_some(),

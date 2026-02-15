@@ -241,7 +241,10 @@ mod tests {
     #[test]
     fn merge_phase_display() {
         assert_eq!(format!("{}", MergePhase::WorktreeSetup), "worktree_setup");
-        assert_eq!(format!("{}", MergePhase::ProgrammaticMerge), "programmatic_merge");
+        assert_eq!(
+            format!("{}", MergePhase::ProgrammaticMerge),
+            "programmatic_merge"
+        );
         assert_eq!(format!("{}", MergePhase::Typecheck), "typecheck");
         assert_eq!(format!("{}", MergePhase::Lint), "lint");
         assert_eq!(format!("{}", MergePhase::Clippy), "clippy");
@@ -327,10 +330,7 @@ mod tests {
             map_command_to_phase("NPM RUN TYPECHECK"),
             MergePhase::Typecheck
         );
-        assert_eq!(
-            map_command_to_phase("CARGO CLIPPY"),
-            MergePhase::Clippy
-        );
+        assert_eq!(map_command_to_phase("CARGO CLIPPY"), MergePhase::Clippy);
     }
 
     #[test]

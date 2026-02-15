@@ -27,8 +27,8 @@ pub(crate) use side_effects::run_validation_commands;
 
 // Re-export merge deferred metadata helpers for scheduler retry (concurrent merge guard)
 pub(crate) use side_effects::clear_merge_deferred_metadata;
-pub(crate) use side_effects::has_merge_deferred_metadata;
 pub(crate) use side_effects::has_branch_missing_metadata;
+pub(crate) use side_effects::has_merge_deferred_metadata;
 
 // Re-export trigger origin metadata helpers for execution tracking
 pub(crate) use side_effects::clear_trigger_origin;
@@ -203,7 +203,10 @@ impl<'a> TransitionHandler<'a> {
                     let task_id = TaskId::from_string(self.machine.context.task_id.clone());
                     if let Ok(Some(mut task)) = task_repo.get_by_id(&task_id).await {
                         clear_trigger_origin(&mut task);
-                        if let Err(e) = task_repo.update_metadata(&task_id, task.metadata.clone()).await {
+                        if let Err(e) = task_repo
+                            .update_metadata(&task_id, task.metadata.clone())
+                            .await
+                        {
                             tracing::error!(
                                 task_id = %self.machine.context.task_id,
                                 error = %e,

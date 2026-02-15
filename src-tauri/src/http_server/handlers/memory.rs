@@ -4,21 +4,16 @@
 
 use std::sync::Arc;
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    Json,
-};
+use axum::{extract::State, http::StatusCode, Json};
 use serde_json::json;
 use tracing::{error, info};
 
 use super::*;
-use crate::domain::entities::{
-    ArchiveJobPayload, ArchiveJobType,
-    MemoryActorType, MemoryArchiveJob, MemoryBucket, MemoryEntry,
-    MemoryEntryId, MemoryEvent, MemoryStatus,
-};
 use crate::domain::entities::types::ProjectId;
+use crate::domain::entities::{
+    ArchiveJobPayload, ArchiveJobType, MemoryActorType, MemoryArchiveJob, MemoryBucket,
+    MemoryEntry, MemoryEntryId, MemoryEvent, MemoryStatus,
+};
 use crate::domain::services::{IndexRewriter, RuleIngestionService};
 
 // ============================================================================
@@ -56,7 +51,12 @@ pub async fn search_memories(
             })?
     };
 
-    if let Some(query) = req.query.as_deref().map(str::trim).filter(|q| !q.is_empty()) {
+    if let Some(query) = req
+        .query
+        .as_deref()
+        .map(str::trim)
+        .filter(|q| !q.is_empty())
+    {
         let q = query.to_lowercase();
         entries.retain(|entry| {
             entry.title.to_lowercase().contains(&q)
@@ -152,8 +152,11 @@ pub async fn upsert_memories(
         };
 
         // Compute content hash for deduplication
-        let content_hash =
-            MemoryEntry::compute_content_hash(&input.title, &input.summary, &input.details_markdown);
+        let content_hash = MemoryEntry::compute_content_hash(
+            &input.title,
+            &input.summary,
+            &input.details_markdown,
+        );
 
         // Check for duplicate
         let existing = state
@@ -292,7 +295,10 @@ pub async fn refresh_memory_rule_index(
 
     for memory in all_memories {
         if let Some(rule_file) = memory.source_rule_file.clone() {
-            memories_by_rule_file.entry(rule_file).or_insert_with(Vec::new).push(memory);
+            memories_by_rule_file
+                .entry(rule_file)
+                .or_insert_with(Vec::new)
+                .push(memory);
         }
     }
 
@@ -313,7 +319,8 @@ pub async fn refresh_memory_rule_index(
     // For each rule file, regenerate its index and write to filesystem
     for (rule_file, memories) in memories_by_rule_file {
         // Get the paths from the first memory (they should all have the same source paths)
-        let paths = memories.first()
+        let paths = memories
+            .first()
             .map(|m| m.scope_paths.clone())
             .unwrap_or_default();
 
@@ -330,7 +337,10 @@ pub async fn refresh_memory_rule_index(
         }
     }
 
-    info!("refresh_memory_rule_index: refreshed {} rule index files", files_refreshed);
+    info!(
+        "refresh_memory_rule_index: refreshed {} rule index files",
+        files_refreshed
+    );
 
     Ok(Json(RefreshMemoryRuleIndexResponse {
         files_refreshed,
@@ -389,11 +399,7 @@ pub async fn rebuild_archive_snapshots(
     let project_id = ProjectId::from_string(req.project_id.clone());
 
     let payload = ArchiveJobPayload::full_rebuild(false);
-    let job = MemoryArchiveJob::new(
-        project_id,
-        ArchiveJobType::FullRebuild,
-        payload,
-    );
+    let job = MemoryArchiveJob::new(project_id, ArchiveJobType::FullRebuild, payload);
     let job_id = job.id.to_string();
 
     state

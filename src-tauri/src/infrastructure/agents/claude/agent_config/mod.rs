@@ -177,12 +177,10 @@ fn parse_config(yaml: &str) -> Option<LoadedConfig> {
 
     let mut seen_names = HashSet::new();
     let mut resolved = Vec::with_capacity(parsed.agents.len());
-    let global_profile_selection = runtime_settings_profile_override()
-        .or_else(|| parsed.claude.settings_profile.clone());
-    let resolved_settings = resolve_claude_settings(
-        &parsed.claude,
-        global_profile_selection.as_deref(),
-    );
+    let global_profile_selection =
+        runtime_settings_profile_override().or_else(|| parsed.claude.settings_profile.clone());
+    let resolved_settings =
+        resolve_claude_settings(&parsed.claude, global_profile_selection.as_deref());
 
     for raw in &parsed.agents {
         if !seen_names.insert(raw.name.clone()) {
@@ -218,10 +216,8 @@ fn parse_config(yaml: &str) -> Option<LoadedConfig> {
     }
 
     let mcp_server_name = parsed.claude.mcp_server_name.clone();
-    let resolved_settings = resolve_claude_settings(
-        &parsed.claude,
-        global_profile_selection.as_deref(),
-    );
+    let resolved_settings =
+        resolve_claude_settings(&parsed.claude, global_profile_selection.as_deref());
     let claude = ClaudeRuntimeConfig {
         mcp_server_name,
         setting_sources: parsed.claude.setting_sources,
@@ -287,7 +283,10 @@ fn resolve_claude_settings(
     selected
 }
 
-fn resolve_profile_settings(raw: &ClaudeRuntimeConfigRaw, profile_name: &str) -> Option<serde_json::Value> {
+fn resolve_profile_settings(
+    raw: &ClaudeRuntimeConfigRaw,
+    profile_name: &str,
+) -> Option<serde_json::Value> {
     let mut stack = Vec::<String>::new();
     resolve_profile_settings_inner(raw, profile_name, &mut stack)
 }
@@ -337,7 +336,10 @@ fn resolve_profile_settings_inner(
     Some(merge_settings(merged, current_profile))
 }
 
-fn parse_extends_list(extends_value: Option<&serde_json::Value>, profile_name: &str) -> Option<Vec<String>> {
+fn parse_extends_list(
+    extends_value: Option<&serde_json::Value>,
+    profile_name: &str,
+) -> Option<Vec<String>> {
     let value = extends_value?;
     match value {
         serde_json::Value::String(s) => Some(vec![s.clone()]),
@@ -515,11 +517,11 @@ pub fn get_preapproved_tools(agent_name: &str) -> Option<String> {
 mod tests {
     use super::*;
     use crate::infrastructure::agents::claude::agent_names::{
-        SHORT_CHAT_PROJECT, SHORT_CHAT_TASK, SHORT_DEEP_RESEARCHER, SHORT_DEPENDENCY_SUGGESTER,
-        SHORT_CODER, SHORT_MEMORY_CAPTURE, SHORT_MEMORY_MAINTAINER, SHORT_MERGER, SHORT_ORCHESTRATOR,
-        SHORT_ORCHESTRATOR_IDEATION, SHORT_ORCHESTRATOR_IDEATION_READONLY,
-        SHORT_PROJECT_ANALYZER, SHORT_QA_EXECUTOR, SHORT_QA_PREP, SHORT_REVIEW_CHAT,
-        SHORT_REVIEW_HISTORY, SHORT_REVIEWER, SHORT_SESSION_NAMER, SHORT_SUPERVISOR,
+        SHORT_CHAT_PROJECT, SHORT_CHAT_TASK, SHORT_CODER, SHORT_DEEP_RESEARCHER,
+        SHORT_DEPENDENCY_SUGGESTER, SHORT_MEMORY_CAPTURE, SHORT_MEMORY_MAINTAINER, SHORT_MERGER,
+        SHORT_ORCHESTRATOR, SHORT_ORCHESTRATOR_IDEATION, SHORT_ORCHESTRATOR_IDEATION_READONLY,
+        SHORT_PROJECT_ANALYZER, SHORT_QA_EXECUTOR, SHORT_QA_PREP, SHORT_REVIEWER,
+        SHORT_REVIEW_CHAT, SHORT_REVIEW_HISTORY, SHORT_SESSION_NAMER, SHORT_SUPERVISOR,
         SHORT_WORKER,
     };
     use std::collections::HashSet;
@@ -747,7 +749,10 @@ agents:
 "#;
         let parsed = parse_config(yaml).expect("config should parse");
 
-        assert!(parsed.claude.settings.is_some(), "global z_ai should be active");
+        assert!(
+            parsed.claude.settings.is_some(),
+            "global z_ai should be active"
+        );
 
         let worker = parsed
             .agents
@@ -1029,40 +1034,44 @@ agents:
     fn test_memory_agents_have_write_mcp_tools() {
         // Memory maintainer should have write tools
         if let Some(config) = get_agent_config("memory-maintainer") {
-            assert!(config.allowed_mcp_tools.contains(&"upsert_memories".to_string()));
-            assert!(config.allowed_mcp_tools.contains(&"mark_memory_obsolete".to_string()));
-            assert!(config.allowed_mcp_tools.contains(&"refresh_memory_rule_index".to_string()));
-            assert!(config.allowed_mcp_tools.contains(&"ingest_rule_file".to_string()));
-            assert!(config.allowed_mcp_tools.contains(&"rebuild_archive_snapshots".to_string()));
+            assert!(config
+                .allowed_mcp_tools
+                .contains(&"upsert_memories".to_string()));
+            assert!(config
+                .allowed_mcp_tools
+                .contains(&"mark_memory_obsolete".to_string()));
+            assert!(config
+                .allowed_mcp_tools
+                .contains(&"refresh_memory_rule_index".to_string()));
+            assert!(config
+                .allowed_mcp_tools
+                .contains(&"ingest_rule_file".to_string()));
+            assert!(config
+                .allowed_mcp_tools
+                .contains(&"rebuild_archive_snapshots".to_string()));
         }
 
         // Memory capture should have upsert_memories
         if let Some(config) = get_agent_config("memory-capture") {
-            assert!(config.allowed_mcp_tools.contains(&"upsert_memories".to_string()));
+            assert!(config
+                .allowed_mcp_tools
+                .contains(&"upsert_memories".to_string()));
         }
     }
 
     #[test]
     #[ignore = "memory read tools not yet added to worker/reviewer/orchestrator configs"]
     fn test_read_only_agents_have_read_memory_tools() {
-        let read_memory_tools = vec![
-            "search_memories",
-            "get_memory",
-            "get_memories_for_paths",
-        ];
+        let read_memory_tools = vec!["search_memories", "get_memory", "get_memories_for_paths"];
 
-        let agents_to_test = vec![
-            "ralphx-worker",
-            "ralphx-reviewer",
-            "ralphx-orchestrator",
-        ];
+        let agents_to_test = vec!["ralphx-worker", "ralphx-reviewer", "ralphx-orchestrator"];
 
         for agent_name in agents_to_test {
             if let Some(config) = get_agent_config(agent_name) {
                 // Each of these should have at least one of the read memory tools
-                let has_read_tool = read_memory_tools.iter().any(|t| {
-                    config.allowed_mcp_tools.contains(&t.to_string())
-                });
+                let has_read_tool = read_memory_tools
+                    .iter()
+                    .any(|t| config.allowed_mcp_tools.contains(&t.to_string()));
                 assert!(
                     has_read_tool,
                     "Agent {} should have at least one read memory tool",

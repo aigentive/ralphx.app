@@ -8,8 +8,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use rusqlite::Connection;
 
-use crate::domain::entities::{MemoryBucket, MemoryEntry, MemoryEntryId, MemoryStatus};
 use crate::domain::entities::types::ProjectId;
+use crate::domain::entities::{MemoryBucket, MemoryEntry, MemoryEntryId, MemoryStatus};
 use crate::domain::repositories::MemoryEntryRepository;
 use crate::error::{AppError, AppResult};
 
@@ -280,7 +280,10 @@ impl MemoryEntryRepository for SqliteMemoryEntryRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let entries = stmt
-            .query_map(rusqlite::params![project_id.as_str(), rule_file], entry_from_row)
+            .query_map(
+                rusqlite::params![project_id.as_str(), rule_file],
+                entry_from_row,
+            )
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -314,16 +317,20 @@ impl MemoryEntryRepository for SqliteMemoryEntryRepository {
     async fn update_status(&self, id: &MemoryEntryId, status: MemoryStatus) -> AppResult<()> {
         let conn = self.conn.lock().await;
 
-        let affected = conn.execute(
-            "UPDATE memory_entries
+        let affected = conn
+            .execute(
+                "UPDATE memory_entries
              SET status = ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')
              WHERE id = ?2",
-            rusqlite::params![status.to_string(), id.as_str()],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
+                rusqlite::params![status.to_string(), id.as_str()],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
 
         if affected == 0 {
-            return Err(AppError::NotFound(format!("Memory entry not found: {}", id)));
+            return Err(AppError::NotFound(format!(
+                "Memory entry not found: {}",
+                id
+            )));
         }
 
         Ok(())
@@ -361,7 +368,10 @@ impl MemoryEntryRepository for SqliteMemoryEntryRepository {
         .map_err(|e| AppError::Database(e.to_string()))?;
 
         if affected == 0 {
-            return Err(AppError::NotFound(format!("Memory entry not found: {}", entry.id)));
+            return Err(AppError::NotFound(format!(
+                "Memory entry not found: {}",
+                entry.id
+            )));
         }
 
         Ok(())
@@ -370,14 +380,15 @@ impl MemoryEntryRepository for SqliteMemoryEntryRepository {
     async fn delete(&self, id: &MemoryEntryId) -> AppResult<()> {
         let conn = self.conn.lock().await;
 
-        let affected = conn.execute(
-            "DELETE FROM memory_entries WHERE id = ?1",
-            [id.as_str()],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
+        let affected = conn
+            .execute("DELETE FROM memory_entries WHERE id = ?1", [id.as_str()])
+            .map_err(|e| AppError::Database(e.to_string()))?;
 
         if affected == 0 {
-            return Err(AppError::NotFound(format!("Memory entry not found: {}", id)));
+            return Err(AppError::NotFound(format!(
+                "Memory entry not found: {}",
+                id
+            )));
         }
 
         Ok(())

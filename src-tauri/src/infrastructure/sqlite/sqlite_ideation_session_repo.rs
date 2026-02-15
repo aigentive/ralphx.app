@@ -269,7 +269,10 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         Ok(sessions)
     }
 
-    async fn get_ancestor_chain(&self, session_id: &IdeationSessionId) -> AppResult<Vec<IdeationSession>> {
+    async fn get_ancestor_chain(
+        &self,
+        session_id: &IdeationSessionId,
+    ) -> AppResult<Vec<IdeationSession>> {
         let conn = self.conn.lock().await;
 
         let mut chain = Vec::new();
@@ -334,11 +337,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
 
         conn.execute(
             "UPDATE ideation_sessions SET parent_session_id = ?2, updated_at = ?3 WHERE id = ?1",
-            rusqlite::params![
-                id.as_str(),
-                parent_id.map(|p| p.as_str()),
-                now.to_rfc3339(),
-            ],
+            rusqlite::params![id.as_str(), parent_id.map(|p| p.as_str()), now.to_rfc3339(),],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
 
@@ -1069,19 +1068,10 @@ mod tests {
         repo.create(parent.clone()).await.unwrap();
         repo.create(child.clone()).await.unwrap();
 
-        repo.set_parent(&child.id, Some(&parent.id))
-            .await
-            .unwrap();
+        repo.set_parent(&child.id, Some(&parent.id)).await.unwrap();
 
-        let updated_child = repo
-            .get_by_id(&child.id)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(
-            updated_child.parent_session_id,
-            Some(parent.id.clone())
-        );
+        let updated_child = repo.get_by_id(&child.id).await.unwrap().unwrap();
+        assert_eq!(updated_child.parent_session_id, Some(parent.id.clone()));
     }
 
     #[tokio::test]
@@ -1102,11 +1092,7 @@ mod tests {
         // Clear the parent
         repo.set_parent(&child.id, None).await.unwrap();
 
-        let updated_child = repo
-            .get_by_id(&child.id)
-            .await
-            .unwrap()
-            .unwrap();
+        let updated_child = repo.get_by_id(&child.id).await.unwrap().unwrap();
         assert!(updated_child.parent_session_id.is_none());
     }
 
@@ -1127,15 +1113,9 @@ mod tests {
 
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
-        repo.set_parent(&child.id, Some(&parent.id))
-            .await
-            .unwrap();
+        repo.set_parent(&child.id, Some(&parent.id)).await.unwrap();
 
-        let updated_child = repo
-            .get_by_id(&child.id)
-            .await
-            .unwrap()
-            .unwrap();
+        let updated_child = repo.get_by_id(&child.id).await.unwrap().unwrap();
         assert!(updated_child.updated_at >= original_updated_at);
     }
 }

@@ -2,8 +2,7 @@ use super::*;
 use crate::application::{AppState, TaskTransitionService};
 use crate::commands::execution_commands::ExecutionState;
 use crate::domain::entities::{
-    AgentRun, AgentRunId, AgentRunStatus, ChatConversationId, InternalStatus, Project, Task,
-    TaskId,
+    AgentRun, AgentRunId, AgentRunStatus, ChatConversationId, InternalStatus, Project, Task, TaskId,
 };
 use crate::domain::services::RunningAgentKey;
 use std::sync::Arc;
@@ -522,8 +521,13 @@ async fn reconcile_merge_incomplete_returns_false_when_branch_missing() {
         .unwrap();
 
     // Should return false (no retry) because branch_missing is set
-    let reconciled = reconciler.reconcile_merge_incomplete_task(&task, InternalStatus::MergeIncomplete).await;
-    assert!(!reconciled, "Should not retry when branch_missing metadata is set");
+    let reconciled = reconciler
+        .reconcile_merge_incomplete_task(&task, InternalStatus::MergeIncomplete)
+        .await;
+    assert!(
+        !reconciled,
+        "Should not retry when branch_missing metadata is set"
+    );
 
     // Verify task status unchanged
     let updated = app_state
@@ -552,7 +556,10 @@ async fn reconcile_merge_incomplete_retries_normally_without_branch_missing() {
         .await
         .unwrap();
 
-    let mut task = Task::new(project.id.clone(), "Normal Merge Incomplete Task".to_string());
+    let mut task = Task::new(
+        project.id.clone(),
+        "Normal Merge Incomplete Task".to_string(),
+    );
     task.internal_status = InternalStatus::MergeIncomplete;
     // No branch_missing flag - should allow retry
     task.metadata = Some(serde_json::json!({"some_other_field": "value"}).to_string());
@@ -574,7 +581,9 @@ async fn reconcile_merge_incomplete_retries_normally_without_branch_missing() {
     // For testing, we verify the logic path is reached by checking task state
 
     // Since there are no auto-retry events recorded, should attempt retry
-    let _ = reconciler.reconcile_merge_incomplete_task(&task, InternalStatus::MergeIncomplete).await;
+    let _ = reconciler
+        .reconcile_merge_incomplete_task(&task, InternalStatus::MergeIncomplete)
+        .await;
     // Note: This may return false due to timing (age check), but the important thing
     // is that it doesn't early-return due to branch_missing check
     // A more thorough test would mock time or manipulate status history directly
@@ -795,10 +804,7 @@ async fn reconcile_merge_conflict_transitions_after_cooldown() {
     let reconciled = reconciler
         .reconcile_merge_conflict_task(&task, InternalStatus::MergeConflict)
         .await;
-    assert!(
-        reconciled,
-        "Should retry when task is past cooldown period"
-    );
+    assert!(reconciled, "Should retry when task is past cooldown period");
 
     // Verify task transitioned to PendingMerge
     let updated = app_state

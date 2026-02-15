@@ -44,8 +44,7 @@ impl MetadataUpdate {
     pub fn merge_into(self, existing: Option<&str>) -> String {
         let mut base = if let Some(existing_str) = existing {
             // Parse existing metadata or start fresh if invalid
-            serde_json::from_str::<Map<String, Value>>(existing_str)
-                .unwrap_or_else(|_| Map::new())
+            serde_json::from_str::<Map<String, Value>>(existing_str).unwrap_or_else(|_| Map::new())
         } else {
             Map::new()
         };
@@ -118,7 +117,10 @@ mod tests {
         let result = update.merge_into(None);
 
         let parsed: Map<String, Value> = serde_json::from_str(&result).unwrap();
-        assert_eq!(parsed.get("key1").unwrap(), &Value::String("value1".to_string()));
+        assert_eq!(
+            parsed.get("key1").unwrap(),
+            &Value::String("value1".to_string())
+        );
     }
 
     #[test]
@@ -128,8 +130,14 @@ mod tests {
         let result = update.merge_into(Some(existing));
 
         let parsed: Map<String, Value> = serde_json::from_str(&result).unwrap();
-        assert_eq!(parsed.get("existing_key").unwrap(), &Value::String("existing_value".to_string()));
-        assert_eq!(parsed.get("new_key").unwrap(), &Value::String("new_value".to_string()));
+        assert_eq!(
+            parsed.get("existing_key").unwrap(),
+            &Value::String("existing_value".to_string())
+        );
+        assert_eq!(
+            parsed.get("new_key").unwrap(),
+            &Value::String("new_value".to_string())
+        );
     }
 
     #[test]
@@ -139,7 +147,10 @@ mod tests {
         let result = update.merge_into(Some(existing));
 
         let parsed: Map<String, Value> = serde_json::from_str(&result).unwrap();
-        assert_eq!(parsed.get("key1").unwrap(), &Value::String("new_value".to_string()));
+        assert_eq!(
+            parsed.get("key1").unwrap(),
+            &Value::String("new_value".to_string())
+        );
     }
 
     #[test]
@@ -155,8 +166,14 @@ mod tests {
         let result = update.merge_into(None);
 
         let parsed: Map<String, Value> = serde_json::from_str(&result).unwrap();
-        assert_eq!(parsed.get("failure_error").unwrap(), &Value::String("Test error".to_string()));
-        assert_eq!(parsed.get("failure_details").unwrap(), &Value::String("Test details".to_string()));
+        assert_eq!(
+            parsed.get("failure_error").unwrap(),
+            &Value::String("Test error".to_string())
+        );
+        assert_eq!(
+            parsed.get("failure_details").unwrap(),
+            &Value::String("Test details".to_string())
+        );
         assert_eq!(parsed.get("is_timeout").unwrap(), &Value::Bool(true));
     }
 
@@ -173,7 +190,10 @@ mod tests {
         let result = update.merge_into(None);
 
         let parsed: Map<String, Value> = serde_json::from_str(&result).unwrap();
-        assert_eq!(parsed.get("failure_error").unwrap(), &Value::String("Test error".to_string()));
+        assert_eq!(
+            parsed.get("failure_error").unwrap(),
+            &Value::String("Test error".to_string())
+        );
         assert!(parsed.get("failure_details").is_none());
         assert_eq!(parsed.get("is_timeout").unwrap(), &Value::Bool(false));
     }
@@ -184,19 +204,28 @@ mod tests {
         let result = update.merge_into(None);
 
         let parsed: Map<String, Value> = serde_json::from_str(&result).unwrap();
-        assert_eq!(parsed.get("trigger_origin").unwrap(), &Value::String("qa".to_string()));
+        assert_eq!(
+            parsed.get("trigger_origin").unwrap(),
+            &Value::String("qa".to_string())
+        );
     }
 
     #[test]
     fn test_key_exists_in_returns_true_when_key_present() {
         let metadata = r#"{"failure_error":"some error"}"#;
-        assert!(MetadataUpdate::key_exists_in("failure_error", Some(metadata)));
+        assert!(MetadataUpdate::key_exists_in(
+            "failure_error",
+            Some(metadata)
+        ));
     }
 
     #[test]
     fn test_key_exists_in_returns_false_when_key_absent() {
         let metadata = r#"{"other_key":"value"}"#;
-        assert!(!MetadataUpdate::key_exists_in("failure_error", Some(metadata)));
+        assert!(!MetadataUpdate::key_exists_in(
+            "failure_error",
+            Some(metadata)
+        ));
     }
 
     #[test]
@@ -207,7 +236,10 @@ mod tests {
     #[test]
     fn test_key_exists_in_returns_false_when_metadata_invalid_json() {
         let invalid = "not valid json";
-        assert!(!MetadataUpdate::key_exists_in("failure_error", Some(invalid)));
+        assert!(!MetadataUpdate::key_exists_in(
+            "failure_error",
+            Some(invalid)
+        ));
     }
 
     #[test]
@@ -217,7 +249,10 @@ mod tests {
         let result = update.merge_into(Some(invalid));
 
         let parsed: Map<String, Value> = serde_json::from_str(&result).unwrap();
-        assert_eq!(parsed.get("key1").unwrap(), &Value::String("value1".to_string()));
+        assert_eq!(
+            parsed.get("key1").unwrap(),
+            &Value::String("value1".to_string())
+        );
         // Should start fresh when existing is invalid
         assert_eq!(parsed.len(), 1);
     }

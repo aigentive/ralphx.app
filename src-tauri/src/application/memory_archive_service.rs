@@ -8,11 +8,13 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
+use crate::domain::entities::types::ProjectId;
 use crate::domain::entities::{
     ArchiveJobPayload, MemoryEntry, MemorySnapshotPayload, RuleSnapshotPayload,
 };
-use crate::domain::entities::types::ProjectId;
-use crate::domain::repositories::{MemoryArchiveRepository, MemoryEntryRepository, ProjectRepository};
+use crate::domain::repositories::{
+    MemoryArchiveRepository, MemoryEntryRepository, ProjectRepository,
+};
 use crate::error::{AppError, AppResult};
 
 /// Memory Archive Service for generating deterministic snapshots
@@ -55,24 +57,32 @@ impl MemoryArchiveService {
             .project_repo
             .get_by_id(&job.project_id)
             .await?
-            .ok_or_else(|| AppError::NotFound(format!(
-                "Project {} not found for archive job",
-                job.project_id.as_str()
-            )))?;
+            .ok_or_else(|| {
+                AppError::NotFound(format!(
+                    "Project {} not found for archive job",
+                    job.project_id.as_str()
+                ))
+            })?;
 
         let project_root = PathBuf::from(&project.working_directory);
 
         // Process the job based on type
         let result = match &job.payload {
             ArchiveJobPayload::MemorySnapshot(payload) => {
-                self.generate_memory_snapshot(&job.project_id, payload, &project_root).await
+                self.generate_memory_snapshot(&job.project_id, payload, &project_root)
+                    .await
             }
             ArchiveJobPayload::RuleSnapshot(payload) => {
-                self.generate_rule_snapshot(&job.project_id, payload, &project_root).await
+                self.generate_rule_snapshot(&job.project_id, payload, &project_root)
+                    .await
             }
             ArchiveJobPayload::FullRebuild(payload) => {
-                self.generate_full_rebuild(&job.project_id, payload.include_rule_snapshots, &project_root)
-                    .await
+                self.generate_full_rebuild(
+                    &job.project_id,
+                    payload.include_rule_snapshots,
+                    &project_root,
+                )
+                .await
             }
         };
 
@@ -106,7 +116,9 @@ impl MemoryArchiveService {
             .entry_repo
             .get_by_id(&payload.memory_id.as_str().into())
             .await?
-            .ok_or_else(|| AppError::NotFound(format!("Memory entry {} not found", payload.memory_id)))?;
+            .ok_or_else(|| {
+                AppError::NotFound(format!("Memory entry {} not found", payload.memory_id))
+            })?;
 
         // Generate snapshot content
         let content = self.format_memory_snapshot(&entry)?;
@@ -144,7 +156,8 @@ impl MemoryArchiveService {
 
         // Write to file: .claude/memory-archive/rules/<scope_key>/<timestamp>.md
         let timestamp = Utc::now().format("%Y%m%d_%H%M%S").to_string();
-        let output_path = self.get_rule_snapshot_path(project_root, &payload.scope_key, &timestamp)?;
+        let output_path =
+            self.get_rule_snapshot_path(project_root, &payload.scope_key, &timestamp)?;
         self.write_snapshot_file(&output_path, &content)?;
 
         Ok(())
@@ -191,9 +204,11 @@ impl MemoryArchiveService {
             // Generate snapshot for each rule
             for (rule_file, rule_entries) in by_rule {
                 // Convert Vec<&MemoryEntry> to Vec<MemoryEntry>
-                let cloned_entries: Vec<MemoryEntry> = rule_entries.iter().map(|e| (*e).clone()).collect();
+                let cloned_entries: Vec<MemoryEntry> =
+                    rule_entries.iter().map(|e| (*e).clone()).collect();
                 let content = self.format_rule_snapshot(&rule_file, &cloned_entries)?;
-                let output_path = self.get_rule_snapshot_path(project_root, &rule_file, &timestamp)?;
+                let output_path =
+                    self.get_rule_snapshot_path(project_root, &rule_file, &timestamp)?;
                 self.write_snapshot_file(&output_path, &content)?;
             }
         }
@@ -273,7 +288,11 @@ impl MemoryArchiveService {
     }
 
     /// Format a project-level consolidated snapshot
-    fn format_project_snapshot(&self, project_id: &ProjectId, entries: &[MemoryEntry]) -> AppResult<String> {
+    fn format_project_snapshot(
+        &self,
+        project_id: &ProjectId,
+        entries: &[MemoryEntry],
+    ) -> AppResult<String> {
         let mut content = String::new();
 
         // Header with project metadata
@@ -302,7 +321,11 @@ impl MemoryArchiveService {
             "operational_playbooks",
         ] {
             if let Some(bucket_entries) = by_bucket.get(*bucket_name) {
-                content.push_str(&format!("## {} ({})\n\n", bucket_name, bucket_entries.len()));
+                content.push_str(&format!(
+                    "## {} ({})\n\n",
+                    bucket_name,
+                    bucket_entries.len()
+                ));
 
                 // Sort by ID for determinism
                 let mut sorted = bucket_entries.clone();
@@ -349,7 +372,12 @@ impl MemoryArchiveService {
     }
 
     /// Get the output path for a project snapshot
-    fn get_project_snapshot_path(&self, project_root: &Path, project_id: &ProjectId, timestamp: &str) -> AppResult<PathBuf> {
+    fn get_project_snapshot_path(
+        &self,
+        project_root: &Path,
+        project_id: &ProjectId,
+        timestamp: &str,
+    ) -> AppResult<PathBuf> {
         let path = project_root
             .join(".claude/memory-archive/projects")
             .join(project_id.as_str())
@@ -361,13 +389,15 @@ impl MemoryArchiveService {
     fn write_snapshot_file(&self, path: &Path, content: &str) -> AppResult<()> {
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| AppError::Infrastructure(format!("Failed to create directory: {}", e)))?;
+            std::fs::create_dir_all(parent).map_err(|e| {
+                AppError::Infrastructure(format!("Failed to create directory: {}", e))
+            })?;
         }
 
         // Write file
-        std::fs::write(path, content)
-            .map_err(|e| AppError::Infrastructure(format!("Failed to write snapshot file: {}", e)))?;
+        std::fs::write(path, content).map_err(|e| {
+            AppError::Infrastructure(format!("Failed to write snapshot file: {}", e))
+        })?;
 
         Ok(())
     }
@@ -376,11 +406,11 @@ impl MemoryArchiveService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::entities::Project;
     use crate::domain::entities::{MemoryBucket, MemoryEntry};
     use crate::domain::repositories::ProjectRepository;
     use crate::infrastructure::sqlite::connection::open_memory_connection;
     use async_trait::async_trait;
-    use crate::domain::entities::Project;
 
     // Mock project repository for testing
     struct MockProjectRepository;
@@ -407,7 +437,10 @@ mod tests {
             Ok(())
         }
 
-        async fn get_by_working_directory(&self, _path: &str) -> crate::error::AppResult<Option<Project>> {
+        async fn get_by_working_directory(
+            &self,
+            _path: &str,
+        ) -> crate::error::AppResult<Option<Project>> {
             Ok(None)
         }
     }
@@ -520,8 +553,12 @@ mod tests {
         let entries1 = vec![entry1.clone(), entry2.clone()];
         let entries2 = vec![entry2.clone(), entry1.clone()];
 
-        let snapshot1 = service.format_project_snapshot(&project_id, &entries1).unwrap();
-        let snapshot2 = service.format_project_snapshot(&project_id, &entries2).unwrap();
+        let snapshot1 = service
+            .format_project_snapshot(&project_id, &entries1)
+            .unwrap();
+        let snapshot2 = service
+            .format_project_snapshot(&project_id, &entries2)
+            .unwrap();
 
         // Strip snapshot_date lines since Utc::now() differs between calls
         // We're testing content ordering determinism, not timestamp equality
@@ -582,7 +619,9 @@ mod tests {
 
         // Pass entries in unsorted order
         let entries = vec![entry1.clone(), entry2.clone()];
-        let snapshot = service.format_rule_snapshot("test_rule.md", &entries).unwrap();
+        let snapshot = service
+            .format_rule_snapshot("test_rule.md", &entries)
+            .unwrap();
 
         // Find positions of entry IDs in snapshot
         let pos1 = snapshot.find(&entry1.id.0).unwrap();

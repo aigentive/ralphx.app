@@ -3,10 +3,8 @@
 
 use async_trait::async_trait;
 
-use crate::domain::entities::{
-    ArchiveJobStatus, MemoryArchiveJob, MemoryArchiveJobId,
-};
 use crate::domain::entities::types::ProjectId;
+use crate::domain::entities::{ArchiveJobStatus, MemoryArchiveJob, MemoryArchiveJobId};
 use crate::error::AppResult;
 
 /// Legacy repository trait for MemoryArchiveJob persistence
@@ -20,8 +18,10 @@ pub trait MemoryArchiveJobRepository: Send + Sync {
     async fn get_by_id(&self, id: &MemoryArchiveJobId) -> AppResult<Option<MemoryArchiveJob>>;
 
     /// Get all pending jobs for a project
-    async fn get_pending_by_project(&self, project_id: &ProjectId)
-        -> AppResult<Vec<MemoryArchiveJob>>;
+    async fn get_pending_by_project(
+        &self,
+        project_id: &ProjectId,
+    ) -> AppResult<Vec<MemoryArchiveJob>>;
 
     /// Update job status
     async fn update_status(

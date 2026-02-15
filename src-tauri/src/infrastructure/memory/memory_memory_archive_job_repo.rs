@@ -7,10 +7,8 @@ use tokio::sync::RwLock;
 use async_trait::async_trait;
 use chrono::Utc;
 
-use crate::domain::entities::{
-    ArchiveJobStatus, MemoryArchiveJob, MemoryArchiveJobId,
-};
 use crate::domain::entities::types::ProjectId;
+use crate::domain::entities::{ArchiveJobStatus, MemoryArchiveJob, MemoryArchiveJobId};
 use crate::domain::repositories::MemoryArchiveJobRepository;
 use crate::error::{AppError, AppResult};
 
@@ -52,9 +50,7 @@ impl MemoryArchiveJobRepository for InMemoryMemoryArchiveJobRepository {
         let jobs = self.jobs.read().await;
         let mut result: Vec<_> = jobs
             .values()
-            .filter(|j| {
-                j.project_id == *project_id && j.status == ArchiveJobStatus::Pending
-            })
+            .filter(|j| j.project_id == *project_id && j.status == ArchiveJobStatus::Pending)
             .cloned()
             .collect();
         result.sort_by(|a, b| a.created_at.cmp(&b.created_at));

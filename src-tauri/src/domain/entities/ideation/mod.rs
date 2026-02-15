@@ -11,9 +11,9 @@ mod assessment;
 mod chat;
 mod graph;
 mod proposal;
-mod types;
 pub mod session_context;
 pub mod session_link;
+mod types;
 
 #[cfg(test)]
 mod tests;

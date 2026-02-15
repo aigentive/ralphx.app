@@ -393,14 +393,15 @@ fn test_v24_fresh_db_creation() {
 
     // Verify schema version is 24
     let version: i32 = conn
-        .query_row(
-            "SELECT MAX(version) FROM schema_migrations",
-            [],
-            |row| row.get(0),
-        )
+        .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
+            row.get(0)
+        })
         .unwrap();
 
-    assert_eq!(version, 35, "Schema version should be 35 after fresh install");
+    assert_eq!(
+        version, 35,
+        "Schema version should be 35 after fresh install"
+    );
 
     // Verify all memory tables exist
     assert!(helpers::table_exists(&conn, "project_memory_settings"));
@@ -419,11 +420,9 @@ fn test_v24_upgrade_from_v23() {
 
     // Verify we're at v23
     let version: i32 = conn
-        .query_row(
-            "SELECT MAX(version) FROM schema_migrations",
-            [],
-            |row| row.get(0),
-        )
+        .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
+            row.get(0)
+        })
         .unwrap();
     assert!(version >= 23, "Should have at least v23");
 

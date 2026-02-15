@@ -43,7 +43,6 @@ pub enum AppError {
 
     #[error("Execution blocked: {0}")]
     ExecutionBlocked(String),
-
 }
 
 impl From<AgentError> for AppError {

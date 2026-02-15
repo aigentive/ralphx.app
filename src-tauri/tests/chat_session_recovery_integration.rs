@@ -5,11 +5,11 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
-use std::sync::Arc;
 use chrono::Utc;
+use std::sync::Arc;
 
 use ralphx_lib::domain::entities::{
-    ChatConversation, ChatConversationId, ChatContextType, ChatMessage, IdeationSessionId,
+    ChatContextType, ChatConversation, ChatConversationId, ChatMessage, IdeationSessionId,
     MessageRole, ProjectId, TaskId,
 };
 use ralphx_lib::domain::repositories::{ChatConversationRepository, ChatMessageRepository};
@@ -101,11 +101,7 @@ impl TestHarness {
     }
 
     /// Simulate updating the session ID (as if recovery happened)
-    async fn update_session_id(
-        &self,
-        conversation_id: &ChatConversationId,
-        new_session_id: &str,
-    ) {
+    async fn update_session_id(&self, conversation_id: &ChatConversationId, new_session_id: &str) {
         self.conversation_repo
             .update_claude_session_id(conversation_id, new_session_id)
             .await
@@ -348,10 +344,7 @@ async fn test_error_messages_filtered_from_replay() {
     let messages = vec![
         (MessageRole::User, "Hello"),
         (MessageRole::Orchestrator, "Hi!"),
-        (
-            MessageRole::System,
-            "[Agent error: Something went wrong]",
-        ),
+        (MessageRole::System, "[Agent error: Something went wrong]"),
         (MessageRole::User, "Are you there?"),
     ];
 

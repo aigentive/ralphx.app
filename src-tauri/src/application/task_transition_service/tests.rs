@@ -1,8 +1,8 @@
 use super::*;
 use crate::application::AppState;
 use crate::domain::entities::{InternalStatus, Project, Task};
+use crate::domain::services::{MemoryRunningAgentRegistry, MessageQueue};
 use crate::domain::state_machine::transition_handler::metadata_builder::MetadataUpdate;
-use crate::domain::services::{MessageQueue, MemoryRunningAgentRegistry};
 use serde_json::Value;
 
 #[test]
@@ -119,7 +119,11 @@ async fn test_transition_task_with_metadata_update_persists_atomically() {
     let service = build_test_service(&app_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Test Task".to_string());
     task.internal_status = InternalStatus::Backlog;
@@ -139,7 +143,10 @@ async fn test_transition_task_with_metadata_update_persists_atomically() {
     let metadata_json = updated_task.metadata.expect("Metadata should be set");
     let parsed: serde_json::Map<String, Value> = serde_json::from_str(&metadata_json).unwrap();
 
-    assert_eq!(parsed.get("custom_key").unwrap(), &Value::String("custom_value".to_string()));
+    assert_eq!(
+        parsed.get("custom_key").unwrap(),
+        &Value::String("custom_value".to_string())
+    );
     assert_eq!(parsed.get("is_test").unwrap(), &Value::Bool(true));
 }
 
@@ -149,7 +156,11 @@ async fn test_transition_task_with_none_preserves_existing_metadata() {
     let service = build_test_service(&app_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Test Task".to_string());
     task.internal_status = InternalStatus::Backlog;
@@ -166,7 +177,10 @@ async fn test_transition_task_with_none_preserves_existing_metadata() {
     let metadata_json = updated_task.metadata.expect("Metadata should be preserved");
     let parsed: serde_json::Map<String, Value> = serde_json::from_str(&metadata_json).unwrap();
 
-    assert_eq!(parsed.get("existing_key").unwrap(), &Value::String("existing_value".to_string()));
+    assert_eq!(
+        parsed.get("existing_key").unwrap(),
+        &Value::String("existing_value".to_string())
+    );
 }
 
 #[tokio::test]
@@ -175,7 +189,11 @@ async fn test_qa_refining_transition_auto_adds_trigger_origin() {
     let service = build_test_service(&app_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Test Task".to_string());
     task.internal_status = InternalStatus::Executing;
@@ -188,10 +206,15 @@ async fn test_qa_refining_transition_auto_adds_trigger_origin() {
 
     assert_eq!(updated_task.internal_status, InternalStatus::QaRefining);
 
-    let metadata_json = updated_task.metadata.expect("Metadata should have trigger_origin");
+    let metadata_json = updated_task
+        .metadata
+        .expect("Metadata should have trigger_origin");
     let parsed: serde_json::Map<String, Value> = serde_json::from_str(&metadata_json).unwrap();
 
-    assert_eq!(parsed.get("trigger_origin").unwrap(), &Value::String("qa".to_string()));
+    assert_eq!(
+        parsed.get("trigger_origin").unwrap(),
+        &Value::String("qa".to_string())
+    );
 }
 
 #[tokio::test]
@@ -200,7 +223,11 @@ async fn test_qa_testing_transition_auto_adds_trigger_origin() {
     let service = build_test_service(&app_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Test Task".to_string());
     task.internal_status = InternalStatus::QaRefining;
@@ -213,10 +240,15 @@ async fn test_qa_testing_transition_auto_adds_trigger_origin() {
 
     assert_eq!(updated_task.internal_status, InternalStatus::QaTesting);
 
-    let metadata_json = updated_task.metadata.expect("Metadata should have trigger_origin");
+    let metadata_json = updated_task
+        .metadata
+        .expect("Metadata should have trigger_origin");
     let parsed: serde_json::Map<String, Value> = serde_json::from_str(&metadata_json).unwrap();
 
-    assert_eq!(parsed.get("trigger_origin").unwrap(), &Value::String("qa".to_string()));
+    assert_eq!(
+        parsed.get("trigger_origin").unwrap(),
+        &Value::String("qa".to_string())
+    );
 }
 
 #[tokio::test]
@@ -225,15 +257,19 @@ async fn test_metadata_merge_preserves_existing_keys_not_in_update() {
     let service = build_test_service(&app_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Test Task".to_string());
     task.internal_status = InternalStatus::Backlog;
-    task.metadata = Some(r#"{"existing_key":"existing_value","another_key":"another_value"}"#.to_string());
+    task.metadata =
+        Some(r#"{"existing_key":"existing_value","another_key":"another_value"}"#.to_string());
     app_state.task_repo.create(task.clone()).await.unwrap();
 
-    let metadata_update = MetadataUpdate::new()
-        .with_string("new_key", "new_value");
+    let metadata_update = MetadataUpdate::new().with_string("new_key", "new_value");
 
     let updated_task = service
         .transition_task_with_metadata(&task.id, InternalStatus::Ready, Some(metadata_update))
@@ -243,7 +279,16 @@ async fn test_metadata_merge_preserves_existing_keys_not_in_update() {
     let metadata_json = updated_task.metadata.expect("Metadata should be merged");
     let parsed: serde_json::Map<String, Value> = serde_json::from_str(&metadata_json).unwrap();
 
-    assert_eq!(parsed.get("existing_key").unwrap(), &Value::String("existing_value".to_string()));
-    assert_eq!(parsed.get("another_key").unwrap(), &Value::String("another_value".to_string()));
-    assert_eq!(parsed.get("new_key").unwrap(), &Value::String("new_value".to_string()));
+    assert_eq!(
+        parsed.get("existing_key").unwrap(),
+        &Value::String("existing_value".to_string())
+    );
+    assert_eq!(
+        parsed.get("another_key").unwrap(),
+        &Value::String("another_value".to_string())
+    );
+    assert_eq!(
+        parsed.get("new_key").unwrap(),
+        &Value::String("new_value".to_string())
+    );
 }

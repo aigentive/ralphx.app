@@ -358,10 +358,16 @@ pub fn create_mcp_config(plugin_dir: &Path, agent_type: &str) -> Option<PathBuf>
 
     if let Some(server_obj) = server_cfg.as_object_mut() {
         if !server_obj.contains_key("type") {
-            server_obj.insert("type".to_string(), serde_json::Value::String("stdio".to_string()));
+            server_obj.insert(
+                "type".to_string(),
+                serde_json::Value::String("stdio".to_string()),
+            );
         }
         if !server_obj.contains_key("command") {
-            server_obj.insert("command".to_string(), serde_json::Value::String(node_command));
+            server_obj.insert(
+                "command".to_string(),
+                serde_json::Value::String(node_command),
+            );
         }
 
         let mut args_vec: Vec<String> = server_obj
@@ -778,8 +784,8 @@ pub fn find_plugin_dir() -> Option<PathBuf> {
     // Production fallback: app data location where local release provisioning
     // installs plugin runtime assets.
     if let Ok(home) = std::env::var("HOME") {
-        let app_data_plugin = PathBuf::from(home)
-            .join("Library/Application Support/com.ralphx.app/ralphx-plugin");
+        let app_data_plugin =
+            PathBuf::from(home).join("Library/Application Support/com.ralphx.app/ralphx-plugin");
         if app_data_plugin.exists() {
             return Some(app_data_plugin);
         }

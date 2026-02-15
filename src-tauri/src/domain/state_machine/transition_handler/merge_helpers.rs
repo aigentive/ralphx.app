@@ -6,9 +6,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::application::GitService;
+use crate::domain::entities::InternalStatus;
 use crate::domain::entities::{PlanBranchStatus, Project, Task, TaskId};
 use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
-use crate::domain::entities::InternalStatus;
 use crate::error::AppResult;
 
 /// Convert project name to a URL-safe slug for branch naming
@@ -68,12 +68,7 @@ pub(super) fn compute_rebase_worktree_path(project: &Project, task_id: &str) -> 
         .as_deref()
         .unwrap_or("~/ralphx-worktrees");
     let expanded = expand_home(worktree_parent);
-    format!(
-        "{}/{}/rebase-{}",
-        expanded,
-        slugify(&project.name),
-        task_id
-    )
+    format!("{}/{}/rebase-{}", expanded, slugify(&project.name), task_id)
 }
 
 /// Extract a task ID from a merge worktree path.
@@ -90,7 +85,10 @@ pub(super) fn extract_task_id_from_merge_path(path: &str) -> Option<&str> {
 /// Only covers `PendingMerge` and `Merging` where a merge worktree is actively in use.
 /// Excludes `MergeIncomplete` and `MergeConflict` (human-waiting states) to allow
 /// other tasks to clean up orphaned worktrees when merging to the same branch.
-pub(super) async fn is_task_in_merge_workflow(task_repo: &Arc<dyn TaskRepository>, task_id_str: &str) -> bool {
+pub(super) async fn is_task_in_merge_workflow(
+    task_repo: &Arc<dyn TaskRepository>,
+    task_id_str: &str,
+) -> bool {
     let task_id = TaskId::from_string(task_id_str.to_string());
     match task_repo.get_by_id(&task_id).await {
         Ok(Some(task)) => matches!(
@@ -454,7 +452,11 @@ mod tests {
         task_repo.create(task.clone()).await.unwrap();
 
         // Create the expected branch
-        let expected_branch = format!("ralphx/{}/task-{}", slugify(&project.name), task.id.as_str());
+        let expected_branch = format!(
+            "ralphx/{}/task-{}",
+            slugify(&project.name),
+            task.id.as_str()
+        );
         Command::new("git")
             .args(["branch", &expected_branch])
             .current_dir(&repo_path)
@@ -515,7 +517,11 @@ mod tests {
         task_repo.create(task.clone()).await.unwrap();
 
         // Create a different branch (should be ignored)
-        let expected_branch = format!("ralphx/{}/task-{}", slugify(&project.name), task.id.as_str());
+        let expected_branch = format!(
+            "ralphx/{}/task-{}",
+            slugify(&project.name),
+            task.id.as_str()
+        );
         Command::new("git")
             .args(["branch", &expected_branch])
             .current_dir(&repo_path)
@@ -540,7 +546,10 @@ mod tests {
     #[tokio::test]
     async fn test_discover_and_attach_branch_slugifies_project_name() {
         let (_temp_dir, repo_path) = create_temp_git_repo();
-        let project = create_test_project("Test Project With Spaces!", repo_path.to_string_lossy().to_string());
+        let project = create_test_project(
+            "Test Project With Spaces!",
+            repo_path.to_string_lossy().to_string(),
+        );
         let mut task = create_test_task(project.id.clone());
         let task_repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::new());
 
@@ -548,8 +557,15 @@ mod tests {
         task_repo.create(task.clone()).await.unwrap();
 
         // Create the branch with slugified name
-        let expected_branch = format!("ralphx/{}/task-{}", slugify(&project.name), task.id.as_str());
-        assert_eq!(expected_branch, format!("ralphx/test-project-with-spaces/task-{}", task.id.as_str()));
+        let expected_branch = format!(
+            "ralphx/{}/task-{}",
+            slugify(&project.name),
+            task.id.as_str()
+        );
+        assert_eq!(
+            expected_branch,
+            format!("ralphx/test-project-with-spaces/task-{}", task.id.as_str())
+        );
 
         Command::new("git")
             .args(["branch", &expected_branch])

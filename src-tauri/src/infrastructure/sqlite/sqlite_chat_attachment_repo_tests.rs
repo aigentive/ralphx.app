@@ -82,13 +82,7 @@ async fn test_create_attachment_without_mime_type() {
     let conversation_id = create_test_conversation(&conn);
 
     let repo = SqliteChatAttachmentRepository::new(conn);
-    let attachment = ChatAttachment::new(
-        conversation_id,
-        "README",
-        "/path/to/README",
-        512,
-        None,
-    );
+    let attachment = ChatAttachment::new(conversation_id, "README", "/path/to/README", 512, None);
 
     let result = repo.create(attachment.clone()).await;
 
@@ -240,13 +234,8 @@ async fn test_update_message_id_links_attachment_to_message() {
     let conversation_id = create_test_conversation(&conn);
 
     let repo = SqliteChatAttachmentRepository::new(conn);
-    let attachment = ChatAttachment::new(
-        conversation_id,
-        "file.txt",
-        "/path/to/file.txt",
-        1024,
-        None,
-    );
+    let attachment =
+        ChatAttachment::new(conversation_id, "file.txt", "/path/to/file.txt", 1024, None);
     repo.create(attachment.clone()).await.unwrap();
 
     let message_id = ChatMessageId::new();
@@ -303,13 +292,8 @@ async fn test_delete_removes_attachment() {
     let conversation_id = create_test_conversation(&conn);
 
     let repo = SqliteChatAttachmentRepository::new(conn);
-    let attachment = ChatAttachment::new(
-        conversation_id,
-        "file.txt",
-        "/path/to/file.txt",
-        1024,
-        None,
-    );
+    let attachment =
+        ChatAttachment::new(conversation_id, "file.txt", "/path/to/file.txt", 1024, None);
     repo.create(attachment.clone()).await.unwrap();
 
     let result = repo.delete(&attachment.id).await;
@@ -347,7 +331,10 @@ async fn test_delete_by_conversation_id_removes_all_attachments() {
     let result = repo.delete_by_conversation_id(&conversation_id).await;
 
     assert!(result.is_ok());
-    let attachments = repo.find_by_conversation_id(&conversation_id).await.unwrap();
+    let attachments = repo
+        .find_by_conversation_id(&conversation_id)
+        .await
+        .unwrap();
     assert_eq!(attachments.len(), 0);
 }
 

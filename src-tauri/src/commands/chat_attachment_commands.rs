@@ -215,8 +215,7 @@ pub async fn delete_chat_attachment(
     // Delete file from disk (ignore errors if file doesn't exist)
     let file_path = PathBuf::from(&attachment.file_path);
     if file_path.exists() {
-        std::fs::remove_file(&file_path)
-            .map_err(|e| format!("Failed to delete file: {}", e))?;
+        std::fs::remove_file(&file_path).map_err(|e| format!("Failed to delete file: {}", e))?;
 
         // Try to clean up empty parent directories
         if let Some(parent) = file_path.parent() {

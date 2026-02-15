@@ -11,7 +11,9 @@ use super::services::{
 use super::types::Blocker;
 use crate::application::ChatService;
 use crate::commands::ExecutionState;
-use crate::domain::repositories::{PlanBranchRepository, ProjectRepository, TaskRepository, TaskStepRepository};
+use crate::domain::repositories::{
+    PlanBranchRepository, ProjectRepository, TaskRepository, TaskStepRepository,
+};
 use std::any::Any;
 use std::sync::Arc;
 use tauri::{AppHandle, Runtime, Wry};

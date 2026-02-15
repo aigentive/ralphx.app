@@ -1399,10 +1399,7 @@ async fn test_retry_merge_command_latency() {
     if let TransitionResult::AutoTransition(state) = &result {
         assert_eq!(*state, State::PendingMerge);
     } else {
-        panic!(
-            "Expected AutoTransition to PendingMerge, got {:?}",
-            result
-        );
+        panic!("Expected AutoTransition to PendingMerge, got {:?}", result);
     }
 }
 
@@ -1472,9 +1469,7 @@ async fn test_background_execution_correctness_state_ordering() {
     // Approved should NOT unblock dependents (that happens at Merged)
     let dep_calls = dep_manager.get_calls();
     assert!(
-        !dep_calls
-            .iter()
-            .any(|c| c.method == "unblock_dependents"),
+        !dep_calls.iter().any(|c| c.method == "unblock_dependents"),
         "Should NOT unblock dependents at Approved — only at Merged"
     );
 }
@@ -1495,7 +1490,10 @@ async fn test_background_execution_merged_terminal_state() {
     let mut services = TaskServices::new_mock();
     services.dependency_manager = Arc::clone(&dep_manager) as Arc<dyn DependencyManager>;
     services.task_scheduler =
-        Some(Arc::clone(&scheduler) as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
+        Some(Arc::clone(&scheduler)
+            as Arc<
+                dyn crate::domain::state_machine::services::TaskScheduler,
+            >);
 
     let context = create_context_with_services("task-1", "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
@@ -1627,9 +1625,7 @@ async fn test_blocking_isolation_execution_state_unaffected_by_pending_merge() {
     let handler = TransitionHandler::new(&mut machine);
 
     // Exiting PendingMerge to Merged should NOT decrement (PendingMerge is not agent-active)
-    handler
-        .on_exit(&State::PendingMerge, &State::Merged)
-        .await;
+    handler.on_exit(&State::PendingMerge, &State::Merged).await;
 
     // PendingMerge is NOT agent-active, running count should be unchanged
     assert_eq!(
@@ -1672,9 +1668,7 @@ async fn test_reload_continuation_callback_drop() {
 
     // Simulate various merge-related on_exit calls without app_handle
     // None should panic (graceful handling even without app_handle)
-    handler
-        .on_exit(&State::PendingMerge, &State::Merged)
-        .await;
+    handler.on_exit(&State::PendingMerge, &State::Merged).await;
     handler
         .on_exit(&State::PendingMerge, &State::MergeIncomplete)
         .await;
@@ -1703,15 +1697,24 @@ async fn test_reload_continuation_enter_states_without_app_handle() {
 
     // on_enter for PendingMerge should not panic without app_handle
     let result = handler.on_enter(&State::PendingMerge).await;
-    assert!(result.is_ok(), "on_enter(PendingMerge) should succeed without app_handle");
+    assert!(
+        result.is_ok(),
+        "on_enter(PendingMerge) should succeed without app_handle"
+    );
 
     // on_enter for Merged should not panic without app_handle
     let result = handler.on_enter(&State::Merged).await;
-    assert!(result.is_ok(), "on_enter(Merged) should succeed without app_handle");
+    assert!(
+        result.is_ok(),
+        "on_enter(Merged) should succeed without app_handle"
+    );
 
     // on_enter for Merging should not panic without app_handle
     let result = handler.on_enter(&State::Merging).await;
-    assert!(result.is_ok(), "on_enter(Merging) should succeed without app_handle");
+    assert!(
+        result.is_ok(),
+        "on_enter(Merging) should succeed without app_handle"
+    );
 }
 
 /// Test: State remains correct after simulated reload mid-merge.
@@ -1752,9 +1755,7 @@ async fn test_reload_continuation_state_recovery() {
     );
 
     // Or the merge could complete (transition to Merged from outside)
-    handler2
-        .on_exit(&State::PendingMerge, &State::Merged)
-        .await;
+    handler2.on_exit(&State::PendingMerge, &State::Merged).await;
 
     // Deferred merge retry should still be triggered after reload
     tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
@@ -1819,9 +1820,7 @@ async fn test_event_emission_merged_entry_side_effects() {
     // Verify unblock_dependents was called
     let dep_calls = dep_manager.get_calls();
     assert!(
-        dep_calls
-            .iter()
-            .any(|c| c.method == "unblock_dependents"),
+        dep_calls.iter().any(|c| c.method == "unblock_dependents"),
         "on_enter(Merged) should unblock dependents"
     );
 }
@@ -1846,9 +1845,7 @@ async fn test_event_emission_pending_merge_exit_preserves_execution_state() {
     let mut machine = TaskStateMachine::new(context);
 
     let handler = TransitionHandler::new(&mut machine);
-    handler
-        .on_exit(&State::PendingMerge, &State::Merged)
-        .await;
+    handler.on_exit(&State::PendingMerge, &State::Merged).await;
 
     // PendingMerge is NOT agent-active, running count should be unchanged
     assert_eq!(
@@ -1882,16 +1879,16 @@ async fn test_event_emission_full_merge_event_sequence() {
 
     // task_completed should be in the event list (emitted at Approved entry)
     assert!(
-        events.iter().any(|e| e.args.first().map(|s| s.as_str()) == Some("task_completed")),
+        events
+            .iter()
+            .any(|e| e.args.first().map(|s| s.as_str()) == Some("task_completed")),
         "Event sequence should include task_completed"
     );
 
     // unblock_dependents should NOT have been called at Approved
     let dep_calls = dep_manager.get_calls();
     assert!(
-        !dep_calls
-            .iter()
-            .any(|c| c.method == "unblock_dependents"),
+        !dep_calls.iter().any(|c| c.method == "unblock_dependents"),
         "Dependents should NOT be unblocked at Approved"
     );
 }
@@ -1908,17 +1905,12 @@ async fn test_event_emission_full_merge_event_sequence() {
 async fn test_deferred_merge_retry_on_all_pending_merge_exits() {
     use crate::domain::state_machine::mocks::MockTaskScheduler;
 
-    let target_states = [
-        State::Merged,
-        State::MergeIncomplete,
-        State::Merging,
-    ];
+    let target_states = [State::Merged, State::MergeIncomplete, State::Merging];
 
     for target in &target_states {
         let scheduler = Arc::new(MockTaskScheduler::new());
-        let services = TaskServices::new_mock()
-            .with_task_scheduler(Arc::clone(&scheduler)
-                as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
+        let services = TaskServices::new_mock().with_task_scheduler(Arc::clone(&scheduler)
+            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
 
         let context = create_context_with_services("task-1", "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
@@ -1958,17 +1950,12 @@ async fn test_deferred_merge_retry_on_all_pending_merge_exits() {
 async fn test_deferred_merge_retry_on_all_merging_exits() {
     use crate::domain::state_machine::mocks::MockTaskScheduler;
 
-    let target_states = [
-        State::Merged,
-        State::MergeIncomplete,
-        State::MergeConflict,
-    ];
+    let target_states = [State::Merged, State::MergeIncomplete, State::MergeConflict];
 
     for target in &target_states {
         let scheduler = Arc::new(MockTaskScheduler::new());
-        let services = TaskServices::new_mock()
-            .with_task_scheduler(Arc::clone(&scheduler)
-                as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
+        let services = TaskServices::new_mock().with_task_scheduler(Arc::clone(&scheduler)
+            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
 
         let context = create_context_with_services("task-1", "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
@@ -2012,9 +1999,7 @@ async fn test_deferred_merge_no_duplicate_retries() {
     let handler = TransitionHandler::new(&mut machine);
 
     // Single exit call
-    handler
-        .on_exit(&State::PendingMerge, &State::Merged)
-        .await;
+    handler.on_exit(&State::PendingMerge, &State::Merged).await;
 
     // Wait for all spawned tasks
     tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
@@ -2052,9 +2037,8 @@ async fn test_deferred_merge_not_triggered_by_non_merge_exits() {
 
     for (from, to) in &non_merge_transitions {
         let scheduler = Arc::new(MockTaskScheduler::new());
-        let services = TaskServices::new_mock()
-            .with_task_scheduler(Arc::clone(&scheduler)
-                as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
+        let services = TaskServices::new_mock().with_task_scheduler(Arc::clone(&scheduler)
+            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
 
         let context = create_context_with_services("task-1", "proj-1", services);
         let mut machine = TaskStateMachine::new(context);
@@ -2135,7 +2119,10 @@ async fn test_branch_discovery_integrates_with_pending_merge() {
         .unwrap();
 
     // Create project and task
-    let project = Project::new("test-project".to_string(), repo_path.to_string_lossy().to_string());
+    let project = Project::new(
+        "test-project".to_string(),
+        repo_path.to_string_lossy().to_string(),
+    );
     let task = Task::new(project.id.clone(), "Test task".to_string());
 
     // Create the orphaned git branch (simulating recovery scenario)
@@ -2231,7 +2218,10 @@ async fn test_merge_retry_recovery_discovers_branch_and_merges() {
         .unwrap();
 
     // Create project and task
-    let project = Project::new("test-project".to_string(), repo_path.to_string_lossy().to_string());
+    let project = Project::new(
+        "test-project".to_string(),
+        repo_path.to_string_lossy().to_string(),
+    );
     let mut task = Task::new(project.id.clone(), "Test recovery task".to_string());
     task.internal_status = InternalStatus::MergeIncomplete;
     task.task_branch = None; // Simulate orphaned state
@@ -2355,7 +2345,10 @@ async fn test_merge_retry_recovery_detects_conflicts_and_enters_merging() {
         .unwrap();
 
     // Create project and task
-    let project = Project::new("test-project".to_string(), repo_path.to_string_lossy().to_string());
+    let project = Project::new(
+        "test-project".to_string(),
+        repo_path.to_string_lossy().to_string(),
+    );
     let mut task = Task::new(project.id.clone(), "Test conflict task".to_string());
     task.internal_status = InternalStatus::MergeIncomplete;
     task.task_branch = None; // Simulate orphaned state
@@ -2493,7 +2486,10 @@ async fn test_executing_entry_recovers_existing_branch_into_worktree() {
     // Create project with Worktree mode and worktree parent in temp dir
     let worktree_parent = temp_dir.path().join("worktrees");
     fs::create_dir_all(&worktree_parent).unwrap();
-    let mut project = Project::new("test-project".to_string(), repo_path.to_string_lossy().to_string());
+    let mut project = Project::new(
+        "test-project".to_string(),
+        repo_path.to_string_lossy().to_string(),
+    );
     project.git_mode = GitMode::Worktree;
     project.worktree_parent_directory = Some(worktree_parent.to_string_lossy().to_string());
 
@@ -2576,7 +2572,9 @@ async fn test_executing_entry_recovers_existing_branch_into_worktree() {
         .current_dir(worktree_path)
         .output()
         .unwrap();
-    let current_branch = String::from_utf8_lossy(&branch_check.stdout).trim().to_string();
+    let current_branch = String::from_utf8_lossy(&branch_check.stdout)
+        .trim()
+        .to_string();
     assert_eq!(
         current_branch, expected_branch,
         "Worktree should be on the existing branch"
@@ -2634,7 +2632,8 @@ async fn test_on_enter_failed_skips_when_failure_error_already_present() {
     // Create task with pre-computed failure metadata
     let project = Project::new("test-project".to_string(), "/test/path".to_string());
     let mut task = Task::new(project.id.clone(), "Test task".to_string());
-    task.metadata = Some(r#"{"failure_error":"Pre-computed error","is_timeout":false}"#.to_string());
+    task.metadata =
+        Some(r#"{"failure_error":"Pre-computed error","is_timeout":false}"#.to_string());
 
     let task_repo: Arc<dyn crate::domain::repositories::TaskRepository> =
         Arc::new(MemoryTaskRepository::new());
@@ -2659,7 +2658,8 @@ async fn test_on_enter_failed_skips_when_failure_error_already_present() {
     // Verify metadata was NOT overwritten (still has pre-computed value)
     let updated_task = task_repo.get_by_id(&task.id).await.unwrap().unwrap();
     let metadata_json = updated_task.metadata.expect("Metadata should still exist");
-    let parsed: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&metadata_json).unwrap();
+    let parsed: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(&metadata_json).unwrap();
 
     assert_eq!(
         parsed.get("failure_error").unwrap().as_str().unwrap(),
@@ -2702,7 +2702,8 @@ async fn test_on_enter_failed_writes_when_not_present() {
     // Verify metadata was written
     let updated_task = task_repo.get_by_id(&task.id).await.unwrap().unwrap();
     let metadata_json = updated_task.metadata.expect("Metadata should be written");
-    let parsed: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&metadata_json).unwrap();
+    let parsed: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(&metadata_json).unwrap();
 
     assert_eq!(
         parsed.get("failure_error").unwrap().as_str().unwrap(),
@@ -2784,7 +2785,8 @@ async fn test_on_enter_qa_refining_skips_when_trigger_origin_already_present() {
     // Verify metadata was NOT overwritten (still has pre-computed value)
     let updated_task = task_repo.get_by_id(&task.id).await.unwrap().unwrap();
     let metadata_json = updated_task.metadata.expect("Metadata should still exist");
-    let parsed: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&metadata_json).unwrap();
+    let parsed: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(&metadata_json).unwrap();
 
     assert_eq!(
         parsed.get("trigger_origin").unwrap().as_str().unwrap(),
@@ -2827,7 +2829,8 @@ async fn test_on_enter_qa_refining_writes_when_not_present() {
     // Verify metadata was written
     let updated_task = task_repo.get_by_id(&task.id).await.unwrap().unwrap();
     let metadata_json = updated_task.metadata.expect("Metadata should be written");
-    let parsed: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&metadata_json).unwrap();
+    let parsed: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(&metadata_json).unwrap();
 
     assert_eq!(
         parsed.get("trigger_origin").unwrap().as_str().unwrap(),
@@ -2866,7 +2869,8 @@ async fn test_on_enter_qa_testing_skips_when_trigger_origin_already_present() {
     // Verify metadata was NOT overwritten (still has pre-computed value)
     let updated_task = task_repo.get_by_id(&task.id).await.unwrap().unwrap();
     let metadata_json = updated_task.metadata.expect("Metadata should still exist");
-    let parsed: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&metadata_json).unwrap();
+    let parsed: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(&metadata_json).unwrap();
 
     assert_eq!(
         parsed.get("trigger_origin").unwrap().as_str().unwrap(),
@@ -2909,7 +2913,8 @@ async fn test_on_enter_qa_testing_writes_when_not_present() {
     // Verify metadata was written
     let updated_task = task_repo.get_by_id(&task.id).await.unwrap().unwrap();
     let metadata_json = updated_task.metadata.expect("Metadata should be written");
-    let parsed: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&metadata_json).unwrap();
+    let parsed: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(&metadata_json).unwrap();
 
     assert_eq!(
         parsed.get("trigger_origin").unwrap().as_str().unwrap(),

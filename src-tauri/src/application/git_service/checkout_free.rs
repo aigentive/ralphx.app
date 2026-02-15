@@ -51,10 +51,7 @@ pub fn merge_tree_write(
         // and file listing. Parse from stdout.
         let stdout = String::from_utf8_lossy(&output.stdout);
         let files = parse_merge_tree_conflicts(&stdout);
-        debug!(
-            "merge-tree --write-tree found {} conflicts",
-            files.len()
-        );
+        debug!("merge-tree --write-tree found {} conflicts", files.len());
         Ok(Err(files))
     }
 }
@@ -159,10 +156,7 @@ pub fn try_merge_checkout_free(
     source_branch: &str,
     target_branch: &str,
 ) -> AppResult<CheckoutFreeMergeResult> {
-    debug!(
-        "Checkout-free merge: {} → {}",
-        source_branch, target_branch
-    );
+    debug!("Checkout-free merge: {} → {}", source_branch, target_branch);
 
     let target_sha = super::GitService::get_branch_sha(repo, target_branch)?;
     let source_sha = super::GitService::get_branch_sha(repo, source_branch)?;
@@ -170,8 +164,7 @@ pub fn try_merge_checkout_free(
     match merge_tree_write(repo, target_branch, source_branch)? {
         Ok(tree_sha) => {
             let message = format!("Merge branch '{}' into {}", source_branch, target_branch);
-            let commit_sha =
-                commit_tree(repo, &tree_sha, &[&target_sha, &source_sha], &message)?;
+            let commit_sha = commit_tree(repo, &tree_sha, &[&target_sha, &source_sha], &message)?;
             update_branch_ref(repo, target_branch, &commit_sha)?;
             debug!(
                 "Checkout-free merge succeeded: {} → {} = {}",
@@ -180,10 +173,7 @@ pub fn try_merge_checkout_free(
             Ok(CheckoutFreeMergeResult::Success { commit_sha })
         }
         Err(files) => {
-            debug!(
-                "Checkout-free merge has {} conflicts",
-                files.len()
-            );
+            debug!("Checkout-free merge has {} conflicts", files.len());
             Ok(CheckoutFreeMergeResult::Conflict { files })
         }
     }
@@ -220,10 +210,7 @@ pub fn try_squash_merge_checkout_free(
             Ok(CheckoutFreeMergeResult::Success { commit_sha })
         }
         Err(files) => {
-            debug!(
-                "Checkout-free squash merge has {} conflicts",
-                files.len()
-            );
+            debug!("Checkout-free squash merge has {} conflicts", files.len());
             Ok(CheckoutFreeMergeResult::Conflict { files })
         }
     }

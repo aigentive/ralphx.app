@@ -270,11 +270,9 @@ impl TaskCleanupService {
                         error = %e,
                         "Failed to delete task during post-delete verification"
                     );
-                    report.errors.push(format!(
-                        "Delete (retry) {}: {}",
-                        task.id.as_str(),
-                        e
-                    ));
+                    report
+                        .errors
+                        .push(format!("Delete (retry) {}: {}", task.id.as_str(), e));
                 } else {
                     report.tasks_deleted += 1;
                     if emit_events {

@@ -8,10 +8,10 @@ use async_trait::async_trait;
 use chrono::Utc;
 use rusqlite::Connection;
 
+use crate::domain::entities::types::ProjectId;
 use crate::domain::entities::{
     ArchiveJobPayload, ArchiveJobStatus, ArchiveJobType, MemoryArchiveJob, MemoryArchiveJobId,
 };
-use crate::domain::entities::types::ProjectId;
 use crate::domain::repositories::MemoryArchiveRepository;
 use crate::error::{AppError, AppResult};
 
@@ -299,8 +299,7 @@ impl MemoryArchiveRepository for SqliteMemoryArchiveRepository {
         let mut job = match result {
             Ok(job) => job,
             Err(rusqlite::Error::QueryReturnedNoRows) => {
-                tx.commit()
-                    .map_err(|e| AppError::Database(e.to_string()))?;
+                tx.commit().map_err(|e| AppError::Database(e.to_string()))?;
                 return Ok(None);
             }
             Err(e) => {
@@ -324,8 +323,7 @@ impl MemoryArchiveRepository for SqliteMemoryArchiveRepository {
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
 
-        tx.commit()
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        tx.commit().map_err(|e| AppError::Database(e.to_string()))?;
 
         Ok(Some(job))
     }
@@ -355,8 +353,7 @@ impl MemoryArchiveRepository for SqliteMemoryArchiveRepository {
         let mut job = match result {
             Ok(job) => job,
             Err(rusqlite::Error::QueryReturnedNoRows) => {
-                tx.commit()
-                    .map_err(|e| AppError::Database(e.to_string()))?;
+                tx.commit().map_err(|e| AppError::Database(e.to_string()))?;
                 return Ok(None);
             }
             Err(e) => {
@@ -380,8 +377,7 @@ impl MemoryArchiveRepository for SqliteMemoryArchiveRepository {
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
 
-        tx.commit()
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        tx.commit().map_err(|e| AppError::Database(e.to_string()))?;
 
         Ok(Some(job))
     }
@@ -481,7 +477,8 @@ mod tests {
         let repo = setup_test_repo().await;
         let project_id = ProjectId::from_string("test-project".to_string());
         let payload = ArchiveJobPayload::memory_snapshot("mem_123");
-        let job = MemoryArchiveJob::new(project_id.clone(), ArchiveJobType::MemorySnapshot, payload);
+        let job =
+            MemoryArchiveJob::new(project_id.clone(), ArchiveJobType::MemorySnapshot, payload);
 
         let created_job = repo.create(job.clone()).await.unwrap();
         assert_eq!(created_job.id, job.id);

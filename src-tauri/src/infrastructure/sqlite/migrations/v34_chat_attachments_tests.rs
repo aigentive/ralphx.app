@@ -33,9 +33,7 @@ fn test_v34_chat_attachments_columns_exist() {
     run_migrations(&conn).unwrap();
 
     // Verify columns exist via PRAGMA table_info
-    let mut stmt = conn
-        .prepare("PRAGMA table_info(chat_attachments)")
-        .unwrap();
+    let mut stmt = conn.prepare("PRAGMA table_info(chat_attachments)").unwrap();
     let columns: Vec<String> = stmt
         .query_map([], |row| row.get::<_, String>(1))
         .unwrap()

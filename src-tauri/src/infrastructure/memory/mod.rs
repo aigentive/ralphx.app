@@ -15,6 +15,9 @@ pub mod memory_chat_message_repo;
 pub mod memory_execution_settings_repo;
 pub mod memory_ideation_session_repo;
 pub mod memory_ideation_settings_repo;
+pub mod memory_memory_archive_job_repo;
+pub mod memory_memory_entry_repo;
+pub mod memory_memory_event_repo;
 pub mod memory_methodology_repo;
 pub mod memory_permission_repo;
 pub mod memory_plan_branch_repo;
@@ -33,9 +36,6 @@ pub mod memory_task_qa_repo;
 pub mod memory_task_repo;
 pub mod memory_task_step_repo;
 pub mod memory_workflow_repo;
-pub mod memory_memory_entry_repo;
-pub mod memory_memory_event_repo;
-pub mod memory_memory_archive_job_repo;
 
 // Re-exports for convenience
 pub use memory_active_plan_repo::MemoryActivePlanRepository;
@@ -54,6 +54,9 @@ pub use memory_execution_settings_repo::{
 };
 pub use memory_ideation_session_repo::MemoryIdeationSessionRepository;
 pub use memory_ideation_settings_repo::MemoryIdeationSettingsRepository;
+pub use memory_memory_archive_job_repo::InMemoryMemoryArchiveJobRepository;
+pub use memory_memory_entry_repo::InMemoryMemoryEntryRepository;
+pub use memory_memory_event_repo::InMemoryMemoryEventRepository;
 pub use memory_methodology_repo::MemoryMethodologyRepository;
 pub use memory_permission_repo::MemoryPermissionRepository;
 pub use memory_plan_branch_repo::MemoryPlanBranchRepository;
@@ -72,6 +75,3 @@ pub use memory_task_qa_repo::MemoryTaskQARepository;
 pub use memory_task_repo::MemoryTaskRepository;
 pub use memory_task_step_repo::MemoryTaskStepRepository;
 pub use memory_workflow_repo::MemoryWorkflowRepository;
-pub use memory_memory_entry_repo::InMemoryMemoryEntryRepository;
-pub use memory_memory_event_repo::InMemoryMemoryEventRepository;
-pub use memory_memory_archive_job_repo::InMemoryMemoryArchiveJobRepository;

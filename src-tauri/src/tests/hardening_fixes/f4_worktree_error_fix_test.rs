@@ -12,8 +12,14 @@ fn test_f4_fix_git_operation_error_variant_exists() {
         "Failed to delete worktree at '/tmp/wt': error: 'wt' is not a valid worktree".to_string(),
     );
     let msg = error.to_string();
-    assert!(msg.contains("Failed to delete worktree"), "Error should describe the operation");
-    assert!(msg.contains("/tmp/wt"), "Error should include the worktree path");
+    assert!(
+        msg.contains("Failed to delete worktree"),
+        "Error should describe the operation"
+    );
+    assert!(
+        msg.contains("/tmp/wt"),
+        "Error should include the worktree path"
+    );
 }
 
 #[test]
@@ -23,7 +29,10 @@ fn test_f5_fix_prune_error_propagated() {
         "Failed to prune worktrees in '/tmp/repo': fatal: not a git repository".to_string(),
     );
     let msg = error.to_string();
-    assert!(msg.contains("prune worktrees"), "Error should describe the prune operation");
+    assert!(
+        msg.contains("prune worktrees"),
+        "Error should describe the prune operation"
+    );
 }
 
 #[test]
@@ -37,5 +46,8 @@ fn test_f4_fix_error_includes_path_context() {
     ));
     let msg = error.to_string();
     assert!(msg.contains(path), "Error should include the full path");
-    assert!(msg.contains(stderr), "Error should include the stderr output");
+    assert!(
+        msg.contains(stderr),
+        "Error should include the stderr output"
+    );
 }

@@ -508,12 +508,10 @@ async fn test_a8_no_plan_branch_repo_falls_back_to_default() {
     )
     .with_execution_state(svc.execution_state.clone())
     .with_task_repo(
-        svc.task_repo.clone() as std::sync::Arc<dyn crate::domain::repositories::TaskRepository>,
+        svc.task_repo.clone() as std::sync::Arc<dyn crate::domain::repositories::TaskRepository>
     )
-    .with_project_repo(
-        svc.project_repo.clone()
-            as std::sync::Arc<dyn crate::domain::repositories::ProjectRepository>,
-    );
+    .with_project_repo(svc.project_repo.clone()
+        as std::sync::Arc<dyn crate::domain::repositories::ProjectRepository>);
     // Note: no .with_plan_branch_repo() — it stays None
 
     let mut machine = create_state_machine(&task_id_str, project_id.as_str(), services);

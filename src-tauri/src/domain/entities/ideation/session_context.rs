@@ -111,11 +111,7 @@ mod tests {
     #[test]
     fn parent_session_context_new_creates_minimal_context() {
         let session_id = IdeationSessionId::from_string("session-123");
-        let context = ParentSessionContext::new(
-            session_id.clone(),
-            "Parent Session",
-            "active",
-        );
+        let context = ParentSessionContext::new(session_id.clone(), "Parent Session", "active");
 
         assert_eq!(context.session_id, session_id);
         assert_eq!(context.session_title, "Parent Session");
@@ -133,7 +129,10 @@ mod tests {
             .with_plan_content("# Plan\nSome content");
 
         assert!(context.has_plan());
-        assert_eq!(context.plan_content.as_deref(), Some("# Plan\nSome content"));
+        assert_eq!(
+            context.plan_content.as_deref(),
+            Some("# Plan\nSome content")
+        );
     }
 
     #[test]
@@ -158,8 +157,8 @@ mod tests {
             },
         ];
 
-        let context = ParentSessionContext::new(session_id, "Parent", "active")
-            .with_proposals(proposals);
+        let context =
+            ParentSessionContext::new(session_id, "Parent", "active").with_proposals(proposals);
 
         assert_eq!(context.proposal_count(), 2);
         assert_eq!(context.proposals[0].title, "Proposal 1");
@@ -196,8 +195,8 @@ mod tests {
             },
         ];
 
-        let context = ParentSessionContext::new(session_id, "Parent", "active")
-            .with_proposals(proposals);
+        let context =
+            ParentSessionContext::new(session_id, "Parent", "active").with_proposals(proposals);
 
         let accepted = context.proposals_by_status(ProposalStatus::Accepted);
         assert_eq!(accepted.len(), 2);

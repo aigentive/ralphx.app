@@ -454,8 +454,7 @@ fn test_merge_verification_uses_correct_repo_path() {
     );
 
     // The correct check: task branch HEAD from main_repo
-    let is_merged =
-        GitService::is_commit_on_branch(&main_repo, &task_branch_head, "main").unwrap();
+    let is_merged = GitService::is_commit_on_branch(&main_repo, &task_branch_head, "main").unwrap();
     assert!(
         !is_merged,
         "Task branch HEAD should NOT be on main until merged"
@@ -804,13 +803,8 @@ fn test_try_squash_merge_source_branch_not_found() {
         .output()
         .unwrap();
 
-    let result = GitService::try_squash_merge(
-        repo,
-        "nonexistent-source",
-        "main",
-        "squash commit",
-    )
-    .unwrap();
+    let result =
+        GitService::try_squash_merge(repo, "nonexistent-source", "main", "squash commit").unwrap();
 
     match result {
         MergeAttemptResult::BranchNotFound { branch } => {
@@ -1165,7 +1159,10 @@ fn test_try_continue_rebase_completes_no_rebase() {
     // Call try_continue_rebase when no rebase is in progress
     // Should return an error since there's nothing to continue
     let result = GitService::try_continue_rebase(repo);
-    assert!(result.is_err(), "try_continue_rebase should fail when no rebase in progress");
+    assert!(
+        result.is_err(),
+        "try_continue_rebase should fail when no rebase in progress"
+    );
 }
 
 #[test]
@@ -1464,13 +1461,7 @@ fn test_squash_merge_identical_branches_returns_success() {
         .unwrap();
 
     // try_squash_merge should return Success immediately (early return)
-    let result = GitService::try_squash_merge(
-        repo,
-        "feature",
-        "main",
-        "squash merge",
-    )
-    .unwrap();
+    let result = GitService::try_squash_merge(repo, "feature", "main", "squash merge").unwrap();
 
     match result {
         MergeAttemptResult::Success { commit_sha } => {
@@ -1589,10 +1580,7 @@ fn test_try_complete_stale_rebase_has_real_conflicts() {
             assert!(!files.is_empty(), "Expected at least one conflict file");
         }
         other => {
-            panic!(
-                "Expected HasConflicts, got {:?}",
-                other
-            );
+            panic!("Expected HasConflicts, got {:?}", other);
         }
     }
 }

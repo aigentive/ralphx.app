@@ -37,10 +37,7 @@ impl GitService {
     /// this creates a branch at an exact commit. Used for conflict resolution
     /// worktrees after checkout-free merge detects conflicts.
     pub fn create_branch_at(repo: &Path, branch: &str, sha: &str) -> AppResult<()> {
-        debug!(
-            "Creating branch '{}' at {} in {:?}",
-            branch, sha, repo
-        );
+        debug!("Creating branch '{}' at {} in {:?}", branch, sha, repo);
 
         let output = Command::new("git")
             .args(["branch", branch, sha])
@@ -106,9 +103,7 @@ impl GitService {
             .args(["status", "--porcelain"])
             .current_dir(repo)
             .output()
-            .map_err(|e| {
-                AppError::GitOperation(format!("Failed to run git status: {}", e))
-            })?;
+            .map_err(|e| AppError::GitOperation(format!("Failed to run git status: {}", e)))?;
 
         if !status_output.status.success() {
             let stderr = String::from_utf8_lossy(&status_output.stderr);
@@ -359,10 +354,7 @@ impl GitService {
             .current_dir(repo)
             .output()
             .map_err(|e| {
-                AppError::GitOperation(format!(
-                    "Failed to diff {} {}: {}",
-                    branch_a, branch_b, e
-                ))
+                AppError::GitOperation(format!("Failed to diff {} {}: {}", branch_a, branch_b, e))
             })?;
         Ok(output.status.success())
     }

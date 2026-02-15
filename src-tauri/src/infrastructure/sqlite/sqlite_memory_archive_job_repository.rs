@@ -8,11 +8,10 @@ use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 use tokio::sync::Mutex;
 
-use crate::domain::entities::{
-    ArchiveJobPayload, ArchiveJobStatus, ArchiveJobType,
-    MemoryArchiveJob, MemoryArchiveJobId,
-};
 use crate::domain::entities::types::ProjectId;
+use crate::domain::entities::{
+    ArchiveJobPayload, ArchiveJobStatus, ArchiveJobType, MemoryArchiveJob, MemoryArchiveJobId,
+};
 use crate::domain::repositories::MemoryArchiveJobRepository;
 use crate::error::{AppError, AppResult};
 
@@ -37,52 +36,56 @@ impl SqliteMemoryArchiveJobRepository {
     /// Helper to parse a row into a MemoryArchiveJob
     fn row_to_memory_archive_job(row: &rusqlite::Row) -> rusqlite::Result<MemoryArchiveJob> {
         let job_type_str: String = row.get(2)?;
-        let job_type = job_type_str.parse::<ArchiveJobType>()
-            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
-                2,
-                rusqlite::types::Type::Text,
-                Box::new(e),
-            ))?;
+        let job_type = job_type_str.parse::<ArchiveJobType>().map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(2, rusqlite::types::Type::Text, Box::new(e))
+        })?;
 
         let payload_json_str: String = row.get(3)?;
-        let payload = ArchiveJobPayload::from_json(&payload_json_str)
-            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+        let payload = ArchiveJobPayload::from_json(&payload_json_str).map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(
                 3,
                 rusqlite::types::Type::Text,
-                Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
-            ))?;
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    e.to_string(),
+                )),
+            )
+        })?;
 
         let status_str: String = row.get(4)?;
-        let status = status_str.parse::<ArchiveJobStatus>()
-            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
-                4,
-                rusqlite::types::Type::Text,
-                Box::new(e),
-            ))?;
+        let status = status_str.parse::<ArchiveJobStatus>().map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(4, rusqlite::types::Type::Text, Box::new(e))
+        })?;
 
         let created_at_str: String = row.get(6)?;
         let created_at = DateTime::parse_from_rfc3339(&created_at_str)
             .map(|dt| dt.with_timezone(&Utc))
-            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
-                6,
-                rusqlite::types::Type::Text,
-                Box::new(e),
-            ))?;
+            .map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    6,
+                    rusqlite::types::Type::Text,
+                    Box::new(e),
+                )
+            })?;
 
         let updated_at_str: String = row.get(7)?;
         let updated_at = DateTime::parse_from_rfc3339(&updated_at_str)
             .map(|dt| dt.with_timezone(&Utc))
-            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
-                7,
-                rusqlite::types::Type::Text,
-                Box::new(e),
-            ))?;
+            .map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    7,
+                    rusqlite::types::Type::Text,
+                    Box::new(e),
+                )
+            })?;
 
-        let started_at: Option<DateTime<Utc>> = row.get::<_, Option<String>>(8)?
+        let started_at: Option<DateTime<Utc>> = row
+            .get::<_, Option<String>>(8)?
             .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
             .map(|dt| dt.with_timezone(&Utc));
 
-        let completed_at: Option<DateTime<Utc>> = row.get::<_, Option<String>>(9)?
+        let completed_at: Option<DateTime<Utc>> = row
+            .get::<_, Option<String>>(9)?
             .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
             .map(|dt| dt.with_timezone(&Utc));
 
@@ -155,14 +158,15 @@ impl MemoryArchiveJobRepository for SqliteMemoryArchiveJobRepository {
     ) -> AppResult<Vec<MemoryArchiveJob>> {
         let conn = self.conn.lock().await;
 
-        let mut stmt = conn.prepare(
-            "SELECT id, project_id, job_type, payload_json, status, error_message,
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, project_id, job_type, payload_json, status, error_message,
                     created_at, updated_at, started_at, completed_at
              FROM memory_archive_jobs
              WHERE project_id = ?1 AND status = 'pending'
-             ORDER BY created_at ASC"
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
+             ORDER BY created_at ASC",
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
 
         let jobs = stmt
             .query_map([project_id.as_str()], Self::row_to_memory_archive_job)
@@ -186,30 +190,29 @@ impl MemoryArchiveJobRepository for SqliteMemoryArchiveJobRepository {
         // Build the update query based on status
         let (started_at, completed_at) = match status {
             ArchiveJobStatus::Running => (Some(now.clone()), None),
-            ArchiveJobStatus::Done | ArchiveJobStatus::Failed => {
-                (None, Some(now.clone()))
-            }
+            ArchiveJobStatus::Done | ArchiveJobStatus::Failed => (None, Some(now.clone())),
             ArchiveJobStatus::Pending => (None, None),
         };
 
-        let affected = conn.execute(
-            "UPDATE memory_archive_jobs
+        let affected = conn
+            .execute(
+                "UPDATE memory_archive_jobs
              SET status = ?1,
                  error_message = ?2,
                  updated_at = ?3,
                  started_at = COALESCE(?4, started_at),
                  completed_at = COALESCE(?5, completed_at)
              WHERE id = ?6",
-            rusqlite::params![
-                status.to_string(),
-                error_message,
-                now,
-                started_at,
-                completed_at,
-                id.0.as_str(),
-            ],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
+                rusqlite::params![
+                    status.to_string(),
+                    error_message,
+                    now,
+                    started_at,
+                    completed_at,
+                    id.0.as_str(),
+                ],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
 
         if affected == 0 {
             return Err(AppError::NotFound(format!("Archive job not found: {}", id)));

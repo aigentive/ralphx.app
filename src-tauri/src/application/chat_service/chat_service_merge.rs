@@ -8,14 +8,8 @@ use std::sync::Arc;
 use tauri::{AppHandle, Runtime};
 
 use crate::application::git_service::{GitService, StaleRebaseResult};
-use crate::application::task_transition_service::TaskTransitionService;
 use crate::application::task_scheduler_service::TaskSchedulerService;
-use crate::domain::state_machine::services::TaskScheduler;
-use crate::domain::state_machine::resolve_merge_branches;
-use crate::domain::state_machine::transition_handler::complete_merge_internal;
-use crate::domain::state_machine::transition_handler::{
-    format_validation_error_metadata, run_validation_commands,
-};
+use crate::application::task_transition_service::TaskTransitionService;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{InternalStatus, TaskId};
 use crate::domain::repositories::{
@@ -25,6 +19,12 @@ use crate::domain::repositories::{
     TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
+use crate::domain::state_machine::resolve_merge_branches;
+use crate::domain::state_machine::services::TaskScheduler;
+use crate::domain::state_machine::transition_handler::complete_merge_internal;
+use crate::domain::state_machine::transition_handler::{
+    format_validation_error_metadata, run_validation_commands,
+};
 
 /// Attempt to auto-complete a merge when the merger agent exits.
 ///
@@ -322,7 +322,8 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
 
     // Get main repo path and resolve merge branches early (needed for verification)
     let main_repo_path = PathBuf::from(&project.working_directory);
-    let (source_branch, target_branch) = resolve_merge_branches(&task, &project, plan_branch_repo).await;
+    let (source_branch, target_branch) =
+        resolve_merge_branches(&task, &project, plan_branch_repo).await;
 
     // Guard: source_branch should never be empty after resolve_merge_branches
     if source_branch.is_empty() {
@@ -451,7 +452,10 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
             );
             transition_to_merge_incomplete(
                 &task_id,
-                &format!("Agent exited but task branch {} not merged to {}", source_branch, target_branch),
+                &format!(
+                    "Agent exited but task branch {} not merged to {}",
+                    source_branch, target_branch
+                ),
                 task_repo,
                 task_dependency_repo,
                 project_repo,
@@ -479,7 +483,10 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
             );
             transition_to_merge_incomplete(
                 &task_id,
-                &format!("Auto-complete failed: source branch {} does not exist or cannot be resolved", source_branch),
+                &format!(
+                    "Auto-complete failed: source branch {} does not exist or cannot be resolved",
+                    source_branch
+                ),
                 task_repo,
                 task_dependency_repo,
                 project_repo,
@@ -507,7 +514,10 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
             );
             transition_to_merge_incomplete(
                 &task_id,
-                &format!("Auto-complete failed: target branch {} does not exist or cannot be resolved", target_branch),
+                &format!(
+                    "Auto-complete failed: target branch {} does not exist or cannot be resolved",
+                    target_branch
+                ),
                 task_repo,
                 task_dependency_repo,
                 project_repo,
@@ -536,14 +546,8 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
         "attempt_merge_auto_complete: merge verified on target branch, completing"
     );
 
-    if let Err(e) = complete_merge_internal(
-        &mut task,
-        &project,
-        &commit_sha,
-        task_repo,
-        app_handle,
-    )
-    .await
+    if let Err(e) =
+        complete_merge_internal(&mut task, &project, &commit_sha, task_repo, app_handle).await
     {
         tracing::error!(
             task_id = task_id_str,

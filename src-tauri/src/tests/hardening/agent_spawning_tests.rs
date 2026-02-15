@@ -96,10 +96,7 @@ async fn test_b1_send_message_error_no_failed_transition() {
         .await;
 
     // FIXED: Task correctly transitions to Failed when agent spawn fails
-    assert!(
-        result.is_success(),
-        "Transition should succeed"
-    );
+    assert!(result.is_success(), "Transition should succeed");
     assert!(
         matches!(result.state(), Some(State::Failed(_))),
         "FIXED: Task correctly transitions to Failed when agent spawn fails"
@@ -306,7 +303,10 @@ async fn test_b4_execution_failed_event_transitions_to_failed() {
         )
         .await;
 
-    assert!(result.is_success(), "ExecutionFailed transition should succeed");
+    assert!(
+        result.is_success(),
+        "ExecutionFailed transition should succeed"
+    );
 
     // Verify we're in Failed state
     match result.state() {
@@ -317,10 +317,7 @@ async fn test_b4_execution_failed_event_transitions_to_failed() {
                 "Task correctly transitioned to Failed state with error data"
             );
         }
-        other => panic!(
-            "Expected Failed state, got {:?}",
-            other
-        ),
+        other => panic!("Expected Failed state, got {:?}", other),
     }
 }
 
@@ -441,10 +438,8 @@ async fn test_b5_re_executing_also_spawns_agent() {
         svc.chat_service.clone() as _,
     )
     .with_execution_state(svc.execution_state.clone())
-    .with_task_scheduler(
-        svc.scheduler.clone()
-            as std::sync::Arc<dyn crate::domain::state_machine::services::TaskScheduler>,
-    );
+    .with_task_scheduler(svc.scheduler.clone()
+        as std::sync::Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
 
     let mut machine = create_state_machine("task-b5-reexec", "proj-b5", services);
 

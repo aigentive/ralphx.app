@@ -178,9 +178,8 @@ impl IndexRewriter {
 
         // Write to temporary file first
         let temp_path = format!("{}.tmp", file_path);
-        fs::write(&temp_path, content).map_err(|e| {
-            AppError::Infrastructure(format!("Failed to write temp file: {}", e))
-        })?;
+        fs::write(&temp_path, content)
+            .map_err(|e| AppError::Infrastructure(format!("Failed to write temp file: {}", e)))?;
 
         // Atomic rename
         fs::rename(&temp_path, file_path).map_err(|e| {
@@ -272,7 +271,11 @@ mod tests {
             "State transitions must go through TransitionHandler".to_string(),
             "Details about state machine...".to_string(),
             vec!["src/domain/**".to_string()],
-            MemoryEntry::compute_content_hash("State Machine Pattern", "State transitions must go through TransitionHandler", "Details about state machine..."),
+            MemoryEntry::compute_content_hash(
+                "State Machine Pattern",
+                "State transitions must go through TransitionHandler",
+                "Details about state machine...",
+            ),
         );
 
         let memory2 = MemoryEntry::new(
@@ -282,7 +285,11 @@ mod tests {
             "async_trait macro required for async methods in traits".to_string(),
             "Details about async traits...".to_string(),
             vec!["src/**".to_string()],
-            MemoryEntry::compute_content_hash("Async Trait Gotcha", "async_trait macro required for async methods in traits", "Details about async traits..."),
+            MemoryEntry::compute_content_hash(
+                "Async Trait Gotcha",
+                "async_trait macro required for async methods in traits",
+                "Details about async traits...",
+            ),
         );
 
         let paths = vec!["src/**".to_string()];

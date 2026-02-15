@@ -121,4 +121,3 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
 
     Ok(())
 }
-

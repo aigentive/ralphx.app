@@ -17,10 +17,6 @@ use tauri::{AppHandle, Emitter, Runtime};
 use crate::application::{ChatService, ClaudeChatService};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{InternalStatus, Task, TaskId};
-use crate::domain::state_machine::transition_handler::set_trigger_origin;
-use crate::domain::state_machine::transition_handler::metadata_builder::{
-    build_trigger_origin_metadata, MetadataUpdate,
-};
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
@@ -32,6 +28,10 @@ use crate::domain::state_machine::services::{
     AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStartResult, ReviewStarter,
     TaskScheduler,
 };
+use crate::domain::state_machine::transition_handler::metadata_builder::{
+    build_trigger_origin_metadata, MetadataUpdate,
+};
+use crate::domain::state_machine::transition_handler::set_trigger_origin;
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::agents::spawner::AgenticClientSpawner;
 use crate::infrastructure::ClaudeCodeClient;
@@ -542,7 +542,8 @@ impl<R: Runtime> TaskTransitionService<R> {
         task_id: &TaskId,
         new_status: InternalStatus,
     ) -> AppResult<Task> {
-        self.transition_task_with_metadata(task_id, new_status, None).await
+        self.transition_task_with_metadata(task_id, new_status, None)
+            .await
     }
 
     /// Transition a task to a new status with optional metadata update.
@@ -744,7 +745,12 @@ impl<R: Runtime> TaskTransitionService<R> {
                         // Record state history
                         let _ = self
                             .task_repo
-                            .persist_status_change(task_id, from_status, InternalStatus::Failed, "system")
+                            .persist_status_change(
+                                task_id,
+                                from_status,
+                                InternalStatus::Failed,
+                                "system",
+                            )
                             .await;
                         // Emit event for UI
                         if let Some(ref handle) = self._app_handle {

@@ -288,10 +288,7 @@ async fn test_max_concurrent_boundary() {
     assert!(exec_state.can_start_task(), "0 < 1 — can start");
 
     exec_state.increment_running();
-    assert!(
-        !exec_state.can_start_task(),
-        "1 >= 1 — at capacity"
-    );
+    assert!(!exec_state.can_start_task(), "1 >= 1 — at capacity");
 
     exec_state.decrement_running();
     assert!(
@@ -388,11 +385,8 @@ async fn test_g4_merge_deferral_uses_metadata_no_lock() {
     let s = create_hardening_services();
     let project_id = ProjectId::from_string("proj-g4".to_string());
 
-    let mut task1 = create_test_task_with_status(
-        &project_id,
-        "Deferred task 1",
-        InternalStatus::PendingMerge,
-    );
+    let mut task1 =
+        create_test_task_with_status(&project_id, "Deferred task 1", InternalStatus::PendingMerge);
     task1.metadata = Some(
         serde_json::json!({
             "merge_deferred": true,
@@ -402,11 +396,8 @@ async fn test_g4_merge_deferral_uses_metadata_no_lock() {
     );
     task1.task_branch = Some("ralphx/proj/task-g4a".to_string());
 
-    let mut task2 = create_test_task_with_status(
-        &project_id,
-        "Deferred task 2",
-        InternalStatus::PendingMerge,
-    );
+    let mut task2 =
+        create_test_task_with_status(&project_id, "Deferred task 2", InternalStatus::PendingMerge);
     task2.metadata = Some(
         serde_json::json!({
             "merge_deferred": true,
@@ -425,10 +416,8 @@ async fn test_g4_merge_deferral_uses_metadata_no_lock() {
     let t1 = s.task_repo.get_by_id(&task1_id).await.unwrap().unwrap();
     let t2 = s.task_repo.get_by_id(&task2_id).await.unwrap().unwrap();
 
-    let t1_meta: serde_json::Value =
-        serde_json::from_str(t1.metadata.as_ref().unwrap()).unwrap();
-    let t2_meta: serde_json::Value =
-        serde_json::from_str(t2.metadata.as_ref().unwrap()).unwrap();
+    let t1_meta: serde_json::Value = serde_json::from_str(t1.metadata.as_ref().unwrap()).unwrap();
+    let t2_meta: serde_json::Value = serde_json::from_str(t2.metadata.as_ref().unwrap()).unwrap();
 
     assert_eq!(t1_meta["merge_deferred"], true);
     assert_eq!(t2_meta["merge_deferred"], true);

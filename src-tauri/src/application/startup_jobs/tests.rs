@@ -1414,7 +1414,11 @@ async fn test_startup_loads_persisted_project_quota() {
 
     // Create a project
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Set project-specific execution settings with max_concurrent = 3
     let settings = crate::domain::execution::ExecutionSettings {
@@ -1459,7 +1463,11 @@ async fn test_startup_quota_sync_before_resumption() {
 
     // Create a project with 5 tasks in Executing state
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     for i in 0..5 {
         let mut task = Task::new(project.id.clone(), format!("Executing Task {}", i));

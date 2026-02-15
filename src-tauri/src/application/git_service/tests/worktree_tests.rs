@@ -147,11 +147,8 @@ fn test_checkout_existing_branch_worktree_nonexistent_branch() {
         .unwrap();
 
     let worktree_path = temp_dir.path().join("merge-wt");
-    let result = GitService::checkout_existing_branch_worktree(
-        repo,
-        &worktree_path,
-        "nonexistent-branch",
-    );
+    let result =
+        GitService::checkout_existing_branch_worktree(repo, &worktree_path, "nonexistent-branch");
     assert!(result.is_err(), "Should fail for nonexistent branch");
 }
 
@@ -664,7 +661,10 @@ fn test_worktree_recovery_existing_branch_checkout() {
 
     // Verify branch exists
     let branch_exists = GitService::branch_exists(repo, task_branch);
-    assert!(branch_exists, "Task branch should exist from previous attempt");
+    assert!(
+        branch_exists,
+        "Task branch should exist from previous attempt"
+    );
 
     // Re-execution: checkout existing branch into new worktree
     let worktree_path = temp_dir.path().join("worktrees").join("task-abc123");

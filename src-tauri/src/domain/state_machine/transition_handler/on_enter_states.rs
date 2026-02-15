@@ -24,8 +24,8 @@ impl<'a> super::TransitionHandler<'a> {
         &self,
         task_id_str: &str,
         project_id_str: &str,
-        context: &str,           // "execution" or "review"
-        metadata_key: &str,      // "execution_setup_log" or "review_setup_log"
+        context: &str,      // "execution" or "review"
+        metadata_key: &str, // "execution_setup_log" or "review_setup_log"
     ) -> AppResult<()> {
         // Run pre-execution setup (worktree_setup + install) before spawning agent
         if let (Some(ref task_repo), Some(ref project_repo)) = (
@@ -56,34 +56,38 @@ impl<'a> super::TransitionHandler<'a> {
                             exec_cwd = %exec_cwd.display(),
                             "Execution directory does not exist, skipping pre-execution setup"
                         );
-                    } else if let Some(setup_result) = super::merge_validation::run_pre_execution_setup(
-                        &project,
-                        &task,
-                        &exec_cwd,
-                        task_id_str,
-                        self.machine.context.services.app_handle.as_ref(),
-                        context,
-                    )
-                    .await
+                    } else if let Some(setup_result) =
+                        super::merge_validation::run_pre_execution_setup(
+                            &project,
+                            &task,
+                            &exec_cwd,
+                            task_id_str,
+                            self.machine.context.services.app_handle.as_ref(),
+                            context,
+                        )
+                        .await
                     {
                         // Store setup log in metadata (using update_metadata for targeted write)
                         if let Ok(Some(task_updated)) = task_repo.get_by_id(&task_id).await {
                             let log_json = serde_json::to_value(&setup_result.log)
                                 .unwrap_or_else(|_| serde_json::Value::Array(Vec::new()));
 
-                            let mut metadata_obj = if let Some(json_str) = task_updated.metadata.as_ref() {
-                                serde_json::from_str::<serde_json::Value>(json_str)
-                                    .unwrap_or_else(|_| serde_json::json!({}))
-                            } else {
-                                serde_json::json!({})
-                            };
+                            let mut metadata_obj =
+                                if let Some(json_str) = task_updated.metadata.as_ref() {
+                                    serde_json::from_str::<serde_json::Value>(json_str)
+                                        .unwrap_or_else(|_| serde_json::json!({}))
+                                } else {
+                                    serde_json::json!({})
+                                };
 
                             if let Some(obj) = metadata_obj.as_object_mut() {
                                 obj.insert(metadata_key.to_string(), log_json);
                             }
 
                             if let Ok(updated_metadata) = serde_json::to_string(&metadata_obj) {
-                                let _ = task_repo.update_metadata(&task_id, Some(updated_metadata)).await;
+                                let _ = task_repo
+                                    .update_metadata(&task_id, Some(updated_metadata))
+                                    .await;
                             }
                         }
 
@@ -105,8 +109,12 @@ impl<'a> super::TransitionHandler<'a> {
                                         "Pre-execution setup failed (install command failed). Proceeding with warning."
                                     );
                                     // Store warning in metadata but proceed (using update_metadata for targeted write)
-                                    if let Ok(Some(task_updated)) = task_repo.get_by_id(&task_id).await {
-                                        let mut metadata_obj = if let Some(json_str) = task_updated.metadata.as_ref() {
+                                    if let Ok(Some(task_updated)) =
+                                        task_repo.get_by_id(&task_id).await
+                                    {
+                                        let mut metadata_obj = if let Some(json_str) =
+                                            task_updated.metadata.as_ref()
+                                        {
                                             serde_json::from_str::<serde_json::Value>(json_str)
                                                 .unwrap_or_else(|_| serde_json::json!({}))
                                         } else {
@@ -114,11 +122,18 @@ impl<'a> super::TransitionHandler<'a> {
                                         };
 
                                         if let Some(obj) = metadata_obj.as_object_mut() {
-                                            obj.insert("execution_setup_warning".to_string(), serde_json::json!(true));
+                                            obj.insert(
+                                                "execution_setup_warning".to_string(),
+                                                serde_json::json!(true),
+                                            );
                                         }
 
-                                        if let Ok(updated_metadata) = serde_json::to_string(&metadata_obj) {
-                                            let _ = task_repo.update_metadata(&task_id, Some(updated_metadata)).await;
+                                        if let Ok(updated_metadata) =
+                                            serde_json::to_string(&metadata_obj)
+                                        {
+                                            let _ = task_repo
+                                                .update_metadata(&task_id, Some(updated_metadata))
+                                                .await;
                                         }
                                     }
                                 }
@@ -246,7 +261,8 @@ impl<'a> super::TransitionHandler<'a> {
                                             std::path::PathBuf::from(&worktree_path);
 
                                         // Check if branch already exists from a previous execution attempt
-                                        let branch_exists = GitService::branch_exists(repo_path, &branch);
+                                        let branch_exists =
+                                            GitService::branch_exists(repo_path, &branch);
 
                                         // Create worktree - use existing branch if it exists, create new one otherwise
                                         let result = if branch_exists {
@@ -310,7 +326,13 @@ impl<'a> super::TransitionHandler<'a> {
                 }
 
                 // Run pre-execution setup (worktree_setup + install) before spawning agent
-                self.run_and_store_pre_execution_setup(task_id_str, project_id_str, "execution", "execution_setup_log").await?;
+                self.run_and_store_pre_execution_setup(
+                    task_id_str,
+                    project_id_str,
+                    "execution",
+                    "execution_setup_log",
+                )
+                .await?;
 
                 // Use ChatService for persistent worker execution (Phase 15B)
                 let prompt = format!("Execute task: {}", task_id_str);
@@ -343,9 +365,10 @@ impl<'a> super::TransitionHandler<'a> {
                         error = %e,
                         "Failed to send task execution message — agent not started"
                     );
-                    return Err(AppError::ExecutionBlocked(
-                        format!("Failed to start agent: {}", e)
-                    ));
+                    return Err(AppError::ExecutionBlocked(format!(
+                        "Failed to start agent: {}",
+                        e
+                    )));
                 }
             }
             State::QaRefining => {
@@ -353,12 +376,20 @@ impl<'a> super::TransitionHandler<'a> {
                 if let Some(ref task_repo) = self.machine.context.services.task_repo {
                     let task_id = TaskId::from_string(self.machine.context.task_id.clone());
                     if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await {
-                        if !MetadataUpdate::key_exists_in("trigger_origin", task.metadata.as_deref()) {
+                        if !MetadataUpdate::key_exists_in(
+                            "trigger_origin",
+                            task.metadata.as_deref(),
+                        ) {
                             // Fallback: metadata not pre-computed, write it now for backward compatibility
-                            let metadata_update = super::metadata_builder::build_trigger_origin_metadata("qa");
-                            let merged_metadata = metadata_update.merge_into(task.metadata.as_deref());
+                            let metadata_update =
+                                super::metadata_builder::build_trigger_origin_metadata("qa");
+                            let merged_metadata =
+                                metadata_update.merge_into(task.metadata.as_deref());
 
-                            if let Err(e) = task_repo.update_metadata(&task_id, Some(merged_metadata)).await {
+                            if let Err(e) = task_repo
+                                .update_metadata(&task_id, Some(merged_metadata))
+                                .await
+                            {
                                 tracing::error!(
                                     task_id = %self.machine.context.task_id,
                                     error = %e,
@@ -395,12 +426,20 @@ impl<'a> super::TransitionHandler<'a> {
                 if let Some(ref task_repo) = self.machine.context.services.task_repo {
                     let task_id = TaskId::from_string(self.machine.context.task_id.clone());
                     if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await {
-                        if !MetadataUpdate::key_exists_in("trigger_origin", task.metadata.as_deref()) {
+                        if !MetadataUpdate::key_exists_in(
+                            "trigger_origin",
+                            task.metadata.as_deref(),
+                        ) {
                             // Fallback: metadata not pre-computed, write it now for backward compatibility
-                            let metadata_update = super::metadata_builder::build_trigger_origin_metadata("qa");
-                            let merged_metadata = metadata_update.merge_into(task.metadata.as_deref());
+                            let metadata_update =
+                                super::metadata_builder::build_trigger_origin_metadata("qa");
+                            let merged_metadata =
+                                metadata_update.merge_into(task.metadata.as_deref());
 
-                            if let Err(e) = task_repo.update_metadata(&task_id, Some(merged_metadata)).await {
+                            if let Err(e) = task_repo
+                                .update_metadata(&task_id, Some(merged_metadata))
+                                .await
+                            {
                                 tracing::error!(
                                     task_id = %self.machine.context.task_id,
                                     error = %e,
@@ -512,7 +551,13 @@ impl<'a> super::TransitionHandler<'a> {
                 // Run pre-execution setup before reviewing
                 let project_id_str = &self.machine.context.project_id;
                 let task_id = &self.machine.context.task_id;
-                self.run_and_store_pre_execution_setup(task_id, project_id_str, "review", "review_setup_log").await?;
+                self.run_and_store_pre_execution_setup(
+                    task_id,
+                    project_id_str,
+                    "review",
+                    "review_setup_log",
+                )
+                .await?;
 
                 // Spawn reviewer agent via ChatService with Review context
                 let prompt = format!("Review task: {}", task_id);
@@ -593,7 +638,13 @@ impl<'a> super::TransitionHandler<'a> {
                 // Run pre-execution setup before re-executing
                 let task_id_str = &self.machine.context.task_id;
                 let project_id_str = &self.machine.context.project_id;
-                self.run_and_store_pre_execution_setup(task_id_str, project_id_str, "execution", "execution_setup_log").await?;
+                self.run_and_store_pre_execution_setup(
+                    task_id_str,
+                    project_id_str,
+                    "execution",
+                    "execution_setup_log",
+                )
+                .await?;
 
                 // Spawn worker agent with revision context via ChatService
                 let task_id = &self.machine.context.task_id;
@@ -616,9 +667,10 @@ impl<'a> super::TransitionHandler<'a> {
                         error = %e,
                         "Failed to send re-execution message — agent not started"
                     );
-                    return Err(AppError::ExecutionBlocked(
-                        format!("Failed to start agent: {}", e)
-                    ));
+                    return Err(AppError::ExecutionBlocked(format!(
+                        "Failed to start agent: {}",
+                        e
+                    )));
                 }
             }
             State::RevisionNeeded => {
@@ -646,7 +698,10 @@ impl<'a> super::TransitionHandler<'a> {
                     // Skip guard: check if metadata was already pre-computed (e.g., by transition_task_with_metadata)
                     match task_repo.get_by_id(&task_id_typed).await {
                         Ok(Some(task)) => {
-                            if MetadataUpdate::key_exists_in("failure_error", task.metadata.as_deref()) {
+                            if MetadataUpdate::key_exists_in(
+                                "failure_error",
+                                task.metadata.as_deref(),
+                            ) {
                                 tracing::debug!(
                                     task_id = task_id,
                                     "Skipping metadata write - failure_error already present (pre-computed)"
@@ -654,9 +709,13 @@ impl<'a> super::TransitionHandler<'a> {
                             } else {
                                 // Fallback: metadata not pre-computed, write it now for backward compatibility
                                 let metadata_update = build_failed_metadata(data);
-                                let merged_metadata = metadata_update.merge_into(task.metadata.as_deref());
+                                let merged_metadata =
+                                    metadata_update.merge_into(task.metadata.as_deref());
 
-                                if let Err(e) = task_repo.update_metadata(&task_id_typed, Some(merged_metadata)).await {
+                                if let Err(e) = task_repo
+                                    .update_metadata(&task_id_typed, Some(merged_metadata))
+                                    .await
+                                {
                                     tracing::error!(
                                         task_id = task_id,
                                         error = %e,
@@ -666,7 +725,10 @@ impl<'a> super::TransitionHandler<'a> {
                             }
                         }
                         Ok(None) => {
-                            tracing::error!(task_id = task_id, "Task not found when storing failure metadata");
+                            tracing::error!(
+                                task_id = task_id,
+                                "Task not found when storing failure metadata"
+                            );
                         }
                         Err(e) => {
                             tracing::error!(
@@ -683,10 +745,14 @@ impl<'a> super::TransitionHandler<'a> {
                     let task_id_typed = TaskId::from_string(task_id.clone());
                     match step_repo.get_by_task(&task_id_typed).await {
                         Ok(steps) => {
-                            for step in steps.iter().filter(|s| s.status == TaskStepStatus::InProgress) {
+                            for step in steps
+                                .iter()
+                                .filter(|s| s.status == TaskStepStatus::InProgress)
+                            {
                                 let mut failed_step = step.clone();
                                 failed_step.status = TaskStepStatus::Failed;
-                                failed_step.completion_note = Some("Task execution failed".to_string());
+                                failed_step.completion_note =
+                                    Some("Task execution failed".to_string());
                                 failed_step.completed_at = Some(Utc::now());
 
                                 if let Err(e) = step_repo.update(&failed_step).await {
@@ -743,21 +809,26 @@ impl<'a> super::TransitionHandler<'a> {
                     &self.machine.context.services.task_repo,
                     &self.machine.context.services.project_repo,
                 ) {
-                    let project_id = ProjectId::from_string(
-                        self.machine.context.project_id.clone(),
-                    );
+                    let project_id =
+                        ProjectId::from_string(self.machine.context.project_id.clone());
                     if let Ok(Some(project)) = project_repo.get_by_id(&project_id).await {
-                        let wt_path = std::path::PathBuf::from(
-                            compute_merge_worktree_path(&project, task_id),
-                        );
+                        let wt_path = std::path::PathBuf::from(compute_merge_worktree_path(
+                            &project, task_id,
+                        ));
                         if wt_path.exists() {
                             // Abort stale rebase/merge from prior attempt (recovery or retry)
                             if GitService::is_rebase_in_progress(&wt_path) {
-                                tracing::info!(task_id = task_id, "on_enter(Merging): Aborting stale rebase before agent spawn");
+                                tracing::info!(
+                                    task_id = task_id,
+                                    "on_enter(Merging): Aborting stale rebase before agent spawn"
+                                );
                                 let _ = GitService::abort_rebase(&wt_path);
                             }
                             if GitService::is_merge_in_progress(&wt_path) {
-                                tracing::info!(task_id = task_id, "on_enter(Merging): Aborting stale merge before agent spawn");
+                                tracing::info!(
+                                    task_id = task_id,
+                                    "on_enter(Merging): Aborting stale merge before agent spawn"
+                                );
                                 let _ = GitService::abort_merge(&wt_path);
                             }
 

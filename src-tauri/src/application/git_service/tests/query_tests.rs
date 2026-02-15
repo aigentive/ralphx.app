@@ -298,7 +298,11 @@ fn test_find_commit_by_message_grep_finds_matching_commit() {
 
     // Create a commit with a task ID in the message
     std::fs::write(repo.join("file.txt"), "initial").unwrap();
-    Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
     Command::new("git")
         .args(["commit", "-m", "task abc-123: initial work"])
         .current_dir(repo)
@@ -337,7 +341,11 @@ fn test_find_commit_by_message_grep_returns_none_when_not_found() {
     super::init_test_repo(repo);
 
     std::fs::write(repo.join("file.txt"), "initial").unwrap();
-    Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
     Command::new("git")
         .args(["commit", "-m", "unrelated commit message"])
         .current_dir(repo)

@@ -42,11 +42,7 @@ fn test_v35_scope_context_column_exists() {
     let conn = open_memory_connection().unwrap();
     run_migrations(&conn).unwrap();
 
-    assert!(helpers::column_exists(
-        &conn,
-        "task_steps",
-        "scope_context"
-    ));
+    assert!(helpers::column_exists(&conn, "task_steps", "scope_context"));
 }
 
 #[test]

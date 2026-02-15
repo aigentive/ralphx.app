@@ -5,16 +5,15 @@ use std::sync::Arc;
 
 use serde_json::json;
 
-use crate::domain::entities::{
-    ArchiveJobPayload, ArchiveJobType,
-    MemoryActorType, MemoryArchiveJob, MemoryEntry, MemoryEvent,
-};
 use crate::domain::entities::types::ProjectId;
+use crate::domain::entities::{
+    ArchiveJobPayload, ArchiveJobType, MemoryActorType, MemoryArchiveJob, MemoryEntry, MemoryEvent,
+};
 use crate::domain::repositories::{
     MemoryArchiveRepository, MemoryEntryRepository, MemoryEventRepository,
 };
 use crate::domain::services::{BucketClassifier, IndexRewriter, RuleParser};
-use crate::error::{AppResult};
+use crate::error::AppResult;
 
 /// Result of rule file ingestion
 #[derive(Debug, Clone)]
@@ -120,12 +119,7 @@ impl RuleIngestionService {
             );
 
             // Set source metadata
-            memory.source_rule_file = Some(
-                rule_file_path
-                    .to_str()
-                    .unwrap_or_default()
-                    .to_string(),
-            );
+            memory.source_rule_file = Some(rule_file_path.to_str().unwrap_or_default().to_string());
 
             // Insert into database
             let created_memory = self.memory_entry_repo.create(memory.clone()).await?;
@@ -156,12 +150,11 @@ impl RuleIngestionService {
             let index_rewriter = IndexRewriter::new();
             let rule_file_path_str = rule_file_path.to_str().unwrap_or_default();
 
-            index_rewriter
-                .rewrite_rule_file(
-                    rule_file_path_str,
-                    parsed.frontmatter.paths.clone(),
-                    &ingested_memories,
-                )?;
+            index_rewriter.rewrite_rule_file(
+                rule_file_path_str,
+                parsed.frontmatter.paths.clone(),
+                &ingested_memories,
+            )?;
 
             true
         } else {
@@ -232,11 +225,8 @@ impl RuleIngestionService {
     /// Enqueue an archive job for a memory
     async fn enqueue_archive_job(&self, project_id: &ProjectId, memory_id: &str) -> AppResult<()> {
         let payload = ArchiveJobPayload::memory_snapshot(memory_id);
-        let job = MemoryArchiveJob::new(
-            project_id.clone(),
-            ArchiveJobType::MemorySnapshot,
-            payload,
-        );
+        let job =
+            MemoryArchiveJob::new(project_id.clone(), ArchiveJobType::MemorySnapshot, payload);
 
         self.memory_archive_repo.create(job).await?;
         Ok(())
@@ -248,8 +238,8 @@ mod tests {
     use super::*;
     use crate::domain::entities::types::ProjectId;
     use crate::infrastructure::sqlite::{
-        run_migrations, SqliteMemoryArchiveRepository,
-        SqliteMemoryEntryRepository, SqliteMemoryEventRepository,
+        run_migrations, SqliteMemoryArchiveRepository, SqliteMemoryEntryRepository,
+        SqliteMemoryEventRepository,
     };
     use rusqlite::Connection;
     use std::fs;
@@ -279,20 +269,17 @@ mod tests {
         let conn3 = Connection::open(&db_path).unwrap();
 
         // Create repositories with Arc wrapping
-        let memory_entry_repo = Arc::new(SqliteMemoryEntryRepository::new(conn1))
-            as Arc<dyn MemoryEntryRepository>;
+        let memory_entry_repo =
+            Arc::new(SqliteMemoryEntryRepository::new(conn1)) as Arc<dyn MemoryEntryRepository>;
 
-        let memory_event_repo = Arc::new(SqliteMemoryEventRepository::new(conn2))
-            as Arc<dyn MemoryEventRepository>;
+        let memory_event_repo =
+            Arc::new(SqliteMemoryEventRepository::new(conn2)) as Arc<dyn MemoryEventRepository>;
 
-        let memory_archive_repo = Arc::new(SqliteMemoryArchiveRepository::new(conn3))
-            as Arc<dyn MemoryArchiveRepository>;
+        let memory_archive_repo =
+            Arc::new(SqliteMemoryArchiveRepository::new(conn3)) as Arc<dyn MemoryArchiveRepository>;
 
-        let service = RuleIngestionService::new(
-            memory_entry_repo,
-            memory_event_repo,
-            memory_archive_repo,
-        );
+        let service =
+            RuleIngestionService::new(memory_entry_repo, memory_event_repo, memory_archive_repo);
 
         (service, temp_dir)
     }

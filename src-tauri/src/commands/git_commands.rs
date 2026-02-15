@@ -335,11 +335,11 @@ pub async fn retry_merge(
     }
 
     // Set in-flight guard and optional skip_validation flag
-    let mut meta_obj = metadata_json
-        .as_object()
-        .cloned()
-        .unwrap_or_default();
-    meta_obj.insert("merge_retry_in_progress".to_string(), serde_json::json!(true));
+    let mut meta_obj = metadata_json.as_object().cloned().unwrap_or_default();
+    meta_obj.insert(
+        "merge_retry_in_progress".to_string(),
+        serde_json::json!(true),
+    );
 
     if skip_validation == Some(true) {
         meta_obj.insert("skip_validation".to_string(), serde_json::json!(true));
@@ -431,22 +431,25 @@ async fn execute_merge_retry_background(
     );
 
     // Create transition service with all necessary dependencies
-    let scheduler_concrete = Arc::new(TaskSchedulerService::new(
-        Arc::clone(&execution_state),
-        Arc::clone(&project_repo),
-        Arc::clone(&task_repo),
-        Arc::clone(&task_dependency_repo),
-        Arc::clone(&chat_message_repo),
-        Arc::clone(&chat_attachment_repo),
-        Arc::clone(&chat_conversation_repo),
-        Arc::clone(&agent_run_repo),
-        Arc::clone(&ideation_session_repo),
-        Arc::clone(&activity_event_repo),
-        Arc::clone(&message_queue),
-        Arc::clone(&running_agent_registry),
-        Arc::clone(&memory_event_repo),
-        app_handle_opt.clone(),
-    ).with_plan_branch_repo(Arc::clone(&plan_branch_repo)));
+    let scheduler_concrete = Arc::new(
+        TaskSchedulerService::new(
+            Arc::clone(&execution_state),
+            Arc::clone(&project_repo),
+            Arc::clone(&task_repo),
+            Arc::clone(&task_dependency_repo),
+            Arc::clone(&chat_message_repo),
+            Arc::clone(&chat_attachment_repo),
+            Arc::clone(&chat_conversation_repo),
+            Arc::clone(&agent_run_repo),
+            Arc::clone(&ideation_session_repo),
+            Arc::clone(&activity_event_repo),
+            Arc::clone(&message_queue),
+            Arc::clone(&running_agent_registry),
+            Arc::clone(&memory_event_repo),
+            app_handle_opt.clone(),
+        )
+        .with_plan_branch_repo(Arc::clone(&plan_branch_repo)),
+    );
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
@@ -516,18 +519,12 @@ async fn clear_merge_retry_guard(
         .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
         .unwrap_or_else(|| serde_json::json!({}));
 
-    let mut meta_obj = metadata_json
-        .as_object()
-        .cloned()
-        .unwrap_or_default();
+    let mut meta_obj = metadata_json.as_object().cloned().unwrap_or_default();
 
     meta_obj.remove("merge_retry_in_progress");
 
     task.metadata = Some(serde_json::Value::Object(meta_obj).to_string());
-    task_repo
-        .update(&task)
-        .await
-        .map_err(|e| e.to_string())?;
+    task_repo.update(&task).await.map_err(|e| e.to_string())?;
 
     tracing::debug!(
         task_id = task_id.as_str(),
@@ -624,7 +621,10 @@ pub async fn change_project_git_mode(
         .filter(|t| AGENT_ACTIVE_STATUSES.contains(&t.internal_status))
         .collect();
     if !in_flight.is_empty() {
-        let task_ids: Vec<_> = in_flight.iter().map(|t| t.id.as_str().to_string()).collect();
+        let task_ids: Vec<_> = in_flight
+            .iter()
+            .map(|t| t.id.as_str().to_string())
+            .collect();
         return Err(format!(
             "Cannot change git mode while {} task(s) are in active states: {}",
             in_flight.len(),

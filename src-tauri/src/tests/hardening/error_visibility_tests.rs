@@ -45,11 +45,8 @@ async fn test_h1_task_blocked_reason_is_accessible() {
     let s = create_hardening_services();
     let project_id = ProjectId::from_string("proj-h1".to_string());
 
-    let mut task = create_test_task_with_status(
-        &project_id,
-        "Blocked task",
-        InternalStatus::Failed,
-    );
+    let mut task =
+        create_test_task_with_status(&project_id, "Blocked task", InternalStatus::Failed);
     task.blocked_reason = Some("Git isolation failed: uncommitted changes".to_string());
     s.task_repo.create(task.clone()).await.unwrap();
 
@@ -104,11 +101,8 @@ async fn test_h1_failed_transition_stores_failure_metadata() {
     // with failure_error, failure_details, and is_timeout fields.
     let s = create_hardening_services();
     let project_id = ProjectId::from_string("proj-h1d".to_string());
-    let task = create_test_task_with_status(
-        &project_id,
-        "Task about to fail",
-        InternalStatus::Executing,
-    );
+    let task =
+        create_test_task_with_status(&project_id, "Task about to fail", InternalStatus::Executing);
     let task_id_str = task.id.as_str().to_string();
     s.task_repo.create(task.clone()).await.unwrap();
 
@@ -133,8 +127,7 @@ async fn test_h1_failed_transition_stores_failure_metadata() {
         stored.metadata.is_some(),
         "COVERED: Task should have failure metadata after transitioning to Failed"
     );
-    let meta: serde_json::Value =
-        serde_json::from_str(stored.metadata.as_ref().unwrap()).unwrap();
+    let meta: serde_json::Value = serde_json::from_str(stored.metadata.as_ref().unwrap()).unwrap();
     assert!(
         meta.get("failure_error").is_some(),
         "COVERED: failure_error should be stored in task metadata"
@@ -345,7 +338,11 @@ async fn test_h3_can_start_task_false_emits_nothing() {
     assert!(!can_start, "Should be at capacity");
 
     // Nothing was recorded anywhere
-    assert_eq!(s.emitter.event_count(), 0, "GAP: No event on capacity check");
+    assert_eq!(
+        s.emitter.event_count(),
+        0,
+        "GAP: No event on capacity check"
+    );
     assert_eq!(
         s.notifier.notification_count(),
         0,
@@ -428,9 +425,7 @@ async fn test_h4_reconciliation_event_includes_task_context() {
     let s = create_hardening_services();
 
     let task_id = "task-h4-context";
-    s.emitter
-        .emit("task:reconciliation_action", task_id)
-        .await;
+    s.emitter.emit("task:reconciliation_action", task_id).await;
 
     let events = s.emitter.get_events();
     assert_eq!(events.len(), 1);

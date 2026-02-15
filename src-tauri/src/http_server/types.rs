@@ -492,8 +492,8 @@ pub struct AddStepRequest {
     pub title: String,
     pub description: Option<String>,
     pub after_step_id: Option<String>,
-    pub parent_step_id: Option<String>,   // NEW: create as sub-step
-    pub scope_context: Option<String>,     // NEW: STRICT SCOPE JSON
+    pub parent_step_id: Option<String>, // NEW: create as sub-step
+    pub scope_context: Option<String>,  // NEW: STRICT SCOPE JSON
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -784,7 +784,11 @@ pub struct CreateChildSessionResponse {
     pub status: String,
     pub created_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub inherited_plan_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_context: Option<ParentContextResponse>,
+    /// Whether an orchestrator job was enqueued (true when description is provided)
+    pub orchestration_triggered: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -819,7 +823,7 @@ pub struct ParentContextResponse {
 /// Single message in a transcript
 #[derive(Debug, Serialize, Clone)]
 pub struct TranscriptMessage {
-    pub role: String,       // "user", "assistant", etc.
+    pub role: String, // "user", "assistant", etc.
     pub content: String,
     pub created_at: String, // RFC3339 timestamp
 }
