@@ -12,6 +12,7 @@ export const MergePipelineTaskSchema = z.object({
   source_branch: z.string(),
   target_branch: z.string(),
   is_deferred: z.boolean(),
+  is_main_merge_deferred: z.boolean(),
   blocking_branch: z.string().nullable(),
   conflict_files: z.array(z.string()).nullable(),
   error_context: z.string().nullable(),

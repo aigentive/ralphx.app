@@ -1,26 +1,33 @@
 /**
  * WaitingMergeCard - Compact row for merge waiting in queue
  *
- * Single-line row: clock icon | title | branch (short)
+ * Single-line row: clock icon | title | deferred badge | branch (short)
  * Deferred reason available via native tooltip.
+ * Main-merge-deferred tasks show a distinct "Agents running" indicator.
  */
 
-import { Clock } from "lucide-react";
+import { Clock, Users } from "lucide-react";
 import type { MergePipelineTask } from "@/api/merge-pipeline";
 import { getStatusIconConfig } from "@/types/status-icons";
 
 interface WaitingMergeCardProps {
   task: MergePipelineTask;
+  /** Number of currently running agents (shown for main-merge-deferred tasks) */
+  runningCount?: number | undefined;
 }
 
-export function WaitingMergeCard({ task }: WaitingMergeCardProps) {
+export function WaitingMergeCard({ task, runningCount }: WaitingMergeCardProps) {
   const pendingMergeStyle = getStatusIconConfig("pending_merge");
 
-  const deferredReason = task.isDeferred
-    ? task.blockingBranch
-      ? `Waiting for ${task.blockingBranch} to merge`
-      : "Waiting for active merge to complete"
-    : "Pending merge";
+  const deferredReason = task.isMainMergeDeferred
+    ? runningCount && runningCount > 0
+      ? `Waiting for ${runningCount} agent${runningCount === 1 ? "" : "s"} to finish`
+      : "Waiting for agents to finish"
+    : task.isDeferred
+      ? task.blockingBranch
+        ? `Waiting for ${task.blockingBranch} to merge`
+        : "Waiting for active merge to complete"
+      : "Pending merge";
 
   const branchShort = task.targetBranch?.split("/").pop() ?? task.targetBranch;
 
@@ -29,16 +36,38 @@ export function WaitingMergeCard({ task }: WaitingMergeCardProps) {
       className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-white/[0.04] transition-colors"
       title={`pending_merge → ${task.targetBranch}\n${deferredReason}`}
     >
-      <Clock
-        className="w-3.5 h-3.5 shrink-0"
-        style={{ color: pendingMergeStyle.color }}
-      />
+      {task.isMainMergeDeferred ? (
+        <Users
+          className="w-3.5 h-3.5 shrink-0"
+          style={{ color: "#ff6b35" }}
+          data-testid="main-merge-deferred-icon"
+        />
+      ) : (
+        <Clock
+          className="w-3.5 h-3.5 shrink-0"
+          style={{ color: pendingMergeStyle.color }}
+        />
+      )}
       <span
         className="flex-1 text-xs font-medium truncate min-w-0"
-        style={{ color: "hsl(220 10% 70%)" }}
+        style={{ color: task.isMainMergeDeferred ? "hsl(220 10% 80%)" : "hsl(220 10% 70%)" }}
       >
         {task.title}
       </span>
+      {task.isMainMergeDeferred && (
+        <span
+          className="text-[10px] shrink-0 px-1.5 py-0.5 rounded-full"
+          style={{
+            color: "#ff6b35",
+            backgroundColor: "rgba(255, 107, 53, 0.1)",
+          }}
+          data-testid="main-merge-deferred-badge"
+        >
+          {runningCount && runningCount > 0
+            ? `${runningCount} agent${runningCount === 1 ? "" : "s"}`
+            : "agents"}
+        </span>
+      )}
       <span
         className="text-[11px] font-mono shrink-0 max-w-[100px] truncate"
         style={{ color: "hsl(220 10% 38%)" }}

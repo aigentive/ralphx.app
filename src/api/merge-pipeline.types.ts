@@ -10,6 +10,7 @@ export interface MergePipelineTask {
   sourceBranch: string;
   targetBranch: string;
   isDeferred: boolean;
+  isMainMergeDeferred: boolean;
   blockingBranch: string | null;
   conflictFiles: string[] | null;
   errorContext: string | null;
