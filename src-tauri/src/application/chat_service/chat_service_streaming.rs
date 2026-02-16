@@ -28,6 +28,31 @@ use super::{
     AgentTaskCompletedPayload, AgentTaskStartedPayload, AgentToolCallPayload,
 };
 
+/// Final flush of accumulated content to DB before returning an error.
+///
+/// Ensures that any content streamed before timeout/cancellation/parse-stall
+/// is persisted, so that the error handler can later append (rather than overwrite).
+async fn flush_content_before_error(
+    chat_message_repo: &Option<Arc<dyn ChatMessageRepository>>,
+    assistant_message_id: &Option<String>,
+    response_text: &str,
+    tool_calls: &[ToolCall],
+    content_blocks: &[ContentBlockItem],
+) {
+    if let (Some(ref repo), Some(ref msg_id)) = (chat_message_repo, assistant_message_id) {
+        let current_tools = serde_json::to_string(tool_calls).ok();
+        let current_blocks = serde_json::to_string(content_blocks).ok();
+        let _ = repo
+            .update_content(
+                &ChatMessageId::from_string(msg_id.clone()),
+                response_text,
+                current_tools.as_deref(),
+                current_blocks.as_deref(),
+            )
+            .await;
+    }
+}
+
 /// Per-context-type timeout thresholds for stream processing.
 ///
 /// Different agent contexts have different expected run durations.
@@ -126,8 +151,14 @@ pub async fn process_stream_background<R: Runtime>(
     question_state: Option<Arc<QuestionState>>,
     cancellation_token: CancellationToken,
     team_tracker: Option<TeamStateTracker>,
+    team_mode: bool,
 ) -> Result<StreamOutcome, StreamError> {
-    let timeout_config = StreamTimeoutConfig::for_context(&context_type);
+    let mut timeout_config = StreamTimeoutConfig::for_context(&context_type);
+    // Team leads wait long periods while teammates work — use 1-hour timeout
+    if team_mode {
+        timeout_config.line_read_timeout = Duration::from_secs(3600);
+        timeout_config.parse_stall_timeout = Duration::from_secs(3600);
+    }
     tracing::debug!(
         conversation_id = conversation_id.as_str(),
         %context_type,
@@ -213,6 +244,10 @@ pub async fn process_stream_background<R: Runtime>(
                     "Stream cancelled via cancellation token, killing agent"
                 );
                 let _ = child.kill().await;
+                flush_content_before_error(
+                    &chat_message_repo, &assistant_message_id,
+                    &processor.response_text, &processor.tool_calls, &processor.content_blocks,
+                ).await;
                 return Err(StreamError::Cancelled);
             }
             read_result = timeout(timeout_config.line_read_timeout, lines.next_line()) => {
@@ -250,6 +285,10 @@ pub async fn process_stream_background<R: Runtime>(
                             timeout_config.line_read_timeout.as_secs()
                         );
                         let _ = child.kill().await;
+                        flush_content_before_error(
+                            &chat_message_repo, &assistant_message_id,
+                            &processor.response_text, &processor.tool_calls, &processor.content_blocks,
+                        ).await;
                         return Err(StreamError::Timeout {
                             context_type,
                             elapsed_secs: timeout_config.line_read_timeout.as_secs(),
@@ -810,6 +849,10 @@ pub async fn process_stream_background<R: Runtime>(
                         "Stream parse stall: received stdout but no parseable events, killing agent"
                     );
                     let _ = child.kill().await;
+                    flush_content_before_error(
+                        &chat_message_repo, &assistant_message_id,
+                        &processor.response_text, &processor.tool_calls, &processor.content_blocks,
+                    ).await;
                     return Err(StreamError::ParseStall {
                         context_type,
                         elapsed_secs: timeout_config.parse_stall_timeout.as_secs(),
@@ -826,6 +869,10 @@ pub async fn process_stream_background<R: Runtime>(
                     "Stream parse stall: received stdout but no parseable events, killing agent"
                 );
                 let _ = child.kill().await;
+                flush_content_before_error(
+                    &chat_message_repo, &assistant_message_id,
+                    &processor.response_text, &processor.tool_calls, &processor.content_blocks,
+                ).await;
                 return Err(StreamError::ParseStall {
                     context_type,
                     elapsed_secs: timeout_config.parse_stall_timeout.as_secs(),
@@ -902,6 +949,13 @@ pub async fn process_stream_background<R: Runtime>(
         content_blocks: result.content_blocks,
         session_id: result.session_id,
     };
+
+    // Final flush of accumulated content so post-loop error returns don't lose data
+    flush_content_before_error(
+        &chat_message_repo, &assistant_message_id,
+        &outcome.response_text, &outcome.tool_calls, &outcome.content_blocks,
+    ).await;
+
     tracing::debug!(
         conversation_id = %conversation_id_str,
         success = status.success(),

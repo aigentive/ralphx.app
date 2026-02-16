@@ -209,8 +209,44 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             question_state.clone(),
             cancellation_token.clone(),
             team_tracker.clone(),
+            team_mode,
         )
         .await;
+
+        // Clean up team state when lead stream ends (success, error, or timeout)
+        if team_mode {
+            if let Some(ref tracker) = team_tracker {
+                let teams = tracker.list_teams().await;
+                for tn in &teams {
+                    if let Ok(status) = tracker.get_team_status(tn).await {
+                        if status.context_id == context_id {
+                            // Stop all teammate processes
+                            let _ = tracker.stop_team(tn).await;
+                            // Emit shutdown events for each teammate
+                            if let Some(ref handle) = app_handle {
+                                for teammate in &status.teammates {
+                                    crate::application::team_events::emit_teammate_shutdown(
+                                        handle,
+                                        tn,
+                                        &teammate.name,
+                                        &context_type.to_string(),
+                                        &context_id,
+                                    );
+                                }
+                                crate::application::team_events::emit_team_disbanded(
+                                    handle,
+                                    tn,
+                                    &context_type.to_string(),
+                                    &context_id,
+                                );
+                            }
+                            // Disband the team (updates phase to Disbanded)
+                            let _ = tracker.disband_team(tn).await;
+                        }
+                    }
+                }
+            }
+        }
 
         // Unregister the process when done (whether success or failure)
         running_agent_registry.unregister(&registry_key).await;

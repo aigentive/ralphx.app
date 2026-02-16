@@ -16,7 +16,8 @@ use crate::application::task_scheduler_service::TaskSchedulerService;
 use crate::application::task_transition_service::TaskTransitionService;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
-    AgentRunId, ChatContextType, ChatConversation, ChatConversationId, InternalStatus, TaskId,
+    AgentRunId, ChatContextType, ChatConversation, ChatConversationId, ChatMessageId,
+    InternalStatus, TaskId,
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
@@ -33,6 +34,23 @@ use super::chat_service_errors::{classify_agent_error, StreamError};
 use super::chat_service_helpers::get_assistant_role;
 use super::chat_service_types::AgentErrorPayload;
 use super::EventContextPayload;
+
+/// Read existing message content and tool_calls from the database.
+///
+/// Used before error finalization to preserve any content that was flushed
+/// during streaming, so the error note is appended rather than overwriting.
+async fn read_existing_message_content(
+    chat_message_repo: &Arc<dyn ChatMessageRepository>,
+    message_id: &str,
+) -> (String, Option<String>) {
+    match chat_message_repo
+        .get_by_id(&ChatMessageId::from_string(message_id.to_string()))
+        .await
+    {
+        Ok(Some(msg)) => (msg.content, msg.tool_calls),
+        _ => (String::new(), None),
+    }
+}
 
 /// Handle successful stream completion: task state transitions and merge auto-completion.
 ///
@@ -246,15 +264,23 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
             )
             .await;
 
-        // Update pre-created message so UI doesn't show "..." forever
+        // Update pre-created message — append stop note to any content already flushed
+        let (existing_content, existing_tool_calls) = read_existing_message_content(
+            chat_message_repo, pre_assistant_msg_id,
+        ).await;
+        let stop_note = if existing_content.is_empty() {
+            "[Agent stopped]".to_string()
+        } else {
+            format!("{}\n\n[Agent stopped]", existing_content)
+        };
         super::chat_service_send_background::finalize_assistant_message(
             chat_message_repo,
             app_handle.as_ref(),
             event_ctx,
             pre_assistant_msg_id,
             &get_assistant_role(&context_type).to_string(),
-            "[Agent stopped]",
-            None,
+            &stop_note,
+            existing_tool_calls.as_deref(),
             None,
         )
         .await;
@@ -457,8 +483,15 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
         .fail(&AgentRunId::from_string(agent_run_id), error)
         .await;
 
-    // Update pre-created message with error so UI doesn't show "..." forever
-    let error_note = format!("[Agent error: {}]", error);
+    // Read existing content before overwriting — append error to any content already flushed
+    let (existing_content, existing_tool_calls) = read_existing_message_content(
+        chat_message_repo, pre_assistant_msg_id,
+    ).await;
+    let error_note = if existing_content.is_empty() {
+        format!("[Agent error: {}]", error)
+    } else {
+        format!("{}\n\n[Agent error: {}]", existing_content, error)
+    };
     super::chat_service_send_background::finalize_assistant_message(
         chat_message_repo,
         app_handle.as_ref(),
@@ -466,7 +499,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
         pre_assistant_msg_id,
         &get_assistant_role(&context_type).to_string(),
         &error_note,
-        None,
+        existing_tool_calls.as_deref(),
         None,
     )
     .await;

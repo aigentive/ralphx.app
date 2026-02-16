@@ -251,6 +251,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                         question_state.clone(),
                         cancellation_token.clone(),
                         None, // Queue processing doesn't need team events
+                        team_mode,
                     )
                     .await
                     {
