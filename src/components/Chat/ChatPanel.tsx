@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useChat, chatKeys } from "@/hooks/useChat";
 import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, selectIsTeamActive } from "@/stores/chatStore";
-import { useTeamStore, selectTeammates } from "@/stores/teamStore";
+import { useTeamStore, selectTeammates, selectActiveTeam } from "@/stores/teamStore";
 import { useUiStore } from "@/stores/uiStore";
 import type { ChatContext } from "@/types/chat";
 
@@ -45,6 +45,7 @@ import { TeamActivityPanel } from "./TeamActivityPanel";
 import { TeamPlanApproval } from "./TeamPlanApproval";
 import { TeamFilterTabs, type TeamFilterValue } from "./TeamFilterTabs";
 import { TargetSelector, type TargetValue } from "./TargetSelector";
+import { useTeamHistory } from "@/hooks/useTeamHistory";
 
 const COLLAPSED_WIDTH = 40;
 
@@ -215,8 +216,24 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   const [teamFilter, setTeamFilter] = useState<TeamFilterValue>("all");
   const [sendTarget, setSendTarget] = useState<TargetValue>("lead");
 
+  // Track whether the team in this context is historical
+  const activeTeamSelector = useMemo(() => selectActiveTeam(contextKey), [contextKey]);
+  const activeTeam = useTeamStore(activeTeamSelector);
+  const isTeamHistorical = activeTeam?.isHistorical === true;
+
   // Team events subscription — always pass contextKey so team:created is never missed
   useTeamEvents(contextKey);
+
+  // Hydrate historical team activity when no live team is active
+  const { data: teamHistory } = useTeamHistory(contextType, contextId);
+  const hydrateFromHistory = useTeamStore((s) => s.hydrateFromHistory);
+  const setTeamActive = useChatStore((s) => s.setTeamActive);
+
+  useEffect(() => {
+    if (!teamHistory?.session || isTeamActive) return;
+    hydrateFromHistory(contextKey, teamHistory);
+    setTeamActive(contextKey, true);
+  }, [teamHistory, isTeamActive, contextKey, hydrateFromHistory, setTeamActive]);
 
   // Team actions
   const teamActions = useTeamActions(contextType, contextId);
@@ -562,6 +579,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
         {isTeamActive && teammates.length > 0 && (
           <TeamActivityPanel
             contextKey={contextKey}
+            isHistorical={isTeamHistorical}
             onMessageTeammate={(name) => {
               setSendTarget(name);
             }}

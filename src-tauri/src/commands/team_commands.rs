@@ -4,9 +4,10 @@
 // agent team lifecycle, status, and messaging. Mutation commands use
 // TeamService (which emits events), read-only commands use raw tracker.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use crate::application::app_state::AppState;
 use crate::application::team_service::TeamService;
 use crate::application::team_state_tracker::{
     TeamMessageResponse, TeamStateTracker, TeamStatusResponse, TeammateCostResponse,
@@ -188,6 +189,132 @@ pub async fn get_teammate_cost(
         .get_teammate_cost(&team_name, &teammate_name)
         .await
         .map_err(|e| e.to_string())
+}
+
+// ============================================================================
+// History types & command (reads from persisted DB)
+// ============================================================================
+
+/// Response for a single teammate snapshot
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeammateSnapshotResponse {
+    pub name: String,
+    pub agent_type: String,
+    pub status: String,
+}
+
+/// Response for a single team message record
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamMessageRecordResponse {
+    pub id: String,
+    pub sender: String,
+    pub recipient: Option<String>,
+    pub content: String,
+    pub message_type: String,
+    pub created_at: String,
+}
+
+/// Response for a single team session (history)
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamSessionResponse {
+    pub id: String,
+    pub team_name: String,
+    pub context_id: String,
+    pub context_type: String,
+    pub lead_name: Option<String>,
+    pub phase: String,
+    pub teammates: Vec<TeammateSnapshotResponse>,
+    pub created_at: String,
+    pub disbanded_at: Option<String>,
+}
+
+/// Input for get_team_history command
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetTeamHistoryInput {
+    pub context_id: String,
+    pub context_type: String,
+}
+
+/// Response for get_team_history command.
+/// Returns the most recent session (or null) with its messages.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamHistoryResponse {
+    pub session: Option<TeamSessionResponse>,
+    pub messages: Vec<TeamMessageRecordResponse>,
+}
+
+/// Get persisted team history for a context (task/ideation session).
+///
+/// Returns the most recent team session with its messages, or null session + empty messages.
+#[tauri::command]
+pub async fn get_team_history(
+    input: GetTeamHistoryInput,
+    state: State<'_, AppState>,
+) -> Result<TeamHistoryResponse, String> {
+    let sessions = state
+        .team_session_repo
+        .get_by_context(&input.context_id, &input.context_type)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Take the most recent session (last in the list, ordered by created_at)
+    let session = sessions.into_iter().last();
+
+    match session {
+        Some(session) => {
+            let messages = state
+                .team_message_repo
+                .get_by_session(&session.id)
+                .await
+                .map_err(|e| e.to_string())?;
+
+            let teammates = session
+                .teammates
+                .iter()
+                .map(|t| TeammateSnapshotResponse {
+                    name: t.name.clone(),
+                    agent_type: t.agent_type.clone(),
+                    status: t.status.clone(),
+                })
+                .collect();
+
+            let msg_responses = messages
+                .iter()
+                .map(|m| TeamMessageRecordResponse {
+                    id: m.id.0.clone(),
+                    sender: m.sender.clone(),
+                    recipient: m.recipient.clone(),
+                    content: m.content.clone(),
+                    message_type: m.message_type.clone(),
+                    created_at: m.created_at.to_rfc3339(),
+                })
+                .collect();
+
+            Ok(TeamHistoryResponse {
+                session: Some(TeamSessionResponse {
+                    id: session.id.0,
+                    team_name: session.team_name,
+                    context_id: session.context_id,
+                    context_type: session.context_type,
+                    lead_name: session.lead_name,
+                    phase: session.phase,
+                    teammates,
+                    created_at: session.created_at.to_rfc3339(),
+                    disbanded_at: session.disbanded_at.map(|d| d.to_rfc3339()),
+                }),
+                messages: msg_responses,
+            })
+        }
+        None => Ok(TeamHistoryResponse {
+            session: None,
+            messages: vec![],
+        }),
+    }
 }
 
 #[cfg(test)]

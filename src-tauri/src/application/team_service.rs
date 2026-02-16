@@ -3,10 +3,19 @@
 // Pattern: service wrapper (like TransitionHandler). Every mutation delegates to
 // TeamStateTracker then emits the corresponding team:* event via AppHandle.
 // Read-only methods delegate directly without emission.
+// Persistence: fire-and-forget writes to session/message repos (tracing::warn on failure).
 
+use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 use tauri::AppHandle;
+use tracing::warn;
+
+use crate::domain::entities::team::{
+    TeamMessageRecord, TeamSession, TeamSessionId, TeammateSnapshot,
+};
+use crate::domain::repositories::{TeamMessageRepository, TeamSessionRepository};
 
 use super::team_events;
 use super::team_state_tracker::{
@@ -19,9 +28,14 @@ use super::team_state_tracker::{
 /// Holds an `Arc<TeamStateTracker>` (shared state) and an optional `AppHandle`
 /// for emitting Tauri events to the frontend. When `app_handle` is `None`
 /// (e.g. in tests), mutations still succeed but events are silently skipped.
+/// Repos are optional — when present, mutations persist to DB (fire-and-forget).
 pub struct TeamService {
     tracker: Arc<TeamStateTracker>,
     app_handle: Option<AppHandle>,
+    session_repo: Option<Arc<dyn TeamSessionRepository>>,
+    message_repo: Option<Arc<dyn TeamMessageRepository>>,
+    /// Cache: team_name → TeamSessionId (avoids repeated DB lookups)
+    session_id_cache: Arc<RwLock<HashMap<String, TeamSessionId>>>,
 }
 
 impl TeamService {
@@ -30,6 +44,25 @@ impl TeamService {
         Self {
             tracker,
             app_handle: Some(app_handle),
+            session_repo: None,
+            message_repo: None,
+            session_id_cache: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Create a TeamService with event emission and persistence repos.
+    pub fn new_with_repos(
+        tracker: Arc<TeamStateTracker>,
+        app_handle: AppHandle,
+        session_repo: Arc<dyn TeamSessionRepository>,
+        message_repo: Arc<dyn TeamMessageRepository>,
+    ) -> Self {
+        Self {
+            tracker,
+            app_handle: Some(app_handle),
+            session_repo: Some(session_repo),
+            message_repo: Some(message_repo),
+            session_id_cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -38,6 +71,9 @@ impl TeamService {
         Self {
             tracker,
             app_handle: None,
+            session_repo: None,
+            message_repo: None,
+            session_id_cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -59,6 +95,17 @@ impl TeamService {
     ) -> Result<(), TeamTrackerError> {
         self.tracker.create_team(name, context_id, context_type).await?;
 
+        // Persist session to DB
+        if let Some(ref repo) = self.session_repo {
+            let session = TeamSession::new(name, context_id, context_type);
+            let sid = session.id.clone();
+            if let Err(e) = repo.create(session).await {
+                warn!("Failed to persist team session: {e}");
+            } else {
+                self.session_id_cache.write().await.insert(name.to_string(), sid);
+            }
+        }
+
         if let Some(ref handle) = self.app_handle {
             team_events::emit_team_created(handle, name, context_id, context_type);
         }
@@ -77,6 +124,8 @@ impl TeamService {
         self.tracker
             .add_teammate(team_name, name, color, model, role)
             .await?;
+
+        self.persist_teammates(team_name).await;
 
         if let Some(ref handle) = self.app_handle {
             let (ctx_type, ctx_id) = self.get_team_context(team_name).await?;
@@ -97,6 +146,8 @@ impl TeamService {
         self.tracker
             .update_teammate_status(team_name, teammate_name, status)
             .await?;
+
+        self.persist_teammates(team_name).await;
 
         if let Some(ref handle) = self.app_handle {
             let (ctx_type, ctx_id) = self.get_team_context(team_name).await?;
@@ -127,6 +178,8 @@ impl TeamService {
             .update_teammate_cost(team_name, teammate_name, cost)
             .await?;
 
+        self.persist_teammates(team_name).await;
+
         if let Some(ref handle) = self.app_handle {
             let (ctx_type, ctx_id) = self.get_team_context(team_name).await?;
             team_events::emit_team_cost_update(
@@ -151,6 +204,8 @@ impl TeamService {
     ) -> Result<TeamMessage, TeamTrackerError> {
         let msg = self.tracker.send_user_message(team_name, content).await?;
 
+        self.persist_message(team_name, &msg).await;
+
         if let Some(ref handle) = self.app_handle {
             let (ctx_type, ctx_id) = self.get_team_context(team_name).await?;
             team_events::emit_team_message(handle, &msg, &ctx_type, &ctx_id);
@@ -171,6 +226,8 @@ impl TeamService {
             .tracker
             .add_teammate_message(team_name, sender, recipient, content, message_type)
             .await?;
+
+        self.persist_message(team_name, &msg).await;
 
         if let Some(ref handle) = self.app_handle {
             let (ctx_type, ctx_id) = self.get_team_context(team_name).await?;
@@ -240,6 +297,15 @@ impl TeamService {
         };
 
         self.tracker.disband_team(team_name).await?;
+
+        // Persist disbanded state
+        if let Some(ref repo) = self.session_repo {
+            if let Some(sid) = self.cached_session_id(team_name).await {
+                if let Err(e) = repo.set_disbanded(&sid).await {
+                    warn!("Failed to persist team disbanded: {e}");
+                }
+            }
+        }
 
         if let (Some(ref handle), Some((ctx_type, ctx_id))) = (&self.app_handle, ctx) {
             team_events::emit_team_disbanded(handle, team_name, &ctx_type, &ctx_id);
@@ -354,6 +420,64 @@ impl TeamService {
     ) -> Result<(String, String), TeamTrackerError> {
         let status = self.tracker.get_team_status(team_name).await?;
         Ok((status.context_type, status.context_id))
+    }
+
+    /// Get cached session ID for a team.
+    async fn cached_session_id(&self, team_name: &str) -> Option<TeamSessionId> {
+        self.session_id_cache.read().await.get(team_name).cloned()
+    }
+
+    /// Snapshot current teammates from tracker and persist to DB.
+    async fn persist_teammates(&self, team_name: &str) {
+        let repo = match self.session_repo {
+            Some(ref r) => r,
+            None => return,
+        };
+        let sid = match self.cached_session_id(team_name).await {
+            Some(s) => s,
+            None => return,
+        };
+        // Get current teammate list from tracker
+        let status = match self.tracker.get_team_status(team_name).await {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let snapshots: Vec<TeammateSnapshot> = status
+            .teammates
+            .iter()
+            .map(|t| TeammateSnapshot {
+                name: t.name.clone(),
+                agent_type: t.role.clone(),
+                status: t.status.to_string(),
+            })
+            .collect();
+        if let Err(e) = repo.update_teammates(&sid, &snapshots).await {
+            warn!("Failed to persist teammates: {e}");
+        }
+    }
+
+    /// Persist a team message to DB.
+    async fn persist_message(&self, team_name: &str, msg: &TeamMessage) {
+        let repo = match self.message_repo {
+            Some(ref r) => r,
+            None => return,
+        };
+        let sid = match self.cached_session_id(team_name).await {
+            Some(s) => s,
+            None => return,
+        };
+        let mut record = TeamMessageRecord::new(sid, &msg.sender, &msg.content);
+        record.recipient = msg.recipient.clone();
+        record.message_type = match msg.message_type {
+            TeamMessageType::UserMessage => "user_message".to_string(),
+            TeamMessageType::TeammateMessage => "teammate_message".to_string(),
+            TeamMessageType::Broadcast => "broadcast".to_string(),
+            TeamMessageType::System => "system".to_string(),
+        };
+        record.created_at = msg.timestamp;
+        if let Err(e) = repo.create(record).await {
+            warn!("Failed to persist team message: {e}");
+        }
     }
 }
 

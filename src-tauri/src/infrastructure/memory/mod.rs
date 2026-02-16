@@ -35,6 +35,8 @@ pub mod memory_task_proposal_repo;
 pub mod memory_task_qa_repo;
 pub mod memory_task_repo;
 pub mod memory_task_step_repo;
+pub mod memory_team_message_repo;
+pub mod memory_team_session_repo;
 pub mod memory_workflow_repo;
 
 // Re-exports for convenience
@@ -74,4 +76,6 @@ pub use memory_task_proposal_repo::MemoryTaskProposalRepository;
 pub use memory_task_qa_repo::MemoryTaskQARepository;
 pub use memory_task_repo::MemoryTaskRepository;
 pub use memory_task_step_repo::MemoryTaskStepRepository;
+pub use memory_team_message_repo::MemoryTeamMessageRepository;
+pub use memory_team_session_repo::MemoryTeamSessionRepository;
 pub use memory_workflow_repo::MemoryWorkflowRepository;

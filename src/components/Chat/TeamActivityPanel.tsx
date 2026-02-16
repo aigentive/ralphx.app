@@ -19,6 +19,7 @@ interface TeamActivityPanelProps {
   onMessageTeammate?: ((name: string) => void) | undefined;
   onStopTeammate?: ((name: string) => void) | undefined;
   onStopAll?: (() => void) | undefined;
+  isHistorical?: boolean | undefined;
 }
 
 const MAX_RECENT_MESSAGES = 5;
@@ -28,6 +29,7 @@ export const TeamActivityPanel = React.memo(function TeamActivityPanel({
   onMessageTeammate,
   onStopTeammate,
   onStopAll,
+  isHistorical = false,
 }: TeamActivityPanelProps) {
   const teamSelector = useMemo(() => selectActiveTeam(contextKey), [contextKey]);
   const team = useTeamStore(teamSelector);
@@ -86,6 +88,17 @@ export const TeamActivityPanel = React.memo(function TeamActivityPanel({
           >
             {activeCount}/{teammates.length}
           </span>
+          {isHistorical && (
+            <span
+              className="text-[10px] px-1.5 py-0.5 rounded"
+              style={{
+                backgroundColor: "hsl(220 10% 16%)",
+                color: "hsl(220 10% 50%)",
+              }}
+            >
+              Session ended
+            </span>
+          )}
         </div>
       </div>
 
@@ -95,8 +108,8 @@ export const TeamActivityPanel = React.memo(function TeamActivityPanel({
           <TeammateCard
             key={mate.name}
             teammate={mate}
-            onMessage={onMessageTeammate ? handleMessage : undefined}
-            onStop={onStopTeammate ? handleStop : undefined}
+            onMessage={!isHistorical && onMessageTeammate ? handleMessage : undefined}
+            onStop={!isHistorical && onStopTeammate ? handleStop : undefined}
           />
         ))}
       </div>
@@ -130,7 +143,7 @@ export const TeamActivityPanel = React.memo(function TeamActivityPanel({
       />
 
       {/* Actions */}
-      {onStopAll && activeCount > 0 && (
+      {!isHistorical && onStopAll && activeCount > 0 && (
         <div className="flex items-center gap-2 px-3 py-2 shrink-0" style={{ borderTop: "1px solid hsl(220 10% 14%)" }}>
           <Button
             variant="ghost"

@@ -24,7 +24,7 @@ use crate::domain::repositories::{
     ProposalDependencyRepository, ReviewRepository, ReviewSettingsRepository,
     SessionLinkRepository, SpawnOrchestratorJobRepository, TaskDependencyRepository,
     TaskProposalRepository, TaskQARepository, TaskRepository, TaskStepRepository,
-    WorkflowRepository,
+    TeamMessageRepository, TeamSessionRepository, WorkflowRepository,
 };
 use crate::domain::services::{MemoryRunningAgentRegistry, MessageQueue, RunningAgentRegistry};
 use crate::error::AppResult;
@@ -41,7 +41,7 @@ use crate::infrastructure::memory::{
     MemoryReviewIssueRepository, MemoryReviewRepository, MemoryReviewSettingsRepository,
     MemorySessionLinkRepository, MemoryTaskDependencyRepository, MemoryTaskProposalRepository,
     MemoryTaskQARepository, MemoryTaskRepository, MemoryTaskStepRepository,
-    MemoryWorkflowRepository,
+    MemoryTeamMessageRepository, MemoryTeamSessionRepository, MemoryWorkflowRepository,
 };
 use crate::infrastructure::sqlite::ReviewIssueRepository;
 use crate::infrastructure::sqlite::{
@@ -59,7 +59,8 @@ use crate::infrastructure::sqlite::{
     SqliteReviewRepository, SqliteReviewSettingsRepository, SqliteRunningAgentRegistry,
     SqliteSessionLinkRepository, SqliteSpawnOrchestratorJobRepository,
     SqliteTaskDependencyRepository, SqliteTaskProposalRepository, SqliteTaskQARepository,
-    SqliteTaskRepository, SqliteTaskStepRepository, SqliteWorkflowRepository,
+    SqliteTaskRepository, SqliteTaskStepRepository, SqliteTeamMessageRepository,
+    SqliteTeamSessionRepository, SqliteWorkflowRepository,
 };
 use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
 
@@ -151,6 +152,10 @@ pub struct AppState {
     pub memory_archive_repo: Arc<dyn MemoryArchiveRepository>,
     /// Spawn orchestrator job repository for background orchestrator spawning
     pub spawn_orchestrator_job_repo: Arc<dyn SpawnOrchestratorJobRepository>,
+    /// Team session repository for agent team history
+    pub team_session_repo: Arc<dyn TeamSessionRepository>,
+    /// Team message repository for agent team messages
+    pub team_message_repo: Arc<dyn TeamMessageRepository>,
     /// Chat attachment repository for file uploads in chat
     pub chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     /// Storage path for chat attachments
@@ -297,6 +302,12 @@ impl AppState {
             spawn_orchestrator_job_repo: Arc::new(SqliteSpawnOrchestratorJobRepository::from_shared(
                 Arc::clone(&shared_conn),
             )),
+            team_session_repo: Arc::new(SqliteTeamSessionRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            team_message_repo: Arc::new(SqliteTeamMessageRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
             chat_attachment_repo,
             attachment_storage_path,
             permission_state: Arc::new(PermissionState::with_repo(Arc::new(
@@ -439,6 +450,12 @@ impl AppState {
             spawn_orchestrator_job_repo: Arc::new(SqliteSpawnOrchestratorJobRepository::from_shared(
                 Arc::clone(&shared_conn),
             )),
+            team_session_repo: Arc::new(SqliteTeamSessionRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            team_message_repo: Arc::new(SqliteTeamMessageRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
             chat_attachment_repo,
             attachment_storage_path,
             permission_state: Arc::new(PermissionState::with_repo(Arc::new(
@@ -511,6 +528,8 @@ impl AppState {
                 open_connection(&PathBuf::from(":memory:"))
                     .expect("Failed to create in-memory connection"),
             )),
+            team_session_repo: Arc::new(MemoryTeamSessionRepository::new()),
+            team_message_repo: Arc::new(MemoryTeamMessageRepository::new()),
             chat_attachment_repo,
             attachment_storage_path,
             permission_state: Arc::new(PermissionState::with_repo(Arc::new(
@@ -585,6 +604,8 @@ impl AppState {
                 open_connection(&PathBuf::from(":memory:"))
                     .expect("Failed to create in-memory connection"),
             )),
+            team_session_repo: Arc::new(MemoryTeamSessionRepository::new()),
+            team_message_repo: Arc::new(MemoryTeamMessageRepository::new()),
             chat_attachment_repo,
             attachment_storage_path,
             permission_state: Arc::new(PermissionState::with_repo(Arc::new(

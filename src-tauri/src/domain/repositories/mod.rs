@@ -37,6 +37,8 @@ pub mod task_proposal_repository;
 pub mod task_qa_repository;
 pub mod task_repository;
 pub mod task_step_repository;
+pub mod team_message_repository;
+pub mod team_session_repository;
 pub mod workflow_repository;
 
 // Re-exports for convenience
@@ -80,4 +82,6 @@ pub use task_proposal_repository::TaskProposalRepository;
 pub use task_qa_repository::TaskQARepository;
 pub use task_repository::{StateHistoryMetadata, TaskRepository};
 pub use task_step_repository::TaskStepRepository;
+pub use team_message_repository::TeamMessageRepository;
+pub use team_session_repository::TeamSessionRepository;
 pub use workflow_repository::WorkflowRepository;

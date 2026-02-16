@@ -63,6 +63,43 @@ export type TeammateStatusResponse = z.infer<typeof TeammateStatusSchema>;
 export type TeamMessageResponse = z.infer<typeof TeamMessageSchema>;
 
 // ============================================================================
+// History Schemas (for hydrating past team sessions)
+// ============================================================================
+
+export const TeammateSnapshotSchema = z.object({
+  name: z.string(),
+  color: z.string(),
+  model: z.string(),
+  role: z.string(),
+  status: z.string(),
+  cost: TeammateCostSchema,
+  spawned_at: z.string(),
+  last_activity_at: z.string(),
+});
+
+export const TeamSessionHistorySchema = z.object({
+  team_name: z.string(),
+  lead_name: z.string(),
+  context_type: z.string(),
+  context_id: z.string(),
+  phase: z.string(),
+  created_at: z.string(),
+  ended_at: z.string().nullable(),
+  teammates: z.array(TeammateSnapshotSchema),
+  total_tokens: z.number(),
+  total_estimated_cost_usd: z.number(),
+});
+
+export const TeamHistoryResponseSchema = z.object({
+  session: TeamSessionHistorySchema.nullable(),
+  messages: z.array(TeamMessageSchema),
+});
+
+export type TeammateSnapshot = z.infer<typeof TeammateSnapshotSchema>;
+export type TeamSessionHistory = z.infer<typeof TeamSessionHistorySchema>;
+export type TeamHistoryResponse = z.infer<typeof TeamHistoryResponseSchema>;
+
+// ============================================================================
 // API Functions
 // ============================================================================
 
@@ -178,6 +215,16 @@ export async function getTeamMessages(
       ...(limit !== undefined && { limit }),
     }),
   );
+}
+
+export async function getTeamHistory(
+  contextType: string,
+  contextId: string,
+): Promise<TeamHistoryResponse> {
+  const result = await invoke("get_team_history", {
+    input: { context_type: contextType, context_id: contextId },
+  });
+  return TeamHistoryResponseSchema.parse(result);
 }
 
 export async function getTeammateCost(

@@ -555,13 +555,19 @@ pub fn run() {
                 });
             });
 
+            // Clone team repos before app_state is moved into Tauri state
+            let team_session_repo = Arc::clone(&app_state.team_session_repo);
+            let team_message_repo = Arc::clone(&app_state.team_message_repo);
+
             // Register app_state with Tauri's state management
             app.manage(app_state);
 
-            // Register team service (wraps tracker with event emission)
-            let team_service = application::TeamService::new(
+            // Register team service (wraps tracker with event emission + persistence)
+            let team_service = application::TeamService::new_with_repos(
                 std::sync::Arc::new(service_team_tracker),
                 app.handle().clone(),
+                team_session_repo,
+                team_message_repo,
             );
             app.manage(team_service);
 
@@ -825,6 +831,7 @@ pub fn run() {
             commands::team_commands::stop_team,
             commands::team_commands::get_team_messages,
             commands::team_commands::get_teammate_cost,
+            commands::team_commands::get_team_history,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
