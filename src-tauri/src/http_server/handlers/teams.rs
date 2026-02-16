@@ -772,6 +772,11 @@ pub async fn get_team_artifacts(
                 }
                 ArtifactContent::File { path } => format!("[File: {}]", path),
             };
+            let author_teammate = a
+                .metadata
+                .team_metadata
+                .as_ref()
+                .map(|tm| tm.author_teammate.clone());
             TeamArtifactSummary {
                 id: a.id.to_string(),
                 name: a.name.clone(),
@@ -779,6 +784,7 @@ pub async fn get_team_artifacts(
                 version: a.metadata.version,
                 content_preview,
                 created_at: a.metadata.created_at.to_rfc3339(),
+                author_teammate,
             }
         })
         .collect();

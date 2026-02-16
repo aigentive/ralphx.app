@@ -954,6 +954,7 @@ pub struct TeamArtifactSummary {
     pub version: u32,
     pub content_preview: String,
     pub created_at: String,
+    pub author_teammate: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
