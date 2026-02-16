@@ -13,12 +13,12 @@
  * This is used ONLY during streaming - final messages use ToolCallIndicator.
  */
 
-import { useMemo, useRef, useEffect, useCallback } from "react";
-import { Wrench, Loader2 } from "lucide-react";
+import { useMemo, useRef, useEffect, useCallback, useState } from "react";
+import { Wrench, Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import type { ToolCall } from "./ToolCallIndicator";
 
-// Maximum height for the tool list content area
-const MAX_CONTENT_HEIGHT = 200;
+// Maximum height for the tool list content area (~20% reduced from original 200)
+const MAX_CONTENT_HEIGHT = 160;
 
 /** Distance from bottom (px) within which we consider the user "near bottom" */
 const NEAR_BOTTOM_THRESHOLD = 30;
@@ -201,6 +201,7 @@ export function StreamingToolIndicator({
 }: StreamingToolIndicatorProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   // Track scroll position to determine if user is near bottom
   const handleScroll = useCallback(() => {
@@ -228,12 +229,12 @@ export function StreamingToolIndicator({
       });
   }, [toolCalls]);
 
-  // Auto-scroll to bottom when new tool calls arrive (only if user is near bottom)
+  // Auto-scroll to bottom when new tool calls arrive (only if user is near bottom and expanded)
   useEffect(() => {
-    if (contentRef.current && isNearBottomRef.current) {
+    if (isExpanded && contentRef.current && isNearBottomRef.current) {
       contentRef.current.scrollTop = contentRef.current.scrollHeight;
     }
-  }, [summaryLines.length]);
+  }, [summaryLines.length, isExpanded]);
 
   if (summaryLines.length === 0) {
     return null;
@@ -248,10 +249,16 @@ export function StreamingToolIndicator({
         border: "1px solid var(--border-subtle)",
       }}
     >
-      {/* Header */}
-      <div
-        className="flex items-center gap-2 px-3 py-2 border-b"
-        style={{ borderColor: "var(--border-subtle)" }}
+      {/* Header — clickable to toggle expand/collapse */}
+      <button
+        type="button"
+        onClick={() => setIsExpanded((prev) => !prev)}
+        className="flex items-center gap-2 px-3 py-2 w-full text-left hover:opacity-80 transition-opacity"
+        style={{
+          borderBottom: isExpanded ? "1px solid var(--border-subtle)" : "none",
+        }}
+        aria-expanded={isExpanded}
+        aria-label={`${isActive ? "Working" : "Tool calls"}. ${summaryLines.length} tool call${summaryLines.length !== 1 ? "s" : ""}. Click to ${isExpanded ? "collapse" : "expand"}.`}
       >
         {isActive ? (
           <Loader2
@@ -267,92 +274,104 @@ export function StreamingToolIndicator({
           />
         )}
         <span
-          className="text-xs font-medium"
+          className="text-xs font-medium flex-1"
           style={{ color: "var(--text-secondary)" }}
         >
-          {isActive ? "Working..." : `${summaryLines.length} tool call${summaryLines.length !== 1 ? "s" : ""}`}
+          {isActive ? "Working..." : "Done"}{" "}
+          <span style={{ color: "var(--text-muted)" }}>
+            ({summaryLines.length} tool call{summaryLines.length !== 1 ? "s" : ""})
+          </span>
         </span>
-      </div>
+        {isExpanded ? (
+          <ChevronDown size={14} className="flex-shrink-0" style={{ color: "var(--text-muted)" }} />
+        ) : (
+          <ChevronRight size={14} className="flex-shrink-0" style={{ color: "var(--text-muted)" }} />
+        )}
+      </button>
 
-      {/* Chain of thought - tool call summaries (scrollable) */}
-      <div
-        ref={contentRef}
-        onScroll={handleScroll}
-        className="px-3 py-2 space-y-1.5 overflow-y-auto"
-        style={{ maxHeight: `${MAX_CONTENT_HEIGHT}px`, overscrollBehavior: "contain" }}
-      >
-        {summaryLines.map((line, index) => (
-          <div
-            key={line.id || index}
-            className="text-xs"
-            style={{
-              color: line.hasError ? "var(--status-error)" : "var(--text-secondary)",
-            }}
-          >
-            {/* Line 1: Step number + Verb */}
-            <div className="flex items-start gap-2">
-              <span
-                className="flex-shrink-0 w-4 text-right tabular-nums"
-                style={{ color: "var(--text-muted)" }}
-              >
-                {index + 1}.
-              </span>
-              <span className="font-medium" style={{ color: "var(--text-primary)" }}>
-                {line.verb}
-              </span>
-            </div>
-
-            {/* Line 2: File path (indented, monospace, break-all) */}
-            <div className="flex gap-2">
-              <span className="w-4 flex-shrink-0" />
-              <span
-                className="font-mono text-[11px] break-all"
-                style={{
-                  color: line.hasError ? "var(--status-error)" : "var(--text-secondary)",
-                }}
-              >
-                {line.primary}
-              </span>
-            </div>
-
-            {/* Additional details */}
-            {line.details.length > 0 && (
-              <div className="flex gap-2">
-                <span className="w-4 flex-shrink-0" />
-                <div
-                  className="text-[11px] font-mono"
+      {/* Chain of thought - tool call summaries (scrollable, only when expanded) */}
+      {isExpanded && (
+        <div
+          ref={contentRef}
+          onScroll={handleScroll}
+          className="px-3 py-2 space-y-1.5 overflow-y-auto"
+          style={{ maxHeight: `${MAX_CONTENT_HEIGHT}px`, overscrollBehavior: "contain" }}
+        >
+          {summaryLines.map((line, index) => (
+            <div
+              key={line.id || index}
+              className="text-xs"
+              style={{
+                color: line.hasError ? "var(--status-error)" : "var(--text-secondary)",
+              }}
+            >
+              {/* Line 1: Step number + Verb */}
+              <div className="flex items-start gap-2">
+                <span
+                  className="flex-shrink-0 w-4 text-right tabular-nums"
                   style={{ color: "var(--text-muted)" }}
                 >
-                  {line.details.map((detail, i) => (
-                    <div key={i} className="truncate">
-                      {detail}
-                    </div>
-                  ))}
-                </div>
+                  {index + 1}.
+                </span>
+                <span className="font-medium" style={{ color: "var(--text-primary)" }}>
+                  {line.verb}
+                </span>
               </div>
-            )}
-          </div>
-        ))}
 
-        {/* Active indicator at the end - always shown while component is mounted */}
-        <div className="flex items-center gap-2 text-xs pt-1">
-          <span className="w-4" />
-          <div className="flex items-center gap-1">
-            <div
-              className="w-1.5 h-1.5 rounded-full animate-pulse"
-              style={{ backgroundColor: "var(--accent-primary)" }}
-            />
-            <div
-              className="w-1.5 h-1.5 rounded-full animate-pulse"
-              style={{ backgroundColor: "var(--accent-primary)", animationDelay: "0.15s" }}
-            />
-            <div
-              className="w-1.5 h-1.5 rounded-full animate-pulse"
-              style={{ backgroundColor: "var(--accent-primary)", animationDelay: "0.3s" }}
-            />
-          </div>
+              {/* Line 2: File path (indented, monospace, break-all) */}
+              <div className="flex gap-2">
+                <span className="w-4 flex-shrink-0" />
+                <span
+                  className="font-mono text-[11px] break-all"
+                  style={{
+                    color: line.hasError ? "var(--status-error)" : "var(--text-secondary)",
+                  }}
+                >
+                  {line.primary}
+                </span>
+              </div>
+
+              {/* Additional details */}
+              {line.details.length > 0 && (
+                <div className="flex gap-2">
+                  <span className="w-4 flex-shrink-0" />
+                  <div
+                    className="text-[11px] font-mono"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    {line.details.map((detail, i) => (
+                      <div key={i} className="truncate">
+                        {detail}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+
+          {/* Active indicator at the end */}
+          {isActive && (
+            <div className="flex items-center gap-2 text-xs pt-1">
+              <span className="w-4" />
+              <div className="flex items-center gap-1">
+                <div
+                  className="w-1.5 h-1.5 rounded-full animate-pulse"
+                  style={{ backgroundColor: "var(--accent-primary)" }}
+                />
+                <div
+                  className="w-1.5 h-1.5 rounded-full animate-pulse"
+                  style={{ backgroundColor: "var(--accent-primary)", animationDelay: "0.15s" }}
+                />
+                <div
+                  className="w-1.5 h-1.5 rounded-full animate-pulse"
+                  style={{ backgroundColor: "var(--accent-primary)", animationDelay: "0.3s" }}
+                />
+              </div>
+            </div>
+          )}
         </div>
-      </div>
+      )}
     </div>
   );
 }
