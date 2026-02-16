@@ -30,12 +30,9 @@ import { Button } from "@/components/ui/button";
 import { ResizeHandle, CHAT_PANEL_DEFAULT_WIDTH, CHAT_PANEL_MIN_WIDTH } from "@/components/ui/ResizeHandle";
 import { PlanDisplay } from "./PlanDisplay";
 import type { TeamMetadata } from "./PlanDisplay";
-import { TeamArtifactChips } from "./TeamArtifactChips";
-import { TeamArtifactDrawer } from "./TeamArtifactDrawer";
+import { TeamResearchView } from "./TeamResearchView";
 import { getTeamArtifacts } from "@/api/team";
 import type { TeamArtifactSummary } from "@/api/team";
-import { artifactApi } from "@/api/artifact";
-import type { Artifact } from "@/types/artifact";
 import { useUiStore } from "@/stores/uiStore";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
@@ -325,41 +322,12 @@ export function PlanningView({
     return () => { cancelled = true; };
   }, [session?.id, session?.teamMode]);
 
-  // Drawer state for team artifact inspector
-  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
-  const [drawerArtifact, setDrawerArtifact] = useState<Artifact | null>(null);
-  const [isDrawerLoading, setIsDrawerLoading] = useState(false);
+  // Tab state for plan vs research content
+  const [activeTab, setActiveTab] = useState<"plan" | "research">("plan");
 
-  // Fetch full artifact content when selection changes
+  // Reset to plan tab when switching sessions
   useEffect(() => {
-    if (!selectedArtifactId) {
-      setDrawerArtifact(null);
-      setIsDrawerLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setIsDrawerLoading(true);
-    artifactApi.get(selectedArtifactId)
-      .then((artifact) => {
-        if (cancelled) return;
-        setDrawerArtifact(artifact);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        console.error("Failed to fetch artifact:", err);
-        setDrawerArtifact(null);
-      })
-      .finally(() => {
-        if (!cancelled) setIsDrawerLoading(false);
-      });
-
-    return () => { cancelled = true; };
-  }, [selectedArtifactId]);
-
-  // Clear drawer when switching sessions
-  useEffect(() => {
-    setSelectedArtifactId(null);
+    setActiveTab("plan");
   }, [session?.id]);
 
   // Construct TeamMetadata when session is a team session (badge only — findings shown via chips)
@@ -841,7 +809,73 @@ export function PlanningView({
                       />
                     )}
 
-                    {/* Proposals List */}
+                    {/* Tab bar — only when team artifacts exist */}
+                    {teamArtifacts.length > 0 && (
+                      <div
+                        className="flex items-center gap-0 px-4 shrink-0"
+                        style={{
+                          height: "36px",
+                          borderBottom: "1px solid hsla(220 10% 100% / 0.06)",
+                          background: "hsla(220 10% 12% / 0.6)",
+                          backdropFilter: "blur(12px)",
+                          WebkitBackdropFilter: "blur(12px)",
+                        }}
+                        data-testid="content-tab-bar"
+                      >
+                        <button
+                          onClick={() => setActiveTab("plan")}
+                          className="relative h-full px-3 text-[12px] font-medium transition-colors duration-150"
+                          style={{
+                            color: activeTab === "plan"
+                              ? "hsl(220 10% 90%)"
+                              : "hsl(220 10% 50%)",
+                          }}
+                          data-testid="tab-plan"
+                        >
+                          Plan & Proposals
+                          {activeTab === "plan" && (
+                            <span
+                              className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full"
+                              style={{ background: "hsl(14 100% 60%)" }}
+                            />
+                          )}
+                        </button>
+                        <button
+                          onClick={() => setActiveTab("research")}
+                          className="relative h-full px-3 text-[12px] font-medium transition-colors duration-150 flex items-center gap-1.5"
+                          style={{
+                            color: activeTab === "research"
+                              ? "hsl(220 10% 90%)"
+                              : "hsl(220 10% 50%)",
+                          }}
+                          data-testid="tab-research"
+                        >
+                          Team Research
+                          <span
+                            className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                            style={{
+                              background: activeTab === "research"
+                                ? "hsla(14 100% 60% / 0.15)"
+                                : "hsla(220 10% 100% / 0.06)",
+                              color: activeTab === "research"
+                                ? "hsl(14 100% 65%)"
+                                : "hsl(220 10% 50%)",
+                            }}
+                          >
+                            {teamArtifacts.length}
+                          </span>
+                          {activeTab === "research" && (
+                            <span
+                              className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full"
+                              style={{ background: "hsl(14 100% 60%)" }}
+                            />
+                          )}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Content area — switches on activeTab */}
+                    {activeTab === "plan" ? (
                     <div ref={proposalsScrollRef} className="flex-1 overflow-y-auto p-4">
                       {session.status === "accepted" && (
                         <AcceptedSessionBanner
@@ -919,16 +953,6 @@ export function PlanningView({
                         </div>
                       )}
 
-                      {teamArtifacts.length > 0 && (
-                        <div className="mb-4">
-                          <TeamArtifactChips
-                            artifacts={teamArtifacts}
-                            selectedArtifactId={selectedArtifactId}
-                            onSelect={setSelectedArtifactId}
-                          />
-                        </div>
-                      )}
-
                       {!planArtifact && ideationSettings?.planMode === "required" && proposals.length === 0 && (
                         <div className="flex flex-col items-center justify-center h-full p-8">
                           <div className="relative">
@@ -965,6 +989,11 @@ export function PlanningView({
                         />
                       )}
                     </div>
+                    ) : (
+                    <div className="flex-1 overflow-y-auto p-4">
+                      <TeamResearchView artifacts={teamArtifacts} sessionId={session.id} />
+                    </div>
+                    )}
                   </>
                 )}
               </div>
@@ -993,29 +1022,18 @@ export function PlanningView({
               className="flex flex-col shrink-0"
               style={{ width: `${chatPanelWidth}px` }}
             >
-              {selectedArtifactId ? (
-                <TeamArtifactDrawer
-                  artifact={drawerArtifact}
-                  allArtifacts={teamArtifacts}
-                  selectedIndex={teamArtifacts.findIndex((a) => a.id === selectedArtifactId)}
-                  isLoading={isDrawerLoading}
-                  onClose={() => setSelectedArtifactId(null)}
-                  onNavigate={setSelectedArtifactId}
-                />
-              ) : (
-                <IntegratedChatPanel
-                  projectId={session.projectId}
-                  ideationSessionId={session.id}
-                  emptyState={<ConversationEmptyState />}
-                  showHelperTextAlways={true}
-                  headerContent={
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <MessageSquare className="w-3.5 h-3.5 shrink-0" style={{ color: "hsl(220 10% 50%)" }} />
-                      <span className="text-[13px] font-medium" style={{ color: "hsl(220 10% 90%)" }}>Conversation</span>
-                    </div>
-                  }
-                />
-              )}
+              <IntegratedChatPanel
+                projectId={session.projectId}
+                ideationSessionId={session.id}
+                emptyState={<ConversationEmptyState />}
+                showHelperTextAlways={true}
+                headerContent={
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <MessageSquare className="w-3.5 h-3.5 shrink-0" style={{ color: "hsl(220 10% 50%)" }} />
+                    <span className="text-[13px] font-medium" style={{ color: "hsl(220 10% 90%)" }}>Conversation</span>
+                  </div>
+                }
+              />
             </div>
             )}
           </div>
