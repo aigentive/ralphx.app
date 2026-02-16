@@ -67,6 +67,7 @@ EventProvider wraps app with hooks: `useTaskEvents()`, `useSupervisorAlerts()`, 
 
 ### API Layer Patterns
 See api-layer.md for Tauri conventions, schemas, transforms, and mocking.
+- **Tauri invoke args use camelCase** — Rust structs use `#[serde(rename_all = "camelCase")]`, so `invoke()` calls must pass `contextId` NOT `context_id`
 
 ### TS Config (strict)
 ```json

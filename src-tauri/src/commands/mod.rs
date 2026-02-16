@@ -45,8 +45,10 @@ pub use agent_profile_commands::{
 pub use artifact_commands::{
     add_artifact_relation, create_artifact, create_bucket, delete_artifact, get_artifact,
     get_artifact_relations, get_artifacts, get_artifacts_by_bucket, get_artifacts_by_task,
-    get_buckets, get_system_buckets, update_artifact, AddRelationInput, ArtifactRelationResponse,
-    ArtifactResponse, BucketResponse, CreateArtifactInput, CreateBucketInput, UpdateArtifactInput,
+    get_buckets, get_system_buckets, get_team_artifacts_by_session, update_artifact,
+    AddRelationInput, ArtifactRelationResponse, ArtifactResponse, BucketResponse,
+    CreateArtifactInput, CreateBucketInput, GetTeamArtifactsResponse,
+    TeamArtifactSummaryResponse, UpdateArtifactInput,
 };
 pub use chat_attachment_commands::{
     delete_chat_attachment, link_attachments_to_message, list_conversation_attachments,

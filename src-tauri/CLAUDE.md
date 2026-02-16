@@ -107,6 +107,7 @@ async fn create_task(state: State<'_, AppState>, input: CreateTaskInput) -> Resu
 ### Conventions
 - Types: PascalCase | Functions: snake_case | Files: snake_case
 - Enums: `#[serde(rename_all="snake_case")]`
+- **Tauri command input structs:** `#[serde(rename_all = "camelCase")]` — frontend `invoke()` callers must pass camelCase field names
 - JSON: snake_case | Dates: RFC3339
 - All repos: async with `#[async_trait]`
 

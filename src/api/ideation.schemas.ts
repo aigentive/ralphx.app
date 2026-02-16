@@ -11,6 +11,7 @@ export const IdeationSessionResponseSchema = z.object({
   title: z.string().nullable(),
   status: z.string(),
   plan_artifact_id: z.string().nullable(),
+  seed_task_id: z.string().nullable().optional(),
   parent_session_id: z.string().nullable(),
   team_mode: z.enum(["solo", "research", "debate"]).nullable().optional(),
   team_config: z.object({

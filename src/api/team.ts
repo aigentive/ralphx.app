@@ -232,7 +232,7 @@ export async function getTeamHistory(
   contextId: string,
 ): Promise<TeamHistoryResponse> {
   const result = await invoke("get_team_history", {
-    input: { context_type: contextType, context_id: contextId },
+    input: { contextType, contextId },
   });
   return TeamHistoryResponseSchema.parse(result);
 }
@@ -254,7 +254,7 @@ export async function getTeammateCost(
 }
 
 // ============================================================================
-// Team Artifacts (HTTP — fetches from MCP server)
+// Team Artifacts (Tauri IPC)
 // ============================================================================
 
 export const TeamArtifactSummarySchema = z.object({
@@ -277,12 +277,6 @@ export type GetTeamArtifactsResponse = z.infer<typeof GetTeamArtifactsResponseSc
 export async function getTeamArtifacts(
   sessionId: string,
 ): Promise<GetTeamArtifactsResponse> {
-  const resp = await fetch(`${MCP_SERVER_URL}/api/team/artifacts/${encodeURIComponent(sessionId)}`);
-
-  if (!resp.ok) {
-    const errorText = await resp.text();
-    throw new Error(`Failed to fetch team artifacts: ${errorText}`);
-  }
-
-  return GetTeamArtifactsResponseSchema.parse(await resp.json());
+  const result = await invoke("get_team_artifacts_by_session", { sessionId });
+  return GetTeamArtifactsResponseSchema.parse(result);
 }

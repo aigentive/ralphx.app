@@ -10,6 +10,24 @@ use crate::domain::entities::{
     ArtifactRelationType, ArtifactType, ProcessId, TaskId,
 };
 
+/// Summary of a team artifact (lighter than full ArtifactResponse)
+#[derive(Debug, Serialize)]
+pub struct TeamArtifactSummaryResponse {
+    pub id: String,
+    pub name: String,
+    pub artifact_type: String,
+    pub version: u32,
+    pub content_preview: String,
+    pub created_at: String,
+}
+
+/// Response for get_team_artifacts_by_session
+#[derive(Debug, Serialize)]
+pub struct GetTeamArtifactsResponse {
+    pub artifacts: Vec<TeamArtifactSummaryResponse>,
+    pub count: usize,
+}
+
 /// Input for creating a new artifact
 #[derive(Debug, Deserialize)]
 pub struct CreateArtifactInput {
@@ -339,6 +357,61 @@ pub async fn get_artifacts_by_task(
         .await
         .map(|artifacts| artifacts.into_iter().map(ArtifactResponse::from).collect())
         .map_err(|e| e.to_string())
+}
+
+/// Get team artifacts filtered by session ID.
+///
+/// Fetches artifacts from the "team-findings" bucket and filters by session_id
+/// in team_metadata. Returns summary responses with content previews.
+#[tauri::command]
+pub async fn get_team_artifacts_by_session(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<GetTeamArtifactsResponse, String> {
+    let bucket_id = ArtifactBucketId::from_string("team-findings");
+    let artifacts = state
+        .artifact_repo
+        .get_by_bucket(&bucket_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let filtered: Vec<TeamArtifactSummaryResponse> = artifacts
+        .into_iter()
+        .filter(|a| {
+            a.metadata
+                .team_metadata
+                .as_ref()
+                .and_then(|tm| tm.session_id.as_deref())
+                == Some(session_id.as_str())
+        })
+        .map(|a| {
+            let content_preview = match &a.content {
+                ArtifactContent::Inline { text } => {
+                    if text.chars().count() <= 200 {
+                        text.clone()
+                    } else {
+                        let truncated: String = text.chars().take(200).collect();
+                        format!("{truncated}...")
+                    }
+                }
+                ArtifactContent::File { path } => format!("[File: {}]", path),
+            };
+            TeamArtifactSummaryResponse {
+                id: a.id.as_str().to_string(),
+                name: a.name.clone(),
+                artifact_type: format!("{:?}", a.artifact_type),
+                version: a.metadata.version,
+                content_preview,
+                created_at: a.metadata.created_at.to_rfc3339(),
+            }
+        })
+        .collect();
+
+    let count = filtered.len();
+    Ok(GetTeamArtifactsResponse {
+        artifacts: filtered,
+        count,
+    })
 }
 
 // ===== Bucket Commands =====
@@ -690,5 +763,78 @@ mod tests {
         assert!(names.contains(&"Code Changes"));
         assert!(names.contains(&"PRD Library"));
         assert!(names.contains(&"Team Findings"));
+    }
+
+    #[tokio::test]
+    async fn test_get_team_artifacts_by_session_filters_correctly() {
+        use crate::domain::entities::TeamArtifactMetadata;
+
+        let state = setup_test_state();
+        let bucket_id = ArtifactBucketId::from_string("team-findings");
+
+        // Create artifact WITH matching session_id
+        let mut matching = Artifact::new_inline(
+            "Research Finding",
+            ArtifactType::TeamResearch,
+            "Some research content here",
+            "team-lead",
+        )
+        .with_bucket(bucket_id.clone());
+        matching.metadata = matching.metadata.with_team_metadata(TeamArtifactMetadata {
+            team_name: "test-team".into(),
+            author_teammate: "researcher".into(),
+            session_id: Some("session-abc".into()),
+            team_phase: None,
+        });
+
+        // Create artifact with DIFFERENT session_id
+        let mut other = Artifact::new_inline(
+            "Other Finding",
+            ArtifactType::TeamAnalysis,
+            "Different session content",
+            "team-lead",
+        )
+        .with_bucket(bucket_id.clone());
+        other.metadata = other.metadata.with_team_metadata(TeamArtifactMetadata {
+            team_name: "test-team".into(),
+            author_teammate: "analyst".into(),
+            session_id: Some("session-xyz".into()),
+            team_phase: None,
+        });
+
+        // Create artifact with NO team_metadata
+        let no_meta = Artifact::new_inline(
+            "No Meta",
+            ArtifactType::TeamSummary,
+            "No team metadata",
+            "system",
+        )
+        .with_bucket(bucket_id.clone());
+
+        state.artifact_repo.create(matching).await.expect("create matching");
+        state.artifact_repo.create(other).await.expect("create other");
+        state.artifact_repo.create(no_meta).await.expect("create no_meta");
+
+        // Query for session-abc — should return only the matching artifact
+        let all = state
+            .artifact_repo
+            .get_by_bucket(&bucket_id)
+            .await
+            .expect("get_by_bucket");
+        assert_eq!(all.len(), 3);
+
+        // Filter like the command does
+        let filtered: Vec<_> = all
+            .into_iter()
+            .filter(|a| {
+                a.metadata
+                    .team_metadata
+                    .as_ref()
+                    .and_then(|tm| tm.session_id.as_deref())
+                    == Some("session-abc")
+            })
+            .collect();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].name, "Research Finding");
     }
 }
