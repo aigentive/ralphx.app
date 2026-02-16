@@ -30,8 +30,12 @@ import { Button } from "@/components/ui/button";
 import { ResizeHandle, CHAT_PANEL_DEFAULT_WIDTH, CHAT_PANEL_MIN_WIDTH } from "@/components/ui/ResizeHandle";
 import { PlanDisplay } from "./PlanDisplay";
 import type { TeamMetadata } from "./PlanDisplay";
-import type { TeamFinding } from "./TeamFindingsSection";
+import { TeamArtifactChips } from "./TeamArtifactChips";
+import { TeamArtifactDrawer } from "./TeamArtifactDrawer";
 import { getTeamArtifacts } from "@/api/team";
+import type { TeamArtifactSummary } from "@/api/team";
+import { artifactApi } from "@/api/artifact";
+import type { Artifact } from "@/types/artifact";
 import { useUiStore } from "@/stores/uiStore";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
@@ -298,11 +302,11 @@ export function PlanningView({
     }
   }, [session?.planArtifactId, planArtifactId]);
 
-  // Fetch team artifacts for team-ideated sessions
-  const [teamFindings, setTeamFindings] = useState<TeamFinding[]>([]);
+  // Fetch team artifact summaries for team-ideated sessions
+  const [teamArtifacts, setTeamArtifacts] = useState<TeamArtifactSummary[]>([]);
   useEffect(() => {
     if (!session?.id || !session.teamMode || session.teamMode === "solo") {
-      setTeamFindings([]);
+      setTeamArtifacts([]);
       return;
     }
 
@@ -310,31 +314,64 @@ export function PlanningView({
     getTeamArtifacts(session.id)
       .then((resp) => {
         if (cancelled) return;
-        const findings: TeamFinding[] = resp.artifacts.map((a) => ({
-          specialist: a.name,
-          keyFinding: a.content_preview,
-        }));
-        setTeamFindings(findings);
+        setTeamArtifacts(resp.artifacts);
       })
       .catch((err) => {
         if (cancelled) return;
         console.error("Failed to fetch team artifacts:", err);
-        setTeamFindings([]);
+        setTeamArtifacts([]);
       });
 
     return () => { cancelled = true; };
   }, [session?.id, session?.teamMode]);
 
-  // Construct TeamMetadata when session is a team session
+  // Drawer state for team artifact inspector
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
+  const [drawerArtifact, setDrawerArtifact] = useState<Artifact | null>(null);
+  const [isDrawerLoading, setIsDrawerLoading] = useState(false);
+
+  // Fetch full artifact content when selection changes
+  useEffect(() => {
+    if (!selectedArtifactId) {
+      setDrawerArtifact(null);
+      setIsDrawerLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsDrawerLoading(true);
+    artifactApi.get(selectedArtifactId)
+      .then((artifact) => {
+        if (cancelled) return;
+        setDrawerArtifact(artifact);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error("Failed to fetch artifact:", err);
+        setDrawerArtifact(null);
+      })
+      .finally(() => {
+        if (!cancelled) setIsDrawerLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [selectedArtifactId]);
+
+  // Clear drawer when switching sessions
+  useEffect(() => {
+    setSelectedArtifactId(null);
+  }, [session?.id]);
+
+  // Construct TeamMetadata when session is a team session (badge only — findings shown via chips)
   const teamMetadata = useMemo<TeamMetadata | undefined>(() => {
     if (!session?.teamMode || session.teamMode === "solo") return undefined;
     return {
       teamIdeated: true,
       teamMode: session.teamMode as "research" | "debate",
-      teammateCount: session.teamConfig?.maxTeammates ?? teamFindings.length,
-      findings: teamFindings,
+      teammateCount: session.teamConfig?.maxTeammates ?? teamArtifacts.length,
+      findings: [],
     };
-  }, [session?.teamMode, session?.teamConfig?.maxTeammates, teamFindings]);
+  }, [session?.teamMode, session?.teamConfig?.maxTeammates, teamArtifacts.length]);
 
   useEffect(() => {
     const unsubProposalsUpdate = eventBus.subscribe<{ artifact_id: string; proposal_ids: string[]; session_id?: string }>(
@@ -882,6 +919,16 @@ export function PlanningView({
                         </div>
                       )}
 
+                      {teamArtifacts.length > 0 && (
+                        <div className="mb-4">
+                          <TeamArtifactChips
+                            artifacts={teamArtifacts}
+                            selectedArtifactId={selectedArtifactId}
+                            onSelect={setSelectedArtifactId}
+                          />
+                        </div>
+                      )}
+
                       {!planArtifact && ideationSettings?.planMode === "required" && proposals.length === 0 && (
                         <div className="flex flex-col items-center justify-center h-full p-8">
                           <div className="relative">
@@ -946,18 +993,29 @@ export function PlanningView({
               className="flex flex-col shrink-0"
               style={{ width: `${chatPanelWidth}px` }}
             >
-              <IntegratedChatPanel
-                projectId={session.projectId}
-                ideationSessionId={session.id}
-                emptyState={<ConversationEmptyState />}
-                showHelperTextAlways={true}
-                headerContent={
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <MessageSquare className="w-3.5 h-3.5 shrink-0" style={{ color: "hsl(220 10% 50%)" }} />
-                    <span className="text-[13px] font-medium" style={{ color: "hsl(220 10% 90%)" }}>Conversation</span>
-                  </div>
-                }
-              />
+              {selectedArtifactId ? (
+                <TeamArtifactDrawer
+                  artifact={drawerArtifact}
+                  allArtifacts={teamArtifacts}
+                  selectedIndex={teamArtifacts.findIndex((a) => a.id === selectedArtifactId)}
+                  isLoading={isDrawerLoading}
+                  onClose={() => setSelectedArtifactId(null)}
+                  onNavigate={setSelectedArtifactId}
+                />
+              ) : (
+                <IntegratedChatPanel
+                  projectId={session.projectId}
+                  ideationSessionId={session.id}
+                  emptyState={<ConversationEmptyState />}
+                  showHelperTextAlways={true}
+                  headerContent={
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <MessageSquare className="w-3.5 h-3.5 shrink-0" style={{ color: "hsl(220 10% 50%)" }} />
+                      <span className="text-[13px] font-medium" style={{ color: "hsl(220 10% 90%)" }}>Conversation</span>
+                    </div>
+                  }
+                />
+              )}
             </div>
             )}
           </div>
