@@ -29,6 +29,9 @@ import type {
 import { Button } from "@/components/ui/button";
 import { ResizeHandle, CHAT_PANEL_DEFAULT_WIDTH, CHAT_PANEL_MIN_WIDTH } from "@/components/ui/ResizeHandle";
 import { PlanDisplay } from "./PlanDisplay";
+import type { TeamMetadata } from "./PlanDisplay";
+import type { TeamFinding } from "./TeamFindingsSection";
+import { getTeamArtifacts } from "@/api/team";
 import { useUiStore } from "@/stores/uiStore";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
@@ -294,6 +297,44 @@ export function PlanningView({
       fetchPlanArtifactRef.current(session.planArtifactId);
     }
   }, [session?.planArtifactId, planArtifactId]);
+
+  // Fetch team artifacts for team-ideated sessions
+  const [teamFindings, setTeamFindings] = useState<TeamFinding[]>([]);
+  useEffect(() => {
+    if (!session?.id || !session.teamMode || session.teamMode === "solo") {
+      setTeamFindings([]);
+      return;
+    }
+
+    let cancelled = false;
+    getTeamArtifacts(session.id)
+      .then((resp) => {
+        if (cancelled) return;
+        const findings: TeamFinding[] = resp.artifacts.map((a) => ({
+          specialist: a.name,
+          keyFinding: a.content_preview,
+        }));
+        setTeamFindings(findings);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error("Failed to fetch team artifacts:", err);
+        setTeamFindings([]);
+      });
+
+    return () => { cancelled = true; };
+  }, [session?.id, session?.teamMode]);
+
+  // Construct TeamMetadata when session is a team session
+  const teamMetadata = useMemo<TeamMetadata | undefined>(() => {
+    if (!session?.teamMode || session.teamMode === "solo") return undefined;
+    return {
+      teamIdeated: true,
+      teamMode: session.teamMode as "research" | "debate",
+      teammateCount: session.teamConfig?.maxTeammates ?? teamFindings.length,
+      findings: teamFindings,
+    };
+  }, [session?.teamMode, session?.teamConfig?.maxTeammates, teamFindings]);
 
   useEffect(() => {
     const unsubProposalsUpdate = eventBus.subscribe<{ artifact_id: string; proposal_ids: string[]; session_id?: string }>(
@@ -836,6 +877,7 @@ export function PlanningView({
                             onEdit={() => {}}
                             isExpanded={isPlanExpanded}
                             onExpandedChange={handlePlanExpandedChange}
+                            {...(teamMetadata !== undefined && { teamMetadata })}
                           />
                         </div>
                       )}

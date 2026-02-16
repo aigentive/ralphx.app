@@ -252,3 +252,37 @@ export async function getTeammateCost(
     await invoke("get_teammate_cost", { teamName, teammateName }),
   );
 }
+
+// ============================================================================
+// Team Artifacts (HTTP — fetches from MCP server)
+// ============================================================================
+
+export const TeamArtifactSummarySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  artifact_type: z.string(),
+  version: z.number(),
+  content_preview: z.string(),
+  created_at: z.string(),
+});
+
+export const GetTeamArtifactsResponseSchema = z.object({
+  artifacts: z.array(TeamArtifactSummarySchema),
+  count: z.number(),
+});
+
+export type TeamArtifactSummary = z.infer<typeof TeamArtifactSummarySchema>;
+export type GetTeamArtifactsResponse = z.infer<typeof GetTeamArtifactsResponseSchema>;
+
+export async function getTeamArtifacts(
+  sessionId: string,
+): Promise<GetTeamArtifactsResponse> {
+  const resp = await fetch(`${MCP_SERVER_URL}/api/team/artifacts/${encodeURIComponent(sessionId)}`);
+
+  if (!resp.ok) {
+    const errorText = await resp.text();
+    throw new Error(`Failed to fetch team artifacts: ${errorText}`);
+  }
+
+  return GetTeamArtifactsResponseSchema.parse(await resp.json());
+}
