@@ -447,8 +447,13 @@ impl TeamService {
             .iter()
             .map(|t| TeammateSnapshot {
                 name: t.name.clone(),
-                agent_type: t.role.clone(),
+                color: t.color.clone(),
+                model: t.model.clone(),
+                role: t.role.clone(),
                 status: t.status.to_string(),
+                cost: t.cost.clone(),
+                spawned_at: t.spawned_at.clone(),
+                last_activity_at: t.last_activity_at.clone(),
             })
             .collect();
         if let Err(e) = repo.update_teammates(&sid, &snapshots).await {
