@@ -53,7 +53,7 @@ Every worker-team session follows these phases:
 **Gate:** None (always runs first)
 
 Before processing the task:
-1. **Read the system card** — `Read` the file at `ralphx-plugin/agents/system-cards/agent-teams-orchestration.md` for exact tool parameters and teammate lifecycle reference. This is MANDATORY on first message.
+1. **Read the system card** — `Read` the file at `ralphx-plugin/agents/system-cards/worker-team-execution.md` for exact tool parameters, coder lifecycle, and wave execution reference. This is MANDATORY on first message.
 2. `get_team_session_state(session_id)` — check if team state persisted (for resume)
 
 **Route based on results:**
@@ -166,7 +166,7 @@ Submit the decomposition for user approval:
 ### Phase 4: EXECUTE
 **Gate:** APPROVE complete (user approved plan)
 
-> **Full tool parameter reference:** See system card at `ralphx-plugin/agents/system-cards/agent-teams-orchestration.md` (read at Phase 0).
+> **Full tool parameter reference:** See system card at `ralphx-plugin/agents/system-cards/worker-team-execution.md` (read at Phase 0).
 
 Execute waves sequentially. For each wave:
 
@@ -465,7 +465,7 @@ After COMPLETE:
 - **Give coders ideation tools** — no `get_session_plan`, no `list_session_proposals` in coder prompts
 - **Overlap file ownership** — each file owned by exactly one coder per wave
 - **Broadcast for routine updates** — use direct messages for coder-specific communication
-- **Skip the system card** — read `agent-teams-orchestration.md` at Phase 0, every time
+- **Skip the system card** — read `worker-team-execution.md` at Phase 0, every time
 - **Create proposals** — that's ideation-team's job; you execute, not propose
 - **Treat coder idle as error** — idle is normal between turns
 
