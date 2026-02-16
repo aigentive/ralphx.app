@@ -8,16 +8,14 @@
 // then updates the teammate's status to Idle or Shutdown.
 
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Runtime};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::ChildStdout;
 use tokio::task::JoinHandle;
 
 use crate::application::team_events;
-use crate::application::team_state_tracker::{TeammateCost, TeammateStatus};
+use crate::application::team_state_tracker::{TeamStateTracker, TeammateCost, TeammateStatus};
 use crate::infrastructure::agents::claude::{StreamEvent, StreamProcessor};
-
-use super::team_service::TeamService;
 
 /// Start a background task that reads a teammate's stdout and emits Tauri events.
 ///
@@ -31,15 +29,15 @@ use super::team_service::TeamService;
 /// * `context_type` - Chat context type (e.g. "ideation")
 /// * `context_id` - Chat context ID (e.g. session ID)
 /// * `app_handle` - Tauri AppHandle for emitting events to the frontend
-/// * `team_service` - TeamService for updating teammate cost/status
-pub fn start_teammate_stream(
+/// * `team_tracker` - TeamStateTracker for updating teammate cost/status
+pub fn start_teammate_stream<R: Runtime>(
     stdout: ChildStdout,
     team_name: String,
     teammate_name: String,
     context_type: String,
     context_id: String,
-    app_handle: AppHandle,
-    team_service: Arc<TeamService>,
+    app_handle: AppHandle<R>,
+    team_tracker: Arc<TeamStateTracker>,
 ) -> JoinHandle<()> {
     let span = tracing::info_span!(
         "teammate_stream",
@@ -212,9 +210,13 @@ pub fn start_teammate_stream(
                                 }
                                 StreamEvent::HookStarted { .. }
                                 | StreamEvent::HookCompleted { .. }
-                                | StreamEvent::HookBlock { .. } => {
-                                    // Hook events are not forwarded for teammates
-                                    // (hooks run on the team lead, not subagents)
+                                | StreamEvent::HookBlock { .. }
+                                | StreamEvent::TeamCreated { .. }
+                                | StreamEvent::TeammateSpawned { .. }
+                                | StreamEvent::TeamMessageSent { .. }
+                                | StreamEvent::TeamDeleted { .. } => {
+                                    // Hook and team events from teammates are not forwarded
+                                    // (hooks run on the lead, team events only relevant from lead's stream)
                                 }
                             }
                         }
@@ -252,9 +254,21 @@ pub fn start_teammate_stream(
                                 cache_read_tokens: 0,
                                 estimated_usd: total_cost_usd,
                             };
-                            let _ = team_service
+                            let _ = team_tracker
                                 .update_teammate_cost(&team_name, &teammate_name, cost)
                                 .await;
+
+                            // Emit cost update event
+                            team_events::emit_team_cost_update(
+                                &app_handle,
+                                &team_name,
+                                &teammate_name,
+                                total_input_tokens,
+                                total_output_tokens,
+                                total_cost_usd,
+                                &context_type,
+                                &context_id,
+                            );
                         }
                     }
 
@@ -302,13 +316,12 @@ pub fn start_teammate_stream(
         );
 
         // Update teammate status to Idle (graceful exit) or Shutdown
-        // Use the team_events helper directly since we have the AppHandle
         let new_status = TeammateStatus::Idle;
-        let _ = team_service
+        let _ = team_tracker
             .update_teammate_status(&team_name, &teammate_name, new_status)
             .await;
 
-        // Also emit the idle event directly (in case TeamService doesn't have app_handle)
+        // Emit the idle event
         team_events::emit_teammate_idle(
             &app_handle,
             &team_name,
@@ -343,7 +356,7 @@ mod tests {
                 _context_type: String,
                 _context_id: String,
                 _app_handle: AppHandle,
-                _team_service: Arc<TeamService>,
+                _team_tracker: Arc<TeamStateTracker>,
             ) -> JoinHandle<()> {
                 unimplemented!()
             }

@@ -4,11 +4,12 @@
  * Subscribes to team:* events and agent:* events with teammate_name.
  * Routes events to teamStore actions, filtered by contextKey.
  *
- * Split into two effects to fix the chicken-and-egg problem:
- *   Effect 1 (always active): team:created + team:disbanded — runs whenever
- *     contextKey is non-null so creation events are never missed.
- *   Effect 2 (gated by isTeamActive): all other team events — only subscribes
- *     once the team exists in the store.
+ * Split into two effects to avoid event subscription race conditions:
+ *   Effect 1 (always active): team:created, team:disbanded, team:plan_requested,
+ *     and team:teammate_spawned — runs whenever contextKey is non-null so
+ *     creation and spawn events are never missed (backend emits them synchronously).
+ *   Effect 2 (gated by isTeamActive): agent:* and remaining team:* events —
+ *     only subscribes once the team exists in the store.
  *
  * Uses EventBus abstraction for browser/Tauri compatibility.
  */
@@ -62,8 +63,9 @@ export function useTeamEvents(contextKey: string | null) {
     [contextKey],
   );
 
-  // ── Effect 1: Always subscribe to team:created + team:disbanded ──────────
+  // ── Effect 1: Always subscribe to lifecycle events ──────────────────────
   // These must fire even before a team exists so we catch the creation event.
+  // Includes team:teammate_spawned to avoid race condition with team:created.
   useEffect(() => {
     if (!contextKey) return;
 
@@ -102,16 +104,9 @@ export function useTeamEvents(contextKey: string | null) {
       }),
     );
 
-    return () => unsubs.forEach((u) => u());
-  }, [bus, contextKey, matchKey, createTeam, disbandTeam, setTeamActive, setPendingPlan]);
-
-  // ── Effect 2: Subscribe to remaining events when team is active ──────────
-  useEffect(() => {
-    if (!contextKey || !isTeamActive) return;
-
-    const unsubs: Unsubscribe[] = [];
-
-    // team:teammate_spawned — backend sends `role`, not `role_description`
+    // team:teammate_spawned — moved to Effect 1 to avoid race condition.
+    // Backend emits this immediately after team:created, so we must subscribe
+    // before Effect 2 has a chance to re-run.
     unsubs.push(
       bus.subscribe<TeamTeammateSpawnedPayload>("team:teammate_spawned", (payload) => {
         if (matchKey(payload)) {
@@ -129,6 +124,15 @@ export function useTeamEvents(contextKey: string | null) {
         }
       }),
     );
+
+    return () => unsubs.forEach((u) => u());
+  }, [bus, contextKey, matchKey, createTeam, disbandTeam, setTeamActive, setPendingPlan, addTeammate]);
+
+  // ── Effect 2: Subscribe to remaining events when team is active ──────────
+  useEffect(() => {
+    if (!contextKey || !isTeamActive) return;
+
+    const unsubs: Unsubscribe[] = [];
 
     // agent:run_started — route to teammate status when teammate_name present
     unsubs.push(
@@ -226,7 +230,7 @@ export function useTeamEvents(contextKey: string | null) {
     return () => unsubs.forEach((u) => u());
   }, [
     bus, contextKey, isTeamActive, matchKey,
-    addTeammate, updateTeammateStatus,
+    updateTeammateStatus,
     appendTeammateChunk, clearTeammateStream, updateTeammateCost,
     addTeamMessage,
   ]);

@@ -469,6 +469,12 @@ impl SpawnableCommand {
         self
     }
 
+    /// Append a CLI argument to the underlying command.
+    pub fn arg(&mut self, val: &str) -> &mut Self {
+        self.cmd.arg(val);
+        self
+    }
+
     /// Spawn the command and pipe the prompt to stdin if needed.
     ///
     /// Stdin is written in a background task to avoid a pipe deadlock:

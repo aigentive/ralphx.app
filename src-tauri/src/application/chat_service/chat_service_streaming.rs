@@ -10,12 +10,17 @@ use tokio::time::{timeout, Duration};
 use tracing::info;
 
 use crate::application::question_state::QuestionState;
+use crate::application::team_events;
+use crate::application::team_state_tracker::{
+    TeammateHandle, TeammateStatus, TeamStateTracker,
+};
 use crate::domain::entities::{
     ActivityEvent, ActivityEventType, ChatContextType, ChatConversationId, ChatMessageId, TaskId,
 };
 use crate::domain::repositories::{ActivityEventRepository, ChatMessageRepository, TaskRepository};
 use crate::infrastructure::agents::claude::{
-    ContentBlockItem, DiffContext, StreamEvent, StreamProcessor, ToolCall,
+    ClaudeCodeClient, ContentBlockItem, DiffContext, StreamEvent, StreamProcessor,
+    TeammateSpawnConfig, ToolCall,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -122,6 +127,7 @@ pub async fn process_stream_background<R: Runtime>(
     assistant_message_id: Option<String>,
     question_state: Option<Arc<QuestionState>>,
     cancellation_token: CancellationToken,
+    team_tracker: Option<TeamStateTracker>,
 ) -> Result<StreamOutcome, StreamError> {
     let timeout_config = StreamTimeoutConfig::for_context(&context_type);
     tracing::debug!(
@@ -591,6 +597,141 @@ pub async fn process_stream_background<R: Runtime>(
                                     context_id: context_id_str.clone(),
                                     timestamp: chrono::Utc::now().timestamp_millis(),
                                 },
+                            );
+                        }
+                    }
+
+                    StreamEvent::TeamCreated { team_name, config_path: _ } => {
+                        if let Some(ref tracker) = team_tracker {
+                            if !tracker.team_exists(&team_name).await {
+                                let _ = tracker.create_team(&team_name, &context_id_str, &context_type_str).await;
+                            }
+                        }
+                        if let Some(ref handle) = app_handle {
+                            team_events::emit_team_created(
+                                handle,
+                                &team_name,
+                                &context_id_str,
+                                &context_type_str,
+                            );
+                        }
+                    }
+                    StreamEvent::TeammateSpawned { teammate_name, team_name, agent_id: _, model, color } => {
+                        // Register teammate in tracker (may already exist from approve_team_plan)
+                        if let Some(ref tracker) = team_tracker {
+                            let _ = tracker.add_teammate(&team_name, &teammate_name, &color, &model, "team-member").await;
+                        }
+
+                        // Emit event for frontend
+                        if let Some(ref handle) = app_handle {
+                            team_events::emit_teammate_spawned(
+                                handle,
+                                &team_name,
+                                &teammate_name,
+                                &color,
+                                &model,
+                                "team-member",
+                                &context_type_str,
+                                &context_id_str,
+                            );
+                        }
+
+                        // Spawn CLI process with same agent-id for direct stdin/stdout access.
+                        // This runs in a background task to avoid blocking the stream loop.
+                        if let (Some(tracker), Some(handle)) = (team_tracker.clone(), app_handle.clone()) {
+                            let tm_name = teammate_name.clone();
+                            let t_name = team_name.clone();
+                            let ctx_id = context_id_str.clone();
+                            let ctx_type = context_type_str.clone();
+                            let tm_model = model.clone();
+                            let tm_color = color.clone();
+
+                            tokio::spawn(async move {
+                                let spawn_config = TeammateSpawnConfig::new(
+                                    &tm_name,
+                                    &t_name,
+                                    &ctx_id,
+                                    "", // No initial prompt — teammate joins existing team
+                                )
+                                .with_model(&tm_model)
+                                .with_color(&tm_color);
+
+                                let client = ClaudeCodeClient::new();
+                                match client.spawn_teammate_interactive(spawn_config).await {
+                                    Ok(spawn_result) => {
+                                        tracing::info!(
+                                            teammate = %tm_name,
+                                            team = %t_name,
+                                            pid = ?spawn_result.child.id(),
+                                            "Teammate CLI process spawned from stream event"
+                                        );
+
+                                        let mut child = spawn_result.child;
+                                        let stdout = child.stdout.take();
+
+                                        // Start stream processor for teammate stdout
+                                        let stream_task = if let Some(stdout) = stdout {
+                                            Some(crate::application::team_stream_processor::start_teammate_stream(
+                                                stdout,
+                                                t_name.clone(),
+                                                tm_name.clone(),
+                                                ctx_type.clone(),
+                                                ctx_id.clone(),
+                                                handle.clone(),
+                                                Arc::new(tracker.clone()),
+                                            ))
+                                        } else {
+                                            tracing::warn!(teammate = %tm_name, "No stdout pipe for teammate stream");
+                                            None
+                                        };
+
+                                        // Store handle in tracker
+                                        let teammate_handle = TeammateHandle {
+                                            child,
+                                            stream_task,
+                                            stdin: Some(spawn_result.stdin),
+                                        };
+                                        let _ = tracker.set_teammate_handle(&t_name, &tm_name, teammate_handle).await;
+                                        let _ = tracker.update_teammate_status(&t_name, &tm_name, TeammateStatus::Running).await;
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            teammate = %tm_name,
+                                            team = %t_name,
+                                            error = %e,
+                                            "Failed to spawn teammate CLI process from stream event"
+                                        );
+                                        let _ = tracker.update_teammate_status(&t_name, &tm_name, TeammateStatus::Failed).await;
+                                    }
+                                }
+                            });
+                        }
+                    }
+                    StreamEvent::TeamMessageSent { sender, recipient, content, message_type } => {
+                        if let Some(ref handle) = app_handle {
+                            let _ = handle.emit(
+                                events::TEAM_MESSAGE,
+                                serde_json::json!({
+                                    "sender": sender,
+                                    "recipient": recipient,
+                                    "content": content,
+                                    "message_type": message_type,
+                                    "context_type": context_type_str,
+                                    "context_id": context_id_str,
+                                }),
+                            );
+                        }
+                    }
+                    StreamEvent::TeamDeleted { team_name } => {
+                        if let Some(ref tracker) = team_tracker {
+                            let _ = tracker.disband_team(&team_name).await;
+                        }
+                        if let Some(ref handle) = app_handle {
+                            team_events::emit_team_disbanded(
+                                handle,
+                                &team_name,
+                                &context_type_str,
+                                &context_id_str,
                             );
                         }
                     }

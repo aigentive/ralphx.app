@@ -451,6 +451,7 @@ pub async fn build_command(
     // CLAUDECODE=1 is only set on teammate processes spawned via spawn_teammate_interactive().
     if team_mode {
         spawnable.env("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
+        spawnable.arg("--permission-mode").arg("delegate");
     }
 
     Ok(spawnable)
@@ -551,6 +552,7 @@ pub async fn build_resume_command(
     // CLAUDECODE=1 is only set on teammate processes spawned via spawn_teammate_interactive().
     if team_mode {
         spawnable.env("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
+        spawnable.arg("--permission-mode").arg("delegate");
     }
 
     Ok(spawnable)

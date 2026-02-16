@@ -150,7 +150,7 @@ export const TeamPlanApproval = React.memo(function TeamPlanApproval({
           }}
         >
           <Check className="w-3 h-3" />
-          {isApproving ? "Spawning..." : "Approve & Spawn"}
+          {isApproving ? "Approving..." : "Approve"}
         </Button>
       </div>
     </div>
