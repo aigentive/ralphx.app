@@ -52,13 +52,14 @@ import { useIdeationStore } from "@/stores/ideationStore";
 import { useChatAttachments } from "@/hooks/useChatAttachments";
 import { ideationApi } from "@/api/ideation";
 import { selectIsTeamActive } from "@/stores/chatStore";
-import { useTeamStore, selectTeammates } from "@/stores/teamStore";
+import { useTeamStore, selectTeammates, selectActiveTeam } from "@/stores/teamStore";
 import { useTeamEvents } from "@/hooks/useTeamEvents";
 import { useTeamActions } from "@/hooks/useTeamActions";
 import { TeamActivityPanel } from "./TeamActivityPanel";
 import { TeamPlanApproval } from "./TeamPlanApproval";
 import { TeamFilterTabs, type TeamFilterValue } from "./TeamFilterTabs";
 import { TargetSelector, type TargetValue } from "./TargetSelector";
+import { useTeamHistory } from "@/hooks/useTeamHistory";
 
 // Stable empty array to avoid new reference on every render when tasks query returns undefined
 const EMPTY_TASKS: never[] = [];
@@ -181,8 +182,24 @@ export function IntegratedChatPanel({
   const [teamFilter, setTeamFilter] = useState<TeamFilterValue>("all");
   const [sendTarget, setSendTarget] = useState<TargetValue>("lead");
 
+  // Track whether the team in this context is historical (hydrated from backend)
+  const activeTeamSelector = useMemo(() => selectActiveTeam(storeContextKey), [storeContextKey]);
+  const activeTeam = useTeamStore(activeTeamSelector);
+  const isTeamHistorical = activeTeam?.isHistorical === true;
+
   // Team events subscription — always pass contextKey so team:created is never missed
   useTeamEvents(storeContextKey);
+
+  // Hydrate historical team activity when no live team is active
+  const { data: teamHistory } = useTeamHistory(currentContextType, currentContextId);
+  const hydrateFromHistory = useTeamStore((s) => s.hydrateFromHistory);
+  const setTeamActive = useChatStore((s) => s.setTeamActive);
+
+  useEffect(() => {
+    if (!teamHistory?.session || isTeamActive) return;
+    hydrateFromHistory(storeContextKey, teamHistory);
+    setTeamActive(storeContextKey, true);
+  }, [teamHistory, isTeamActive, storeContextKey, hydrateFromHistory, setTeamActive]);
 
   // Team actions
   const teamActions = useTeamActions(
@@ -635,6 +652,7 @@ export function IntegratedChatPanel({
           {isTeamActive && teammates.length > 0 && (
             <TeamActivityPanel
               contextKey={storeContextKey}
+              isHistorical={isTeamHistorical}
               onMessageTeammate={(name) => {
                 setSendTarget(name);
               }}

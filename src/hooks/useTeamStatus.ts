@@ -25,6 +25,8 @@ export const teamKeys = {
     [...teamKeys.all, "status", contextType, contextId] as const,
   messages: (contextType: ContextType, contextId: string) =>
     [...teamKeys.all, "messages", contextType, contextId] as const,
+  history: (contextType: string, contextId: string) =>
+    [...teamKeys.all, "history", contextType, contextId] as const,
 };
 
 // ============================================================================

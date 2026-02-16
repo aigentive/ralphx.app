@@ -8,6 +8,7 @@
 
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
+import type { TeamHistoryResponse } from "@/api/team";
 
 // ============================================================================
 // Types
@@ -56,6 +57,7 @@ interface ActiveTeam {
   totalTokens: number;
   totalEstimatedCostUsd: number;
   createdAt: string;
+  isHistorical?: boolean | undefined;
 }
 
 // ============================================================================
@@ -79,6 +81,7 @@ interface TeamActions {
   disbandTeam: (contextKey: string) => void;
   getTeammates: (contextKey: string) => TeammateState[];
   setPendingPlan: (plan: PendingTeamPlan | null) => void;
+  hydrateFromHistory: (contextKey: string, history: TeamHistoryResponse) => void;
 }
 
 // ============================================================================
@@ -198,6 +201,54 @@ export const useTeamStore = create<TeamState & TeamActions>()(
     setPendingPlan: (plan) =>
       set((state) => {
         state.pendingPlan = plan;
+      }),
+
+    hydrateFromHistory: (contextKey, history) =>
+      set((state) => {
+        // Only hydrate if no active team exists for this context
+        if (state.activeTeams[contextKey]) return;
+        const session = history.session;
+        if (!session) return;
+
+        const teammates: Record<string, TeammateState> = {};
+        let totalTokens = 0;
+        let totalCostUsd = 0;
+
+        for (const snap of session.teammates) {
+          const tokens = snap.cost.input_tokens + snap.cost.output_tokens;
+          totalTokens += tokens;
+          totalCostUsd += snap.cost.estimated_usd;
+          teammates[snap.name] = {
+            name: snap.name,
+            color: snap.color,
+            model: snap.model,
+            roleDescription: snap.role,
+            status: (snap.status as TeammateStatus) || "shutdown",
+            currentActivity: null,
+            tokensUsed: tokens,
+            estimatedCostUsd: snap.cost.estimated_usd,
+            streamingText: "",
+          };
+        }
+
+        const messages: TeamMessage[] = history.messages.map((m) => ({
+          id: m.id,
+          from: m.sender,
+          to: m.recipient ?? "*",
+          content: m.content,
+          timestamp: m.timestamp,
+        }));
+
+        state.activeTeams[contextKey] = {
+          teamName: session.team_name,
+          leadName: session.lead_name,
+          teammates,
+          messages,
+          totalTokens,
+          totalEstimatedCostUsd: totalCostUsd,
+          createdAt: session.created_at,
+          isHistorical: true,
+        };
       }),
   }))
 );

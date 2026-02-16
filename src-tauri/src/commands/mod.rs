@@ -129,8 +129,11 @@ pub use workflow_commands::{
 };
 // Team commands (agent teams collaboration)
 pub use team_commands::{
-    create_team, disband_team, get_team_messages, get_team_status, get_teammate_cost,
-    send_team_message, stop_team, stop_teammate, CreateTeamInput, SendTeamMessageInput,
+    create_team, disband_team, get_team_history, get_team_messages, get_team_status,
+    get_teammate_cost, send_team_message, send_teammate_message, stop_team, stop_teammate,
+    CreateTeamInput, GetTeamHistoryInput, SendTeamMessageInput, SendTeammateMessageInput,
+    TeamHistoryResponse, TeamMessageRecordResponse, TeamSessionResponse,
+    TeammateSnapshotResponse,
 };
 // Unified chat commands (consolidates context_chat + execution_chat)
 pub use unified_chat_commands::{
