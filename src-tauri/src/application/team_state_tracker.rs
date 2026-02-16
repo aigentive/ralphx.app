@@ -266,10 +266,31 @@ pub struct TeammateCostResponse {
 // TeamStateTracker
 // ============================================================================
 
+/// A validated team plan pending user approval
+#[derive(Debug, Clone)]
+pub struct PendingTeamPlan {
+    pub plan_id: String,
+    pub process: String,
+    pub teammates: Vec<PendingTeammate>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// A teammate in a pending plan (carries full spawn data)
+#[derive(Debug, Clone)]
+pub struct PendingTeammate {
+    pub role: String,
+    pub prompt: String,
+    pub tools: Vec<String>,
+    pub mcp_tools: Vec<String>,
+    pub model: String,
+    pub preset: Option<String>,
+}
+
 /// Thread-safe tracker for active agent teams
 #[derive(Debug, Clone)]
 pub struct TeamStateTracker {
     teams: Arc<RwLock<HashMap<String, TeamState>>>,
+    pending_plans: Arc<RwLock<HashMap<String, PendingTeamPlan>>>,
 }
 
 impl Default for TeamStateTracker {
@@ -282,7 +303,20 @@ impl TeamStateTracker {
     pub fn new() -> Self {
         Self {
             teams: Arc::new(RwLock::new(HashMap::new())),
+            pending_plans: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+
+    /// Store a validated team plan pending user approval
+    pub async fn store_pending_plan(&self, plan: PendingTeamPlan) {
+        let mut plans = self.pending_plans.write().await;
+        plans.insert(plan.plan_id.clone(), plan);
+    }
+
+    /// Take a pending plan by ID (removes it from the store)
+    pub async fn take_pending_plan(&self, plan_id: &str) -> Option<PendingTeamPlan> {
+        let mut plans = self.pending_plans.write().await;
+        plans.remove(plan_id)
     }
 
     /// Create a new team

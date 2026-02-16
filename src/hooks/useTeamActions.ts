@@ -1,7 +1,7 @@
 /**
  * useTeamActions — Mutation hooks for team operations
  *
- * Provides sendTeamMessage, stopTeammate, and stopTeam mutations
+ * Provides sendTeamMessage, messageTeammate, stopTeammate, and stopTeam mutations
  * following the TanStack Query mutation pattern.
  *
  * Resolves team_name from teamStore internally (set by team:created event).
@@ -9,7 +9,7 @@
 
 import { useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { sendTeamMessage, stopTeammate, stopTeam } from "@/api/team";
+import { sendTeamMessage, sendTeammateMessage, stopTeammate, stopTeam } from "@/api/team";
 import { useTeamStore } from "@/stores/teamStore";
 import { buildStoreKey } from "@/lib/chat-context-registry";
 import { teamKeys } from "@/hooks/useTeamStatus";
@@ -39,6 +39,12 @@ export function useTeamActions(contextType: ContextType, contextId: string) {
     onSuccess: invalidateTeamStatus,
   });
 
+  const messageTeammate = useMutation({
+    mutationFn: ({ teammateName, content }: { teammateName: string; content: string }) =>
+      sendTeammateMessage(teamName, teammateName, content),
+    onSuccess: invalidateTeamStatus,
+  });
+
   const stopTeammateMutation = useMutation({
     mutationFn: (teammateName: string) =>
       stopTeammate(teamName, teammateName),
@@ -52,6 +58,7 @@ export function useTeamActions(contextType: ContextType, contextId: string) {
 
   return {
     sendTeamMessage: sendMessage,
+    messageTeammate,
     stopTeammate: stopTeammateMutation,
     stopTeam: stopTeamMutation,
   };

@@ -31,6 +31,7 @@ pub mod task_scheduler_service;
 pub mod team_events;
 pub mod team_service;
 pub mod team_state_tracker;
+pub mod team_stream_processor;
 pub mod task_transition_service;
 
 // Re-export commonly used items

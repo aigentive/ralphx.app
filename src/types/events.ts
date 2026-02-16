@@ -399,3 +399,17 @@ export interface TeamCostUpdatePayload {
   output_tokens: number; estimated_usd: number;
   context_type: string; context_id: string;
 }
+
+export interface TeamPlanRequestedPayload {
+  plan_id: string;
+  process: string;
+  teammates: Array<{
+    role: string;
+    model: string;
+    tools: string[];
+    mcp_tools: string[];
+    prompt_summary: string;
+    preset?: string | null;
+  }>;
+  validated: boolean;
+}

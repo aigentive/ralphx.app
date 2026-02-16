@@ -49,11 +49,13 @@ vi.mock("@/hooks/useTeamStatus", () => ({
 }));
 
 const mockSendTeamMessage = vi.fn().mockResolvedValue({ id: "msg-1", sender: "lead", recipient: "coder", content: "hi", message_type: "text", timestamp: "2026-01-01T00:00:00Z" });
+const mockSendTeammateMessage = vi.fn().mockResolvedValue(undefined);
 const mockStopTeammate = vi.fn().mockResolvedValue(undefined);
 const mockStopTeam = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("@/api/team", () => ({
   sendTeamMessage: (...args: unknown[]) => mockSendTeamMessage(...args),
+  sendTeammateMessage: (...args: unknown[]) => mockSendTeammateMessage(...args),
   stopTeammate: (...args: unknown[]) => mockStopTeammate(...args),
   stopTeam: (...args: unknown[]) => mockStopTeam(...args),
 }));
@@ -67,11 +69,13 @@ describe("useTeamActions", () => {
     vi.clearAllMocks();
   });
 
-  it("returns sendTeamMessage, stopTeammate, stopTeam mutations", () => {
+  it("returns sendTeamMessage, messageTeammate, stopTeammate, stopTeam mutations", () => {
     const { result } = renderHook(() => useTeamActions("task_execution", "task-1"));
 
     expect(result.current.sendTeamMessage).toBeDefined();
     expect(result.current.sendTeamMessage.mutateAsync).toBeDefined();
+    expect(result.current.messageTeammate).toBeDefined();
+    expect(result.current.messageTeammate.mutateAsync).toBeDefined();
     expect(result.current.stopTeammate).toBeDefined();
     expect(result.current.stopTeam).toBeDefined();
   });
@@ -84,6 +88,16 @@ describe("useTeamActions", () => {
     });
 
     expect(mockSendTeamMessage).toHaveBeenCalledWith("test-team-abc", "coder-1", "hello");
+  });
+
+  it("messageTeammate calls API with resolved teamName", async () => {
+    const { result } = renderHook(() => useTeamActions("task_execution", "task-1"));
+
+    await act(async () => {
+      await result.current.messageTeammate.mutateAsync({ teammateName: "coder-1", content: "hello via stdin" });
+    });
+
+    expect(mockSendTeammateMessage).toHaveBeenCalledWith("test-team-abc", "coder-1", "hello via stdin");
   });
 
   it("stopTeammate calls API with resolved teamName", async () => {

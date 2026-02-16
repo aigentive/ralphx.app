@@ -33,6 +33,15 @@ pub struct SendTeamMessageInput {
     pub content: String,
 }
 
+/// Input for send_teammate_message command (stdin routing)
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SendTeammateMessageInput {
+    pub team_name: String,
+    pub teammate_name: String,
+    pub content: String,
+}
+
 // ============================================================================
 // Mutation commands (via TeamService — emits events)
 // ============================================================================
@@ -72,6 +81,21 @@ pub async fn send_team_message(
         message_type: msg.message_type,
         timestamp: msg.timestamp.to_rfc3339(),
     })
+}
+
+/// Send a message directly to a specific teammate's stdin pipe (interactive mode).
+///
+/// This writes the content to the teammate's Claude process stdin,
+/// allowing the user to interact with a specific teammate.
+#[tauri::command]
+pub async fn send_teammate_message(
+    input: SendTeammateMessageInput,
+    service: State<'_, TeamService>,
+) -> Result<(), String> {
+    service
+        .send_stdin_message(&input.team_name, &input.teammate_name, &input.content)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Stop a specific teammate in a team
@@ -176,6 +200,16 @@ mod tests {
         let input: SendTeamMessageInput = serde_json::from_str(json).unwrap();
         assert_eq!(input.team_name, "my-team");
         assert_eq!(input.content, "Hello");
+    }
+
+    #[test]
+    fn test_send_teammate_message_input_deserialize() {
+        let json =
+            r#"{"teamName":"my-team","teammateName":"coder-1","content":"Hello teammate"}"#;
+        let input: SendTeammateMessageInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.team_name, "my-team");
+        assert_eq!(input.teammate_name, "coder-1");
+        assert_eq!(input.content, "Hello teammate");
     }
 
     #[test]
