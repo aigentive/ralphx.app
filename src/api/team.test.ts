@@ -8,6 +8,10 @@ import {
   TeammateStatusSchema,
   TeamMessageSchema,
   TeamStatusSchema,
+  TeammateSnapshotSchema,
+  TeamSessionHistorySchema,
+  TeamMessageRecordSchema,
+  TeamHistoryResponseSchema,
   getTeamStatus,
   sendTeamMessage,
   sendTeammateMessage,
@@ -148,6 +152,156 @@ describe("team API schemas", () => {
 
     it("rejects invalid structure", () => {
       expect(() => TeamStatusSchema.parse({ name: "x" })).toThrow();
+    });
+  });
+
+  // ── History Schemas (camelCase from backend) ─────────────────────────
+
+  describe("TeammateSnapshotSchema", () => {
+    it("parses camelCase snapshot from backend", () => {
+      const data = {
+        name: "coder-1",
+        color: "#3b82f6",
+        model: "sonnet",
+        role: "Auth middleware",
+        status: "shutdown",
+        cost: {
+          input_tokens: 50000,
+          output_tokens: 10000,
+          cache_creation_tokens: 2000,
+          cache_read_tokens: 1000,
+          estimated_usd: 0.30,
+        },
+        spawnedAt: "2026-02-15T10:00:00+00:00",
+        lastActivityAt: "2026-02-15T10:05:00+00:00",
+      };
+      const result = TeammateSnapshotSchema.parse(data);
+      expect(result.name).toBe("coder-1");
+      expect(result.spawnedAt).toBe("2026-02-15T10:00:00+00:00");
+    });
+
+    it("rejects snake_case field names", () => {
+      const data = {
+        name: "coder-1",
+        color: "#3b82f6",
+        model: "sonnet",
+        role: "Auth",
+        status: "shutdown",
+        cost: { input_tokens: 0, output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, estimated_usd: 0 },
+        spawned_at: "2026-02-15T10:00:00Z",
+        last_activity_at: "2026-02-15T10:00:00Z",
+      };
+      expect(() => TeammateSnapshotSchema.parse(data)).toThrow();
+    });
+  });
+
+  describe("TeamSessionHistorySchema", () => {
+    it("parses camelCase session from backend", () => {
+      const data = {
+        id: "session-1",
+        teamName: "task-abc",
+        leadName: "team-lead",
+        contextType: "task_execution",
+        contextId: "abc",
+        phase: "disbanded",
+        createdAt: "2026-02-15T10:00:00+00:00",
+        disbandedAt: "2026-02-15T11:00:00+00:00",
+        teammates: [],
+      };
+      const result = TeamSessionHistorySchema.parse(data);
+      expect(result.teamName).toBe("task-abc");
+      expect(result.disbandedAt).toBe("2026-02-15T11:00:00+00:00");
+    });
+
+    it("accepts null leadName and disbandedAt", () => {
+      const data = {
+        id: "session-2",
+        teamName: "task-xyz",
+        leadName: null,
+        contextType: "task_execution",
+        contextId: "xyz",
+        phase: "active",
+        createdAt: "2026-02-15T10:00:00+00:00",
+        disbandedAt: null,
+        teammates: [],
+      };
+      const result = TeamSessionHistorySchema.parse(data);
+      expect(result.leadName).toBeNull();
+      expect(result.disbandedAt).toBeNull();
+    });
+  });
+
+  describe("TeamMessageRecordSchema", () => {
+    it("parses camelCase history message from backend", () => {
+      const data = {
+        id: "msg-1",
+        sender: "coder-1",
+        recipient: "lead",
+        content: "Task done",
+        messageType: "teammate_message",
+        createdAt: "2026-02-15T10:00:00+00:00",
+      };
+      const result = TeamMessageRecordSchema.parse(data);
+      expect(result.messageType).toBe("teammate_message");
+      expect(result.createdAt).toBe("2026-02-15T10:00:00+00:00");
+    });
+
+    it("rejects snake_case field names", () => {
+      const data = {
+        id: "msg-1",
+        sender: "coder-1",
+        recipient: null,
+        content: "Hello",
+        message_type: "broadcast",
+        timestamp: "2026-02-15T10:00:00Z",
+      };
+      expect(() => TeamMessageRecordSchema.parse(data)).toThrow();
+    });
+  });
+
+  describe("TeamHistoryResponseSchema", () => {
+    it("parses full history response", () => {
+      const data = {
+        session: {
+          id: "session-1",
+          teamName: "task-abc",
+          leadName: "lead",
+          contextType: "task_execution",
+          contextId: "abc",
+          phase: "disbanded",
+          createdAt: "2026-02-15T10:00:00+00:00",
+          disbandedAt: "2026-02-15T11:00:00+00:00",
+          teammates: [{
+            name: "coder-1",
+            color: "#3b82f6",
+            model: "sonnet",
+            role: "Auth",
+            status: "shutdown",
+            cost: { input_tokens: 1000, output_tokens: 500, cache_creation_tokens: 0, cache_read_tokens: 0, estimated_usd: 0.05 },
+            spawnedAt: "2026-02-15T10:00:00+00:00",
+            lastActivityAt: "2026-02-15T10:30:00+00:00",
+          }],
+        },
+        messages: [{
+          id: "msg-1",
+          sender: "coder-1",
+          recipient: null,
+          content: "Done",
+          messageType: "teammate_message",
+          createdAt: "2026-02-15T10:30:00+00:00",
+        }],
+      };
+      const result = TeamHistoryResponseSchema.parse(data);
+      expect(result.session?.teamName).toBe("task-abc");
+      expect(result.messages).toHaveLength(1);
+      expect(result.messages[0]!.createdAt).toBe("2026-02-15T10:30:00+00:00");
+    });
+
+    it("accepts null session with empty messages", () => {
+      const data = { session: null, messages: [] };
+      const result = TeamHistoryResponseSchema.parse(data);
+      expect(result.session).toBeNull();
+      expect(result.messages).toEqual([]);
     });
   });
 });

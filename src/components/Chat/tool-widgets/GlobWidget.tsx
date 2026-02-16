@@ -15,8 +15,6 @@ import type { ToolCallWidgetProps } from "./shared";
 import { colors, parseSearchResult } from "./shared.constants";
 import { FileList } from "./GrepWidget";
 
-const MAX_INLINE_RESULTS = 3;
-
 /** Parse Glob arguments from tool call */
 function parseGlobArgs(args: unknown): {
   pattern: string;
@@ -39,7 +37,6 @@ export const GlobWidget = React.memo(function GlobWidget({
   const { pattern, path } = parseGlobArgs(toolCall.arguments);
   const parsed = useMemo(() => parseSearchResult(toolCall.result), [toolCall.result]);
   const fileCount = parsed.paths.length;
-  const isInline = fileCount <= MAX_INLINE_RESULTS;
 
   // Build title: glob pattern in monospace
   const title = path ? `${pattern} in ${path}` : pattern;
@@ -68,7 +65,7 @@ export const GlobWidget = React.memo(function GlobWidget({
   // Pending result (tool still running)
   if (toolCall.result === undefined) {
     return (
-      <WidgetCard header={header} compact={compact} alwaysExpanded>
+      <WidgetCard header={header} compact={compact}>
         <span style={{ fontSize: 10.5, color: colors.textMuted }}>
           Searching...
         </span>
@@ -79,7 +76,7 @@ export const GlobWidget = React.memo(function GlobWidget({
   // No results: header + muted note
   if (parsed.isEmpty) {
     return (
-      <WidgetCard header={header} compact={compact} alwaysExpanded>
+      <WidgetCard header={header} compact={compact}>
         <span style={{ fontSize: 10.5, color: colors.textMuted }}>
           {parsed.note || "No files matched"}
         </span>
@@ -91,7 +88,6 @@ export const GlobWidget = React.memo(function GlobWidget({
     <WidgetCard
       header={header}
       compact={compact}
-      alwaysExpanded={isInline}
     >
       <FileList files={parsed.paths} />
     </WidgetCard>

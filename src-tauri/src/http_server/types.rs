@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::application::{AppState, TeamStateTracker};
+use crate::application::{AppState, TeamService, TeamStateTracker};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
     Artifact, ArtifactContent, MemoryEntry, StepProgressSummary, TaskProposal, TaskStep,
@@ -20,6 +20,7 @@ pub struct HttpServerState {
     pub app_state: Arc<AppState>,
     pub execution_state: Arc<ExecutionState>,
     pub team_tracker: TeamStateTracker,
+    pub team_service: Arc<TeamService>,
 }
 
 // ============================================================================

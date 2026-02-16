@@ -434,7 +434,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                         team_mode,
                                         cancellation_token:
                                             tokio_util::sync::CancellationToken::new(),
-                                        team_tracker: None, // Recovery retries don't need team events
+                                        team_service: None, // Recovery retries don't need team events
                                     },
                                 );
 

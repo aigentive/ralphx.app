@@ -190,7 +190,10 @@ export const useTeamStore = create<TeamState & TeamActions>()(
 
     disbandTeam: (contextKey) =>
       set((state) => {
-        delete state.activeTeams[contextKey];
+        const team = state.activeTeams[contextKey];
+        if (team) {
+          team.isHistorical = true;
+        }
       }),
 
     getTeammates: (contextKey) => {
@@ -236,17 +239,17 @@ export const useTeamStore = create<TeamState & TeamActions>()(
           from: m.sender,
           to: m.recipient ?? "*",
           content: m.content,
-          timestamp: m.timestamp,
+          timestamp: m.createdAt,
         }));
 
         state.activeTeams[contextKey] = {
-          teamName: session.team_name,
-          leadName: session.lead_name,
+          teamName: session.teamName,
+          leadName: session.leadName ?? session.teamName,
           teammates,
           messages,
           totalTokens,
           totalEstimatedCostUsd: totalCostUsd,
-          createdAt: session.created_at,
+          createdAt: session.createdAt,
           isHistorical: true,
         };
       }),

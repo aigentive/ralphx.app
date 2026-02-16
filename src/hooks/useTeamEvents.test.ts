@@ -163,7 +163,7 @@ describe("useTeamEvents", () => {
   // 3. Effect 1: team:disbanded
   // --------------------------------------------------------------------------
   describe("Effect 1: team:disbanded", () => {
-    it("should disband team in teamStore and clear chatStore team active", () => {
+    it("should mark team as historical but keep data and isTeamActive", () => {
       renderHook(() => useTeamEvents(CONTEXT_KEY));
 
       // First create a team
@@ -176,13 +176,16 @@ describe("useTeamEvents", () => {
       });
       expect(useTeamStore.getState().activeTeams[CONTEXT_KEY]).toBeDefined();
 
-      // Then disband
+      // Then disband — team should remain as historical, not deleted
       act(() => {
         fireEvent("team:disbanded", makePayload({ team_name: "my-team" }));
       });
 
-      expect(useTeamStore.getState().activeTeams[CONTEXT_KEY]).toBeUndefined();
-      expect(useChatStore.getState().isTeamActive[CONTEXT_KEY]).toBeFalsy();
+      const team = useTeamStore.getState().activeTeams[CONTEXT_KEY];
+      expect(team).toBeDefined();
+      expect(team?.isHistorical).toBe(true);
+      // isTeamActive stays true so TeamActivityPanel keeps rendering
+      expect(useChatStore.getState().isTeamActive[CONTEXT_KEY]).toBeTruthy();
     });
   });
 

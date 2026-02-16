@@ -563,12 +563,12 @@ pub fn run() {
             app.manage(app_state);
 
             // Register team service (wraps tracker with event emission + persistence)
-            let team_service = application::TeamService::new_with_repos(
+            let team_service = std::sync::Arc::new(application::TeamService::new_with_repos(
                 std::sync::Arc::new(service_team_tracker),
                 app.handle().clone(),
                 team_session_repo,
                 team_message_repo,
-            );
+            ));
             app.manage(team_service);
 
             Ok(())

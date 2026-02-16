@@ -73,30 +73,40 @@ export const TeammateSnapshotSchema = z.object({
   role: z.string(),
   status: z.string(),
   cost: TeammateCostSchema,
-  spawned_at: z.string(),
-  last_activity_at: z.string(),
+  spawnedAt: z.string(),
+  lastActivityAt: z.string(),
 });
 
 export const TeamSessionHistorySchema = z.object({
-  team_name: z.string(),
-  lead_name: z.string(),
-  context_type: z.string(),
-  context_id: z.string(),
+  id: z.string(),
+  teamName: z.string(),
+  leadName: z.string().nullable(),
+  contextType: z.string(),
+  contextId: z.string(),
   phase: z.string(),
-  created_at: z.string(),
-  ended_at: z.string().nullable(),
+  createdAt: z.string(),
+  disbandedAt: z.string().nullable(),
   teammates: z.array(TeammateSnapshotSchema),
-  total_tokens: z.number(),
-  total_estimated_cost_usd: z.number(),
+});
+
+// History messages use TeamMessageRecordResponse (camelCase, createdAt instead of timestamp)
+export const TeamMessageRecordSchema = z.object({
+  id: z.string(),
+  sender: z.string(),
+  recipient: z.string().nullable(),
+  content: z.string(),
+  messageType: z.string(),
+  createdAt: z.string(),
 });
 
 export const TeamHistoryResponseSchema = z.object({
   session: TeamSessionHistorySchema.nullable(),
-  messages: z.array(TeamMessageSchema),
+  messages: z.array(TeamMessageRecordSchema),
 });
 
 export type TeammateSnapshot = z.infer<typeof TeammateSnapshotSchema>;
 export type TeamSessionHistory = z.infer<typeof TeamSessionHistorySchema>;
+export type TeamMessageRecord = z.infer<typeof TeamMessageRecordSchema>;
 export type TeamHistoryResponse = z.infer<typeof TeamHistoryResponseSchema>;
 
 // ============================================================================

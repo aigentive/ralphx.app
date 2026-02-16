@@ -77,7 +77,7 @@ pub(super) struct BackgroundRunContext<R: Runtime> {
     // Cancellation
     pub cancellation_token: CancellationToken,
     // Team state
-    pub team_tracker: Option<crate::application::team_state_tracker::TeamStateTracker>,
+    pub team_service: Option<std::sync::Arc<crate::application::TeamService>>,
 }
 
 pub(super) async fn finalize_assistant_message<R: Runtime>(
@@ -152,7 +152,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             agent_name,
             team_mode,
             cancellation_token,
-            team_tracker,
+            team_service,
         } = ctx;
         let BackgroundRunRepos {
             chat_message_repo,
@@ -208,40 +208,20 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             Some(pre_assistant_msg_id.clone()),
             question_state.clone(),
             cancellation_token.clone(),
-            team_tracker.clone(),
+            team_service.clone(),
             team_mode,
         )
         .await;
 
         // Clean up team state when lead stream ends (success, error, or timeout)
         if team_mode {
-            if let Some(ref tracker) = team_tracker {
-                let teams = tracker.list_teams().await;
+            if let Some(ref service) = team_service {
+                let teams = service.list_teams().await;
                 for tn in &teams {
-                    if let Ok(status) = tracker.get_team_status(tn).await {
+                    if let Ok(status) = service.get_team_status(tn).await {
                         if status.context_id == context_id {
-                            // Stop all teammate processes
-                            let _ = tracker.stop_team(tn).await;
-                            // Emit shutdown events for each teammate
-                            if let Some(ref handle) = app_handle {
-                                for teammate in &status.teammates {
-                                    crate::application::team_events::emit_teammate_shutdown(
-                                        handle,
-                                        tn,
-                                        &teammate.name,
-                                        &context_type.to_string(),
-                                        &context_id,
-                                    );
-                                }
-                                crate::application::team_events::emit_team_disbanded(
-                                    handle,
-                                    tn,
-                                    &context_type.to_string(),
-                                    &context_id,
-                                );
-                            }
-                            // Disband the team (updates phase to Disbanded)
-                            let _ = tracker.disband_team(tn).await;
+                            // Disband the team via TeamService (stops teammates + persists + emits events)
+                            let _ = service.disband_team(tn).await;
                         }
                     }
                 }

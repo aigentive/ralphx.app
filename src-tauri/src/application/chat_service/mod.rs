@@ -229,8 +229,8 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     model: String,
     /// When true, agent resolution uses team-lead variants if configured.
     team_mode: bool,
-    /// Team state tracker for managing agent teams lifecycle.
-    team_tracker: Option<crate::application::team_state_tracker::TeamStateTracker>,
+    /// Team service for managing agent teams lifecycle (persistence + events).
+    team_service: Option<std::sync::Arc<crate::application::TeamService>>,
 }
 
 impl<R: Runtime> ClaudeChatService<R> {
@@ -281,7 +281,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             plan_branch_repo: None,
             model: "sonnet".to_string(),
             team_mode: false,
-            team_tracker: None,
+            team_service: None,
         }
     }
 
@@ -325,8 +325,8 @@ impl<R: Runtime> ClaudeChatService<R> {
         self
     }
 
-    pub fn with_team_tracker(mut self, tracker: crate::application::team_state_tracker::TeamStateTracker) -> Self {
-        self.team_tracker = Some(tracker);
+    pub fn with_team_service(mut self, service: std::sync::Arc<crate::application::TeamService>) -> Self {
+        self.team_service = Some(service);
         self
     }
 
@@ -686,7 +686,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             agent_name: Some(resolved_agent_name),
             team_mode: self.team_mode,
             cancellation_token,
-            team_tracker: self.team_tracker.clone(),
+            team_service: self.team_service.clone(),
         };
 
         // 9. Process stream in background (extracted to separate module)
