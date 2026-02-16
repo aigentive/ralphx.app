@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::process::{Child, ChildStdin};
-use tokio::sync::RwLock;
+use tokio::sync::{watch, RwLock};
 use tokio::task::JoinHandle;
 
 // ============================================================================
@@ -266,6 +266,24 @@ pub struct TeammateCostResponse {
 // TeamStateTracker
 // ============================================================================
 
+/// Decision result for a plan approval (sent through the watch channel)
+#[derive(Debug, Clone, Serialize)]
+pub struct PlanDecision {
+    pub approved: bool,
+    pub team_name: Option<String>,
+    pub teammates_spawned: Vec<PlanDecisionTeammate>,
+    pub message: String,
+}
+
+/// Spawned teammate info included in a plan decision
+#[derive(Debug, Clone, Serialize)]
+pub struct PlanDecisionTeammate {
+    pub name: String,
+    pub role: String,
+    pub model: String,
+    pub color: String,
+}
+
 /// A validated team plan pending user approval
 #[derive(Debug, Clone)]
 pub struct PendingTeamPlan {
@@ -287,10 +305,22 @@ pub struct PendingTeammate {
 }
 
 /// Thread-safe tracker for active agent teams
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct TeamStateTracker {
     teams: Arc<RwLock<HashMap<String, TeamState>>>,
     pending_plans: Arc<RwLock<HashMap<String, PendingTeamPlan>>>,
+    /// Watch channels for blocking plan approval — plan_id → sender
+    plan_channels: Arc<RwLock<HashMap<String, watch::Sender<Option<PlanDecision>>>>>,
+}
+
+impl std::fmt::Debug for TeamStateTracker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TeamStateTracker")
+            .field("teams", &self.teams)
+            .field("pending_plans", &self.pending_plans)
+            .field("plan_channels_count", &"<dynamic>")
+            .finish()
+    }
 }
 
 impl Default for TeamStateTracker {
@@ -304,6 +334,7 @@ impl TeamStateTracker {
         Self {
             teams: Arc::new(RwLock::new(HashMap::new())),
             pending_plans: Arc::new(RwLock::new(HashMap::new())),
+            plan_channels: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -317,6 +348,34 @@ impl TeamStateTracker {
     pub async fn take_pending_plan(&self, plan_id: &str) -> Option<PendingTeamPlan> {
         let mut plans = self.pending_plans.write().await;
         plans.remove(plan_id)
+    }
+
+    /// Register a watch channel for plan approval (returns receiver for long-polling)
+    pub async fn register_plan_channel(
+        &self,
+        plan_id: &str,
+    ) -> watch::Receiver<Option<PlanDecision>> {
+        let (tx, rx) = watch::channel(None);
+        let mut channels = self.plan_channels.write().await;
+        channels.insert(plan_id.to_string(), tx);
+        rx
+    }
+
+    /// Signal plan approval/rejection through the watch channel
+    pub async fn resolve_plan(&self, plan_id: &str, decision: PlanDecision) -> bool {
+        let channels = self.plan_channels.read().await;
+        if let Some(tx) = channels.get(plan_id) {
+            let _ = tx.send(Some(decision));
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Remove a plan channel (cleanup after long-poll completes)
+    pub async fn remove_plan_channel(&self, plan_id: &str) {
+        let mut channels = self.plan_channels.write().await;
+        channels.remove(plan_id);
     }
 
     /// Create a new team

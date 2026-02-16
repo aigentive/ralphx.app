@@ -872,6 +872,10 @@ pub struct TeamPlanTeammate {
 pub struct RequestTeamPlanResponse {
     pub success: bool,
     pub plan_id: String,
+    /// When approved: team name
+    pub team_name: Option<String>,
+    /// When approved: list of spawned teammates
+    pub teammates_spawned: Vec<SpawnedTeammateInfo>,
     pub message: String,
 }
 
@@ -883,6 +887,12 @@ pub struct ApproveTeamPlanRequest {
     /// Required so the backend can create the team and attach teammates.
     pub context_type: String,
     pub context_id: String,
+}
+
+/// POST /api/team/plan/reject — reject a team plan
+#[derive(Debug, Deserialize)]
+pub struct RejectTeamPlanRequest {
+    pub plan_id: String,
 }
 
 #[derive(Debug, Serialize)]

@@ -29,7 +29,7 @@ import { useMessageAttachments } from "@/hooks/useMessageAttachments";
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { MessageAttachment } from "./MessageAttachments";
-import { useTeamStore, selectTeammateByName, selectTeamMessages } from "@/stores/teamStore";
+import { useTeamStore, selectTeammateByName, selectTeamMessages, EMPTY_TEAM_MESSAGES } from "@/stores/teamStore";
 import type { TeamMessage } from "@/stores/teamStore";
 import { TeamSystemEvent } from "./TeamSystemEvent";
 
@@ -50,7 +50,6 @@ const contentContainerStyle: React.CSSProperties = {
 /** Stable empty arrays — avoids new refs on each render when props are omitted */
 const EMPTY_HOOK_EVENTS: HookEvent[] = [];
 const EMPTY_ACTIVE_HOOKS: HookStartedEvent[] = [];
-const EMPTY_TEAM_MESSAGES: TeamMessage[] = [];
 
 // ============================================================================
 // Types
@@ -136,10 +135,12 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     // Forward the ref to parent
     useImperativeHandle(ref, () => virtuosoRef.current!, []);
 
-    // Track finalizing state to avoid accessing ref during render
+    // Track finalizing state to avoid accessing ref during render.
+    // Guard against redundant setState to prevent unnecessary re-renders.
     const [isFinalizing, setIsFinalizing] = useState(false);
     useEffect(() => {
-      setIsFinalizing(finalizingConversationRef?.current === conversationId);
+      const next = finalizingConversationRef?.current === conversationId;
+      setIsFinalizing((prev) => (prev === next ? prev : next));
     }, [finalizingConversationRef, conversationId]);
 
     // Team system messages for inline display

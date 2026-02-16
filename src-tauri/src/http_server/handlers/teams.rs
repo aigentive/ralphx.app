@@ -20,7 +20,8 @@ use tracing::{error, info, warn};
 
 use super::HttpServerState;
 use crate::application::team_state_tracker::{
-    PendingTeamPlan, PendingTeammate, TeammateHandle, TeammateStatus,
+    PendingTeamPlan, PendingTeammate, PlanDecision, PlanDecisionTeammate, TeammateHandle,
+    TeammateStatus,
 };
 use crate::domain::entities::{
     Artifact, ArtifactBucketId, ArtifactContent, ArtifactId, ArtifactRelation,
@@ -28,10 +29,10 @@ use crate::domain::entities::{
 };
 use crate::http_server::types::{
     ApproveTeamPlanRequest, ApproveTeamPlanResponse, CreateTeamArtifactRequest,
-    CreateTeamArtifactResponse, GetTeamArtifactsResponse, RequestTeamPlanRequest,
-    RequestTeamPlanResponse, RequestTeammateSpawnRequest, RequestTeammateSpawnResponse,
-    SaveTeamSessionStateRequest, SaveTeamSessionStateResponse, SpawnedTeammateInfo,
-    TeamArtifactSummary, TeamCompositionEntry, TeamSessionStateResponse,
+    CreateTeamArtifactResponse, GetTeamArtifactsResponse, RejectTeamPlanRequest,
+    RequestTeamPlanRequest, RequestTeamPlanResponse, RequestTeammateSpawnRequest,
+    RequestTeammateSpawnResponse, SaveTeamSessionStateRequest, SaveTeamSessionStateResponse,
+    SpawnedTeammateInfo, TeamArtifactSummary, TeamCompositionEntry, TeamSessionStateResponse,
 };
 use crate::infrastructure::agents::claude::{
     get_team_constraints, team_constraints_config, validate_team_plan, ClaudeCodeClient,
@@ -44,8 +45,12 @@ use crate::infrastructure::agents::claude::{
 
 /// Accept a team plan from the team lead agent.
 ///
-/// Validates the team plan against constraints from ralphx.yaml, then emits
-/// a team:plan_requested event for user approval with validation results.
+/// Validates the team plan against constraints, emits a `team:plan_requested`
+/// event for the frontend approval UI, then **blocks** (long-polls) until the
+/// user approves or rejects. On approval the response includes spawn results
+/// so the lead agent knows teammates are ready without spawning them itself.
+///
+/// Timeout: 5 minutes — after which the plan is auto-rejected.
 pub async fn request_team_plan(
     State(state): State<HttpServerState>,
     Json(req): Json<RequestTeamPlanRequest>,
@@ -87,7 +92,7 @@ pub async fn request_team_plan(
         plan_id = %plan_id,
         process = %req.process,
         approved_teammates = plan.teammates.len(),
-        "Team plan validated — emitting for user approval"
+        "Team plan validated — emitting for user approval (blocking until decision)"
     );
 
     // Store the approved plan with full prompts for batch-spawn on approval
@@ -118,9 +123,15 @@ pub async fn request_team_plan(
         })
         .await;
 
+    // Register a watch channel for this plan (before emitting event)
+    let mut rx = state
+        .team_tracker
+        .register_plan_channel(&plan_id)
+        .await;
+
     // Emit event for frontend to show approval UI (with validated plan)
     if let Some(app_handle) = &state.app_state.app_handle {
-        let _ = app_handle.emit(
+        let emit_result = app_handle.emit(
             "team:plan_requested",
             serde_json::json!({
                 "plan_id": plan_id,
@@ -129,16 +140,89 @@ pub async fn request_team_plan(
                 "validated": true,
             }),
         );
+        info!(plan_id = %plan_id, emit_ok = emit_result.is_ok(), "Emitted team:plan_requested event");
+    } else {
+        warn!("No app_handle available — team:plan_requested event NOT emitted");
     }
 
+    // ── Block until user approves/rejects (5 min timeout) ──────────────
+    let timeout = tokio::time::Duration::from_secs(300);
+    let start = tokio::time::Instant::now();
+
+    let decision = loop {
+        // Check if a decision has been sent
+        let maybe_decision: Option<crate::application::team_state_tracker::PlanDecision> = {
+            let current = rx.borrow();
+            current.clone()
+        };
+
+        if let Some(decision) = maybe_decision {
+            break decision;
+        }
+
+        // Check timeout
+        if start.elapsed() >= timeout {
+            // Cleanup: remove pending plan and channel
+            state.team_tracker.take_pending_plan(&plan_id).await;
+            state.team_tracker.remove_plan_channel(&plan_id).await;
+
+            return Ok(Json(RequestTeamPlanResponse {
+                success: false,
+                plan_id,
+                team_name: None,
+                teammates_spawned: vec![],
+                message: "Team plan timed out waiting for user approval (5 min)".to_string(),
+            }));
+        }
+
+        // Wait for channel signal with remaining timeout
+        let remaining = timeout.saturating_sub(start.elapsed());
+        match tokio::time::timeout(remaining, rx.changed()).await {
+            Ok(Ok(())) => continue,
+            Ok(Err(_)) => {
+                // Channel closed
+                state.team_tracker.remove_plan_channel(&plan_id).await;
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Plan approval channel closed unexpectedly".to_string(),
+                ));
+            }
+            Err(_) => {
+                // Timeout
+                state.team_tracker.take_pending_plan(&plan_id).await;
+                state.team_tracker.remove_plan_channel(&plan_id).await;
+                return Ok(Json(RequestTeamPlanResponse {
+                    success: false,
+                    plan_id,
+                    team_name: None,
+                    teammates_spawned: vec![],
+                    message: "Team plan timed out waiting for user approval (5 min)".to_string(),
+                }));
+            }
+        }
+    };
+
+    // Cleanup channel
+    state.team_tracker.remove_plan_channel(&plan_id).await;
+
+    // Build response from the decision
+    let teammates_spawned: Vec<SpawnedTeammateInfo> = decision
+        .teammates_spawned
+        .iter()
+        .map(|t| SpawnedTeammateInfo {
+            name: t.name.clone(),
+            role: t.role.clone(),
+            model: t.model.clone(),
+            color: t.color.clone(),
+        })
+        .collect();
+
     Ok(Json(RequestTeamPlanResponse {
-        success: true,
+        success: decision.approved,
         plan_id,
-        message: format!(
-            "Team plan validated and submitted with {} teammates for '{}' process",
-            req.teammates.len(),
-            req.process
-        ),
+        team_name: decision.team_name,
+        teammates_spawned,
+        message: decision.message,
     }))
 }
 
@@ -355,6 +439,33 @@ pub async fn approve_team_plan(
         "Team plan approved — teammates spawned"
     );
 
+    // Signal the blocking request_team_plan handler with the spawn results
+    let decision_teammates: Vec<PlanDecisionTeammate> = spawned_teammates
+        .iter()
+        .map(|t| PlanDecisionTeammate {
+            name: t.name.clone(),
+            role: t.role.clone(),
+            model: t.model.clone(),
+            color: t.color.clone(),
+        })
+        .collect();
+
+    state
+        .team_tracker
+        .resolve_plan(
+            &req.plan_id,
+            PlanDecision {
+                approved: spawned_count > 0,
+                team_name: Some(team_name.clone()),
+                teammates_spawned: decision_teammates,
+                message: format!(
+                    "{}/{} teammates spawned successfully",
+                    spawned_count, total_count
+                ),
+            },
+        )
+        .await;
+
     Ok(Json(ApproveTeamPlanResponse {
         success: spawned_count > 0,
         team_name,
@@ -364,6 +475,40 @@ pub async fn approve_team_plan(
             spawned_count, total_count
         ),
     }))
+}
+
+// ============================================================================
+// POST /api/team/plan/reject — Reject a team plan
+// ============================================================================
+
+/// Reject a team plan, signaling the blocking `request_team_plan` handler.
+///
+/// Called by the frontend when the user clicks Reject on the plan approval UI.
+/// Removes the pending plan and signals the watch channel with a rejection.
+pub async fn reject_team_plan(
+    State(state): State<HttpServerState>,
+    Json(req): Json<RejectTeamPlanRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    info!(plan_id = %req.plan_id, "Team plan rejected by user");
+
+    // Remove the pending plan
+    state.team_tracker.take_pending_plan(&req.plan_id).await;
+
+    // Signal the blocking handler with rejection
+    state
+        .team_tracker
+        .resolve_plan(
+            &req.plan_id,
+            PlanDecision {
+                approved: false,
+                team_name: None,
+                teammates_spawned: vec![],
+                message: "Team plan rejected by user".to_string(),
+            },
+        )
+        .await;
+
+    Ok(StatusCode::OK)
 }
 
 // ============================================================================
