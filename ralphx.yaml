@@ -141,7 +141,12 @@ team_constraints:
   execution:
     max_teammates: 5
     allowed_tools: [Read, Write, Edit, Bash, Grep, Glob, WebFetch, WebSearch]
-    allowed_mcp_tools: [get_task_context, get_artifact_content, start_step, complete_step]
+    allowed_mcp_tools: [
+      get_task_context, get_artifact, get_project_analysis,
+      create_team_artifact, get_team_artifacts,
+      start_step, complete_step, skip_step, fail_step,
+      add_step, get_step_context, get_step_progress, get_sub_steps
+    ]
     model_cap: sonnet
     mode: dynamic
     presets: [ralphx-coder]

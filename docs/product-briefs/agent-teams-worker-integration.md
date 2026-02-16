@@ -1,10 +1,10 @@
 # Product Brief: Agent Teams at Worker Level for Parallel Task Execution
 
-**Status:** DRAFT v3
-**Date:** 2026-02-15
+**Status:** DRAFT v4
+**Date:** 2026-02-16
 **Author:** system-card-writer (agent-teams-research team)
 **Depends on:** Agent Teams System Card (`docs/agent-teams-system-card.md`)
-**Revision:** v3 — Resolves: worker teammates can document decisions via team artifacts; per-teammate cost display; consistent with ideation brief v5 decisions
+**Revision:** v4 — Updated to match implemented worker-team.md: 7-phase flow (RECOVER→ANALYZE→DECOMPOSE→APPROVE→EXECUTE→VALIDATE→COMPLETE), opt-in agent, foreground-only coders, step tools for progress tracking, dynamic team composition
 
 ---
 
@@ -69,10 +69,12 @@ Worker (Team Lead, delegate mode)
 
 | Property | Value |
 |----------|-------|
-| **Additive** | New capability alongside existing sequential worker |
-| **Dynamic composition** | Worker-lead defines teammate roles, prompts, and models based on task (default) |
+| **Opt-in agent** | `ralphx-worker-team` is a separate agent variant, NOT the default execution agent. Must be explicitly selected or configured. |
+| **Dynamic composition** | Worker-lead defines teammate roles, prompts, and models based on task analysis (default) |
+| **7-phase flow** | RECOVER → ANALYZE → DECOMPOSE → APPROVE → EXECUTE → VALIDATE → COMPLETE |
+| **Foreground execution** | Coders run foreground (NO `run_in_background`) — MCP tool access requires it |
+| **Step-based progress** | Coders use `start_step` / `complete_step` MCP tools for progress tracking, not artifacts |
 | **Configurable constraints** | `ralphx.yaml` can optionally constrain team composition (opt-in) |
-| **Opt-in per task** | Worker decides based on task complexity |
 | **MCP-compatible** | All teammates use RalphX MCP tools |
 | **Git-safe** | File ownership prevents conflicts |
 
@@ -84,13 +86,15 @@ Worker (Team Lead, delegate mode)
 
 | Property | Value |
 |----------|-------|
-| **Model** | sonnet |
-| **Category** | Execution |
+| **Model** | opus (lead needs strong orchestration reasoning) |
+| **Category** | Execution (opt-in, NOT default) |
 | **Based on** | `ralphx-worker` (extends with team capabilities) |
-| **Additional tools** | TeamCreate, TeamDelete, SendMessage, TaskCreate, TaskUpdate, TaskGet, TaskList |
+| **Tools allowed** | Read, Grep, Glob, Bash, Task |
+| **Tools disallowed** | Write, Edit, NotebookEdit (coordinator-only — coders implement) |
 | **Permission mode** | delegate (coordination-only) |
-| **MCP tools** | Same as worker + team coordination tools |
+| **MCP tools** | `ralphx__*` (all RalphX MCP tools: step management, task context, project analysis, memories) |
 | **Team composition** | Dynamic (default) — worker-lead chooses teammate roles/models based on task analysis |
+| **Foreground requirement** | Coder teammates MUST run foreground (no `run_in_background`) for MCP access |
 
 ### 3.1.1 Dynamic Team Composition (Default Mode)
 
@@ -121,22 +125,19 @@ team_constraints:
 
 The worker-lead operates freely within these constraints. Configuration provides **boundaries**, not rigid definitions.
 
-**System prompt additions:**
-```markdown
-You are a team-based worker that coordinates parallel execution.
+**Implemented phase flow** (see `ralphx-plugin/agents/worker-team.md` for full system prompt):
 
-1. Analyze the task and determine optimal team composition:
-   - How many teammates? (based on parallelizable scopes)
-   - What model for each? (haiku=simple, sonnet=complex, opus=architecture)
-   - What tools does each need?
-2. Create agent team with TeamCreate
-3. Create tasks for each sub-scope with TaskCreate (include file ownership)
-4. Spawn teammates with appropriate roles/models/prompts
-5. Monitor progress via TaskList
-6. Facilitate cross-coder communication (relay discoveries)
-7. Run validation gates between waves
-8. Shut down team and report results
 ```
+Phase 0: RECOVER   — Read system card, check for persisted team state (resume support)
+Phase 1: ANALYZE   — get_task_context, get_artifact (plan), get_project_analysis (baseline)
+Phase 2: DECOMPOSE — Break into atomic sub-scopes with file ownership + dependency graph → waves
+Phase 3: APPROVE   — request_team_plan() with coder compositions → user approval (BLOCKS)
+Phase 4: EXECUTE   — Wave-by-wave: TeamCreate → TaskCreate → spawn coders (foreground) → monitor
+Phase 5: VALIDATE  — Gate between every wave: typecheck + lint + tests via get_project_analysis
+Phase 6: COMPLETE  — Mark done → shutdown all coders → TeamDelete → execution summary
+```
+
+**Coder progress tracking:** Coders use `start_step(task_id, step_name)` and `complete_step(task_id, step_name)` MCP tools for real-time progress visibility in the UI. This replaces artifact-based tracking for primary progress.
 
 ### 3.2 ralphx.yaml Configuration
 
@@ -178,18 +179,28 @@ team_constraints:
     budget_limit: null                       # No budget cap by default
 ```
 
-### 3.3 Process Mapping (Configurable)
+### 3.3 Process Mapping (Opt-in)
+
+`ralphx-worker-team` is NOT the default execution agent. It must be explicitly configured or selected.
 
 ```yaml
 # New section in ralphx.yaml
 processes:
   task_execution:
-    default: ralphx-worker          # Sequential (current behavior)
-    parallel: ralphx-worker-team    # Team-based (new)
-    selection: auto                  # auto | manual | always_parallel
+    default: ralphx-worker          # Sequential (current behavior, UNCHANGED)
+    parallel: ralphx-worker-team    # Team-based (opt-in)
+    selection: manual                # manual (default) | auto | always_parallel
 ```
 
-**Selection logic (`auto` mode):**
+**Selection modes:**
+
+| Mode | Behavior |
+|------|----------|
+| `manual` (default) | User explicitly selects team execution per task |
+| `auto` | System selects based on task complexity (see below) |
+| `always_parallel` | Always use team execution (for testing/power users) |
+
+**Auto-selection logic (when `selection: auto`):**
 
 | Condition | Worker Selected |
 |-----------|----------------|
@@ -199,7 +210,7 @@ processes:
 | Task flagged `sequential: true` | `ralphx-worker` |
 | Re-execution (fixing review issues) | `ralphx-worker` (focused fixes) |
 
-### 3.4 Execution Flow
+### 3.4 Execution Flow (7-Phase)
 
 ```
 State Machine: Task → executing
@@ -211,31 +222,42 @@ AgenticClientSpawner::spawn_agent()
     ↓
 [If ralphx-worker-team selected]
     ↓
-Worker-Team (Team Lead) starts:
-    1. get_task_context() → decompose into sub-scopes
-    2. Build dependency graph
-    3. TeamCreate(name: "task-{task_id}")
-    4. For each wave:
-       a. TaskCreate for each sub-scope
-          - Include: file ownership list, scope boundaries
-          - Set addBlockedBy for dependencies
-       b. Spawn coder teammates:
-          Task(
-            prompt: "Execute sub-scope: {scope_context}",
-            subagent_type: "general-purpose",
-            team_name: "task-{task_id}",
-            name: "coder-{i}",
-            model: "sonnet"
-          )
-       c. Monitor via TaskList + incoming messages
-       d. Relay discoveries between coders via SendMessage
-       e. All coders complete → run validation gate
-       f. Gate fails → create fix tasks, re-assign
-    5. All waves complete
-    6. Final validation (typecheck + tests + lint)
-    7. Shutdown all teammates
-    8. TeamDelete
-    9. complete_step() → report to RalphX state machine
+Phase 0: RECOVER
+    → Read system card (agent-teams-orchestration.md) — MANDATORY
+    → get_team_session_state(session_id) — check for resume
+    → Has state? Resume from last phase. Empty? Continue to Phase 1.
+
+Phase 1: ANALYZE
+    → get_task_context(task_id) — task details, plan artifact ref
+    → get_artifact(plan_id) — extract this task's implementation section
+    → get_project_analysis(project_id, task_id) — validation baseline
+
+Phase 2: DECOMPOSE
+    → Identify atomic sub-scopes with exclusive file ownership
+    → Build dependency graph → organize into waves (1-3 coders per wave)
+
+Phase 3: APPROVE
+    → request_team_plan(process, teammates) — BLOCKS until user approves
+
+Phase 4: EXECUTE (per wave)
+    → TeamCreate(name: "task-{task_id}") — first wave only
+    → TaskCreate per coder (file ownership + scope in description)
+    → Spawn coders FOREGROUND (no run_in_background — MCP requires it):
+      Task(subagent_type: "general-purpose", name: "coder-{i}",
+           team_name: "task-{task_id}", model: "sonnet",
+           mode: "bypassPermissions")
+    → Coders track progress via start_step() / complete_step()
+    → save_team_session_state() after each wave for resume support
+
+Phase 5: VALIDATE (after each wave + final)
+    → get_project_analysis() → run validation commands
+    → Gate passes → next wave or COMPLETE
+    → Gate fails → create fix tasks, spawn fix coders, re-validate (max 3x)
+
+Phase 6: COMPLETE
+    → Mark task complete via MCP
+    → shutdown_request to all coders → wait for approve
+    → TeamDelete → execution summary
 ```
 
 ---
@@ -328,15 +350,19 @@ Only the lead commits (coders write files, lead commits). This prevents commit r
 
 ## 6. MCP Tool Integration
 
-### 6.1 Step Management Mapping
+### 6.1 Step Management — Primary Progress Mechanism
+
+Coders use step MCP tools as the **primary** way to report progress (not artifacts):
 
 | Current (Sequential) | Team-Based (Parallel) |
 |----------------------|----------------------|
-| Worker calls `start_step()` | Lead calls `start_step()` for wave |
+| Worker calls `start_step()` | **Coder** calls `start_step(task_id, step_name)` directly |
 | Worker delegates to coder subagent | Lead creates TaskCreate + spawns teammate |
 | Coder calls `get_step_context()` | Teammate calls `get_step_context()` (same) |
-| Coder calls `complete_step()` | Teammate calls `complete_step()` (same) |
-| Worker validates wave | Lead validates wave (same gate logic) |
+| Coder calls `complete_step()` | **Coder** calls `complete_step(task_id, step_name)` directly |
+| Worker validates wave | Lead validates wave via `get_project_analysis()` |
+
+**Key change:** In team mode, coders call step tools directly (not the lead). This gives real-time per-coder progress visibility in the UI.
 
 ### 6.2 MCP Tools per Team Role
 
@@ -352,7 +378,7 @@ Only the lead commits (coders write files, lead commits). This prevents commit r
 | `get_project_analysis` | ✅ | ✅ |
 | `search_memories` | ✅ | ✅ |
 
-**Note:** MCP tools use stdio and work in both foreground and background modes. The limitation for background teammates is user-interactive permission prompts — which is not an issue for RalphX agents using `acceptEdits` or `--dangerously-skip-permissions`.
+**Note:** Coder teammates MUST run in foreground (no `run_in_background`) for MCP tool access. Background subagents lose access to MCP tools. The worker-team.md system prompt enforces this as Rule #6.
 
 ---
 
