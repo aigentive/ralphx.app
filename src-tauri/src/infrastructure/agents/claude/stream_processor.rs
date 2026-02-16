@@ -225,6 +225,10 @@ pub enum StreamEvent {
         description: Option<String>,
         subagent_type: Option<String>,
         model: Option<String>,
+        /// Teammate name if this Task spawns a team member (from args.name)
+        teammate_name: Option<String>,
+        /// Team name if this Task spawns a team member (from args.team_name)
+        team_name: Option<String>,
     },
     /// Task subagent completed (detected from Task tool_result)
     TaskCompleted {
@@ -551,6 +555,14 @@ impl StreamProcessor {
                                     .get("model")
                                     .and_then(|v| v.as_str())
                                     .map(|s| s.to_string()),
+                                teammate_name: args
+                                    .get("name")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string()),
+                                team_name: args
+                                    .get("team_name")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string()),
                             });
                         }
                     }
@@ -640,6 +652,14 @@ impl StreamProcessor {
                                         .map(|s| s.to_string()),
                                     model: input
                                         .get("model")
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string()),
+                                    teammate_name: input
+                                        .get("name")
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string()),
+                                    team_name: input
+                                        .get("team_name")
                                         .and_then(|v| v.as_str())
                                         .map(|s| s.to_string()),
                                 });
@@ -1518,11 +1538,15 @@ mod tests {
                 description,
                 subagent_type,
                 model,
+                teammate_name,
+                team_name,
             } => {
                 assert_eq!(tool_use_id, "toolu_task1");
                 assert_eq!(description, &Some("Search codebase".to_string()));
                 assert_eq!(subagent_type, &Some("Explore".to_string()));
                 assert_eq!(model, &Some("sonnet".to_string()));
+                assert!(teammate_name.is_none());
+                assert!(team_name.is_none());
             }
             other => panic!("Expected TaskStarted, got {:?}", other),
         }
@@ -1569,11 +1593,104 @@ mod tests {
                 description,
                 subagent_type,
                 model,
+                teammate_name,
+                team_name,
             } => {
                 assert_eq!(tool_use_id, "toolu_task2");
                 assert_eq!(description, &Some("Run tests".to_string()));
                 assert_eq!(subagent_type, &Some("Bash".to_string()));
                 assert_eq!(model, &Some("haiku".to_string()));
+                assert!(teammate_name.is_none());
+                assert!(team_name.is_none());
+            }
+            other => panic!("Expected TaskStarted, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_task_started_with_team_args_streaming_mode() {
+        let mut processor = StreamProcessor::new();
+
+        // Simulate streaming: tool_use start for Task with team args
+        processor.process_message(StreamMessage::ContentBlockStart {
+            index: Some(0),
+            content_block: ContentBlock {
+                block_type: "tool_use".to_string(),
+                id: Some("toolu_team1".to_string()),
+                name: Some("Task".to_string()),
+                text: None,
+                input: None,
+            },
+        });
+
+        // Stream the input JSON with team_name and name args
+        processor.process_message(StreamMessage::ContentBlockDelta {
+            index: Some(0),
+            delta: ContentDelta {
+                delta_type: "input_json_delta".to_string(),
+                text: None,
+                partial_json: Some(
+                    r#"{"prompt":"do stuff","subagent_type":"general-purpose","team_name":"my-team","name":"researcher","model":"sonnet"}"#
+                        .to_string(),
+                ),
+            },
+        });
+
+        // Stop
+        let events = processor.process_message(StreamMessage::ContentBlockStop { index: Some(0) });
+
+        // Should emit: TaskStarted, ToolCallCompleted
+        assert_eq!(events.len(), 2);
+        match &events[0] {
+            StreamEvent::TaskStarted {
+                tool_use_id,
+                description: _,
+                subagent_type,
+                model,
+                teammate_name,
+                team_name,
+            } => {
+                assert_eq!(tool_use_id, "toolu_team1");
+                assert_eq!(subagent_type, &Some("general-purpose".to_string()));
+                assert_eq!(model, &Some("sonnet".to_string()));
+                assert_eq!(teammate_name, &Some("researcher".to_string()));
+                assert_eq!(team_name, &Some("my-team".to_string()));
+            }
+            other => panic!("Expected TaskStarted, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_task_started_without_team_args_has_none() {
+        let mut processor = StreamProcessor::new();
+
+        // Verbose mode: Task tool without team args
+        let events = processor.process_message(StreamMessage::Assistant {
+            message: AssistantMessage {
+                content: vec![AssistantContent::ToolUse {
+                    id: "toolu_notm".to_string(),
+                    name: "Task".to_string(),
+                    input: serde_json::json!({
+                        "prompt": "search files",
+                        "subagent_type": "Explore",
+                        "description": "Find config"
+                    }),
+                }],
+                stop_reason: None,
+            },
+            session_id: None,
+        });
+
+        // Should emit TaskStarted in verbose mode
+        assert!(!events.is_empty());
+        match &events[0] {
+            StreamEvent::TaskStarted {
+                teammate_name,
+                team_name,
+                ..
+            } => {
+                assert!(teammate_name.is_none());
+                assert!(team_name.is_none());
             }
             other => panic!("Expected TaskStarted, got {:?}", other),
         }

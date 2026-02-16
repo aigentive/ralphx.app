@@ -173,6 +173,8 @@ pub fn start_teammate_stream<R: Runtime>(
                                     description,
                                     subagent_type,
                                     model,
+                                    teammate_name: _,
+                                    team_name: _,
                                 } => {
                                     let _ = app_handle.emit(
                                         "agent:task_started",
