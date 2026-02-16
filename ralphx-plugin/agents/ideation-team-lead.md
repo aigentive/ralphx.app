@@ -164,8 +164,8 @@ If team mode selected → proceed to Phase 2.
 1. Call `request_team_plan(process, teammates)` with your composition
 2. Backend validates against constraints (max teammates, model ceiling, tool ceiling)
 3. **This call BLOCKS** until the user approves or rejects in the UI
-4. On approval → backend **automatically spawns all teammates** and the response includes `teammates_spawned` with their names/roles
-5. Proceed to EXPLORE — teammates are already running
+4. On approval, MCP returns success — you proceed to EXPLORE
+5. You call `TeamCreate`, then `Task` for each teammate (the backend observes these events)
 
 ### Phase 3: EXPLORE (team mode)
 
@@ -193,7 +193,6 @@ Task: {
   "prompt": "<full self-contained instructions — teammate has NO access to your conversation>"
 }
 ```
-**Note:** If `request_team_plan` response includes `teammates_spawned`, teammates were auto-spawned by the backend — skip this step.
 
 **Step 4: Persist state** → `save_team_session_state(...)` for resume
 

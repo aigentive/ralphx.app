@@ -287,8 +287,7 @@ pub async fn approve_team_plan(
         }
     }
 
-    // 3. Spawn each teammate
-    let client = ClaudeCodeClient::new();
+    // 3. Register each teammate (lead will spawn them via Task tool)
     let mut spawned_teammates = Vec::new();
 
     for pending in &plan.teammates {
@@ -296,7 +295,7 @@ pub async fn approve_team_plan(
             generate_unique_teammate_name(&state, &team_name, &pending.role).await;
         let teammate_color = assign_teammate_color(&state, &team_name).await;
 
-        // Register in tracker (status: Spawning)
+        // Register in tracker (status: Spawning — will be updated when lead spawns via Task)
         if let Err(e) = state
             .team_tracker
             .add_teammate(
@@ -316,116 +315,28 @@ pub async fn approve_team_plan(
             continue;
         }
 
-        // Build spawn config
-        let spawn_config = TeammateSpawnConfig::new(
-            &teammate_name,
-            &team_name,
-            &req.context_id,
-            &pending.prompt,
-        )
-        .with_model(&pending.model)
-        .with_tools(pending.tools.clone())
-        .with_mcp_tools(pending.mcp_tools.clone())
-        .with_color(&teammate_color);
-
-        match client.spawn_teammate_interactive(spawn_config).await {
-            Ok(spawn_result) => {
-                info!(
-                    teammate = %teammate_name,
-                    team = %team_name,
-                    pid = ?spawn_result.child.id(),
-                    "Teammate spawned via plan approval"
-                );
-
-                // Take stdout for stream processing, then create handle
-                let mut child = spawn_result.child;
-                let stdout = child.stdout.take();
-
-                // Start background stream processor if possible
-                let stream_task = match (stdout, &state.app_state.app_handle) {
-                    (Some(stdout), Some(app_handle)) => {
-                        let team_service = std::sync::Arc::new(
-                            crate::application::team_service::TeamService::new(
-                                std::sync::Arc::new(state.team_tracker.clone()),
-                                app_handle.clone(),
-                            ),
-                        );
-                        Some(
-                            crate::application::team_stream_processor::start_teammate_stream(
-                                stdout,
-                                team_name.clone(),
-                                teammate_name.clone(),
-                                req.context_type.clone(),
-                                req.context_id.clone(),
-                                app_handle.clone(),
-                                team_service,
-                            ),
-                        )
-                    }
-                    _ => None,
-                };
-
-                // Create handle and register
-                let handle = TeammateHandle {
-                    child,
-                    stream_task,
-                    stdin: Some(spawn_result.stdin),
-                };
-
-                let _ = state
-                    .team_tracker
-                    .set_teammate_handle(&team_name, &teammate_name, handle)
-                    .await;
-
-                // Update status to Running
-                let _ = state
-                    .team_tracker
-                    .update_teammate_status(
-                        &team_name,
-                        &teammate_name,
-                        TeammateStatus::Running,
-                    )
-                    .await;
-
-                // Emit team:teammate_spawned
-                if let Some(app_handle) = &state.app_state.app_handle {
-                    let _ = app_handle.emit(
-                        "team:teammate_spawned",
-                        serde_json::json!({
-                            "team_name": team_name,
-                            "teammate_name": teammate_name,
-                            "role": pending.role,
-                            "model": pending.model,
-                            "color": teammate_color,
-                            "context_type": req.context_type,
-                            "context_id": req.context_id,
-                        }),
-                    );
-                }
-
-                spawned_teammates.push(SpawnedTeammateInfo {
-                    name: teammate_name,
-                    role: pending.role.clone(),
-                    model: pending.model.clone(),
-                    color: teammate_color,
-                });
-            }
-            Err(e) => {
-                warn!(
-                    teammate = %teammate_name,
-                    error = %e,
-                    "Teammate spawn failed during plan approval"
-                );
-                let _ = state
-                    .team_tracker
-                    .update_teammate_status(
-                        &team_name,
-                        &teammate_name,
-                        TeammateStatus::Failed,
-                    )
-                    .await;
-            }
+        // Emit team:teammate_spawned for frontend UI
+        if let Some(app_handle) = &state.app_state.app_handle {
+            let _ = app_handle.emit(
+                "team:teammate_spawned",
+                serde_json::json!({
+                    "team_name": team_name,
+                    "teammate_name": teammate_name,
+                    "role": pending.role,
+                    "model": pending.model,
+                    "color": teammate_color,
+                    "context_type": req.context_type,
+                    "context_id": req.context_id,
+                }),
+            );
         }
+
+        spawned_teammates.push(SpawnedTeammateInfo {
+            name: teammate_name,
+            role: pending.role.clone(),
+            model: pending.model.clone(),
+            color: teammate_color,
+        });
     }
 
     let spawned_count = spawned_teammates.len();
@@ -434,9 +345,9 @@ pub async fn approve_team_plan(
     info!(
         plan_id = %req.plan_id,
         team = %team_name,
-        spawned = spawned_count,
+        registered = spawned_count,
         total = total_count,
-        "Team plan approved — teammates spawned"
+        "Team plan approved — teammates registered"
     );
 
     // Signal the blocking request_team_plan handler with the spawn results
@@ -459,7 +370,7 @@ pub async fn approve_team_plan(
                 team_name: Some(team_name.clone()),
                 teammates_spawned: decision_teammates,
                 message: format!(
-                    "{}/{} teammates spawned successfully",
+                    "{}/{} teammates registered successfully",
                     spawned_count, total_count
                 ),
             },
@@ -471,7 +382,7 @@ pub async fn approve_team_plan(
         team_name,
         teammates_spawned: spawned_teammates,
         message: format!(
-            "{}/{} teammates spawned successfully",
+            "{}/{} teammates registered successfully",
             spawned_count, total_count
         ),
     }))
@@ -625,12 +536,6 @@ pub async fn request_teammate_spawn(
             // 8. Start background stream processor if we have both stdout and app_handle
             let stream_task = match (stdout, &state.app_state.app_handle) {
                 (Some(stdout), Some(app_handle)) => {
-                    let team_service = std::sync::Arc::new(
-                        crate::application::team_service::TeamService::new(
-                            std::sync::Arc::new(state.team_tracker.clone()),
-                            app_handle.clone(),
-                        ),
-                    );
                     Some(
                         crate::application::team_stream_processor::start_teammate_stream(
                             stdout,
@@ -639,7 +544,7 @@ pub async fn request_teammate_spawn(
                             "ideation".to_string(),
                             context_id.clone(),
                             app_handle.clone(),
-                            team_service,
+                            std::sync::Arc::new(state.team_tracker.clone()),
                         ),
                     )
                 }

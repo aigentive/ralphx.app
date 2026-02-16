@@ -306,8 +306,10 @@ Phase 0: RECOVER — read this system card, check session state
 Phase 2: TEAM COMPOSITION
   → Decided: 2 specialists (frontend-researcher, backend-analyst)
   → Call request_team_plan() for user approval
+  → User approves (backend records the plan but does NOT spawn teammates)
 
 Phase 3: EXPLORE (after approval)
+  → Lead creates team and spawns teammates natively
 
   Step 1: TeamCreate
     team_name: "ideation-abc123"

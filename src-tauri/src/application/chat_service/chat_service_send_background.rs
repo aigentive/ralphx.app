@@ -76,6 +76,8 @@ pub(super) struct BackgroundRunContext<R: Runtime> {
     pub team_mode: bool,
     // Cancellation
     pub cancellation_token: CancellationToken,
+    // Team state
+    pub team_tracker: Option<crate::application::team_state_tracker::TeamStateTracker>,
 }
 
 pub(super) async fn finalize_assistant_message<R: Runtime>(
@@ -150,6 +152,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             agent_name,
             team_mode,
             cancellation_token,
+            team_tracker,
         } = ctx;
         let BackgroundRunRepos {
             chat_message_repo,
@@ -205,6 +208,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             Some(pre_assistant_msg_id.clone()),
             question_state.clone(),
             cancellation_token.clone(),
+            team_tracker.clone(),
         )
         .await;
 

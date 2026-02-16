@@ -251,6 +251,30 @@ pub enum StreamEvent {
     },
     /// Hook block (from synthetic user message with text content)
     HookBlock { reason: String },
+    /// Team created by lead (from TeamCreate tool result)
+    TeamCreated {
+        team_name: String,
+        config_path: String,
+    },
+    /// In-process teammate spawned by lead (from Task tool result with teammate_spawned status)
+    TeammateSpawned {
+        teammate_name: String,
+        team_name: String,
+        agent_id: String,
+        model: String,
+        color: String,
+    },
+    /// Team message sent (from SendMessage tool result)
+    TeamMessageSent {
+        sender: String,
+        recipient: Option<String>,
+        content: String,
+        message_type: String,
+    },
+    /// Team deleted (from TeamDelete tool result)
+    TeamDeleted {
+        team_name: String,
+    },
 }
 
 // ============================================================================
@@ -786,10 +810,15 @@ impl StreamProcessor {
 
                         // Emit event with updated tool call
                         events.push(StreamEvent::ToolResultReceived {
-                            tool_use_id,
-                            result: content,
+                            tool_use_id: tool_use_id.clone(),
+                            result: content.clone(),
                             parent_tool_use_id: parent_tool_use_id.clone(),
                         });
+
+                        // Check if this is a team event result
+                        if let Some(team_event) = Self::detect_team_event(&tool_use_id, &content) {
+                            events.push(team_event);
+                        }
                     }
                 }
             }
@@ -797,6 +826,56 @@ impl StreamProcessor {
         }
 
         events
+    }
+
+    /// Detect team-related events from tool result JSON.
+    ///
+    /// Checks whether a tool result corresponds to TeamCreate, TeammateSpawned,
+    /// SendMessage, or TeamDelete and returns the appropriate StreamEvent.
+    fn detect_team_event(_tool_use_id: &str, result: &serde_json::Value) -> Option<StreamEvent> {
+        // TeamCreate result: { "team_name": "...", "team_file_path": "...", "lead_agent_id": "..." }
+        if result.get("team_file_path").is_some() && result.get("lead_agent_id").is_some() {
+            return Some(StreamEvent::TeamCreated {
+                team_name: result["team_name"].as_str().unwrap_or("").to_string(),
+                config_path: result["team_file_path"].as_str().unwrap_or("").to_string(),
+            });
+        }
+
+        // TeammateSpawned: { "status": "teammate_spawned", "name": "...", "agent_id": "...", ... }
+        if result.get("status").and_then(|s| s.as_str()) == Some("teammate_spawned") {
+            return Some(StreamEvent::TeammateSpawned {
+                teammate_name: result["name"].as_str().unwrap_or("").to_string(),
+                team_name: result.get("teammate_id").and_then(|id| {
+                    id.as_str().and_then(|s| s.split('@').nth(1))
+                }).unwrap_or("").to_string(),
+                agent_id: result["agent_id"].as_str().unwrap_or("").to_string(),
+                model: result["model"].as_str().unwrap_or("").to_string(),
+                color: result.get("color").and_then(|c| c.as_str()).unwrap_or("blue").to_string(),
+            });
+        }
+
+        // SendMessage result: { "success": true, "recipients": [...], "routing": { "sender": "...", "content": "..." } }
+        if result.get("success").and_then(|s| s.as_bool()) == Some(true) && result.get("routing").is_some() {
+            let routing = &result["routing"];
+            let recipients = result.get("recipients").and_then(|r| r.as_array());
+            return Some(StreamEvent::TeamMessageSent {
+                sender: routing.get("sender").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+                recipient: if recipients.map_or(false, |r| r.len() == 1) {
+                    recipients.and_then(|r| r[0].as_str()).map(|s| s.to_string())
+                } else { None },
+                content: routing.get("content").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+                message_type: if recipients.map_or(false, |r| r.len() > 1) { "broadcast" } else { "message" }.to_string(),
+            });
+        }
+
+        // TeamDelete: look for deletion confirmation
+        if result.get("team_deleted").is_some() || result.get("deleted").and_then(|d| d.as_bool()) == Some(true) {
+            return Some(StreamEvent::TeamDeleted {
+                team_name: result.get("team_name").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+            });
+        }
+
+        None
     }
 
     /// Get the final result after stream is complete
@@ -2152,5 +2231,191 @@ mod tests {
         let events = processor.process_message(msg);
         assert_eq!(events.len(), 1);
         assert!(matches!(&events[0], StreamEvent::SessionId(id) if id == "sess-regular"));
+    }
+
+    // ====================================================================
+    // Team event detection tests
+    // ====================================================================
+
+    #[test]
+    fn test_detect_team_created_from_tool_result() {
+        let result = serde_json::json!({
+            "team_name": "my-team",
+            "team_file_path": "/home/user/.claude/teams/my-team.json",
+            "lead_agent_id": "abc123"
+        });
+        let event = StreamProcessor::detect_team_event("toolu_1", &result);
+        assert!(event.is_some());
+        match event.unwrap() {
+            StreamEvent::TeamCreated { team_name, config_path } => {
+                assert_eq!(team_name, "my-team");
+                assert_eq!(config_path, "/home/user/.claude/teams/my-team.json");
+            }
+            other => panic!("Expected TeamCreated, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_detect_teammate_spawned_from_tool_result() {
+        let result = serde_json::json!({
+            "status": "teammate_spawned",
+            "name": "researcher",
+            "teammate_id": "researcher@my-team",
+            "agent_id": "def456",
+            "model": "sonnet",
+            "color": "green"
+        });
+        let event = StreamProcessor::detect_team_event("toolu_2", &result);
+        assert!(event.is_some());
+        match event.unwrap() {
+            StreamEvent::TeammateSpawned { teammate_name, team_name, agent_id, model, color } => {
+                assert_eq!(teammate_name, "researcher");
+                assert_eq!(team_name, "my-team");
+                assert_eq!(agent_id, "def456");
+                assert_eq!(model, "sonnet");
+                assert_eq!(color, "green");
+            }
+            other => panic!("Expected TeammateSpawned, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_detect_team_message_sent_from_tool_result() {
+        let result = serde_json::json!({
+            "success": true,
+            "recipients": ["researcher"],
+            "routing": {
+                "sender": "team-lead",
+                "content": "Please investigate the bug"
+            }
+        });
+        let event = StreamProcessor::detect_team_event("toolu_3", &result);
+        assert!(event.is_some());
+        match event.unwrap() {
+            StreamEvent::TeamMessageSent { sender, recipient, content, message_type } => {
+                assert_eq!(sender, "team-lead");
+                assert_eq!(recipient, Some("researcher".to_string()));
+                assert_eq!(content, "Please investigate the bug");
+                assert_eq!(message_type, "message");
+            }
+            other => panic!("Expected TeamMessageSent, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_detect_team_message_sent_broadcast() {
+        let result = serde_json::json!({
+            "success": true,
+            "recipients": ["researcher", "coder", "tester"],
+            "routing": {
+                "sender": "team-lead",
+                "content": "All stop — blocking issue found"
+            }
+        });
+        let event = StreamProcessor::detect_team_event("toolu_4", &result);
+        assert!(event.is_some());
+        match event.unwrap() {
+            StreamEvent::TeamMessageSent { sender, recipient, message_type, .. } => {
+                assert_eq!(sender, "team-lead");
+                assert!(recipient.is_none(), "Broadcast should have no single recipient");
+                assert_eq!(message_type, "broadcast");
+            }
+            other => panic!("Expected TeamMessageSent (broadcast), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_detect_team_deleted_from_tool_result() {
+        let result = serde_json::json!({
+            "team_deleted": true,
+            "team_name": "my-team"
+        });
+        let event = StreamProcessor::detect_team_event("toolu_5", &result);
+        assert!(event.is_some());
+        match event.unwrap() {
+            StreamEvent::TeamDeleted { team_name } => {
+                assert_eq!(team_name, "my-team");
+            }
+            other => panic!("Expected TeamDeleted, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_detect_team_deleted_with_deleted_flag() {
+        let result = serde_json::json!({
+            "deleted": true,
+            "team_name": "other-team"
+        });
+        let event = StreamProcessor::detect_team_event("toolu_6", &result);
+        assert!(event.is_some());
+        match event.unwrap() {
+            StreamEvent::TeamDeleted { team_name } => {
+                assert_eq!(team_name, "other-team");
+            }
+            other => panic!("Expected TeamDeleted, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_detect_no_team_event_for_regular_result() {
+        let result = serde_json::json!({
+            "output": "Hello world",
+            "exit_code": 0
+        });
+        let event = StreamProcessor::detect_team_event("toolu_7", &result);
+        assert!(event.is_none(), "Regular tool result should not produce a team event");
+    }
+
+    #[test]
+    fn test_detect_no_team_event_for_string_result() {
+        let result = serde_json::json!("Just a plain string result");
+        let event = StreamProcessor::detect_team_event("toolu_8", &result);
+        assert!(event.is_none(), "String result should not produce a team event");
+    }
+
+    #[test]
+    fn test_team_event_emitted_after_tool_result_received() {
+        let mut processor = StreamProcessor::new();
+
+        // Register a tool call (simulating TeamCreate being called)
+        processor.process_message(StreamMessage::Assistant {
+            message: AssistantMessage {
+                content: vec![AssistantContent::ToolUse {
+                    id: "toolu_team_create".to_string(),
+                    name: "TeamCreate".to_string(),
+                    input: serde_json::json!({"team_name": "test-team"}),
+                }],
+                stop_reason: None,
+            },
+            session_id: None,
+        });
+
+        // Send tool result that looks like TeamCreate output
+        let result_msg = StreamMessage::User {
+            message: UserMessage {
+                content: vec![UserContent::ToolResult {
+                    tool_use_id: "toolu_team_create".to_string(),
+                    content: serde_json::json!({
+                        "team_name": "test-team",
+                        "team_file_path": "/home/user/.claude/teams/test-team.json",
+                        "lead_agent_id": "lead123"
+                    }),
+                    is_error: false,
+                }],
+            },
+        };
+
+        let events = processor.process_message(result_msg);
+
+        // Should emit: ToolResultReceived, TeamCreated
+        assert_eq!(events.len(), 2);
+        assert!(matches!(&events[0], StreamEvent::ToolResultReceived { .. }));
+        match &events[1] {
+            StreamEvent::TeamCreated { team_name, config_path } => {
+                assert_eq!(team_name, "test-team");
+                assert_eq!(config_path, "/home/user/.claude/teams/test-team.json");
+            }
+            other => panic!("Expected TeamCreated, got {:?}", other),
+        }
     }
 }

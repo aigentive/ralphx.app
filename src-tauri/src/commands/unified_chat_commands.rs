@@ -151,8 +151,9 @@ fn create_chat_service(
     state: &AppState,
     app_handle: tauri::AppHandle,
     execution_state: &Arc<ExecutionState>,
+    team_tracker: Option<crate::application::team_state_tracker::TeamStateTracker>,
 ) -> ClaudeChatService<tauri::Wry> {
-    ClaudeChatService::new(
+    let mut service = ClaudeChatService::new(
         state.chat_message_repo.clone(),
         state.chat_attachment_repo.clone(),
         state.chat_conversation_repo.clone(),
@@ -168,7 +169,11 @@ fn create_chat_service(
     )
     .with_app_handle(app_handle)
     .with_execution_state(Arc::clone(execution_state))
-    .with_plan_branch_repo(state.plan_branch_repo.clone())
+    .with_plan_branch_repo(state.plan_branch_repo.clone());
+    if let Some(tracker) = team_tracker {
+        service = service.with_team_tracker(tracker);
+    }
+    service
 }
 
 /// Parse context type string to enum
@@ -199,11 +204,12 @@ pub async fn send_agent_message(
     input: SendAgentMessageInput,
     state: State<'_, AppState>,
     execution_state: State<'_, Arc<ExecutionState>>,
+    team_tracker: State<'_, crate::application::team_state_tracker::TeamStateTracker>,
     app: tauri::AppHandle,
 ) -> Result<SendAgentMessageResponse, String> {
     let context_type = parse_context_type(&input.context_type)?;
 
-    let mut service = create_chat_service(&state, app, &execution_state);
+    let mut service = create_chat_service(&state, app, &execution_state, Some(team_tracker.inner().clone()));
 
     // For ideation contexts, check if the session has team_mode enabled
     if context_type == ChatContextType::Ideation {
@@ -249,7 +255,7 @@ pub async fn queue_agent_message(
 ) -> Result<QueuedMessageResponse, String> {
     let context_type = parse_context_type(&input.context_type)?;
 
-    let service = create_chat_service(&state, app, &execution_state);
+    let service = create_chat_service(&state, app, &execution_state, None);
 
     service
         .queue_message(
@@ -274,7 +280,7 @@ pub async fn get_queued_agent_messages(
 ) -> Result<Vec<QueuedMessageResponse>, String> {
     let context_type = parse_context_type(&context_type)?;
 
-    let service = create_chat_service(&state, app, &execution_state);
+    let service = create_chat_service(&state, app, &execution_state, None);
 
     service
         .get_queued_messages(context_type, &context_id)
@@ -295,7 +301,7 @@ pub async fn delete_queued_agent_message(
 ) -> Result<bool, String> {
     let context_type = parse_context_type(&context_type)?;
 
-    let service = create_chat_service(&state, app, &execution_state);
+    let service = create_chat_service(&state, app, &execution_state, None);
 
     service
         .delete_queued_message(context_type, &context_id, &message_id)
@@ -314,7 +320,7 @@ pub async fn list_agent_conversations(
 ) -> Result<Vec<AgentConversationResponse>, String> {
     let context_type_enum = parse_context_type(&context_type)?;
 
-    let service = create_chat_service(&state, app, &execution_state);
+    let service = create_chat_service(&state, app, &execution_state, None);
 
     service
         .list_conversations(context_type_enum, &context_id)
@@ -350,7 +356,7 @@ pub async fn get_agent_conversation(
 
     let conversation_id = ChatConversationId::from_string(&conversation_id);
 
-    let service = create_chat_service(&state, app, &execution_state);
+    let service = create_chat_service(&state, app, &execution_state, None);
 
     service
         .get_conversation_with_messages(&conversation_id)
@@ -399,7 +405,7 @@ pub async fn get_agent_run_status_unified(
 
     let conversation_id = ChatConversationId::from_string(&conversation_id);
 
-    let service = create_chat_service(&state, app, &execution_state);
+    let service = create_chat_service(&state, app, &execution_state, None);
 
     service
         .get_active_run(&conversation_id)
@@ -424,7 +430,7 @@ pub async fn is_chat_service_available(
     execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<bool, String> {
-    let service = create_chat_service(&state, app, &execution_state);
+    let service = create_chat_service(&state, app, &execution_state, None);
     Ok(service.is_available().await)
 }
 
@@ -446,7 +452,7 @@ pub async fn stop_agent(
 ) -> Result<bool, String> {
     let context_type = parse_context_type(&context_type)?;
 
-    let service = create_chat_service(&state, app, &execution_state);
+    let service = create_chat_service(&state, app, &execution_state, None);
 
     service
         .stop_agent(context_type, &context_id)
@@ -465,7 +471,7 @@ pub async fn is_agent_running(
 ) -> Result<bool, String> {
     let context_type = parse_context_type(&context_type)?;
 
-    let service = create_chat_service(&state, app, &execution_state);
+    let service = create_chat_service(&state, app, &execution_state, None);
 
     Ok(service.is_agent_running(context_type, &context_id).await)
 }

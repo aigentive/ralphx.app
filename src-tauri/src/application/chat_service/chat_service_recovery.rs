@@ -132,6 +132,7 @@ pub(super) async fn attempt_session_recovery(
         None,                                       // no assistant message ID
         None,                                       // no question state
         tokio_util::sync::CancellationToken::new(), // standalone token for recovery
+        None,                                       // no team tracker for recovery
     )
     .await
     {
