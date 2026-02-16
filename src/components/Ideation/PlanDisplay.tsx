@@ -24,7 +24,6 @@ import {
 import { artifactApi } from "@/api/artifact";
 import type { Artifact } from "@/types/artifact";
 import { cn } from "@/lib/utils";
-import { TeamFindingsSection } from "./TeamFindingsSection";
 import type { TeamFinding } from "./TeamFindingsSection";
 import { DebateSummary } from "./DebateSummary";
 import type { DebateSummaryData } from "./DebateSummary";
@@ -552,15 +551,6 @@ export function PlanDisplay({
               borderLeft: "2px solid hsla(14 100% 60% / 0.15)",
             }}
           >
-            {/* Team findings section */}
-            {teamMetadata?.teamIdeated && teamMetadata.findings.length > 0 && (
-              <TeamFindingsSection
-                findings={teamMetadata.findings}
-                teamMode={teamMetadata.teamMode}
-                teammateCount={teamMetadata.teammateCount}
-              />
-            )}
-
             {/* Debate summary — shown for debate-mode plans */}
             {teamMetadata?.teamIdeated && teamMetadata.teamMode === "debate" && teamMetadata.debateSummary && (
               <div className="mb-4">
