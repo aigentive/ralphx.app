@@ -338,3 +338,93 @@ Phase 7: FINALIZE
   - Wait for shutdown_response(approve) from each
   - TeamDelete
 ```
+
+---
+
+## Complete Example: Execution Team for a Task
+
+Worker-team leads coordinate coder teammates for wave-based implementation. Unlike ideation teams (research-focused), execution teams write code with exclusive file ownership and validation gates.
+
+```
+Phase 0: RECOVER — read this system card, check team session state
+
+Phase 1: ANALYZE
+  → get_task_context(task_id) → full task details + plan artifact
+  → get_artifact(plan_artifact_id) → extract implementation plan for this task
+  → get_project_analysis(project_id, task_id) → validation commands + environment baseline
+
+Phase 2: DECOMPOSE
+  → Break task into atomic sub-scopes with file ownership:
+     Scope 1: API types (src/types/auth.ts) — Wave 1
+     Scope 2: Backend handlers (src-tauri/src/http_server/handlers/auth.rs) — Wave 1
+     Scope 3: React hooks (src/hooks/useAuth.ts) — Wave 2 (depends on #1, #2)
+     Scope 4: Tests (tests/auth.test.ts) — Wave 3 (depends on all)
+
+Phase 3: APPROVE
+  → request_team_plan(process="worker-execution", teammates=[
+       { role: "coder-1", model: "sonnet", prompt_summary: "Implement API types" },
+       { role: "coder-2", model: "sonnet", prompt_summary: "Implement backend handlers" }
+     ])
+  → User approves in UI → proceed
+
+Phase 4: EXECUTE (wave-by-wave)
+
+  -- Wave 1 --
+  Step 1: TeamCreate
+    team_name: "task-42"
+    description: "Execution team for user auth"
+
+  Step 2: TaskCreate (x2)
+    Task #1: "Implement API types" (file ownership: src/types/auth.ts)
+    Task #2: "Implement backend handlers" (file ownership: src-tauri/.../auth.rs)
+
+  Step 3: Spawn coders FOREGROUND (NO run_in_background — MCP requires it)
+    Coder 1: name="coder-1", model="sonnet", mode="bypassPermissions"
+      → Coder calls start_step(task_id, "Implement auth types")
+      → Coder writes code, calls complete_step(task_id, "Implement auth types")
+      → Coder sends message to lead: "Auth types done, exported UserResponse"
+      → Coder marks task completed
+    Coder 2: name="coder-2", model="sonnet", mode="bypassPermissions"
+      → Same flow with start_step / complete_step for progress tracking
+
+  Step 4: Wave validation gate
+    → get_project_analysis(project_id, task_id) → get validation commands
+    → Run: npm run typecheck, cargo test --lib
+    → All pass → proceed to Wave 2
+    → Any fail → create fix tasks, spawn fix coders, re-validate (max 3 attempts)
+
+  -- Wave 2 --
+  Step 5: TaskCreate for dependent scopes (React hooks)
+    → Spawn coder-3 with context: "Wave 1 outputs: auth types at src/types/auth.ts"
+    → Coder uses start_step / complete_step for progress
+    → Wave validation gate (same as Step 4)
+
+  -- Wave 3 --
+  Step 6: TaskCreate for tests
+    → Spawn coder-4
+    → Final wave validation gate
+
+Phase 5: VALIDATE (final)
+  → Run ALL validation: typecheck + lint + tests
+  → Gate passes → proceed to COMPLETE
+
+Phase 6: COMPLETE
+  → Mark task complete via MCP
+  → SendMessage shutdown_request to each coder
+  → Wait for shutdown_response(approve) from each
+  → TeamDelete
+  → Provide execution summary (waves, coders, files modified, validation status)
+```
+
+**Key differences from ideation teams:**
+
+| Aspect | Ideation Team | Execution Team |
+|--------|---------------|----------------|
+| Purpose | Research + discover | Implement code |
+| Output | Team artifacts (markdown) | Code files + step progress |
+| File access | Read-only | Exclusive write ownership |
+| Progress tracking | Artifacts + messages | `start_step` / `complete_step` MCP tools |
+| Validation | N/A | Gate between every wave (`get_project_analysis`) |
+| Background mode | `run_in_background: true` | **Foreground only** (MCP access required) |
+| Plan approval | `request_team_plan()` | `request_team_plan()` (same) |
+| Teammate model | Typically `sonnet` | Dynamic: `haiku` (simple), `sonnet` (complex), `opus` (architecture) |
