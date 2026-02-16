@@ -81,12 +81,12 @@ export function useTeamEvents(contextKey: string | null) {
       }),
     );
 
-    // team:disbanded
+    // team:disbanded — mark team as historical but keep data visible
+    // (disbandTeam now sets isHistorical=true instead of deleting)
     unsubs.push(
       bus.subscribe<TeamDisbandedPayload>("team:disbanded", (payload) => {
         if (matchKey(payload)) {
           disbandTeam(contextKey);
-          setTeamActive(contextKey, false);
         }
       }),
     );

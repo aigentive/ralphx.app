@@ -2,8 +2,7 @@
  * GrepWidget — Search result card for Grep tool calls.
  *
  * Design: search icon + pattern in monospace + scope path + "N files" badge.
- * Body: matched file paths listed.
- * Inline (no collapse) when ≤3 results, collapsible when more.
+ * Body: matched file paths listed. Collapsed by default.
  *
  * Reference: Widget 10 in mockups/tool-call-widgets.html
  */
@@ -13,8 +12,6 @@ import { Search, FileText } from "lucide-react";
 import { WidgetCard, WidgetHeader, Badge } from "./shared";
 import type { ToolCallWidgetProps } from "./shared";
 import { colors, parseSearchResult } from "./shared.constants";
-
-const MAX_INLINE_RESULTS = 3;
 
 /** Parse Grep arguments from tool call */
 function parseGrepArgs(args: unknown): {
@@ -41,8 +38,6 @@ export const GrepWidget = React.memo(function GrepWidget({
   const { pattern, path } = parseGrepArgs(toolCall.arguments);
   const parsed = useMemo(() => parseSearchResult(toolCall.result), [toolCall.result]);
   const fileCount = parsed.paths.length;
-  const isInline = fileCount <= MAX_INLINE_RESULTS;
-
   // Build title: pattern in monospace, optionally with scope path
   const title = path ? `"${pattern}" in ${path}` : `"${pattern}"`;
 
@@ -70,7 +65,7 @@ export const GrepWidget = React.memo(function GrepWidget({
   // Pending result (tool still running)
   if (toolCall.result === undefined) {
     return (
-      <WidgetCard header={header} compact={compact} alwaysExpanded>
+      <WidgetCard header={header} compact={compact}>
         <span style={{ fontSize: 10.5, color: colors.textMuted }}>
           Searching...
         </span>
@@ -81,7 +76,7 @@ export const GrepWidget = React.memo(function GrepWidget({
   // No results: header + muted note
   if (parsed.isEmpty) {
     return (
-      <WidgetCard header={header} compact={compact} alwaysExpanded>
+      <WidgetCard header={header} compact={compact}>
         <span style={{ fontSize: 10.5, color: colors.textMuted }}>
           {parsed.note || "No matches found"}
         </span>
@@ -93,7 +88,6 @@ export const GrepWidget = React.memo(function GrepWidget({
     <WidgetCard
       header={header}
       compact={compact}
-      alwaysExpanded={isInline}
     >
       <FileList files={parsed.paths} />
     </WidgetCard>

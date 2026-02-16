@@ -12,7 +12,7 @@ use tracing::info;
 
 use crate::application::question_state::QuestionState;
 use crate::application::team_events;
-use crate::application::team_state_tracker::{TeammateStatus, TeamStateTracker};
+use crate::application::team_state_tracker::TeammateStatus;
 use crate::domain::entities::{
     ActivityEvent, ActivityEventType, ChatContextType, ChatConversationId, ChatMessageId, TaskId,
 };
@@ -150,7 +150,7 @@ pub async fn process_stream_background<R: Runtime>(
     assistant_message_id: Option<String>,
     question_state: Option<Arc<QuestionState>>,
     cancellation_token: CancellationToken,
-    team_tracker: Option<TeamStateTracker>,
+    team_service: Option<std::sync::Arc<crate::application::TeamService>>,
     team_mode: bool,
 ) -> Result<StreamOutcome, StreamError> {
     let mut timeout_config = StreamTimeoutConfig::for_context(&context_type);
@@ -534,9 +534,9 @@ pub async fn process_stream_background<R: Runtime>(
                         if let (Some(ref tn), Some(ref tt)) = (&tm_name, &tm_team) {
                             teammate_task_map.insert(tool_use_id.clone(), (tt.clone(), tn.clone()));
 
-                            // Update tracker status to Running
-                            if let Some(ref tracker) = team_tracker {
-                                let _ = tracker.update_teammate_status(tt, tn, TeammateStatus::Running).await;
+                            // Update status to Running via TeamService (persistence + events)
+                            if let Some(ref service) = team_service {
+                                let _ = service.update_teammate_status(tt, tn, TeammateStatus::Running).await;
                             }
 
                             // Emit agent:run_started with teammate_name for frontend
@@ -578,9 +578,9 @@ pub async fn process_stream_background<R: Runtime>(
                     } => {
                         // Check if this completes a teammate Task
                         let tm_name_for_payload = if let Some((tt, tn)) = teammate_task_map.remove(&tool_use_id) {
-                            // Update tracker status to Idle
-                            if let Some(ref tracker) = team_tracker {
-                                let _ = tracker.update_teammate_status(&tt, &tn, TeammateStatus::Idle).await;
+                            // Update status to Idle via TeamService (persistence + events)
+                            if let Some(ref service) = team_service {
+                                let _ = service.update_teammate_status(&tt, &tn, TeammateStatus::Idle).await;
                             }
 
                             // Emit agent:run_completed with teammate_name for frontend
@@ -694,12 +694,13 @@ pub async fn process_stream_background<R: Runtime>(
                     }
 
                     StreamEvent::TeamCreated { team_name, config_path: _ } => {
-                        if let Some(ref tracker) = team_tracker {
-                            if !tracker.team_exists(&team_name).await {
-                                let _ = tracker.create_team(&team_name, &context_id_str, &context_type_str).await;
+                        // Create team via TeamService (persistence + events)
+                        if let Some(ref service) = team_service {
+                            if !service.team_exists(&team_name).await {
+                                let _ = service.create_team(&team_name, &context_id_str, &context_type_str).await;
                             }
-                        }
-                        if let Some(ref handle) = app_handle {
+                        } else if let Some(ref handle) = app_handle {
+                            // Fallback: emit event directly if no service available
                             team_events::emit_team_created(
                                 handle,
                                 &team_name,
@@ -709,13 +710,12 @@ pub async fn process_stream_background<R: Runtime>(
                         }
                     }
                     StreamEvent::TeammateSpawned { teammate_name, team_name, agent_id: _, model, color } => {
-                        // Register teammate in tracker (may already exist from approve_team_plan)
-                        if let Some(ref tracker) = team_tracker {
-                            let _ = tracker.add_teammate(&team_name, &teammate_name, &color, &model, "team-member").await;
-                        }
-
-                        // Emit event for frontend
-                        if let Some(ref handle) = app_handle {
+                        // Register teammate via TeamService (persistence + events)
+                        // May already exist from approve_team_plan — add_teammate returns error if duplicate
+                        if let Some(ref service) = team_service {
+                            let _ = service.add_teammate(&team_name, &teammate_name, &color, &model, "team-member").await;
+                        } else if let Some(ref handle) = app_handle {
+                            // Fallback: emit event directly if no service available
                             team_events::emit_teammate_spawned(
                                 handle,
                                 &team_name,
@@ -748,10 +748,11 @@ pub async fn process_stream_background<R: Runtime>(
                         }
                     }
                     StreamEvent::TeamDeleted { team_name } => {
-                        if let Some(ref tracker) = team_tracker {
-                            let _ = tracker.disband_team(&team_name).await;
-                        }
-                        if let Some(ref handle) = app_handle {
+                        // Disband team via TeamService (persistence + events)
+                        if let Some(ref service) = team_service {
+                            let _ = service.disband_team(&team_name).await;
+                        } else if let Some(ref handle) = app_handle {
+                            // Fallback: emit event directly if no service available
                             team_events::emit_team_disbanded(
                                 handle,
                                 &team_name,

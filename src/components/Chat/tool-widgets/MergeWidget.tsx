@@ -156,12 +156,10 @@ function ReportConflictWidget({ toolCall, compact = false }: ToolCallWidgetProps
   }
 
   const fileCount = conflictFiles.length;
-  const fewFiles = fileCount <= 3;
 
   return (
     <WidgetCard
       compact={compact}
-      alwaysExpanded={fewFiles}
       header={
         <WidgetHeader
           icon={<AlertTriangle size={14} style={{ color: colors.error }} />}
@@ -223,7 +221,6 @@ function ReportIncompleteWidget({ toolCall, compact = false }: ToolCallWidgetPro
   return (
     <WidgetCard
       compact={compact}
-      alwaysExpanded={!diagnosticInfo}
       header={
         <WidgetHeader
           icon={<AlertTriangle size={14} style={{ color: colors.accent }} />}

@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tower_http::cors::{Any, CorsLayer};
 
-use crate::application::{AppState, TeamStateTracker};
+use crate::application::{AppState, TeamService, TeamStateTracker};
 use crate::commands::ExecutionState;
 use crate::error::AppResult;
 
@@ -29,10 +29,25 @@ pub async fn start_http_server(
     execution_state: Arc<ExecutionState>,
     team_tracker: TeamStateTracker,
 ) -> AppResult<()> {
+    // Build TeamService for HTTP handlers (wraps tracker with DB persistence + events)
+    let team_service = {
+        let tracker_arc = Arc::new(team_tracker.clone());
+        match &app_state.app_handle {
+            Some(handle) => Arc::new(TeamService::new_with_repos(
+                tracker_arc,
+                handle.clone(),
+                app_state.team_session_repo.clone(),
+                app_state.team_message_repo.clone(),
+            )),
+            None => Arc::new(TeamService::new_without_events(tracker_arc)),
+        }
+    };
+
     let state = HttpServerState {
         app_state,
         execution_state,
         team_tracker,
+        team_service,
     };
 
     let app = Router::new()

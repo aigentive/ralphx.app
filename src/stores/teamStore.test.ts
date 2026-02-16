@@ -249,13 +249,22 @@ describe("teamStore", () => {
   // ── disbandTeam ─────────────────────────────────────────────────
 
   describe("disbandTeam", () => {
-    it("removes the team entirely", () => {
+    it("marks the team as historical instead of deleting", () => {
       useTeamStore.getState().createTeam(CONTEXT_KEY, "team", "lead");
       useTeamStore.getState().addTeammate(CONTEXT_KEY, makeTeammate({ name: "coder-1" }));
 
       useTeamStore.getState().disbandTeam(CONTEXT_KEY);
 
-      expect(useTeamStore.getState().activeTeams[CONTEXT_KEY]).toBeUndefined();
+      const team = useTeamStore.getState().activeTeams[CONTEXT_KEY];
+      expect(team).toBeDefined();
+      expect(team?.isHistorical).toBe(true);
+      // Teammates data preserved
+      expect(Object.keys(team!.teammates)).toHaveLength(1);
+    });
+
+    it("no-ops when team does not exist", () => {
+      useTeamStore.getState().disbandTeam("nonexistent");
+      expect(useTeamStore.getState().activeTeams["nonexistent"]).toBeUndefined();
     });
   });
 
@@ -274,6 +283,102 @@ describe("teamStore", () => {
 
       const result = useTeamStore.getState().getTeammates(CONTEXT_KEY);
       expect(result).toHaveLength(2);
+    });
+  });
+
+  // ── hydrateFromHistory ─────────────────────────────────────────
+
+  describe("hydrateFromHistory", () => {
+    it("hydrates team from camelCase backend history response", () => {
+      const history = {
+        session: {
+          id: "session-1",
+          teamName: "task-abc",
+          leadName: "team-lead",
+          contextType: "task_execution",
+          contextId: "abc",
+          phase: "disbanded",
+          createdAt: "2026-02-15T10:00:00+00:00",
+          disbandedAt: "2026-02-15T11:00:00+00:00",
+          teammates: [{
+            name: "coder-1",
+            color: "#3b82f6",
+            model: "sonnet",
+            role: "Auth middleware",
+            status: "shutdown",
+            cost: { input_tokens: 50000, output_tokens: 10000, cache_creation_tokens: 0, cache_read_tokens: 0, estimated_usd: 0.30 },
+            spawnedAt: "2026-02-15T10:00:00+00:00",
+            lastActivityAt: "2026-02-15T10:30:00+00:00",
+          }],
+        },
+        messages: [{
+          id: "msg-1",
+          sender: "coder-1",
+          recipient: null,
+          content: "Done",
+          messageType: "teammate_message",
+          createdAt: "2026-02-15T10:30:00+00:00",
+        }],
+      };
+
+      useTeamStore.getState().hydrateFromHistory(CONTEXT_KEY, history);
+
+      const team = useTeamStore.getState().activeTeams[CONTEXT_KEY];
+      expect(team).toBeDefined();
+      expect(team!.teamName).toBe("task-abc");
+      expect(team!.leadName).toBe("team-lead");
+      expect(team!.createdAt).toBe("2026-02-15T10:00:00+00:00");
+      expect(team!.isHistorical).toBe(true);
+      expect(team!.teammates["coder-1"]).toBeDefined();
+      expect(team!.teammates["coder-1"]!.tokensUsed).toBe(60000);
+      expect(team!.teammates["coder-1"]!.estimatedCostUsd).toBe(0.30);
+      expect(team!.messages).toHaveLength(1);
+      expect(team!.messages[0]!.timestamp).toBe("2026-02-15T10:30:00+00:00");
+    });
+
+    it("falls back to teamName when leadName is null", () => {
+      const history = {
+        session: {
+          id: "session-2",
+          teamName: "task-xyz",
+          leadName: null,
+          contextType: "task_execution",
+          contextId: "xyz",
+          phase: "disbanded",
+          createdAt: "2026-02-15T10:00:00+00:00",
+          disbandedAt: null,
+          teammates: [],
+        },
+        messages: [],
+      };
+
+      useTeamStore.getState().hydrateFromHistory(CONTEXT_KEY, history);
+
+      const team = useTeamStore.getState().activeTeams[CONTEXT_KEY];
+      expect(team!.leadName).toBe("task-xyz");
+    });
+
+    it("skips hydration if team already exists", () => {
+      useTeamStore.getState().createTeam(CONTEXT_KEY, "existing", "lead");
+
+      const history = {
+        session: {
+          id: "session-1",
+          teamName: "should-not-overwrite",
+          leadName: "other",
+          contextType: "task_execution",
+          contextId: "abc",
+          phase: "disbanded",
+          createdAt: "2026-02-15T10:00:00+00:00",
+          disbandedAt: null,
+          teammates: [],
+        },
+        messages: [],
+      };
+
+      useTeamStore.getState().hydrateFromHistory(CONTEXT_KEY, history);
+
+      expect(useTeamStore.getState().activeTeams[CONTEXT_KEY]!.teamName).toBe("existing");
     });
   });
 

@@ -261,30 +261,18 @@ pub async fn approve_team_plan(
             )
         })?;
 
-    // 2. Create team (or find existing)
+    // 2. Create team (or find existing) — via TeamService for DB persistence + events
     let team_name = format!("{}-{}", plan.process, &req.context_id[..8.min(req.context_id.len())]);
-    let team_exists = state.team_tracker.team_exists(&team_name).await;
+    let team_exists = state.team_service.team_exists(&team_name).await;
     if !team_exists {
         state
-            .team_tracker
+            .team_service
             .create_team(&team_name, &req.context_id, &req.context_type)
             .await
             .map_err(|e| {
                 error!(error = %e, "Failed to create team");
                 (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
             })?;
-
-        // Emit team:created
-        if let Some(app_handle) = &state.app_state.app_handle {
-            let _ = app_handle.emit(
-                "team:created",
-                serde_json::json!({
-                    "team_name": team_name,
-                    "context_type": req.context_type,
-                    "context_id": req.context_id,
-                }),
-            );
-        }
     }
 
     // 3. Pre-register names/colors for each teammate (actual registration happens
@@ -465,7 +453,7 @@ pub async fn request_teammate_spawn(
 
     // 4. Check teammate count against constraint max
     let current_count = state
-        .team_tracker
+        .team_service
         .get_teammate_count(&team_name)
         .await
         .unwrap_or(0);
@@ -479,13 +467,13 @@ pub async fn request_teammate_spawn(
         ));
     }
 
-    // 5. Register teammate in tracker (status: Spawning)
+    // 5. Register teammate via TeamService (persists to DB + emits events)
     state
-        .team_tracker
+        .team_service
         .add_teammate(&team_name, &teammate_name, &teammate_color, &req.model, &req.role)
         .await
         .map_err(|e| {
-            error!(error = %e, "Failed to register teammate in tracker");
+            error!(error = %e, "Failed to register teammate");
             (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
         })?;
 
@@ -546,7 +534,7 @@ pub async fn request_teammate_spawn(
                 }
             };
 
-            // 9. Create TeammateHandle and register in tracker
+            // 9. Create TeammateHandle and register via TeamService
             let handle = TeammateHandle {
                 child,
                 stream_task,
@@ -554,7 +542,7 @@ pub async fn request_teammate_spawn(
             };
 
             state
-                .team_tracker
+                .team_service
                 .set_teammate_handle(&team_name, &teammate_name, handle)
                 .await
                 .map_err(|e| {
@@ -562,27 +550,11 @@ pub async fn request_teammate_spawn(
                     (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
                 })?;
 
-            // 10. Update status to Running
+            // 10. Update status to Running (via TeamService for persistence + events)
             let _ = state
-                .team_tracker
+                .team_service
                 .update_teammate_status(&team_name, &teammate_name, TeammateStatus::Running)
                 .await;
-
-            // 11. Emit spawned event (include context_type and context_id for frontend routing)
-            if let Some(app_handle) = &state.app_state.app_handle {
-                let _ = app_handle.emit(
-                    "team:teammate_spawned",
-                    serde_json::json!({
-                        "team_name": team_name,
-                        "teammate_name": teammate_name,
-                        "role": req.role,
-                        "model": req.model,
-                        "color": teammate_color,
-                        "context_type": "ideation",
-                        "context_id": context_id,
-                    }),
-                );
-            }
 
             Ok(Json(RequestTeammateSpawnResponse {
                 success: true,
@@ -600,7 +572,7 @@ pub async fn request_teammate_spawn(
             );
 
             let _ = state
-                .team_tracker
+                .team_service
                 .update_teammate_status(&team_name, &teammate_name, TeammateStatus::Failed)
                 .await;
 
@@ -630,12 +602,12 @@ pub async fn request_teammate_spawn(
 /// Color palette for teammate distinction
 const TEAMMATE_COLORS: &[&str] = &["blue", "green", "cyan", "magenta", "yellow"];
 
-/// Find the first active team in the tracker.
+/// Find the first active team via TeamService.
 /// Returns (team_name, context_id).
 async fn find_active_team(state: &HttpServerState) -> Result<(String, String), String> {
-    let teams = state.team_tracker.list_teams().await;
+    let teams = state.team_service.list_teams().await;
     for team_name in &teams {
-        if let Ok(status) = state.team_tracker.get_team_status(team_name).await {
+        if let Ok(status) = state.team_service.get_team_status(team_name).await {
             let phase = status.phase;
             if phase == crate::application::team_state_tracker::TeamPhase::Active
                 || phase == crate::application::team_state_tracker::TeamPhase::Forming
@@ -654,7 +626,7 @@ async fn generate_unique_teammate_name(
     role: &str,
 ) -> String {
     let base_name = role.to_string();
-    if let Ok(status) = state.team_tracker.get_team_status(team_name).await {
+    if let Ok(status) = state.team_service.get_team_status(team_name).await {
         let existing_names: Vec<&str> = status.teammates.iter().map(|t| t.name.as_str()).collect();
         if !existing_names.contains(&base_name.as_str()) {
             return base_name;
@@ -673,7 +645,7 @@ async fn generate_unique_teammate_name(
 /// Assign a color from the palette based on current teammate count.
 async fn assign_teammate_color(state: &HttpServerState, team_name: &str) -> String {
     let count = state
-        .team_tracker
+        .team_service
         .get_teammate_count(team_name)
         .await
         .unwrap_or(0);
@@ -830,12 +802,12 @@ pub async fn get_team_session_state(
     State(state): State<HttpServerState>,
     Path(session_id): Path<String>,
 ) -> Result<Json<TeamSessionStateResponse>, (StatusCode, String)> {
-    // Check active teams in the tracker
-    let teams = state.team_tracker.list_teams().await;
+    // Check active teams via TeamService
+    let teams = state.team_service.list_teams().await;
 
     // Look for a team that matches this session_id (teams use session_id as context)
     for team_name in &teams {
-        if let Ok(status) = state.team_tracker.get_team_status(team_name).await {
+        if let Ok(status) = state.team_service.get_team_status(team_name).await {
             // Check if this team's context matches the session_id
             if status.context_id == session_id {
                 let team_composition: Vec<TeamCompositionEntry> = status
@@ -1062,10 +1034,15 @@ mod tests {
 
     fn test_state() -> HttpServerState {
         use std::sync::Arc;
+        let tracker = TeamStateTracker::new();
+        let team_service = Arc::new(crate::application::TeamService::new_without_events(
+            Arc::new(tracker.clone()),
+        ));
         HttpServerState {
             app_state: Arc::new(crate::application::AppState::new_test()),
             execution_state: Arc::new(crate::commands::ExecutionState::new()),
-            team_tracker: TeamStateTracker::new(),
+            team_tracker: tracker,
+            team_service,
         }
     }
 

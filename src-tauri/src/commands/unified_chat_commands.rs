@@ -151,7 +151,7 @@ fn create_chat_service(
     state: &AppState,
     app_handle: tauri::AppHandle,
     execution_state: &Arc<ExecutionState>,
-    team_tracker: Option<crate::application::team_state_tracker::TeamStateTracker>,
+    team_service: Option<std::sync::Arc<crate::application::TeamService>>,
 ) -> ClaudeChatService<tauri::Wry> {
     let mut service = ClaudeChatService::new(
         state.chat_message_repo.clone(),
@@ -170,8 +170,8 @@ fn create_chat_service(
     .with_app_handle(app_handle)
     .with_execution_state(Arc::clone(execution_state))
     .with_plan_branch_repo(state.plan_branch_repo.clone());
-    if let Some(tracker) = team_tracker {
-        service = service.with_team_tracker(tracker);
+    if let Some(svc) = team_service {
+        service = service.with_team_service(svc);
     }
     service
 }
@@ -204,12 +204,12 @@ pub async fn send_agent_message(
     input: SendAgentMessageInput,
     state: State<'_, AppState>,
     execution_state: State<'_, Arc<ExecutionState>>,
-    team_tracker: State<'_, crate::application::team_state_tracker::TeamStateTracker>,
+    team_service: State<'_, std::sync::Arc<crate::application::TeamService>>,
     app: tauri::AppHandle,
 ) -> Result<SendAgentMessageResponse, String> {
     let context_type = parse_context_type(&input.context_type)?;
 
-    let mut service = create_chat_service(&state, app, &execution_state, Some(team_tracker.inner().clone()));
+    let mut service = create_chat_service(&state, app, &execution_state, Some(team_service.inner().clone()));
 
     // For ideation contexts, check if the session has team_mode enabled
     if context_type == ChatContextType::Ideation {

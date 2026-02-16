@@ -512,11 +512,16 @@ mod tests {
     async fn setup_test_state() -> HttpServerState {
         let app_state = Arc::new(AppState::new_test());
         let execution_state = Arc::new(ExecutionState::new());
+        let tracker = crate::application::TeamStateTracker::new();
+        let team_service = Arc::new(crate::application::TeamService::new_without_events(
+            Arc::new(tracker.clone()),
+        ));
 
         HttpServerState {
             app_state,
             execution_state,
-            team_tracker: crate::application::TeamStateTracker::new(),
+            team_tracker: tracker,
+            team_service,
         }
     }
 

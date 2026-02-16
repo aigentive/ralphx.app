@@ -4,6 +4,7 @@
 // agent team lifecycle, status, and messaging. Mutation commands use
 // TeamService (which emits events), read-only commands use raw tracker.
 
+use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -54,7 +55,7 @@ pub struct SendTeammateMessageInput {
 #[tauri::command]
 pub async fn create_team(
     input: CreateTeamInput,
-    service: State<'_, TeamService>,
+    service: State<'_, Arc<TeamService>>,
 ) -> Result<(), String> {
     service
         .create_team(&input.team_name, &input.context_id, &input.context_type)
@@ -68,7 +69,7 @@ pub async fn create_team(
 #[tauri::command]
 pub async fn send_team_message(
     input: SendTeamMessageInput,
-    service: State<'_, TeamService>,
+    service: State<'_, Arc<TeamService>>,
 ) -> Result<TeamMessageResponse, String> {
     let msg = service
         .send_user_message(&input.team_name, &input.content)
@@ -92,7 +93,7 @@ pub async fn send_team_message(
 #[tauri::command]
 pub async fn send_teammate_message(
     input: SendTeammateMessageInput,
-    service: State<'_, TeamService>,
+    service: State<'_, Arc<TeamService>>,
 ) -> Result<(), String> {
     service
         .send_stdin_message(&input.team_name, &input.teammate_name, &input.content)
@@ -108,7 +109,7 @@ pub async fn send_teammate_message(
 pub async fn stop_teammate(
     team_name: String,
     teammate_name: String,
-    service: State<'_, TeamService>,
+    service: State<'_, Arc<TeamService>>,
 ) -> Result<(), String> {
     service
         .stop_teammate(&team_name, &teammate_name)
@@ -123,7 +124,7 @@ pub async fn stop_teammate(
 #[tauri::command]
 pub async fn stop_team(
     team_name: String,
-    service: State<'_, TeamService>,
+    service: State<'_, Arc<TeamService>>,
 ) -> Result<(), String> {
     service
         .stop_team(&team_name)
@@ -138,7 +139,7 @@ pub async fn stop_team(
 #[tauri::command]
 pub async fn disband_team(
     team_name: String,
-    service: State<'_, TeamService>,
+    service: State<'_, Arc<TeamService>>,
 ) -> Result<(), String> {
     service
         .disband_team(&team_name)
@@ -264,7 +265,7 @@ pub async fn get_team_history(
 ) -> Result<TeamHistoryResponse, String> {
     let sessions = state
         .team_session_repo
-        .get_by_context(&input.context_id, &input.context_type)
+        .get_by_context(&input.context_type, &input.context_id)
         .await
         .map_err(|e| e.to_string())?;
 
