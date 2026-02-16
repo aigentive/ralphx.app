@@ -287,7 +287,9 @@ pub async fn approve_team_plan(
         }
     }
 
-    // 3. Register each teammate (lead will spawn them via Task tool)
+    // 3. Pre-register names/colors for each teammate (actual registration happens
+    //    in request_teammate_spawn or via TeammateSpawned stream events — NOT here,
+    //    to avoid duplicate add_teammate calls that cause "-2" suffixed names).
     let mut spawned_teammates = Vec::new();
 
     for pending in &plan.teammates {
@@ -295,27 +297,7 @@ pub async fn approve_team_plan(
             generate_unique_teammate_name(&state, &team_name, &pending.role).await;
         let teammate_color = assign_teammate_color(&state, &team_name).await;
 
-        // Register in tracker (status: Spawning — will be updated when lead spawns via Task)
-        if let Err(e) = state
-            .team_tracker
-            .add_teammate(
-                &team_name,
-                &teammate_name,
-                &teammate_color,
-                &pending.model,
-                &pending.role,
-            )
-            .await
-        {
-            warn!(
-                teammate = %teammate_name,
-                error = %e,
-                "Failed to register teammate — skipping"
-            );
-            continue;
-        }
-
-        // Emit team:teammate_spawned for frontend UI
+        // Emit team:teammate_spawned for frontend UI (so it can show "Spawning" status)
         if let Some(app_handle) = &state.app_state.app_handle {
             let _ = app_handle.emit(
                 "team:teammate_spawned",
