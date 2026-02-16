@@ -82,6 +82,11 @@ impl TeamService {
         &self.tracker
     }
 
+    /// Get an Arc reference to the underlying tracker (for spawning stream processors).
+    pub fn tracker_arc(&self) -> Arc<TeamStateTracker> {
+        self.tracker.clone()
+    }
+
     // ========================================================================
     // Mutation methods (tracker op + event emit)
     // ========================================================================

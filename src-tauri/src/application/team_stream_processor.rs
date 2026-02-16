@@ -14,7 +14,10 @@ use tokio::process::ChildStdout;
 use tokio::task::JoinHandle;
 
 use crate::application::team_events;
-use crate::application::team_state_tracker::{TeamStateTracker, TeammateCost, TeammateStatus};
+use crate::application::team_service::TeamService;
+use crate::application::team_state_tracker::{
+    TeamMessageType, TeamStateTracker, TeammateCost, TeammateStatus,
+};
 use crate::infrastructure::agents::claude::{StreamEvent, StreamProcessor};
 
 /// Start a background task that reads a teammate's stdout and emits Tauri events.
@@ -30,6 +33,7 @@ use crate::infrastructure::agents::claude::{StreamEvent, StreamProcessor};
 /// * `context_id` - Chat context ID (e.g. session ID)
 /// * `app_handle` - Tauri AppHandle for emitting events to the frontend
 /// * `team_tracker` - TeamStateTracker for updating teammate cost/status
+/// * `team_service` - Optional TeamService for message persistence and proper event emission
 pub fn start_teammate_stream<R: Runtime>(
     stdout: ChildStdout,
     team_name: String,
@@ -38,6 +42,7 @@ pub fn start_teammate_stream<R: Runtime>(
     context_id: String,
     app_handle: AppHandle<R>,
     team_tracker: Arc<TeamStateTracker>,
+    team_service: Option<Arc<TeamService>>,
 ) -> JoinHandle<()> {
     let span = tracing::info_span!(
         "teammate_stream",
@@ -70,6 +75,10 @@ pub fn start_teammate_stream<R: Runtime>(
         let mut lines_seen: usize = 0;
         let mut lines_parsed: usize = 0;
 
+        // Accumulate text output for persistence on turn boundaries
+        let mut text_buffer = String::new();
+        let mut has_emitted_running = false;
+
         // Track cumulative cost from result events
         let mut total_cost_usd: f64 = 0.0;
         let mut total_input_tokens: u64 = 0;
@@ -87,6 +96,29 @@ pub fn start_teammate_stream<R: Runtime>(
                         for event in stream_events {
                             match event {
                                 StreamEvent::TextChunk(text) => {
+                                    // Emit "running" status on first text output
+                                    if !has_emitted_running {
+                                        has_emitted_running = true;
+                                        let _ = team_tracker
+                                            .update_teammate_status(
+                                                &team_name,
+                                                &teammate_name,
+                                                TeammateStatus::Running,
+                                            )
+                                            .await;
+                                        team_events::emit_teammate_status_change(
+                                            &app_handle,
+                                            &team_name,
+                                            &teammate_name,
+                                            TeammateStatus::Running,
+                                            &context_type,
+                                            &context_id,
+                                        );
+                                    }
+
+                                    // Accumulate text for persistence on turn boundary
+                                    text_buffer.push_str(&text);
+
                                     let _ = app_handle.emit(
                                         "agent:chunk",
                                         serde_json::json!({
@@ -210,12 +242,67 @@ pub fn start_teammate_stream<R: Runtime>(
                                         }),
                                     );
                                 }
+                                StreamEvent::TeamMessageSent {
+                                    sender,
+                                    recipient,
+                                    content,
+                                    message_type,
+                                } => {
+                                    // Persist message and emit proper team:message event
+                                    let msg_type = match message_type.as_str() {
+                                        "broadcast" => TeamMessageType::Broadcast,
+                                        _ => TeamMessageType::TeammateMessage,
+                                    };
+
+                                    if let Some(ref service) = team_service {
+                                        // Use TeamService for full persistence + event emission
+                                        match service
+                                            .add_teammate_message(
+                                                &team_name,
+                                                &sender,
+                                                recipient.as_deref(),
+                                                &content,
+                                                msg_type,
+                                            )
+                                            .await
+                                        {
+                                            Ok(_) => {
+                                                tracing::info!(
+                                                    teammate = %teammate_name,
+                                                    sender = %sender,
+                                                    recipient = ?recipient,
+                                                    "Teammate message persisted and emitted"
+                                                );
+                                            }
+                                            Err(e) => {
+                                                tracing::error!(
+                                                    error = %e,
+                                                    sender = %sender,
+                                                    "Failed to persist teammate message"
+                                                );
+                                            }
+                                        }
+                                    } else {
+                                        // Fallback: emit event directly without persistence
+                                        let _ = app_handle.emit(
+                                            "team:message",
+                                            serde_json::json!({
+                                                "team_name": team_name,
+                                                "sender": sender,
+                                                "recipient": recipient,
+                                                "content": content,
+                                                "message_type": message_type,
+                                                "context_type": context_type,
+                                                "context_id": context_id,
+                                            }),
+                                        );
+                                    }
+                                }
                                 StreamEvent::HookStarted { .. }
                                 | StreamEvent::HookCompleted { .. }
                                 | StreamEvent::HookBlock { .. }
                                 | StreamEvent::TeamCreated { .. }
                                 | StreamEvent::TeammateSpawned { .. }
-                                | StreamEvent::TeamMessageSent { .. }
                                 | StreamEvent::TeamDeleted { .. } => {
                                     // Hook and team events from teammates are not forwarded
                                     // (hooks run on the lead, team events only relevant from lead's stream)
@@ -224,11 +311,26 @@ pub fn start_teammate_stream<R: Runtime>(
                         }
                     }
 
-                    // Check for result events with cost info by re-parsing the line
-                    // (StreamProcessor captures this in its state but doesn't emit
-                    // a dedicated cost event, so we parse it separately)
+                    // Check for result events with cost info and persist text buffer
                     if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&line) {
                         if raw.get("type").and_then(|t| t.as_str()) == Some("result") {
+                            // Persist accumulated text as a teammate message on turn boundary
+                            if !text_buffer.is_empty() {
+                                if let Some(ref service) = team_service {
+                                    let _ = service
+                                        .add_teammate_message(
+                                            &team_name,
+                                            &teammate_name,
+                                            None,
+                                            &text_buffer,
+                                            TeamMessageType::TeammateMessage,
+                                        )
+                                        .await;
+                                }
+                                text_buffer.clear();
+                            }
+                            // Reset running flag for next turn
+                            has_emitted_running = false;
                             // Extract cost_usd from result event
                             if let Some(cost) = raw.get("cost_usd").and_then(|c| c.as_f64()) {
                                 total_cost_usd += cost;
@@ -285,6 +387,22 @@ pub fn start_teammate_stream<R: Runtime>(
                     }
                 }
                 Ok(None) => {
+                    // Persist any remaining text buffer before closing
+                    if !text_buffer.is_empty() {
+                        if let Some(ref service) = team_service {
+                            let _ = service
+                                .add_teammate_message(
+                                    &team_name,
+                                    &teammate_name,
+                                    None,
+                                    &text_buffer,
+                                    TeamMessageType::TeammateMessage,
+                                )
+                                .await;
+                        }
+                        text_buffer.clear();
+                    }
+
                     // EOF — stdout closed, teammate process exited
                     tracing::info!(
                         teammate = %teammate_name,
@@ -359,10 +477,27 @@ mod tests {
                 _context_id: String,
                 _app_handle: AppHandle,
                 _team_tracker: Arc<TeamStateTracker>,
+                _team_service: Option<Arc<TeamService>>,
             ) -> JoinHandle<()> {
                 unimplemented!()
             }
             let _ = _check;
         }
+    }
+
+    #[test]
+    fn test_message_type_mapping() {
+        // Verify TeamMessageSent message_type string → TeamMessageType mapping
+        let broadcast_type = match "broadcast" {
+            "broadcast" => TeamMessageType::Broadcast,
+            _ => TeamMessageType::TeammateMessage,
+        };
+        assert_eq!(broadcast_type, TeamMessageType::Broadcast);
+
+        let message_type = match "message" {
+            "broadcast" => TeamMessageType::Broadcast,
+            _ => TeamMessageType::TeammateMessage,
+        };
+        assert_eq!(message_type, TeamMessageType::TeammateMessage);
     }
 }

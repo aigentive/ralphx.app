@@ -515,6 +515,7 @@ pub async fn request_teammate_spawn(
                             context_id.clone(),
                             app_handle.clone(),
                             std::sync::Arc::new(state.team_tracker.clone()),
+                            Some(state.team_service.clone()),
                         ),
                     )
                 }

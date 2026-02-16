@@ -267,6 +267,10 @@ pub enum StreamEvent {
         agent_id: String,
         model: String,
         color: String,
+        /// The teammate's initial task prompt (from Task tool's `prompt` field)
+        prompt: String,
+        /// Claude Code agent type controlling built-in tool set (e.g. "general-purpose")
+        agent_type: String,
     },
     /// Team message sent (from SendMessage tool result)
     TeamMessageSent {
@@ -871,6 +875,8 @@ impl StreamProcessor {
                 agent_id: result["agent_id"].as_str().unwrap_or("").to_string(),
                 model: result["model"].as_str().unwrap_or("").to_string(),
                 color: result.get("color").and_then(|c| c.as_str()).unwrap_or("blue").to_string(),
+                prompt: result.get("prompt").and_then(|p| p.as_str()).unwrap_or("").to_string(),
+                agent_type: result.get("agent_type").and_then(|a| a.as_str()).unwrap_or("general-purpose").to_string(),
             });
         }
 
@@ -2380,17 +2386,21 @@ mod tests {
             "teammate_id": "researcher@my-team",
             "agent_id": "def456",
             "model": "sonnet",
-            "color": "green"
+            "color": "green",
+            "prompt": "Research WebSocket vs SSE transport options",
+            "agent_type": "general-purpose"
         });
         let event = StreamProcessor::detect_team_event("toolu_2", &result);
         assert!(event.is_some());
         match event.unwrap() {
-            StreamEvent::TeammateSpawned { teammate_name, team_name, agent_id, model, color } => {
+            StreamEvent::TeammateSpawned { teammate_name, team_name, agent_id, model, color, prompt, agent_type } => {
                 assert_eq!(teammate_name, "researcher");
                 assert_eq!(team_name, "my-team");
                 assert_eq!(agent_id, "def456");
                 assert_eq!(model, "sonnet");
                 assert_eq!(color, "green");
+                assert_eq!(prompt, "Research WebSocket vs SSE transport options");
+                assert_eq!(agent_type, "general-purpose");
             }
             other => panic!("Expected TeammateSpawned, got {:?}", other),
         }

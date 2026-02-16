@@ -107,6 +107,10 @@ pub struct TeammateSpawnConfig {
     pub mcp_agent_type: String,
     /// Additional environment variables
     pub env: HashMap<String, String>,
+    /// Optional print-mode prompt. When set, teammate uses `-p <prompt>` (one-shot)
+    /// instead of interactive `--append-system-prompt` mode. Used for auto-spawning
+    /// teammates detected from the lead's stream.
+    pub print_mode_prompt: Option<String>,
 }
 
 impl TeammateSpawnConfig {
@@ -131,6 +135,7 @@ impl TeammateSpawnConfig {
             agent_type: "general-purpose".to_string(),
             mcp_agent_type: "ideation-team-member".to_string(),
             env: HashMap::new(),
+            print_mode_prompt: None,
         }
     }
 
@@ -185,6 +190,12 @@ impl TeammateSpawnConfig {
     /// Add an environment variable.
     pub fn with_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.env.insert(key.into(), value.into());
+        self
+    }
+
+    /// Set print-mode prompt for one-shot `-p` execution (auto-spawn mode).
+    pub fn with_print_mode_prompt(mut self, prompt: impl Into<String>) -> Self {
+        self.print_mode_prompt = Some(prompt.into());
         self
     }
 }
@@ -734,8 +745,13 @@ impl ClaudeCodeClient {
             args.extend(["--allowedTools".to_string(), prefixed.join(",")]);
         }
 
-        // Lead-generated role prompt via --append-system-prompt
-        args.extend(["--append-system-prompt".to_string(), config.prompt.clone()]);
+        // Prompt mode: print-mode (-p) for auto-spawned teammates, interactive
+        // (--append-system-prompt) for manually spawned teammates
+        if let Some(ref prompt) = config.print_mode_prompt {
+            args.extend(["-p".to_string(), prompt.clone()]);
+        } else {
+            args.extend(["--append-system-prompt".to_string(), config.prompt.clone()]);
+        }
 
         // Skip permissions for automated teammates
         args.push("--dangerously-skip-permissions".to_string());
