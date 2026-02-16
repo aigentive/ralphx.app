@@ -1,14 +1,20 @@
 /**
- * TeamResearchView - Full-content artifact cards for the "Team Research" tab
+ * TeamResearchView - Collapsible artifact cards for the "Team Research" tab
  *
- * Fetches full artifact content on mount and renders each as a scrollable
- * glass-morphism card with ReactMarkdown. macOS Tahoe styling, warm orange accent.
+ * Cards collapsed by default with content_preview visible. Full artifact content
+ * lazy-fetched on first expand and cached. Markdown rendering memoized.
+ * macOS Tahoe styling, warm orange accent. Pattern: PlanDisplay.tsx Collapsible.
  */
 
-import { useState, useEffect } from "react";
-import { Microscope, BarChart3, FileText, Loader2 } from "lucide-react";
+import { useState, useCallback, memo } from "react";
+import { Microscope, BarChart3, FileText, Loader2, ChevronDown } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { artifactApi } from "@/api/artifact";
 import type { Artifact } from "@/types/artifact";
 import type { TeamArtifactSummary } from "@/api/team";
@@ -175,52 +181,201 @@ const markdownComponents = {
 };
 
 // ============================================================================
+// Memoized Markdown Renderer (ReactMarkdown is expensive)
+// ============================================================================
+
+const MemoizedMarkdown = memo(function MemoizedMarkdown({ content }: { content: string }) {
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+      {content}
+    </ReactMarkdown>
+  );
+});
+
+// ============================================================================
+// Artifact Card (collapsed by default, lazy-fetches on first expand)
+// ============================================================================
+
+function ArtifactCard({ artifact }: { artifact: TeamArtifactSummary }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [cardState, setCardState] = useState<ArtifactCardState>({
+    full: null,
+    loading: false,
+    error: null,
+  });
+  const [hasFetched, setHasFetched] = useState(false);
+
+  const config = getTypeConfig(artifact.artifact_type);
+  const Icon = config.icon;
+
+  const fullContent =
+    cardState.full?.content.type === "inline" ? cardState.full.content.text : null;
+  const author = cardState.full?.metadata.createdBy;
+
+  const handleOpenChange = useCallback(
+    (open: boolean) => {
+      setIsOpen(open);
+
+      // Lazy fetch: only on first expand
+      if (open && !hasFetched) {
+        setHasFetched(true);
+        setCardState((prev) => ({ ...prev, loading: true }));
+
+        artifactApi
+          .get(artifact.id)
+          .then((full) => {
+            setCardState({ full, loading: false, error: null });
+          })
+          .catch((err) => {
+            console.error(`Failed to fetch artifact ${artifact.id}:`, err);
+            setCardState({ full: null, loading: false, error: "Failed to load content" });
+          });
+      }
+    },
+    [artifact.id, hasFetched],
+  );
+
+  return (
+    <Collapsible open={isOpen} onOpenChange={handleOpenChange}>
+      {/* Header - flat Tahoe style, visually separate from content */}
+      <div
+        className="rounded-xl transition-all duration-200"
+        style={{
+          padding: "12px 14px",
+          background: isOpen
+            ? "hsla(14 100% 60% / 0.08)"
+            : "hsla(220 10% 100% / 0.02)",
+          border: isOpen
+            ? "1px solid hsla(14 100% 60% / 0.2)"
+            : "1px solid hsla(220 10% 100% / 0.06)",
+        }}
+      >
+        <CollapsibleTrigger asChild>
+          <button className="flex items-center gap-3 w-full text-left">
+            {/* Type icon */}
+            <div
+              className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-200"
+              style={{
+                background: isOpen ? `${config.color}15` : "hsla(220 10% 100% / 0.04)",
+                border: isOpen
+                  ? `1px solid ${config.color}30`
+                  : "1px solid hsla(220 10% 100% / 0.06)",
+              }}
+            >
+              <Icon
+                className="w-4 h-4 transition-colors duration-200"
+                style={{ color: isOpen ? config.color : "hsl(220 10% 50%)" }}
+              />
+            </div>
+
+            {/* Title, version badge, author */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span
+                  className="text-[13px] font-medium truncate tracking-[-0.01em]"
+                  style={{ color: "hsl(220 10% 90%)" }}
+                >
+                  {artifact.name}
+                </span>
+                <span
+                  className="text-[10px] font-medium px-1.5 py-0.5 rounded-md flex-shrink-0"
+                  style={{
+                    background: "hsla(220 10% 100% / 0.04)",
+                    border: "1px solid hsla(220 10% 100% / 0.06)",
+                    color: "hsl(220 10% 50%)",
+                  }}
+                >
+                  v{artifact.version}
+                </span>
+              </div>
+
+              {/* Collapsed: show author for scannable context */}
+              {!isOpen && artifact.author_teammate && (
+                <span
+                  className="text-[11px] mt-0.5 block truncate"
+                  style={{ color: "hsl(220 10% 50%)" }}
+                >
+                  by {artifact.author_teammate}
+                </span>
+              )}
+
+              {/* Expanded: show author if available */}
+              {isOpen && author && (
+                <span
+                  className="text-[11px] mt-0.5 block"
+                  style={{ color: "hsl(220 10% 50%)" }}
+                >
+                  by {author}
+                </span>
+              )}
+            </div>
+
+            {/* Chevron toggle (matches PlanDisplay rotation) */}
+            <ChevronDown
+              className={cn(
+                "w-4 h-4 transition-transform duration-200 flex-shrink-0",
+                !isOpen && "-rotate-90",
+              )}
+              style={{ color: "hsl(220 10% 50%)" }}
+            />
+          </button>
+        </CollapsibleTrigger>
+      </div>
+
+      {/* Content - renders BELOW header, visually separate (matches PlanDisplay) */}
+      <CollapsibleContent>
+        <div
+          className="mt-3 pl-6 pr-2 pb-4"
+          style={{
+            marginLeft: "16px",
+            borderLeft: "2px solid hsla(14 100% 60% / 0.15)",
+          }}
+        >
+          {cardState.loading ? (
+            <div className="flex items-center gap-2 py-4">
+              <Loader2
+                className="w-3.5 h-3.5 animate-spin"
+                style={{ color: "hsl(14 100% 60%)" }}
+              />
+              <span className="text-[11px]" style={{ color: "hsl(220 10% 45%)" }}>
+                Loading full content...
+              </span>
+            </div>
+          ) : cardState.error ? (
+            <div className="py-4 text-center">
+              <span className="text-[12px]" style={{ color: "hsl(0 70% 60%)" }}>
+                {cardState.error}
+              </span>
+              <p
+                className="text-[13px] leading-relaxed mt-2"
+                style={{ color: "hsl(220 10% 55%)" }}
+              >
+                {artifact.content_preview}
+              </p>
+            </div>
+          ) : fullContent ? (
+            <div className="text-[13px] leading-relaxed">
+              <MemoizedMarkdown content={fullContent} />
+            </div>
+          ) : (
+            <p
+              className="text-[13px] italic py-4 text-center"
+              style={{ color: "hsl(220 10% 50%)" }}
+            >
+              No content available
+            </p>
+          )}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+// ============================================================================
 // Component
 // ============================================================================
 
 export function TeamResearchView({ artifacts }: TeamResearchViewProps) {
-  const [cardStates, setCardStates] = useState<Record<string, ArtifactCardState>>({});
-
-  // Fetch full content for all artifacts on mount / when artifacts change
-  useEffect(() => {
-    if (artifacts.length === 0) return;
-
-    let cancelled = false;
-
-    // Initialize loading states
-    setCardStates((prev) => {
-      const next = { ...prev };
-      for (const a of artifacts) {
-        if (!next[a.id]) {
-          next[a.id] = { full: null, loading: true, error: null };
-        }
-      }
-      return next;
-    });
-
-    // Fetch each artifact's full content
-    for (const artifact of artifacts) {
-      artifactApi.get(artifact.id)
-        .then((full) => {
-          if (cancelled) return;
-          setCardStates((prev) => ({
-            ...prev,
-            [artifact.id]: { full, loading: false, error: null },
-          }));
-        })
-        .catch((err) => {
-          if (cancelled) return;
-          console.error(`Failed to fetch artifact ${artifact.id}:`, err);
-          setCardStates((prev) => ({
-            ...prev,
-            [artifact.id]: { full: null, loading: false, error: "Failed to load content" },
-          }));
-        });
-    }
-
-    return () => { cancelled = true; };
-  }, [artifacts]);
-
   // Empty state
   if (artifacts.length === 0) {
     return (
@@ -237,7 +392,7 @@ export function TeamResearchView({ artifacts }: TeamResearchViewProps) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Section header */}
       <div className="flex items-center gap-2">
         <span
@@ -258,135 +413,10 @@ export function TeamResearchView({ artifacts }: TeamResearchViewProps) {
         </span>
       </div>
 
-      {/* Artifact cards */}
-      {artifacts.map((artifact) => {
-        const config = getTypeConfig(artifact.artifact_type);
-        const Icon = config.icon;
-        const state = cardStates[artifact.id];
-        const isLoading = !state || state.loading;
-        const fullArtifact = state?.full;
-        const fullContent = fullArtifact?.content.type === "inline"
-          ? fullArtifact.content.text
-          : null;
-        const author = fullArtifact?.metadata.createdBy;
-
-        return (
-          <div
-            key={artifact.id}
-            className="rounded-xl transition-all duration-200"
-            style={{
-              background: "hsla(220 10% 100% / 0.02)",
-              border: "1px solid hsla(220 10% 100% / 0.06)",
-            }}
-          >
-            {/* Card header */}
-            <div className="flex items-center gap-3 px-4 py-3">
-              <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{
-                  background: `${config.color}15`,
-                  border: `1px solid ${config.color}30`,
-                }}
-              >
-                <Icon
-                  className="w-4 h-4"
-                  style={{ color: config.color }}
-                />
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span
-                    className="text-[13px] font-medium truncate tracking-[-0.01em]"
-                    style={{ color: "hsl(220 10% 90%)" }}
-                  >
-                    {artifact.name}
-                  </span>
-                  <span
-                    className="text-[10px] font-medium px-1.5 py-0.5 rounded-md flex-shrink-0"
-                    style={{
-                      background: "hsla(220 10% 100% / 0.04)",
-                      border: "1px solid hsla(220 10% 100% / 0.06)",
-                      color: "hsl(220 10% 50%)",
-                    }}
-                  >
-                    v{artifact.version}
-                  </span>
-                </div>
-                {author && (
-                  <span
-                    className="text-[11px] mt-0.5 block"
-                    style={{ color: "hsl(220 10% 50%)" }}
-                  >
-                    by {author}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Divider */}
-            <div
-              className="mx-4"
-              style={{ borderTop: "1px solid hsla(220 10% 100% / 0.06)" }}
-            />
-
-            {/* Content area */}
-            <div className="px-4 py-3">
-              {isLoading ? (
-                <div className="flex flex-col gap-2">
-                  {/* Show preview while loading */}
-                  <p
-                    className="text-[13px] leading-relaxed"
-                    style={{ color: "hsl(220 10% 55%)" }}
-                  >
-                    {artifact.content_preview}
-                  </p>
-                  <div className="flex items-center gap-2 pt-1">
-                    <Loader2
-                      className="w-3.5 h-3.5 animate-spin"
-                      style={{ color: "hsl(14 100% 60%)" }}
-                    />
-                    <span
-                      className="text-[11px]"
-                      style={{ color: "hsl(220 10% 45%)" }}
-                    >
-                      Loading full content...
-                    </span>
-                  </div>
-                </div>
-              ) : state?.error ? (
-                <div className="py-4 text-center">
-                  <span
-                    className="text-[12px]"
-                    style={{ color: "hsl(0 70% 60%)" }}
-                  >
-                    {state.error}
-                  </span>
-                  <p
-                    className="text-[13px] leading-relaxed mt-2"
-                    style={{ color: "hsl(220 10% 55%)" }}
-                  >
-                    {artifact.content_preview}
-                  </p>
-                </div>
-              ) : fullContent ? (
-                <div className="text-[13px] leading-relaxed">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                    {fullContent}
-                  </ReactMarkdown>
-                </div>
-              ) : (
-                <p
-                  className="text-[13px] italic py-4 text-center"
-                  style={{ color: "hsl(220 10% 50%)" }}
-                >
-                  No content available
-                </p>
-              )}
-            </div>
-          </div>
-        );
-      })}
+      {/* Collapsible artifact cards */}
+      {artifacts.map((artifact) => (
+        <ArtifactCard key={artifact.id} artifact={artifact} />
+      ))}
     </div>
   );
 }

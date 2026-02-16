@@ -19,6 +19,7 @@ pub struct TeamArtifactSummaryResponse {
     pub version: u32,
     pub content_preview: String,
     pub created_at: String,
+    pub author_teammate: Option<String>,
 }
 
 /// Response for get_team_artifacts_by_session
@@ -396,6 +397,11 @@ pub async fn get_team_artifacts_by_session(
                 }
                 ArtifactContent::File { path } => format!("[File: {}]", path),
             };
+            let author_teammate = a
+                .metadata
+                .team_metadata
+                .as_ref()
+                .map(|tm| tm.author_teammate.clone());
             TeamArtifactSummaryResponse {
                 id: a.id.as_str().to_string(),
                 name: a.name.clone(),
@@ -403,6 +409,7 @@ pub async fn get_team_artifacts_by_session(
                 version: a.metadata.version,
                 content_preview,
                 created_at: a.metadata.created_at.to_rfc3339(),
+                author_teammate,
             }
         })
         .collect();

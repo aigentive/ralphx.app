@@ -264,6 +264,7 @@ export const TeamArtifactSummarySchema = z.object({
   version: z.number(),
   content_preview: z.string(),
   created_at: z.string(),
+  author_teammate: z.string().nullable().optional(),
 });
 
 export const GetTeamArtifactsResponseSchema = z.object({
