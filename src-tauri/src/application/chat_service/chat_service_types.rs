@@ -160,6 +160,8 @@ pub struct AgentTaskStartedPayload {
     pub subagent_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub teammate_name: Option<String>,
     pub conversation_id: String,
     pub context_type: String,
     pub context_id: String,
@@ -177,6 +179,8 @@ pub struct AgentTaskCompletedPayload {
     pub total_tokens: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_tool_use_count: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub teammate_name: Option<String>,
     pub conversation_id: String,
     pub context_type: String,
     pub context_id: String,

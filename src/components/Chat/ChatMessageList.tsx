@@ -285,9 +285,18 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         }
       }
 
-      // Interleave team system messages
+      // Interleave team system messages (filtered by teammate tab)
       if (teamMessages.length > 0) {
-        for (const msg of teamMessages) {
+        const filteredTeamMsgs = teamFilter && teamFilter !== "all"
+          ? teamMessages.filter((msg) => {
+              if (teamFilter === "lead") {
+                return msg.from === "lead" || msg.to === "lead" || msg.from === "system" || msg.from === "user";
+              }
+              return msg.from === teamFilter || msg.to === teamFilter || msg.to === "*";
+            })
+          : teamMessages;
+
+        for (const msg of filteredTeamMsgs) {
           items.push({
             kind: "team_event",
             data: msg,

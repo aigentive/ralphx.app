@@ -3,6 +3,7 @@
 // Extracted from chat_service.rs to improve modularity and reduce file size.
 // Handles background stream processing and event emission.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -11,16 +12,13 @@ use tracing::info;
 
 use crate::application::question_state::QuestionState;
 use crate::application::team_events;
-use crate::application::team_state_tracker::{
-    TeammateHandle, TeammateStatus, TeamStateTracker,
-};
+use crate::application::team_state_tracker::{TeammateStatus, TeamStateTracker};
 use crate::domain::entities::{
     ActivityEvent, ActivityEventType, ChatContextType, ChatConversationId, ChatMessageId, TaskId,
 };
 use crate::domain::repositories::{ActivityEventRepository, ChatMessageRepository, TaskRepository};
 use crate::infrastructure::agents::claude::{
-    ClaudeCodeClient, ContentBlockItem, DiffContext, StreamEvent, StreamProcessor,
-    TeammateSpawnConfig, ToolCall,
+    ContentBlockItem, DiffContext, StreamEvent, StreamProcessor, ToolCall,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -200,6 +198,9 @@ pub async fn process_stream_background<R: Runtime>(
     // Debounced flush for incremental persistence (every 2 seconds)
     let mut last_flush = std::time::Instant::now();
     const FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+
+    // Track Task tool_use_id → (team_name, teammate_name) for teammate lifecycle
+    let mut teammate_task_map: HashMap<String, (String, String)> = HashMap::new();
 
     loop {
         // Race line-read (with timeout) against cancellation token
@@ -487,7 +488,32 @@ pub async fn process_stream_background<R: Runtime>(
                         description,
                         subagent_type,
                         model,
+                        teammate_name: tm_name,
+                        team_name: tm_team,
                     } => {
+                        // Track teammate Task calls for lifecycle management
+                        if let (Some(ref tn), Some(ref tt)) = (&tm_name, &tm_team) {
+                            teammate_task_map.insert(tool_use_id.clone(), (tt.clone(), tn.clone()));
+
+                            // Update tracker status to Running
+                            if let Some(ref tracker) = team_tracker {
+                                let _ = tracker.update_teammate_status(tt, tn, TeammateStatus::Running).await;
+                            }
+
+                            // Emit agent:run_started with teammate_name for frontend
+                            if let Some(ref handle) = app_handle {
+                                let _ = handle.emit(
+                                    events::AGENT_RUN_STARTED,
+                                    serde_json::json!({
+                                        "teammate_name": tn,
+                                        "team_name": tt,
+                                        "context_type": context_type_str,
+                                        "context_id": context_id_str,
+                                    }),
+                                );
+                            }
+                        }
+
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
                                 events::AGENT_TASK_STARTED,
@@ -496,6 +522,7 @@ pub async fn process_stream_background<R: Runtime>(
                                     description,
                                     subagent_type,
                                     model,
+                                    teammate_name: tm_name,
                                     conversation_id: conversation_id_str.clone(),
                                     context_type: context_type_str.clone(),
                                     context_id: context_id_str.clone(),
@@ -510,6 +537,31 @@ pub async fn process_stream_background<R: Runtime>(
                         total_tokens,
                         total_tool_use_count,
                     } => {
+                        // Check if this completes a teammate Task
+                        let tm_name_for_payload = if let Some((tt, tn)) = teammate_task_map.remove(&tool_use_id) {
+                            // Update tracker status to Idle
+                            if let Some(ref tracker) = team_tracker {
+                                let _ = tracker.update_teammate_status(&tt, &tn, TeammateStatus::Idle).await;
+                            }
+
+                            // Emit agent:run_completed with teammate_name for frontend
+                            if let Some(ref handle) = app_handle {
+                                let _ = handle.emit(
+                                    events::AGENT_RUN_COMPLETED,
+                                    serde_json::json!({
+                                        "teammate_name": tn,
+                                        "team_name": tt,
+                                        "context_type": context_type_str,
+                                        "context_id": context_id_str,
+                                    }),
+                                );
+                            }
+
+                            Some(tn)
+                        } else {
+                            None
+                        };
+
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
                                 events::AGENT_TASK_COMPLETED,
@@ -519,6 +571,7 @@ pub async fn process_stream_background<R: Runtime>(
                                     total_duration_ms,
                                     total_tokens,
                                     total_tool_use_count,
+                                    teammate_name: tm_name_for_payload,
                                     conversation_id: conversation_id_str.clone(),
                                     context_type: context_type_str.clone(),
                                     context_id: context_id_str.clone(),
@@ -636,76 +689,9 @@ pub async fn process_stream_background<R: Runtime>(
                             );
                         }
 
-                        // Spawn CLI process with same agent-id for direct stdin/stdout access.
-                        // This runs in a background task to avoid blocking the stream loop.
-                        if let (Some(tracker), Some(handle)) = (team_tracker.clone(), app_handle.clone()) {
-                            let tm_name = teammate_name.clone();
-                            let t_name = team_name.clone();
-                            let ctx_id = context_id_str.clone();
-                            let ctx_type = context_type_str.clone();
-                            let tm_model = model.clone();
-                            let tm_color = color.clone();
-
-                            tokio::spawn(async move {
-                                let spawn_config = TeammateSpawnConfig::new(
-                                    &tm_name,
-                                    &t_name,
-                                    &ctx_id,
-                                    "", // No initial prompt — teammate joins existing team
-                                )
-                                .with_model(&tm_model)
-                                .with_color(&tm_color);
-
-                                let client = ClaudeCodeClient::new();
-                                match client.spawn_teammate_interactive(spawn_config).await {
-                                    Ok(spawn_result) => {
-                                        tracing::info!(
-                                            teammate = %tm_name,
-                                            team = %t_name,
-                                            pid = ?spawn_result.child.id(),
-                                            "Teammate CLI process spawned from stream event"
-                                        );
-
-                                        let mut child = spawn_result.child;
-                                        let stdout = child.stdout.take();
-
-                                        // Start stream processor for teammate stdout
-                                        let stream_task = if let Some(stdout) = stdout {
-                                            Some(crate::application::team_stream_processor::start_teammate_stream(
-                                                stdout,
-                                                t_name.clone(),
-                                                tm_name.clone(),
-                                                ctx_type.clone(),
-                                                ctx_id.clone(),
-                                                handle.clone(),
-                                                Arc::new(tracker.clone()),
-                                            ))
-                                        } else {
-                                            tracing::warn!(teammate = %tm_name, "No stdout pipe for teammate stream");
-                                            None
-                                        };
-
-                                        // Store handle in tracker
-                                        let teammate_handle = TeammateHandle {
-                                            child,
-                                            stream_task,
-                                            stdin: Some(spawn_result.stdin),
-                                        };
-                                        let _ = tracker.set_teammate_handle(&t_name, &tm_name, teammate_handle).await;
-                                        let _ = tracker.update_teammate_status(&t_name, &tm_name, TeammateStatus::Running).await;
-                                    }
-                                    Err(e) => {
-                                        tracing::warn!(
-                                            teammate = %tm_name,
-                                            team = %t_name,
-                                            error = %e,
-                                            "Failed to spawn teammate CLI process from stream event"
-                                        );
-                                        let _ = tracker.update_teammate_status(&t_name, &tm_name, TeammateStatus::Failed).await;
-                                    }
-                                }
-                            });
-                        }
+                        // Note: Teammate CLI processes are managed by Claude CLI's Task tool.
+                        // Lifecycle (Running/Idle) is tracked via TaskStarted/TaskCompleted events
+                        // with teammate_name/team_name fields.
                     }
                     StreamEvent::TeamMessageSent { sender, recipient, content, message_type } => {
                         if let Some(ref handle) = app_handle {
