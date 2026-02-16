@@ -562,7 +562,35 @@ agents:
   - name: ideation-team-lead
     extends: orchestrator-ideation
     system_prompt_file: ralphx-plugin/agents/ideation-team-lead.md
-    # inherits: model (opus), tools, mcp_tools from orchestrator-ideation
+    # inherits: model (opus), tools, preapproved_cli_tools from orchestrator-ideation
+    # mcp_tools override: parent tools + team coordination tools
+    mcp_tools: [
+        # Team coordination tools (new)
+        request_team_plan,
+        request_teammate_spawn,
+        create_team_artifact,
+        get_team_artifacts,
+        get_team_session_state,
+        save_team_session_state,
+        # Inherited from orchestrator-ideation
+        create_task_proposal,
+        update_task_proposal,
+        delete_task_proposal,
+        list_session_proposals,
+        get_proposal,
+        analyze_session_dependencies,
+        create_plan_artifact,
+        update_plan_artifact,
+        get_plan_artifact,
+        link_proposals_to_plan,
+        get_session_plan,
+        ask_user_question,
+        create_child_session,
+        get_parent_session_context,
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
+      ]
 
   - name: ralphx-worker-team
     extends: ralphx-worker
