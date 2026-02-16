@@ -10,6 +10,7 @@ import {
   TeamStatusSchema,
   getTeamStatus,
   sendTeamMessage,
+  sendTeammateMessage,
   getTeamMessages,
   stopTeammate,
   stopTeam,
@@ -216,6 +217,18 @@ describe("team API functions", () => {
       });
       expect(result.sender).toBe("coder-1");
       expect(result.content).toBe("Hello");
+    });
+  });
+
+  describe("sendTeammateMessage", () => {
+    it("wraps params in input object for stdin routing", async () => {
+      mockInvoke.mockResolvedValue(undefined);
+
+      await sendTeammateMessage("task-abc", "coder-1", "Hello teammate");
+
+      expect(mockInvoke).toHaveBeenCalledWith("send_teammate_message", {
+        input: { teamName: "task-abc", teammateName: "coder-1", content: "Hello teammate" },
+      });
     });
   });
 

@@ -1,9 +1,10 @@
 // Team HTTP handlers — endpoints for MCP team tools
 //
 // Provides HTTP endpoints for:
-// - POST /api/team/plan        — request_team_plan (validates team plan against constraints)
-// - POST /api/team/spawn       — request_teammate_spawn (validates, spawns, registers, streams)
-// - POST /api/team/artifact    — create_team_artifact
+// - POST /api/team/plan          — request_team_plan (validates team plan against constraints)
+// - POST /api/team/plan/approve  — approve_team_plan (batch-spawns all teammates from approved plan)
+// - POST /api/team/spawn         — request_teammate_spawn (validates, spawns, registers, streams)
+// - POST /api/team/artifact      — create_team_artifact
 // - GET  /api/team/artifacts/:session_id — get_team_artifacts
 // - GET  /api/team/session_state/:session_id — get_team_session_state
 // - POST /api/team/session_state — save_team_session_state
@@ -13,19 +14,23 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use chrono::Utc;
 use tauri::Emitter;
 use tracing::{error, info, warn};
 
 use super::HttpServerState;
-use crate::application::team_state_tracker::{TeammateHandle, TeammateStatus};
+use crate::application::team_state_tracker::{
+    PendingTeamPlan, PendingTeammate, TeammateHandle, TeammateStatus,
+};
 use crate::domain::entities::{
     Artifact, ArtifactBucketId, ArtifactContent, ArtifactId, ArtifactRelation,
     ArtifactRelationId, ArtifactRelationType, ArtifactType,
 };
 use crate::http_server::types::{
-    CreateTeamArtifactRequest, CreateTeamArtifactResponse, GetTeamArtifactsResponse,
-    RequestTeamPlanRequest, RequestTeamPlanResponse, RequestTeammateSpawnRequest,
-    RequestTeammateSpawnResponse, SaveTeamSessionStateRequest, SaveTeamSessionStateResponse,
+    ApproveTeamPlanRequest, ApproveTeamPlanResponse, CreateTeamArtifactRequest,
+    CreateTeamArtifactResponse, GetTeamArtifactsResponse, RequestTeamPlanRequest,
+    RequestTeamPlanResponse, RequestTeammateSpawnRequest, RequestTeammateSpawnResponse,
+    SaveTeamSessionStateRequest, SaveTeamSessionStateResponse, SpawnedTeammateInfo,
     TeamArtifactSummary, TeamCompositionEntry, TeamSessionStateResponse,
 };
 use crate::infrastructure::agents::claude::{
@@ -85,6 +90,34 @@ pub async fn request_team_plan(
         "Team plan validated — emitting for user approval"
     );
 
+    // Store the approved plan with full prompts for batch-spawn on approval
+    let pending_teammates: Vec<PendingTeammate> = req
+        .teammates
+        .iter()
+        .zip(plan.teammates.iter())
+        .map(|(req_t, approved_t)| PendingTeammate {
+            role: approved_t.role.clone(),
+            prompt: req_t
+                .prompt
+                .clone()
+                .unwrap_or_else(|| req_t.prompt_summary.clone()),
+            tools: approved_t.approved_tools.clone(),
+            mcp_tools: approved_t.approved_mcp_tools.clone(),
+            model: approved_t.approved_model.clone(),
+            preset: req_t.preset.clone(),
+        })
+        .collect();
+
+    state
+        .team_tracker
+        .store_pending_plan(PendingTeamPlan {
+            plan_id: plan_id.clone(),
+            process: req.process.clone(),
+            teammates: pending_teammates,
+            created_at: Utc::now(),
+        })
+        .await;
+
     // Emit event for frontend to show approval UI (with validated plan)
     if let Some(app_handle) = &state.app_state.app_handle {
         let _ = app_handle.emit(
@@ -105,6 +138,230 @@ pub async fn request_team_plan(
             "Team plan validated and submitted with {} teammates for '{}' process",
             req.teammates.len(),
             req.process
+        ),
+    }))
+}
+
+// ============================================================================
+// POST /api/team/plan/approve — Approve a team plan and batch-spawn teammates
+// ============================================================================
+
+/// Approve a validated team plan and spawn all teammates at once.
+///
+/// Flow:
+/// 1. Look up pending plan by plan_id
+/// 2. Create team in tracker (or find existing)
+/// 3. For each teammate: generate name/color, register, spawn, start streaming
+/// 4. Emit team:teammate_spawned events
+/// 5. Return list of spawned teammates
+pub async fn approve_team_plan(
+    State(state): State<HttpServerState>,
+    Json(req): Json<ApproveTeamPlanRequest>,
+) -> Result<Json<ApproveTeamPlanResponse>, (StatusCode, String)> {
+    info!(
+        plan_id = %req.plan_id,
+        context_type = %req.context_type,
+        context_id = %req.context_id,
+        "Team plan approval requested — batch-spawning teammates"
+    );
+
+    // 1. Take the pending plan (removes it from store)
+    let plan = state
+        .team_tracker
+        .take_pending_plan(&req.plan_id)
+        .await
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                format!("No pending plan found with id '{}'", req.plan_id),
+            )
+        })?;
+
+    // 2. Create team (or find existing)
+    let team_name = format!("{}-{}", plan.process, &req.context_id[..8.min(req.context_id.len())]);
+    let team_exists = state.team_tracker.team_exists(&team_name).await;
+    if !team_exists {
+        state
+            .team_tracker
+            .create_team(&team_name, &req.context_id, &req.context_type)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "Failed to create team");
+                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            })?;
+
+        // Emit team:created
+        if let Some(app_handle) = &state.app_state.app_handle {
+            let _ = app_handle.emit(
+                "team:created",
+                serde_json::json!({
+                    "team_name": team_name,
+                    "context_type": req.context_type,
+                    "context_id": req.context_id,
+                }),
+            );
+        }
+    }
+
+    // 3. Spawn each teammate
+    let client = ClaudeCodeClient::new();
+    let mut spawned_teammates = Vec::new();
+
+    for pending in &plan.teammates {
+        let teammate_name =
+            generate_unique_teammate_name(&state, &team_name, &pending.role).await;
+        let teammate_color = assign_teammate_color(&state, &team_name).await;
+
+        // Register in tracker (status: Spawning)
+        if let Err(e) = state
+            .team_tracker
+            .add_teammate(
+                &team_name,
+                &teammate_name,
+                &teammate_color,
+                &pending.model,
+                &pending.role,
+            )
+            .await
+        {
+            warn!(
+                teammate = %teammate_name,
+                error = %e,
+                "Failed to register teammate — skipping"
+            );
+            continue;
+        }
+
+        // Build spawn config
+        let spawn_config = TeammateSpawnConfig::new(
+            &teammate_name,
+            &team_name,
+            &req.context_id,
+            &pending.prompt,
+        )
+        .with_model(&pending.model)
+        .with_tools(pending.tools.clone())
+        .with_mcp_tools(pending.mcp_tools.clone())
+        .with_color(&teammate_color);
+
+        match client.spawn_teammate_interactive(spawn_config).await {
+            Ok(spawn_result) => {
+                info!(
+                    teammate = %teammate_name,
+                    team = %team_name,
+                    pid = ?spawn_result.child.id(),
+                    "Teammate spawned via plan approval"
+                );
+
+                // Take stdout for stream processing, then create handle
+                let mut child = spawn_result.child;
+                let stdout = child.stdout.take();
+
+                // Start background stream processor if possible
+                let stream_task = match (stdout, &state.app_state.app_handle) {
+                    (Some(stdout), Some(app_handle)) => {
+                        let team_service = std::sync::Arc::new(
+                            crate::application::team_service::TeamService::new(
+                                std::sync::Arc::new(state.team_tracker.clone()),
+                                app_handle.clone(),
+                            ),
+                        );
+                        Some(
+                            crate::application::team_stream_processor::start_teammate_stream(
+                                stdout,
+                                team_name.clone(),
+                                teammate_name.clone(),
+                                req.context_type.clone(),
+                                req.context_id.clone(),
+                                app_handle.clone(),
+                                team_service,
+                            ),
+                        )
+                    }
+                    _ => None,
+                };
+
+                // Create handle and register
+                let handle = TeammateHandle {
+                    child,
+                    stream_task,
+                    stdin: Some(spawn_result.stdin),
+                };
+
+                let _ = state
+                    .team_tracker
+                    .set_teammate_handle(&team_name, &teammate_name, handle)
+                    .await;
+
+                // Update status to Running
+                let _ = state
+                    .team_tracker
+                    .update_teammate_status(
+                        &team_name,
+                        &teammate_name,
+                        TeammateStatus::Running,
+                    )
+                    .await;
+
+                // Emit team:teammate_spawned
+                if let Some(app_handle) = &state.app_state.app_handle {
+                    let _ = app_handle.emit(
+                        "team:teammate_spawned",
+                        serde_json::json!({
+                            "team_name": team_name,
+                            "teammate_name": teammate_name,
+                            "role": pending.role,
+                            "model": pending.model,
+                            "color": teammate_color,
+                            "context_type": req.context_type,
+                            "context_id": req.context_id,
+                        }),
+                    );
+                }
+
+                spawned_teammates.push(SpawnedTeammateInfo {
+                    name: teammate_name,
+                    role: pending.role.clone(),
+                    model: pending.model.clone(),
+                    color: teammate_color,
+                });
+            }
+            Err(e) => {
+                warn!(
+                    teammate = %teammate_name,
+                    error = %e,
+                    "Teammate spawn failed during plan approval"
+                );
+                let _ = state
+                    .team_tracker
+                    .update_teammate_status(
+                        &team_name,
+                        &teammate_name,
+                        TeammateStatus::Failed,
+                    )
+                    .await;
+            }
+        }
+    }
+
+    let spawned_count = spawned_teammates.len();
+    let total_count = plan.teammates.len();
+
+    info!(
+        plan_id = %req.plan_id,
+        team = %team_name,
+        spawned = spawned_count,
+        total = total_count,
+        "Team plan approved — teammates spawned"
+    );
+
+    Ok(Json(ApproveTeamPlanResponse {
+        success: spawned_count > 0,
+        team_name,
+        teammates_spawned: spawned_teammates,
+        message: format!(
+            "{}/{} teammates spawned successfully",
+            spawned_count, total_count
         ),
     }))
 }
@@ -216,10 +473,51 @@ pub async fn request_teammate_spawn(
                 "Teammate process spawned successfully"
             );
 
-            // 7. Create TeammateHandle and register in tracker
+            // 7. Take stdout from child for stream processing, then create handle
+            let mut child = spawn_result.child;
+            let stdout = child.stdout.take();
+
+            // 8. Start background stream processor if we have both stdout and app_handle
+            let stream_task = match (stdout, &state.app_state.app_handle) {
+                (Some(stdout), Some(app_handle)) => {
+                    let team_service = std::sync::Arc::new(
+                        crate::application::team_service::TeamService::new(
+                            std::sync::Arc::new(state.team_tracker.clone()),
+                            app_handle.clone(),
+                        ),
+                    );
+                    Some(
+                        crate::application::team_stream_processor::start_teammate_stream(
+                            stdout,
+                            team_name.clone(),
+                            teammate_name.clone(),
+                            "ideation".to_string(),
+                            context_id.clone(),
+                            app_handle.clone(),
+                            team_service,
+                        ),
+                    )
+                }
+                (None, _) => {
+                    warn!(
+                        teammate = %teammate_name,
+                        "No stdout pipe available for teammate stream processing"
+                    );
+                    None
+                }
+                (_, None) => {
+                    warn!(
+                        teammate = %teammate_name,
+                        "No AppHandle available for teammate event emission"
+                    );
+                    None
+                }
+            };
+
+            // 9. Create TeammateHandle and register in tracker
             let handle = TeammateHandle {
-                child: spawn_result.child,
-                stream_task: None,
+                child,
+                stream_task,
                 stdin: Some(spawn_result.stdin),
             };
 
@@ -232,13 +530,13 @@ pub async fn request_teammate_spawn(
                     (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
                 })?;
 
-            // 8. Update status to Running
+            // 10. Update status to Running
             let _ = state
                 .team_tracker
                 .update_teammate_status(&team_name, &teammate_name, TeammateStatus::Running)
                 .await;
 
-            // 9. Emit spawned event
+            // 11. Emit spawned event (include context_type and context_id for frontend routing)
             if let Some(app_handle) = &state.app_state.app_handle {
                 let _ = app_handle.emit(
                     "team:teammate_spawned",
@@ -248,6 +546,8 @@ pub async fn request_teammate_spawn(
                         "role": req.role,
                         "model": req.model,
                         "color": teammate_color,
+                        "context_type": "ideation",
+                        "context_id": context_id,
                     }),
                 );
             }
@@ -895,6 +1195,7 @@ mod tests {
                     model: "sonnet".to_string(),
                     preset: None,
                     prompt_summary: "Research patterns".to_string(),
+                    prompt: None,
                 },
                 crate::http_server::types::TeamPlanTeammate {
                     role: "analyzer".to_string(),
@@ -903,6 +1204,7 @@ mod tests {
                     model: "haiku".to_string(),
                     preset: None,
                     prompt_summary: "Analyze results".to_string(),
+                    prompt: None,
                 },
             ],
         };

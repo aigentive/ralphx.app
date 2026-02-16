@@ -66,6 +66,54 @@ export type TeamMessageResponse = z.infer<typeof TeamMessageSchema>;
 // API Functions
 // ============================================================================
 
+// ============================================================================
+// Plan Approval (calls HTTP server directly — the approve handler has the
+// spawning infrastructure that Tauri commands don't have access to)
+// ============================================================================
+
+const MCP_SERVER_URL = "http://127.0.0.1:3847";
+
+export const ApproveTeamPlanResponseSchema = z.object({
+  success: z.boolean(),
+  team_name: z.string(),
+  teammates_spawned: z.array(z.object({
+    name: z.string(),
+    role: z.string(),
+    model: z.string(),
+    color: z.string(),
+  })),
+  message: z.string(),
+});
+
+export type ApproveTeamPlanResponse = z.infer<typeof ApproveTeamPlanResponseSchema>;
+
+export async function approveTeamPlan(
+  planId: string,
+  contextType: string,
+  contextId: string,
+): Promise<ApproveTeamPlanResponse> {
+  const resp = await fetch(`${MCP_SERVER_URL}/api/team/plan/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      plan_id: planId,
+      context_type: contextType,
+      context_id: contextId,
+    }),
+  });
+
+  if (!resp.ok) {
+    const errorText = await resp.text();
+    throw new Error(`Failed to approve team plan: ${errorText}`);
+  }
+
+  return ApproveTeamPlanResponseSchema.parse(await resp.json());
+}
+
+// ============================================================================
+// API Functions (Tauri IPC)
+// ============================================================================
+
 export async function getTeamStatus(
   teamName: string,
 ): Promise<TeamStatusResponse | null> {
@@ -82,6 +130,16 @@ export async function sendTeamMessage(
     input: { teamName, target, content },
   });
   return TeamMessageSchema.parse(result);
+}
+
+export async function sendTeammateMessage(
+  teamName: string,
+  teammateName: string,
+  content: string,
+): Promise<void> {
+  await invoke("send_teammate_message", {
+    input: { teamName, teammateName, content },
+  });
 }
 
 export async function stopTeammate(

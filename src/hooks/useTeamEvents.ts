@@ -28,6 +28,7 @@ import type {
   TeamTeammateShutdownPayload,
   TeamMessagePayload,
   TeamCostUpdatePayload,
+  TeamPlanRequestedPayload,
 } from "@/types/events";
 
 export function useTeamEvents(contextKey: string | null) {
@@ -41,6 +42,7 @@ export function useTeamEvents(contextKey: string | null) {
   const addTeamMessage = useTeamStore((s) => s.addTeamMessage);
   const disbandTeam = useTeamStore((s) => s.disbandTeam);
   const setTeamActive = useChatStore((s) => s.setTeamActive);
+  const setPendingPlan = useTeamStore((s) => s.setPendingPlan);
 
   // Derive isTeamActive from the teamStore so effect 2 re-runs when team is created
   const selectActive = useCallback(
@@ -87,8 +89,21 @@ export function useTeamEvents(contextKey: string | null) {
       }),
     );
 
+    // team:plan_requested — show approval UI (global, not context-filtered)
+    unsubs.push(
+      bus.subscribe<TeamPlanRequestedPayload>("team:plan_requested", (payload) => {
+        if (payload.validated) {
+          setPendingPlan({
+            planId: payload.plan_id,
+            process: payload.process,
+            teammates: payload.teammates,
+          });
+        }
+      }),
+    );
+
     return () => unsubs.forEach((u) => u());
-  }, [bus, contextKey, matchKey, createTeam, disbandTeam, setTeamActive]);
+  }, [bus, contextKey, matchKey, createTeam, disbandTeam, setTeamActive, setPendingPlan]);
 
   // ── Effect 2: Subscribe to remaining events when team is active ──────────
   useEffect(() => {

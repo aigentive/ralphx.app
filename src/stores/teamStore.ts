@@ -35,6 +35,19 @@ export interface TeamMessage {
   timestamp: string;
 }
 
+export interface PendingTeamPlan {
+  planId: string;
+  process: string;
+  teammates: Array<{
+    role: string;
+    model: string;
+    tools: string[];
+    mcp_tools: string[];
+    prompt_summary: string;
+    preset?: string | null;
+  }>;
+}
+
 interface ActiveTeam {
   teamName: string;
   leadName: string;
@@ -51,6 +64,7 @@ interface ActiveTeam {
 
 interface TeamState {
   activeTeams: Record<string, ActiveTeam>;
+  pendingPlan: PendingTeamPlan | null;
 }
 
 interface TeamActions {
@@ -64,6 +78,7 @@ interface TeamActions {
   removeTeammate: (contextKey: string, name: string) => void;
   disbandTeam: (contextKey: string) => void;
   getTeammates: (contextKey: string) => TeammateState[];
+  setPendingPlan: (plan: PendingTeamPlan | null) => void;
 }
 
 // ============================================================================
@@ -75,6 +90,7 @@ const MAX_TEAM_MESSAGES = 200;
 export const useTeamStore = create<TeamState & TeamActions>()(
   immer((set, get) => ({
     activeTeams: {},
+    pendingPlan: null,
 
     createTeam: (contextKey, teamName, leadName) =>
       set((state) => {
@@ -178,6 +194,11 @@ export const useTeamStore = create<TeamState & TeamActions>()(
       const team = get().activeTeams[contextKey];
       return team ? Object.values(team.teammates) : EMPTY_TEAMMATES;
     },
+
+    setPendingPlan: (plan) =>
+      set((state) => {
+        state.pendingPlan = plan;
+      }),
   }))
 );
 

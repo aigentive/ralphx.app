@@ -820,6 +820,7 @@ pub fn run() {
             commands::team_commands::disband_team,
             commands::team_commands::get_team_status,
             commands::team_commands::send_team_message,
+            commands::team_commands::send_teammate_message,
             commands::team_commands::stop_teammate,
             commands::team_commands::stop_team,
             commands::team_commands::get_team_messages,

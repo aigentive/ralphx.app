@@ -863,6 +863,9 @@ pub struct TeamPlanTeammate {
     pub model: String,
     pub preset: Option<String>,
     pub prompt_summary: String,
+    /// Full prompt for the teammate — required for batch-spawn on plan approval.
+    /// When present, approve_team_plan can spawn without further MCP calls.
+    pub prompt: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -870,6 +873,32 @@ pub struct RequestTeamPlanResponse {
     pub success: bool,
     pub plan_id: String,
     pub message: String,
+}
+
+/// POST /api/team/plan/approve — approve a validated team plan and batch-spawn
+#[derive(Debug, Deserialize)]
+pub struct ApproveTeamPlanRequest {
+    pub plan_id: String,
+    /// Context for the team (e.g., ideation session context_type + context_id).
+    /// Required so the backend can create the team and attach teammates.
+    pub context_type: String,
+    pub context_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ApproveTeamPlanResponse {
+    pub success: bool,
+    pub team_name: String,
+    pub teammates_spawned: Vec<SpawnedTeammateInfo>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SpawnedTeammateInfo {
+    pub name: String,
+    pub role: String,
+    pub model: String,
+    pub color: String,
 }
 
 /// POST /api/team/spawn — request to spawn a single teammate

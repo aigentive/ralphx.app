@@ -172,6 +172,7 @@ pub async fn start_http_server(
         )
         // Team endpoints (agent teams)
         .route("/api/team/plan", post(request_team_plan))
+        .route("/api/team/plan/approve", post(approve_team_plan))
         .route("/api/team/spawn", post(request_teammate_spawn))
         .route("/api/team/artifact", post(create_team_artifact))
         .route("/api/team/artifacts/:session_id", get(get_team_artifacts))
