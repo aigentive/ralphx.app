@@ -4,6 +4,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::application::team_state_tracker::TeammateCost;
+
 /// Unique identifier for a TeamSession
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TeamSessionId(pub String);
@@ -69,9 +71,13 @@ impl std::fmt::Display for TeamMessageId {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TeammateSnapshot {
     pub name: String,
-    pub agent_type: String,
-    #[serde(default)]
+    pub color: String,
+    pub model: String,
+    pub role: String,
     pub status: String,
+    pub cost: TeammateCost,
+    pub spawned_at: String,
+    pub last_activity_at: String,
 }
 
 /// A team session — one row per active/historical team
@@ -194,14 +200,28 @@ mod tests {
     fn teammate_snapshot_serializes() {
         let snap = TeammateSnapshot {
             name: "worker-1".to_string(),
-            agent_type: "coder".to_string(),
+            color: "#ff6b35".to_string(),
+            model: "sonnet".to_string(),
+            role: "coder".to_string(),
             status: "idle".to_string(),
+            cost: TeammateCost {
+                input_tokens: 1000,
+                output_tokens: 500,
+                cache_creation_tokens: 200,
+                cache_read_tokens: 100,
+                estimated_usd: 0.05,
+            },
+            spawned_at: "2024-01-01T00:00:00Z".to_string(),
+            last_activity_at: "2024-01-01T00:01:00Z".to_string(),
         };
         let json = serde_json::to_string(&snap).unwrap();
         assert!(json.contains("worker-1"));
 
         let parsed: TeammateSnapshot = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.name, "worker-1");
+        assert_eq!(parsed.color, "#ff6b35");
+        assert_eq!(parsed.role, "coder");
+        assert_eq!(parsed.cost.input_tokens, 1000);
     }
 
     #[test]

@@ -179,8 +179,19 @@ mod tests {
 
         let teammates = vec![TeammateSnapshot {
             name: "worker-1".to_string(),
-            agent_type: "coder".to_string(),
+            color: "#ff6b35".to_string(),
+            model: "sonnet".to_string(),
+            role: "coder".to_string(),
             status: "active".to_string(),
+            cost: crate::application::team_state_tracker::TeammateCost {
+                input_tokens: 1000,
+                output_tokens: 500,
+                cache_creation_tokens: 200,
+                cache_read_tokens: 100,
+                estimated_usd: 0.05,
+            },
+            spawned_at: "2024-01-01T00:00:00Z".to_string(),
+            last_activity_at: "2024-01-01T00:01:00Z".to_string(),
         }];
         repo.update_teammates(&id, &teammates).await.unwrap();
 

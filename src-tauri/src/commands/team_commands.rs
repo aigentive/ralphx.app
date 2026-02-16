@@ -10,7 +10,8 @@ use tauri::State;
 use crate::application::app_state::AppState;
 use crate::application::team_service::TeamService;
 use crate::application::team_state_tracker::{
-    TeamMessageResponse, TeamStateTracker, TeamStatusResponse, TeammateCostResponse,
+    TeammateCost, TeamMessageResponse, TeamStateTracker, TeamStatusResponse,
+    TeammateCostResponse,
 };
 
 // ============================================================================
@@ -200,8 +201,13 @@ pub async fn get_teammate_cost(
 #[serde(rename_all = "camelCase")]
 pub struct TeammateSnapshotResponse {
     pub name: String,
-    pub agent_type: String,
+    pub color: String,
+    pub model: String,
+    pub role: String,
     pub status: String,
+    pub cost: TeammateCost,
+    pub spawned_at: String,
+    pub last_activity_at: String,
 }
 
 /// Response for a single team message record
@@ -278,8 +284,13 @@ pub async fn get_team_history(
                 .iter()
                 .map(|t| TeammateSnapshotResponse {
                     name: t.name.clone(),
-                    agent_type: t.agent_type.clone(),
+                    color: t.color.clone(),
+                    model: t.model.clone(),
+                    role: t.role.clone(),
                     status: t.status.clone(),
+                    cost: t.cost.clone(),
+                    spawned_at: t.spawned_at.clone(),
+                    last_activity_at: t.last_activity_at.clone(),
                 })
                 .collect();
 
