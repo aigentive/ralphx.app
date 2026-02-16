@@ -8,10 +8,10 @@ export interface IdeationSessionResponse {
   title: string | null;
   status: IdeationSessionStatus;
   planArtifactId: string | null;
-  seedTaskId?: string | null;
+  seedTaskId: string | null;
   parentSessionId: string | null;
-  teamMode?: TeamMode | null;
-  teamConfig?: TeamConfig | null;
+  teamMode: TeamMode | null;
+  teamConfig: TeamConfig | null;
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
