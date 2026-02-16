@@ -66,8 +66,8 @@ export function PermissionDialog() {
 
   return (
     <Dialog open onOpenChange={() => handleDecision("deny")}>
-      <DialogContent className="sm:max-w-[500px]">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-[500px] max-h-[85vh] flex flex-col">
+        <DialogHeader className="shrink-0">
           <div className="flex items-center gap-2">
             <div
               className="p-2 rounded-full"
@@ -84,10 +84,10 @@ export function PermissionDialog() {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4 px-6">
+        <div className="space-y-4 py-4 px-6 overflow-y-auto min-h-0">
           {/* Tool name */}
           <div className="flex items-center gap-2 text-sm">
-            <Terminal className="h-4 w-4" style={{ color: "var(--text-muted)" }} />
+            <Terminal className="h-4 w-4 shrink-0" style={{ color: "var(--text-muted)" }} />
             <span className="font-medium" style={{ color: "var(--text-primary)" }}>
               {currentRequest.tool_name}
             </span>
@@ -95,7 +95,7 @@ export function PermissionDialog() {
 
           {/* Tool input preview */}
           <div
-            className="rounded-md p-3 font-mono text-sm overflow-x-auto"
+            className="rounded-md p-3 font-mono text-sm overflow-x-auto max-h-[50vh]"
             style={{
               backgroundColor: "var(--bg-surface)",
               border: "1px solid var(--border-subtle)",
@@ -124,7 +124,7 @@ export function PermissionDialog() {
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0">
           <Button variant="outline" onClick={() => handleDecision("deny")}>
             Deny
           </Button>
