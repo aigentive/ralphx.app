@@ -358,7 +358,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                   <DiffToolCallView
                     key={`streaming-tool-${idx}`}
                     toolCall={block.toolCall}
-                    isStreaming
+                    isStreaming={block.toolCall.result == null && !block.toolCall.error}
                     className="mb-2"
                   />
                 );
@@ -517,7 +517,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                   <DiffToolCallView
                     key={`streaming-tool-${idx}`}
                     toolCall={block.toolCall}
-                    isStreaming
+                    isStreaming={block.toolCall.result == null && !block.toolCall.error}
                     className="mb-2"
                   />
                 );

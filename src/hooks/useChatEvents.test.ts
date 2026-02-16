@@ -216,21 +216,119 @@ describe("useChatEvents", () => {
       expect(result[0]!.result).toBe("file content here");
     });
 
-    it("should skip result: prefixed tool names", () => {
+    it("should update existing tool calls with result payload when result:toolu events arrive", () => {
       const props = makeProps();
       renderAndClear(props);
 
+      // First: simulate an existing tool call in the streaming state
+      const existingToolCalls: ToolCall[] = [
+        { id: "toolu_001", name: "Read", arguments: { file_path: "/src/main.ts" } },
+      ];
+
+      // Fire a result event for that tool call
       act(() => {
         fireEvent("agent:tool_call", {
           tool_name: "result:toolu_001",
           tool_id: "toolu_001",
           arguments: {},
+          result: "file content here",
           conversation_id: CONV_ID,
           context_id: CTX_ID,
         });
       });
 
-      expect(props.setStreamingToolCalls).not.toHaveBeenCalled();
+      // Should update streamingToolCalls with the result
+      expect(props.setStreamingToolCalls).toHaveBeenCalledTimes(1);
+      const updatedCalls = executeUpdater<ToolCall[]>(props.setStreamingToolCalls, existingToolCalls);
+      expect(updatedCalls).toHaveLength(1);
+      expect(updatedCalls[0]!.result).toBe("file content here");
+
+      // Should also update streamingContentBlocks
+      expect(props.setStreamingContentBlocks).toHaveBeenCalledTimes(1);
+      const existingBlocks: StreamingContentBlock[] = [
+        { type: "tool_use", toolCall: { id: "toolu_001", name: "Read", arguments: { file_path: "/src/main.ts" } } },
+      ];
+      const updatedBlocks = executeUpdater<StreamingContentBlock[]>(props.setStreamingContentBlocks, existingBlocks);
+      expect(updatedBlocks).toHaveLength(1);
+      expect(updatedBlocks[0]!.type).toBe("tool_use");
+      expect((updatedBlocks[0] as { type: "tool_use"; toolCall: ToolCall }).toolCall.result).toBe("file content here");
+    });
+
+    it("should update child tool calls in streamingTasks when result:toolu events arrive", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      // Setup: create a parent task with child tool calls
+      const parentId = "toolu_parent";
+      const parentTask: StreamingTask = {
+        toolUseId: parentId,
+        description: "Test task",
+        subagentType: "Bash",
+        model: "sonnet",
+        status: "running",
+        startedAt: Date.now(),
+        childToolCalls: [
+          { id: "toolu_child_001", name: "Read", arguments: { file_path: "/src/test.ts" } },
+        ],
+      };
+      const prevMap = new Map<string, StreamingTask>([[parentId, parentTask]]);
+
+      // Fire a result event for the child tool call
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "result:toolu_child_001",
+          tool_id: "toolu_child_001",
+          arguments: {},
+          result: "child tool result",
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      // Should update the child tool call in streamingTasks
+      expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
+      const updatedMap = executeUpdater<Map<string, StreamingTask>>(props.setStreamingTasks, prevMap);
+      const updatedTask = updatedMap.get(parentId)!;
+      expect(updatedTask.childToolCalls).toHaveLength(1);
+      expect(updatedTask.childToolCalls[0]!.result).toBe("child tool result");
+    });
+
+    it("should not modify tool calls when result event has no matching id", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      // Fire a result event for a tool call that doesn't exist
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "result:toolu_nonexistent",
+          tool_id: "toolu_nonexistent",
+          arguments: {},
+          result: "some result",
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      // All setters should be called
+      expect(props.setStreamingToolCalls).toHaveBeenCalledTimes(1);
+      expect(props.setStreamingContentBlocks).toHaveBeenCalledTimes(1);
+      expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
+
+      // Verify tool calls are unchanged (no result added to unrelated entries)
+      const existingCalls: ToolCall[] = [{ id: "other_id", name: "Read", arguments: {} }];
+      const callsResult = executeUpdater<ToolCall[]>(props.setStreamingToolCalls, existingCalls);
+      expect(callsResult).toHaveLength(1);
+      expect(callsResult[0]!.result).toBeUndefined(); // No result added
+
+      const existingBlocks: StreamingContentBlock[] = [{ type: "tool_use", toolCall: { id: "other_id", name: "Read", arguments: {} } }];
+      const blocksResult = executeUpdater<StreamingContentBlock[]>(props.setStreamingContentBlocks, existingBlocks);
+      expect(blocksResult).toHaveLength(1);
+      expect((blocksResult[0] as { type: "tool_use"; toolCall: ToolCall }).toolCall.result).toBeUndefined();
+
+      // streamingTasks returns same reference when no child matches
+      const existingTasks = new Map([["t1", { toolUseId: "t1", description: "", subagentType: "", model: "", status: "running" as const, startedAt: 0, childToolCalls: [] }]]);
+      const tasksResult = executeUpdater<Map<string, StreamingTask>>(props.setStreamingTasks, existingTasks);
+      expect(tasksResult).toBe(existingTasks); // Same reference since no child matched
     });
   });
 

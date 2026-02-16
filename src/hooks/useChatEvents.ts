@@ -92,10 +92,63 @@ export function useChatEvents({
       }>("agent:tool_call", (payload) => {
         const { tool_name, tool_id, arguments: args, result, conversation_id, diff_context, parent_tool_use_id } = payload;
 
-        // Skip result events — they don't add new tool calls
-        if (tool_name.startsWith("result:toolu")) return;
-
         if (!isRelevant(payload)) return;
+
+        // Handle result events: update existing tool calls with result payload
+        if (tool_name.startsWith("result:toolu")) {
+          // Extract tool_use_id from tool_name by stripping "result:" prefix
+          const toolUseId = tool_name.slice(7); // "result:".length === 7
+
+          // 1. Update matching entry in streamingToolCalls
+          setStreamingToolCalls((prev) =>
+            prev.map((tc) => {
+              if (tc.id !== toolUseId) return tc;
+              const updated: ToolCall = { ...tc };
+              if (result != null) {
+                updated.result = result;
+              }
+              return updated;
+            })
+          );
+
+          // 2. Update matching entry in streamingContentBlocks
+          setStreamingContentBlocks((prev) =>
+            prev.map((block) => {
+              if (block.type !== "tool_use" || block.toolCall.id !== toolUseId) return block;
+              const updated: ToolCall = { ...block.toolCall };
+              if (result != null) {
+                updated.result = result;
+              }
+              return { type: "tool_use", toolCall: updated };
+            })
+          );
+
+          // 3. Update matching entry in streamingTasks.childToolCalls
+          setStreamingTasks((prev) => {
+            let changed = false;
+            const next = new Map(prev);
+            for (const [taskId, task] of prev) {
+              const childIdx = task.childToolCalls.findIndex((tc) => tc.id === toolUseId);
+              if (childIdx >= 0) {
+                const updatedCalls = [...task.childToolCalls];
+                const existing = updatedCalls[childIdx]!;
+                const updated: ToolCall = { ...existing };
+                if (result != null) {
+                  updated.result = result;
+                }
+                updatedCalls[childIdx] = updated;
+                next.set(taskId, { ...task, childToolCalls: updatedCalls });
+                changed = true;
+              }
+            }
+            return changed ? next : prev;
+          });
+
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.conversation(conversation_id),
+          });
+          return;
+        }
 
         // Build diffContext with exactOptionalPropertyTypes compliance
         let diffContext: ToolCall["diffContext"];
