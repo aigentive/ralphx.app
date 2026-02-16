@@ -127,7 +127,7 @@ export const TaskSubagentCard = React.memo(function TaskSubagentCard({
 }: TaskSubagentCardProps) {
   const isRunning = task.status === "running";
   const isCompleted = task.status === "completed";
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
 
