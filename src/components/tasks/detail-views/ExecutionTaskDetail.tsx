@@ -5,7 +5,7 @@
  * and revision context when re-executing.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
@@ -318,8 +318,10 @@ export function ExecutionTaskDetail({ task, isHistorical }: ExecutionTaskDetailP
 
   // Team mode state
   const contextKey = buildStoreKey("task_execution", task.id);
-  const isTeamActive = useChatStore(selectIsTeamActive(contextKey));
-  const teammates = useTeamStore(selectTeammates(contextKey));
+  const isTeamActiveSelector = useMemo(() => selectIsTeamActive(contextKey), [contextKey]);
+  const isTeamActive = useChatStore(isTeamActiveSelector);
+  const teammatesSelector = useMemo(() => selectTeammates(contextKey), [contextKey]);
+  const teammates = useTeamStore(teammatesSelector);
 
   const hasSteps = (steps?.length ?? 0) > 0;
   const isReExecuting = task.internalStatus === "re_executing";

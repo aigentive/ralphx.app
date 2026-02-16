@@ -56,6 +56,7 @@ import { useTeamStore, selectTeammates } from "@/stores/teamStore";
 import { useTeamEvents } from "@/hooks/useTeamEvents";
 import { useTeamActions } from "@/hooks/useTeamActions";
 import { TeamActivityPanel } from "./TeamActivityPanel";
+import { TeamPlanApproval } from "./TeamPlanApproval";
 import { TeamFilterTabs, type TeamFilterValue } from "./TeamFilterTabs";
 import { TargetSelector, type TargetValue } from "./TargetSelector";
 
@@ -176,6 +177,7 @@ export function IntegratedChatPanel({
   const isTeamActive = useChatStore(isTeamActiveSelector);
   const teammatesSelector = useMemo(() => selectTeammates(storeContextKey), [storeContextKey]);
   const teammates = useTeamStore(teammatesSelector);
+  const pendingPlan = useTeamStore((s) => s.pendingPlan);
   const [teamFilter, setTeamFilter] = useState<TeamFilterValue>("all");
   const [sendTarget, setSendTarget] = useState<TargetValue>("lead");
 
@@ -617,6 +619,15 @@ export function IntegratedChatPanel({
               finalizingConversationRef={finalizingConversationRef}
               teamFilter={isTeamActive ? teamFilter : undefined}
               contextKey={isTeamActive ? storeContextKey : undefined}
+            />
+          )}
+
+          {/* Team Plan Approval (shown when lead requests plan approval) */}
+          {pendingPlan && (
+            <TeamPlanApproval
+              plan={pendingPlan}
+              contextType={currentContextType}
+              contextId={currentContextId}
             />
           )}
 

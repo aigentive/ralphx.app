@@ -262,8 +262,10 @@ export const useChatStore = create<ChatState & ChatActions>()(
     setTeamActive: (contextKey, isActive) =>
       set((state) => {
         if (isActive) {
+          if (state.isTeamActive[contextKey]) return; // already true — no-op
           state.isTeamActive[contextKey] = true;
         } else {
+          if (!(contextKey in state.isTeamActive)) return; // already absent — no-op
           delete state.isTeamActive[contextKey];
         }
       }),

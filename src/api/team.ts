@@ -110,6 +110,19 @@ export async function approveTeamPlan(
   return ApproveTeamPlanResponseSchema.parse(await resp.json());
 }
 
+export async function rejectTeamPlan(planId: string): Promise<void> {
+  const resp = await fetch(`${MCP_SERVER_URL}/api/team/plan/reject`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ plan_id: planId }),
+  });
+
+  if (!resp.ok) {
+    const errorText = await resp.text();
+    throw new Error(`Failed to reject team plan: ${errorText}`);
+  }
+}
+
 // ============================================================================
 // API Functions (Tauri IPC)
 // ============================================================================

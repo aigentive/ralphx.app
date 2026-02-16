@@ -8,7 +8,7 @@
 import React, { useCallback, useState } from "react";
 import { Check, X, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { approveTeamPlan } from "@/api/team";
+import { approveTeamPlan, rejectTeamPlan } from "@/api/team";
 import { useTeamStore } from "@/stores/teamStore";
 import type { PendingTeamPlan } from "@/stores/teamStore";
 import type { ContextType } from "@/types/chat-conversation";
@@ -40,9 +40,14 @@ export const TeamPlanApproval = React.memo(function TeamPlanApproval({
     }
   }, [plan.planId, contextType, contextId, setPendingPlan]);
 
-  const handleReject = useCallback(() => {
+  const handleReject = useCallback(async () => {
+    try {
+      await rejectTeamPlan(plan.planId);
+    } catch {
+      // Best-effort — clear UI regardless
+    }
     setPendingPlan(null);
-  }, [setPendingPlan]);
+  }, [plan.planId, setPendingPlan]);
 
   return (
     <div

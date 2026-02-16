@@ -207,17 +207,33 @@ export const useTeamStore = create<TeamState & TeamActions>()(
 // ============================================================================
 
 const EMPTY_TEAMMATES: TeammateState[] = [];
-const EMPTY_MESSAGES: TeamMessage[] = [];
+/** Exported so consumers use the same ref — avoids selector instability */
+export const EMPTY_TEAM_MESSAGES: TeamMessage[] = [];
 
-export const selectTeammates = (contextKey: string) =>
-  (state: TeamState): TeammateState[] => {
+/**
+ * selectTeammates — returns a stable array ref unless teammates actually changed.
+ * Uses a closure cache so Object.values() only creates a new array when the
+ * underlying Record reference changes (immer produces a new ref on mutation).
+ */
+export const selectTeammates = (contextKey: string) => {
+  let cachedRecord: Record<string, TeammateState> | undefined;
+  let cachedResult: TeammateState[] = EMPTY_TEAMMATES;
+
+  return (state: TeamState): TeammateState[] => {
     const team = state.activeTeams[contextKey];
-    return team ? Object.values(team.teammates) : EMPTY_TEAMMATES;
+    if (!team) return EMPTY_TEAMMATES;
+    // Immer replaces the record ref on mutation — use that as cache key
+    if (team.teammates !== cachedRecord) {
+      cachedRecord = team.teammates;
+      cachedResult = Object.values(team.teammates);
+    }
+    return cachedResult;
   };
+};
 
 export const selectTeamMessages = (contextKey: string) =>
   (state: TeamState): TeamMessage[] =>
-    state.activeTeams[contextKey]?.messages ?? EMPTY_MESSAGES;
+    state.activeTeams[contextKey]?.messages ?? EMPTY_TEAM_MESSAGES;
 
 export const selectTeammateByName = (contextKey: string, name: string) =>
   (state: TeamState): TeammateState | null =>
