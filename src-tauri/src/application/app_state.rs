@@ -22,7 +22,7 @@ use crate::domain::repositories::{
     MemoryEventRepository, MethodologyRepository, PlanBranchRepository,
     PlanSelectionStatsRepository, ProcessRepository, ProjectRepository,
     ProposalDependencyRepository, ReviewRepository, ReviewSettingsRepository,
-    SessionLinkRepository, SpawnOrchestratorJobRepository, TaskDependencyRepository,
+    SessionLinkRepository, TaskDependencyRepository,
     TaskProposalRepository, TaskQARepository, TaskRepository, TaskStepRepository,
     TeamMessageRepository, TeamSessionRepository, WorkflowRepository,
 };
@@ -57,7 +57,7 @@ use crate::infrastructure::sqlite::{
     SqlitePlanSelectionStatsRepository, SqliteProcessRepository, SqliteProjectRepository,
     SqliteProposalDependencyRepository, SqliteQuestionRepository, SqliteReviewIssueRepository,
     SqliteReviewRepository, SqliteReviewSettingsRepository, SqliteRunningAgentRegistry,
-    SqliteSessionLinkRepository, SqliteSpawnOrchestratorJobRepository,
+    SqliteSessionLinkRepository,
     SqliteTaskDependencyRepository, SqliteTaskProposalRepository, SqliteTaskQARepository,
     SqliteTaskRepository, SqliteTaskStepRepository, SqliteTeamMessageRepository,
     SqliteTeamSessionRepository, SqliteWorkflowRepository,
@@ -150,8 +150,6 @@ pub struct AppState {
     pub memory_event_repo: Arc<dyn MemoryEventRepository>,
     /// Memory archive repository for snapshot generation job queue
     pub memory_archive_repo: Arc<dyn MemoryArchiveRepository>,
-    /// Spawn orchestrator job repository for background orchestrator spawning
-    pub spawn_orchestrator_job_repo: Arc<dyn SpawnOrchestratorJobRepository>,
     /// Team session repository for agent team history
     pub team_session_repo: Arc<dyn TeamSessionRepository>,
     /// Team message repository for agent team messages
@@ -301,9 +299,6 @@ impl AppState {
             memory_archive_repo: Arc::new(SqliteMemoryArchiveRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
-            spawn_orchestrator_job_repo: Arc::new(SqliteSpawnOrchestratorJobRepository::from_shared(
-                Arc::clone(&shared_conn),
-            )),
             team_session_repo: Arc::new(SqliteTeamSessionRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
@@ -450,9 +445,6 @@ impl AppState {
             memory_archive_repo: Arc::new(SqliteMemoryArchiveRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
-            spawn_orchestrator_job_repo: Arc::new(SqliteSpawnOrchestratorJobRepository::from_shared(
-                Arc::clone(&shared_conn),
-            )),
             team_session_repo: Arc::new(SqliteTeamSessionRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
@@ -528,10 +520,6 @@ impl AppState {
                 open_connection(&PathBuf::from(":memory:"))
                     .expect("Failed to create in-memory connection"),
             )),
-            spawn_orchestrator_job_repo: Arc::new(SqliteSpawnOrchestratorJobRepository::new(
-                open_connection(&PathBuf::from(":memory:"))
-                    .expect("Failed to create in-memory connection"),
-            )),
             team_session_repo: Arc::new(MemoryTeamSessionRepository::new()),
             team_message_repo: Arc::new(MemoryTeamMessageRepository::new()),
             chat_attachment_repo,
@@ -602,10 +590,6 @@ impl AppState {
             memory_entry_repo: Arc::new(InMemoryMemoryEntryRepository::new()),
             memory_event_repo: Arc::new(InMemoryMemoryEventRepository::new()),
             memory_archive_repo: Arc::new(SqliteMemoryArchiveRepository::new(
-                open_connection(&PathBuf::from(":memory:"))
-                    .expect("Failed to create in-memory connection"),
-            )),
-            spawn_orchestrator_job_repo: Arc::new(SqliteSpawnOrchestratorJobRepository::new(
                 open_connection(&PathBuf::from(":memory:"))
                     .expect("Failed to create in-memory connection"),
             )),

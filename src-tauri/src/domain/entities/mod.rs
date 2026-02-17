@@ -22,7 +22,6 @@ pub mod project;
 pub mod research;
 pub mod review;
 pub mod review_issue;
-pub mod spawn_orchestrator_job;
 pub mod status;
 pub mod task;
 pub mod task_context;
@@ -91,9 +90,6 @@ pub use review_issue::{
     IssueCategory, IssueProgressSummary, IssueSeverity, IssueStatus, ParseIssueCategoryError,
     ParseIssueSeverityError, ParseIssueStatusError, ReviewIssue as ReviewIssueEntity,
     SeverityBreakdown, SeverityCount,
-};
-pub use spawn_orchestrator_job::{
-    SpawnOrchestratorJob, SpawnOrchestratorJobId, SpawnOrchestratorJobStatus,
 };
 pub use status::{InternalStatus, ParseInternalStatusError};
 pub use task::Task;
