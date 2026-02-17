@@ -7,21 +7,20 @@
  */
 
 import { useState, useCallback, useEffect } from "react";
-import type {
-  TaskProposal,
-  DependencyGraph,
-  ApplyProposalsInput,
-} from "@/types/ideation";
+import type { TaskProposal } from "@/types/ideation";
+import type { ApplyProposalsInput, DependencyGraphResponse } from "@/api/ideation.types";
 
 interface AcceptModalProps {
   isOpen: boolean;
   proposals: TaskProposal[];
-  dependencyGraph: DependencyGraph;
+  dependencyGraph: DependencyGraphResponse;
   sessionId: string;
   onAccept: (options: ApplyProposalsInput) => void;
   onCancel: () => void;
   isAccepting?: boolean;
   warnings?: string[];
+  /** Default value for feature branch checkbox, sourced from project settings */
+  defaultUseFeatureBranch?: boolean;
 }
 
 export function AcceptModal({
@@ -33,8 +32,10 @@ export function AcceptModal({
   onCancel,
   isAccepting = false,
   warnings = [],
+  defaultUseFeatureBranch = false,
 }: AcceptModalProps) {
   const [preserveDependencies, setPreserveDependencies] = useState(true);
+  const [useFeatureBranch, setUseFeatureBranch] = useState(defaultUseFeatureBranch);
 
   // Handle Escape key to close modal
   useEffect(() => {
@@ -69,9 +70,10 @@ export function AcceptModal({
       // - Has blockers → Blocked
       targetColumn: "auto",
       preserveDependencies,
+      useFeatureBranch,
     };
     onAccept(options);
-  }, [sessionId, proposals, preserveDependencies, onAccept]);
+  }, [sessionId, proposals, preserveDependencies, useFeatureBranch, onAccept]);
 
   if (!isOpen) return null;
 
@@ -250,6 +252,34 @@ export function AcceptModal({
             <li>Tasks with no blockers → <strong>Ready</strong></li>
             <li>Tasks with blockers → <strong>Blocked</strong></li>
           </ul>
+        </div>
+
+        {/* Git Workflow Checkbox */}
+        <div className="mb-4">
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={useFeatureBranch}
+              onChange={(e) => setUseFeatureBranch(e.target.checked)}
+              disabled={isAccepting}
+              className="mt-1"
+              aria-label="Use feature branch for tasks"
+            />
+            <div>
+              <span
+                className="text-sm font-medium"
+                style={{ color: "var(--text-primary)" }}
+              >
+                Use feature branch
+              </span>
+              <p
+                className="text-xs"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Tasks merge into an isolated branch. A merge-to-main task is created automatically.
+              </p>
+            </div>
+          </label>
         </div>
 
         {/* Preserve Dependencies Checkbox */}

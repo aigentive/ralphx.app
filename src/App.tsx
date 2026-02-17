@@ -35,7 +35,7 @@ import { useProposalStore } from "@/stores/proposalStore";
 import { useProjectStore } from "@/stores/projectStore";
 import type { Task } from "@/types/task";
 import type { ChatContext, ViewType } from "@/types/chat";
-import type { ApplyProposalsInput } from "@/types/ideation";
+import type { ApplyProposalsInput } from "@/api/ideation.types";
 import type { UpdateProposalInput } from "@/api/ideation";
 import { toTaskProposal } from "@/api/ideation";
 import type { CreateProject } from "@/types/project";

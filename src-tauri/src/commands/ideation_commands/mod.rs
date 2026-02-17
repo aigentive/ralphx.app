@@ -1422,54 +1422,35 @@ mod tests {
     }
 
     // ========================================================================
-    // Feature Branch Skip for Single-Proposal Plans
+    // Feature Branch Decision Tests
     // ========================================================================
 
     #[test]
-    fn test_single_proposal_skips_feature_branch_even_when_project_enabled() {
-        // When project has use_feature_branches=true but only 1 task created,
-        // feature branch should be skipped.
-        assert!(!should_create_feature_branch(None, true, 1));
+    fn test_feature_branch_uses_project_default() {
+        // When no override is set, use project default
+        assert!(should_create_feature_branch(None, true));
+        assert!(!should_create_feature_branch(None, false));
     }
 
     #[test]
-    fn test_single_proposal_skips_feature_branch_with_explicit_override() {
-        // Even with explicit use_feature_branch=true, single proposal skips.
-        assert!(!should_create_feature_branch(Some(true), true, 1));
+    fn test_feature_branch_respects_override() {
+        // Override takes precedence over project default
+        assert!(should_create_feature_branch(Some(true), false));
+        assert!(!should_create_feature_branch(Some(false), true));
     }
 
     #[test]
-    fn test_zero_tasks_still_allows_feature_branch_flag() {
-        // Edge case: 0 tasks created (all proposals failed) — flag stays true,
-        // but no tasks exist so the feature branch block is effectively a no-op.
-        assert!(should_create_feature_branch(None, true, 0));
-    }
-
-    #[test]
-    fn test_multi_proposal_creates_feature_branch_when_enabled() {
-        // Regression guard: 2+ proposals with feature branches enabled should create branch.
-        assert!(should_create_feature_branch(None, true, 2));
-        assert!(should_create_feature_branch(None, true, 5));
-        assert!(should_create_feature_branch(Some(true), true, 3));
-    }
-
-    #[test]
-    fn test_multi_proposal_respects_disabled_setting() {
-        // Even with multiple proposals, disabled feature branches stay disabled.
-        assert!(!should_create_feature_branch(None, false, 3));
-        assert!(!should_create_feature_branch(Some(false), true, 3));
-    }
-
-    #[test]
-    fn test_single_proposal_respects_disabled_project_default() {
-        // Project has use_feature_branches=false — should stay false regardless.
-        assert!(!should_create_feature_branch(None, false, 1));
+    fn test_single_proposal_now_creates_feature_branch_when_enabled() {
+        // Regression test: single-proposal plans now respect the project setting.
+        // Previously, single-proposal plans skipped feature branches unconditionally.
+        assert!(should_create_feature_branch(None, true));
+        assert!(should_create_feature_branch(Some(true), true));
     }
 
     #[tokio::test]
-    async fn test_single_proposal_no_plan_branch_or_merge_task() {
-        // Integration test: simulate applying 1 proposal with feature branches enabled.
-        // Verify no plan branch record is created and no merge task exists.
+    async fn test_single_proposal_now_creates_feature_branch() {
+        // Integration test: single-proposal plan now respects feature branch setting.
+        // When feature branches are enabled, a single proposal should create a feature branch.
         let state = setup_test_state();
         let project_id = ProjectId::new();
 
@@ -1503,38 +1484,16 @@ mod tests {
             .await
             .expect("Failed to create task");
 
-        // Decision: should_create_feature_branch returns false for 1 task
-        let should_create = should_create_feature_branch(None, true, 1);
+        // Decision: should_create_feature_branch now returns true for project default enabled
+        let should_create = should_create_feature_branch(None, true);
         assert!(
-            !should_create,
-            "Feature branch should be skipped for single-proposal plan"
+            should_create,
+            "Feature branch should now be created for single-proposal plan when enabled"
         );
 
-        // Verify no plan branch record exists for this session
-        let plan_branch = state
-            .plan_branch_repo
-            .get_by_session_id(&created_session.id)
-            .await
-            .expect("Failed to query plan branch");
-        assert!(
-            plan_branch.is_none(),
-            "No plan branch should exist for single-proposal plan"
-        );
-
-        // Verify no plan_merge tasks exist for this project
-        let all_tasks = state
-            .task_repo
-            .get_by_project(&project_id)
-            .await
-            .expect("Failed to query tasks");
-        let merge_tasks: Vec<_> = all_tasks
-            .iter()
-            .filter(|t| t.category == "plan_merge")
-            .collect();
-        assert!(
-            merge_tasks.is_empty(),
-            "No merge task should exist for single-proposal plan"
-        );
+        // Note: The actual plan_branch record and merge task creation happens in
+        // apply_proposals_to_kanban, not in this test. This test only verifies
+        // the decision function returns the correct value.
     }
 
     #[tokio::test]
