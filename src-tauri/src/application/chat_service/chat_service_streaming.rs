@@ -1019,6 +1019,14 @@ pub async fn process_stream_background<R: Runtime>(
         &outcome.response_text, &outcome.tool_calls, &outcome.content_blocks,
     ).await;
 
+    // Check if cancellation was requested during/after stream processing.
+    // Fixes race where EOF from killed process wins the tokio::select! over
+    // the cancellation token, causing the loop to break instead of returning
+    // Err(Cancelled). If the token is cancelled, always return Cancelled.
+    if cancellation_token.is_cancelled() {
+        return Err(StreamError::Cancelled);
+    }
+
     tracing::debug!(
         conversation_id = %conversation_id_str,
         success = status.success(),
