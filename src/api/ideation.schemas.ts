@@ -18,7 +18,7 @@ export const IdeationSessionResponseSchema = z.object({
     max_teammates: z.number(),
     model_ceiling: z.string(),
     budget_limit: z.number().nullable().optional(),
-    composition_mode: z.string(),
+    composition_mode: z.string().nullable().optional(),
   }).nullable().optional(),
   created_at: z.string(),
   updated_at: z.string(),
@@ -158,7 +158,7 @@ export const TeamConfigResponseSchema = z.object({
   max_teammates: z.number(),
   model_ceiling: z.string(),
   budget_limit: z.number().nullable().optional(),
-  composition_mode: z.string(),
+  composition_mode: z.string().nullable().optional(),
 });
 
 /**
