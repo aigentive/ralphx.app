@@ -172,6 +172,88 @@ pub(super) async fn handle_stream_success<R: Runtime>(
         }
     }
 
+    // Handle review completion without complete_review call (task still in Reviewing)
+    if context_type == ChatContextType::Review {
+        if let Some(ref exec_state) = execution_state {
+            let task_id = TaskId::from_string(context_id.to_string());
+            if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await {
+                if task.internal_status == InternalStatus::Reviewing {
+                    tracing::info!(
+                        task_id = task_id.as_str(),
+                        "Review agent completed without calling complete_review; escalating"
+                    );
+
+                    // Store info in metadata for UI visibility
+                    let mut metadata_obj = task
+                        .metadata
+                        .as_deref()
+                        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                        .unwrap_or_else(|| serde_json::json!({}));
+                    if let Some(obj) = metadata_obj.as_object_mut() {
+                        obj.insert(
+                            "last_agent_error".to_string(),
+                            serde_json::json!(
+                                "Review agent completed without calling complete_review"
+                            ),
+                        );
+                        obj.insert(
+                            "last_agent_error_context".to_string(),
+                            serde_json::json!("review"),
+                        );
+                        obj.insert(
+                            "last_agent_error_at".to_string(),
+                            serde_json::json!(chrono::Utc::now().to_rfc3339()),
+                        );
+                    }
+                    let mut updated_task = task.clone();
+                    updated_task.metadata =
+                        Some(serde_json::to_string(&metadata_obj).unwrap_or_default());
+                    updated_task.touch();
+                    let _ = task_repo.update(&updated_task).await;
+
+                    // Transition to Escalated (no scheduler needed)
+                    let transition_service = TaskTransitionService::new(
+                        Arc::clone(task_repo),
+                        Arc::clone(task_dependency_repo),
+                        Arc::clone(project_repo),
+                        Arc::clone(chat_message_repo),
+                        Arc::clone(chat_attachment_repo),
+                        Arc::clone(conversation_repo),
+                        Arc::clone(agent_run_repo),
+                        Arc::clone(ideation_session_repo),
+                        Arc::clone(activity_event_repo),
+                        Arc::clone(message_queue),
+                        Arc::clone(running_agent_registry),
+                        Arc::clone(exec_state),
+                        app_handle.clone(),
+                        Arc::clone(memory_event_repo),
+                    );
+                    let transition_service = if let Some(ref repo) = plan_branch_repo {
+                        transition_service.with_plan_branch_repo(Arc::clone(repo))
+                    } else {
+                        transition_service
+                    };
+
+                    if let Err(e) = transition_service
+                        .transition_task(&task_id, InternalStatus::Escalated)
+                        .await
+                    {
+                        tracing::error!(
+                            task_id = task_id.as_str(),
+                            error = %e,
+                            "Failed to transition reviewing task to Escalated after incomplete review"
+                        );
+                    }
+                }
+            }
+        } else {
+            tracing::warn!(
+                "Cannot handle review completion for task {} - no execution_state available",
+                context_id
+            );
+        }
+    }
+
     // Handle merge auto-completion (only for Merge context)
     if context_type == ChatContextType::Merge {
         if let Some(ref exec_state) = execution_state {
@@ -724,6 +806,106 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
             tracing::warn!(
                 "Cannot auto-complete merge for task {} on error - no execution_state available",
                 context_id
+            );
+        }
+    }
+
+    // Handle review agent errors — transition stuck Reviewing tasks to Escalated
+    if context_type == ChatContextType::Review {
+        if let Some(ref exec_state) = execution_state {
+            let task_id = TaskId::from_string(context_id.to_string());
+            match task_repo.get_by_id(&task_id).await {
+                Ok(Some(task)) if task.internal_status == InternalStatus::Reviewing => {
+                    // Store last_agent_error in metadata for UI visibility
+                    let mut metadata_obj = task
+                        .metadata
+                        .as_deref()
+                        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                        .unwrap_or_else(|| serde_json::json!({}));
+                    if let Some(obj) = metadata_obj.as_object_mut() {
+                        obj.insert(
+                            "last_agent_error".to_string(),
+                            serde_json::json!(error),
+                        );
+                        obj.insert(
+                            "last_agent_error_context".to_string(),
+                            serde_json::json!("review"),
+                        );
+                        obj.insert(
+                            "last_agent_error_at".to_string(),
+                            serde_json::json!(chrono::Utc::now().to_rfc3339()),
+                        );
+                    }
+                    let mut updated_task = task.clone();
+                    updated_task.metadata =
+                        Some(serde_json::to_string(&metadata_obj).unwrap_or_default());
+                    updated_task.touch();
+                    let _ = task_repo.update(&updated_task).await;
+
+                    // Transition to Escalated
+                    let transition_service = TaskTransitionService::new(
+                        Arc::clone(task_repo),
+                        Arc::clone(task_dependency_repo),
+                        Arc::clone(project_repo),
+                        Arc::clone(chat_message_repo),
+                        Arc::clone(chat_attachment_repo),
+                        Arc::clone(conversation_repo),
+                        Arc::clone(agent_run_repo),
+                        Arc::clone(ideation_session_repo),
+                        Arc::clone(activity_event_repo),
+                        Arc::clone(message_queue),
+                        Arc::clone(running_agent_registry),
+                        Arc::clone(exec_state),
+                        app_handle.clone(),
+                        Arc::clone(memory_event_repo),
+                    );
+                    let transition_service = if let Some(ref repo) = plan_branch_repo {
+                        transition_service.with_plan_branch_repo(Arc::clone(repo))
+                    } else {
+                        transition_service
+                    };
+
+                    if let Err(e) = transition_service
+                        .transition_task(&task_id, InternalStatus::Escalated)
+                        .await
+                    {
+                        tracing::error!(
+                            task_id = task_id.as_str(),
+                            error = %e,
+                            "Failed to transition reviewing task to Escalated after agent error"
+                        );
+                    } else {
+                        tracing::warn!(
+                            task_id = task_id.as_str(),
+                            error = %error,
+                            "Review agent failed; transitioned task to Escalated"
+                        );
+                    }
+                }
+                Ok(Some(_)) => {
+                    // Task not in Reviewing — already transitioned, no action needed
+                }
+                Ok(None) => {
+                    tracing::warn!(
+                        task_id = context_id,
+                        error = %error,
+                        "Review agent failed but task was not found for fallback transition"
+                    );
+                }
+                Err(repo_err) => {
+                    tracing::error!(
+                        task_id = context_id,
+                        error = %error,
+                        repo_error = %repo_err,
+                        "Review agent failed and task lookup failed for fallback transition"
+                    );
+                }
+            }
+        } else {
+            tracing::warn!(
+                task_id = context_id,
+                error = %error,
+                "Review agent failed but no execution_state available for fallback transition"
             );
         }
     }

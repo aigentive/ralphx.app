@@ -240,7 +240,14 @@ export function useAgentEvents(activeConversationId: string | null) {
           });
         }
 
-        // Error already propagated via agent state change and query invalidation
+        // Show error toast for agent failures in execution contexts
+        if (["task_execution", "review", "merge"].includes(context_type)) {
+          const contextLabel = context_type === "task_execution" ? "Worker"
+            : context_type === "review" ? "Reviewer"
+            : "Merger";
+          const errorMsg = payload.error ? String(payload.error).slice(0, 150) : "Agent process exited unexpectedly";
+          toast.error(`${contextLabel} agent error: ${errorMsg}`, { duration: 8000 });
+        }
       })
     );
 
