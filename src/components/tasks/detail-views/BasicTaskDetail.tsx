@@ -5,17 +5,53 @@
  * Features native vibrancy materials and refined typography.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { formatDistanceToNow, parseISO } from "date-fns";
 import { StepList } from "../StepList";
 import { SectionTitle, TwoColumnLayout, DetailCard } from "./shared";
 import { useTaskSteps } from "@/hooks/useTaskSteps";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { taskKeys } from "@/hooks/useTasks";
 import { api } from "@/lib/tauri";
-import { Loader2, Play, RotateCcw, User, Users } from "lucide-react";
+import { Loader2, Play, RotateCcw, Clock, User, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { Task } from "@/types/task";
+import { parseStopMetadata, type Task, type StopMetadata } from "@/types/task";
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/**
+ * Convert snake_case status to Title Case.
+ * "merging" → "Merging"
+ * "qa_testing" → "QA Testing"
+ * "merge_conflict" → "Merge Conflict"
+ */
+function formatStatusLabel(status: string): string {
+  return status
+    .split("_")
+    .map((word) => {
+      // Handle common abbreviations
+      if (word.toUpperCase() === word) return word;
+      if (word === "qa") return "QA";
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(" ");
+}
+
+/**
+ * Get relative time string from ISO timestamp.
+ * Returns "just now" for invalid dates.
+ */
+function getTimeAgo(isoString: string): string {
+  try {
+    const date = parseISO(isoString);
+    return formatDistanceToNow(date, { addSuffix: true });
+  } catch {
+    return "just now";
+  }
+}
 
 type ExecutionMode = "solo" | "team";
 
@@ -28,8 +64,65 @@ interface BasicTaskDetailProps {
 }
 
 /**
- * ActionButtonsCard - Restart button for terminal/suspended states
+ * StopHistorySection - Shows stop history for stopped tasks
+ * Displays original state, stop reason, and time since stopped.
  */
+function StopHistorySection({ stopMetadata }: { stopMetadata: StopMetadata }) {
+  const fromStatusLabel = formatStatusLabel(stopMetadata.stoppedFromStatus);
+  const timeAgo = getTimeAgo(stopMetadata.stoppedAt);
+
+  return (
+    <section data-testid="stop-history-section" className="space-y-2">
+      <SectionTitle>Stop History</SectionTitle>
+      <DetailCard>
+        <div className="space-y-3">
+          {/* Stopped From Status */}
+          <div className="flex items-center gap-2">
+            <span
+              className="text-[11px] font-medium uppercase tracking-wider"
+              style={{ color: "hsl(220 10% 50%)" }}
+            >
+              Stopped from
+            </span>
+            <span
+              className="text-[13px] font-medium px-2 py-0.5 rounded"
+              style={{
+                backgroundColor: "hsl(38 92% 50% / 0.15)",
+                color: "hsl(38 92% 65%)",
+              }}
+            >
+              {fromStatusLabel}
+            </span>
+          </div>
+
+          {/* Stop Reason (if provided) */}
+          {stopMetadata.stopReason && (
+            <div className="mt-2">
+              <span
+                className="text-[11px] font-medium uppercase tracking-wider block mb-1"
+                style={{ color: "hsl(220 10% 50%)" }}
+              >
+                Reason
+              </span>
+              <p className="text-[13px]" style={{ color: "hsl(220 10% 80%)" }}>
+                {stopMetadata.stopReason}
+              </p>
+            </div>
+          )}
+
+          {/* Time Ago */}
+          <div className="flex items-center gap-2 mt-2">
+            <Clock className="w-3.5 h-3.5" style={{ color: "hsl(220 10% 50%)" }} />
+            <span className="text-[12px]" style={{ color: "hsl(220 10% 60%)" }}>
+              {timeAgo}
+            </span>
+          </div>
+        </div>
+      </DetailCard>
+    </section>
+  );
+}
+
 /**
  * ExecutionModeSelector - Solo/Team radio toggle for execution mode
  */
@@ -84,24 +177,45 @@ function ExecutionModeSelector({
   );
 }
 
-function ActionButtonsCard({
-  taskId,
-  status,
-}: {
-  taskId: string;
-  status: string;
-}) {
+/**
+ * ActionButtonsCard - Restart button for terminal/suspended states
+ * For stopped tasks with stop metadata, shows enhanced confirmation dialog.
+ * Supports execution mode selection (solo/team) for start/restart operations.
+ */
+function ActionButtonsCard({ task }: { task: Task }) {
   const queryClient = useQueryClient();
   const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
   const [executionMode, setExecutionMode] = useState<ExecutionMode>("solo");
+  const taskId = task.id;
+  const status = task.internalStatus;
+
+  // Parse stop metadata for enhanced confirmation dialog
+  const stopMetadata = useMemo(
+    () => parseStopMetadata(task.metadata),
+    [task.metadata]
+  );
+
+  const isStopped = status === "stopped" && stopMetadata !== null;
 
   const restartMutation = useMutation({
     mutationFn: async () => {
-      await api.tasks.move(
-        taskId,
-        "ready",
-        executionMode === "team" ? "team" : undefined
-      );
+      if (isStopped) {
+        // Use smart restart for stopped tasks via API layer
+        const result = await api.tasks.restart(taskId, false);
+        if (result.type === "ValidationFailed") {
+          throw new Error(
+            `Validation failed: ${result.warnings.map((w) => w.message).join(", ")}`
+          );
+        }
+        return result;
+      } else {
+        // Fallback to move-to-ready for other restartable statuses
+        return await api.tasks.move(
+          taskId,
+          "ready",
+          executionMode === "team" ? "team" : undefined
+        );
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
@@ -126,17 +240,41 @@ function ActionButtonsCard({
         : "failed task";
     const modeNote = executionMode === "team" ? " in team mode" : "";
 
-    const confirmed = await confirm({
-      title: `${actionLabel} this ${taskLabel}?`,
-      description: isReady
-        ? `The task will be started${modeNote}.`
-        : `The task will be moved to ready status and can be executed again${modeNote}.`,
-      confirmText: actionLabel,
-      variant: "default",
-    });
-    if (!confirmed) return;
+    // Build enhanced confirmation for stopped tasks with metadata
+    if (isStopped && stopMetadata) {
+      const fromStatusLabel = formatStatusLabel(stopMetadata.stoppedFromStatus);
+      const timeAgo = getTimeAgo(stopMetadata.stoppedAt);
+
+      const descriptionParts = [
+        `Original state: ${fromStatusLabel}`,
+        stopMetadata.stopReason && `Reason: ${stopMetadata.stopReason}`,
+        `Stopped ${timeAgo}`,
+        "",
+        "The task will resume with smart state restoration.",
+      ];
+      const description = descriptionParts.filter(Boolean).join("\n");
+
+      const confirmed = await confirm({
+        title: `Restart this stopped task?`,
+        description,
+        confirmText: actionLabel,
+        variant: "default",
+      });
+      if (!confirmed) return;
+    } else {
+      const confirmed = await confirm({
+        title: `${actionLabel} this ${taskLabel}?`,
+        description: isReady
+          ? `The task will be started${modeNote}.`
+          : `The task will be moved to ready status and can be executed again${modeNote}.`,
+        confirmText: actionLabel,
+        variant: "default",
+      });
+      if (!confirmed) return;
+    }
+
     restartMutation.mutate();
-  }, [confirm, status, isReady, restartMutation, executionMode]);
+  }, [confirm, status, isReady, isStopped, stopMetadata, restartMutation, executionMode]);
 
   return (
     <DetailCard data-testid="action-buttons">
@@ -195,6 +333,13 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
   const isRestartable = RESTARTABLE_STATUSES.has(task.internalStatus);
   const showsActions = isRestartable || task.internalStatus === "ready";
 
+  // Parse stop metadata for stopped tasks
+  const stopMetadata = useMemo(
+    () => parseStopMetadata(task.metadata),
+    [task.metadata]
+  );
+  const isStopped = task.internalStatus === "stopped" && stopMetadata !== null;
+
   // Parse failure info from task metadata when task is failed or qa_failed
   let failureInfo: {
     failure_error: string;
@@ -237,6 +382,11 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
       description={task.description}
       testId="basic-task-detail"
     >
+      {/* Stop History Section (for stopped tasks with metadata) */}
+      {isStopped && stopMetadata && (
+        <StopHistorySection stopMetadata={stopMetadata} />
+      )}
+
       {/* Failure Reason Banner */}
       {failureInfo && (
         <section data-testid="failure-reason-section" className="space-y-2">
@@ -290,7 +440,7 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
       {/* Action Buttons (hidden in historical mode) */}
       {!isHistorical && showsActions && (
         <section>
-          <ActionButtonsCard taskId={task.id} status={task.internalStatus} />
+          <ActionButtonsCard task={task} />
         </section>
       )}
     </TwoColumnLayout>
