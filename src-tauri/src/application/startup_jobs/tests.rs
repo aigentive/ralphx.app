@@ -1739,3 +1739,133 @@ fn test_paused_not_in_agent_active_or_auto_transition() {
         "Paused should NOT be in AUTO_TRANSITION_STATES"
     );
 }
+
+// ============================================================
+// Merge-First Recovery Tests (Phase 0 + Phase 1)
+// ============================================================
+
+#[tokio::test]
+async fn test_cleanup_stale_git_state_no_panic_with_missing_dir() {
+    // cleanup_stale_git_state should not panic when the project's
+    // working directory does not exist (e.g., external drive unmounted)
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new(
+        "Test Project".to_string(),
+        "/nonexistent/path/that/does/not/exist".to_string(),
+    );
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let (runner, _) = build_runner(&app_state, &execution_state);
+
+    // Should complete without panic
+    runner.cleanup_stale_git_state(&[project]).await;
+}
+
+#[tokio::test]
+async fn test_merge_first_recovery_processes_merge_and_agent_tasks() {
+    // Verify that merge-state tasks (Phase 1) and non-merge agent-active
+    // tasks are both processed on startup
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create a Merging task (handled in Phase 1)
+    let mut merging_task = Task::new(project.id.clone(), "Merging Task".to_string());
+    merging_task.internal_status = InternalStatus::Merging;
+    let merging_id = merging_task.id.clone();
+    app_state.task_repo.create(merging_task).await.unwrap();
+
+    // Create an Executing task (handled in main loop)
+    let mut exec_task = Task::new(project.id.clone(), "Executing Task".to_string());
+    exec_task.internal_status = InternalStatus::Executing;
+    let exec_id = exec_task.id.clone();
+    app_state.task_repo.create(exec_task).await.unwrap();
+
+    execution_state.set_max_concurrent(10);
+
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
+
+    runner.run().await;
+
+    // Verify Merging task was processed in Phase 1 (Merge conversation created)
+    let merge_convs = app_state
+        .chat_conversation_repo
+        .get_by_context(ChatContextType::Merge, merging_id.as_str())
+        .await
+        .unwrap();
+    assert_eq!(
+        merge_convs.len(),
+        1,
+        "Merging task should be processed in Phase 1 merge-first recovery"
+    );
+
+    // Verify Executing task was also processed (transitions to Failed in test env)
+    let exec_updated = app_state
+        .task_repo
+        .get_by_id(&exec_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        exec_updated.internal_status,
+        InternalStatus::Failed,
+        "Executing task should still be processed in main agent-active loop"
+    );
+}
+
+#[tokio::test]
+async fn test_pending_merge_processed_in_phase1() {
+    // PendingMerge tasks should be processed in Phase 1 merge-first recovery,
+    // and skipped in both AGENT_ACTIVE_STATUSES and AUTO_TRANSITION_STATES loops
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "PendingMerge Task".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.task_branch = Some("task/phase1-test".to_string());
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task).await.unwrap();
+
+    execution_state.set_max_concurrent(10);
+
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
+
+    runner.run().await;
+
+    // PendingMerge should have been processed (moved out of PendingMerge)
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(
+        updated.internal_status,
+        InternalStatus::PendingMerge,
+        "PendingMerge task should be processed in Phase 1 merge-first recovery"
+    );
+}

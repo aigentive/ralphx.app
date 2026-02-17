@@ -14,9 +14,12 @@
 // - Re-executes entry actions to respawn agents
 // - Stops early if max_concurrent is reached
 
+use std::path::Path;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 use tracing::{debug, info};
+
+use crate::application::git_service::GitService;
 
 use crate::application::ReconciliationRunner;
 use crate::commands::execution_commands::{
@@ -309,6 +312,72 @@ impl<R: Runtime> StartupJobRunner<R> {
             "Found projects for startup resumption"
         );
 
+        // Phase 0: Clean up stale git state before any task recovery
+        self.cleanup_stale_git_state(&projects).await;
+
+        // Phase 1: Merge-first recovery — process PendingMerge and Merging tasks
+        // before spawning other agents. This ensures main branch is in a clean state
+        // before worker/reviewer agents start. PendingMerge first so fast-path
+        // programmatic merges complete before agent-based merges.
+        const MERGE_RECOVERY_STATES: &[InternalStatus] = &[
+            InternalStatus::PendingMerge,
+            InternalStatus::Merging,
+        ];
+
+        info!("Phase 1: Merge-first recovery — processing merge states before agent spawning");
+
+        'merge_recovery: for project in &projects {
+            for status in MERGE_RECOVERY_STATES {
+                let tasks = match self.task_repo.get_by_status(&project.id, *status).await {
+                    Ok(tasks) => tasks,
+                    Err(e) => {
+                        tracing::warn!(
+                            project_id = project.id.as_str(),
+                            status = ?status,
+                            error = %e,
+                            "Failed to get tasks by status for merge-first recovery"
+                        );
+                        continue;
+                    }
+                };
+
+                debug!(count = tasks.len(), ?status, "Phase 1: Found tasks in merge state");
+                for task in tasks {
+                    if task.archived_at.is_some() {
+                        debug!(task_id = task.id.as_str(), title = %task.title, "Skipping archived task");
+                        continue;
+                    }
+
+                    let reconciled = self.reconciler.reconcile_task(&task, *status).await;
+
+                    if reconciled {
+                        continue;
+                    }
+
+                    if !self.execution_state.can_start_task() {
+                        info!(
+                            max_concurrent = self.execution_state.max_concurrent(),
+                            running_count = self.execution_state.running_count(),
+                            "Phase 1: Max concurrent reached, stopping merge-first recovery"
+                        );
+                        break 'merge_recovery;
+                    }
+
+                    info!(
+                        task_id = task.id.as_str(),
+                        status = ?status,
+                        "Phase 1: Resuming merge task"
+                    );
+
+                    self.transition_service
+                        .execute_entry_actions(&task.id, &task, *status)
+                        .await;
+
+                    resumed += 1;
+                }
+            }
+        }
+
         // Iterate through projects and their tasks in agent-active states
         for project in &projects {
             debug!(
@@ -316,6 +385,11 @@ impl<R: Runtime> StartupJobRunner<R> {
                 "Checking project for resumable tasks"
             );
             for status in AGENT_ACTIVE_STATUSES {
+                // Skip merge states — already handled in Phase 1 merge-first recovery
+                if *status == InternalStatus::Merging || *status == InternalStatus::PendingMerge {
+                    continue;
+                }
+
                 // Get tasks in this status for this project
                 let tasks = match self.task_repo.get_by_status(&project.id, *status).await {
                     Ok(tasks) => tasks,
@@ -388,6 +462,11 @@ impl<R: Runtime> StartupJobRunner<R> {
         // These states have on_enter side effects that trigger auto-transitions to spawn agents
         for project in &projects {
             for status in AUTO_TRANSITION_STATES {
+                // Skip PendingMerge — already handled in Phase 1 merge-first recovery
+                if *status == InternalStatus::PendingMerge {
+                    continue;
+                }
+
                 let tasks = match self.task_repo.get_by_status(&project.id, *status).await {
                     Ok(tasks) => tasks,
                     Err(e) => {
@@ -606,6 +685,31 @@ impl<R: Runtime> StartupJobRunner<R> {
             }
         }
         true
+    }
+
+    /// Abort stale rebase/merge operations on project repos.
+    /// Called before any task recovery to ensure clean git state.
+    async fn cleanup_stale_git_state(&self, projects: &[crate::domain::entities::Project]) {
+        for project in projects {
+            let repo_path = Path::new(&project.working_directory);
+            if !repo_path.exists() {
+                continue;
+            }
+            if GitService::is_rebase_in_progress(repo_path) {
+                info!(
+                    project_id = project.id.as_str(),
+                    "Phase 0: Aborting stale rebase on main repo before startup recovery"
+                );
+                let _ = GitService::abort_rebase(repo_path);
+            }
+            if GitService::is_merge_in_progress(repo_path) {
+                info!(
+                    project_id = project.id.as_str(),
+                    "Phase 0: Aborting stale merge on main repo before startup recovery"
+                );
+                let _ = GitService::abort_merge(repo_path);
+            }
+        }
     }
 
     /// Check if a task is waiting for global idle (no agents running) before retrying.
