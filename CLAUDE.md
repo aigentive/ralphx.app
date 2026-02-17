@@ -73,16 +73,17 @@ style={{ boxShadow: "none", outline: "none" }}
 2. Anti-AI-slop (no purple gradients, no Inter)
 3. Clean architecture (domain has no infra deps)
 4. Type safety (strict TS, newtype IDs in Rust)
-5. Full timestamps in activity log
-6. **USE TransitionHandler for status changes** — NEVER direct DB update
-7. **Lint before commit** (only for what you modified): `src-tauri/` → cargo clippy, `src/` → npm run lint. When using Claude/automation: run **only** `cargo test --lib` and **do not run** `cargo check` or full `cargo test` (they hang). `cargo test --lib` can take 5–8+ min — use **10 min timeout**: `timeout 10m cargo test --lib --manifest-path src-tauri/Cargo.toml 2>&1 | tail -40`, or a focused test (e.g. `cargo test --lib module_name`). No `--nocapture`/verbose.
-8. **NEVER start/stop dev server** — User manages manually
-9. **Multi-stream workflow** — Use `./ralph-streams.sh <stream>` for focused work: features (PRD+P0), refactor (P1), polish (P2/P3), verify (gaps), hygiene (backlog maintenance). See `.claude/rules/stream-*.md`
-10. **Document patterns inline** — When introducing a new architectural pattern, add a one-liner to the relevant CLAUDE.md (`src/` or `src-tauri/`). Pattern name + rule only, not implementation lists.
-11. **Task tools for complex work (MANDATORY)** — Use TaskCreate/TaskUpdate/TaskList for complex work. See `.claude/rules/task-management.md`
-12. **Commit lock for parallel work** — Acquire `.commit-lock` before committing, release after. Stale = same content >30s. See `.claude/rules/commit-lock.md`
-13. **Tauri invoke uses camelCase** — Rust command input structs use `#[serde(rename_all = "camelCase")]`. Frontend `invoke()` calls MUST pass camelCase field names (`contextId`, `sessionId`), NOT snake_case (`context_id`, `session_id`).
-14. **LLM-optimized docs** — When creating `.claude/rules/*.md` or `**/CLAUDE.md` files, include this maintainer note at the top (after Required Context if present):
+5. **No fragile string comparisons** — NEVER compare error strings with `==` or `.contains()`. Use enum variants (`matches!(err, MyError::Variant)`), error codes, or shared constants. If parsing external/uncontrolled strings (CLI stderr), extract match strings to named constants with doc comments noting the source.
+6. Full timestamps in activity log
+7. **USE TransitionHandler for status changes** — NEVER direct DB update
+8. **Lint before commit** (only for what you modified): `src-tauri/` → cargo clippy, `src/` → npm run lint. When using Claude/automation: run **only** `cargo test --lib` and **do not run** `cargo check` or full `cargo test` (they hang). `cargo test --lib` can take 5–8+ min — use **10 min timeout**: `timeout 10m cargo test --lib --manifest-path src-tauri/Cargo.toml 2>&1 | tail -40`, or a focused test (e.g. `cargo test --lib module_name`). No `--nocapture`/verbose.
+9. **NEVER start/stop dev server** — User manages manually
+10. **Multi-stream workflow** — Use `./ralph-streams.sh <stream>` for focused work: features (PRD+P0), refactor (P1), polish (P2/P3), verify (gaps), hygiene (backlog maintenance). See `.claude/rules/stream-*.md`
+11. **Document patterns inline** — When introducing a new architectural pattern, add a one-liner to the relevant CLAUDE.md (`src/` or `src-tauri/`). Pattern name + rule only, not implementation lists.
+12. **Task tools for complex work (MANDATORY)** — Use TaskCreate/TaskUpdate/TaskList for complex work. See `.claude/rules/task-management.md`
+13. **Commit lock for parallel work** — Acquire `.commit-lock` before committing, release after. Stale = same content >30s. See `.claude/rules/commit-lock.md`
+14. **Tauri invoke uses camelCase** — Rust command input structs use `#[serde(rename_all = "camelCase")]`. Frontend `invoke()` calls MUST pass camelCase field names (`contextId`, `sessionId`), NOT snake_case (`context_id`, `session_id`).
+15. **LLM-optimized docs** — When creating `.claude/rules/*.md` or `**/CLAUDE.md` files, include this maintainer note at the top (after Required Context if present):
     ```
     > **Maintainer note:** This file optimizes for LLM context efficiency. Rules: (1) Tables > prose (2) One example max per concept (3) No redundant explanations (4) Use symbols: → = leads to, | = or, ❌/✅ = wrong/right (5) Before adding content, ask: "Can this be a single line?" If yes, make it one line.
     ```

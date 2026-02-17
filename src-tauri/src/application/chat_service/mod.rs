@@ -47,9 +47,15 @@ use tauri::{AppHandle, Emitter, Runtime};
 use tokio_util::sync::CancellationToken;
 use which::which;
 
+/// Prefix used when formatting agent errors into chat messages.
+/// Both the write site (chat_service_handlers) and read site (chat_service_replay)
+/// must use this constant to stay in sync.
+pub const AGENT_ERROR_PREFIX: &str = "[Agent error:";
+
 // Re-exports from extracted modules
 pub use chat_service_errors::{
-    classify_agent_error, PauseReason, ProviderErrorCategory, ProviderErrorMetadata, StreamError,
+    classify_agent_error, PauseReason, ProviderErrorCategory, ProviderErrorMetadata,
+    StreamError, STALE_SESSION_ERROR,
 };
 pub use chat_service_helpers::{
     context_type_to_process, get_agent_name, get_assistant_role, resolve_agent_with_team_mode,

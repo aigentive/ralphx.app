@@ -69,6 +69,8 @@ pub type AppResult<T> = Result<T, AppError>;
 // Prefer domain-specific error variants over generic strings
 ```
 
+**No fragile string comparisons:** NEVER use `error == "some string"` or `.contains("error text")` to detect error types. Use `matches!(err, MyError::Variant)` or enum discriminants. For external/uncontrolled strings (CLI stderr), extract match strings to named `pub(crate) const` with doc comments noting the source. Example: `AGENT_ERROR_PREFIX` in `chat_service/mod.rs`.
+
 ## Rules
 
 ### State Machine (CRITICAL)
