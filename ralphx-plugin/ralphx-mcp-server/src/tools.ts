@@ -330,7 +330,7 @@ export const ALL_TOOLS: Tool[] = [
     description:
       "Create a new ideation session as a child of an existing session. Use when you want to create follow-on work that inherits context from the parent session. " +
       "The child session starts with 'active' status. " +
-      "When inherit_context is true (default), the child references the parent's plan artifact by ID (copy-on-write: modifications create a new version). " +
+      "When inherit_context is true (default), the child references the parent's plan artifact by ID (copy-on-write: modifications create a new version) AND inherits the parent's team_mode and team_config. " +
       "Parent proposals are NOT copied to the child — use get_parent_session_context to access them.",
     inputSchema: {
       type: "object",
@@ -349,11 +349,40 @@ export const ALL_TOOLS: Tool[] = [
         },
         inherit_context: {
           type: "boolean",
-          description: "If true, child references parent's plan artifact by ID. Parent proposals accessible via get_parent_session_context. Default: true.",
+          description: "If true, child references parent's plan artifact by ID and inherits team_mode/team_config from parent. Parent proposals accessible via get_parent_session_context. Default: true.",
         },
         initial_prompt: {
           type: "string",
           description: "Optional initial prompt/message to forward to the child session's agent. This is the user's message that triggered the child session creation.",
+        },
+        team_mode: {
+          type: "string",
+          enum: ["solo", "research", "debate"],
+          description: "Team mode for the child session. If omitted and inherit_context=true, inherits from parent session. Use 'solo' for single-agent execution, 'research' for parallel research teams, 'debate' for adversarial analysis.",
+        },
+        team_config: {
+          type: "object",
+          description: "Team constraints override. If omitted and inherit_context=true, inherits from parent session. Explicit values replace inherited config. Validated against current project constraints.",
+          properties: {
+            max_teammates: {
+              type: "number",
+              description: "Maximum number of teammates allowed (capped at project constraint)",
+            },
+            model_ceiling: {
+              type: "string",
+              enum: ["haiku", "sonnet", "opus"],
+              description: "Maximum model tier allowed for teammates",
+            },
+            budget_limit: {
+              type: "number",
+              description: "Budget limit for this session (not inherited)",
+            },
+            composition_mode: {
+              type: "string",
+              enum: ["dynamic", "constrained"],
+              description: "dynamic: ad-hoc teammate selection, constrained: use predefined presets",
+            },
+          },
         },
       },
       required: ["parent_session_id"],

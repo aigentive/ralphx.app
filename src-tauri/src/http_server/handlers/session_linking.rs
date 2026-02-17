@@ -14,16 +14,78 @@ use crate::domain::entities::{
     ChatContextType, IdeationSession, IdeationSessionId, IdeationSessionStatus, SessionLink,
     SessionRelationship, SpawnOrchestratorJob,
 };
+use crate::infrastructure::agents::claude::{
+    get_team_constraints, team_constraints_config, validate_child_team_config, TeamConstraints,
+};
 
 use super::super::types::{
     CreateChildSessionRequest, CreateChildSessionResponse, HttpServerState, ParentContextResponse,
-    ParentProposalSummary, ParentSessionSummary,
+    ParentProposalSummary, ParentSessionSummary, TeamConfigInput,
 };
 
 type JsonError = (StatusCode, Json<serde_json::Value>);
 
 fn json_error(status: StatusCode, error: impl Into<String>) -> JsonError {
     (status, Json(serde_json::json!({ "error": error.into() })))
+}
+
+/// Convert TeamConfigInput (HTTP layer) to TeamConstraints (domain layer).
+/// Uses defaults for unspecified fields.
+fn team_config_input_to_constraints(input: &TeamConfigInput) -> TeamConstraints {
+    TeamConstraints {
+        max_teammates: input.max_teammates.map(|v| v as u8).unwrap_or(5),
+        model_cap: input.model_ceiling.clone().unwrap_or_else(|| "sonnet".to_string()),
+        budget_limit: input.budget_limit,
+        ..TeamConstraints::default()
+    }
+}
+
+/// Convert TeamConstraints (domain layer) back to TeamConfigInput (HTTP layer).
+fn constraints_to_team_config_input(constraints: &TeamConstraints) -> TeamConfigInput {
+    TeamConfigInput {
+        max_teammates: Some(constraints.max_teammates as i32),
+        model_ceiling: Some(constraints.model_cap.clone()),
+        budget_limit: constraints.budget_limit,
+        composition_mode: None, // Not stored in TeamConstraints
+    }
+}
+
+/// Parse team_config_json string into TeamConstraints, using defaults if invalid or missing.
+fn parse_team_config_json(json_str: Option<&String>) -> TeamConstraints {
+    json_str
+        .and_then(|s| serde_json::from_str::<TeamConfigInput>(s).ok())
+        .map(|input| team_config_input_to_constraints(&input))
+        .unwrap_or_default()
+}
+
+/// Validate resolved team config against project constraints from ralphx.yaml.
+/// Returns capped TeamConstraints and serialized JSON for storage.
+/// Uses "ideation" as the process context (child sessions don't know their process at creation time).
+fn validate_resolved_team_config(
+    resolved_team_mode: Option<&String>,
+    resolved_team_config_json: Option<&String>,
+) -> (Option<String>, Option<String>) {
+    // If no team mode, child runs in solo mode (no validation needed)
+    let team_mode = match resolved_team_mode {
+        Some(mode) => mode.clone(),
+        None => return (None, None),
+    };
+
+    // Parse resolved config (or use defaults if invalid)
+    let resolved_constraints = parse_team_config_json(resolved_team_config_json);
+
+    // Get project constraints from ralphx.yaml for "ideation" process
+    let config = team_constraints_config();
+    let yaml_constraints = get_team_constraints(config, "ideation");
+
+    // Validate: cap resolved config at yaml constraints to prevent escalation
+    let validated = validate_child_team_config(&resolved_constraints, &yaml_constraints);
+
+    // Convert back to storage format
+    let validated_input = constraints_to_team_config_input(&validated);
+    let validated_json = serde_json::to_string(&validated_input).ok();
+
+    (Some(team_mode), validated_json)
 }
 
 /// Create a child session linked to a parent session
@@ -85,6 +147,28 @@ pub async fn create_child_session(
     }
 
     // Create new child session with parent_session_id set
+    // Resolve team config: explicit > inherited > None
+    let (resolved_team_mode, resolved_team_config_json) = if let Some(mode) = &req.team_mode {
+        // Explicit team_mode provided - use it with optional config
+        let config_json = req.team_config.as_ref().and_then(|c| {
+            serde_json::to_value(c).ok()
+        });
+        (Some(mode.clone()), config_json.map(|v| v.to_string()))
+    } else if req.inherit_context {
+        // No explicit team_mode, but inherit_context=true: inherit from parent
+        (parent.team_mode.clone(), parent.team_config_json.clone())
+    } else {
+        // No explicit team_mode and inherit_context=false: solo mode
+        (None, None)
+    };
+
+    // Validate resolved config against project constraints from ralphx.yaml
+    // Caps values at min(resolved, yaml) to prevent privilege escalation
+    let (team_mode, team_config_json) = validate_resolved_team_config(
+        resolved_team_mode.as_ref(),
+        resolved_team_config_json.as_ref(),
+    );
+
     let child_session = IdeationSession {
         id: IdeationSessionId::new(),
         project_id: parent.project_id.clone(),
@@ -101,8 +185,8 @@ pub async fn create_child_session(
         updated_at: chrono::Utc::now(),
         archived_at: None,
         converted_at: None,
-        team_mode: None,
-        team_config_json: None,
+        team_mode,
+        team_config_json,
     };
 
     let child_id = child_session.id.clone();
@@ -291,6 +375,11 @@ pub async fn create_child_session(
         false
     };
 
+    // Parse team_config_json back to TeamConfigInput for response
+    let team_config = created_session.team_config_json.as_ref().and_then(|json_str| {
+        serde_json::from_str(json_str).ok()
+    });
+
     Ok(Json(CreateChildSessionResponse {
         session_id: child_session_str,
         parent_session_id: parent_session_str,
@@ -301,6 +390,8 @@ pub async fn create_child_session(
         initial_prompt: req.initial_prompt.clone(),
         parent_context,
         orchestration_triggered,
+        team_mode: created_session.team_mode.clone(),
+        team_config,
     }))
 }
 

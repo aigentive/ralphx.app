@@ -773,6 +773,21 @@ pub struct CreateChildSessionRequest {
     #[serde(default = "default_inherit_context")]
     pub inherit_context: bool,
     pub initial_prompt: Option<String>,
+    /// Team mode override: "solo", "research", or "debate"
+    /// If omitted and inherit_context=true, inherits from parent session
+    pub team_mode: Option<String>,
+    /// Team constraints override (max_teammates, model_ceiling, etc.)
+    /// If omitted and inherit_context=true, inherits from parent session
+    pub team_config: Option<TeamConfigInput>,
+}
+
+/// Team configuration input for create_child_session
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TeamConfigInput {
+    pub max_teammates: Option<i32>,
+    pub model_ceiling: Option<String>,
+    pub budget_limit: Option<f64>,
+    pub composition_mode: Option<String>,
 }
 
 fn default_inherit_context() -> bool {
@@ -794,6 +809,12 @@ pub struct CreateChildSessionResponse {
     pub parent_context: Option<ParentContextResponse>,
     /// Whether an orchestrator job was enqueued (true when description is provided)
     pub orchestration_triggered: bool,
+    /// Resolved team mode: inherited from parent or explicitly set via request
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub team_mode: Option<String>,
+    /// Resolved team configuration: inherited from parent or explicitly set via request
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub team_config: Option<TeamConfigInput>,
 }
 
 #[derive(Debug, Serialize)]
