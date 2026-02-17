@@ -12,14 +12,13 @@ use tracing::info;
 
 use crate::application::question_state::QuestionState;
 use crate::application::team_events;
-use crate::application::team_state_tracker::{TeammateHandle, TeammateStatus};
+use crate::application::team_state_tracker::TeammateStatus;
 use crate::domain::entities::{
     ActivityEvent, ActivityEventType, ChatContextType, ChatConversationId, ChatMessageId, TaskId,
 };
 use crate::domain::repositories::{ActivityEventRepository, ChatMessageRepository, TaskRepository};
 use crate::infrastructure::agents::claude::{
-    apply_common_spawn_env, ClaudeCodeClient, ContentBlockItem, DiffContext, StreamEvent,
-    StreamProcessor, TeammateSpawnConfig, ToolCall,
+    ContentBlockItem, DiffContext, StreamEvent, StreamProcessor, ToolCall,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -710,13 +709,14 @@ pub async fn process_stream_background<R: Runtime>(
                             );
                         }
                     }
-                    StreamEvent::TeammateSpawned { teammate_name, team_name, agent_id: _, model, color, prompt, agent_type } => {
-                        // Register teammate via TeamService (persistence + events)
-                        // May already exist from approve_team_plan — add_teammate returns error if duplicate
+                    StreamEvent::TeammateSpawned { teammate_name, team_name, agent_id: _, model, color, prompt: _, agent_type: _ } => {
+                        // Register teammate via TeamService (persistence + events).
+                        // May already exist from approve_team_plan — add_teammate is idempotent.
+                        // NOTE: CLI worker processes are spawned in approve_team_plan (teams.rs),
+                        // NOT here, to avoid double-spawn when both paths fire.
                         if let Some(ref service) = team_service {
                             let _ = service.add_teammate(&team_name, &teammate_name, &color, &model, "team-member").await;
                         } else if let Some(ref handle) = app_handle {
-                            // Fallback: emit event directly if no service available
                             team_events::emit_teammate_spawned(
                                 handle,
                                 &team_name,
@@ -727,35 +727,6 @@ pub async fn process_stream_background<R: Runtime>(
                                 &context_type_str,
                                 &context_id_str,
                             );
-                        }
-
-                        // Auto-spawn a separate CLI worker process for this teammate.
-                        // The lead registers teammates in-process via Task tool, but each
-                        // teammate needs its own CLI process to actually execute work.
-                        if !prompt.is_empty() {
-                            if let (Some(ref service), Some(ref handle)) = (&team_service, &app_handle) {
-                                let parent_session_id = processor.session_id.clone().unwrap_or_default();
-                                let service = service.clone();
-                                let handle_clone = handle.clone();
-                                let ctx_type = context_type_str.clone();
-                                let ctx_id = context_id_str.clone();
-
-                                tokio::spawn(async move {
-                                    spawn_teammate_worker(
-                                        &teammate_name,
-                                        &team_name,
-                                        &parent_session_id,
-                                        &prompt,
-                                        &model,
-                                        &color,
-                                        &agent_type,
-                                        &ctx_type,
-                                        &ctx_id,
-                                        service,
-                                        handle_clone,
-                                    ).await;
-                                });
-                            }
                         }
                     }
                     StreamEvent::TeamMessageSent { sender, recipient, content, message_type } => {
@@ -1082,160 +1053,6 @@ pub async fn process_stream_background<R: Runtime>(
     }
 
     Ok(outcome)
-}
-
-// ============================================================================
-// Teammate auto-spawn helper
-// ============================================================================
-
-/// Spawn a separate CLI worker process for a teammate detected in the lead's stream.
-///
-/// Builds a `TeammateSpawnConfig` in print mode (`-p <prompt>`), spawns the process,
-/// starts a background stream processor for its stdout, and registers the handle
-/// in TeamService for lifecycle management.
-async fn spawn_teammate_worker<R: Runtime>(
-    teammate_name: &str,
-    team_name: &str,
-    parent_session_id: &str,
-    prompt: &str,
-    model: &str,
-    color: &str,
-    agent_type: &str,
-    context_type: &str,
-    context_id: &str,
-    service: std::sync::Arc<crate::application::TeamService>,
-    app_handle: AppHandle<R>,
-) {
-    tracing::info!(
-        teammate = %teammate_name,
-        team = %team_name,
-        model = %model,
-        agent_type = %agent_type,
-        "Auto-spawning teammate worker process"
-    );
-
-    // Build spawn config with print mode (-p) so the teammate starts working immediately
-    let spawn_config = TeammateSpawnConfig::new(
-        teammate_name,
-        team_name,
-        parent_session_id,
-        prompt, // Used as --append-system-prompt fallback (not used in print mode)
-    )
-    .with_model(model)
-    .with_color(color)
-    .with_agent_type(agent_type)
-    .with_print_mode_prompt(prompt);
-
-    let client = ClaudeCodeClient::new();
-    let args = client.build_teammate_cli_args(&spawn_config);
-    let env_vars = ClaudeCodeClient::build_teammate_env_vars(&spawn_config);
-
-    // Build and spawn the command
-    let mut cmd = tokio::process::Command::new(client.cli_path());
-    cmd.args(&args)
-        .current_dir(&spawn_config.working_directory)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .stdin(std::process::Stdio::null()); // Print mode: no stdin needed
-
-    // Apply common RalphX spawn env vars
-    apply_common_spawn_env(&mut cmd);
-
-    // Plugin root env var
-    if let Some(plugin_dir) = &spawn_config.plugin_dir {
-        cmd.env("CLAUDE_PLUGIN_ROOT", plugin_dir);
-    }
-
-    // Team-specific env vars (CLAUDECODE=1, CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1, etc.)
-    for (key, value) in &env_vars {
-        cmd.env(key, value);
-    }
-
-    match cmd.spawn() {
-        Ok(mut child) => {
-            tracing::info!(
-                teammate = %teammate_name,
-                team = %team_name,
-                pid = ?child.id(),
-                "Teammate worker process spawned successfully"
-            );
-
-            // Take stdout for stream processing
-            let stdout = child.stdout.take();
-
-            // Start background stream processor for this teammate's output
-            let stream_task = match stdout {
-                Some(stdout) => {
-                    Some(
-                        crate::application::team_stream_processor::start_teammate_stream(
-                            stdout,
-                            team_name.to_string(),
-                            teammate_name.to_string(),
-                            context_type.to_string(),
-                            context_id.to_string(),
-                            app_handle.clone(),
-                            service.tracker_arc(),
-                            Some(service.clone()),
-                        ),
-                    )
-                }
-                None => {
-                    tracing::warn!(
-                        teammate = %teammate_name,
-                        "No stdout pipe available for teammate stream processing"
-                    );
-                    None
-                }
-            };
-
-            // Register the process handle for lifecycle management
-            let handle = TeammateHandle {
-                child,
-                stream_task,
-                stdin: None, // Print mode: no stdin pipe
-            };
-
-            if let Err(e) = service
-                .set_teammate_handle(team_name, teammate_name, handle)
-                .await
-            {
-                tracing::error!(
-                    teammate = %teammate_name,
-                    team = %team_name,
-                    error = %e,
-                    "Failed to register teammate handle"
-                );
-            }
-
-            // Update status to Running
-            let _ = service
-                .update_teammate_status(team_name, teammate_name, TeammateStatus::Running)
-                .await;
-        }
-        Err(e) => {
-            tracing::error!(
-                teammate = %teammate_name,
-                team = %team_name,
-                error = %e,
-                "Failed to spawn teammate worker process"
-            );
-
-            // Update status to Failed
-            let _ = service
-                .update_teammate_status(team_name, teammate_name, TeammateStatus::Failed)
-                .await;
-
-            // Emit failure event
-            let _ = app_handle.emit(
-                "team:teammate_spawn_failed",
-                serde_json::json!({
-                    "team_name": team_name,
-                    "teammate_name": teammate_name,
-                    "error": e.to_string(),
-                }),
-            );
-        }
-    }
 }
 
 #[cfg(test)]

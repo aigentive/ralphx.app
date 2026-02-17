@@ -35,8 +35,8 @@ use crate::http_server::types::{
     SpawnedTeammateInfo, TeamArtifactSummary, TeamCompositionEntry, TeamSessionStateResponse,
 };
 use crate::infrastructure::agents::claude::{
-    get_team_constraints, team_constraints_config, validate_team_plan, ClaudeCodeClient,
-    TeammateSpawnConfig, TeammateSpawnRequest,
+    apply_common_spawn_env, get_team_constraints, team_constraints_config, validate_team_plan,
+    ClaudeCodeClient, TeammateSpawnConfig, TeammateSpawnRequest,
 };
 
 // ============================================================================
@@ -232,12 +232,18 @@ pub async fn request_team_plan(
 
 /// Approve a validated team plan and spawn all teammates at once.
 ///
-/// Flow:
-/// 1. Look up pending plan by plan_id
-/// 2. Create team in tracker (or find existing)
-/// 3. For each teammate: generate name/color, register, spawn, start streaming
-/// 4. Emit team:teammate_spawned events
-/// 5. Return list of spawned teammates
+/// This is the SINGLE entry point for teammate CLI process creation. After the
+/// user approves the plan in the UI, this handler:
+///
+/// 1. Looks up the pending plan by plan_id
+/// 2. Creates the team in TeamService (DB + events)
+/// 3. For each teammate: generate name/color, register in DB, spawn CLI process,
+///    start stdout stream processing, register process handle
+/// 4. Signals the blocking `request_team_plan` handler with spawn results
+/// 5. Returns the list of spawned teammates
+///
+/// The lead agent's `Task` tool creates in-process subagents within its own Claude
+/// session, but these separate CLI processes are what the Tauri frontend tracks.
 pub async fn approve_team_plan(
     State(state): State<HttpServerState>,
     Json(req): Json<ApproveTeamPlanRequest>,
@@ -275,9 +281,10 @@ pub async fn approve_team_plan(
             })?;
     }
 
-    // 3. Pre-register names/colors for each teammate (actual registration happens
-    //    in request_teammate_spawn or via TeammateSpawned stream events — NOT here,
-    //    to avoid duplicate add_teammate calls that cause "-2" suffixed names).
+    // 3. Register, spawn, and stream each teammate as a separate CLI process.
+    //    This is the ONLY place where teammate worker processes are created.
+    //    The lead agent's Task tool creates in-process subagents within its own
+    //    Claude session, but these separate CLI processes are what the frontend tracks.
     let mut spawned_teammates = Vec::new();
 
     for pending in &plan.teammates {
@@ -285,20 +292,136 @@ pub async fn approve_team_plan(
             generate_unique_teammate_name(&state, &team_name, &pending.role).await;
         let teammate_color = assign_teammate_color(&state, &team_name).await;
 
-        // Emit team:teammate_spawned for frontend UI (so it can show "Spawning" status)
-        if let Some(app_handle) = &state.app_state.app_handle {
-            let _ = app_handle.emit(
-                "team:teammate_spawned",
-                serde_json::json!({
-                    "team_name": team_name,
-                    "teammate_name": teammate_name,
-                    "role": pending.role,
-                    "model": pending.model,
-                    "color": teammate_color,
-                    "context_type": req.context_type,
-                    "context_id": req.context_id,
-                }),
-            );
+        // Register teammate in DB via TeamService (persistence + events)
+        let _ = state
+            .team_service
+            .add_teammate(
+                &team_name,
+                &teammate_name,
+                &teammate_color,
+                &pending.model,
+                &pending.role,
+            )
+            .await;
+
+        // Spawn a separate CLI worker process for this teammate
+        let spawn_config = TeammateSpawnConfig::new(
+            &teammate_name,
+            &team_name,
+            &req.context_id,
+            &pending.prompt,
+        )
+        .with_model(&pending.model)
+        .with_tools(pending.tools.clone())
+        .with_mcp_tools(pending.mcp_tools.clone())
+        .with_color(&teammate_color)
+        .with_print_mode_prompt(&pending.prompt);
+
+        let client = ClaudeCodeClient::new();
+        let args = client.build_teammate_cli_args(&spawn_config);
+        let env_vars = ClaudeCodeClient::build_teammate_env_vars(&spawn_config);
+
+        let mut cmd = tokio::process::Command::new(client.cli_path().clone());
+        cmd.args(&args)
+            .current_dir(&spawn_config.working_directory)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .stdin(std::process::Stdio::null());
+
+        apply_common_spawn_env(&mut cmd);
+
+        if let Some(plugin_dir) = &spawn_config.plugin_dir {
+            cmd.env("CLAUDE_PLUGIN_ROOT", plugin_dir);
+        }
+
+        for (key, value) in &env_vars {
+            cmd.env(key, value);
+        }
+
+        match cmd.spawn() {
+            Ok(mut child) => {
+                info!(
+                    teammate = %teammate_name,
+                    team = %team_name,
+                    pid = ?child.id(),
+                    "Teammate worker process spawned in approve_team_plan"
+                );
+
+                let stdout = child.stdout.take();
+
+                // Start background stream processor for teammate stdout
+                let stream_task = match (stdout, &state.app_state.app_handle) {
+                    (Some(stdout), Some(app_handle)) => {
+                        Some(
+                            crate::application::team_stream_processor::start_teammate_stream(
+                                stdout,
+                                team_name.clone(),
+                                teammate_name.clone(),
+                                req.context_type.clone(),
+                                req.context_id.clone(),
+                                app_handle.clone(),
+                                std::sync::Arc::new(state.team_tracker.clone()),
+                                Some(state.team_service.clone()),
+                            ),
+                        )
+                    }
+                    _ => {
+                        warn!(
+                            teammate = %teammate_name,
+                            "No stdout/app_handle for teammate stream processing"
+                        );
+                        None
+                    }
+                };
+
+                let handle = TeammateHandle {
+                    child,
+                    stream_task,
+                    stdin: None,
+                };
+
+                let _ = state
+                    .team_service
+                    .set_teammate_handle(&team_name, &teammate_name, handle)
+                    .await;
+
+                let _ = state
+                    .team_service
+                    .update_teammate_status(
+                        &team_name,
+                        &teammate_name,
+                        TeammateStatus::Running,
+                    )
+                    .await;
+            }
+            Err(e) => {
+                error!(
+                    teammate = %teammate_name,
+                    team = %team_name,
+                    error = %e,
+                    "Failed to spawn teammate worker process"
+                );
+
+                let _ = state
+                    .team_service
+                    .update_teammate_status(
+                        &team_name,
+                        &teammate_name,
+                        TeammateStatus::Failed,
+                    )
+                    .await;
+
+                if let Some(app_handle) = &state.app_state.app_handle {
+                    let _ = app_handle.emit(
+                        "team:teammate_spawn_failed",
+                        serde_json::json!({
+                            "team_name": team_name,
+                            "teammate_name": teammate_name,
+                            "error": e.to_string(),
+                        }),
+                    );
+                }
+            }
         }
 
         spawned_teammates.push(SpawnedTeammateInfo {
@@ -315,9 +438,9 @@ pub async fn approve_team_plan(
     info!(
         plan_id = %req.plan_id,
         team = %team_name,
-        registered = spawned_count,
+        spawned = spawned_count,
         total = total_count,
-        "Team plan approved — teammates registered"
+        "Team plan approved — teammates spawned as CLI worker processes"
     );
 
     // Signal the blocking request_team_plan handler with the spawn results

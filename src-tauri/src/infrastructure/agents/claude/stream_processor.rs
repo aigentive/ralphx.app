@@ -407,6 +407,10 @@ pub struct ParsedLine {
     pub message: StreamMessage,
     pub parent_tool_use_id: Option<String>,
     pub is_synthetic: bool,
+    /// Top-level `tool_use_result` from Claude Code stream JSON.
+    /// Contains structured metadata (e.g. `{"status": "teammate_spawned", ...}`)
+    /// that is NOT inside the `message.content[].content` field.
+    pub tool_use_result: Option<serde_json::Value>,
 }
 
 impl StreamProcessor {
@@ -417,15 +421,16 @@ impl StreamProcessor {
 
     /// Process a stream message without parent context (backward compat)
     pub fn process_message(&mut self, msg: StreamMessage) -> Vec<StreamEvent> {
-        self.process_message_with_parent(msg, None, false)
+        self.process_message_with_parent(msg, None, false, None)
     }
 
-    /// Process a parsed line (message + parent_tool_use_id + is_synthetic)
+    /// Process a parsed line (message + parent_tool_use_id + is_synthetic + tool_use_result)
     pub fn process_parsed_line(&mut self, parsed: ParsedLine) -> Vec<StreamEvent> {
         self.process_message_with_parent(
             parsed.message,
             parsed.parent_tool_use_id,
             parsed.is_synthetic,
+            parsed.tool_use_result,
         )
     }
 
@@ -460,6 +465,14 @@ impl StreamProcessor {
             .and_then(|s| s.as_bool())
             .unwrap_or(false);
 
+        // Extract top-level tool_use_result before raw_value is consumed.
+        // Claude Code puts structured metadata here (e.g. {"status": "teammate_spawned", ...})
+        // which is separate from message.content[].content (the text result).
+        let tool_use_result = raw_value
+            .get("tool_use_result")
+            .filter(|v| v.is_object())
+            .cloned();
+
         // Parse either direct event objects ({type: ...}) or wrapped envelopes
         // ({message: {type: ...}}, {data: {type: ...}}, {event: {type: ...}}).
         let message_value = if raw_value.get("type").is_some() {
@@ -479,15 +492,19 @@ impl StreamProcessor {
             message,
             parent_tool_use_id,
             is_synthetic,
+            tool_use_result,
         })
     }
 
-    /// Process a stream message with optional parent_tool_use_id and is_synthetic context
+    /// Process a stream message with optional parent_tool_use_id, is_synthetic, and tool_use_result context.
+    /// `tool_use_result` is the top-level structured metadata from Claude Code stream JSON
+    /// (e.g. `{"status": "teammate_spawned", ...}`) — distinct from `message.content[].content`.
     fn process_message_with_parent(
         &mut self,
         msg: StreamMessage,
         parent_tool_use_id: Option<String>,
         is_synthetic: bool,
+        tool_use_result: Option<serde_json::Value>,
     ) -> Vec<StreamEvent> {
         let mut events = Vec::new();
 
@@ -796,8 +813,11 @@ impl StreamProcessor {
 
                         // Emit TaskCompleted if this is a Task tool_result
                         if is_task_result {
-                            // Try JSON extraction first (tool_use_result sub-object or content itself)
-                            let metadata = content.get("tool_use_result").unwrap_or(&content);
+                            // Use top-level tool_use_result (structured metadata from Claude Code)
+                            // falling back to content.tool_use_result or content itself
+                            let empty = serde_json::Value::Null;
+                            let metadata = tool_use_result.as_ref()
+                                .unwrap_or_else(|| content.get("tool_use_result").unwrap_or(&empty));
                             let json_agent_id = metadata
                                 .get("agentId")
                                 .and_then(|v| v.as_str())
@@ -839,8 +859,11 @@ impl StreamProcessor {
                             parent_tool_use_id: parent_tool_use_id.clone(),
                         });
 
-                        // Check if this is a team event result
-                        if let Some(team_event) = Self::detect_team_event(&tool_use_id, &content) {
+                        // Check if this is a team event result.
+                        // Use top-level tool_use_result (structured JSON from Claude Code stream)
+                        // which contains the actual team metadata. The content field is just text.
+                        let team_data = tool_use_result.as_ref().unwrap_or(&content);
+                        if let Some(team_event) = Self::detect_team_event(&tool_use_id, team_data) {
                             events.push(team_event);
                         }
                     }
@@ -1448,6 +1471,7 @@ mod tests {
             },
             parent_tool_use_id: Some("toolu_parent".to_string()),
             is_synthetic: false,
+            tool_use_result: None,
         };
 
         let events = processor.process_parsed_line(parsed);
@@ -1497,6 +1521,7 @@ mod tests {
             message: StreamMessage::ContentBlockStop { index: Some(0) },
             parent_tool_use_id: Some("toolu_parent".to_string()),
             is_synthetic: false,
+            tool_use_result: None,
         };
 
         let events = processor.process_parsed_line(parsed);
@@ -1816,6 +1841,7 @@ mod tests {
             },
             parent_tool_use_id: Some("toolu_parent_task".to_string()),
             is_synthetic: false,
+            tool_use_result: None,
         };
 
         let events = processor.process_parsed_line(parsed);
@@ -2172,6 +2198,7 @@ mod tests {
             },
             parent_tool_use_id: None,
             is_synthetic: true,
+            tool_use_result: None,
         };
 
         let events = processor.process_parsed_line(parsed);
@@ -2200,6 +2227,7 @@ mod tests {
             },
             parent_tool_use_id: None,
             is_synthetic: false,
+            tool_use_result: None,
         };
 
         let events = processor.process_parsed_line(parsed);
@@ -2491,6 +2519,132 @@ mod tests {
         });
         let event = StreamProcessor::detect_team_event("toolu_7", &result);
         assert!(event.is_none(), "Regular tool result should not produce a team event");
+    }
+
+    /// Integration test: verify team events are detected from top-level tool_use_result
+    /// in the actual Claude Code stream-json format (where content is text, not structured JSON).
+    #[test]
+    fn test_teammate_spawned_from_real_stream_format() {
+        let mut processor = StreamProcessor::new();
+
+        // Register the Task tool call (assistant message)
+        processor.process_message(StreamMessage::Assistant {
+            message: AssistantMessage {
+                content: vec![AssistantContent::ToolUse {
+                    id: "toolu_019oPFhAfvpV3c1Zaw1S9V5e".to_string(),
+                    name: "Task".to_string(),
+                    input: serde_json::json!({
+                        "name": "team-tabs",
+                        "team_name": "tabs-vs-spaces-debate",
+                        "subagent_type": "general-purpose",
+                        "prompt": "You are team-tabs..."
+                    }),
+                }],
+                stop_reason: None,
+            },
+            session_id: None,
+        });
+
+        // Actual Claude Code stream format: content is text array, tool_use_result is top-level
+        let parsed = ParsedLine {
+            message: StreamMessage::User {
+                message: UserMessage {
+                    content: vec![UserContent::ToolResult {
+                        tool_use_id: "toolu_019oPFhAfvpV3c1Zaw1S9V5e".to_string(),
+                        content: serde_json::json!([
+                            {"type": "text", "text": "Spawned successfully.\nagent_id: team-tabs@tabs-vs-spaces-debate\nname: team-tabs"}
+                        ]),
+                        is_error: false,
+                    }],
+                },
+            },
+            parent_tool_use_id: None,
+            is_synthetic: false,
+            tool_use_result: Some(serde_json::json!({
+                "status": "teammate_spawned",
+                "name": "team-tabs",
+                "teammate_id": "team-tabs@tabs-vs-spaces-debate",
+                "agent_id": "team-tabs@tabs-vs-spaces-debate",
+                "agent_type": "general-purpose",
+                "model": "claude-opus-4-6",
+                "color": "blue",
+                "prompt": "You are team-tabs...",
+                "team_name": "tabs-vs-spaces-debate"
+            })),
+        };
+
+        let events = processor.process_parsed_line(parsed);
+
+        // Should emit: TaskCompleted, ToolResultReceived, TeammateSpawned
+        let teammate_event = events.iter().find(|e| matches!(e, StreamEvent::TeammateSpawned { .. }));
+        assert!(teammate_event.is_some(), "Expected TeammateSpawned event from tool_use_result, got: {:?}", events);
+        match teammate_event.unwrap() {
+            StreamEvent::TeammateSpawned { teammate_name, team_name, model, color, prompt, .. } => {
+                assert_eq!(teammate_name, "team-tabs");
+                assert_eq!(team_name, "tabs-vs-spaces-debate");
+                assert_eq!(model, "claude-opus-4-6");
+                assert_eq!(color, "blue");
+                assert_eq!(prompt, "You are team-tabs...");
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    /// Integration test: verify TeamCreated detected from top-level tool_use_result
+    #[test]
+    fn test_team_created_from_real_stream_format() {
+        let mut processor = StreamProcessor::new();
+
+        // Register TeamCreate tool call
+        processor.process_message(StreamMessage::Assistant {
+            message: AssistantMessage {
+                content: vec![AssistantContent::ToolUse {
+                    id: "toolu_team_create_real".to_string(),
+                    name: "TeamCreate".to_string(),
+                    input: serde_json::json!({"team_name": "tabs-vs-spaces-debate"}),
+                }],
+                stop_reason: None,
+            },
+            session_id: None,
+        });
+
+        // Real format: content is text (JSON-as-string), tool_use_result is structured
+        let parsed = ParsedLine {
+            message: StreamMessage::User {
+                message: UserMessage {
+                    content: vec![UserContent::ToolResult {
+                        tool_use_id: "toolu_team_create_real".to_string(),
+                        content: serde_json::json!([
+                            {"type": "text", "text": "{\n  \"team_name\": \"tabs-vs-spaces-debate\",\n  \"team_file_path\": \"/home/.claude/teams/tabs-vs-spaces-debate/config.json\",\n  \"lead_agent_id\": \"team-lead@tabs-vs-spaces-debate\"\n}"}
+                        ]),
+                        is_error: false,
+                    }],
+                },
+            },
+            parent_tool_use_id: None,
+            is_synthetic: false,
+            tool_use_result: Some(serde_json::json!({
+                "team_name": "tabs-vs-spaces-debate",
+                "team_file_path": "/home/.claude/teams/tabs-vs-spaces-debate/config.json",
+                "lead_agent_id": "team-lead@tabs-vs-spaces-debate"
+            })),
+        };
+
+        let events = processor.process_parsed_line(parsed);
+        let team_event = events.iter().find(|e| matches!(e, StreamEvent::TeamCreated { .. }));
+        assert!(team_event.is_some(), "Expected TeamCreated from tool_use_result, got: {:?}", events);
+    }
+
+    /// Integration test: parse_line extracts tool_use_result from raw stream JSON
+    #[test]
+    fn test_parse_line_extracts_tool_use_result() {
+        let line = r#"{"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_xxx","type":"tool_result","content":[{"type":"text","text":"Spawned."}]}]},"parent_tool_use_id":null,"session_id":"sess1","tool_use_result":{"status":"teammate_spawned","name":"worker","agent_id":"worker@team","model":"sonnet","color":"green","prompt":"Do work","agent_type":"general-purpose","teammate_id":"worker@team","team_name":"my-team"}}"#;
+        let parsed = StreamProcessor::parse_line(line).expect("Expected Some(ParsedLine)");
+        assert!(parsed.tool_use_result.is_some(), "tool_use_result should be extracted");
+        let tur = parsed.tool_use_result.unwrap();
+        assert_eq!(tur.get("status").and_then(|s| s.as_str()), Some("teammate_spawned"));
+        assert_eq!(tur.get("name").and_then(|s| s.as_str()), Some("worker"));
+        assert_eq!(tur.get("team_name").and_then(|s| s.as_str()), Some("my-team"));
     }
 
     #[test]
