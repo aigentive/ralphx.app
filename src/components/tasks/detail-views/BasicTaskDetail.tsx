@@ -14,7 +14,7 @@ import { useTaskSteps } from "@/hooks/useTaskSteps";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { taskKeys } from "@/hooks/useTasks";
 import { api } from "@/lib/tauri";
-import { Loader2, Play, RotateCcw, Clock, User, Users } from "lucide-react";
+import { Loader2, Play, RotateCcw, Clock, User, Users, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   ResumeValidationDialog,
@@ -467,6 +467,28 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
     }
   }
 
+  // Parse last_agent_error from metadata for any status
+  const agentError = useMemo(() => {
+    if (!task.metadata) return null;
+    try {
+      const metadata = JSON.parse(task.metadata);
+      const lastError = metadata.last_agent_error;
+      if (!lastError) return null;
+      const errorContext: string | undefined = metadata.last_agent_error_context;
+      const contextLabel =
+        errorContext === "review" ? "Reviewer"
+        : errorContext === "execution" ? "Worker"
+        : "Agent";
+      return {
+        message: lastError as string,
+        contextLabel,
+        errorAt: metadata.last_agent_error_at as string | undefined,
+      };
+    } catch {
+      return null;
+    }
+  }, [task.metadata]);
+
   return (
     <TwoColumnLayout
       description={task.description}
@@ -498,6 +520,34 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
               </p>
             )}
           </div>
+        </section>
+      )}
+
+      {/* Agent Error Banner - shows last_agent_error for any status */}
+      {agentError && (
+        <section data-testid="agent-error-section" className="space-y-2">
+          <SectionTitle>{agentError.contextLabel} Error</SectionTitle>
+          <DetailCard variant="warning">
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle
+                className="w-4 h-4 mt-0.5 shrink-0"
+                style={{ color: "hsl(35 100% 60%)" }}
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px]" style={{ color: "hsl(35 100% 75%)" }}>
+                  {agentError.message}
+                </p>
+                {agentError.errorAt && (
+                  <span
+                    className="text-[11px] mt-1.5 block"
+                    style={{ color: "hsl(220 10% 50%)" }}
+                  >
+                    {getTimeAgo(agentError.errorAt)}
+                  </span>
+                )}
+              </div>
+            </div>
+          </DetailCard>
         </section>
       )}
 
