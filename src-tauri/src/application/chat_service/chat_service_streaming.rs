@@ -23,6 +23,7 @@ use crate::infrastructure::agents::claude::{
 use tokio_util::sync::CancellationToken;
 
 use super::chat_service_errors::StreamError;
+use super::streaming_state_cache::{CachedStreamingTask, CachedToolCall, StreamingStateCache};
 use super::{
     event_context, events, has_meaningful_output, AgentChunkPayload, AgentHookPayload,
     AgentTaskCompletedPayload, AgentTaskStartedPayload, AgentToolCallPayload,
@@ -138,6 +139,7 @@ impl StreamOutcome {
 /// * `chat_message_repo` - Chat message repository for incremental persistence (optional)
 /// * `assistant_message_id` - Pre-created assistant message ID for incremental updates (optional)
 /// * `question_state` - QuestionState for checking pending questions (optional)
+/// * `streaming_state_cache` - Cache for streaming state to hydrate frontend on navigation
 pub async fn process_stream_background<R: Runtime>(
     mut child: tokio::process::Child,
     context_type: ChatContextType,
@@ -152,6 +154,7 @@ pub async fn process_stream_background<R: Runtime>(
     cancellation_token: CancellationToken,
     team_service: Option<std::sync::Arc<crate::application::TeamService>>,
     team_mode: bool,
+    streaming_state_cache: StreamingStateCache,
 ) -> Result<StreamOutcome, StreamError> {
     let mut timeout_config = StreamTimeoutConfig::for_context(&context_type);
     // Team leads wait long periods while teammates work — use 1-hour timeout
@@ -310,6 +313,9 @@ pub async fn process_stream_background<R: Runtime>(
             for event in stream_events {
                 match event {
                     StreamEvent::TextChunk(text) => {
+                        // Update streaming state cache
+                        streaming_state_cache.append_text(&conversation_id_str, &text).await;
+
                         if let Some(ref handle) = app_handle {
                             // Unified event
                             let _ = handle.emit(
@@ -401,6 +407,17 @@ pub async fn process_stream_background<R: Runtime>(
                         id,
                         parent_tool_use_id,
                     } => {
+                        // Update streaming state cache with started tool call
+                        let cached_tool = CachedToolCall {
+                            id: id.clone().unwrap_or_default(),
+                            name: name.clone(),
+                            arguments: serde_json::Value::Null,
+                            result: None,
+                            diff_context: None,
+                            parent_tool_use_id: parent_tool_use_id.clone(),
+                        };
+                        streaming_state_cache.upsert_tool_call(&conversation_id_str, cached_tool).await;
+
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
                                 events::AGENT_TOOL_CALL,
@@ -454,6 +471,17 @@ pub async fn process_stream_background<R: Runtime>(
                             .diff_context
                             .as_ref()
                             .and_then(|dc| serde_json::to_value(dc).ok());
+
+                        // Update streaming state cache with completed tool call
+                        let cached_tool = CachedToolCall {
+                            id: tool_call.id.clone().unwrap_or_default(),
+                            name: tool_call.name.clone(),
+                            arguments: tool_call.arguments.clone(),
+                            result: None,
+                            diff_context: diff_context_value.clone(),
+                            parent_tool_use_id: parent_tool_use_id.clone(),
+                        };
+                        streaming_state_cache.upsert_tool_call(&conversation_id_str, cached_tool).await;
 
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
@@ -553,6 +581,17 @@ pub async fn process_stream_background<R: Runtime>(
                             }
                         }
 
+                        // Update streaming state cache with new task
+                        let cached_task = CachedStreamingTask {
+                            tool_use_id: tool_use_id.clone(),
+                            description: description.clone(),
+                            subagent_type: subagent_type.clone(),
+                            model: model.clone(),
+                            status: "running".to_string(),
+                            teammate_name: tm_name.clone(),
+                        };
+                        streaming_state_cache.add_task(&conversation_id_str, cached_task).await;
+
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
                                 events::AGENT_TASK_STARTED,
@@ -576,6 +615,9 @@ pub async fn process_stream_background<R: Runtime>(
                         total_tokens,
                         total_tool_use_count,
                     } => {
+                        // Update streaming state cache - mark task as completed
+                        streaming_state_cache.complete_task(&conversation_id_str, &tool_use_id).await;
+
                         // Check if this completes a teammate Task
                         let tm_name_for_payload = if let Some((tt, tn)) = teammate_task_map.remove(&tool_use_id) {
                             // Update status to Idle via TeamService (persistence + events)

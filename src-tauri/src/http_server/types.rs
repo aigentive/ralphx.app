@@ -1018,6 +1018,100 @@ pub struct SaveTeamSessionStateResponse {
 }
 
 // ============================================================================
+// Request/Response Types - Active Streaming State
+// ============================================================================
+
+/// Response for GET /api/conversations/:id/active-state
+///
+/// Returns the current streaming state for a conversation, used by frontend
+/// to hydrate streaming UI when navigating to an active agent execution.
+#[derive(Debug, Serialize)]
+pub struct ActiveStateResponse {
+    /// Whether an agent is currently running for this conversation
+    pub is_active: bool,
+    /// Tool calls currently in progress or recently completed
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tool_calls: Vec<ActiveToolCall>,
+    /// Streaming tasks (subagents) currently running or completed
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub streaming_tasks: Vec<ActiveStreamingTask>,
+    /// Partial text content accumulated from agent:chunk events
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub partial_text: String,
+}
+
+/// A tool call in the active state response.
+///
+/// Mirrors CachedToolCall from streaming_state_cache.rs for HTTP serialization.
+#[derive(Debug, Clone, Serialize)]
+pub struct ActiveToolCall {
+    /// Unique tool call ID (e.g., "toolu_01A...")
+    pub id: String,
+    /// Tool name (e.g., "bash", "read", "edit")
+    pub name: String,
+    /// Current arguments (may be partial during streaming)
+    pub arguments: serde_json::Value,
+    /// Result if completed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<serde_json::Value>,
+    /// Diff context for Edit/Write tools
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diff_context: Option<serde_json::Value>,
+    /// Parent tool use ID for nested tool calls
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_tool_use_id: Option<String>,
+}
+
+impl From<crate::application::chat_service::CachedToolCall> for ActiveToolCall {
+    fn from(cached: crate::application::chat_service::CachedToolCall) -> Self {
+        Self {
+            id: cached.id,
+            name: cached.name,
+            arguments: cached.arguments,
+            result: cached.result,
+            diff_context: cached.diff_context,
+            parent_tool_use_id: cached.parent_tool_use_id,
+        }
+    }
+}
+
+/// A streaming task in the active state response.
+///
+/// Mirrors CachedStreamingTask from streaming_state_cache.rs for HTTP serialization.
+#[derive(Debug, Clone, Serialize)]
+pub struct ActiveStreamingTask {
+    /// Tool use ID that started this task
+    pub tool_use_id: String,
+    /// Human-readable description
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Subagent type (e.g., "ralphx:coder")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subagent_type: Option<String>,
+    /// Model being used
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// Current status: "running" or "completed"
+    pub status: String,
+    /// Teammate name if this is a team member task
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub teammate_name: Option<String>,
+}
+
+impl From<crate::application::chat_service::CachedStreamingTask> for ActiveStreamingTask {
+    fn from(cached: crate::application::chat_service::CachedStreamingTask) -> Self {
+        Self {
+            tool_use_id: cached.tool_use_id,
+            description: cached.description,
+            subagent_type: cached.subagent_type,
+            model: cached.model,
+            status: cached.status,
+            teammate_name: cached.teammate_name,
+        }
+    }
+}
+
+// ============================================================================
 // Common Response Types
 // ============================================================================
 

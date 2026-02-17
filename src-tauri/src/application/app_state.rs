@@ -160,6 +160,8 @@ pub struct AppState {
     pub chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     /// Storage path for chat attachments
     pub attachment_storage_path: PathBuf,
+    /// Streaming state cache for hydrating frontend on navigation to active conversations
+    pub streaming_state_cache: crate::application::chat_service::StreamingStateCache,
     /// Tauri app handle for emitting events to frontend (None in tests)
     pub app_handle: Option<AppHandle>,
 }
@@ -319,6 +321,7 @@ impl AppState {
             message_queue: Arc::new(MessageQueue::new()),
             running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(shared_conn)),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
+            streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             app_handle: Some(app_handle),
         })
     }
@@ -467,6 +470,7 @@ impl AppState {
             message_queue: Arc::new(MessageQueue::new()),
             running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(shared_conn)),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
+            streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             app_handle: Some(app_handle),
         })
     }
@@ -541,6 +545,7 @@ impl AppState {
             message_queue: Arc::new(MessageQueue::new()),
             running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
+            streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             app_handle: None,
         }
     }
@@ -617,6 +622,7 @@ impl AppState {
             message_queue: Arc::new(MessageQueue::new()),
             running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
+            streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             app_handle: None,
         }
     }

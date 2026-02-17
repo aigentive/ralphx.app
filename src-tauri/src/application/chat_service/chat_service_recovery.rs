@@ -9,6 +9,7 @@ use std::sync::Arc;
 use super::chat_service_context;
 use super::chat_service_replay::{build_rehydration_prompt, ReplayBuilder};
 use super::chat_service_streaming::process_stream_background;
+use super::streaming_state_cache::StreamingStateCache;
 use crate::domain::entities::{ChatContextType, ChatConversation, ChatConversationId};
 use crate::domain::repositories::{
     ChatAttachmentRepository, ChatConversationRepository, ChatMessageRepository,
@@ -134,6 +135,7 @@ pub(super) async fn attempt_session_recovery(
         tokio_util::sync::CancellationToken::new(), // standalone token for recovery
         None,                                       // no team tracker for recovery
         false,                                      // not team mode
+        StreamingStateCache::new(),                 // fresh cache for recovery (no UI to hydrate)
     )
     .await
     {

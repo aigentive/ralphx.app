@@ -48,6 +48,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
     cancellation_token: CancellationToken,
     run_chain_id: Option<&str>,
     parent_run_id: Option<&str>,
+    streaming_state_cache: super::StreamingStateCache,
 ) -> u32 {
     let mut total_processed = 0u32;
 
@@ -252,6 +253,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                         cancellation_token.clone(),
                         None, // Queue processing doesn't need team events
                         team_mode,
+                        streaming_state_cache.clone(),
                     )
                     .await
                     {
