@@ -420,6 +420,10 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     /// Task step repository for updating step statuses.
     /// Passed to TaskServices so TransitionHandler can fail in-progress steps.
     step_repo: Option<Arc<dyn TaskStepRepository>>,
+
+    /// Per-task team mode override. When true, the chat service uses team-mode
+    /// agent names (e.g., orchestrator-execution instead of worker).
+    team_mode: bool,
 }
 
 impl<R: Runtime> TaskTransitionService<R> {
@@ -471,6 +475,11 @@ impl<R: Runtime> TaskTransitionService<R> {
             if let Some(ref handle) = app_handle {
                 service = service.with_app_handle(handle.clone());
             }
+            // Global env var override: RALPHX_PROCESS_VARIANT_EXECUTION=team
+            use crate::infrastructure::agents::claude::env_variant_override;
+            if env_variant_override("execution").as_deref() == Some("team") {
+                service = service.with_team_mode(true);
+            }
             Arc::new(service)
         };
 
@@ -501,6 +510,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             task_scheduler: None,
             plan_branch_repo: None,
             step_repo: None,
+            team_mode: false,
         }
     }
 
@@ -522,6 +532,15 @@ impl<R: Runtime> TaskTransitionService<R> {
     /// Set the task step repository (builder pattern).
     pub fn with_step_repo(mut self, repo: Arc<dyn TaskStepRepository>) -> Self {
         self.step_repo = Some(repo);
+        self
+    }
+
+    /// Enable team mode for agent spawning (builder pattern).
+    ///
+    /// When enabled, the chat service resolves to team-mode agent names
+    /// (e.g., orchestrator-execution instead of worker).
+    pub fn with_team_mode(mut self, team_mode: bool) -> Self {
+        self.team_mode = team_mode;
         self
     }
 
@@ -716,6 +735,17 @@ impl<R: Runtime> TaskTransitionService<R> {
         };
 
         let state = internal_status_to_state(status);
+
+        // Per-task team_mode override: check builder flag OR task metadata
+        if self.team_mode {
+            self.chat_service.set_team_mode(true);
+        } else if let Some(ref metadata_str) = task.metadata {
+            if let Ok(meta) = serde_json::from_str::<serde_json::Value>(metadata_str) {
+                if meta.get("agent_variant").and_then(|v| v.as_str()) == Some("team") {
+                    self.chat_service.set_team_mode(true);
+                }
+            }
+        }
 
         // Build TaskServices from our services
         let mut services = TaskServices::new(

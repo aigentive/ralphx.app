@@ -9,7 +9,7 @@ use crate::application::task_cleanup_service::{StopMode, TaskCleanupService};
 use crate::application::AppState;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{InternalStatus, ProjectId, Task, TaskId};
-use crate::domain::state_machine::transition_handler::set_trigger_origin;
+use crate::domain::state_machine::transition_handler::{parse_metadata, set_trigger_origin};
 use std::sync::Arc;
 use tauri::{Emitter, State};
 
@@ -139,6 +139,7 @@ pub async fn delete_task(id: String, state: State<'_, AppState>) -> Result<(), S
 pub async fn move_task(
     task_id: String,
     to_status: String,
+    agent_variant: Option<String>,
     state: State<'_, AppState>,
     execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
@@ -179,6 +180,30 @@ pub async fn move_task(
         }
     }
 
+    // Store agent_variant in metadata if provided
+    if let Some(ref variant) = agent_variant {
+        if !variant.is_empty() {
+            let mut meta = parse_metadata(&old_task).unwrap_or_else(|| serde_json::json!({}));
+            if let Some(obj) = meta.as_object_mut() {
+                obj.insert(
+                    "agent_variant".to_string(),
+                    serde_json::json!(variant),
+                );
+            }
+            if let Err(e) = state
+                .task_repo
+                .update_metadata(&task_id, Some(meta.to_string()))
+                .await
+            {
+                tracing::error!(
+                    task_id = task_id.as_str(),
+                    error = %e,
+                    "Failed to store agent_variant in metadata"
+                );
+            }
+        }
+    }
+
     // Create the task scheduler for auto-scheduling Ready tasks
     let scheduler_concrete = Arc::new(
         TaskSchedulerService::new(
@@ -203,7 +228,8 @@ pub async fn move_task(
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
     // Create the transition service with all required dependencies
-    let transition_service = TaskTransitionService::new(
+    let is_team_mode = agent_variant.as_deref() == Some("team");
+    let mut transition_service = TaskTransitionService::new(
         Arc::clone(&state.task_repo),
         Arc::clone(&state.task_dependency_repo),
         Arc::clone(&state.project_repo),
@@ -221,6 +247,11 @@ pub async fn move_task(
     )
     .with_task_scheduler(task_scheduler)
     .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
+
+    // Enable team mode if agent_variant is "team" (per-task override)
+    if is_team_mode {
+        transition_service = transition_service.with_team_mode(true);
+    }
 
     // Transition the task - this triggers entry actions like spawning workers!
     let task = transition_service
