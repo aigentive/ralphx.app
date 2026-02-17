@@ -126,17 +126,18 @@ function ActionButtonsCard({
     restartMutation.mutate();
   }, [confirm, status, restartMutation, stopMetadata, validationWarnings.length]);
 
-  // Handle force resume from validation dialog
+  // Handle force resume from validation dialog - restores to original state (smart resume)
   const handleForceResume = useCallback(async () => {
+    if (!stopMetadata?.stopped_from_status) return;
     setIsResuming(true);
     try {
-      await api.tasks.move(taskId, "ready");
+      await api.tasks.move(taskId, stopMetadata.stopped_from_status);
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
       setShowValidationDialog(false);
     } finally {
       setIsResuming(false);
     }
-  }, [taskId, queryClient]);
+  }, [taskId, queryClient, stopMetadata]);
 
   // Handle go to ready from validation dialog
   const handleGoToReady = useCallback(async () => {
