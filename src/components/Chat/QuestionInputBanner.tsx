@@ -11,8 +11,11 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { Check, X, Maximize2, Minimize2 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { AskUserQuestionPayload } from "@/types/ask-user-question";
 import { computeQuestionHeight } from "./QuestionInputBanner.utils";
+import { markdownComponents } from "./MessageItem.markdown";
 
 // ============================================================================
 // Types
@@ -121,7 +124,7 @@ export function QuestionInputBanner({
 }: QuestionInputBannerProps) {
   const [visible, setVisible] = useState(false);
   const [computedHeight, setComputedHeight] = useState(320);
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);
 
   // Trigger slide-in on mount
   useEffect(() => {
@@ -135,7 +138,7 @@ export function QuestionInputBanner({
   useEffect(() => {
     if (question) {
       setComputedHeight(computeQuestionHeight(question));
-      setIsExpanded(false); // Reset expanded state on new question
+      setIsExpanded(true); // Reset expanded state on new question (default to expanded)
     }
   }, [question]); // Re-compute when question object changes
 
@@ -320,16 +323,18 @@ export function QuestionInputBanner({
                 overflowY: isExpanded ? "auto" : undefined,
               }}
             >
-              <p
-                className="text-[13px] font-medium leading-snug"
+              <div
+                className="text-[13px] font-medium leading-snug [&>p]:mb-0 [&>ul]:mb-0 [&>ol]:mb-0"
                 style={{
                   color: "hsl(220 10% 90%)",
                   marginBottom: 10,
                   lineHeight: 1.45,
                 }}
               >
-                {question.question}
-              </p>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                  {question.question}
+                </ReactMarkdown>
+              </div>
 
               {/* Option chips */}
               <div className="flex flex-wrap gap-1.5">

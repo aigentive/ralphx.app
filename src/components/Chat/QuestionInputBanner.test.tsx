@@ -381,7 +381,7 @@ describe("QuestionInputBanner", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("renders expand button when computed height >= 280px", () => {
+    it("renders collapse button when computed height >= 280px (starts expanded)", () => {
       const largeQuestion: AskUserQuestionPayload = {
         requestId: "req-large",
         question: "This is a very long question that will take up significant space and cause the computed height to exceed 280 pixels threshold.",
@@ -398,9 +398,10 @@ describe("QuestionInputBanner", () => {
         />
       );
 
-      // Large question should have computed height >= 280, so expand button should be visible
+      // Large question should have computed height >= 280, so collapse button should be visible
+      // (banner starts expanded by default)
       expect(
-        screen.getByRole("button", { name: "Expand question" })
+        screen.getByRole("button", { name: "Collapse question" })
       ).toBeInTheDocument();
     });
 
@@ -422,17 +423,7 @@ describe("QuestionInputBanner", () => {
         />
       );
 
-      // Initially should show expand icon
-      expect(
-        screen.getByRole("button", { name: "Expand question" })
-      ).toBeInTheDocument();
-
-      // Click expand button
-      await user.click(
-        screen.getByRole("button", { name: "Expand question" })
-      );
-
-      // Should now show collapse icon
+      // Initially should show collapse icon (starts expanded by default)
       expect(
         screen.getByRole("button", { name: "Collapse question" })
       ).toBeInTheDocument();
@@ -442,13 +433,23 @@ describe("QuestionInputBanner", () => {
         screen.getByRole("button", { name: "Collapse question" })
       );
 
-      // Should show expand icon again
+      // Should now show expand icon
       expect(
         screen.getByRole("button", { name: "Expand question" })
       ).toBeInTheDocument();
+
+      // Click expand button
+      await user.click(
+        screen.getByRole("button", { name: "Expand question" })
+      );
+
+      // Should show collapse icon again
+      expect(
+        screen.getByRole("button", { name: "Collapse question" })
+      ).toBeInTheDocument();
     });
 
-    it("updates container maxHeight to 60vh when expanded", async () => {
+    it("updates container maxHeight to 60vh when expanded (starts expanded)", async () => {
       const user = userEvent.setup();
       const largeQuestion: AskUserQuestionPayload = {
         requestId: "req-large",
@@ -468,17 +469,32 @@ describe("QuestionInputBanner", () => {
 
       const container = screen.getByTestId("question-input-banner");
 
-      // Click expand
+      // Wait for the initial animation (visible state changes via requestAnimationFrame)
+      await vi.waitFor(
+        () => {
+          expect(container.style.maxHeight).toBe("60vh");
+        },
+        { timeout: 100 }
+      );
+
+      // Click collapse
+      await user.click(
+        screen.getByRole("button", { name: "Collapse question" })
+      );
+
+      // After collapse, maxHeight should be reduced to computedHeight
+      expect(container.style.maxHeight).not.toBe("60vh");
+
+      // Click expand again
       await user.click(
         screen.getByRole("button", { name: "Expand question" })
       );
 
-      // After expansion, maxHeight should be 60vh
-      const expandedStyle = window.getComputedStyle(container);
-      expect(expandedStyle.maxHeight).toBe("60vh");
+      // After expansion, maxHeight should be 60vh again
+      expect(container.style.maxHeight).toBe("60vh");
     });
 
-    it("resets expand state when question changes (requestId changes)", async () => {
+    it("resets expand state when question changes (requestId changes) - resets to expanded", async () => {
       const user = userEvent.setup();
       const largeQuestion1: AskUserQuestionPayload = {
         requestId: "req-1",
@@ -505,14 +521,19 @@ describe("QuestionInputBanner", () => {
         />
       );
 
-      // Expand the question
-      await user.click(
-        screen.getByRole("button", { name: "Expand question" })
-      );
-
-      // Verify it's expanded (collapse button visible)
+      // Starts expanded (collapse button visible)
       expect(
         screen.getByRole("button", { name: "Collapse question" })
+      ).toBeInTheDocument();
+
+      // Collapse the question
+      await user.click(
+        screen.getByRole("button", { name: "Collapse question" })
+      );
+
+      // Verify it's collapsed (expand button visible)
+      expect(
+        screen.getByRole("button", { name: "Expand question" })
       ).toBeInTheDocument();
 
       // Change question
@@ -523,21 +544,21 @@ describe("QuestionInputBanner", () => {
         />
       );
 
-      // After question change, should be collapsed again (expand button visible)
+      // After question change, should be expanded again (default state)
       await vi.waitFor(
         () => {
           expect(
-            screen.getByRole("button", { name: "Expand question" })
+            screen.getByRole("button", { name: "Collapse question" })
           ).toBeInTheDocument();
         },
         { timeout: 500 }
       );
       expect(
-        screen.queryByRole("button", { name: "Collapse question" })
+        screen.queryByRole("button", { name: "Expand question" })
       ).not.toBeInTheDocument();
     });
 
-    it("body has scrollable maxHeight when expanded", async () => {
+    it("body has scrollable maxHeight when expanded (starts expanded by default)", async () => {
       const user = userEvent.setup();
       const largeQuestion: AskUserQuestionPayload = {
         requestId: "req-large",
@@ -567,21 +588,21 @@ describe("QuestionInputBanner", () => {
 
       expect(bodyDiv).toBeDefined();
       if (bodyDiv) {
-        // Before expand, should not have overflow auto or restricted height
-        expect(bodyDiv.style.overflowY).not.toBe("auto");
-        expect(bodyDiv.style.maxHeight).not.toContain("60vh");
+        // Since starts expanded, should already have overflow auto and restricted height
+        const initialStyle = window.getComputedStyle(bodyDiv);
+        expect(initialStyle.overflowY).toBe("auto");
+        expect(initialStyle.maxHeight).toBe("calc(60vh - 40px)");
       }
 
-      // Click expand
+      // Click collapse
       await user.click(
-        screen.getByRole("button", { name: "Expand question" })
+        screen.getByRole("button", { name: "Collapse question" })
       );
 
-      // After expand, body should have scrollable overflow
+      // After collapse, body should not have scrollable overflow
       if (bodyDiv) {
-        const expandedStyle = window.getComputedStyle(bodyDiv);
-        expect(expandedStyle.overflowY).toBe("auto");
-        expect(expandedStyle.maxHeight).toBe("calc(60vh - 40px)");
+        const collapsedStyle = window.getComputedStyle(bodyDiv);
+        expect(collapsedStyle.overflowY).not.toBe("auto");
       }
     });
   });
