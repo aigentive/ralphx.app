@@ -253,39 +253,6 @@ export interface MergeRecoveryState {
   last_state: MergeRecoveryLastState;
 }
 
-/**
- * Stop metadata captured when a task is stopped mid-execution
- * Used for smart resume functionality
- */
-export interface StopMetadata {
-  /** The status the task was in when stopped */
-  stopped_from_status: string;
-  /** Optional user-provided reason for stopping */
-  stop_reason?: string;
-  /** ISO 8601 timestamp when the task was stopped */
-  stopped_at: string;
-}
-
-/**
- * Extended metadata structure with merge recovery and stop info
- */
-export interface TaskMetadata {
-  /** Error message (legacy field) */
-  error?: string;
-  /** Source branch (legacy field) */
-  source_branch?: string;
-  /** Target branch (legacy field) */
-  target_branch?: string;
-  /** Diagnostic info (legacy field) */
-  diagnostic_info?: string;
-  /** Validation failures (legacy field) */
-  validation_failures?: unknown[];
-  /** Structured merge recovery timeline */
-  merge_recovery?: MergeRecoveryState;
-  /** Stop metadata for smart resume (Phase 6) */
-  stop?: StopMetadata;
-}
-
 // ============================================================================
 // StopMetadata - Captures context when a task is stopped mid-execution
 // ============================================================================
@@ -336,6 +303,26 @@ export function parseStopMetadata(metadata: string | null | undefined): StopMeta
   } catch {
     return null;
   }
+}
+
+/**
+ * Extended metadata structure with merge recovery and stop info
+ */
+export interface TaskMetadata {
+  /** Error message (legacy field) */
+  error?: string;
+  /** Source branch (legacy field) */
+  source_branch?: string;
+  /** Target branch (legacy field) */
+  target_branch?: string;
+  /** Diagnostic info (legacy field) */
+  diagnostic_info?: string;
+  /** Validation failures (legacy field) */
+  validation_failures?: unknown[];
+  /** Structured merge recovery timeline */
+  merge_recovery?: MergeRecoveryState;
+  /** Stop metadata for smart resume */
+  stop?: StopMetadata;
 }
 
 // ============================================================================
