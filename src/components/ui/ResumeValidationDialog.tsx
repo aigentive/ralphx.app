@@ -18,7 +18,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Play, RotateCcw, X } from "lucide-react";
+import { AlertTriangle, Play, RotateCcw, X, Loader2 } from "lucide-react";
 
 // ============================================================================
 // Types
@@ -195,7 +195,11 @@ export function ResumeValidationDialog({
             disabled={isLoading}
             className="gap-2"
           >
-            <RotateCcw className="h-4 w-4" />
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RotateCcw className="h-4 w-4" />
+            )}
             Go to Ready
           </Button>
           <Button
@@ -209,7 +213,11 @@ export function ResumeValidationDialog({
               color: "white",
             }}
           >
-            <Play className="h-4 w-4" />
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
             Force Resume
           </Button>
         </DialogFooter>
