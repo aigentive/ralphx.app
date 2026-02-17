@@ -21,7 +21,6 @@ pub mod reconciliation;
 pub mod review_issue_service;
 pub mod review_service;
 pub mod session_reopen_service;
-pub mod spawn_orchestrator_worker;
 pub mod startup_jobs;
 pub mod supervisor_service;
 pub mod task_cleanup_service;
@@ -63,7 +62,6 @@ pub use reconciliation::ReconciliationRunner;
 pub use review_issue_service::{CreateIssueInput, ReviewIssueService};
 pub use review_service::ReviewService;
 pub use session_reopen_service::SessionReopenService;
-pub use spawn_orchestrator_worker::{run_worker_loop, SpawnOrchestratorWorker};
 pub use startup_jobs::StartupJobRunner;
 pub use supervisor_service::{SupervisorConfig, SupervisorService, TaskMonitorState};
 pub use task_cleanup_service::{

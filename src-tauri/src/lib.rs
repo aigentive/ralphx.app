@@ -249,7 +249,6 @@ pub fn run() {
             let startup_memory_archive_repo = Arc::clone(&app_state.memory_archive_repo);
             let startup_memory_entry_repo = Arc::clone(&app_state.memory_entry_repo);
             let startup_execution_settings_repo = Arc::clone(&app_state.execution_settings_repo);
-            let startup_spawn_orchestrator_job_repo = Arc::clone(&app_state.spawn_orchestrator_job_repo);
             // Clone app handle to enable event emission in startup tasks
             let startup_app_handle = app.handle().clone();
 
@@ -529,30 +528,6 @@ pub fn run() {
                     }
                 });
 
-                // Spawn orchestrator job background processing loop
-                // Processes jobs that spawn orchestrator-ideation agents for child sessions
-                let spawn_job_repo = Arc::clone(&startup_spawn_orchestrator_job_repo);
-
-                // Find plugin directory and project root for orchestrator spawning
-                let spawn_plugin_dir = infrastructure::agents::claude::find_plugin_dir()
-                    .unwrap_or_else(|| std::path::PathBuf::from("ralphx-plugin"));
-                let spawn_project_root = std::path::PathBuf::from(".");
-
-                tauri::async_runtime::spawn(async move {
-                    let claude_client = Arc::new(infrastructure::ClaudeCodeClient::new());
-                    let worker = application::SpawnOrchestratorWorker::new(
-                        spawn_job_repo,
-                        claude_client,
-                        spawn_plugin_dir,
-                        spawn_project_root,
-                    );
-
-                    info!("Starting spawn orchestrator worker loop...");
-                    application::run_worker_loop(
-                        Arc::new(worker),
-                        Duration::from_secs(5),
-                    ).await;
-                });
             });
 
             // Clone team repos before app_state is moved into Tauri state
