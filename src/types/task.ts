@@ -254,7 +254,20 @@ export interface MergeRecoveryState {
 }
 
 /**
- * Extended metadata structure with merge recovery info
+ * Stop metadata captured when a task is stopped mid-execution
+ * Used for smart resume functionality
+ */
+export interface StopMetadata {
+  /** The status the task was in when stopped */
+  stopped_from_status: string;
+  /** Optional user-provided reason for stopping */
+  stop_reason?: string;
+  /** ISO 8601 timestamp when the task was stopped */
+  stopped_at: string;
+}
+
+/**
+ * Extended metadata structure with merge recovery and stop info
  */
 export interface TaskMetadata {
   /** Error message (legacy field) */
@@ -269,6 +282,8 @@ export interface TaskMetadata {
   validation_failures?: unknown[];
   /** Structured merge recovery timeline */
   merge_recovery?: MergeRecoveryState;
+  /** Stop metadata for smart resume (Phase 6) */
+  stop?: StopMetadata;
 }
 
 // ============================================================================
