@@ -225,6 +225,62 @@ describe("AcceptModal", () => {
     });
   });
 
+  describe("Feature Branch Checkbox", () => {
+    it("renders checkbox with label", () => {
+      render(<AcceptModal {...defaultProps} />);
+      expect(screen.getByLabelText(/Use feature branch/i)).toBeInTheDocument();
+    });
+
+    it("checkbox is unchecked by default when defaultUseFeatureBranch not provided", () => {
+      render(<AcceptModal {...defaultProps} />);
+      const checkbox = screen.getByLabelText(/Use feature branch/i) as HTMLInputElement;
+      expect(checkbox.checked).toBe(false);
+    });
+
+    it("checkbox respects defaultUseFeatureBranch prop when true", () => {
+      render(<AcceptModal {...defaultProps} defaultUseFeatureBranch={true} />);
+      const checkbox = screen.getByLabelText(/Use feature branch/i) as HTMLInputElement;
+      expect(checkbox.checked).toBe(true);
+    });
+
+    it("checkbox respects defaultUseFeatureBranch prop when false", () => {
+      render(<AcceptModal {...defaultProps} defaultUseFeatureBranch={false} />);
+      const checkbox = screen.getByLabelText(/Use feature branch/i) as HTMLInputElement;
+      expect(checkbox.checked).toBe(false);
+    });
+
+    it("allows toggling checkbox", async () => {
+      const user = userEvent.setup();
+      render(<AcceptModal {...defaultProps} />);
+      const checkbox = screen.getByLabelText(/Use feature branch/i);
+      await user.click(checkbox);
+      expect(checkbox).toBeChecked();
+    });
+
+    it("shows helper text explaining the option", () => {
+      render(<AcceptModal {...defaultProps} />);
+      expect(screen.getByText(/merge into an isolated branch/i)).toBeInTheDocument();
+    });
+
+    it("calls onAccept with useFeatureBranch: true when checked", async () => {
+      const onAccept = vi.fn();
+      const user = userEvent.setup();
+      render(<AcceptModal {...defaultProps} onAccept={onAccept} />);
+
+      const featureBranchCheckbox = screen.getByLabelText(/Use feature branch/i);
+      await user.click(featureBranchCheckbox);
+
+      const acceptButton = screen.getByRole("button", { name: /Accept Plan/i });
+      await user.click(acceptButton);
+
+      expect(onAccept).toHaveBeenCalledWith(
+        expect.objectContaining({
+          useFeatureBranch: true,
+        })
+      );
+    });
+  });
+
   describe("Warnings Display", () => {
     it("shows warning when cycles detected", () => {
       render(<AcceptModal {...defaultProps} dependencyGraph={mockDependencyGraphWithCycles} />);
@@ -302,6 +358,7 @@ describe("AcceptModal", () => {
         proposalIds: ["proposal-1", "proposal-2", "proposal-3"],
         targetColumn: "auto",
         preserveDependencies: true,
+        useFeatureBranch: false,
       });
     });
 
@@ -322,6 +379,7 @@ describe("AcceptModal", () => {
         proposalIds: ["proposal-1", "proposal-2", "proposal-3"],
         targetColumn: "auto",
         preserveDependencies: false,
+        useFeatureBranch: false,
       });
     });
 

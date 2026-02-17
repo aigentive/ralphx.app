@@ -32,7 +32,7 @@ interface ProposalsToolbarProps {
   graph: DependencyGraphResponse | null | undefined;
   isReadOnly?: boolean;
   onClearAll: () => void;
-  onAcceptPlan: (targetColumn: string) => void;
+  onAcceptPlan: () => void;
   onAnalyzeDependencies?: () => void;
   isAnalyzingDependencies?: boolean;
 }
@@ -177,7 +177,7 @@ export function ProposalsToolbar({
             variant="ghost"
             size="sm"
             disabled={!canAccept}
-            onClick={() => onAcceptPlan("auto")}
+            onClick={onAcceptPlan}
             className="h-7 px-3 text-[11px] font-semibold gap-1.5 rounded-lg transition-all duration-150"
             style={{
               color: canAccept ? "hsl(14 100% 60%)" : "hsl(220 10% 50%)",

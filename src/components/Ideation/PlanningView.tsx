@@ -24,8 +24,8 @@ import { toast } from "sonner";
 import type {
   IdeationSession,
   TaskProposal,
-  ApplyProposalsInput,
 } from "@/types/ideation";
+import type { ApplyProposalsInput } from "@/api/ideation.types";
 import { Button } from "@/components/ui/button";
 import { ResizeHandle, CHAT_PANEL_DEFAULT_WIDTH, CHAT_PANEL_MIN_WIDTH } from "@/components/ui/ResizeHandle";
 import { PlanDisplay } from "./PlanDisplay";
@@ -37,7 +37,8 @@ import { useUiStore } from "@/stores/uiStore";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
 import { usePlanStore } from "@/stores/planStore";
-import { useProjectStore } from "@/stores/projectStore";
+import { useProjectStore, selectActiveProject } from "@/stores/projectStore";
+import { AcceptModal } from "./AcceptModal";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { ConversationEmptyState } from "./EmptyStates";
 import { animationStyles } from "./PlanningView.constants";
@@ -111,6 +112,7 @@ export function PlanningView({
 }: PlanningViewProps) {
   const [chatPanelWidth, setChatPanelWidth] = useState(CHAT_PANEL_DEFAULT_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
+  const [isAcceptModalOpen, setIsAcceptModalOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const proposalsScrollRef = useRef<HTMLDivElement>(null);
 
@@ -397,19 +399,25 @@ export function PlanningView({
   const setCurrentView = useUiStore((state) => state.setCurrentView);
   const setSelectedTaskId = useUiStore((state) => state.setSelectedTaskId);
 
-  // Accept Plan handler - accepts ALL proposals (no selection)
-  const handleAcceptPlan = useCallback(async (targetColumn: string) => {
+  // Get active project for feature branch setting
+  const activeProject = useProjectStore(selectActiveProject);
+
+  // Accept Plan - opens the confirmation modal (instead of applying directly)
+  const handleAcceptPlan = useCallback(() => {
+    setIsAcceptModalOpen(true);
+  }, []);
+
+  // Handle confirmed accept from modal - applies proposals with user-selected options
+  const handleAcceptConfirm = useCallback(async (options: ApplyProposalsInput) => {
     if (!session) return;
     const projectId = activeProjectId || session.projectId;
     if (!projectId) return;
 
-    // Apply proposals to Kanban (returns void in type, but may actually return a promise)
-    const applyResult = onApply({
-      sessionId: session.id,
-      proposalIds: proposals.map((p) => p.id),
-      targetColumn,
-      preserveDependencies: true,
-    }) as unknown;
+    // Close modal immediately
+    setIsAcceptModalOpen(false);
+
+    // Apply proposals to Kanban
+    const applyResult = onApply(options) as unknown;
 
     // Wait for apply to complete if it returns a promise
     if (applyResult && typeof applyResult === "object" && "then" in applyResult) {
@@ -423,7 +431,11 @@ export function PlanningView({
       console.error("Failed to set active plan:", error);
       toast.error("Failed to set active plan");
     }
-  }, [session, proposals, onApply, activeProjectId, setActivePlan]);
+  }, [session, onApply, activeProjectId, setActivePlan]);
+
+  const handleAcceptCancel = useCallback(() => {
+    setIsAcceptModalOpen(false);
+  }, []);
 
   const handleNavigateToTask = useCallback((taskId: string) => {
     setCurrentView("kanban");
@@ -1059,6 +1071,19 @@ export function PlanningView({
         onConfirm={handleConfirmReopen}
         isLoading={reopenMutation.isPending || resetMutation.isPending}
       />
+
+      {/* Accept Plan Confirmation Modal */}
+      {session && dependencyGraph && (
+        <AcceptModal
+          isOpen={isAcceptModalOpen}
+          proposals={proposals}
+          dependencyGraph={dependencyGraph}
+          sessionId={session.id}
+          onAccept={handleAcceptConfirm}
+          onCancel={handleAcceptCancel}
+          defaultUseFeatureBranch={activeProject?.useFeatureBranches ?? false}
+        />
+      )}
     </>
   );
 }
