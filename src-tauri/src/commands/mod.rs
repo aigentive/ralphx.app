@@ -56,7 +56,10 @@ pub use chat_attachment_commands::{
     UploadChatAttachmentInput,
 };
 pub use chat_responses::ChatMessageResponse;
-pub use diff_commands::{get_file_diff, get_task_file_changes};
+pub use diff_commands::{detect_merge_conflicts, get_conflict_file_diff, get_file_diff, get_task_file_changes};
+// Re-export ConflictDiff from application for convenience
+#[allow(unused_imports)]
+pub use crate::application::ConflictDiff;
 pub use execution_commands::{
     get_active_project, get_execution_status, get_global_execution_settings, get_running_processes,
     pause_execution, recover_task_execution, resolve_recovery_prompt, restart_task, resume_execution,
