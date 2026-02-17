@@ -41,6 +41,7 @@ use crate::domain::services::{MessageQueue, QueuedMessage, RunningAgentKey, Runn
 use async_trait::async_trait;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 use tokio_util::sync::CancellationToken;
@@ -201,6 +202,10 @@ pub trait ChatService: Send + Sync {
 
     /// Check if an agent is running for a context
     async fn is_agent_running(&self, context_type: ChatContextType, context_id: &str) -> bool;
+
+    /// Override team mode at runtime (interior mutability).
+    /// Default is a no-op; ClaudeChatService uses AtomicBool.
+    fn set_team_mode(&self, _mode: bool) {}
 }
 
 // ============================================================================
@@ -232,7 +237,9 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
     model: String,
     /// When true, agent resolution uses team-lead variants if configured.
-    team_mode: bool,
+    /// Uses AtomicBool for interior mutability so team_mode can be set
+    /// after Arc-wrapping (e.g., per-task metadata override).
+    team_mode: AtomicBool,
     /// Team service for managing agent teams lifecycle (persistence + events).
     team_service: Option<std::sync::Arc<crate::application::TeamService>>,
     /// Cache for streaming state, used to hydrate frontend on navigation.
@@ -286,7 +293,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             question_state: None,
             plan_branch_repo: None,
             model: "sonnet".to_string(),
-            team_mode: false,
+            team_mode: AtomicBool::new(false),
             team_service: None,
             streaming_state_cache: StreamingStateCache::new(),
         }
@@ -328,7 +335,7 @@ impl<R: Runtime> ClaudeChatService<R> {
     }
 
     pub fn with_team_mode(mut self, team_mode: bool) -> Self {
-        self.team_mode = team_mode;
+        self.team_mode = AtomicBool::new(team_mode);
         self
     }
 
@@ -395,7 +402,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             working_directory,
             entity_status,
             project_id,
-            self.team_mode,
+            self.team_mode.load(Ordering::Relaxed),
             Arc::clone(&self.chat_attachment_repo),
         )
         .await
@@ -663,10 +670,11 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         }
 
         // 8. Build background context and spawn
+        let team_mode_val = self.team_mode.load(Ordering::Relaxed);
         let resolved_agent_name = chat_service_helpers::resolve_agent_with_team_mode(
             &context_type,
             entity_status.as_deref(),
-            self.team_mode,
+            team_mode_val,
         )
         .to_string();
 
@@ -703,7 +711,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             user_message_content: Some(message.to_string()),
             conversation: Some(conversation.clone()),
             agent_name: Some(resolved_agent_name),
-            team_mode: self.team_mode,
+            team_mode: team_mode_val,
             cancellation_token,
             team_service: self.team_service.clone(),
             streaming_state_cache: self.streaming_state_cache.clone(),
@@ -872,6 +880,10 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
     async fn is_agent_running(&self, context_type: ChatContextType, context_id: &str) -> bool {
         let key = RunningAgentKey::new(context_type.to_string(), context_id);
         self.running_agent_registry.is_running(&key).await
+    }
+
+    fn set_team_mode(&self, mode: bool) {
+        self.team_mode.store(mode, Ordering::Relaxed);
     }
 }
 
