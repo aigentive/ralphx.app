@@ -571,9 +571,9 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
         chat_message_repo, pre_assistant_msg_id,
     ).await;
     let error_note = if existing_content.is_empty() {
-        format!("[Agent error: {}]", error)
+        format!("{} {}]", super::AGENT_ERROR_PREFIX, error)
     } else {
-        format!("{}\n\n[Agent error: {}]", existing_content, error)
+        format!("{}\n\n{} {}]", existing_content, super::AGENT_ERROR_PREFIX, error)
     };
     super::chat_service_send_background::finalize_assistant_message(
         chat_message_repo,

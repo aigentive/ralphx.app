@@ -8,6 +8,10 @@ use crate::domain::entities::{ChatContextType, ChatConversationId, InternalStatu
 use crate::error::AppError;
 use serde::{Deserialize, Serialize};
 
+/// Claude CLI error message indicating an expired/invalid session.
+/// Source: Claude CLI stderr when resuming with a stale session ID.
+pub const STALE_SESSION_ERROR: &str = "No conversation found with session ID";
+
 /// Category of provider/API error for recovery decisions.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -528,7 +532,7 @@ pub fn classify_agent_error(
     conversation_id: &ChatConversationId,
     stored_session_id: Option<&str>,
 ) -> AppError {
-    if error_message.contains("No conversation found with session ID") {
+    if error_message.contains(STALE_SESSION_ERROR) {
         if let Some(session_id) = stored_session_id {
             return AppError::StaleSession {
                 session_id: session_id.to_string(),

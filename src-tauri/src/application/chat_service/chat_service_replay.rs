@@ -76,7 +76,7 @@ impl ReplayBuilder {
     fn should_skip_message(role: &MessageRole, content: &str) -> bool {
         // Skip system messages containing error wrappers
         if *role == MessageRole::System {
-            return content.contains("[Agent error:");
+            return content.contains(super::AGENT_ERROR_PREFIX);
         }
         false
     }
@@ -148,7 +148,7 @@ mod tests {
     fn test_should_skip_error_messages() {
         assert!(ReplayBuilder::should_skip_message(
             &MessageRole::System,
-            "[Agent error: timeout]"
+            &format!("{} timeout]", super::AGENT_ERROR_PREFIX)
         ));
         assert!(!ReplayBuilder::should_skip_message(
             &MessageRole::User,

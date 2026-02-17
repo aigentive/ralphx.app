@@ -8,6 +8,7 @@
 use chrono::Utc;
 use std::sync::Arc;
 
+use ralphx_lib::application::chat_service::{AGENT_ERROR_PREFIX, STALE_SESSION_ERROR};
 use ralphx_lib::domain::entities::{
     ChatContextType, ChatConversation, ChatConversationId, ChatMessage, IdeationSessionId,
     MessageRole, ProjectId, TaskId,
@@ -214,7 +215,7 @@ async fn test_recovery_preserves_message_ordering() {
 
 /// Test that non-stale errors (e.g., rate limits) do not trigger recovery
 ///
-/// Only "No conversation found with session ID" errors should trigger recovery.
+/// Only STALE_SESSION_ERROR-matching errors should trigger recovery.
 /// Other errors like rate limits, network issues, etc. should be handled normally.
 #[tokio::test]
 async fn test_non_stale_errors_do_not_trigger_recovery() {
@@ -236,11 +237,11 @@ async fn test_non_stale_errors_do_not_trigger_recovery() {
 
     // Test: Rate limit error should preserve session ID
     let rate_limit_error = "Error: Rate limit exceeded";
-    assert!(!rate_limit_error.contains("No conversation found with session ID"));
+    assert!(!rate_limit_error.contains(STALE_SESSION_ERROR));
 
     // Test: Network error should preserve session ID
     let network_error = "Error: Connection timeout";
-    assert!(!network_error.contains("No conversation found with session ID"));
+    assert!(!network_error.contains(STALE_SESSION_ERROR));
 
     // Verify: session ID unchanged (no recovery triggered)
     let conversation = harness.get_conversation(&conversation_id).await.unwrap();
@@ -341,10 +342,11 @@ async fn test_error_messages_filtered_from_replay() {
         .unwrap();
 
     // Create messages including an error message
+    let error_msg = format!("{} Something went wrong]", AGENT_ERROR_PREFIX);
     let messages = vec![
         (MessageRole::User, "Hello"),
         (MessageRole::Orchestrator, "Hi!"),
-        (MessageRole::System, "[Agent error: Something went wrong]"),
+        (MessageRole::System, error_msg.as_str()),
         (MessageRole::User, "Are you there?"),
     ];
 
@@ -370,7 +372,7 @@ async fn test_error_messages_filtered_from_replay() {
         .iter()
         .filter(|m| {
             if m.role == MessageRole::System {
-                !m.content.contains("[Agent error:")
+                !m.content.contains(AGENT_ERROR_PREFIX)
             } else {
                 true
             }
@@ -381,7 +383,7 @@ async fn test_error_messages_filtered_from_replay() {
     assert_eq!(messages_for_replay.len(), 3);
     assert!(!messages_for_replay
         .iter()
-        .any(|m| m.content.contains("[Agent error:")));
+        .any(|m| m.content.contains(AGENT_ERROR_PREFIX)));
 }
 
 // ============================================================================
