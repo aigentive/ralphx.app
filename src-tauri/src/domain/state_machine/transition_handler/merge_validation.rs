@@ -890,7 +890,7 @@ async fn run_install_phase(
         })
         .await;
 
-        let log_entry = match result {
+        let mut log_entry = match result {
             Ok(Ok(output)) => {
                 let duration_ms = start.elapsed().as_millis() as u64;
                 let stdout_raw = String::from_utf8_lossy(&output.stdout).to_string();
@@ -902,7 +902,6 @@ async fn run_install_phase(
                 };
 
                 if !output.status.success() {
-                    install_had_failures = true;
                     tracing::warn!(
                         command = %resolved_cmd,
                         stderr = %stderr_raw,
@@ -923,7 +922,6 @@ async fn run_install_phase(
                 }
             }
             Ok(Err(e)) => {
-                install_had_failures = true;
                 let duration_ms = start.elapsed().as_millis() as u64;
                 tracing::warn!(
                     command = %resolved_cmd,
@@ -944,7 +942,6 @@ async fn run_install_phase(
                 }
             }
             Err(e) => {
-                install_had_failures = true;
                 let duration_ms = start.elapsed().as_millis() as u64;
                 tracing::error!(
                     command = %resolved_cmd,
@@ -965,6 +962,89 @@ async fn run_install_phase(
                 }
             }
         };
+
+        // Retry once if the install command failed (transient errors like ENOTEMPTY)
+        if log_entry.status == "failed" {
+            tracing::warn!(
+                command = %resolved_cmd,
+                "Install command failed, retrying after 2s (attempt 2/2)"
+            );
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+            // Emit "running" event for retry attempt
+            if let Some(handle) = app_handle {
+                let _ = handle.emit(
+                    "merge:validation_step",
+                    serde_json::json!({
+                        "task_id": task_id_str,
+                        "phase": "install",
+                        "command": resolved_cmd,
+                        "path": resolved_path,
+                        "label": entry.label,
+                        "status": "running",
+                        "context": context,
+                    }),
+                );
+            }
+
+            let retry_cmd = resolved_cmd.clone();
+            let retry_cwd = cmd_cwd.clone();
+            let retry_start = std::time::Instant::now();
+            let retry_result = tokio::task::spawn_blocking(move || {
+                Command::new("sh")
+                    .arg("-c")
+                    .arg(&retry_cmd)
+                    .current_dir(&retry_cwd)
+                    .output()
+            })
+            .await;
+
+            if let Ok(Ok(output)) = retry_result {
+                let duration_ms = retry_start.elapsed().as_millis() as u64;
+                let stdout_raw = String::from_utf8_lossy(&output.stdout).to_string();
+                let stderr_raw = String::from_utf8_lossy(&output.stderr).to_string();
+                if output.status.success() {
+                    tracing::info!(
+                        command = %resolved_cmd,
+                        "Install command succeeded on retry (attempt 2/2)"
+                    );
+                    log_entry = ValidationLogEntry {
+                        phase: "install".to_string(),
+                        command: resolved_cmd.clone(),
+                        path: resolved_path.clone(),
+                        label: entry.label.clone(),
+                        status: "success".to_string(),
+                        exit_code: output.status.code(),
+                        stdout: truncate_output(&stdout_raw, 2000),
+                        stderr: truncate_output(&stderr_raw, 2000),
+                        duration_ms,
+                    };
+                } else {
+                    tracing::warn!(
+                        command = %resolved_cmd,
+                        stderr = %stderr_raw,
+                        "Install command retry also failed (attempt 2/2)"
+                    );
+                    log_entry = ValidationLogEntry {
+                        phase: "install".to_string(),
+                        command: resolved_cmd.clone(),
+                        path: resolved_path.clone(),
+                        label: entry.label.clone(),
+                        status: "failed".to_string(),
+                        exit_code: output.status.code(),
+                        stdout: truncate_output(&stdout_raw, 2000),
+                        stderr: truncate_output(&stderr_raw, 2000),
+                        duration_ms,
+                    };
+                }
+            }
+            // If spawn_blocking itself failed, keep the original failure log_entry
+        }
+
+        // Set failure flag based on final outcome
+        if log_entry.status == "failed" {
+            install_had_failures = true;
+        }
 
         if let Some(handle) = app_handle {
             let _ = handle.emit(

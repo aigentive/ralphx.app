@@ -13,7 +13,7 @@
 use async_trait::async_trait;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Runtime};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex as TokioMutex, RwLock};
 
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
@@ -74,6 +74,12 @@ pub struct TaskSchedulerService<R: Runtime = tauri::Wry> {
     /// Phase 82: Optional project ID to scope scheduling to a single project.
     /// When set, only Ready tasks from this project are considered.
     active_project_id: RwLock<Option<ProjectId>>,
+    /// Guard to prevent concurrent scheduling from causing duplicate transitions.
+    /// Multiple triggers can fire try_schedule_ready_tasks() simultaneously
+    /// (e.g., on_enter(Ready) delayed tokio::spawn + on_exit(agent_state) direct call),
+    /// leading to TOCTOU races where two invocations both find the same Ready task
+    /// and both transition it to Executing, causing duplicate on_enter(Executing).
+    scheduling_lock: TokioMutex<()>,
 }
 
 impl<R: Runtime> TaskSchedulerService<R> {
@@ -113,6 +119,7 @@ impl<R: Runtime> TaskSchedulerService<R> {
             plan_branch_repo: None,
             self_ref: Mutex::new(None),
             active_project_id: RwLock::new(None),
+            scheduling_lock: TokioMutex::new(()),
         }
     }
 
@@ -277,6 +284,18 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
     /// 3. Transitions it to Executing state via the state machine
     /// 4. Repeats until no more slots or no more schedulable tasks
     async fn try_schedule_ready_tasks(&self) {
+        // Prevent concurrent scheduling to avoid TOCTOU race where two invocations
+        // both find the same Ready task and both transition it to Executing.
+        // Use try_lock: if another scheduling is already in progress, skip — the
+        // running invocation's loop will handle all available slots.
+        let _guard = match self.scheduling_lock.try_lock() {
+            Ok(guard) => guard,
+            Err(_) => {
+                tracing::debug!("Scheduling already in progress, skipping concurrent attempt");
+                return;
+            }
+        };
+
         loop {
             // Check capacity on each iteration
             if !self.execution_state.can_start_task() {
