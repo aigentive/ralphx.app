@@ -304,6 +304,14 @@ pub async fn approve_team_plan(
             )
             .await;
 
+        // Derive MCP agent type from process: worker-* processes use worker-team-member,
+        // all others use ideation-team-member (the default in TeammateSpawnConfig::new)
+        let mcp_type = if plan.process.starts_with("worker") {
+            "worker-team-member"
+        } else {
+            "ideation-team-member"
+        };
+
         // Spawn a separate CLI worker process for this teammate
         let spawn_config = TeammateSpawnConfig::new(
             &teammate_name,
@@ -315,6 +323,7 @@ pub async fn approve_team_plan(
         .with_tools(pending.tools.clone())
         .with_mcp_tools(pending.mcp_tools.clone())
         .with_color(&teammate_color)
+        .with_mcp_agent_type(mcp_type)
         .with_print_mode_prompt(&pending.prompt);
 
         let client = ClaudeCodeClient::new();
