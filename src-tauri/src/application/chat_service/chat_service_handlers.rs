@@ -332,7 +332,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
     run_chain_id: Option<String>,
 ) -> bool {
     // Handle cancellation: skip all recovery/transitions, just mark as stopped
-    if error == "Agent run was cancelled" {
+    if matches!(stream_error, Some(StreamError::Cancelled)) {
         tracing::info!(
             conversation_id = conversation_id.as_str(),
             context_type = %context_type,
