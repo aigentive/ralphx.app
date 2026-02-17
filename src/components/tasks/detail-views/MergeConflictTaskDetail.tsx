@@ -5,7 +5,7 @@
  * and action buttons for manual resolution.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import {
   AlertTriangle,
   FileWarning,
@@ -13,6 +13,8 @@ import {
   GitMerge,
   Loader2,
   Ban,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { extractErrorMessage } from "@/lib/errors";
@@ -29,6 +31,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { taskKeys } from "@/hooks/useTasks";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { api } from "@/lib/tauri";
+import { useConflictDetection } from "@/hooks/useConflictDetection";
+import { useConflictDiff } from "@/hooks/useConflictDiff";
+import { ConflictDiffViewer } from "@/components/diff/ConflictDiffViewer";
 
 interface MergeConflictTaskDetailProps {
   task: Task;
@@ -36,9 +41,21 @@ interface MergeConflictTaskDetailProps {
 }
 
 /**
- * ConflictFilesList - Shows files with merge conflicts
+ * ConflictFilesList - Shows files with merge conflicts, expandable to show diff
  */
-function ConflictFilesList({ files }: { files: string[] }) {
+function ConflictFilesList({
+  files,
+  taskId,
+}: {
+  files: string[];
+  taskId: string;
+}) {
+  const [expandedFile, setExpandedFile] = useState<string | null>(null);
+  const { data: conflictDiff, isLoading: isLoadingDiff } = useConflictDiff({
+    taskId,
+    filePath: expandedFile,
+  });
+
   if (files.length === 0) {
     return (
       <p className="text-[13px] text-white/50 italic">
@@ -47,21 +64,71 @@ function ConflictFilesList({ files }: { files: string[] }) {
     );
   }
 
+  const toggleFile = (file: string) => {
+    setExpandedFile(expandedFile === file ? null : file);
+  };
+
   return (
     <div className="space-y-2">
       {files.map((file, index) => (
-        <div
-          key={index}
-          className="flex items-center gap-2 py-2 px-3 rounded-lg"
-          style={{ backgroundColor: "rgba(255, 159, 10, 0.08)" }}
-        >
-          <FileWarning className="w-4 h-4" style={{ color: "#ff9f0a" }} />
-          <span
-            className="text-[13px] font-mono text-white/70 truncate"
-            title={file}
+        <div key={index}>
+          <button
+            type="button"
+            onClick={() => toggleFile(file)}
+            className="w-full flex items-center gap-2 py-2 px-3 rounded-lg transition-colors cursor-pointer"
+            style={{
+              backgroundColor:
+                expandedFile === file
+                  ? "rgba(255, 159, 10, 0.15)"
+                  : "rgba(255, 159, 10, 0.08)",
+            }}
           >
-            {file}
-          </span>
+            {expandedFile === file ? (
+              <ChevronDown
+                className="w-4 h-4 shrink-0"
+                style={{ color: "#ff9f0a" }}
+              />
+            ) : (
+              <ChevronRight
+                className="w-4 h-4 shrink-0"
+                style={{ color: "#ff9f0a" }}
+              />
+            )}
+            <FileWarning className="w-4 h-4 shrink-0" style={{ color: "#ff9f0a" }} />
+            <span
+              className="text-[13px] font-mono text-white/70 truncate text-left"
+              title={file}
+            >
+              {file}
+            </span>
+          </button>
+          {expandedFile === file && (
+            <div
+              className="mt-2 rounded-lg overflow-hidden border"
+              style={{
+                borderColor: "rgba(255, 159, 10, 0.2)",
+                height: "400px",
+              }}
+            >
+              {isLoadingDiff ? (
+                <div
+                  className="flex items-center justify-center h-full"
+                  style={{ backgroundColor: "hsl(220 10% 8%)" }}
+                >
+                  <Loader2 className="w-5 h-5 animate-spin text-white/50" />
+                </div>
+              ) : conflictDiff ? (
+                <ConflictDiffViewer conflictDiff={conflictDiff} />
+              ) : (
+                <div
+                  className="flex items-center justify-center h-full text-white/50"
+                  style={{ backgroundColor: "hsl(220 10% 8%)" }}
+                >
+                  Failed to load conflict diff
+                </div>
+              )}
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -167,8 +234,8 @@ export function MergeConflictTaskDetail({ task, isHistorical = false }: MergeCon
   const [error, setError] = useState<string | null>(null);
   const { confirm } = useConfirmation();
 
-  // Parse conflict files from task metadata if available
-  const conflictFiles: string[] = (() => {
+  // Parse conflict files from task metadata (for historical view or fallback)
+  const metadataConflicts: string[] = useMemo(() => {
     if (!task.metadata) return [];
     try {
       const metadata = typeof task.metadata === "string"
@@ -178,7 +245,24 @@ export function MergeConflictTaskDetail({ task, isHistorical = false }: MergeCon
     } catch {
       return [];
     }
-  })();
+  }, [task.metadata]);
+
+  // Live conflict detection (only active for non-historical views)
+  const {
+    conflicts: liveConflicts,
+    isLoading: isLoadingConflicts,
+    isEnabled: isConflictDetectionEnabled,
+  } = useConflictDetection({
+    taskId: task.id,
+    internalStatus: task.internalStatus,
+    isHistorical,
+    hasBranch: !!task.taskBranch,
+  });
+
+  // Hybrid data source: use live conflicts for active states, metadata for historical
+  const conflictFiles: string[] = isHistorical
+    ? metadataConflicts
+    : (isConflictDetectionEnabled && liveConflicts.length > 0 ? liveConflicts : metadataConflicts);
 
   const branchName = task.taskBranch ?? "task branch";
 
@@ -259,9 +343,21 @@ export function MergeConflictTaskDetail({ task, isHistorical = false }: MergeCon
 
       {/* Conflict Files */}
       <section data-testid="conflict-files-section">
-        <SectionTitle>Conflict Files ({conflictFiles.length})</SectionTitle>
+        <SectionTitle>
+          Conflict Files ({conflictFiles.length})
+          {isConflictDetectionEnabled && isLoadingConflicts && (
+            <Loader2 className="inline-block w-3.5 h-3.5 ml-2 animate-spin text-white/40" />
+          )}
+        </SectionTitle>
         <DetailCard variant="warning">
-          <ConflictFilesList files={conflictFiles} />
+          {isConflictDetectionEnabled && isLoadingConflicts && conflictFiles.length === 0 ? (
+            <div className="flex items-center gap-2 py-2">
+              <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#ff9f0a" }} />
+              <span className="text-[13px] text-white/50">Detecting conflicts...</span>
+            </div>
+          ) : (
+            <ConflictFilesList files={conflictFiles} taskId={task.id} />
+          )}
         </DetailCard>
       </section>
 

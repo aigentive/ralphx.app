@@ -1182,6 +1182,17 @@ impl<'a> super::TransitionHandler<'a> {
                                 tracing::debug!(task_id = task_id_str, file = %file.display(), "Conflict file");
                             }
 
+                            // Persist conflict metadata for historical navigation
+                            let conflict_file_strings: Vec<String> = conflict_files
+                                .iter()
+                                .map(|p| p.to_string_lossy().to_string())
+                                .collect();
+                            super::merge_helpers::set_conflict_metadata(
+                                &mut task,
+                                &conflict_file_strings,
+                                "programmatic",
+                            );
+
                             // Create temp worktree for conflict resolution (keeps primary checkout clean)
                             let merge_wt_path =
                                 PathBuf::from(compute_merge_worktree_path(&project, task_id_str));
@@ -1503,6 +1514,17 @@ impl<'a> super::TransitionHandler<'a> {
                             for file in &conflict_files {
                                 tracing::debug!(task_id = task_id_str, file = %file.display(), "Conflict file");
                             }
+
+                            // Persist conflict metadata for historical navigation
+                            let conflict_file_strings: Vec<String> = conflict_files
+                                .iter()
+                                .map(|p| p.to_string_lossy().to_string())
+                                .collect();
+                            super::merge_helpers::set_conflict_metadata(
+                                &mut task,
+                                &conflict_file_strings,
+                                "programmatic",
+                            );
 
                             task.worktree_path = Some(merge_wt_path_str.clone());
                             task.internal_status = InternalStatus::Merging;
@@ -1968,6 +1990,17 @@ impl<'a> super::TransitionHandler<'a> {
                             tracing::debug!(task_id = task_id_str, file = %file.display(), "Conflict file");
                         }
 
+                        // Persist conflict metadata for historical navigation
+                        let conflict_file_strings: Vec<String> = conflict_files
+                            .iter()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .collect();
+                        super::merge_helpers::set_conflict_metadata(
+                            &mut task,
+                            &conflict_file_strings,
+                            "programmatic",
+                        );
+
                         task.internal_status = InternalStatus::Merging;
                         task.touch();
 
@@ -2398,6 +2431,17 @@ impl<'a> super::TransitionHandler<'a> {
                             MergePhase::ProgrammaticMerge,
                             MergePhaseStatus::Failed,
                             format!("Merge conflicts detected in {} files", conflict_files.len()),
+                        );
+
+                        // Persist conflict metadata for historical navigation
+                        let conflict_file_strings: Vec<String> = conflict_files
+                            .iter()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .collect();
+                        super::merge_helpers::set_conflict_metadata(
+                            &mut task,
+                            &conflict_file_strings,
+                            "programmatic",
                         );
 
                         task.internal_status = InternalStatus::Merging;
@@ -3081,6 +3125,17 @@ impl<'a> super::TransitionHandler<'a> {
                                 ),
                             );
 
+                            // Persist conflict metadata for historical navigation
+                            let conflict_file_strings: Vec<String> = conflict_files
+                                .iter()
+                                .map(|p| p.to_string_lossy().to_string())
+                                .collect();
+                            super::merge_helpers::set_conflict_metadata(
+                                &mut task,
+                                &conflict_file_strings,
+                                "programmatic",
+                            );
+
                             // Set worktree_path to rebase worktree for agent CWD
                             task.worktree_path = Some(rebase_wt_path_str.clone());
                             // Store conflict_type in metadata so agent/completion knows it's a rebase
@@ -3422,6 +3477,17 @@ impl<'a> super::TransitionHandler<'a> {
                                 "Squash merge conflicts detected in {} files",
                                 conflict_files.len()
                             ),
+                        );
+
+                        // Persist conflict metadata for historical navigation
+                        let conflict_file_strings: Vec<String> = conflict_files
+                            .iter()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .collect();
+                        super::merge_helpers::set_conflict_metadata(
+                            &mut task,
+                            &conflict_file_strings,
+                            "programmatic",
                         );
 
                         task.internal_status = InternalStatus::Merging;
@@ -3782,6 +3848,17 @@ impl<'a> super::TransitionHandler<'a> {
                                 "Squash merge conflicts detected in {} files",
                                 conflict_files.len()
                             ),
+                        );
+
+                        // Persist conflict metadata for historical navigation
+                        let conflict_file_strings: Vec<String> = conflict_files
+                            .iter()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .collect();
+                        super::merge_helpers::set_conflict_metadata(
+                            &mut task,
+                            &conflict_file_strings,
+                            "programmatic",
                         );
 
                         task.internal_status = InternalStatus::Merging;
@@ -4149,6 +4226,17 @@ impl<'a> super::TransitionHandler<'a> {
                                 "Rebase conflicts detected in {} files",
                                 conflict_files.len()
                             ),
+                        );
+
+                        // Persist conflict metadata for historical navigation
+                        let conflict_file_strings: Vec<String> = conflict_files
+                            .iter()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .collect();
+                        super::merge_helpers::set_conflict_metadata(
+                            &mut task,
+                            &conflict_file_strings,
+                            "programmatic",
                         );
 
                         task.internal_status = InternalStatus::Merging;
@@ -4803,6 +4891,17 @@ impl<'a> super::TransitionHandler<'a> {
                                     "Rebase conflicts detected in {} files",
                                     conflict_files.len()
                                 ),
+                            );
+
+                            // Persist conflict metadata for historical navigation
+                            let conflict_file_strings: Vec<String> = conflict_files
+                                .iter()
+                                .map(|p| p.to_string_lossy().to_string())
+                                .collect();
+                            super::merge_helpers::set_conflict_metadata(
+                                &mut task,
+                                &conflict_file_strings,
+                                "programmatic",
                             );
 
                             // Set worktree_path to rebase worktree for agent CWD

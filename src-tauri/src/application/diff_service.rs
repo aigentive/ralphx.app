@@ -3,10 +3,13 @@
 //! Provides file change information for the DiffViewer by:
 //! 1. Querying activity events to find Write/Edit tool calls
 //! 2. Using git to get actual diff content
+//! 3. Detecting merge conflicts (live and pre-merge preview)
 
+use crate::application::git_service::checkout_free;
 use crate::domain::entities::TaskId;
 use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// A file that was changed by the agent
@@ -39,6 +42,23 @@ pub struct FileDiff {
     pub old_content: String,
     /// Content after changes (empty for deleted files)
     pub new_content: String,
+    /// Programming language for syntax highlighting
+    pub language: String,
+}
+
+/// 3-way diff data for a file with merge conflicts
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConflictDiff {
+    /// File path relative to project root
+    pub file_path: String,
+    /// Content from merge-base (common ancestor)
+    pub base_content: String,
+    /// Content from target branch (base_branch, "ours" in merge)
+    pub ours_content: String,
+    /// Content from source branch (task_branch, "theirs" in merge)
+    pub theirs_content: String,
+    /// Current file content with conflict markers from failed merge
+    pub merged_with_markers: String,
     /// Programming language for syntax highlighting
     pub language: String,
 }
@@ -406,6 +426,225 @@ impl DiffService {
         self.get_file_diff_between_refs(file_path, project_path, &from_ref, merge_commit_sha)
     }
 
+    // =========================================================================
+    // Conflict Detection (Phase - Live Merge Conflict Detection)
+    // =========================================================================
+
+    /// Detect merge conflicts for a task.
+    ///
+    /// Uses two strategies based on the current git state:
+    /// 1. **Active merge (MERGE_HEAD exists)**: Uses `git diff --name-only --diff-filter=U`
+    ///    to find files with conflict markers in the index.
+    /// 2. **Pre-merge preview (no active merge)**: Uses `git merge-tree --write-tree`
+    ///    to simulate the merge and detect conflicts before actually merging.
+    ///
+    /// # Arguments
+    /// * `project_path` - Path to the git repository or worktree
+    /// * `task_branch` - The task branch to merge (source)
+    /// * `base_branch` - The target branch to merge into (target)
+    ///
+    /// # Returns
+    /// * `Vec<String>` - List of file paths with conflicts
+    ///
+    /// # Git Version Requirements
+    /// * `merge-tree --write-tree` requires Git 2.38+
+    /// * Falls back to `get_conflict_files` only if Git < 2.38
+    pub fn detect_conflicts(
+        &self,
+        project_path: &str,
+        task_branch: &str,
+        base_branch: &str,
+    ) -> AppResult<Vec<String>> {
+        let repo = Path::new(project_path);
+
+        // Check for active merge first (MERGE_HEAD exists)
+        if Self::is_merge_in_progress(repo) {
+            // Active merge: use git diff to find conflict files
+            return Self::get_conflict_files(repo)
+                .map(|paths| paths.into_iter().map(|p| p.to_string_lossy().to_string()).collect());
+        }
+
+        // Pre-merge preview: use merge-tree --write-tree if Git 2.38+
+        if Self::is_git_238_or_newer() {
+            match checkout_free::merge_tree_write(repo, base_branch, task_branch)? {
+                Ok(_tree_sha) => {
+                    // Clean merge - no conflicts
+                    Ok(Vec::new())
+                }
+                Err(conflict_files) => {
+                    // Conflicts detected - return file paths
+                    Ok(conflict_files
+                        .into_iter()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .collect())
+                }
+            }
+        } else {
+            // Git < 2.38: can't do pre-merge preview without --write-tree
+            // Return empty list (no conflicts detectable without active merge)
+            Ok(Vec::new())
+        }
+    }
+
+    /// Check if a merge is currently in progress (MERGE_HEAD exists).
+    fn is_merge_in_progress(repo: &Path) -> bool {
+        let git_dir = Self::resolve_git_dir(repo);
+        git_dir.join("MERGE_HEAD").exists()
+    }
+
+    /// Resolve the git directory for a worktree or repository.
+    ///
+    /// For regular repos, returns `worktree/.git`.
+    /// For worktrees where `.git` is a file containing `gitdir: <path>`,
+    /// follows the indirection.
+    fn resolve_git_dir(worktree: &Path) -> PathBuf {
+        let git_path = worktree.join(".git");
+
+        if git_path.is_file() {
+            if let Ok(content) = std::fs::read_to_string(&git_path) {
+                if let Some(path) = content.strip_prefix("gitdir: ") {
+                    return PathBuf::from(path.trim());
+                }
+            }
+        }
+
+        git_path
+    }
+
+    /// Get list of files with conflicts in the index.
+    ///
+    /// Uses `git diff --name-only --diff-filter=U` to find unmerged files.
+    fn get_conflict_files(repo: &Path) -> AppResult<Vec<PathBuf>> {
+        let output = Command::new("git")
+            .args(["diff", "--name-only", "--diff-filter=U"])
+            .current_dir(repo)
+            .output()
+            .map_err(|e| AppError::GitOperation(format!("Failed to run git diff: {}", e)))?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let files: Vec<PathBuf> = stdout
+            .lines()
+            .filter(|line| !line.is_empty())
+            .map(PathBuf::from)
+            .collect();
+
+        Ok(files)
+    }
+
+    /// Check if Git version is 2.38 or newer.
+    ///
+    /// Git 2.38 introduced `merge-tree --write-tree` which is needed for
+    /// pre-merge conflict detection.
+    fn is_git_238_or_newer() -> bool {
+        static CACHE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        *CACHE.get_or_init(|| {
+            let output = Command::new("git")
+                .args(["--version"])
+                .output();
+
+            if let Ok(output) = output {
+                let version_str = String::from_utf8_lossy(&output.stdout);
+                // Parse "git version 2.38.0" or similar
+                if let Some(version_part) = version_str
+                    .to_lowercase()
+                    .strip_prefix("git version ")
+                {
+                    let parts: Vec<&str> = version_part.split('.').collect();
+                    if parts.len() >= 2 {
+                        if let (Ok(major), Ok(minor)) =
+                            (parts[0].parse::<u32>(), parts[1].parse::<u32>())
+                        {
+                            return major > 2 || (major == 2 && minor >= 38);
+                        }
+                    }
+                }
+            }
+            false
+        })
+    }
+
+    // =========================================================================
+    // 3-Way Conflict Diff (Phase 2 - Live Merge Conflict Detection)
+    // =========================================================================
+
+    /// Get 3-way diff data for a file with merge conflicts.
+    ///
+    /// Returns the content from all three sides of the merge plus the current
+    /// file with conflict markers for inline conflict rendering.
+    ///
+    /// # Arguments
+    /// * `file_path` - Path to the file with conflicts (relative to project root)
+    /// * `project_path` - Path to the git repository or worktree
+    /// * `task_branch` - The source branch (task branch, "theirs" in merge)
+    /// * `base_branch` - The target branch ("ours" in merge, e.g., "main")
+    ///
+    /// # Returns
+    /// * `ConflictDiff` - All three versions plus merged content with markers
+    pub fn get_conflict_diff(
+        &self,
+        file_path: &str,
+        project_path: &str,
+        task_branch: &str,
+        base_branch: &str,
+    ) -> AppResult<ConflictDiff> {
+        let repo = Path::new(project_path);
+
+        // 1. Get merge-base (common ancestor)
+        let merge_base = self.get_merge_base(repo, base_branch, task_branch)?;
+
+        // 2. Get base_content from merge-base (may be empty if file is new)
+        let base_content = self
+            .get_file_content_at_ref(project_path, &merge_base, file_path)
+            .unwrap_or_default();
+
+        // 3. Get ours_content from base_branch (target branch)
+        let ours_content = self
+            .get_file_content_at_ref(project_path, base_branch, file_path)
+            .unwrap_or_default();
+
+        // 4. Get theirs_content from task_branch (source branch)
+        let theirs_content = self
+            .get_file_content_at_ref(project_path, task_branch, file_path)
+            .unwrap_or_default();
+
+        // 5. Get merged_with_markers by reading the file directly from disk
+        // (it already has conflict markers from the failed merge)
+        let full_path = repo.join(file_path);
+        let merged_with_markers = std::fs::read_to_string(&full_path).unwrap_or_default();
+
+        // 6. Get language from file extension
+        let language = get_language_from_path(file_path);
+
+        Ok(ConflictDiff {
+            file_path: file_path.to_string(),
+            base_content,
+            ours_content,
+            theirs_content,
+            merged_with_markers,
+            language,
+        })
+    }
+
+    /// Get the merge-base commit SHA between two branches.
+    fn get_merge_base(&self, repo: &Path, base_branch: &str, task_branch: &str) -> AppResult<String> {
+        let output = Command::new("git")
+            .args(["merge-base", base_branch, task_branch])
+            .current_dir(repo)
+            .output()
+            .map_err(|e| AppError::GitOperation(format!("Failed to run git merge-base: {}", e)))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AppError::GitOperation(format!(
+                "git merge-base failed: {}",
+                stderr
+            )));
+        }
+
+        let merge_base = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        Ok(merge_base)
+    }
+
     fn get_file_content_at_ref(
         &self,
         project_path: &str,
@@ -458,6 +697,9 @@ fn get_language_from_path(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+    use tempfile::TempDir;
 
     #[test]
     fn test_get_language_from_path() {
@@ -468,5 +710,133 @@ mod tests {
         assert_eq!(get_language_from_path("config.json"), "json");
         assert_eq!(get_language_from_path("README.md"), "markdown");
         assert_eq!(get_language_from_path("unknown"), "plaintext");
+    }
+
+    // =========================================================================
+    // Conflict Detection Tests
+    // =========================================================================
+
+    /// Helper to create a git repo with initial commit
+    fn create_git_repo() -> (TempDir, PathBuf) {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let repo_path = temp_dir.path().to_path_buf();
+
+        // Initialize git repo
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(&repo_path)
+            .output()
+            .expect("Failed to init git repo");
+
+        // Configure git user
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(&repo_path)
+            .output()
+            .expect("Failed to config git email");
+
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(&repo_path)
+            .output()
+            .expect("Failed to config git name");
+
+        // Create initial commit
+        fs::write(repo_path.join("README.md"), "# Test Repo\n").expect("Failed to write README");
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(&repo_path)
+            .output()
+            .expect("Failed to git add");
+
+        std::process::Command::new("git")
+            .args(["commit", "-m", "Initial commit"])
+            .current_dir(&repo_path)
+            .output()
+            .expect("Failed to commit");
+
+        (temp_dir, repo_path)
+    }
+
+    /// Helper to create a branch with a file change
+    fn create_branch_with_change(repo_path: &Path, branch_name: &str, file_name: &str, content: &str) {
+        std::process::Command::new("git")
+            .args(["checkout", "-b", branch_name])
+            .current_dir(repo_path)
+            .output()
+            .expect("Failed to create branch");
+
+        fs::write(repo_path.join(file_name), content).expect("Failed to write file");
+
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo_path)
+            .output()
+            .expect("Failed to git add");
+
+        std::process::Command::new("git")
+            .args(["commit", "-m", &format!("Add {}", file_name)])
+            .current_dir(repo_path)
+            .output()
+            .expect("Failed to commit");
+
+        // Switch back to main
+        std::process::Command::new("git")
+            .args(["checkout", "master"])
+            .current_dir(repo_path)
+            .output()
+            .expect("Failed to checkout master");
+    }
+
+    #[test]
+    fn test_detect_conflicts_clean_merge() {
+        let (_temp_dir, repo_path) = create_git_repo();
+        let repo_path_str = repo_path.to_string_lossy().to_string();
+
+        // Create a branch with non-conflicting changes
+        create_branch_with_change(&repo_path, "feature-a", "file_a.txt", "Content A\n");
+
+        let diff_service = DiffService::new();
+        let result = diff_service.detect_conflicts(&repo_path_str, "feature-a", "master");
+
+        // Should succeed with no conflicts
+        assert!(result.is_ok());
+        let conflicts = result.unwrap();
+        assert!(conflicts.is_empty(), "Expected no conflicts, got: {:?}", conflicts);
+    }
+
+    #[test]
+    fn test_is_merge_in_progress_no_merge() {
+        let (_temp_dir, repo_path) = create_git_repo();
+
+        // No merge in progress initially
+        assert!(!DiffService::is_merge_in_progress(&repo_path));
+    }
+
+    #[test]
+    fn test_get_conflict_files_empty() {
+        let (_temp_dir, repo_path) = create_git_repo();
+
+        // No conflicts initially
+        let result = DiffService::get_conflict_files(&repo_path);
+        assert!(result.is_ok());
+        let files = result.unwrap();
+        assert!(files.is_empty(), "Expected no conflict files, got: {:?}", files);
+    }
+
+    #[test]
+    fn test_resolve_git_dir_regular_repo() {
+        let (_temp_dir, repo_path) = create_git_repo();
+
+        let git_dir = DiffService::resolve_git_dir(&repo_path);
+        assert!(git_dir.ends_with(".git"), "Expected .git dir, got: {:?}", git_dir);
+    }
+
+    #[test]
+    fn test_is_git_238_or_newer() {
+        // This test just verifies the function runs without error
+        // The actual result depends on the installed Git version
+        let _result = DiffService::is_git_238_or_newer();
+        // Should not panic
     }
 }

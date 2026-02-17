@@ -382,7 +382,7 @@ pub async fn report_conflict(
     let task_id = TaskId::from_string(task_id);
 
     // 1. Get task and validate state is Merging
-    let task = state
+    let mut task = state
         .app_state
         .task_repo
         .get_by_id(&task_id)
@@ -401,9 +401,24 @@ pub async fn report_conflict(
         ));
     }
 
-    // 2. Transition to MergeConflict
-    // Note: Conflict files are passed via the event, not stored on task
-    // The UI will display them from the merge:conflict event payload
+    // 2. Store conflict metadata for historical navigation
+    // This ensures conflict_files are persisted even when navigating historical tasks
+    crate::domain::state_machine::transition_handler::set_conflict_metadata(
+        &mut task,
+        &req.conflict_files,
+        "agent",
+    );
+    task.touch();
+
+    if let Err(e) = state.app_state.task_repo.update(&task).await {
+        tracing::error!(
+            task_id = task_id.as_str(),
+            error = %e,
+            "Failed to update task with conflict metadata"
+        );
+    }
+
+    // 3. Transition to MergeConflict
     let transition_service = TaskTransitionService::new(
         Arc::clone(&state.app_state.task_repo),
         Arc::clone(&state.app_state.task_dependency_repo),

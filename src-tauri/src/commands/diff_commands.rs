@@ -2,7 +2,7 @@
 //!
 //! Provides file change and diff data for reviewing task execution results.
 
-use crate::application::{AppState, DiffService, FileChange, FileDiff};
+use crate::application::{AppState, ConflictDiff, DiffService, FileChange, FileDiff};
 use crate::domain::entities::{GitMode, Project, Task, TaskId};
 use crate::error::{AppError, AppResult};
 use std::path::PathBuf;
@@ -169,4 +169,73 @@ pub async fn get_commit_file_diff(
     }
 
     diff_service.get_commit_file_diff(&commit_sha, &file_path, &working_path_str)
+}
+
+/// Detect merge conflicts for a task.
+///
+/// Uses two strategies based on the current git state:
+/// 1. **Active merge** (MERGE_HEAD exists): Returns files with conflict markers.
+/// 2. **Pre-merge preview** (no active merge): Simulates merge using `git merge-tree --write-tree`.
+///
+/// Returns an empty vector if no conflicts are detected.
+///
+/// # Arguments
+/// * `task_id` - The task to check for conflicts
+///
+/// # Returns
+/// * `Vec<String>` - List of file paths with merge conflicts
+#[tauri::command]
+pub async fn detect_merge_conflicts(
+    app_state: State<'_, AppState>,
+    task_id: String,
+) -> AppResult<Vec<String>> {
+    let task_id = TaskId::from_string(task_id);
+
+    // Get task context (task, working_path, project)
+    let (task, _, working_path_str, project) = get_task_context(&app_state, &task_id).await?;
+
+    // Get the task branch - required for conflict detection
+    let task_branch = task
+        .task_branch
+        .as_deref()
+        .ok_or_else(|| AppError::Validation("Task has no branch assigned".to_string()))?;
+
+    let base_branch = project.base_branch.as_deref().unwrap_or("main");
+
+    let diff_service = DiffService::new();
+    diff_service.detect_conflicts(&working_path_str, task_branch, base_branch)
+}
+
+/// Get 3-way diff data for a file with merge conflicts.
+///
+/// Returns the content from all three sides of the merge (base, ours, theirs)
+/// plus the current file content with conflict markers for inline rendering.
+///
+/// # Arguments
+/// * `task_id` - The task with conflicts
+/// * `file_path` - Path to the conflicting file (relative to project root)
+///
+/// # Returns
+/// * `ConflictDiff` - 3-way diff data with conflict markers
+#[tauri::command]
+pub async fn get_conflict_file_diff(
+    app_state: State<'_, AppState>,
+    task_id: String,
+    file_path: String,
+) -> AppResult<ConflictDiff> {
+    let task_id = TaskId::from_string(task_id);
+
+    // Get task context (task, working_path, project)
+    let (task, _, working_path_str, project) = get_task_context(&app_state, &task_id).await?;
+
+    // Get the task branch - required for 3-way diff
+    let task_branch = task
+        .task_branch
+        .as_deref()
+        .ok_or_else(|| AppError::Validation("Task has no branch assigned".to_string()))?;
+
+    let base_branch = project.base_branch.as_deref().unwrap_or("main");
+
+    let diff_service = DiffService::new();
+    diff_service.get_conflict_diff(&file_path, &working_path_str, task_branch, base_branch)
 }

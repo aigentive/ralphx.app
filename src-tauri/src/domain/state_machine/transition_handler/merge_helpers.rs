@@ -239,6 +239,37 @@ pub(crate) fn clear_trigger_origin(task: &mut Task) {
     }
 }
 
+/// Set conflict metadata in a task's metadata.
+///
+/// Stores:
+/// - `conflict_files`: array of file paths with conflicts
+/// - `conflict_snapshot_at`: ISO 8601 timestamp when conflicts were detected
+/// - `conflict_detected_by`: "programmatic" (system) or "agent" (via report_conflict)
+///
+/// Mutates the task in-place, creating metadata if it doesn't exist.
+pub(crate) fn set_conflict_metadata(
+    task: &mut Task,
+    conflict_files: &[String],
+    detected_by: &str,
+) {
+    let mut meta = parse_metadata(task).unwrap_or_else(|| serde_json::json!({}));
+    if let Some(obj) = meta.as_object_mut() {
+        obj.insert(
+            "conflict_files".to_string(),
+            serde_json::json!(conflict_files),
+        );
+        obj.insert(
+            "conflict_snapshot_at".to_string(),
+            serde_json::json!(chrono::Utc::now().to_rfc3339()),
+        );
+        obj.insert(
+            "conflict_detected_by".to_string(),
+            serde_json::json!(detected_by),
+        );
+    }
+    task.metadata = Some(meta.to_string());
+}
+
 /// Resolve the base branch for a task's working branch.
 ///
 /// If the task belongs to a plan with an active feature branch, returns the feature
@@ -764,5 +795,86 @@ mod tests {
 
         // Metadata should be None after clearing (only had main_merge_deferred fields)
         assert!(task.metadata.is_none());
+    }
+
+    // ===== Conflict Metadata Tests =====
+
+    #[test]
+    fn test_set_conflict_metadata_creates_metadata_if_missing() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        assert!(task.metadata.is_none());
+
+        let conflict_files = vec![
+            "src/main.rs".to_string(),
+            "src/lib.rs".to_string(),
+        ];
+        set_conflict_metadata(&mut task, &conflict_files, "programmatic");
+
+        assert!(task.metadata.is_some());
+        let meta: serde_json::Value = serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
+        assert_eq!(
+            meta["conflict_files"],
+            serde_json::json!(["src/main.rs", "src/lib.rs"])
+        );
+        assert!(meta["conflict_snapshot_at"].is_string());
+        assert_eq!(meta["conflict_detected_by"], "programmatic");
+    }
+
+    #[test]
+    fn test_set_conflict_metadata_preserves_existing_fields() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        task.metadata = Some(r#"{"existing_field": "value"}"#.to_string());
+
+        let conflict_files = vec!["src/conflict.rs".to_string()];
+        set_conflict_metadata(&mut task, &conflict_files, "agent");
+
+        let meta: serde_json::Value = serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
+        assert_eq!(meta["existing_field"], "value");
+        assert_eq!(meta["conflict_files"], serde_json::json!(["src/conflict.rs"]));
+        assert_eq!(meta["conflict_detected_by"], "agent");
+    }
+
+    #[test]
+    fn test_set_conflict_metadata_overwrites_existing_conflict_files() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        task.metadata = Some(
+            r#"{"conflict_files": ["old_file.rs"], "conflict_snapshot_at": "2026-02-15T00:00:00Z"}"#
+                .to_string(),
+        );
+
+        let conflict_files = vec!["new_file.rs".to_string()];
+        set_conflict_metadata(&mut task, &conflict_files, "programmatic");
+
+        let meta: serde_json::Value = serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
+        assert_eq!(meta["conflict_files"], serde_json::json!(["new_file.rs"]));
+        // Timestamp should be updated
+        assert_ne!(meta["conflict_snapshot_at"], "2026-02-15T00:00:00Z");
+    }
+
+    #[test]
+    fn test_set_conflict_metadata_with_agent_source() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+
+        let conflict_files = vec!["path/to/file.ts".to_string()];
+        set_conflict_metadata(&mut task, &conflict_files, "agent");
+
+        let meta: serde_json::Value = serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
+        assert_eq!(meta["conflict_detected_by"], "agent");
+    }
+
+    #[test]
+    fn test_set_conflict_metadata_with_programmatic_source() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+
+        let conflict_files: Vec<String> = vec![];
+        set_conflict_metadata(&mut task, &conflict_files, "programmatic");
+
+        let meta: serde_json::Value = serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
+        assert_eq!(meta["conflict_detected_by"], "programmatic");
     }
 }

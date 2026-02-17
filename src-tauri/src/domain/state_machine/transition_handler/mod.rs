@@ -40,6 +40,9 @@ pub(crate) use side_effects::get_trigger_origin;
 pub(crate) use side_effects::parse_metadata;
 pub(crate) use side_effects::set_trigger_origin;
 
+// Re-export conflict metadata helpers for conflict snapshot persistence
+pub(crate) use merge_helpers::set_conflict_metadata;
+
 // Re-export metadata builder for atomic metadata writes (Wave 1)
 pub use metadata_builder::{build_failed_metadata, build_trigger_origin_metadata, MetadataUpdate};
 

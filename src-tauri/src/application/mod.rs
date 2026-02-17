@@ -42,7 +42,7 @@ pub use apply_service::{
 pub use chat_attachment_service::ChatAttachmentService;
 pub use chat_resumption::ChatResumptionRunner;
 pub use dependency_service::{DependencyAnalysis, DependencyService, ValidationResult};
-pub use diff_service::{DiffService, FileChange, FileChangeStatus, FileDiff};
+pub use diff_service::{ConflictDiff, DiffService, FileChange, FileChangeStatus, FileDiff};
 pub use git_service::{
     checkout_free::CheckoutFreeMergeResult, CommitInfo, DiffStats, GitService, MergeAttemptResult,
     MergeResult, RebaseResult,

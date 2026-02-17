@@ -804,6 +804,8 @@ pub fn run() {
             commands::diff_commands::get_file_diff,
             commands::diff_commands::get_commit_file_changes,
             commands::diff_commands::get_commit_file_diff,
+            commands::diff_commands::detect_merge_conflicts,
+            commands::diff_commands::get_conflict_file_diff,
             // Git commands (Phase 66 - Per-task branch isolation)
             commands::git_commands::get_task_commits,
             commands::git_commands::get_task_diff_stats,
