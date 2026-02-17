@@ -31,6 +31,7 @@ import {
   MEMORY_CAPTURE,
   IDEATION_TEAM_LEAD,
   IDEATION_TEAM_MEMBER,
+  WORKER_TEAM_LEAD,
   WORKER_TEAM_MEMBER,
 } from "./agentNames.js";
 
@@ -1567,6 +1568,43 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_session_plan",
     "list_session_proposals",
     "get_plan_artifact",
+    // Memory read tools
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
+  ],
+  // Worker team lead - coordinates team execution for tasks
+  [WORKER_TEAM_LEAD]: [
+    // Team coordination tools
+    "request_team_plan",
+    "request_teammate_spawn",
+    "create_team_artifact",
+    "get_team_artifacts",
+    "get_team_session_state",
+    "save_team_session_state",
+    // Step management tools
+    "start_step",
+    "complete_step",
+    "skip_step",
+    "fail_step",
+    "add_step",
+    "get_step_progress",
+    "get_step_context",
+    "get_sub_steps",
+    // Issue tools (re-execution workflow)
+    "get_task_issues",
+    "mark_issue_in_progress",
+    "mark_issue_addressed",
+    // Project analysis tools
+    "get_project_analysis",
+    // Common context tools
+    "get_task_context",
+    "get_artifact",
+    "get_artifact_version",
+    "get_related_artifacts",
+    "search_project_artifacts",
+    "get_review_notes",
+    "get_task_steps",
     // Memory read tools
     "search_memories",
     "get_memory",
