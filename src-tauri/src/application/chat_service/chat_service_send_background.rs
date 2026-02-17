@@ -13,7 +13,7 @@ use super::chat_service_context;
 use super::chat_service_helpers::get_assistant_role;
 use super::chat_service_streaming::process_stream_background;
 use super::chat_service_types::{AgentMessageCreatedPayload, AgentRunCompletedPayload};
-use super::{event_context, has_meaningful_output, EventContextPayload};
+use super::{event_context, has_meaningful_output, EventContextPayload, StreamingStateCache};
 use crate::application::memory_orchestration::trigger_memory_pipelines;
 use crate::application::question_state::QuestionState;
 use crate::commands::ExecutionState;
@@ -78,6 +78,8 @@ pub(super) struct BackgroundRunContext<R: Runtime> {
     pub cancellation_token: CancellationToken,
     // Team state
     pub team_service: Option<std::sync::Arc<crate::application::TeamService>>,
+    // Streaming state cache for frontend hydration
+    pub streaming_state_cache: StreamingStateCache,
 }
 
 pub(super) async fn finalize_assistant_message<R: Runtime>(
@@ -153,6 +155,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             team_mode,
             cancellation_token,
             team_service,
+            streaming_state_cache,
         } = ctx;
         let BackgroundRunRepos {
             chat_message_repo,
@@ -210,6 +213,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             cancellation_token.clone(),
             team_service.clone(),
             team_mode,
+            streaming_state_cache.clone(),
         )
         .await;
 
@@ -348,6 +352,10 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 // Only emit run_completed if there's no queue to process
                 // If there IS a queue, we'll emit run_completed after all queue messages are processed
                 if !will_process_queue {
+                    // Clear streaming state cache - stream completed successfully
+                    let conv_id_str = conversation_id.as_str();
+                    streaming_state_cache.clear(&conv_id_str).await;
+
                     if let Some(ref handle) = app_handle {
                         let _ = handle.emit(
                             "agent:run_completed",
@@ -401,16 +409,22 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                         question_state.clone(),
                         app_handle.clone(),
                         resolved_project_id.as_deref(),
-                        ctx.team_mode,
+                        team_mode,
                         cancellation_token.clone(),
                         run_chain_id.as_deref(),
                         Some(&agent_run_id),
+                        streaming_state_cache.clone(),
                     )
                     .await;
 
                     // After ALL queue processing is done, emit the final run_completed
                     if total_processed > 0 {
                         tracing::info!("[QUEUE] Emitting final run_completed after processing {} queued messages", total_processed);
+
+                        // Clear streaming state cache - queue processing completed
+                        let conv_id_str = conversation_id.as_str();
+                        streaming_state_cache.clear(&conv_id_str).await;
+
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
                                 "agent:run_completed",
@@ -451,6 +465,10 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 }
             }
             Err(e) => {
+                // Clear streaming state cache - stream errored
+                let conv_id_str = conversation_id.as_str();
+                streaming_state_cache.clear(&conv_id_str).await;
+
                 // Delegate to error handler: classify, attempt recovery, fail run, emit events.
                 // Returns true if recovery spawned a retry (no further action needed here
                 // since the Err arm is the last statement in the async block).

@@ -24,6 +24,7 @@ mod chat_service_repository;
 mod chat_service_send_background;
 mod chat_service_streaming;
 mod chat_service_types;
+mod streaming_state_cache;
 
 use crate::application::question_state::QuestionState;
 use crate::domain::entities::{
@@ -56,6 +57,9 @@ pub(crate) use chat_service_merge::reconcile_merge_auto_complete;
 pub use chat_service_mock::{MockChatResponse, MockChatService};
 pub use chat_service_replay::{build_rehydration_prompt, ConversationReplay, ReplayBuilder, Turn};
 pub use chat_service_streaming::process_stream_background;
+pub use streaming_state_cache::{
+    CachedStreamingTask, CachedToolCall, ConversationStreamingState, StreamingStateCache,
+};
 pub use chat_service_types::{
     events, AgentChunkPayload, AgentErrorPayload, AgentHookPayload, AgentMessageCreatedPayload,
     AgentQueueSentPayload, AgentRunCompletedPayload, AgentRunStartedPayload,
@@ -231,6 +235,8 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     team_mode: bool,
     /// Team service for managing agent teams lifecycle (persistence + events).
     team_service: Option<std::sync::Arc<crate::application::TeamService>>,
+    /// Cache for streaming state, used to hydrate frontend on navigation.
+    streaming_state_cache: StreamingStateCache,
 }
 
 impl<R: Runtime> ClaudeChatService<R> {
@@ -282,6 +288,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             model: "sonnet".to_string(),
             team_mode: false,
             team_service: None,
+            streaming_state_cache: StreamingStateCache::new(),
         }
     }
 
@@ -330,9 +337,21 @@ impl<R: Runtime> ClaudeChatService<R> {
         self
     }
 
+    pub fn with_streaming_state_cache(mut self, cache: StreamingStateCache) -> Self {
+        self.streaming_state_cache = cache;
+        self
+    }
+
     pub fn with_app_handle(mut self, app_handle: AppHandle<R>) -> Self {
         self.app_handle = Some(app_handle);
         self
+    }
+
+    /// Get a reference to the streaming state cache.
+    ///
+    /// Used by HTTP handlers to fetch current streaming state for hydration.
+    pub fn streaming_state_cache(&self) -> &StreamingStateCache {
+        &self.streaming_state_cache
     }
 
     /// Emit a Tauri event if app_handle is available
@@ -687,6 +706,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             team_mode: self.team_mode,
             cancellation_token,
             team_service: self.team_service.clone(),
+            streaming_state_cache: self.streaming_state_cache.clone(),
         };
 
         // 9. Process stream in background (extracted to separate module)

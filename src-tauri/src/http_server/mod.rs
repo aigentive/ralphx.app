@@ -185,6 +185,11 @@ pub async fn start_http_server(
             "/api/get_conversation_transcript",
             post(get_conversation_transcript),
         )
+        // Conversation active state endpoint (streaming state hydration)
+        .route(
+            "/api/conversations/:id/active-state",
+            get(get_conversation_active_state),
+        )
         // Team endpoints (agent teams)
         .route("/api/team/plan", post(request_team_plan))
         .route("/api/team/plan/approve", post(approve_team_plan))

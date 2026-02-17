@@ -169,7 +169,8 @@ fn create_chat_service(
     )
     .with_app_handle(app_handle)
     .with_execution_state(Arc::clone(execution_state))
-    .with_plan_branch_repo(state.plan_branch_repo.clone());
+    .with_plan_branch_repo(state.plan_branch_repo.clone())
+    .with_streaming_state_cache(state.streaming_state_cache.clone());
     if let Some(svc) = team_service {
         service = service.with_team_service(svc);
     }
