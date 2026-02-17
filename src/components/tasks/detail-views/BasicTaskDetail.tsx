@@ -16,6 +16,10 @@ import { taskKeys } from "@/hooks/useTasks";
 import { api } from "@/lib/tauri";
 import { Loader2, Play, RotateCcw, Clock, User, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  ResumeValidationDialog,
+  type ValidationWarning,
+} from "@/components/ui/ResumeValidationDialog";
 import { parseStopMetadata, type Task, type StopMetadata } from "@/types/task";
 
 // ============================================================================
@@ -57,6 +61,14 @@ type ExecutionMode = "solo" | "team";
 
 // Task statuses that can be restarted
 const RESTARTABLE_STATUSES = new Set(["failed", "stopped", "cancelled", "paused"]);
+
+// States that need validation before resuming (merge-related states)
+const VALIDATED_RESUME_STATES = new Set([
+  "merging",
+  "pending_merge",
+  "merge_conflict",
+  "merge_incomplete",
+]);
 
 interface BasicTaskDetailProps {
   task: Task;
@@ -186,6 +198,8 @@ function ActionButtonsCard({ task }: { task: Task }) {
   const queryClient = useQueryClient();
   const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
   const [executionMode, setExecutionMode] = useState<ExecutionMode>("solo");
+  const [showValidationDialog, setShowValidationDialog] = useState(false);
+  const [isResuming, setIsResuming] = useState(false);
   const taskId = task.id;
   const status = task.internalStatus;
 
@@ -196,6 +210,41 @@ function ActionButtonsCard({ task }: { task: Task }) {
   );
 
   const isStopped = status === "stopped" && stopMetadata !== null;
+  const isReady = status === "ready";
+
+  // Generate validation warnings based on stopped-from state
+  const validationWarnings = useMemo((): ValidationWarning[] => {
+    if (!stopMetadata) return [];
+
+    const warnings: ValidationWarning[] = [];
+    const stoppedFrom = stopMetadata.stoppedFromStatus;
+
+    // Check if this was a merge-related state
+    if (VALIDATED_RESUME_STATES.has(stoppedFrom)) {
+      warnings.push({
+        id: "git-state",
+        message: `Task was stopped during ${stoppedFrom.replace("_", " ")} phase. Git state may have changed since then.`,
+        severity: "warning",
+      });
+
+      warnings.push({
+        id: "branch-check",
+        message: "The task branch and worktree should be verified before resuming.",
+        severity: "warning",
+      });
+    }
+
+    // Add stop reason as context if available
+    if (stopMetadata.stopReason) {
+      warnings.push({
+        id: "stop-reason",
+        message: `Original stop reason: "${stopMetadata.stopReason}"`,
+        severity: "warning",
+      });
+    }
+
+    return warnings;
+  }, [stopMetadata]);
 
   const restartMutation = useMutation({
     mutationFn: async () => {
@@ -222,9 +271,38 @@ function ActionButtonsCard({ task }: { task: Task }) {
     },
   });
 
-  const isReady = status === "ready";
+  // Handle force resume from validation dialog - restores to original state (smart resume)
+  const handleForceResume = useCallback(async () => {
+    if (!stopMetadata?.stoppedFromStatus) return;
+    setIsResuming(true);
+    try {
+      await api.tasks.move(taskId, stopMetadata.stoppedFromStatus);
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      setShowValidationDialog(false);
+    } finally {
+      setIsResuming(false);
+    }
+  }, [taskId, queryClient, stopMetadata]);
+
+  // Handle go to ready from validation dialog
+  const handleGoToReady = useCallback(async () => {
+    setIsResuming(true);
+    try {
+      await api.tasks.move(taskId, "ready");
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      setShowValidationDialog(false);
+    } finally {
+      setIsResuming(false);
+    }
+  }, [taskId, queryClient]);
 
   const handleAction = useCallback(async () => {
+    // If task was stopped from a validated state, show validation dialog
+    if (stopMetadata && validationWarnings.length > 0) {
+      setShowValidationDialog(true);
+      return;
+    }
+
     const statusLabels: Record<string, string> = {
       ready: "Start",
       failed: "Restart",
@@ -274,7 +352,7 @@ function ActionButtonsCard({ task }: { task: Task }) {
     }
 
     restartMutation.mutate();
-  }, [confirm, status, isReady, isStopped, stopMetadata, restartMutation, executionMode]);
+  }, [confirm, status, isReady, isStopped, stopMetadata, restartMutation, executionMode, validationWarnings.length]);
 
   return (
     <DetailCard data-testid="action-buttons">
@@ -288,14 +366,14 @@ function ActionButtonsCard({ task }: { task: Task }) {
         <Button
           data-testid={isReady ? "start-button" : "restart-button"}
           onClick={handleAction}
-          disabled={restartMutation.isPending}
+          disabled={restartMutation.isPending || isResuming}
           className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px] transition-colors"
           style={{
             backgroundColor: isReady ? "hsl(14 100% 60%)" : "hsl(217 90% 60%)",
             color: "white",
           }}
         >
-          {restartMutation.isPending ? (
+          {restartMutation.isPending || isResuming ? (
             <Loader2 className="w-4 h-4 animate-spin" />
           ) : isReady ? (
             <Play className="w-4 h-4" />
@@ -311,7 +389,7 @@ function ActionButtonsCard({ task }: { task: Task }) {
         <ExecutionModeSelector
           mode={executionMode}
           onChange={setExecutionMode}
-          disabled={restartMutation.isPending}
+          disabled={restartMutation.isPending || isResuming}
         />
       </div>
 
@@ -323,6 +401,18 @@ function ActionButtonsCard({ task }: { task: Task }) {
       )}
 
       <ConfirmationDialog {...confirmationDialogProps} />
+
+      {/* Resume Validation Dialog */}
+      <ResumeValidationDialog
+        isOpen={showValidationDialog}
+        onClose={() => setShowValidationDialog(false)}
+        onForceResume={handleForceResume}
+        onGoToReady={handleGoToReady}
+        taskTitle={task.title}
+        stoppedFromStatus={stopMetadata?.stoppedFromStatus}
+        warnings={validationWarnings}
+        isLoading={isResuming}
+      />
     </DetailCard>
   );
 }
