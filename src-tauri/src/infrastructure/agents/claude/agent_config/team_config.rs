@@ -250,6 +250,19 @@ pub fn model_within_cap(requested: &str, cap: &str) -> bool {
     model_tier(requested) <= model_tier(cap)
 }
 
+/// Return the lesser (more restrictive) of two model caps.
+/// Ordering: haiku < sonnet < opus (lower tier = more restrictive).
+/// Unknown models are treated as tier 0 (most restrictive).
+pub fn min_model_cap(a: &str, b: &str) -> String {
+    let a_tier = model_tier(a);
+    let b_tier = model_tier(b);
+    if a_tier <= b_tier {
+        a.to_lowercase()
+    } else {
+        b.to_lowercase()
+    }
+}
+
 // ── Constraint resolution ───────────────────────────────────────────────
 
 /// Get effective constraints for a process, merging with defaults.
@@ -294,6 +307,58 @@ fn merge_constraints(defaults: &TeamConstraints, specific: &TeamConstraints) -> 
         },
         timeout_minutes: specific.timeout_minutes,
         budget_limit: specific.budget_limit.or(defaults.budget_limit),
+    }
+}
+
+/// Validate child session's team config against a constraint ceiling.
+///
+/// Caps values at min(resolved, ceiling) to prevent privilege escalation.
+/// Used when a child session inherits team config from its parent.
+///
+/// # Rules
+/// - `max_teammates`: min(resolved, ceiling)
+/// - `model_cap`: lesser model tier (haiku < sonnet < opus)
+/// - `allowed_tools`: intersection of both lists (empty ceiling = no restriction)
+/// - `allowed_mcp_tools`: intersection of both lists
+/// - `presets`: intersection of both lists
+/// - `timeout_minutes`: min(resolved, ceiling)
+/// - `budget_limit`: min(resolved, ceiling); None is most restrictive
+/// - `mode`: inherited from resolved (not capped)
+pub fn validate_child_team_config(
+    resolved: &TeamConstraints,
+    ceiling: &TeamConstraints,
+) -> TeamConstraints {
+    TeamConstraints {
+        max_teammates: resolved.max_teammates.min(ceiling.max_teammates),
+        allowed_tools: intersect_lists(&resolved.allowed_tools, &ceiling.allowed_tools),
+        allowed_mcp_tools: intersect_lists(&resolved.allowed_mcp_tools, &ceiling.allowed_mcp_tools),
+        model_cap: min_model_cap(&resolved.model_cap, &ceiling.model_cap),
+        mode: resolved.mode.clone(),
+        presets: intersect_lists(&resolved.presets, &ceiling.presets),
+        timeout_minutes: resolved.timeout_minutes.min(ceiling.timeout_minutes),
+        budget_limit: min_budget(resolved.budget_limit, ceiling.budget_limit),
+    }
+}
+
+/// Intersect two lists. If ceiling is empty, return resolved (no restriction).
+fn intersect_lists(resolved: &[String], ceiling: &[String]) -> Vec<String> {
+    if ceiling.is_empty() {
+        return resolved.to_vec();
+    }
+    resolved
+        .iter()
+        .filter(|item| ceiling.contains(item))
+        .cloned()
+        .collect()
+}
+
+/// Return the lesser of two optional budgets. None = no limit (most permissive).
+fn min_budget(a: Option<f64>, b: Option<f64>) -> Option<f64> {
+    match (a, b) {
+        (Some(a_val), Some(b_val)) => Some(a_val.min(b_val)),
+        (Some(a_val), None) => Some(a_val),
+        (None, Some(_)) => None, // None = no budget allowed (most restrictive)
+        (None, None) => None,
     }
 }
 
@@ -1080,6 +1145,289 @@ review:
             requested: 5,
         };
         assert_eq!(err.to_string(), "Max teammates exceeded: 5 > 3");
+    }
+
+    // ── min_model_cap tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_min_model_cap_haiku_vs_sonnet() {
+        assert_eq!(min_model_cap("haiku", "sonnet"), "haiku");
+        assert_eq!(min_model_cap("sonnet", "haiku"), "haiku");
+    }
+
+    #[test]
+    fn test_min_model_cap_sonnet_vs_opus() {
+        assert_eq!(min_model_cap("sonnet", "opus"), "sonnet");
+        assert_eq!(min_model_cap("opus", "sonnet"), "sonnet");
+    }
+
+    #[test]
+    fn test_min_model_cap_haiku_vs_opus() {
+        assert_eq!(min_model_cap("haiku", "opus"), "haiku");
+        assert_eq!(min_model_cap("opus", "haiku"), "haiku");
+    }
+
+    #[test]
+    fn test_min_model_cap_equal_models() {
+        assert_eq!(min_model_cap("sonnet", "sonnet"), "sonnet");
+        assert_eq!(min_model_cap("opus", "opus"), "opus");
+        assert_eq!(min_model_cap("haiku", "haiku"), "haiku");
+    }
+
+    #[test]
+    fn test_min_model_cap_case_insensitive() {
+        assert_eq!(min_model_cap("HAIKU", "Sonnet"), "haiku");
+        assert_eq!(min_model_cap("OPUS", "sonnet"), "sonnet");
+    }
+
+    #[test]
+    fn test_min_model_cap_unknown_treated_as_lowest() {
+        // Unknown models have tier 0 (lowest), so the known model wins
+        assert_eq!(min_model_cap("unknown", "haiku"), "unknown");
+        assert_eq!(min_model_cap("haiku", "unknown"), "unknown");
+    }
+
+    // ── validate_child_team_config tests ─────────────────────────────
+
+    #[test]
+    fn test_validate_child_team_config_caps_max_teammates() {
+        let resolved = TeamConstraints {
+            max_teammates: 5,
+            ..TeamConstraints::default()
+        };
+        let ceiling = TeamConstraints {
+            max_teammates: 3,
+            ..TeamConstraints::default()
+        };
+        let capped = validate_child_team_config(&resolved, &ceiling);
+        assert_eq!(capped.max_teammates, 3);
+    }
+
+    #[test]
+    fn test_validate_child_team_config_caps_model_cap() {
+        let resolved = TeamConstraints {
+            model_cap: "opus".to_string(),
+            ..TeamConstraints::default()
+        };
+        let ceiling = TeamConstraints {
+            model_cap: "sonnet".to_string(),
+            ..TeamConstraints::default()
+        };
+        let capped = validate_child_team_config(&resolved, &ceiling);
+        assert_eq!(capped.model_cap, "sonnet");
+    }
+
+    #[test]
+    fn test_validate_child_team_config_caps_model_cap_parent_higher() {
+        let resolved = TeamConstraints {
+            model_cap: "haiku".to_string(),
+            ..TeamConstraints::default()
+        };
+        let ceiling = TeamConstraints {
+            model_cap: "opus".to_string(),
+            ..TeamConstraints::default()
+        };
+        let capped = validate_child_team_config(&resolved, &ceiling);
+        assert_eq!(capped.model_cap, "haiku");
+    }
+
+    #[test]
+    fn test_validate_child_team_config_intersects_allowed_tools() {
+        let resolved = TeamConstraints {
+            allowed_tools: vec!["Read".to_string(), "Write".to_string(), "Edit".to_string()],
+            ..TeamConstraints::default()
+        };
+        let ceiling = TeamConstraints {
+            allowed_tools: vec!["Read".to_string(), "Grep".to_string()],
+            ..TeamConstraints::default()
+        };
+        let capped = validate_child_team_config(&resolved, &ceiling);
+        assert_eq!(capped.allowed_tools, vec!["Read"]);
+    }
+
+    #[test]
+    fn test_validate_child_team_config_intersects_allowed_mcp_tools() {
+        let resolved = TeamConstraints {
+            allowed_mcp_tools: vec!["get_task_context".to_string(), "start_step".to_string()],
+            ..TeamConstraints::default()
+        };
+        let ceiling = TeamConstraints {
+            allowed_mcp_tools: vec!["get_task_context".to_string(), "complete_step".to_string()],
+            ..TeamConstraints::default()
+        };
+        let capped = validate_child_team_config(&resolved, &ceiling);
+        assert_eq!(capped.allowed_mcp_tools, vec!["get_task_context"]);
+    }
+
+    #[test]
+    fn test_validate_child_team_config_intersects_presets() {
+        let resolved = TeamConstraints {
+            presets: vec!["ralphx-coder".to_string(), "ralphx-reviewer".to_string()],
+            ..TeamConstraints::default()
+        };
+        let ceiling = TeamConstraints {
+            presets: vec!["ralphx-coder".to_string()],
+            ..TeamConstraints::default()
+        };
+        let capped = validate_child_team_config(&resolved, &ceiling);
+        assert_eq!(capped.presets, vec!["ralphx-coder"]);
+    }
+
+    #[test]
+    fn test_validate_child_team_config_presets_no_intersection() {
+        let resolved = TeamConstraints {
+            presets: vec!["ralphx-reviewer".to_string()],
+            ..TeamConstraints::default()
+        };
+        let ceiling = TeamConstraints {
+            presets: vec!["ralphx-coder".to_string()],
+            ..TeamConstraints::default()
+        };
+        let capped = validate_child_team_config(&resolved, &ceiling);
+        assert!(capped.presets.is_empty());
+    }
+
+    #[test]
+    fn test_validate_child_team_config_caps_timeout() {
+        let resolved = TeamConstraints {
+            timeout_minutes: 60,
+            ..TeamConstraints::default()
+        };
+        let ceiling = TeamConstraints {
+            timeout_minutes: 30,
+            ..TeamConstraints::default()
+        };
+        let capped = validate_child_team_config(&resolved, &ceiling);
+        assert_eq!(capped.timeout_minutes, 30);
+    }
+
+    #[test]
+    fn test_validate_child_team_config_caps_budget_some_vs_some() {
+        let resolved = TeamConstraints {
+            budget_limit: Some(50.0),
+            ..TeamConstraints::default()
+        };
+        let ceiling = TeamConstraints {
+            budget_limit: Some(30.0),
+            ..TeamConstraints::default()
+        };
+        let capped = validate_child_team_config(&resolved, &ceiling);
+        assert_eq!(capped.budget_limit, Some(30.0));
+    }
+
+    #[test]
+    fn test_validate_child_team_config_caps_budget_some_vs_none() {
+        // If ceiling has no budget limit, pass through resolved
+        let resolved = TeamConstraints {
+            budget_limit: Some(50.0),
+            ..TeamConstraints::default()
+        };
+        let ceiling = TeamConstraints {
+            budget_limit: None,
+            ..TeamConstraints::default()
+        };
+        let capped = validate_child_team_config(&resolved, &ceiling);
+        assert_eq!(capped.budget_limit, Some(50.0));
+    }
+
+    #[test]
+    fn test_validate_child_team_config_caps_budget_none_vs_some() {
+        // If resolved has no budget but ceiling does, use None (no budget is more restrictive)
+        let resolved = TeamConstraints {
+            budget_limit: None,
+            ..TeamConstraints::default()
+        };
+        let ceiling = TeamConstraints {
+            budget_limit: Some(30.0),
+            ..TeamConstraints::default()
+        };
+        let capped = validate_child_team_config(&resolved, &ceiling);
+        assert_eq!(capped.budget_limit, None);
+    }
+
+    #[test]
+    fn test_validate_child_team_config_empty_ceiling_tools_passes_resolved() {
+        // Empty ceiling tools = no restriction, pass through resolved
+        let resolved = TeamConstraints {
+            allowed_tools: vec!["Read".to_string(), "Write".to_string()],
+            ..TeamConstraints::default()
+        };
+        let ceiling = TeamConstraints {
+            allowed_tools: vec![],
+            ..TeamConstraints::default()
+        };
+        let capped = validate_child_team_config(&resolved, &ceiling);
+        assert_eq!(capped.allowed_tools, vec!["Read", "Write"]);
+    }
+
+    #[test]
+    fn test_validate_child_team_config_empty_resolved_tools_gets_empty() {
+        // Empty resolved tools = nothing to intersect
+        let resolved = TeamConstraints {
+            allowed_tools: vec![],
+            ..TeamConstraints::default()
+        };
+        let ceiling = TeamConstraints {
+            allowed_tools: vec!["Read".to_string()],
+            ..TeamConstraints::default()
+        };
+        let capped = validate_child_team_config(&resolved, &ceiling);
+        assert!(capped.allowed_tools.is_empty());
+    }
+
+    #[test]
+    fn test_validate_child_team_config_all_fields_capped() {
+        let resolved = TeamConstraints {
+            max_teammates: 10,
+            allowed_tools: vec!["Read".to_string(), "Write".to_string(), "Edit".to_string()],
+            allowed_mcp_tools: vec!["get_task_context".to_string(), "start_step".to_string()],
+            model_cap: "opus".to_string(),
+            mode: TeamMode::Dynamic,
+            presets: vec!["ralphx-coder".to_string(), "ralphx-reviewer".to_string()],
+            timeout_minutes: 60,
+            budget_limit: Some(100.0),
+        };
+        let ceiling = TeamConstraints {
+            max_teammates: 3,
+            allowed_tools: vec!["Read".to_string(), "Write".to_string()],
+            allowed_mcp_tools: vec!["get_task_context".to_string()],
+            model_cap: "sonnet".to_string(),
+            mode: TeamMode::Constrained,
+            presets: vec!["ralphx-coder".to_string()],
+            timeout_minutes: 30,
+            budget_limit: Some(25.0),
+        };
+        let capped = validate_child_team_config(&resolved, &ceiling);
+
+        assert_eq!(capped.max_teammates, 3);
+        assert_eq!(capped.allowed_tools, vec!["Read", "Write"]);
+        assert_eq!(capped.allowed_mcp_tools, vec!["get_task_context"]);
+        assert_eq!(capped.model_cap, "sonnet");
+        // mode is NOT capped - it's inherited from resolved
+        assert_eq!(capped.mode, TeamMode::Dynamic);
+        assert_eq!(capped.presets, vec!["ralphx-coder"]);
+        assert_eq!(capped.timeout_minutes, 30);
+        assert_eq!(capped.budget_limit, Some(25.0));
+    }
+
+    #[test]
+    fn test_validate_child_team_config_equal_constraints_unchanged() {
+        let resolved = TeamConstraints {
+            max_teammates: 5,
+            allowed_tools: vec!["Read".to_string()],
+            model_cap: "sonnet".to_string(),
+            timeout_minutes: 30,
+            budget_limit: Some(50.0),
+            ..TeamConstraints::default()
+        };
+        let ceiling = resolved.clone();
+        let capped = validate_child_team_config(&resolved, &ceiling);
+
+        assert_eq!(capped.max_teammates, 5);
+        assert_eq!(capped.allowed_tools, vec!["Read"]);
+        assert_eq!(capped.model_cap, "sonnet");
+        assert_eq!(capped.timeout_minutes, 30);
+        assert_eq!(capped.budget_limit, Some(50.0));
     }
 
     // ── Integration: full YAML with process_mapping + team_constraints ──

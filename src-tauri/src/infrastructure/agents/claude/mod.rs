@@ -13,9 +13,9 @@ pub use agent_config::{
 };
 #[allow(unused_imports)]
 pub use agent_config::team_config::{
-    get_team_constraints, validate_team_plan, ApprovedTeamPlan, ApprovedTeammate, ProcessMapping,
-    ProcessSlot, TeamConstraintError, TeamConstraints, TeamConstraintsConfig, TeamMode,
-    TeammateSpawnRequest,
+    get_team_constraints, validate_child_team_config, validate_team_plan, ApprovedTeamPlan,
+    ApprovedTeammate, ProcessMapping, ProcessSlot, TeamConstraintError, TeamConstraints,
+    TeamConstraintsConfig, TeamMode, TeammateSpawnRequest,
 };
 pub use claude_code_client::ClaudeCodeClient;
 pub use claude_code_client::{
