@@ -7,7 +7,6 @@
 
 import { useCallback, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { invoke } from "@tauri-apps/api/core";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { StepList } from "../StepList";
 import { SectionTitle, TwoColumnLayout, DetailCard } from "./shared";
@@ -17,52 +16,11 @@ import { taskKeys } from "@/hooks/useTasks";
 import { api } from "@/lib/tauri";
 import { Loader2, RotateCcw, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { Task } from "@/types/task";
-
-// ============================================================================
-// Stop Metadata Types
-// ============================================================================
-
-/**
- * Metadata captured when a task is stopped mid-execution.
- * Enables "smart resume" capability with context about why it was stopped.
- */
-interface StopMetadata {
-  /** The status the task was in when stopped (snake_case string) */
-  stopped_from_status: string;
-  /** Optional reason provided by user for stopping */
-  stop_reason?: string;
-  /** Timestamp when the task was stopped (RFC3339 format) */
-  stopped_at: string;
-}
-
-/**
- * Result type for restart_task command.
- */
-type RestartResult =
-  | { type: "Success"; task: unknown; category: string; resumed_to_status: string }
-  | { type: "ValidationFailed"; warnings: Array<{ message: string }>; stopped_from_status: string };
+import { parseStopMetadata, type Task, type StopMetadata } from "@/types/task";
 
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-/**
- * Parse stop metadata from task metadata JSON string.
- * Returns null if metadata doesn't exist or is invalid.
- */
-function parseStopMetadata(metadata: string | null | undefined): StopMetadata | null {
-  if (!metadata) return null;
-  try {
-    const parsed = JSON.parse(metadata);
-    if (parsed.stop_metadata && typeof parsed.stop_metadata === "string") {
-      return JSON.parse(parsed.stop_metadata);
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Convert snake_case status to Title Case.
@@ -108,8 +66,8 @@ interface BasicTaskDetailProps {
  * Displays original state, stop reason, and time since stopped.
  */
 function StopHistorySection({ stopMetadata }: { stopMetadata: StopMetadata }) {
-  const fromStatusLabel = formatStatusLabel(stopMetadata.stopped_from_status);
-  const timeAgo = getTimeAgo(stopMetadata.stopped_at);
+  const fromStatusLabel = formatStatusLabel(stopMetadata.stoppedFromStatus);
+  const timeAgo = getTimeAgo(stopMetadata.stoppedAt);
 
   return (
     <section data-testid="stop-history-section" className="space-y-2">
@@ -136,7 +94,7 @@ function StopHistorySection({ stopMetadata }: { stopMetadata: StopMetadata }) {
           </div>
 
           {/* Stop Reason (if provided) */}
-          {stopMetadata.stop_reason && (
+          {stopMetadata.stopReason && (
             <div className="mt-2">
               <span
                 className="text-[11px] font-medium uppercase tracking-wider block mb-1"
@@ -145,7 +103,7 @@ function StopHistorySection({ stopMetadata }: { stopMetadata: StopMetadata }) {
                 Reason
               </span>
               <p className="text-[13px]" style={{ color: "hsl(220 10% 80%)" }}>
-                {stopMetadata.stop_reason}
+                {stopMetadata.stopReason}
               </p>
             </div>
           )}
@@ -184,11 +142,8 @@ function ActionButtonsCard({ task }: { task: Task }) {
   const restartMutation = useMutation({
     mutationFn: async () => {
       if (isStopped) {
-        // Use smart restart for stopped tasks
-        const result = await invoke<RestartResult>("restart_task", {
-          taskId,
-          force: false,
-        });
+        // Use smart restart for stopped tasks via API layer
+        const result = await api.tasks.restart(taskId, false);
         if (result.type === "ValidationFailed") {
           throw new Error(
             `Validation failed: ${result.warnings.map((w) => w.message).join(", ")}`
@@ -217,12 +172,12 @@ function ActionButtonsCard({ task }: { task: Task }) {
 
     // Build enhanced confirmation for stopped tasks with metadata
     if (isStopped && stopMetadata) {
-      const fromStatusLabel = formatStatusLabel(stopMetadata.stopped_from_status);
-      const timeAgo = getTimeAgo(stopMetadata.stopped_at);
+      const fromStatusLabel = formatStatusLabel(stopMetadata.stoppedFromStatus);
+      const timeAgo = getTimeAgo(stopMetadata.stoppedAt);
 
       const descriptionParts = [
         `Original state: ${fromStatusLabel}`,
-        stopMetadata.stop_reason && `Reason: ${stopMetadata.stop_reason}`,
+        stopMetadata.stopReason && `Reason: ${stopMetadata.stopReason}`,
         `Stopped ${timeAgo}`,
         "",
         "The task will resume with smart state restoration.",
