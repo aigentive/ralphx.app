@@ -7,12 +7,12 @@ use axum::{
 };
 use std::sync::Arc;
 use tauri::Emitter;
-use tracing::{error, info};
+use tracing::error;
 
 use crate::application::chat_service::{ChatService, ClaudeChatService};
 use crate::domain::entities::{
     ChatContextType, IdeationSession, IdeationSessionId, IdeationSessionStatus, SessionLink,
-    SessionRelationship, SpawnOrchestratorJob,
+    SessionRelationship,
 };
 use crate::infrastructure::agents::claude::{
     get_team_constraints, team_constraints_config, validate_child_team_config, TeamConstraints,
@@ -287,22 +287,6 @@ pub async fn create_child_session(
         .title
         .unwrap_or_else(|| "Child Session".to_string());
 
-    // Emit Tauri event (include initial_prompt so downstream consumers can spawn agents)
-    if let Some(app_handle) = &state.app_state.app_handle {
-        let mut event_payload = serde_json::json!({
-            "sessionId": child_session_str,
-            "parentSessionId": parent_session_str,
-            "title": title
-        });
-        if let Some(ref prompt) = req.initial_prompt {
-            event_payload["initialPrompt"] = serde_json::json!(prompt);
-        }
-        let _ = app_handle.emit(
-            "ideation:child_session_created",
-            event_payload,
-        );
-    }
-
     // Auto-spawn orchestrator agent on child session if initial_prompt is set.
     // send_message stores the user message and spawns a background agent — non-blocking.
     let orchestration_triggered = if let Some(ref prompt) = req.initial_prompt {
@@ -342,29 +326,40 @@ pub async fn create_child_session(
             }
         }
     } else if let Some(ref desc) = req.description {
-        // Fallback: If description is provided but no initial_prompt, enqueue a SpawnOrchestratorJob for async processing
+        // Use description as the initial prompt via ChatService (same as initial_prompt path)
+        // This ensures a conversation is created and streaming events are emitted to the frontend
         if !desc.trim().is_empty() {
-            let job = SpawnOrchestratorJob::new(
-                child_id.clone(),
-                parent.project_id.clone(),
-                desc.clone(),
-            );
+            let app = &state.app_state;
+            let mut chat_service = ClaudeChatService::new(
+                Arc::clone(&app.chat_message_repo),
+                Arc::clone(&app.chat_attachment_repo),
+                Arc::clone(&app.chat_conversation_repo),
+                Arc::clone(&app.agent_run_repo),
+                Arc::clone(&app.project_repo),
+                Arc::clone(&app.task_repo),
+                Arc::clone(&app.task_dependency_repo),
+                Arc::clone(&app.ideation_session_repo),
+                Arc::clone(&app.activity_event_repo),
+                Arc::clone(&app.message_queue),
+                Arc::clone(&app.running_agent_registry),
+                Arc::clone(&app.memory_event_repo),
+            )
+            .with_execution_state(Arc::clone(&state.execution_state))
+            .with_plan_branch_repo(Arc::clone(&app.plan_branch_repo));
+            if let Some(ref handle) = app.app_handle {
+                chat_service = chat_service.with_app_handle(handle.clone());
+            }
 
-            match state.app_state.spawn_orchestrator_job_repo.create(job).await {
-                Ok(_) => {
-                    info!(
-                        session_id = %child_id,
-                        "Enqueued spawn orchestrator job for child session"
-                    );
-                    true
-                }
+            match chat_service
+                .send_message(ChatContextType::Ideation, &child_session_str, desc)
+                .await
+            {
+                Ok(_) => true,
                 Err(e) => {
                     error!(
-                        session_id = %child_id,
-                        error = %e,
-                        "Failed to enqueue spawn orchestrator job"
+                        "Failed to auto-spawn agent on child session {} (from description): {}",
+                        child_session_str, e
                     );
-                    // Don't fail the request - the session was created successfully
                     false
                 }
             }
@@ -374,6 +369,23 @@ pub async fn create_child_session(
     } else {
         false
     };
+
+    // Emit Tauri event AFTER conversation is created (avoids race where frontend
+    // navigates to child session before conversation exists in DB)
+    if let Some(app_handle) = &state.app_state.app_handle {
+        let mut event_payload = serde_json::json!({
+            "sessionId": child_session_str,
+            "parentSessionId": parent_session_str,
+            "title": title
+        });
+        if let Some(ref prompt) = req.initial_prompt {
+            event_payload["initialPrompt"] = serde_json::json!(prompt);
+        }
+        let _ = app_handle.emit(
+            "ideation:child_session_created",
+            event_payload,
+        );
+    }
 
     // Parse team_config_json back to TeamConfigInput for response
     let team_config = created_session.team_config_json.as_ref().and_then(|json_str| {
