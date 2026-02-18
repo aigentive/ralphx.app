@@ -194,6 +194,13 @@ impl MetadataUpdate {
         self
     }
 
+    /// Add a u32 numeric key-value pair to the update.
+    pub fn with_u32(mut self, key: impl Into<String>, value: u32) -> Self {
+        self.entries
+            .insert(key.into(), Value::Number(value.into()));
+        self
+    }
+
     /// Merge this update into existing metadata, preserving existing keys.
     ///
     /// # Arguments
@@ -252,10 +259,12 @@ impl Default for MetadataUpdate {
 /// - `failure_error`: The error message
 /// - `failure_details`: Optional additional details
 /// - `is_timeout`: Whether the failure was due to a timeout
+/// - `attempt_count`: Number of execution attempts (from `FailedData.attempt_count`)
 pub fn build_failed_metadata(data: &FailedData) -> MetadataUpdate {
     let mut update = MetadataUpdate::new()
         .with_string("failure_error", &data.error)
-        .with_bool("is_timeout", data.is_timeout);
+        .with_bool("is_timeout", data.is_timeout)
+        .with_u32("attempt_count", data.attempt_count);
 
     if let Some(ref details) = data.details {
         update = update.with_string("failure_details", details);
@@ -356,6 +365,7 @@ mod tests {
             details: Some("Test details".to_string()),
             is_timeout: true,
             notified: false,
+            attempt_count: 0,
         };
 
         let update = build_failed_metadata(&data);
@@ -380,6 +390,7 @@ mod tests {
             details: None,
             is_timeout: false,
             notified: false,
+            attempt_count: 0,
         };
 
         let update = build_failed_metadata(&data);
@@ -392,6 +403,28 @@ mod tests {
         );
         assert!(parsed.get("failure_details").is_none());
         assert_eq!(parsed.get("is_timeout").unwrap(), &Value::Bool(false));
+    }
+
+    #[test]
+    fn test_build_failed_metadata_includes_attempt_count() {
+        let data = FailedData::new("Error").with_attempt_count(3);
+        let result = build_failed_metadata(&data).merge_into(None);
+        let parsed: Map<String, Value> = serde_json::from_str(&result).unwrap();
+        assert_eq!(
+            parsed.get("attempt_count").unwrap(),
+            &Value::Number(3.into())
+        );
+    }
+
+    #[test]
+    fn test_build_failed_metadata_attempt_count_zero_by_default() {
+        let data = FailedData::new("Error");
+        let result = build_failed_metadata(&data).merge_into(None);
+        let parsed: Map<String, Value> = serde_json::from_str(&result).unwrap();
+        assert_eq!(
+            parsed.get("attempt_count").unwrap(),
+            &Value::Number(0.into())
+        );
     }
 
     #[test]
@@ -966,5 +999,28 @@ mod tests {
                 status
             );
         }
+    }
+
+    // ===== with_u32 Tests =====
+
+    #[test]
+    fn test_with_u32_adds_numeric_value() {
+        let update = MetadataUpdate::new().with_u32("retry_count", 42);
+        let result = update.merge_into(None);
+
+        let parsed: Map<String, Value> = serde_json::from_str(&result).unwrap();
+        assert_eq!(
+            parsed.get("retry_count").unwrap().as_u64().unwrap(),
+            42u64
+        );
+    }
+
+    #[test]
+    fn test_with_u32_zero_value() {
+        let update = MetadataUpdate::new().with_u32("count", 0);
+        let result = update.merge_into(None);
+
+        let parsed: Map<String, Value> = serde_json::from_str(&result).unwrap();
+        assert_eq!(parsed.get("count").unwrap().as_u64().unwrap(), 0u64);
     }
 }
