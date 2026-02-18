@@ -227,8 +227,18 @@ export function useChatEvents({
             return [...prev, entry];
           });
 
-          // Also push to streamingContentBlocks (skip Task tool, which has its own rendering)
-          if (tool_name.toLowerCase() !== "task") {
+          // Push to streamingContentBlocks to preserve chronological position.
+          // Task tool calls get a position-marker block { type: "task", toolUseId }
+          // so they render inline at the correct position (not grouped after all text).
+          // Actual task metadata is read from streamingTasks Map via toolUseId lookup.
+          if (tool_name.toLowerCase() === "task") {
+            setStreamingContentBlocks((prev) => {
+              // Only add the marker once — deduplicate by toolUseId
+              const alreadyHasMarker = prev.some((block) => block.type === "task" && block.toolUseId === id);
+              if (alreadyHasMarker) return prev;
+              return [...prev, { type: "task", toolUseId: id }];
+            });
+          } else {
             setStreamingContentBlocks((prev) => {
               const existing = prev.find((block) => block.type === "tool_use" && block.toolCall.id === id);
               if (existing) {
