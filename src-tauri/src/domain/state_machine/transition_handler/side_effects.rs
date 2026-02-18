@@ -206,10 +206,51 @@ impl<'a> super::TransitionHandler<'a> {
         }
 
         // --- Main-merge deferral check ---
-        // If target is main/base branch and agents are running, defer the merge
-        // to avoid interrupting them with an app rebuild. Retry when all agents go idle.
+        // If target is main/base branch, defer unless ALL sibling plan tasks are terminal
+        // AND no agents are running. Prevents premature retry while siblings still active.
         let base_branch = project.base_branch.as_deref().unwrap_or("main");
         if target_branch == base_branch {
+            // Plan-level guard: all sibling tasks must be terminal before merging to main
+            if let Some(ref session_id) = task.ideation_session_id {
+                let siblings = task_repo
+                    .get_by_ideation_session(session_id)
+                    .await
+                    .unwrap_or_default();
+                let all_siblings_terminal = siblings.iter().all(|t| {
+                    t.id == task.id
+                        || t.internal_status == InternalStatus::PendingMerge
+                        || t.is_terminal()
+                });
+                if !all_siblings_terminal {
+                    tracing::info!(
+                        task_id = task_id_str,
+                        session_id = %session_id,
+                        "Deferring main-branch merge: sibling plan tasks not yet terminal"
+                    );
+
+                    super::merge_helpers::set_main_merge_deferred_metadata(&mut task);
+                    task.touch();
+
+                    if let Err(e) = task_repo.update(&task).await {
+                        tracing::error!(error = %e, "Failed to set main_merge_deferred metadata");
+                        return;
+                    }
+
+                    emit_merge_progress(
+                        self.machine.context.services.app_handle.as_ref(),
+                        task_id_str,
+                        MergePhase::ProgrammaticMerge,
+                        MergePhaseStatus::Started,
+                        format!(
+                            "Deferred merge to {} — waiting for sibling tasks to complete",
+                            target_branch,
+                        ),
+                    );
+
+                    return;
+                }
+            }
+
             if let Some(ref execution_state) = self.machine.context.services.execution_state {
                 if execution_state.running_count() > 0 {
                     tracing::info!(

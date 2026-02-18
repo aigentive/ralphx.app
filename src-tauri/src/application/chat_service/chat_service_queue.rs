@@ -261,7 +261,8 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                             let response = outcome.response_text;
                             let tools = outcome.tool_calls;
                             let blocks = outcome.content_blocks;
-                            if has_meaningful_output(&response, tools.len()) {
+                            let queue_stderr = outcome.stderr_text;
+                            if has_meaningful_output(&response, tools.len(), &queue_stderr) {
                                 let tool_calls_json = serde_json::to_string(&tools).ok();
                                 let content_blocks_json = serde_json::to_string(&blocks).ok();
                                 let _ = chat_message_repo
