@@ -10,6 +10,7 @@ use crate::application::AppState;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{InternalStatus, ProjectId, Task, TaskId};
 use crate::domain::state_machine::transition_handler::{parse_metadata, set_trigger_origin};
+use crate::domain::state_machine::transition_handler::metadata_builder::build_restart_metadata;
 use std::sync::Arc;
 use tauri::{Emitter, State};
 
@@ -140,6 +141,7 @@ pub async fn move_task(
     task_id: String,
     to_status: String,
     agent_variant: Option<String>,
+    note: Option<String>,
     state: State<'_, AppState>,
     execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
@@ -259,10 +261,20 @@ pub async fn move_task(
     transition_service = transition_service.with_team_mode(is_team_mode);
 
     // Transition the task - this triggers entry actions like spawning workers!
-    let task = transition_service
-        .transition_task(&task_id, new_status)
-        .await
-        .map_err(|e| e.to_string())?;
+    // When a note is provided and the task is moving to Ready (restart/reopen flow),
+    // store it as restart_note in metadata so the re-executing agent can read it.
+    let task = if note.is_some() && new_status == InternalStatus::Ready {
+        let restart_metadata = build_restart_metadata(note.as_deref());
+        transition_service
+            .transition_task_with_metadata(&task_id, new_status, Some(restart_metadata))
+            .await
+            .map_err(|e| e.to_string())?
+    } else {
+        transition_service
+            .transition_task(&task_id, new_status)
+            .await
+            .map_err(|e| e.to_string())?
+    };
 
     // If the task was already Ready and we requested Ready (Start button on Ready task),
     // transition_task is a no-op. Explicitly trigger the scheduler so plan_merge and

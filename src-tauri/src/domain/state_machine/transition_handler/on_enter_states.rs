@@ -360,7 +360,30 @@ impl<'a> super::TransitionHandler<'a> {
                 .await?;
 
                 // Use ChatService for persistent worker execution (Phase 15B)
-                let prompt = format!("Execute task: {}", task_id_str);
+                // Read restart_note from metadata (one-shot: append to prompt, then clear)
+                let mut prompt = format!("Execute task: {}", task_id_str);
+                if let Some(ref task_repo) = self.machine.context.services.task_repo {
+                    let task_id_typed = TaskId::from_string(task_id_str.clone());
+                    if let Ok(Some(task)) = task_repo.get_by_id(&task_id_typed).await {
+                        if let Some(note) = extract_restart_note(task.metadata.as_deref()) {
+                            prompt = format!("{}\n\nUser note: {}", prompt, note);
+                            // Clear restart_note from metadata (one-shot consumption)
+                            let cleared = MetadataUpdate::new()
+                                .with_null("restart_note")
+                                .merge_into(task.metadata.as_deref());
+                            if let Err(e) = task_repo
+                                .update_metadata(&task_id_typed, Some(cleared))
+                                .await
+                            {
+                                tracing::warn!(
+                                    task_id = task_id_str,
+                                    error = %e,
+                                    "Failed to clear restart_note from metadata"
+                                );
+                            }
+                        }
+                    }
+                }
                 tracing::debug!(
                     task_id = task_id_str,
                     prompt_len = prompt.len(),
@@ -673,7 +696,30 @@ impl<'a> super::TransitionHandler<'a> {
 
                 // Spawn worker agent with revision context via ChatService
                 let task_id = &self.machine.context.task_id;
-                let prompt = format!("Re-execute task (revision): {}", task_id);
+                // Read restart_note from metadata (one-shot: append to prompt, then clear)
+                let mut prompt = format!("Re-execute task (revision): {}", task_id);
+                if let Some(ref task_repo) = self.machine.context.services.task_repo {
+                    let task_id_typed = TaskId::from_string(task_id.clone());
+                    if let Ok(Some(task)) = task_repo.get_by_id(&task_id_typed).await {
+                        if let Some(note) = extract_restart_note(task.metadata.as_deref()) {
+                            prompt = format!("{}\n\nUser note: {}", prompt, note);
+                            // Clear restart_note from metadata (one-shot consumption)
+                            let cleared = MetadataUpdate::new()
+                                .with_null("restart_note")
+                                .merge_into(task.metadata.as_deref());
+                            if let Err(e) = task_repo
+                                .update_metadata(&task_id_typed, Some(cleared))
+                                .await
+                            {
+                                tracing::warn!(
+                                    task_id = task_id,
+                                    error = %e,
+                                    "Failed to clear restart_note from metadata"
+                                );
+                            }
+                        }
+                    }
+                }
 
                 if let Err(e) = self
                     .machine
@@ -1042,5 +1088,64 @@ impl<'a> super::TransitionHandler<'a> {
                 }
             }
         }
+    }
+}
+
+/// Extract `restart_note` from task metadata JSON.
+/// Returns `Some(note)` if the key exists and is a non-empty string, `None` otherwise.
+fn extract_restart_note(metadata: Option<&str>) -> Option<String> {
+    let metadata_str = metadata?;
+    let obj = serde_json::from_str::<serde_json::Value>(metadata_str).ok()?;
+    let note = obj.get("restart_note")?.as_str()?;
+    if note.is_empty() {
+        None
+    } else {
+        Some(note.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_restart_note_with_note_present() {
+        let metadata = r#"{"restart_note":"Please fix the auth bug"}"#;
+        let result = extract_restart_note(Some(metadata));
+        assert_eq!(result, Some("Please fix the auth bug".to_string()));
+    }
+
+    #[test]
+    fn test_extract_restart_note_with_no_restart_note_key() {
+        let metadata = r#"{"trigger_origin":"scheduler"}"#;
+        let result = extract_restart_note(Some(metadata));
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_extract_restart_note_with_none_metadata() {
+        let result = extract_restart_note(None);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_extract_restart_note_with_empty_note() {
+        let metadata = r#"{"restart_note":""}"#;
+        let result = extract_restart_note(Some(metadata));
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_extract_restart_note_with_invalid_json() {
+        let result = extract_restart_note(Some("not valid json"));
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_extract_restart_note_alongside_other_keys() {
+        let metadata =
+            r#"{"trigger_origin":"scheduler","restart_note":"Try a different approach","execution_setup_log":[]}"#;
+        let result = extract_restart_note(Some(metadata));
+        assert_eq!(result, Some("Try a different approach".to_string()));
     }
 }

@@ -56,6 +56,8 @@ export interface CommitInfo {
 export interface TaskRerunResult {
   option: RerunOption;
   task: Task;
+  /** Optional note to communicate intent to the re-executing agent */
+  note?: string;
 }
 
 // ============================================================================
@@ -243,21 +245,25 @@ export function TaskRerunDialog({
 }: TaskRerunDialogProps) {
   const [selectedOption, setSelectedOption] =
     useState<RerunOption>("keep_changes");
+  const [note, setNote] = useState("");
 
   // Reset state when dialog opens
   useEffect(() => {
     if (isOpen) {
       setSelectedOption("keep_changes");
+      setNote("");
     }
   }, [isOpen]);
 
   // Handle confirm
   const handleConfirm = useCallback(() => {
+    const trimmedNote = note.trim();
     onConfirm({
       option: selectedOption,
       task,
+      ...(trimmedNote ? { note: trimmedNote } : {}),
     });
-  }, [selectedOption, onConfirm, task]);
+  }, [selectedOption, onConfirm, task, note]);
 
   // Handle option selection
   const handleOptionSelect = useCallback((option: RerunOption) => {
@@ -349,6 +355,25 @@ export function TaskRerunDialog({
                 showWarning={commitInfo.hasDependentCommits}
               />
             ))}
+          </div>
+
+          {/* Note textarea */}
+          <div>
+            <textarea
+              data-testid="rerun-note-textarea"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              disabled={isProcessing}
+              placeholder="Optional: tell the agent what to do differently..."
+              rows={3}
+              className="w-full resize-none rounded-md px-3 py-2 text-sm transition-colors disabled:opacity-40 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border border-[var(--border-subtle)]"
+              style={{
+                backgroundColor: "var(--bg-surface)",
+                color: "var(--text-primary)",
+                boxShadow: "none",
+                outline: "none",
+              }}
+            />
           </div>
 
           {/* Dependent Commits Warning */}
