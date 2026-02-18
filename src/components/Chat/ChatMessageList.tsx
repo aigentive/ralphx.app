@@ -340,7 +340,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
 
         return (
           <div className="px-3 pb-3 w-full relative" style={contentContainerStyle}>
-            {/* Render streaming content blocks in order — text and tool calls interleaved */}
+            {/* Render streaming content blocks in order — text, tool calls, and Task cards interleaved */}
             {streamingContentBlocks && streamingContentBlocks.map((block, idx) => {
               if (block.type === "text") {
                 return (
@@ -353,6 +353,14 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                     contentBlocks={null}
                   />
                 );
+              }
+              // task position marker — renders TaskSubagentCard at its chronological position.
+              // Task metadata may not be available yet (agent:task_started fires after agent:tool_call),
+              // so render nothing gracefully when the map entry is missing.
+              if (block.type === "task") {
+                const task = streamingTasks?.get(block.toolUseId);
+                if (!task) return null;
+                return <TaskSubagentCard key={`streaming-task-${block.toolUseId}`} task={task} />;
               }
               // tool_use block — render as diff view if it's Edit/Write, otherwise skip (handled by StreamingToolIndicator)
               if (isDiffToolCall(block.toolCall.name) && block.toolCall.arguments != null) {
@@ -367,13 +375,6 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
               }
               return null;
             })}
-
-            {/* Task subagent cards — above everything else */}
-            {streamingTasks && streamingTasks.size > 0 &&
-              Array.from(streamingTasks.values()).map((task: StreamingTask) => (
-                <TaskSubagentCard key={task.toolUseId} task={task} />
-              ))
-            }
 
             {/* Aggregated indicator for remaining tools, or typing indicator */}
             {(isSending || isAgentRunning) && (
@@ -520,7 +521,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
           })}
 
           <div className="px-3 pb-3 w-full" style={contentContainerStyle}>
-            {/* Render streaming content blocks in order — text and tool calls interleaved */}
+            {/* Render streaming content blocks in order — text, tool calls, and Task cards interleaved */}
             {streamingContentBlocks && streamingContentBlocks.map((block, idx) => {
               if (block.type === "text") {
                 return (
@@ -533,6 +534,12 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                     contentBlocks={null}
                   />
                 );
+              }
+              // task position marker — renders TaskSubagentCard at its chronological position
+              if (block.type === "task") {
+                const task = streamingTasks?.get(block.toolUseId);
+                if (!task) return null;
+                return <TaskSubagentCard key={`streaming-task-${block.toolUseId}`} task={task} />;
               }
               // tool_use block — render as diff view if it's Edit/Write
               if (isDiffToolCall(block.toolCall.name) && block.toolCall.arguments != null) {
@@ -547,12 +554,6 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
               }
               return null;
             })}
-
-            {streamingTasks && streamingTasks.size > 0 &&
-              Array.from(streamingTasks.values()).map((task: StreamingTask) => (
-                <TaskSubagentCard key={task.toolUseId} task={task} />
-              ))
-            }
 
             {(isSending || isAgentRunning) && (
               streamingToolCalls.length > 0 ? (
