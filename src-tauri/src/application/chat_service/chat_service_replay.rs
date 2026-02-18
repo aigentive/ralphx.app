@@ -148,7 +148,7 @@ mod tests {
     fn test_should_skip_error_messages() {
         assert!(ReplayBuilder::should_skip_message(
             &MessageRole::System,
-            &format!("{} timeout]", super::AGENT_ERROR_PREFIX)
+            &format!("{} timeout]", crate::application::chat_service::AGENT_ERROR_PREFIX)
         ));
         assert!(!ReplayBuilder::should_skip_message(
             &MessageRole::User,

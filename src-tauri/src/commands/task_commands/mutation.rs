@@ -180,27 +180,33 @@ pub async fn move_task(
         }
     }
 
-    // Store agent_variant in metadata if provided
-    if let Some(ref variant) = agent_variant {
-        if !variant.is_empty() {
-            let mut meta = parse_metadata(&old_task).unwrap_or_else(|| serde_json::json!({}));
-            if let Some(obj) = meta.as_object_mut() {
-                obj.insert(
-                    "agent_variant".to_string(),
-                    serde_json::json!(variant),
-                );
+    // Always update agent_variant in metadata for ready/executing transitions
+    // so that switching from team→solo properly clears the stale "team" value
+    if matches!(new_status, InternalStatus::Ready | InternalStatus::Executing) {
+        let mut meta = parse_metadata(&old_task).unwrap_or_else(|| serde_json::json!({}));
+        if let Some(obj) = meta.as_object_mut() {
+            match agent_variant.as_deref() {
+                Some(variant) if !variant.is_empty() => {
+                    obj.insert(
+                        "agent_variant".to_string(),
+                        serde_json::json!(variant),
+                    );
+                }
+                _ => {
+                    obj.remove("agent_variant");
+                }
             }
-            if let Err(e) = state
-                .task_repo
-                .update_metadata(&task_id, Some(meta.to_string()))
-                .await
-            {
-                tracing::error!(
-                    task_id = task_id.as_str(),
-                    error = %e,
-                    "Failed to store agent_variant in metadata"
-                );
-            }
+        }
+        if let Err(e) = state
+            .task_repo
+            .update_metadata(&task_id, Some(meta.to_string()))
+            .await
+        {
+            tracing::error!(
+                task_id = task_id.as_str(),
+                error = %e,
+                "Failed to update agent_variant in metadata"
+            );
         }
     }
 
@@ -248,10 +254,9 @@ pub async fn move_task(
     .with_task_scheduler(task_scheduler)
     .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
 
-    // Enable team mode if agent_variant is "team" (per-task override)
-    if is_team_mode {
-        transition_service = transition_service.with_team_mode(true);
-    }
+    // ALWAYS set team_mode based on explicit UI selection so it overrides
+    // env var defaults and stale metadata. Some(true) = team, Some(false) = solo.
+    transition_service = transition_service.with_team_mode(is_team_mode);
 
     // Transition the task - this triggers entry actions like spawning workers!
     let task = transition_service

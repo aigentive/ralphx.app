@@ -421,9 +421,11 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     /// Passed to TaskServices so TransitionHandler can fail in-progress steps.
     step_repo: Option<Arc<dyn TaskStepRepository>>,
 
-    /// Per-task team mode override. When true, the chat service uses team-mode
-    /// agent names (e.g., orchestrator-execution instead of worker).
-    team_mode: bool,
+    /// Per-task team mode override. When `Some(true)`, the chat service uses
+    /// team-mode agent names (e.g., orchestrator-execution instead of worker).
+    /// `Some(false)` means solo was explicitly chosen (skip metadata fallback).
+    /// `None` means unset — fall back to task metadata `agent_variant`.
+    team_mode: Option<bool>,
 }
 
 impl<R: Runtime> TaskTransitionService<R> {
@@ -510,7 +512,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             task_scheduler: None,
             plan_branch_repo: None,
             step_repo: None,
-            team_mode: false,
+            team_mode: None,
         }
     }
 
@@ -540,7 +542,7 @@ impl<R: Runtime> TaskTransitionService<R> {
     /// When enabled, the chat service resolves to team-mode agent names
     /// (e.g., orchestrator-execution instead of worker).
     pub fn with_team_mode(mut self, team_mode: bool) -> Self {
-        self.team_mode = team_mode;
+        self.team_mode = Some(team_mode);
         self
     }
 
@@ -736,13 +738,21 @@ impl<R: Runtime> TaskTransitionService<R> {
 
         let state = internal_status_to_state(status);
 
-        // Per-task team_mode override: check builder flag OR task metadata
-        if self.team_mode {
-            self.chat_service.set_team_mode(true);
-        } else if let Some(ref metadata_str) = task.metadata {
-            if let Ok(meta) = serde_json::from_str::<serde_json::Value>(metadata_str) {
-                if meta.get("agent_variant").and_then(|v| v.as_str()) == Some("team") {
-                    self.chat_service.set_team_mode(true);
+        // Per-task team_mode override: check builder flag OR task metadata.
+        // Some(true/false) = explicitly set by caller → use directly, skip metadata.
+        // None = unset → fall back to task metadata agent_variant.
+        match self.team_mode {
+            Some(explicit) => {
+                self.chat_service.set_team_mode(explicit);
+            }
+            None => {
+                // No explicit choice — fall back to task metadata
+                if let Some(ref metadata_str) = task.metadata {
+                    if let Ok(meta) = serde_json::from_str::<serde_json::Value>(metadata_str) {
+                        if meta.get("agent_variant").and_then(|v| v.as_str()) == Some("team") {
+                            self.chat_service.set_team_mode(true);
+                        }
+                    }
                 }
             }
         }
