@@ -154,6 +154,8 @@ Reviewing → RevisionNeeded → (auto) ReExecuting → PendingReview
 | `Schedule` | `backlog` → `ready` |
 | `StartExecution` | `ready` → `executing` |
 | `Cancel` | (most states) → `cancelled` |
+| `Pause` | agent-active states → `paused` (non-terminal, resumable) |
+| `Stop` | agent-active states → `stopped` (terminal, requires manual restart) |
 | `HumanApprove` | `review_passed`/`escalated` → `approved` |
 | `HumanRequestChanges` | `review_passed`/`escalated` → `revision_needed` |
 | `ForceApprove` | (override) → `approved` |
@@ -199,3 +201,61 @@ Reviewing → RevisionNeeded → (auto) ReExecuting → PendingReview
 | `task.task_branch.is_none()` | `on_enter(Executing)` | Only creates branch on first execution (skip on re-entry) |
 | Running task (Local mode) | `task_scheduler_service` | Blocks scheduling if another task is in a running state |
 | Self-transition | `can_transition_to()` | No state can transition to itself |
+
+---
+
+## Pause / Resume / Unblock Behavior
+
+### Pause (`TaskEvent::Pause`)
+
+| Aspect | Detail |
+|--------|--------|
+| **Which states** | All 6 agent-active states: `executing`, `re_executing`, `qa_refining`, `qa_testing`, `reviewing`, `merging` + `pending_merge` |
+| **Which states NOT** | Idle (`backlog`, `ready`, `blocked`), terminal (`failed`, `cancelled`, `stopped`), transient states |
+| **Result** | Task → `paused`. Agents killed via `running_agent_registry.stop_all()` |
+| **Metadata** | `PauseReason` written to `task.metadata["pause_reason"]` before transition. Variants: `UserInitiated` (scope: "global"/"task") | `ProviderError` (auto-resumable) |
+| **running_count** | Decremented by `on_exit` handlers in `TransitionHandler` — no manual reset needed |
+| **`Paused` is NOT terminal** | `is_terminal()` → false. `is_paused()` → true. `is_active()` → false |
+
+### Resume (`resume_execution` command)
+
+The state machine does **not** handle resume events directly. Resume is command-layer logic:
+
+1. Query all tasks in `Paused` status for the project
+2. Read `task.metadata["pause_reason"].previous_status`
+3. Fall back to `status_history` if metadata absent
+4. Validate `restore_status` is in `AGENT_ACTIVE_STATUSES` — skip otherwise
+5. Check `execution_state.can_start_task()` — stop loop if at capacity
+6. `transition_task(task_id, restore_status)` → re-enters the pre-pause state
+7. Clear `pause_reason` from metadata, then call `execute_entry_actions()` → respawns agent
+
+```
+Paused → [command reads metadata] → executing (or re_executing / qa_refining / …)
+```
+
+⚠️ `Stopped` tasks are NOT restored by resume. They require manual `Retry` → `ready` → re-execution.
+
+### Unblock (`BlockersResolved` system event)
+
+| Aspect | Detail |
+|--------|--------|
+| **Event** | `BlockerDetected { blocker_id }` → `ready`/`re_executing` → `blocked` |
+| **Unblock trigger** | `BlockersResolved` → `blocked` → `ready` |
+| **Auto-trigger** | `merged` entry calls `dependency_manager.unblock_dependents()` — resolves tasks waiting on the just-merged task |
+| **Context** | `TaskContext.blockers: Vec<Blocker>` tracks all blockers. `resolve_all_blockers()` clears the vec on `BlockersResolved` |
+| **Human input block** | `NeedsHumanInput { reason }` → `executing` → `blocked`. Stored as `Blocker::human_input(reason)` in context |
+| **Cancel** | `Blocked` tasks can be `Cancel`led directly |
+
+### `PauseReason` Metadata (key: `"pause_reason"`)
+
+```rust
+// UserInitiated: written by pause_execution command
+PauseReason::UserInitiated { previous_status, paused_at, scope }
+// ProviderError: written by chat_service_handlers on API error (auto-resumable)
+PauseReason::ProviderError { category, message, retry_after, previous_status, paused_at, auto_resumable, resume_attempts }
+```
+
+- `from_task_metadata(metadata)` → reads (with backward-compat for legacy `provider_error` key)
+- `write_to_task_metadata(existing)` → merges into existing JSON, preserving other keys
+- `clear_from_task_metadata(existing)` → removes `pause_reason` + legacy `provider_error` key
+- `previous_status()` → returns the pre-pause status string (parse with `InternalStatus::from_str`)

@@ -502,6 +502,21 @@ pub async fn get_execution_status(
 /// Paused is NOT terminal - tasks can be auto-restored on resume using status history.
 /// The on_exit handlers will decrement the running count for each task.
 /// Phase 82: Optional project_id for per-project scoping.
+///
+/// ## Pause contract
+/// 1. `execution_state.pause()` — gates new task scheduling immediately.
+/// 2. `running_agent_registry.stop_all()` — kills all agent processes (even if transition fails).
+/// 3. For each task in `AGENT_ACTIVE_STATUSES`:
+///    a. Write `PauseReason::UserInitiated { previous_status, paused_at, scope: "global" }`
+///       to `task.metadata["pause_reason"]` — this is what `resume_execution` reads back.
+///    b. Call `transition_task(id, Paused)` via `TransitionHandler` — triggers `on_exit`
+///       which decrements `running_count` and emits `execution:status_changed`.
+/// 4. `Paused` state machine rejects all events (resume is command-layer only).
+///
+/// ## What Pause does NOT affect
+/// - `Blocked` tasks: already idle, not agent-active.
+/// - `Stopped` tasks: already terminal.
+/// - `Paused` tasks: already paused (idempotent — won't double-pause).
 #[tauri::command]
 pub async fn pause_execution(
     project_id: Option<String>,
@@ -639,6 +654,18 @@ pub async fn pause_execution(
 /// Uses status history to find the pre-pause state and re-runs entry actions.
 /// After restoring, triggers the scheduler to pick up waiting Ready tasks.
 /// Phase 82: Optional project_id for per-project scoping.
+///
+/// ## Resume contract
+/// - `Paused` → previous agent-active state (from `pause_reason.previous_status` metadata).
+/// - Falls back to `status_history` if `pause_reason` metadata is absent.
+/// - Skips tasks whose `previous_status` is not in `AGENT_ACTIVE_STATUSES` (defensive guard).
+/// - Respects `execution_state.can_start_task()` — stops restoring once capacity is full.
+/// - Calls `execute_entry_actions()` after transition to re-spawn the agent process.
+///
+/// ## Stopped vs Paused
+/// `Stopped` tasks are intentionally excluded. `Stopped` is terminal — requires the user
+/// to manually trigger `Retry` (→ `ready`) before the task can re-execute. Only `Paused`
+/// (non-terminal) is auto-restored by resume.
 #[tauri::command]
 pub async fn resume_execution(
     project_id: Option<String>,
@@ -655,9 +682,6 @@ pub async fn resume_execution(
         &app_state,
     )
     .await?;
-
-    // Clear the pause flag first
-    execution_state.resume();
 
     // Build transition service for proper state machine transitions
     let transition_service = TaskTransitionService::new(
@@ -680,6 +704,11 @@ pub async fn resume_execution(
 
     // Find all Paused tasks (scoped to project if specified) and restore them
     // Note: Stopped tasks are NOT restored - they require manual restart
+    // Local counter tracks tasks queued for restoration during this loop.
+    // We cannot use execution_state.can_start_task() here because: (a) the pause
+    // flag is still set (cleared after the loop), and (b) running_count hasn't yet
+    // been incremented for tasks whose entry actions fire asynchronously.
+    let mut restoring_count: u32 = 0;
     let projects_to_process = if let Some(ref pid) = effective_project_id {
         match app_state.project_repo.get_by_id(pid).await {
             Ok(Some(project)) => vec![project],
@@ -760,10 +789,16 @@ pub async fn resume_execution(
                 continue;
             }
 
-            // Check if we can start another task (respect max_concurrent)
-            if !execution_state.can_start_task() {
+            // Check capacity using local counter (running_count not yet incremented
+            // for tasks queued this loop; pause flag still set so can_start_task() → false).
+            let current = execution_state.running_count() + restoring_count;
+            if current >= execution_state.max_concurrent()
+                || current >= execution_state.global_max_concurrent()
+            {
                 tracing::info!(
                     task_id = task.id.as_str(),
+                    running = execution_state.running_count(),
+                    restoring = restoring_count,
                     "Max concurrent reached, stopping pause recovery"
                 );
                 break;
@@ -799,14 +834,21 @@ pub async fn resume_execution(
                     .execute_entry_actions(&task.id, &restored_task, restore_status)
                     .await;
 
+                restoring_count += 1;
                 tracing::info!(
                     task_id = task.id.as_str(),
                     restored_to = ?restore_status,
+                    restoring_count,
                     "Successfully restored Paused task"
                 );
             }
         }
     }
+
+    // Clear the pause flag now that all paused tasks have been queued for restoration.
+    // Doing this after the loop prevents the scheduler from racing with restoration
+    // and prevents can_start_task() from returning false during the loop above.
+    execution_state.resume();
 
     // Emit status_changed event for real-time UI update with projectId
     if let Some(ref handle) = app_state.app_handle {
@@ -870,6 +912,15 @@ pub async fn resume_execution(
 /// Stopped is a terminal state requiring manual restart - tasks won't auto-resume.
 /// The on_exit handlers will decrement the running count for each task.
 /// Phase 82: Optional project_id for per-project scoping.
+///
+/// ## Stop vs Pause
+/// | | `stop_execution` | `pause_execution` |
+/// |---|---|---|
+/// | Result state | `Stopped` (terminal) | `Paused` (non-terminal) |
+/// | Auto-resume | ❌ No — user must retry | ✅ Yes — via `resume_execution` |
+/// | Metadata written | None | `PauseReason::UserInitiated` |
+/// | `running_count` | Decremented by `on_exit` | Decremented by `on_exit` |
+/// | Restart path | `Retry` → `ready` → re-execute | `resume_execution` → previous state |
 #[tauri::command]
 pub async fn stop_execution(
     project_id: Option<String>,
