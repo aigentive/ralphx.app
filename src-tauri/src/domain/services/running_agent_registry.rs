@@ -43,6 +43,9 @@ pub struct RunningAgentInfo {
     pub worktree_path: Option<String>,
     /// Token for cooperative cancellation of the background async task
     pub cancellation_token: Option<CancellationToken>,
+    /// Last time a stream event was received (throttled heartbeat, ~5s interval).
+    /// Used by the reconciler to distinguish active agents from stale ones.
+    pub last_active_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Trait for tracking running agent processes.
@@ -79,6 +82,10 @@ pub trait RunningAgentRegistry: Send + Sync {
 
     /// Stop all running agents (for cleanup on shutdown/restart)
     async fn stop_all(&self) -> Vec<RunningAgentKey>;
+
+    /// Update the last_active_at timestamp for a running agent (throttled heartbeat).
+    /// Called from the streaming loop every ~5 seconds on any parsed event.
+    async fn update_heartbeat(&self, key: &RunningAgentKey, at: chrono::DateTime<chrono::Utc>);
 }
 
 /// Send SIGTERM to a process and all its children (process tree kill).
@@ -262,6 +269,7 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
             started_at: chrono::Utc::now(),
             worktree_path,
             cancellation_token,
+            last_active_at: None,
         };
         let mut agents = self.agents.lock().await;
         agents.insert(key, info);
@@ -314,6 +322,13 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
             }
         }
         stopped
+    }
+
+    async fn update_heartbeat(&self, key: &RunningAgentKey, at: chrono::DateTime<chrono::Utc>) {
+        let mut agents = self.agents.lock().await;
+        if let Some(info) = agents.get_mut(key) {
+            info.last_active_at = Some(at);
+        }
     }
 }
 

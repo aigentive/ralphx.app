@@ -308,6 +308,50 @@ pub(crate) fn clear_merge_deferred_metadata(task: &mut Task) {
     }
 }
 
+/// Default timeout in seconds after which a deferred merge is forced to retry.
+pub(crate) const DEFERRED_MERGE_TIMEOUT_SECONDS: i64 = 120;
+
+/// Check if a `merge_deferred` task has exceeded the configured timeout.
+///
+/// Returns true if the `merge_deferred_at` timestamp in metadata is older than
+/// `DEFERRED_MERGE_TIMEOUT_SECONDS`. Returns false if the timestamp is missing or unparseable
+/// (no timeout enforcement in that case — the reconciliation watchdog handles it instead).
+pub(crate) fn is_merge_deferred_timed_out(task: &Task) -> bool {
+    let deferred_at = parse_metadata(task)
+        .and_then(|v| v.get("merge_deferred_at")?.as_str().map(String::from));
+
+    let Some(deferred_at_str) = deferred_at else {
+        return false;
+    };
+
+    let Ok(deferred_at) = chrono::DateTime::parse_from_rfc3339(&deferred_at_str) else {
+        return false;
+    };
+
+    let elapsed = chrono::Utc::now().signed_duration_since(deferred_at.with_timezone(&chrono::Utc));
+    elapsed.num_seconds() >= DEFERRED_MERGE_TIMEOUT_SECONDS
+}
+
+/// Check if a `main_merge_deferred` task has exceeded the configured timeout.
+///
+/// Returns true if the `main_merge_deferred_at` timestamp in metadata is older than
+/// `DEFERRED_MERGE_TIMEOUT_SECONDS`. Returns false if the timestamp is missing or unparseable.
+pub(crate) fn is_main_merge_deferred_timed_out(task: &Task) -> bool {
+    let deferred_at = parse_metadata(task)
+        .and_then(|v| v.get("main_merge_deferred_at")?.as_str().map(String::from));
+
+    let Some(deferred_at_str) = deferred_at else {
+        return false;
+    };
+
+    let Ok(deferred_at) = chrono::DateTime::parse_from_rfc3339(&deferred_at_str) else {
+        return false;
+    };
+
+    let elapsed = chrono::Utc::now().signed_duration_since(deferred_at.with_timezone(&chrono::Utc));
+    elapsed.num_seconds() >= DEFERRED_MERGE_TIMEOUT_SECONDS
+}
+
 /// Set the `trigger_origin` field in a task's metadata.
 ///
 /// Valid origins: "scheduler", "revision", "recovery", "retry", "qa".
@@ -1431,6 +1475,125 @@ mod tests {
         assert!(
             branch_err.message().contains("ralphx/my-project/plan-abc"),
             "Error message should include the missing branch name"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Deferred Merge Timeout Tests
+    // ═══════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_is_merge_deferred_timed_out_returns_false_when_no_metadata() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let task = Task::new(project.id, "Test task".to_string());
+        assert!(!is_merge_deferred_timed_out(&task));
+    }
+
+    #[test]
+    fn test_is_merge_deferred_timed_out_returns_false_when_timestamp_missing() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        task.metadata = Some(r#"{"merge_deferred": true}"#.to_string());
+        // No merge_deferred_at → returns false (no enforcement without timestamp)
+        assert!(!is_merge_deferred_timed_out(&task));
+    }
+
+    #[test]
+    fn test_is_merge_deferred_timed_out_returns_false_when_timestamp_invalid() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        task.metadata = Some(r#"{"merge_deferred": true, "merge_deferred_at": "not-a-timestamp"}"#.to_string());
+        assert!(!is_merge_deferred_timed_out(&task));
+    }
+
+    #[test]
+    fn test_is_merge_deferred_timed_out_returns_false_when_recent() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        // 10 seconds ago — well within the 120s default timeout
+        let recent = (chrono::Utc::now() - chrono::Duration::seconds(10)).to_rfc3339();
+        task.metadata = Some(format!(r#"{{"merge_deferred": true, "merge_deferred_at": "{}"}}"#, recent));
+        assert!(!is_merge_deferred_timed_out(&task));
+    }
+
+    #[test]
+    fn test_is_merge_deferred_timed_out_returns_true_when_expired() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        // 300 seconds ago — past the 120s default timeout
+        let old = (chrono::Utc::now() - chrono::Duration::seconds(300)).to_rfc3339();
+        task.metadata = Some(format!(r#"{{"merge_deferred": true, "merge_deferred_at": "{}"}}"#, old));
+        assert!(is_merge_deferred_timed_out(&task));
+    }
+
+    #[test]
+    fn test_is_main_merge_deferred_timed_out_returns_false_when_no_metadata() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let task = Task::new(project.id, "Test task".to_string());
+        assert!(!is_main_merge_deferred_timed_out(&task));
+    }
+
+    #[test]
+    fn test_is_main_merge_deferred_timed_out_returns_false_when_timestamp_missing() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        task.metadata = Some(r#"{"main_merge_deferred": true}"#.to_string());
+        assert!(!is_main_merge_deferred_timed_out(&task));
+    }
+
+    #[test]
+    fn test_is_main_merge_deferred_timed_out_returns_false_when_recent() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        let recent = (chrono::Utc::now() - chrono::Duration::seconds(5)).to_rfc3339();
+        task.metadata = Some(format!(r#"{{"main_merge_deferred": true, "main_merge_deferred_at": "{}"}}"#, recent));
+        assert!(!is_main_merge_deferred_timed_out(&task));
+    }
+
+    #[test]
+    fn test_is_main_merge_deferred_timed_out_returns_true_when_expired() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        let old = (chrono::Utc::now() - chrono::Duration::seconds(200)).to_rfc3339();
+        task.metadata = Some(format!(r#"{{"main_merge_deferred": true, "main_merge_deferred_at": "{}"}}"#, old));
+        assert!(is_main_merge_deferred_timed_out(&task));
+    }
+
+    #[test]
+    fn test_deferred_merge_timeout_constant_is_positive() {
+        assert!(
+            DEFERRED_MERGE_TIMEOUT_SECONDS > 0,
+            "DEFERRED_MERGE_TIMEOUT_SECONDS must be a positive number"
+        );
+    }
+
+    #[test]
+    fn test_is_merge_deferred_timed_out_boundary_just_before_timeout() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        // One second before the timeout
+        let just_before = (chrono::Utc::now()
+            - chrono::Duration::seconds(DEFERRED_MERGE_TIMEOUT_SECONDS - 1))
+        .to_rfc3339();
+        task.metadata = Some(format!(r#"{{"merge_deferred": true, "merge_deferred_at": "{}"}}"#, just_before));
+        assert!(
+            !is_merge_deferred_timed_out(&task),
+            "Task just before timeout should not be considered timed out"
+        );
+    }
+
+    #[test]
+    fn test_is_merge_deferred_timed_out_boundary_at_timeout() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        // Exactly at the timeout boundary
+        let at_timeout = (chrono::Utc::now()
+            - chrono::Duration::seconds(DEFERRED_MERGE_TIMEOUT_SECONDS))
+        .to_rfc3339();
+        task.metadata = Some(format!(r#"{{"merge_deferred": true, "merge_deferred_at": "{}"}}"#, at_timeout));
+        assert!(
+            is_merge_deferred_timed_out(&task),
+            "Task exactly at timeout boundary should be considered timed out"
         );
     }
 }

@@ -12,7 +12,7 @@ mod merge_completion;
 mod merge_helpers;
 mod merge_validation;
 pub mod metadata_builder;
-mod on_enter_states;
+pub(crate) mod on_enter_states;
 mod side_effects;
 #[cfg(test)]
 mod tests;
@@ -33,6 +33,11 @@ pub(crate) use side_effects::has_merge_deferred_metadata;
 // Re-export main merge deferred metadata helpers for global idle retry
 pub(crate) use merge_helpers::clear_main_merge_deferred_metadata;
 pub(crate) use merge_helpers::has_main_merge_deferred_metadata;
+
+// Re-export deferred merge timeout helpers for forced retry after timeout
+pub(crate) use merge_helpers::is_main_merge_deferred_timed_out;
+pub(crate) use merge_helpers::is_merge_deferred_timed_out;
+pub(crate) use merge_helpers::DEFERRED_MERGE_TIMEOUT_SECONDS;
 
 // Re-export trigger origin metadata helpers for execution tracking
 pub(crate) use side_effects::clear_trigger_origin;
@@ -281,7 +286,9 @@ impl<'a> TransitionHandler<'a> {
                     );
 
                     tokio::spawn(async move {
-                        tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
+                        // No sleep needed: scheduling_lock mutex in task_scheduler_service.rs
+                        // serializes concurrent calls via try_lock(), and has_merge_deferred_metadata
+                        // is the actual safety guard.
                         scheduler.try_retry_deferred_merges(&project_id).await;
                         // Also retry main merges if all agents are idle.
                         // Handles two stuck cases:

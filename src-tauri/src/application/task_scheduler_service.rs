@@ -416,6 +416,7 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
     async fn try_retry_deferred_merges(&self, project_id: &str) {
         use crate::domain::state_machine::transition_handler::{
             clear_merge_deferred_metadata, has_merge_deferred_metadata,
+            is_merge_deferred_timed_out, DEFERRED_MERGE_TIMEOUT_SECONDS,
         };
 
         let pid = ProjectId::from_string(project_id.to_string());
@@ -467,6 +468,19 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
                     (target.to_string(), blocker.map(|s| s.to_string()))
                 })
                 .unwrap_or_else(|| ("unknown".to_string(), None));
+
+            // Warn if the merge has been deferred longer than the configured timeout.
+            // This is a diagnostic indicator; the retry proceeds regardless (blocker just completed).
+            if is_merge_deferred_timed_out(task) {
+                tracing::warn!(
+                    event = "deferred_merge_timeout_exceeded",
+                    task_id = task.id.as_str(),
+                    project_id = project_id,
+                    target_branch = %target_branch,
+                    timeout_seconds = DEFERRED_MERGE_TIMEOUT_SECONDS,
+                    "Deferred merge exceeded timeout — retry was delayed beyond expected window"
+                );
+            }
 
             // Structured retry attempt event
             tracing::info!(
@@ -566,6 +580,7 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
     async fn try_retry_main_merges(&self) {
         use crate::domain::state_machine::transition_handler::{
             clear_main_merge_deferred_metadata, has_main_merge_deferred_metadata,
+            is_main_merge_deferred_timed_out, DEFERRED_MERGE_TIMEOUT_SECONDS,
         };
 
         // Query all projects for main-merge-deferred tasks
@@ -617,39 +632,55 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
         );
 
         for task in deferred_tasks {
-            // Plan-level guard: skip retry if sibling tasks are not all terminal
-            if let Some(ref session_id) = task.ideation_session_id {
-                match self.task_repo.get_by_ideation_session(session_id).await {
-                    Ok(siblings) => {
-                        let all_siblings_terminal = siblings.iter().all(|t| {
-                            t.id == task.id
-                                || t.internal_status == InternalStatus::PendingMerge
-                                || t.is_terminal()
-                        });
-                        if !all_siblings_terminal {
-                            tracing::info!(
+            // Check if this deferred merge has exceeded the configured timeout.
+            // If so, bypass the sibling guard and force a retry with a warning.
+            let timed_out = is_main_merge_deferred_timed_out(&task);
+
+            // Plan-level guard: skip retry if sibling tasks are not all terminal.
+            // Bypassed when the deferred merge has exceeded DEFERRED_MERGE_TIMEOUT_SECONDS.
+            if !timed_out {
+                if let Some(ref session_id) = task.ideation_session_id {
+                    match self.task_repo.get_by_ideation_session(session_id).await {
+                        Ok(siblings) => {
+                            let all_siblings_terminal = siblings.iter().all(|t| {
+                                t.id == task.id
+                                    || t.internal_status == InternalStatus::PendingMerge
+                                    || t.is_terminal()
+                            });
+                            if !all_siblings_terminal {
+                                tracing::info!(
+                                    task_id = task.id.as_str(),
+                                    session_id = %session_id,
+                                    "Skipping main merge retry: sibling plan tasks not yet terminal"
+                                );
+                                continue;
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                error = %e,
                                 task_id = task.id.as_str(),
-                                session_id = %session_id,
-                                "Skipping main merge retry: sibling plan tasks not yet terminal"
+                                "Failed to fetch siblings for plan-level merge guard, skipping retry"
                             );
                             continue;
                         }
                     }
-                    Err(e) => {
-                        tracing::warn!(
-                            error = %e,
-                            task_id = task.id.as_str(),
-                            "Failed to fetch siblings for plan-level merge guard, skipping retry"
-                        );
-                        continue;
-                    }
                 }
+            } else {
+                tracing::warn!(
+                    event = "deferred_merge_timeout_forced_retry",
+                    task_id = task.id.as_str(),
+                    project_id = task.project_id.as_str(),
+                    timeout_seconds = DEFERRED_MERGE_TIMEOUT_SECONDS,
+                    "Deferred main merge has exceeded timeout — forcing retry regardless of sibling state"
+                );
             }
 
             tracing::info!(
                 event = "main_merge_retry_attempt",
                 task_id = task.id.as_str(),
                 project_id = task.project_id.as_str(),
+                timed_out = timed_out,
                 "Retrying deferred main merge (agents now idle)"
             );
 
@@ -679,14 +710,26 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
                 .and_then(|v| v.get("target_branch").and_then(|t| t.as_str()).map(|s| s.to_string()))
                 .unwrap_or_else(|| "main".to_string());
 
+            let (reason_code, retry_message) = if timed_out {
+                (
+                    MergeRecoveryReasonCode::DeferredTimeout,
+                    format!(
+                        "Main merge retry attempt {} (forced): deferred for >{}s, bypassing sibling guard",
+                        attempt_count, DEFERRED_MERGE_TIMEOUT_SECONDS
+                    ),
+                )
+            } else {
+                (
+                    MergeRecoveryReasonCode::AgentsRunning,
+                    format!("Main merge retry attempt {}: all agents now idle", attempt_count),
+                )
+            };
+
             let retry_event = MergeRecoveryEvent::new(
                 MergeRecoveryEventKind::MainMergeRetry,
                 MergeRecoverySource::Auto,
-                MergeRecoveryReasonCode::AgentsRunning,
-                format!(
-                    "Main merge retry attempt {}: all agents now idle",
-                    attempt_count
-                ),
+                reason_code,
+                retry_message,
             )
             .with_target_branch(&target_branch)
             .with_attempt(attempt_count);
@@ -2538,5 +2581,233 @@ mod tests {
 
         assert_eq!(watchdog.stale_threshold_secs, 120);
         assert_eq!(watchdog.interval_secs, 30);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Deferred Merge Timeout Tests
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// Helper: create a task with merge_deferred flag and a timestamp in the past
+    fn make_deferred_task_with_age(
+        project_id: &crate::domain::entities::ProjectId,
+        title: &str,
+        seconds_ago: i64,
+    ) -> Task {
+        let deferred_at = (chrono::Utc::now() - chrono::Duration::seconds(seconds_ago))
+            .to_rfc3339();
+        let mut task = Task::new(project_id.clone(), title.to_string());
+        task.internal_status = InternalStatus::PendingMerge;
+        task.metadata = Some(
+            serde_json::json!({
+                "merge_deferred": true,
+                "merge_deferred_at": deferred_at,
+                "target_branch": "feature/some-feature"
+            })
+            .to_string(),
+        );
+        task
+    }
+
+    /// Helper: create a task with main_merge_deferred flag and a timestamp in the past
+    fn make_main_deferred_task_with_age(
+        project_id: &crate::domain::entities::ProjectId,
+        title: &str,
+        seconds_ago: i64,
+    ) -> Task {
+        let deferred_at = (chrono::Utc::now() - chrono::Duration::seconds(seconds_ago))
+            .to_rfc3339();
+        let mut task = Task::new(project_id.clone(), title.to_string());
+        task.internal_status = InternalStatus::PendingMerge;
+        task.metadata = Some(
+            serde_json::json!({
+                "main_merge_deferred": true,
+                "main_merge_deferred_at": deferred_at,
+                "target_branch": "main"
+            })
+            .to_string(),
+        );
+        task
+    }
+
+    #[tokio::test]
+    async fn test_retry_deferred_merges_proceeds_when_within_timeout() {
+        use crate::domain::state_machine::transition_handler::DEFERRED_MERGE_TIMEOUT_SECONDS;
+
+        let (execution_state, app_state) = setup_test_state().await;
+
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        // Create a deferred task with age well within the timeout (10 seconds old)
+        let task = make_deferred_task_with_age(&project.id, "Recent Deferred Merge", 10);
+        app_state.task_repo.create(task.clone()).await.unwrap();
+
+        let scheduler = build_scheduler(&app_state, &execution_state);
+        scheduler.try_retry_deferred_merges(project.id.as_str()).await;
+
+        // Task should have had its deferred flag cleared (retry was triggered)
+        let updated = app_state
+            .task_repo
+            .get_by_id(&task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        let flag_cleared = updated.metadata.as_deref().map(|m| !m.contains("\"merge_deferred\":true")).unwrap_or(true);
+        assert!(
+            flag_cleared,
+            "Deferred merge within timeout should still have retry triggered (flag cleared)"
+        );
+        let _ = DEFERRED_MERGE_TIMEOUT_SECONDS; // silence unused warning
+    }
+
+    #[tokio::test]
+    async fn test_retry_deferred_merges_logs_warning_when_timeout_exceeded() {
+        use crate::domain::state_machine::transition_handler::DEFERRED_MERGE_TIMEOUT_SECONDS;
+
+        let (execution_state, app_state) = setup_test_state().await;
+
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        // Create a deferred task older than the timeout
+        let seconds_ago = DEFERRED_MERGE_TIMEOUT_SECONDS + 60; // well past timeout
+        let task = make_deferred_task_with_age(&project.id, "Timed Out Deferred Merge", seconds_ago);
+        app_state.task_repo.create(task.clone()).await.unwrap();
+
+        let scheduler = build_scheduler(&app_state, &execution_state);
+        // Should not panic, should log warning and proceed with retry
+        scheduler.try_retry_deferred_merges(project.id.as_str()).await;
+
+        // Task should have retry triggered (flag cleared or metadata updated)
+        let updated = app_state
+            .task_repo
+            .get_by_id(&task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        let flag_cleared = updated.metadata.as_deref().map(|m| !m.contains("\"merge_deferred\":true")).unwrap_or(true);
+        assert!(
+            flag_cleared,
+            "Timed-out deferred merge should have retry triggered (flag cleared)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_retry_main_merges_bypasses_sibling_guard_when_timeout_exceeded() {
+        use crate::domain::state_machine::transition_handler::DEFERRED_MERGE_TIMEOUT_SECONDS;
+
+        let (execution_state, app_state) = setup_test_state().await;
+
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        // Create an ideation session
+        let session = crate::domain::entities::IdeationSession::new(project.id.clone());
+        app_state.ideation_session_repo.create(session.clone()).await.unwrap();
+
+        // Create a main-merge-deferred task older than the timeout, linked to the session
+        let seconds_ago = DEFERRED_MERGE_TIMEOUT_SECONDS + 60;
+        let mut task = make_main_deferred_task_with_age(&project.id, "Timed Out Main Merge", seconds_ago);
+        task.ideation_session_id = Some(session.id.clone());
+        app_state.task_repo.create(task.clone()).await.unwrap();
+
+        // Create a sibling task that is NOT terminal (would normally block the retry)
+        let mut sibling = Task::new(project.id.clone(), "Non-Terminal Sibling".to_string());
+        sibling.internal_status = InternalStatus::Executing;
+        sibling.ideation_session_id = Some(session.id.clone());
+        app_state.task_repo.create(sibling.clone()).await.unwrap();
+
+        let scheduler = build_scheduler(&app_state, &execution_state);
+        // Should bypass sibling guard because task is timed out
+        scheduler.try_retry_main_merges().await;
+
+        // The main-merge-deferred flag should be cleared (retry was forced)
+        let updated = app_state
+            .task_repo
+            .get_by_id(&task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        let flag_cleared = updated.metadata.as_deref()
+            .map(|m| !m.contains("\"main_merge_deferred\":true"))
+            .unwrap_or(true);
+        assert!(
+            flag_cleared,
+            "Timed-out main merge should bypass sibling guard and have flag cleared"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_retry_main_merges_respects_sibling_guard_when_not_timed_out() {
+        let (execution_state, app_state) = setup_test_state().await;
+
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        // Create an ideation session
+        let session = crate::domain::entities::IdeationSession::new(project.id.clone());
+        app_state.ideation_session_repo.create(session.clone()).await.unwrap();
+
+        // Create a main-merge-deferred task RECENTLY (within timeout)
+        let mut task = make_main_deferred_task_with_age(&project.id, "Recent Main Merge", 5);
+        task.ideation_session_id = Some(session.id.clone());
+        app_state.task_repo.create(task.clone()).await.unwrap();
+
+        // Create a sibling task that is NOT terminal
+        let mut sibling = Task::new(project.id.clone(), "Non-Terminal Sibling".to_string());
+        sibling.internal_status = InternalStatus::Executing;
+        sibling.ideation_session_id = Some(session.id.clone());
+        app_state.task_repo.create(sibling.clone()).await.unwrap();
+
+        let scheduler = build_scheduler(&app_state, &execution_state);
+        // Should NOT bypass sibling guard (task is within timeout)
+        scheduler.try_retry_main_merges().await;
+
+        // The main-merge-deferred flag should still be set (sibling guard skipped the retry)
+        let updated = app_state
+            .task_repo
+            .get_by_id(&task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        let flag_still_set = updated.metadata.as_deref()
+            .map(|m| m.contains("\"main_merge_deferred\":true"))
+            .unwrap_or(false);
+        assert!(
+            flag_still_set,
+            "Recent main merge should respect sibling guard and not retry (flag still set)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_retry_main_merges_retries_when_no_session_and_timed_out() {
+        use crate::domain::state_machine::transition_handler::DEFERRED_MERGE_TIMEOUT_SECONDS;
+
+        let (execution_state, app_state) = setup_test_state().await;
+
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        // Task with no ideation_session_id but timed out — should always retry
+        let seconds_ago = DEFERRED_MERGE_TIMEOUT_SECONDS + 30;
+        let task = make_main_deferred_task_with_age(&project.id, "Sessionless Timed Out Merge", seconds_ago);
+        app_state.task_repo.create(task.clone()).await.unwrap();
+
+        let scheduler = build_scheduler(&app_state, &execution_state);
+        scheduler.try_retry_main_merges().await;
+
+        let updated = app_state
+            .task_repo
+            .get_by_id(&task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        let flag_cleared = updated.metadata.as_deref()
+            .map(|m| !m.contains("\"main_merge_deferred\":true"))
+            .unwrap_or(true);
+        assert!(
+            flag_cleared,
+            "Timed-out main merge without session should be retried"
+        );
     }
 }

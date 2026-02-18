@@ -156,6 +156,7 @@ pub(super) async fn attempt_session_recovery(
         None,                                       // no team tracker for recovery
         false,                                      // not team mode
         StreamingStateCache::new(),                 // fresh cache for recovery (no UI to hydrate)
+        None,                                       // no heartbeat for recovery sessions
     )
     .await
     {

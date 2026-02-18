@@ -756,6 +756,15 @@ impl ClaudeCodeClient {
         // Skip permissions for automated teammates
         args.push("--dangerously-skip-permissions".to_string());
 
+        // Optional settings JSON passed to claude CLI via --settings.
+        // Uses agent_type for profile lookup, same as task agents.
+        if let Some(s) = get_effective_settings(Some(&config.agent_type)) {
+            tracing::debug!(agent_type = %config.agent_type, "Resolved settings profile for teammate");
+            if let Ok(json) = serde_json::to_string(s) {
+                args.extend(["--settings".to_string(), json]);
+            }
+        }
+
         args
     }
 
@@ -1609,5 +1618,41 @@ mod tests {
             args[allowed_idx + 1],
             "mcp__ralphx__get_session_plan,mcp__ralphx__get_plan_artifact"
         );
+    }
+
+    #[test]
+    fn test_build_teammate_cli_args_passes_settings_when_profile_exists() {
+        // Verifies that --settings is passed when get_effective_settings returns a value.
+        // The embedded ralphx.yaml configures a global `settings_profile: default`,
+        // so any agent_type not registered in agents[] falls through to the global profile.
+        // "unregistered-agent-type" triggers the global fallback path.
+        let client = ClaudeCodeClient::new();
+        let config = test_teammate_config().with_agent_type("unregistered-agent-type");
+
+        // Confirm a settings value is available for this agent_type (global fallback)
+        let has_settings = super::get_effective_settings(Some("unregistered-agent-type")).is_some();
+        if !has_settings {
+            // No settings profile configured in this environment — skip the positive assertion
+            // and verify --settings is correctly absent
+            let args = client.build_teammate_cli_args(&config);
+            assert!(
+                !args.contains(&"--settings".to_string()),
+                "--settings must not appear when no profile is configured"
+            );
+            return;
+        }
+
+        let args = client.build_teammate_cli_args(&config);
+
+        // --settings flag must be present
+        let settings_idx = args
+            .iter()
+            .position(|a| a == "--settings")
+            .expect("--settings flag must be present when a settings profile exists");
+
+        // The value after --settings must be valid JSON
+        let json_str = &args[settings_idx + 1];
+        serde_json::from_str::<serde_json::Value>(json_str)
+            .expect("--settings value must be valid JSON");
     }
 }

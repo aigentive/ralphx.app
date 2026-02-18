@@ -254,6 +254,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                         None, // Queue processing doesn't need team events
                         team_mode,
                         streaming_state_cache.clone(),
+                        None, // Queue processing doesn't have registry in scope
                     )
                     .await
                     {

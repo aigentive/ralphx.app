@@ -3,6 +3,11 @@
 // Extracted from side_effects.rs — runs project analysis commands to verify merge correctness.
 // Decomposed into setup phase, validate phase, and orchestrator.
 
+/// Delay before retrying a failed install command (ms).
+/// Covers macOS filesystem lock recovery window (Spotlight indexing, npm `ENOTEMPTY` errors).
+/// 500ms is sufficient for the realistic lock window while keeping latency low.
+const INSTALL_RETRY_DELAY_MS: u64 = 500;
+
 use std::path::Path;
 use std::process::Command;
 
@@ -990,9 +995,11 @@ async fn run_install_phase(
         if log_entry.status == "failed" {
             tracing::warn!(
                 command = %resolved_cmd,
-                "Install command failed, retrying after 2s (attempt 2/2)"
+                delay_ms = INSTALL_RETRY_DELAY_MS,
+                "Install command failed, retrying after {}ms (attempt 2/2)",
+                INSTALL_RETRY_DELAY_MS
             );
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(INSTALL_RETRY_DELAY_MS)).await;
 
             // Emit "running" event for retry attempt
             if let Some(handle) = app_handle {
@@ -1197,4 +1204,56 @@ pub(crate) async fn run_pre_execution_setup(
     );
 
     Some(PreExecSetupResult { success, log })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// INSTALL_RETRY_DELAY_MS must be 500ms — covers macOS filesystem lock window
+    /// (Spotlight indexing, npm ENOTEMPTY) while cutting the original 2s delay by 75%.
+    #[test]
+    fn install_retry_delay_is_500ms() {
+        assert_eq!(INSTALL_RETRY_DELAY_MS, 500);
+    }
+
+    /// run_install_phase retries once on failure and reports success when retry succeeds.
+    /// Uses a flag file: first call exits 1 (simulates transient ENOTEMPTY), second exits 0.
+    /// The retry overwrites the log entry in-place, so one entry with status "success" is recorded.
+    #[tokio::test]
+    async fn install_retry_succeeds_after_transient_failure() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // first call: if flag exists, remove it and exit 1; second call: flag absent, exit 0.
+        let flag = dir.path().join("fail_flag");
+        std::fs::write(&flag, "").unwrap();
+
+        let flag_path = flag.to_string_lossy().to_string();
+        let cmd = format!(
+            "if [ -f '{flag}' ]; then rm '{flag}'; exit 1; else exit 0; fi",
+            flag = flag_path
+        );
+
+        let entries = vec![PreExecAnalysisEntry {
+            path: ".".to_string(),
+            label: "Test".to_string(),
+            install: Some(cmd),
+            worktree_setup: vec![],
+        }];
+
+        let (log, had_failures) = run_install_phase(
+            &entries,
+            dir.path(),
+            "test-task-id",
+            None,
+            &|s: &str| s.to_string(),
+            "test",
+        )
+        .await;
+
+        // Retry succeeded → no failures overall; log has one entry replaced with "success"
+        assert!(!had_failures, "expected no failures after successful retry");
+        assert_eq!(log.len(), 1, "expected one log entry per command");
+        assert_eq!(log[0].status, "success", "retry should have overwritten status to success");
+    }
 }
