@@ -716,7 +716,196 @@ describe("useChatEvents", () => {
   });
 
   // --------------------------------------------------------------------------
-  // 10. Cleanup on unmount
+  // 10. Task position marker ordering (streaming Task card fix)
+  // --------------------------------------------------------------------------
+  describe("Task card position marker ordering", () => {
+    it("should interleave task position marker between text blocks (text → task → text)", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      // 1. Text arrives first
+      act(() => {
+        fireEvent("agent:chunk", {
+          text: "About to launch a task: ",
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      // 2. Task tool_call arrives — should insert a position marker, not skip
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "Task",
+          tool_id: "toolu_task_abc",
+          arguments: { description: "Explore codebase", subagent_type: "Explore" },
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      // 3. More text arrives after the task
+      act(() => {
+        fireEvent("agent:chunk", {
+          text: "Task launched.",
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      // Simulate the accumulated streamingContentBlocks state by replaying updaters
+      // against an initially empty array.
+      let blocks: StreamingContentBlock[] = [];
+      for (const call of props.setStreamingContentBlocks.mock.calls) {
+        const updater = call[0];
+        blocks = typeof updater === "function" ? updater(blocks) : updater;
+      }
+
+      // Expect: [text, task-marker, text] in chronological order
+      expect(blocks).toHaveLength(3);
+      expect(blocks[0]).toEqual({ type: "text", text: "About to launch a task: " });
+      expect(blocks[1]).toEqual({ type: "task", toolUseId: "toolu_task_abc" });
+      expect(blocks[2]).toEqual({ type: "text", text: "Task launched." });
+    });
+
+    it("should deduplicate task position markers when same tool_id arrives twice", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      // Fire the same Task tool_call twice (can happen with result events)
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "Task",
+          tool_id: "toolu_task_dup",
+          arguments: { description: "Dup task", subagent_type: "Plan" },
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "Task",
+          tool_id: "toolu_task_dup",
+          arguments: { description: "Dup task", subagent_type: "Plan" },
+          result: "task done",
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      let blocks: StreamingContentBlock[] = [];
+      for (const call of props.setStreamingContentBlocks.mock.calls) {
+        const updater = call[0];
+        blocks = typeof updater === "function" ? updater(blocks) : updater;
+      }
+
+      // Only one task marker should exist
+      const taskMarkers = blocks.filter((b) => b.type === "task");
+      expect(taskMarkers).toHaveLength(1);
+      expect(taskMarkers[0]).toEqual({ type: "task", toolUseId: "toolu_task_dup" });
+    });
+
+    it("should render null (no crash) when task position marker exists but agent:task_started has not yet arrived", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      // agent:tool_call for Task arrives — position marker added to streamingContentBlocks
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "Task",
+          tool_id: "toolu_task_late",
+          arguments: { description: "Late task", subagent_type: "Bash" },
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      // Verify the marker was added to streamingContentBlocks
+      let blocks: StreamingContentBlock[] = [];
+      for (const call of props.setStreamingContentBlocks.mock.calls) {
+        const updater = call[0];
+        blocks = typeof updater === "function" ? updater(blocks) : updater;
+      }
+      expect(blocks).toHaveLength(1);
+      expect(blocks[0]).toEqual({ type: "task", toolUseId: "toolu_task_late" });
+
+      // The streamingTasks map is still empty — agent:task_started has not arrived yet.
+      // Simulate what ChatMessageList does: Map.get(toolUseId) returns undefined.
+      const emptyTasksMap = new Map<string, StreamingTask>();
+      const taskMetadata = emptyTasksMap.get("toolu_task_late");
+      // Graceful: returns undefined — component renders null, no crash.
+      expect(taskMetadata).toBeUndefined();
+
+      // agent:task_started arrives late — task metadata now available
+      act(() => {
+        fireEvent("agent:task_started", {
+          tool_use_id: "toolu_task_late",
+          description: "Late task",
+          subagent_type: "Bash",
+          model: "haiku",
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      // The task should now be in the map
+      let tasksMap = new Map<string, StreamingTask>();
+      for (const call of props.setStreamingTasks.mock.calls) {
+        const updater = call[0];
+        tasksMap = typeof updater === "function" ? updater(tasksMap) : updater;
+      }
+      const task = tasksMap.get("toolu_task_late");
+      expect(task).toBeDefined();
+      expect(task!.subagentType).toBe("Bash");
+      expect(task!.status).toBe("running");
+    });
+
+    it("should not clear task position markers on agent:error (preserves visible state)", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      // Stream a task during execution
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "Task",
+          tool_id: "toolu_task_err",
+          arguments: { description: "Error task", subagent_type: "Plan" },
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+      act(() => {
+        fireEvent("agent:task_started", {
+          tool_use_id: "toolu_task_err",
+          description: "Error task",
+          subagent_type: "Plan",
+          model: "sonnet",
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      props.setStreamingContentBlocks.mockClear();
+      props.setStreamingTasks.mockClear();
+
+      // Error fires mid-task
+      act(() => {
+        fireEvent("agent:error", {
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+          error: "Agent crashed",
+        });
+      });
+
+      // agent:error clears streamingToolCalls only — content blocks and tasks persist
+      // so the user can see what was running when the error occurred.
+      expect(props.setStreamingContentBlocks).not.toHaveBeenCalled();
+      expect(props.setStreamingTasks).not.toHaveBeenCalled();
+      expect(props.setStreamingToolCalls).toHaveBeenCalled();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // 11. Cleanup on unmount
   // --------------------------------------------------------------------------
   describe("cleanup", () => {
     it("should clear streaming state and unsubscribe on unmount", () => {
