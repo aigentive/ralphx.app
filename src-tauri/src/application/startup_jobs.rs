@@ -683,7 +683,7 @@ impl<R: Runtime> StartupJobRunner<R> {
 
     /// Check if all blocker tasks are in a terminal state.
     /// Delegates to InternalStatus::is_terminal() as the single source of truth.
-    /// Terminal states: Merged, Failed, Cancelled, Stopped, MergeIncomplete.
+    /// Terminal states: Merged, Failed, Cancelled, Stopped.
     /// If a blocker doesn't exist (was deleted), it's considered complete.
     async fn all_blockers_complete(&self, blocker_ids: &[crate::domain::entities::TaskId]) -> bool {
         for blocker_id in blocker_ids {
