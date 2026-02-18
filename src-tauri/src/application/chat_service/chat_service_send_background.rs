@@ -241,6 +241,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 let tool_calls = outcome.tool_calls;
                 let content_blocks = outcome.content_blocks;
                 let claude_session_id = outcome.session_id;
+                let stderr_text = outcome.stderr_text;
                 // Debug: Log what we got from stream processing
                 tracing::info!(
                     "[CHAT_SERVICE] Stream complete: context={}/{}, response_len={}, tool_calls={}, session_id={:?}",
@@ -263,7 +264,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
 
                 // Update pre-created assistant message with final content
                 let assistant_role = get_assistant_role(&context_type).to_string();
-                if has_meaningful_output(&response_text, tool_calls.len()) {
+                if has_meaningful_output(&response_text, tool_calls.len(), &stderr_text) {
                     let tool_calls_json = serde_json::to_string(&tool_calls).ok();
                     let content_blocks_json = serde_json::to_string(&content_blocks).ok();
                     finalize_assistant_message(
@@ -295,7 +296,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 }
 
                 // Treat zero-output runs as failed executions for autonomous task/review flows.
-                let has_output = has_meaningful_output(&response_text, tool_calls.len());
+                let has_output = has_meaningful_output(&response_text, tool_calls.len(), &stderr_text);
                 if !has_output
                     && (context_type == ChatContextType::TaskExecution
                         || context_type == ChatContextType::Review)

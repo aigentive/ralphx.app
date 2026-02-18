@@ -80,8 +80,15 @@ pub use chat_service_types::{
 
 /// Shared definition for "meaningful" agent output used by streaming and
 /// background completion logic.
-pub(crate) fn has_meaningful_output(response_text: &str, tool_call_count: usize) -> bool {
-    !response_text.trim().is_empty() || tool_call_count > 0
+pub(crate) fn has_meaningful_output(response_text: &str, tool_call_count: usize, stderr_text: &str) -> bool {
+    if tool_call_count > 0 {
+        return true;
+    }
+    // If stderr has errors and no tool calls, agent crashed — not meaningful work
+    if !stderr_text.trim().is_empty() {
+        return false;
+    }
+    !response_text.trim().is_empty()
 }
 
 /// Shared event payload context used by background and streaming modules.
@@ -610,7 +617,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         // IMPORTANT: Must increment before spawn to ensure scheduling respects capacity
         if matches!(
             context_type,
-            ChatContextType::TaskExecution | ChatContextType::Review
+            ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge
         ) {
             if let Some(ref exec) = self.execution_state {
                 exec.increment_running();

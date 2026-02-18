@@ -114,11 +114,12 @@ pub struct StreamOutcome {
     pub tool_calls: Vec<ToolCall>,
     pub content_blocks: Vec<ContentBlockItem>,
     pub session_id: Option<String>,
+    pub stderr_text: String,
 }
 
 impl StreamOutcome {
     pub fn has_meaningful_output(&self) -> bool {
-        has_meaningful_output(&self.response_text, self.tool_calls.len())
+        has_meaningful_output(&self.response_text, self.tool_calls.len(), &self.stderr_text)
     }
 }
 
@@ -1011,6 +1012,7 @@ pub async fn process_stream_background<R: Runtime>(
         tool_calls: result.tool_calls,
         content_blocks: result.content_blocks,
         session_id: result.session_id,
+        stderr_text: stderr_content,
     };
 
     // Final flush of accumulated content so post-loop error returns don't lose data
@@ -1045,7 +1047,7 @@ pub async fn process_stream_background<R: Runtime>(
                 "no stdout lines captured\n\nexit_code: {:?}\nexit_signal: {:?}\n\nstderr:\n{}",
                 status.code(),
                 signal,
-                stderr_content.trim(),
+                outcome.stderr_text.trim(),
             )
         } else {
             format!(
@@ -1053,7 +1055,7 @@ pub async fn process_stream_background<R: Runtime>(
                 debug_lines.join("\n"),
                 status.code(),
                 signal,
-                stderr_content.trim()
+                outcome.stderr_text.trim()
             )
         };
         let _ = std::fs::write(&debug_path, payload);
@@ -1078,7 +1080,7 @@ pub async fn process_stream_background<R: Runtime>(
         }
         // Also check stderr for provider error patterns
         if let Some(provider_err) =
-            super::chat_service_errors::classify_provider_error(&stderr_content)
+            super::chat_service_errors::classify_provider_error(&outcome.stderr_text)
         {
             return Err(provider_err);
         }
@@ -1089,7 +1091,7 @@ pub async fn process_stream_background<R: Runtime>(
     }
 
     if !status.success() && !has_output {
-        let stderr_trimmed = stderr_content.trim().to_string();
+        let stderr_trimmed = outcome.stderr_text.trim().to_string();
         // Check for recoverable provider errors in stderr
         if let Some(provider_err) =
             super::chat_service_errors::classify_provider_error(&stderr_trimmed)

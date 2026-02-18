@@ -147,20 +147,48 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                                 e
                             );
                         }
-                    } else if let Err(e) = transition_service
-                        .transition_task(&task_id, InternalStatus::Failed)
-                        .await
-                    {
-                        tracing::error!(
-                            "Failed to transition empty-output task {} to Failed: {}",
-                            task_id.as_str(),
-                            e
-                        );
                     } else {
-                        tracing::warn!(
-                            task_id = task_id.as_str(),
-                            "Task execution produced no output; transitioned to Failed"
-                        );
+                        // Store last_agent_error for empty-output failure
+                        let mut metadata_obj = task
+                            .metadata
+                            .as_deref()
+                            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                            .unwrap_or_else(|| serde_json::json!({}));
+                        if let Some(obj) = metadata_obj.as_object_mut() {
+                            obj.insert(
+                                "last_agent_error".to_string(),
+                                serde_json::json!("Agent completed with no output"),
+                            );
+                            obj.insert(
+                                "last_agent_error_context".to_string(),
+                                serde_json::json!("execution"),
+                            );
+                            obj.insert(
+                                "last_agent_error_at".to_string(),
+                                serde_json::json!(chrono::Utc::now().to_rfc3339()),
+                            );
+                        }
+                        let mut updated_task = task.clone();
+                        updated_task.metadata =
+                            Some(serde_json::to_string(&metadata_obj).unwrap_or_default());
+                        updated_task.touch();
+                        let _ = task_repo.update(&updated_task).await;
+
+                        if let Err(e) = transition_service
+                            .transition_task(&task_id, InternalStatus::Failed)
+                            .await
+                        {
+                            tracing::error!(
+                                "Failed to transition empty-output task {} to Failed: {}",
+                                task_id.as_str(),
+                                e
+                            );
+                        } else {
+                            tracing::warn!(
+                                task_id = task_id.as_str(),
+                                "Task execution produced no output; transitioned to Failed"
+                            );
+                        }
                     }
                 }
             }
@@ -615,6 +643,34 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     if task.internal_status == InternalStatus::Executing
                         || task.internal_status == InternalStatus::ReExecuting =>
                 {
+                    // Store last_agent_error in metadata (mirrors review pattern)
+                    {
+                        let mut metadata_obj = task
+                            .metadata
+                            .as_deref()
+                            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                            .unwrap_or_else(|| serde_json::json!({}));
+                        if let Some(obj) = metadata_obj.as_object_mut() {
+                            obj.insert(
+                                "last_agent_error".to_string(),
+                                serde_json::json!(error),
+                            );
+                            obj.insert(
+                                "last_agent_error_context".to_string(),
+                                serde_json::json!("execution"),
+                            );
+                            obj.insert(
+                                "last_agent_error_at".to_string(),
+                                serde_json::json!(chrono::Utc::now().to_rfc3339()),
+                            );
+                        }
+                        let mut updated_task = task.clone();
+                        updated_task.metadata =
+                            Some(serde_json::to_string(&metadata_obj).unwrap_or_default());
+                        updated_task.touch();
+                        let _ = task_repo.update(&updated_task).await;
+                    }
+
                     // If this is a provider error → store metadata before pausing
                     if let Some(se) = stream_error {
                         if se.is_provider_error() {

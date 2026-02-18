@@ -576,6 +576,35 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
         );
 
         for task in deferred_tasks {
+            // Plan-level guard: skip retry if sibling tasks are not all terminal
+            if let Some(ref session_id) = task.ideation_session_id {
+                match self.task_repo.get_by_ideation_session(session_id).await {
+                    Ok(siblings) => {
+                        let all_siblings_terminal = siblings.iter().all(|t| {
+                            t.id == task.id
+                                || t.internal_status == InternalStatus::PendingMerge
+                                || t.is_terminal()
+                        });
+                        if !all_siblings_terminal {
+                            tracing::info!(
+                                task_id = task.id.as_str(),
+                                session_id = %session_id,
+                                "Skipping main merge retry: sibling plan tasks not yet terminal"
+                            );
+                            continue;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            task_id = task.id.as_str(),
+                            "Failed to fetch siblings for plan-level merge guard, skipping retry"
+                        );
+                        continue;
+                    }
+                }
+            }
+
             tracing::info!(
                 event = "main_merge_retry_attempt",
                 task_id = task.id.as_str(),
