@@ -5,13 +5,34 @@
 
 use super::git_cmd;
 use super::*;
+use std::sync::LazyLock;
+use tokio::sync::Mutex;
+use tokio::time::{timeout, Duration};
+
+/// Global mutex serializing all `git fetch origin` calls.
+///
+/// Multiple concurrent merges each call `fetch_origin()`, which can contend on
+/// `.git/FETCH_HEAD` and remote-tracking ref locks. This mutex ensures only one
+/// fetch runs at a time across the entire process.
+///
+/// Timeout: 60 s to acquire the lock. If the lock-holder hangs beyond that,
+/// the waiter skips the fetch rather than blocking indefinitely.
+static FETCH_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+/// Maximum time to wait for `FETCH_LOCK` before giving up and skipping the fetch.
+const FETCH_LOCK_TIMEOUT_SECS: u64 = 60;
 
 impl GitService {
     // =========================================================================
     // Rebase Operations (Phase 1 - fast path)
     // =========================================================================
 
-    /// Fetch from origin (if remote exists)
+    /// Fetch from origin (if remote exists), serialized via a process-wide mutex.
+    ///
+    /// Only one fetch runs at a time to avoid contention on `.git/FETCH_HEAD`
+    /// and remote-tracking ref locks when multiple merge operations are in flight.
+    /// If the lock cannot be acquired within [`FETCH_LOCK_TIMEOUT_SECS`] seconds
+    /// (e.g., a prior fetch is hanging), the fetch is skipped non-fatally.
     ///
     /// # Arguments
     /// * `repo` - Path to the git repository
@@ -25,6 +46,27 @@ impl GitService {
                 return Ok(());
             }
         }
+
+        // Acquire the global fetch serialization lock with a timeout.
+        // If we can't get the lock in time, skip fetch rather than blocking forever.
+        let lock_result = timeout(
+            Duration::from_secs(FETCH_LOCK_TIMEOUT_SECS),
+            FETCH_LOCK.lock(),
+        )
+        .await;
+
+        let _guard = match lock_result {
+            Ok(guard) => guard,
+            Err(_elapsed) => {
+                warn!(
+                    "fetch_origin: could not acquire FETCH_LOCK within {}s, skipping fetch for {:?}",
+                    FETCH_LOCK_TIMEOUT_SECS, repo
+                );
+                return Ok(());
+            }
+        };
+
+        debug!("fetch_origin: acquired FETCH_LOCK, fetching {:?}", repo);
 
         let output = git_cmd::run(&["fetch", "origin"], repo).await?;
 
