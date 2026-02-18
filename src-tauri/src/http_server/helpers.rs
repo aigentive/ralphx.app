@@ -477,6 +477,16 @@ pub async fn get_task_context_impl(state: &AppState, task_id: &TaskId) -> AppRes
     if task.description.is_some() {
         context_hints.push("Task has description with additional details".to_string());
     }
+
+    // Surface restart_note from task metadata (one-shot, cleared after agent reads in on_enter_states)
+    if let Some(ref metadata_str) = task.metadata {
+        if let Ok(meta) = serde_json::from_str::<serde_json::Value>(metadata_str) {
+            if let Some(note) = meta.get("restart_note").and_then(|v| v.as_str()) {
+                context_hints.push(format!("RESTART NOTE from user: {}", note));
+            }
+        }
+    }
+
     if context_hints.is_empty() {
         context_hints.push("No additional context artifacts found - proceed with task description and acceptance criteria".to_string());
     }
