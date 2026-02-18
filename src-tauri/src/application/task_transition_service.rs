@@ -11,6 +11,7 @@
 // - Emit events for UI updates
 
 use async_trait::async_trait;
+use std::collections::HashSet;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 
@@ -435,6 +436,17 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     /// `Some(false)` means solo was explicitly chosen (skip metadata fallback).
     /// `None` means unset — fall back to task metadata `agent_variant`.
     team_mode: Option<bool>,
+
+    /// Shared tokio mutex for the concurrent merge guard critical section.
+    /// Serializes the check-and-set in the worktree-mode merge guard so two tasks
+    /// cannot both read "no blocker" simultaneously (eliminates TOCTOU race).
+    /// Shared across all `execute_entry_actions` calls from this service instance.
+    merge_lock: Arc<tokio::sync::Mutex<()>>,
+
+    /// Shared set of task IDs currently undergoing `attempt_programmatic_merge`.
+    /// Prevents double-click / duplicate reconciliation from spawning two concurrent
+    /// merge attempts for the same task (self-dedup).
+    merges_in_flight: Arc<std::sync::Mutex<HashSet<String>>>,
 }
 
 impl<R: Runtime> TaskTransitionService<R> {
@@ -522,6 +534,8 @@ impl<R: Runtime> TaskTransitionService<R> {
             plan_branch_repo: None,
             step_repo: None,
             team_mode: None,
+            merge_lock: Arc::new(tokio::sync::Mutex::new(())),
+            merges_in_flight: Arc::new(std::sync::Mutex::new(HashSet::new())),
         }
     }
 
@@ -798,6 +812,12 @@ impl<R: Runtime> TaskTransitionService<R> {
         if let Some(ref step_repo) = self.step_repo {
             services = services.with_step_repo(Arc::clone(step_repo));
         }
+
+        // Pass shared merge lock for TOCTOU-safe concurrent merge guard
+        services = services.with_merge_lock(Arc::clone(&self.merge_lock));
+
+        // Pass shared merges_in_flight set for self-dedup across concurrent calls
+        services = services.with_merges_in_flight(Arc::clone(&self.merges_in_flight));
 
         // Create TaskContext
         let context = TaskContext::new(task_id.as_str(), task.project_id.as_str(), services);

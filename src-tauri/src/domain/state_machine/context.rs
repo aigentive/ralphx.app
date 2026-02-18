@@ -15,8 +15,10 @@ use crate::domain::repositories::{
     PlanBranchRepository, ProjectRepository, TaskRepository, TaskStepRepository,
 };
 use std::any::Any;
+use std::collections::HashSet;
 use std::sync::Arc;
 use tauri::{AppHandle, Runtime, Wry};
+use tokio::sync::Mutex;
 
 /// Container for all services used by the state machine.
 ///
@@ -69,6 +71,17 @@ pub struct TaskServices {
     /// Task step repository for updating step statuses during state transitions.
     /// Used by TransitionHandler to fail in-progress steps when task fails.
     pub step_repo: Option<Arc<dyn TaskStepRepository>>,
+
+    /// Application-level mutex for the concurrent merge guard critical section.
+    /// Serializes the check-and-set in `try_programmatic_merge` so two tasks
+    /// cannot both read "no blocker" and both proceed to merge simultaneously.
+    /// Eliminates the TOCTOU race in the worktree-mode merge guard.
+    pub merge_lock: Arc<Mutex<()>>,
+
+    /// Set of task IDs that currently have an `attempt_programmatic_merge` call in flight.
+    /// Prevents double-click / double-trigger from spawning two merge attempts for the same task.
+    /// Uses std::sync::Mutex (not tokio) so Drop impls can clean up synchronously.
+    pub merges_in_flight: Arc<std::sync::Mutex<HashSet<String>>>,
 }
 
 impl TaskServices {
@@ -95,6 +108,8 @@ impl TaskServices {
             project_repo: None,
             plan_branch_repo: None,
             step_repo: None,
+            merge_lock: Arc::new(Mutex::new(())),
+            merges_in_flight: Arc::new(std::sync::Mutex::new(HashSet::new())),
         }
     }
 
@@ -152,6 +167,24 @@ impl TaskServices {
         self
     }
 
+    /// Set a shared merge lock (builder pattern).
+    /// Use this to share the same mutex across multiple TaskServices instances
+    /// (e.g., when two tasks run concurrently in the same process).
+    pub fn with_merge_lock(mut self, lock: Arc<Mutex<()>>) -> Self {
+        self.merge_lock = lock;
+        self
+    }
+
+    /// Set a shared merges_in_flight set (builder pattern).
+    /// Use this to share the same dedup set across multiple TaskServices instances.
+    pub fn with_merges_in_flight(
+        mut self,
+        set: Arc<std::sync::Mutex<HashSet<String>>>,
+    ) -> Self {
+        self.merges_in_flight = set;
+        self
+    }
+
     /// Creates a TaskServices with all mock implementations for testing
     pub fn new_mock() -> Self {
         use crate::application::MockChatService;
@@ -170,6 +203,8 @@ impl TaskServices {
             project_repo: None,
             plan_branch_repo: None,
             step_repo: None,
+            merge_lock: Arc::new(Mutex::new(())),
+            merges_in_flight: Arc::new(std::sync::Mutex::new(HashSet::new())),
         }
     }
 }
@@ -210,6 +245,8 @@ impl std::fmt::Debug for TaskServices {
                     .as_ref()
                     .map(|_| "<PlanBranchRepository>"),
             )
+            .field("merge_lock", &"<Mutex<()>>")
+            .field("merges_in_flight", &"<Mutex<HashSet<String>>>")
             .finish()
     }
 }
