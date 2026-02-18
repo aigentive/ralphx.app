@@ -87,7 +87,6 @@ pub async fn commit_tree(
     parents: &[&str],
     message: &str,
 ) -> AppResult<String> {
-    let mut args = vec!["commit-tree", tree_sha];
     // Build parent args: we need owned strings for the format
     let parent_args: Vec<String> = parents.iter().map(|p| p.to_string()).collect();
     let mut full_args: Vec<&str> = vec!["commit-tree", tree_sha];
@@ -97,9 +96,6 @@ pub async fn commit_tree(
     }
     full_args.push("-m");
     full_args.push(message);
-
-    // Drop the unused `args` binding
-    let _ = args;
 
     let output = git_cmd::run(&full_args, repo).await?;
 
