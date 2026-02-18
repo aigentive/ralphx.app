@@ -128,15 +128,24 @@ struct RalphxConfig {
     process_mapping: ProcessMapping,
     #[serde(default)]
     team_constraints: TeamConstraintsConfig,
+    /// If true (default), defers merges when conflicts exist or agents are running.
+    /// If false, all merges proceed immediately without deferral.
+    #[serde(default = "default_defer_merge_enabled")]
+    defer_merge_enabled: bool,
 }
 
 const EMBEDDED_CONFIG: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../ralphx.yaml"));
+
+fn default_defer_merge_enabled() -> bool {
+    true
+}
 
 struct LoadedConfig {
     agents: Vec<AgentConfig>,
     claude: ClaudeRuntimeConfig,
     process_mapping: ProcessMapping,
     team_constraints: TeamConstraintsConfig,
+    defer_merge_enabled: bool,
 }
 
 static LOADED_CONFIG_CELL: OnceLock<LoadedConfig> = OnceLock::new();
@@ -359,6 +368,7 @@ fn parse_config(yaml: &str) -> Option<LoadedConfig> {
         claude,
         process_mapping: parsed.process_mapping,
         team_constraints: parsed.team_constraints,
+        defer_merge_enabled: parsed.defer_merge_enabled,
     })
 }
 
@@ -595,6 +605,7 @@ fn load_config() -> LoadedConfig {
         },
         process_mapping: ProcessMapping::default(),
         team_constraints: TeamConstraintsConfig::default(),
+        defer_merge_enabled: true,
     })
 }
 
@@ -643,6 +654,10 @@ pub fn team_constraints_config() -> &'static TeamConstraintsConfig {
     &LOADED_CONFIG_CELL
         .get_or_init(load_config)
         .team_constraints
+}
+
+pub fn defer_merge_enabled() -> bool {
+    LOADED_CONFIG_CELL.get_or_init(load_config).defer_merge_enabled
 }
 
 pub fn get_preapproved_tools(agent_name: &str) -> Option<String> {

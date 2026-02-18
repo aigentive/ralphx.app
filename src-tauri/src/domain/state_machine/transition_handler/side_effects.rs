@@ -54,6 +54,7 @@ use crate::domain::entities::{
 };
 use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 use crate::error::AppResult;
+use crate::infrastructure::agents::claude::defer_merge_enabled;
 
 const TEMP_SKIP_POST_MERGE_VALIDATION: bool = true;
 
@@ -209,8 +210,9 @@ impl<'a> super::TransitionHandler<'a> {
         // --- Main-merge deferral check ---
         // If target is main/base branch, defer unless ALL sibling plan tasks are terminal
         // AND no agents are running. Prevents premature retry while siblings still active.
+        // Skip this entire check if defer_merge_enabled is false.
         let base_branch = project.base_branch.as_deref().unwrap_or("main");
-        if target_branch == base_branch {
+        if target_branch == base_branch && defer_merge_enabled() {
             // Plan-level guard: all sibling tasks must be terminal before merging to main
             if let Some(ref session_id) = task.ideation_session_id {
                 let siblings = task_repo

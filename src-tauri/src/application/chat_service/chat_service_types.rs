@@ -100,6 +100,7 @@ pub struct AgentChunkPayload {
     pub conversation_id: String,
     pub context_type: String,
     pub context_id: String,
+    pub seq: u64,
 }
 
 /// Payload for agent:tool_call event
@@ -116,6 +117,7 @@ pub struct AgentToolCallPayload {
     pub diff_context: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_tool_use_id: Option<String>,
+    pub seq: u64,
 }
 
 /// Payload for agent:message_created event
@@ -165,6 +167,7 @@ pub struct AgentTaskStartedPayload {
     pub conversation_id: String,
     pub context_type: String,
     pub context_id: String,
+    pub seq: u64,
 }
 
 /// Payload for agent:task_completed event
@@ -184,6 +187,7 @@ pub struct AgentTaskCompletedPayload {
     pub conversation_id: String,
     pub context_type: String,
     pub context_id: String,
+    pub seq: u64,
 }
 
 /// Payload for agent:queue_sent event
