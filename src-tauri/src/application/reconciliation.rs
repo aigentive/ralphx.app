@@ -11,12 +11,14 @@ use tauri::{AppHandle, Emitter, Runtime};
 use tokio::sync::Mutex;
 use tracing::warn;
 
-use crate::application::{chat_service::reconcile_merge_auto_complete, TaskTransitionService};
+use crate::application::{
+    chat_service::reconcile_merge_auto_complete, GitService, TaskTransitionService,
+};
 use crate::commands::execution_commands::{ExecutionState, AGENT_ACTIVE_STATUSES};
 use crate::domain::entities::{
-    AgentRun, AgentRunId, AgentRunStatus, ChatContextType, InternalStatus, MergeRecoveryEvent,
-    MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode, MergeRecoverySource,
-    MergeRecoveryState, Task, TaskId,
+    AgentRun, AgentRunId, AgentRunStatus, ChatContextType, InternalStatus, MergeFailureSource,
+    MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
+    MergeRecoverySource, MergeRecoveryState, Task, TaskId,
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
@@ -39,13 +41,15 @@ fn merging_timeout_seconds() -> i64 {
         .and_then(|v| v.parse::<i64>().ok())
         .unwrap_or(600)
 }
-const MERGING_TIMEOUT_SECONDS: i64 = 600;
 const MERGING_MAX_AUTO_RETRIES: u32 = 3;
 const PENDING_MERGE_STALE_MINUTES: i64 = 5;
 const QA_STALE_MINUTES: i64 = 5;
 const MERGE_INCOMPLETE_AUTO_RETRY_BASE_SECONDS: i64 = 30;
 const MERGE_INCOMPLETE_AUTO_RETRY_MAX_SECONDS: i64 = 300;
 const MERGE_INCOMPLETE_MAX_AUTO_RETRIES: u32 = 5;
+/// Maximum number of validation-revert cycles before stopping auto-retry.
+/// After this many reverts, the reconciler surfaces the task to the user.
+const VALIDATION_REVERT_MAX_COUNT: u32 = 2;
 const MERGE_CONFLICT_AUTO_RETRY_BASE_SECONDS: i64 = 60;
 const MERGE_CONFLICT_AUTO_RETRY_MAX_SECONDS: i64 = 600;
 const MERGE_CONFLICT_MAX_AUTO_RETRIES: u32 = 3;
@@ -312,6 +316,19 @@ struct RecoveryPromptEvent {
 pub enum UserRecoveryAction {
     Restart,
     Cancel,
+}
+
+/// Result of comparing source branch SHA at failure time vs current SHA.
+#[derive(Debug)]
+enum ShaComparisonResult {
+    /// SHA unchanged — retrying would produce the same conflict
+    Unchanged(String),
+    /// SHA changed — new commits pushed, retry may succeed
+    Changed { old_sha: String, new_sha: String },
+    /// No SHA was stored at failure time — cannot compare, allow retry
+    NoStoredSha,
+    /// Git error while reading current SHA — allow retry conservatively
+    GitError,
 }
 
 pub struct ReconciliationRunner<R: Runtime = tauri::Wry> {
@@ -1018,6 +1035,29 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
+        // Smart retry guard: if the incomplete was explicitly reported by the agent,
+        // it was a deliberate decision — do NOT auto-retry without human intervention.
+        if Self::is_agent_reported_failure(task) {
+            warn!(
+                task_id = task.id.as_str(),
+                "Skipping auto-retry of MergeIncomplete — agent explicitly reported this failure (AgentReported)"
+            );
+            return false;
+        }
+
+        // Loop-breaking guard: if validation has reverted the merge >VALIDATION_REVERT_MAX_COUNT
+        // times, stop auto-retrying and surface to user — the code changes must fix the failures.
+        let revert_count = Self::validation_revert_count(task);
+        if revert_count > VALIDATION_REVERT_MAX_COUNT {
+            warn!(
+                task_id = task.id.as_str(),
+                revert_count = revert_count,
+                max = VALIDATION_REVERT_MAX_COUNT,
+                "Stopping auto-retry of MergeIncomplete — validation revert loop detected (ValidationFailed)"
+            );
+            return false;
+        }
+
         let age = match self.latest_status_transition_age(task, status).await {
             Some(age) => age,
             None => return false,
@@ -1034,7 +1074,15 @@ impl<R: Runtime> ReconciliationRunner<R> {
         }
 
         let attempt = retry_count + 1;
-        if let Err(e) = self.record_merge_auto_retry_event(task, attempt).await {
+        if let Err(e) = self
+            .record_merge_auto_retry_event(
+                task,
+                attempt,
+                MergeFailureSource::TransientGit,
+                "MergeIncomplete auto-retry — transient git failure",
+            )
+            .await
+        {
             warn!(
                 task_id = task.id.as_str(),
                 attempt = attempt,
@@ -1042,6 +1090,13 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 "Failed to record merge auto-retry metadata"
             );
         }
+
+        warn!(
+            task_id = task.id.as_str(),
+            attempt = attempt,
+            failure_source = "transient_git",
+            "Auto-retrying MergeIncomplete — transient git failure, transitioning to PendingMerge"
+        );
 
         match self
             .transition_service
@@ -1070,6 +1125,16 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
+        // Smart retry guard: if the conflict was explicitly reported by the agent,
+        // the agent made a deliberate decision — do NOT auto-retry without human intervention.
+        if Self::is_agent_reported_failure(task) {
+            warn!(
+                task_id = task.id.as_str(),
+                "Skipping auto-retry of MergeConflict — agent explicitly reported this conflict (AgentReported)"
+            );
+            return false;
+        }
+
         let age = match self.latest_status_transition_age(task, status).await {
             Some(age) => age,
             None => return false,
@@ -1085,8 +1150,46 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
+        // SHA comparison guard: if source branch hasn't changed since last failure,
+        // retrying the same commit will produce the same conflict — skip.
+        let sha_changed = self.check_source_sha_changed(task).await;
+        match sha_changed {
+            ShaComparisonResult::Unchanged(sha) => {
+                warn!(
+                    task_id = task.id.as_str(),
+                    source_sha = %sha,
+                    "Skipping MergeConflict auto-retry — source branch SHA unchanged since last failure"
+                );
+                return false;
+            }
+            ShaComparisonResult::Changed { old_sha, new_sha } => {
+                warn!(
+                    task_id = task.id.as_str(),
+                    old_sha = %old_sha,
+                    new_sha = %new_sha,
+                    "Source branch SHA changed since last failure — proceeding with retry"
+                );
+            }
+            ShaComparisonResult::NoStoredSha | ShaComparisonResult::GitError => {
+                // No SHA stored (first attempt) or git error — allow retry
+            }
+        }
+
+        // Get current source SHA to record with the retry event
+        let current_sha = self.get_current_source_sha(task).await;
+
         let attempt = retry_count + 1;
-        if let Err(e) = self.record_merge_auto_retry_event(task, attempt).await {
+        let failure_source = MergeFailureSource::SystemDetected;
+        if let Err(e) = self
+            .record_merge_auto_retry_event_with_sha(
+                task,
+                attempt,
+                failure_source,
+                "MergeConflict auto-retry — system-detected conflict",
+                current_sha.as_deref(),
+            )
+            .await
+        {
             warn!(
                 task_id = task.id.as_str(),
                 attempt = attempt,
@@ -1094,6 +1197,14 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 "Failed to record merge auto-retry metadata"
             );
         }
+
+        warn!(
+            task_id = task.id.as_str(),
+            attempt = attempt,
+            failure_source = "system_detected",
+            source_sha = current_sha.as_deref().unwrap_or("unknown"),
+            "Auto-retrying MergeConflict — system-detected conflict, transitioning to PendingMerge"
+        );
 
         match self
             .transition_service
@@ -1749,6 +1860,131 @@ impl<R: Runtime> ReconciliationRunner<R> {
         chrono::Duration::seconds(scaled.min(MERGE_CONFLICT_AUTO_RETRY_MAX_SECONDS))
     }
 
+    /// Returns true if the task's failure was explicitly reported by the merger agent
+    /// (via report_conflict or report_incomplete endpoints). These should NOT be auto-retried
+    /// because the agent made a deliberate decision requiring human intervention.
+    pub(crate) fn is_agent_reported_failure(task: &Task) -> bool {
+        task.metadata
+            .as_deref()
+            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+            .and_then(|v| v.get("merge_failure_source").cloned())
+            .and_then(|v| serde_json::from_value::<MergeFailureSource>(v).ok())
+            .map(|source| matches!(source, MergeFailureSource::AgentReported))
+            .unwrap_or(false)
+    }
+
+    /// Returns the number of times post-merge validation has reverted the merge commit.
+    /// Used to break validation→revert→retry loops.
+    pub(crate) fn validation_revert_count(task: &Task) -> u32 {
+        task.metadata
+            .as_deref()
+            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+            .and_then(|v| v.get("validation_revert_count").and_then(|c| c.as_u64()).map(|c| c as u32))
+            .unwrap_or(0)
+    }
+
+    /// Get the last stored source branch SHA from merge recovery events.
+    pub(crate) fn last_stored_source_sha(task: &Task) -> Option<String> {
+        MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+            .ok()
+            .flatten()
+            .and_then(|meta| {
+                meta.events
+                    .iter()
+                    .rev()
+                    .find_map(|e| e.source_sha.clone())
+            })
+    }
+
+    /// Get the current HEAD SHA of the task's source branch using GitService.
+    async fn get_current_source_sha(&self, task: &Task) -> Option<String> {
+        let branch = task.task_branch.as_deref()?;
+        let project_data = self.project_repo.get_by_id(&task.project_id).await.ok()??;
+        let repo_path = std::path::Path::new(&project_data.working_directory);
+        match GitService::get_branch_sha(repo_path, branch).await {
+            Ok(sha) => Some(sha),
+            Err(e) => {
+                warn!(
+                    task_id = task.id.as_str(),
+                    branch = branch,
+                    error = %e,
+                    "Failed to get current source branch SHA for comparison guard"
+                );
+                None
+            }
+        }
+    }
+
+    /// Compare the source branch SHA at last failure time with the current SHA.
+    async fn check_source_sha_changed(&self, task: &Task) -> ShaComparisonResult {
+        let last_sha = match Self::last_stored_source_sha(task) {
+            Some(sha) => sha,
+            None => return ShaComparisonResult::NoStoredSha,
+        };
+
+        let current_sha = match self.get_current_source_sha(task).await {
+            Some(sha) => sha,
+            None => return ShaComparisonResult::GitError,
+        };
+
+        if current_sha == last_sha {
+            ShaComparisonResult::Unchanged(current_sha)
+        } else {
+            ShaComparisonResult::Changed {
+                old_sha: last_sha,
+                new_sha: current_sha,
+            }
+        }
+    }
+
+    /// Record auto-retry event with optional source SHA (for SHA comparison guard).
+    async fn record_merge_auto_retry_event_with_sha(
+        &self,
+        task: &Task,
+        attempt: u32,
+        failure_source: MergeFailureSource,
+        retry_reason: &str,
+        source_sha: Option<&str>,
+    ) -> Result<(), String> {
+        let mut updated = task.clone();
+        let mut recovery = MergeRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
+            .unwrap_or(None)
+            .unwrap_or_default();
+
+        let mut event = MergeRecoveryEvent::new(
+            MergeRecoveryEventKind::AutoRetryTriggered,
+            MergeRecoverySource::Auto,
+            MergeRecoveryReasonCode::GitError,
+            format!(
+                "Auto-retry triggered (attempt {}, source={:?}): {}",
+                attempt, failure_source, retry_reason
+            ),
+        )
+        .with_attempt(attempt)
+        .with_failure_source(failure_source);
+
+        if let Some(ref source_branch) = updated.task_branch {
+            event = event.with_source_branch(source_branch.clone());
+        }
+        if let Some(sha) = source_sha {
+            event = event.with_source_sha(sha);
+        }
+
+        recovery.append_event_with_state(event, MergeRecoveryState::Retrying);
+        updated.metadata = Some(
+            recovery
+                .update_task_metadata(updated.metadata.as_deref())
+                .map_err(|e| e.to_string())?,
+        );
+        set_trigger_origin(&mut updated, "recovery");
+        updated.touch();
+
+        self.task_repo
+            .update(&updated)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
     fn latest_deferred_blocker_id(&self, task: &Task) -> Option<TaskId> {
         MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
             .ok()
@@ -1782,7 +2018,13 @@ impl<R: Runtime> ReconciliationRunner<R> {
         }
     }
 
-    async fn record_merge_auto_retry_event(&self, task: &Task, attempt: u32) -> Result<(), String> {
+    async fn record_merge_auto_retry_event(
+        &self,
+        task: &Task,
+        attempt: u32,
+        failure_source: MergeFailureSource,
+        retry_reason: &str,
+    ) -> Result<(), String> {
         let mut updated = task.clone();
         let mut recovery = MergeRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
             .unwrap_or(None)
@@ -1793,11 +2035,12 @@ impl<R: Runtime> ReconciliationRunner<R> {
             MergeRecoverySource::Auto,
             MergeRecoveryReasonCode::GitError,
             format!(
-                "Auto-retry triggered after MergeIncomplete (attempt {})",
-                attempt
+                "Auto-retry triggered (attempt {}, source={:?}): {}",
+                attempt, failure_source, retry_reason
             ),
         )
-        .with_attempt(attempt);
+        .with_attempt(attempt)
+        .with_failure_source(failure_source);
 
         if let Some(ref source_branch) = updated.task_branch {
             event = event.with_source_branch(source_branch.clone());
@@ -1833,7 +2076,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 "Merge timed out after {}s without completion signal",
                 age.num_seconds().max(0)
             ),
-        );
+        )
+        .with_failure_source(MergeFailureSource::TransientGit);
         recovery.append_event_with_state(failed_event, MergeRecoveryState::Failed);
 
         let mut metadata = match recovery.update_task_metadata(updated.metadata.as_deref()) {

@@ -46,8 +46,8 @@ use crate::application::{GitService, MergeAttemptResult};
 use crate::domain::entities::{
     merge_progress_event::{MergePhase, MergePhaseStatus},
     task_metadata::{
-        MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
-        MergeRecoverySource, MergeRecoveryState,
+        MergeFailureSource, MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata,
+        MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState,
     },
     GitMode, InternalStatus, MergeStrategy, MergeValidationMode, PlanBranchStatus, ProjectId, Task,
     TaskId,
@@ -5420,12 +5420,33 @@ impl<'a> super::TransitionHandler<'a> {
                 );
             }
 
-            task.metadata = Some(format_validation_error_metadata(
-                failures,
-                log,
-                source_branch,
-                target_branch,
-            ));
+            // Track revert count for loop-breaking: increment existing counter.
+            // After >2 reverts due to validation failure, reconciler will stop auto-retrying.
+            let prev_revert_count: u32 = task
+                .metadata
+                .as_deref()
+                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                .and_then(|v| v.get("validation_revert_count").and_then(|c| c.as_u64()).map(|c| c as u32))
+                .unwrap_or(0);
+            let revert_count = prev_revert_count + 1;
+
+            let base_metadata = format_validation_error_metadata(failures, log, source_branch, target_branch);
+            // Merge base metadata with revert tracking fields
+            let final_metadata = if let Ok(mut v) = serde_json::from_str::<serde_json::Value>(&base_metadata) {
+                if let Some(obj) = v.as_object_mut() {
+                    obj.insert(
+                        "merge_failure_source".to_string(),
+                        serde_json::to_value(MergeFailureSource::ValidationFailed)
+                            .unwrap_or(serde_json::json!("validation_failed")),
+                    );
+                    obj.insert("validation_revert_count".to_string(), serde_json::json!(revert_count));
+                }
+                v.to_string()
+            } else {
+                base_metadata
+            };
+
+            task.metadata = Some(final_metadata);
             task.internal_status = InternalStatus::MergeIncomplete;
             task.touch();
 
