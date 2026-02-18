@@ -29,7 +29,17 @@ use crate::domain::state_machine::transition_handler::{
     has_branch_missing_metadata, set_trigger_origin,
 };
 
-const MERGING_TIMEOUT_SECONDS: i64 = 300;
+/// Merger agent timeout. After this many seconds without a completion signal,
+/// the reconciler marks the task as MergeIncomplete so it surfaces to the user
+/// and can be auto-retried. Configurable via RALPHX_MERGER_TIMEOUT_SECS env var
+/// (default: 600 seconds / 10 minutes).
+fn merging_timeout_seconds() -> i64 {
+    std::env::var("RALPHX_MERGER_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(600)
+}
+const MERGING_TIMEOUT_SECONDS: i64 = 600;
 const MERGING_MAX_AUTO_RETRIES: u32 = 3;
 const PENDING_MERGE_STALE_MINUTES: i64 = 5;
 const QA_STALE_MINUTES: i64 = 5;
@@ -741,7 +751,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         let mut evidence = self
             .build_run_evidence(task, ChatContextType::Merge, run.as_ref())
             .await;
-        evidence.is_stale = age >= chrono::Duration::seconds(MERGING_TIMEOUT_SECONDS);
+        evidence.is_stale = age >= chrono::Duration::seconds(merging_timeout_seconds());
 
         // Agent is running, registered, and not stale — let it work
         if evidence.run_status == Some(AgentRunStatus::Running)
@@ -768,17 +778,20 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 task_id = task.id.as_str(),
                 retry_count = retry_count,
                 max = MERGING_MAX_AUTO_RETRIES,
-                "Merging retry limit reached — escalating to MergeConflict"
+                "Merging retry limit reached — transitioning to MergeIncomplete for user retry"
             );
+            // Use MergeIncomplete (not MergeConflict) because timeout indicates a hung agent,
+            // not an explicit merge conflict. MergeIncomplete surfaces the task in the
+            // needs_attention panel and allows auto-retry via reconcile_merge_incomplete_task.
             return self
                 .apply_recovery_decision(
                     &updated_task,
                     status,
                     RecoveryContext::Merge,
                     RecoveryDecision {
-                        action: RecoveryActionKind::Transition(InternalStatus::MergeConflict),
+                        action: RecoveryActionKind::Transition(InternalStatus::MergeIncomplete),
                         reason: Some(format!(
-                            "Merge failed {} times — escalating to MergeConflict for manual resolution",
+                            "Merger agent timed out {} times — transitioning to MergeIncomplete for retry",
                             retry_count
                         )),
                     },
@@ -1829,17 +1842,18 @@ impl<R: Runtime> ReconciliationRunner<R> {
             Err(_) => serde_json::json!({}),
         };
 
+        let timeout_secs = merging_timeout_seconds();
         if let Some(obj) = metadata.as_object_mut() {
             obj.insert(
                 "error".to_string(),
                 serde_json::json!(format!(
                     "Merge timed out after {}s without complete_merge callback",
-                    MERGING_TIMEOUT_SECONDS
+                    timeout_secs
                 )),
             );
             obj.insert(
                 "merge_timeout_seconds".to_string(),
-                serde_json::json!(MERGING_TIMEOUT_SECONDS),
+                serde_json::json!(timeout_secs),
             );
             obj.insert(
                 "merge_timeout_at".to_string(),
