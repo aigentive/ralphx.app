@@ -27,6 +27,7 @@ vi.mock("@/lib/tauri", () => ({
   api: {
     tasks: {
       move: vi.fn(async () => ({})),
+      restart: vi.fn(async () => ({ type: "Success", task: {} })),
     },
   },
 }));
@@ -412,8 +413,120 @@ describe("BasicTaskDetail", () => {
       await user.click(button);
 
       await waitFor(() => {
-        expect(mockApiTasksMove).toHaveBeenCalledWith(task.id, "ready", undefined);
+        expect(mockApiTasksMove).toHaveBeenCalledWith(task.id, "ready", undefined, undefined);
       });
+    });
+  });
+
+  describe("restart note textarea", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      mockUseTaskSteps.mockReturnValue({
+        data: [],
+        isLoading: false,
+        isError: false,
+      } as ReturnType<typeof useTaskSteps>);
+      mockConfirmation.confirm = vi.fn(async () => true);
+    });
+
+    it("renders note textarea for failed state", () => {
+      const task = createTestTask({ internalStatus: "failed" });
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByTestId("restart-note-textarea")).toBeInTheDocument();
+    });
+
+    it("renders note textarea for stopped state", () => {
+      const task = createTestTask({ internalStatus: "stopped" });
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByTestId("restart-note-textarea")).toBeInTheDocument();
+    });
+
+    it("renders note textarea for cancelled state", () => {
+      const task = createTestTask({ internalStatus: "cancelled" });
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByTestId("restart-note-textarea")).toBeInTheDocument();
+    });
+
+    it("renders note textarea for paused state", () => {
+      const task = createTestTask({ internalStatus: "paused" });
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByTestId("restart-note-textarea")).toBeInTheDocument();
+    });
+
+    it("does not render note textarea for ready state", () => {
+      const task = createTestTask({ internalStatus: "ready" });
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.queryByTestId("restart-note-textarea")).not.toBeInTheDocument();
+    });
+
+    it("passes note to api.tasks.move when restarting failed task", async () => {
+      const user = userEvent.setup();
+      const task = createTestTask({ internalStatus: "failed" });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      const textarea = screen.getByTestId("restart-note-textarea");
+      await user.type(textarea, "Fix the broken import");
+
+      const button = screen.getByTestId("restart-button");
+      await user.click(button);
+
+      await waitFor(() => {
+        expect(mockApiTasksMove).toHaveBeenCalledWith(
+          task.id,
+          "ready",
+          undefined,
+          "Fix the broken import"
+        );
+      });
+    });
+
+    it("passes undefined note when textarea is empty", async () => {
+      const user = userEvent.setup();
+      const task = createTestTask({ internalStatus: "failed" });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      const button = screen.getByTestId("restart-button");
+      await user.click(button);
+
+      await waitFor(() => {
+        expect(mockApiTasksMove).toHaveBeenCalledWith(
+          task.id,
+          "ready",
+          undefined,
+          undefined
+        );
+      });
+    });
+
+    it("note textarea accepts user input for stopped task", async () => {
+      const user = userEvent.setup();
+      // stop_metadata is a nested JSON string inside the outer metadata JSON object
+      const stopMetadataInner = JSON.stringify({
+        stopped_from_status: "executing",
+        stopped_at: new Date().toISOString(),
+        stop_reason: "User requested",
+      });
+      const stopMetadata = JSON.stringify({
+        stop_metadata: stopMetadataInner,
+      });
+      const task = createTestTask({
+        internalStatus: "stopped",
+        metadata: stopMetadata,
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      const textarea = screen.getByTestId("restart-note-textarea");
+      expect(textarea).toBeInTheDocument();
+      await user.type(textarea, "Try a different approach");
+      expect(textarea).toHaveValue("Try a different approach");
     });
   });
 
@@ -476,7 +589,7 @@ describe("BasicTaskDetail", () => {
       await user.click(screen.getByTestId("start-button"));
 
       await waitFor(() => {
-        expect(mockApiTasksMove).toHaveBeenCalledWith(task.id, "ready", "team");
+        expect(mockApiTasksMove).toHaveBeenCalledWith(task.id, "ready", "team", undefined);
       });
     });
 

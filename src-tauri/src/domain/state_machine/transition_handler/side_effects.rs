@@ -49,25 +49,150 @@ use crate::domain::entities::{
         MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
         MergeRecoverySource, MergeRecoveryState,
     },
-    GitMode, InternalStatus, MergeStrategy, MergeValidationMode, PlanBranchStatus, ProjectId, Task,
-    TaskId,
+    GitMode, IdeationSessionId, InternalStatus, MergeStrategy, MergeValidationMode,
+    PlanBranchStatus, ProjectId, Task, TaskCategory, TaskId,
 };
-use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
+use crate::domain::repositories::{
+    IdeationSessionRepository, PlanBranchRepository, TaskRepository,
+};
 use crate::error::AppResult;
 use crate::infrastructure::agents::claude::defer_merge_enabled;
 
 const TEMP_SKIP_POST_MERGE_VALIDATION: bool = true;
 
-/// Build a squash commit message based on task category.
+/// Map a TaskCategory to its conventional commit type prefix.
 ///
-/// For plan_merge tasks: `feat: {title}\n\nPlan branch: {branch}`
-/// For regular tasks: `feat: {branch} ({title})`
-fn build_squash_commit_msg(category: &str, title: &str, source_branch: &str) -> String {
-    if category == "plan_merge" {
-        format!("feat: {}\n\nPlan branch: {}", title, source_branch)
-    } else {
-        format!("feat: {} ({})", source_branch, title)
+/// | Category | Commit Type |
+/// |---|---|
+/// | Feature | `feat` |
+/// | Fix | `fix` |
+/// | Refactor | `refactor` |
+/// | Docs | `docs` |
+/// | Test | `test` |
+/// | Performance | `perf` |
+/// | Security, DevOps, Chore, Setup, Research, Design | `chore` |
+fn category_to_commit_type(category: &TaskCategory) -> &'static str {
+    match category {
+        TaskCategory::Feature => "feat",
+        TaskCategory::Fix => "fix",
+        TaskCategory::Refactor => "refactor",
+        TaskCategory::Docs => "docs",
+        TaskCategory::Test => "test",
+        TaskCategory::Performance => "perf",
+        TaskCategory::Security
+        | TaskCategory::DevOps
+        | TaskCategory::Chore
+        | TaskCategory::Setup
+        | TaskCategory::Research
+        | TaskCategory::Design => "chore",
     }
+}
+
+/// Derive the conventional commit type via majority-wins across task categories.
+///
+/// Parses each task's category string into a `TaskCategory`, counts votes per commit type,
+/// and returns the type with the most votes. Ties are broken by variant priority:
+/// feat > fix > refactor > docs > test > perf > chore.
+/// Falls back to `"feat"` if the task list is empty or all categories are unparseable.
+fn derive_commit_type(tasks: &[crate::domain::entities::Task]) -> &'static str {
+    use std::collections::HashMap;
+    use std::str::FromStr;
+
+    // Priority order for tie-breaking (lower index = higher priority)
+    const PRIORITY: &[&str] = &[
+        "feat", "fix", "refactor", "docs", "test", "perf", "chore",
+    ];
+
+    let mut votes: HashMap<&'static str, usize> = HashMap::new();
+    for task in tasks {
+        if let Ok(cat) = TaskCategory::from_str(&task.category) {
+            let commit_type = category_to_commit_type(&cat);
+            *votes.entry(commit_type).or_insert(0) += 1;
+        }
+    }
+
+    if votes.is_empty() {
+        return "feat";
+    }
+
+    let max_votes = *votes.values().max().unwrap_or(&0);
+
+    // Among types with max votes, pick the highest-priority one
+    PRIORITY
+        .iter()
+        .find(|&&t| votes.get(t).copied().unwrap_or(0) == max_votes)
+        .copied()
+        .unwrap_or("feat")
+}
+
+/// Build a descriptive squash commit message for plan merge tasks.
+///
+/// Fetches the live session title and sibling tasks to construct:
+/// `$derived_type: $session_title\n\nPlan branch: {branch}\nTasks ({n}):\n- ...`
+///
+/// Fallback chain for subject:
+/// 1. `session.title` (live fetch) — set by session-namer or user rename
+/// 2. First sibling task title — if session title is NULL
+/// 3. `"Merge plan into {base_branch}"` — no session title, no tasks
+///
+/// Task list is capped at 20 entries with `(+N more)` overflow.
+async fn build_plan_merge_commit_msg(
+    ideation_session_id: &IdeationSessionId,
+    source_branch: &str,
+    task_repo: &dyn TaskRepository,
+    session_repo: &dyn IdeationSessionRepository,
+) -> String {
+    // Fetch sibling tasks for this ideation session
+    let sibling_tasks = task_repo
+        .get_by_ideation_session(ideation_session_id)
+        .await
+        .unwrap_or_default();
+
+    // Fetch live session title
+    let session_title = session_repo
+        .get_by_id(ideation_session_id)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|s| s.title);
+
+    // Derive commit type from sibling task categories
+    let commit_type = derive_commit_type(&sibling_tasks);
+
+    // Determine subject with fallback chain
+    let subject = session_title
+        .as_deref()
+        .map(str::to_owned)
+        .or_else(|| sibling_tasks.first().map(|t| t.title.clone()))
+        .unwrap_or_else(|| "Merge plan into main".to_string());
+
+    // Build task list body (capped at 20)
+    let task_count = sibling_tasks.len();
+    let mut body = format!("Plan branch: {}", source_branch);
+
+    if task_count > 0 {
+        body.push_str(&format!("\nTasks ({}):", task_count));
+        let display_count = task_count.min(20);
+        for task in sibling_tasks.iter().take(display_count) {
+            body.push_str(&format!("\n- {}", task.title));
+        }
+        if task_count > 20 {
+            body.push_str(&format!("\n(+{} more)", task_count - 20));
+        }
+    }
+
+    format!("{}: {}\n\n{}", commit_type, subject, body)
+}
+
+/// Build a squash commit message for regular (non-plan-merge) tasks.
+///
+/// Format: `$category_commit_type: {branch} ({title})`
+fn build_squash_commit_msg(category: &str, title: &str, source_branch: &str) -> String {
+    use std::str::FromStr;
+    let commit_type = TaskCategory::from_str(category)
+        .map(|cat| category_to_commit_type(&cat))
+        .unwrap_or("feat");
+    format!("{}: {} ({})", commit_type, source_branch, title)
 }
 
 impl<'a> super::TransitionHandler<'a> {
@@ -859,9 +984,36 @@ impl<'a> super::TransitionHandler<'a> {
         // - (Squash, Local): squash merge for clean single commit (operates on main repo)
         // - (Squash, Worktree): squash merge in worktree (or in-repo if target checked out)
 
-        // Build commit message for squash merges
-        let squash_commit_msg =
-            build_squash_commit_msg(&task.category, &task.title, &source_branch);
+        // Build commit message for squash merges.
+        // For plan_merge tasks: use live session title + task enumeration.
+        // For regular tasks: use category-derived commit type.
+        let squash_commit_msg = if task.category == "plan_merge" {
+            if let (Some(session_id), Some(task_repo), Some(session_repo)) = (
+                task.ideation_session_id.as_ref(),
+                self.machine.context.services.task_repo.as_deref(),
+                self.machine.context.services.ideation_session_repo.as_deref(),
+            ) {
+                build_plan_merge_commit_msg(
+                    session_id,
+                    &source_branch,
+                    task_repo,
+                    session_repo,
+                )
+                .await
+            } else {
+                // Fallback: repos unavailable, use generic message
+                tracing::warn!(
+                    task_id = task_id_str,
+                    has_session_id = task.ideation_session_id.is_some(),
+                    has_task_repo = self.machine.context.services.task_repo.is_some(),
+                    has_session_repo = self.machine.context.services.ideation_session_repo.is_some(),
+                    "build_plan_merge_commit_msg: repos unavailable, using generic message"
+                );
+                format!("feat: {}\n\nPlan branch: {}", task.title, source_branch)
+            }
+        } else {
+            build_squash_commit_msg(&task.category, &task.title, &source_branch)
+        };
         match (project.merge_strategy, project.git_mode) {
             (MergeStrategy::Merge, GitMode::Worktree) => {
                 // Detect if the target branch is already checked out in the primary repo.
@@ -5336,7 +5488,9 @@ impl<'a> super::TransitionHandler<'a> {
 mod tests {
     use super::*;
     use crate::domain::entities::types::IdeationSessionId;
-    use crate::domain::entities::{ArtifactId, PlanBranch, PlanBranchStatus, ProjectId, TaskId};
+    use crate::domain::entities::{
+        ArtifactId, IdeationSession, PlanBranch, PlanBranchStatus, ProjectId, TaskId,
+    };
     use crate::infrastructure::memory::{MemoryPlanBranchRepository, MemoryTaskRepository};
 
     fn make_project(base_branch: Option<&str>) -> Project {
@@ -6665,28 +6819,391 @@ mod tests {
         );
     }
 
+    // =========================================================================
+    // category_to_commit_type + derive_commit_type tests
+    // =========================================================================
+
     #[test]
-    fn test_build_squash_commit_msg_plan_merge() {
-        let msg = build_squash_commit_msg(
-            "plan_merge",
-            "Fix \"Remove All From Plan\"",
-            "ralphx/ralphx/plan-abc123",
+    fn test_category_to_commit_type_mappings() {
+        assert_eq!(category_to_commit_type(&TaskCategory::Feature), "feat");
+        assert_eq!(category_to_commit_type(&TaskCategory::Fix), "fix");
+        assert_eq!(category_to_commit_type(&TaskCategory::Refactor), "refactor");
+        assert_eq!(category_to_commit_type(&TaskCategory::Docs), "docs");
+        assert_eq!(category_to_commit_type(&TaskCategory::Test), "test");
+        assert_eq!(category_to_commit_type(&TaskCategory::Performance), "perf");
+        assert_eq!(category_to_commit_type(&TaskCategory::Security), "chore");
+        assert_eq!(category_to_commit_type(&TaskCategory::DevOps), "chore");
+        assert_eq!(category_to_commit_type(&TaskCategory::Chore), "chore");
+        assert_eq!(category_to_commit_type(&TaskCategory::Setup), "chore");
+        assert_eq!(category_to_commit_type(&TaskCategory::Research), "chore");
+        assert_eq!(category_to_commit_type(&TaskCategory::Design), "chore");
+    }
+
+    fn make_task_with_category(category: &str) -> Task {
+        let mut t = Task::new(
+            ProjectId::from_string("proj-1".to_string()),
+            format!("Task with category {}", category),
         );
-        assert_eq!(
-            msg,
-            "feat: Fix \"Remove All From Plan\"\n\nPlan branch: ralphx/ralphx/plan-abc123"
-        );
+        t.category = category.to_string();
+        t
     }
 
     #[test]
-    fn test_build_squash_commit_msg_regular_task() {
-        let msg = build_squash_commit_msg("feat", "Write tests", "ralphx/ralphx/task-xyz");
+    fn test_derive_commit_type_empty_returns_feat() {
+        assert_eq!(derive_commit_type(&[]), "feat");
+    }
+
+    #[test]
+    fn test_derive_commit_type_single_feature() {
+        let tasks = vec![make_task_with_category("feature")];
+        assert_eq!(derive_commit_type(&tasks), "feat");
+    }
+
+    #[test]
+    fn test_derive_commit_type_majority_wins_fix() {
+        let tasks = vec![
+            make_task_with_category("fix"),
+            make_task_with_category("fix"),
+            make_task_with_category("feature"),
+        ];
+        assert_eq!(derive_commit_type(&tasks), "fix");
+    }
+
+    #[test]
+    fn test_derive_commit_type_tie_broken_by_priority() {
+        // feat and fix both have 1 vote — feat wins due to higher priority
+        let tasks = vec![
+            make_task_with_category("feature"),
+            make_task_with_category("fix"),
+        ];
+        assert_eq!(derive_commit_type(&tasks), "feat");
+    }
+
+    #[test]
+    fn test_derive_commit_type_all_chore_categories() {
+        let tasks = vec![
+            make_task_with_category("security"),
+            make_task_with_category("devops"),
+            make_task_with_category("chore"),
+        ];
+        assert_eq!(derive_commit_type(&tasks), "chore");
+    }
+
+    #[test]
+    fn test_derive_commit_type_unparseable_category_ignored() {
+        // "plan_merge" is not a TaskCategory variant — should be skipped
+        let tasks = vec![
+            make_task_with_category("plan_merge"),
+            make_task_with_category("fix"),
+        ];
+        assert_eq!(derive_commit_type(&tasks), "fix");
+    }
+
+    // =========================================================================
+    // build_squash_commit_msg (regular tasks) tests
+    // =========================================================================
+
+    #[test]
+    fn test_build_squash_commit_msg_feature() {
+        let msg = build_squash_commit_msg("feature", "Write tests", "ralphx/ralphx/task-xyz");
         assert_eq!(msg, "feat: ralphx/ralphx/task-xyz (Write tests)");
     }
 
     #[test]
-    fn test_build_squash_commit_msg_different_category() {
+    fn test_build_squash_commit_msg_fix_category() {
         let msg = build_squash_commit_msg("fix", "Fix bug", "ralphx/ralphx/task-123");
-        assert_eq!(msg, "feat: ralphx/ralphx/task-123 (Fix bug)");
+        assert_eq!(msg, "fix: ralphx/ralphx/task-123 (Fix bug)");
+    }
+
+    #[test]
+    fn test_build_squash_commit_msg_refactor_category() {
+        let msg = build_squash_commit_msg("refactor", "Refactor auth", "ralphx/ralphx/task-456");
+        assert_eq!(msg, "refactor: ralphx/ralphx/task-456 (Refactor auth)");
+    }
+
+    #[test]
+    fn test_build_squash_commit_msg_chore_category() {
+        let msg = build_squash_commit_msg("chore", "Update deps", "ralphx/ralphx/task-789");
+        assert_eq!(msg, "chore: ralphx/ralphx/task-789 (Update deps)");
+    }
+
+    #[test]
+    fn test_build_squash_commit_msg_unknown_category_falls_back_to_feat() {
+        let msg = build_squash_commit_msg("unknown", "Do stuff", "ralphx/ralphx/task-000");
+        assert_eq!(msg, "feat: ralphx/ralphx/task-000 (Do stuff)");
+    }
+
+    // =========================================================================
+    // build_plan_merge_commit_msg (async) tests
+    // =========================================================================
+
+    use crate::infrastructure::memory::MemoryIdeationSessionRepository;
+
+    fn make_session_no_title(session_id: &str) -> IdeationSession {
+        let id = IdeationSessionId::from_string(session_id.to_string());
+        IdeationSession {
+            id,
+            project_id: ProjectId::from_string("proj-1".to_string()),
+            title: None,
+            status: crate::domain::entities::IdeationSessionStatus::default(),
+            plan_artifact_id: None,
+            seed_task_id: None,
+            parent_session_id: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            archived_at: None,
+            converted_at: None,
+            team_mode: None,
+            team_config_json: None,
+        }
+    }
+
+    fn make_session_with_title_for_test(session_id: &str, title: &str) -> IdeationSession {
+        let id = IdeationSessionId::from_string(session_id.to_string());
+        IdeationSession {
+            id,
+            project_id: ProjectId::from_string("proj-1".to_string()),
+            title: Some(title.to_string()),
+            status: crate::domain::entities::IdeationSessionStatus::default(),
+            plan_artifact_id: None,
+            seed_task_id: None,
+            parent_session_id: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            archived_at: None,
+            converted_at: None,
+            team_mode: None,
+            team_config_json: None,
+        }
+    }
+
+    fn make_plan_task(session_id_str: &str, title: &str, category: &str) -> Task {
+        let mut t = Task::new(
+            ProjectId::from_string("proj-1".to_string()),
+            title.to_string(),
+        );
+        t.category = category.to_string();
+        t.ideation_session_id =
+            Some(IdeationSessionId::from_string(session_id_str.to_string()));
+        t
+    }
+
+    #[tokio::test]
+    async fn test_build_plan_merge_commit_msg_with_session_title_and_tasks() {
+        let session_id = "sess-001";
+        let session = make_session_with_title_for_test(session_id, "Add OAuth2 login");
+        let tasks = vec![
+            make_plan_task(session_id, "Add JWT token refresh endpoint", "feature"),
+            make_plan_task(session_id, "Implement OAuth2 provider integration", "feature"),
+            make_plan_task(session_id, "Add session expiry UI warning", "feature"),
+        ];
+
+        let task_repo = MemoryTaskRepository::with_tasks(tasks);
+        let session_repo = MemoryIdeationSessionRepository::new();
+        let sid = IdeationSessionId::from_string(session_id.to_string());
+        session_repo.create(session).await.unwrap();
+
+        let msg = build_plan_merge_commit_msg(
+            &sid,
+            "ralphx/ralphx/plan-a3b2c1d0",
+            &task_repo,
+            &session_repo,
+        )
+        .await;
+
+        assert!(
+            msg.starts_with("feat: Add OAuth2 login"),
+            "Should start with derived type and session title, got: {}",
+            msg
+        );
+        assert!(
+            msg.contains("Plan branch: ralphx/ralphx/plan-a3b2c1d0"),
+            "Should contain plan branch"
+        );
+        assert!(
+            msg.contains("Tasks (3):"),
+            "Should list task count, got: {}",
+            msg
+        );
+        assert!(
+            msg.contains("- Add JWT token refresh endpoint"),
+            "Should list first task"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_build_plan_merge_commit_msg_fix_dominated_plan() {
+        let session_id = "sess-002";
+        let session = make_session_with_title_for_test(session_id, "Fix auth race conditions");
+        let tasks = vec![
+            make_plan_task(session_id, "Fix token refresh timing", "fix"),
+            make_plan_task(session_id, "Fix logout race condition", "fix"),
+            make_plan_task(session_id, "Fix missing CSRF headers", "fix"),
+        ];
+
+        let task_repo = MemoryTaskRepository::with_tasks(tasks);
+        let session_repo = MemoryIdeationSessionRepository::new();
+        let sid = IdeationSessionId::from_string(session_id.to_string());
+        session_repo.create(session).await.unwrap();
+
+        let msg = build_plan_merge_commit_msg(
+            &sid,
+            "ralphx/ralphx/plan-d4e5f6",
+            &task_repo,
+            &session_repo,
+        )
+        .await;
+
+        assert!(
+            msg.starts_with("fix: Fix auth race conditions"),
+            "Should use fix type (majority), got: {}",
+            msg
+        );
+    }
+
+    #[tokio::test]
+    async fn test_build_plan_merge_commit_msg_no_session_title_falls_back_to_first_task() {
+        let session_id = "sess-003";
+        let session = make_session_no_title(session_id);
+        let tasks = vec![make_plan_task(session_id, "Add payment gateway", "feature")];
+
+        let task_repo = MemoryTaskRepository::with_tasks(tasks);
+        let session_repo = MemoryIdeationSessionRepository::new();
+        let sid = IdeationSessionId::from_string(session_id.to_string());
+        session_repo.create(session).await.unwrap();
+
+        let msg = build_plan_merge_commit_msg(
+            &sid,
+            "ralphx/ralphx/plan-111",
+            &task_repo,
+            &session_repo,
+        )
+        .await;
+
+        assert!(
+            msg.starts_with("feat: Add payment gateway"),
+            "Should use first task title as fallback, got: {}",
+            msg
+        );
+    }
+
+    #[tokio::test]
+    async fn test_build_plan_merge_commit_msg_no_session_no_tasks_uses_generic() {
+        let session_id = "sess-004";
+        let session = make_session_no_title(session_id);
+
+        let task_repo = MemoryTaskRepository::new();
+        let session_repo = MemoryIdeationSessionRepository::new();
+        let sid = IdeationSessionId::from_string(session_id.to_string());
+        session_repo.create(session).await.unwrap();
+
+        let msg = build_plan_merge_commit_msg(
+            &sid,
+            "ralphx/ralphx/plan-222",
+            &task_repo,
+            &session_repo,
+        )
+        .await;
+
+        assert!(
+            msg.contains("Merge plan into main"),
+            "Should use generic fallback when no title or tasks, got: {}",
+            msg
+        );
+    }
+
+    #[tokio::test]
+    async fn test_build_plan_merge_commit_msg_truncates_at_20_tasks() {
+        let session_id = "sess-005";
+        let session = make_session_with_title_for_test(session_id, "Big refactor");
+        let tasks: Vec<Task> = (1..=25)
+            .map(|i| make_plan_task(session_id, &format!("Task {}", i), "refactor"))
+            .collect();
+
+        let task_repo = MemoryTaskRepository::with_tasks(tasks);
+        let session_repo = MemoryIdeationSessionRepository::new();
+        let sid = IdeationSessionId::from_string(session_id.to_string());
+        session_repo.create(session).await.unwrap();
+
+        let msg = build_plan_merge_commit_msg(
+            &sid,
+            "ralphx/ralphx/plan-333",
+            &task_repo,
+            &session_repo,
+        )
+        .await;
+
+        assert!(
+            msg.contains("Tasks (25):"),
+            "Should show total count of 25, got: {}",
+            msg
+        );
+        assert!(
+            msg.contains("(+5 more)"),
+            "Should show overflow count, got: {}",
+            msg
+        );
+    }
+
+    #[tokio::test]
+    async fn test_build_plan_merge_commit_msg_user_renamed_title() {
+        let session_id = "sess-006";
+        let session =
+            make_session_with_title_for_test(session_id, "Add OAuth2 login and JWT sessions");
+        let tasks = vec![
+            make_plan_task(session_id, "Add JWT token refresh endpoint", "feature"),
+            make_plan_task(session_id, "Implement OAuth2 provider integration", "feature"),
+        ];
+
+        let task_repo = MemoryTaskRepository::with_tasks(tasks);
+        let session_repo = MemoryIdeationSessionRepository::new();
+        let sid = IdeationSessionId::from_string(session_id.to_string());
+        session_repo.create(session).await.unwrap();
+
+        let msg = build_plan_merge_commit_msg(
+            &sid,
+            "ralphx/ralphx/plan-444",
+            &task_repo,
+            &session_repo,
+        )
+        .await;
+
+        assert_eq!(
+            msg.lines().next().unwrap(),
+            "feat: Add OAuth2 login and JWT sessions",
+            "Should use user-renamed session title as subject"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_build_plan_merge_commit_msg_mixed_categories_majority_wins() {
+        let session_id = "sess-007";
+        let session = make_session_with_title_for_test(session_id, "Sprint cleanup");
+        // 2 fix, 1 feature, 1 chore → fix wins
+        let tasks = vec![
+            make_plan_task(session_id, "Fix token expiry", "fix"),
+            make_plan_task(session_id, "Fix logout bug", "fix"),
+            make_plan_task(session_id, "Add rate limiting", "feature"),
+            make_plan_task(session_id, "Update changelog", "chore"),
+        ];
+
+        let task_repo = MemoryTaskRepository::with_tasks(tasks);
+        let session_repo = MemoryIdeationSessionRepository::new();
+        let sid = IdeationSessionId::from_string(session_id.to_string());
+        session_repo.create(session).await.unwrap();
+
+        let msg = build_plan_merge_commit_msg(
+            &sid,
+            "ralphx/ralphx/plan-555",
+            &task_repo,
+            &session_repo,
+        )
+        .await;
+
+        assert!(
+            msg.starts_with("fix: Sprint cleanup"),
+            "fix should win majority vote, got: {}",
+            msg
+        );
     }
 }
