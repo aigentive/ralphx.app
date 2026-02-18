@@ -222,6 +222,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             team_service.clone(),
             team_mode,
             streaming_state_cache.clone(),
+            Some(Arc::clone(&running_agent_registry)),
         )
         .await;
 

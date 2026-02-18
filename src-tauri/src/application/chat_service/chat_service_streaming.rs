@@ -17,6 +17,7 @@ use crate::domain::entities::{
     ActivityEvent, ActivityEventType, ChatContextType, ChatConversationId, ChatMessageId, TaskId,
 };
 use crate::domain::repositories::{ActivityEventRepository, ChatMessageRepository, TaskRepository};
+use crate::domain::services::{RunningAgentKey, RunningAgentRegistry};
 use crate::infrastructure::agents::claude::{
     ContentBlockItem, DiffContext, StreamEvent, StreamProcessor, ToolCall,
 };
@@ -156,6 +157,7 @@ pub async fn process_stream_background<R: Runtime>(
     team_service: Option<std::sync::Arc<crate::application::TeamService>>,
     team_mode: bool,
     streaming_state_cache: StreamingStateCache,
+    running_agent_registry: Option<Arc<dyn RunningAgentRegistry>>,
 ) -> Result<StreamOutcome, StreamError> {
     let mut timeout_config = StreamTimeoutConfig::for_context(&context_type);
     // Team leads wait long periods while teammates work — use 1-hour timeout
@@ -198,12 +200,14 @@ pub async fn process_stream_background<R: Runtime>(
         "Debug log path (written on parse failure)"
     );
 
-    // Parse task_id for activity persistence (only for TaskExecution context)
-    let task_id_for_persistence = if context_type == ChatContextType::TaskExecution {
-        Some(TaskId::from_string(context_id.to_string()))
-    } else {
-        None
-    };
+    // Parse task_id for activity persistence (for TaskExecution and Merge contexts).
+    // Merge context uses the task_id as context_id, so the mapping is identical.
+    let task_id_for_persistence =
+        if matches!(context_type, ChatContextType::TaskExecution | ChatContextType::Merge) {
+            Some(TaskId::from_string(context_id.to_string()))
+        } else {
+            None
+        };
 
     // Spawn stderr reader
     let _stderr_handle = app_handle.clone();
@@ -234,6 +238,13 @@ pub async fn process_stream_background<R: Runtime>(
     // Debounced flush for incremental persistence (every 2 seconds)
     let mut last_flush = std::time::Instant::now();
     const FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+
+    // Throttled heartbeat: update last_active_at every 5s on any parsed event
+    let heartbeat_key = running_agent_registry.as_ref().map(|_| {
+        RunningAgentKey::new(context_type.to_string(), context_id)
+    });
+    let mut last_heartbeat = std::time::Instant::now();
+    const HEARTBEAT_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
 
     // Track Task tool_use_id → (team_name, teammate_name) for teammate lifecycle
     let mut teammate_task_map: HashMap<String, (String, String)> = HashMap::new();
@@ -332,8 +343,8 @@ pub async fn process_stream_background<R: Runtime>(
                             );
                             stream_seq += 1;
 
-                            // Activity stream event for task execution
-                            if context_type == ChatContextType::TaskExecution {
+                            // Activity stream event for task execution and merge
+                            if matches!(context_type, ChatContextType::TaskExecution | ChatContextType::Merge) {
                                 let _ = handle.emit(
                                     events::AGENT_MESSAGE,
                                     serde_json::json!({
@@ -369,8 +380,8 @@ pub async fn process_stream_background<R: Runtime>(
                         }
                     }
                     StreamEvent::Thinking(text) => {
-                        // Activity stream event for task execution
-                        if context_type == ChatContextType::TaskExecution {
+                        // Activity stream event for task execution and merge
+                        if matches!(context_type, ChatContextType::TaskExecution | ChatContextType::Merge) {
                             if let Some(ref handle) = app_handle {
                                 let _ = handle.emit(
                                     events::AGENT_MESSAGE,
@@ -507,8 +518,8 @@ pub async fn process_stream_background<R: Runtime>(
                             );
                             stream_seq += 1;
 
-                            // Activity stream event for task execution
-                            if context_type == ChatContextType::TaskExecution {
+                            // Activity stream event for task execution and merge
+                            if matches!(context_type, ChatContextType::TaskExecution | ChatContextType::Merge) {
                                 let tool_content = format!(
                                     "{} ({})",
                                     tool_call.name,
@@ -859,8 +870,8 @@ pub async fn process_stream_background<R: Runtime>(
                             );
                             stream_seq += 1;
 
-                            // Activity stream event for task execution
-                            if context_type == ChatContextType::TaskExecution {
+                            // Activity stream event for task execution and merge
+                            if matches!(context_type, ChatContextType::TaskExecution | ChatContextType::Merge) {
                                 let result_content =
                                     serde_json::to_string(&result).unwrap_or_default();
                                 let result_metadata = serde_json::json!({
@@ -975,6 +986,14 @@ pub async fn process_stream_background<R: Runtime>(
                     .await;
             }
             last_flush = std::time::Instant::now();
+        }
+
+        // Throttled heartbeat: write last_active_at every 5s on any parsed event
+        if lines_parsed > 0 && last_heartbeat.elapsed() >= HEARTBEAT_INTERVAL {
+            if let (Some(ref registry), Some(ref key)) = (&running_agent_registry, &heartbeat_key) {
+                registry.update_heartbeat(key, chrono::Utc::now()).await;
+            }
+            last_heartbeat = std::time::Instant::now();
         }
 
         if lines_seen % 50 == 0 {
