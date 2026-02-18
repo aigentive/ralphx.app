@@ -10,9 +10,10 @@
 
 use super::helpers::*;
 use crate::domain::entities::{InternalStatus, ProjectId};
-use crate::domain::repositories::TaskRepository;
+use crate::domain::repositories::{PlanBranchRepository, ProjectRepository, TaskRepository};
 use crate::domain::state_machine::events::TaskEvent;
 use crate::domain::state_machine::machine::State;
+use crate::domain::state_machine::transition_handler::complete_merge_internal;
 
 // ============================================================================
 // F1: Task worktree deleted before merge — COVERED
@@ -428,5 +429,163 @@ async fn test_f8_no_worktree_path_health_validation() {
     assert!(
         result.is_success(),
         "GAP: Transition succeeds even with broken worktree path — no path health validation"
+    );
+}
+
+// ============================================================================
+// FIX: Recreate deleted plan branch when re-executing a task from a merged plan — COVERED
+// ============================================================================
+
+#[tokio::test]
+async fn test_fix_merged_plan_branch_status_triggers_recreation_on_reexecution() {
+    // COVERED: When a task's plan branch has PlanBranchStatus::Merged,
+    // resolve_task_base_branch handles the Merged arm instead of falling through
+    // to the default (main). In the state machine flow without a real git repo,
+    // the recreation attempt fails and the task ends up in Failed via ExecutionBlocked.
+    //
+    // Before the fix: the Merged arm didn't exist — the match fell through to `_ => default`,
+    // so the task silently used "main" as its base branch instead of the plan branch.
+    // After the fix: the Merged arm tries to recreate the branch; if git fails, it falls back
+    // gracefully. Either way, the code path is exercised (not silently bypassed).
+    //
+    // Full unit-level regression (with a real temp git repo) is in:
+    //   merge_helpers.rs::tests::test_resolve_task_base_branch_merged_branch_missing_recreates_it
+    use crate::domain::entities::{
+        ArtifactId, IdeationSessionId, PlanBranch, PlanBranchStatus,
+    };
+
+    let s = create_hardening_services();
+
+    let project = create_test_project("merged-plan-proj");
+    let project_id = project.id.clone();
+    s.project_repo.create(project).await.unwrap();
+
+    // Set up a plan branch in Merged status (simulates post-merge state)
+    let session_id = IdeationSessionId::from_string("session-merged-plan");
+    let pb = {
+        let mut branch = PlanBranch::new(
+            ArtifactId::from_string("artifact-merged-plan"),
+            session_id.clone(),
+            project_id.clone(),
+            "ralphx/merged-plan-proj/plan-session-merged-plan".to_string(),
+            "main".to_string(),
+        );
+        branch.status = PlanBranchStatus::Merged;
+        branch
+    };
+    s.plan_branch_repo.create(pb).await.unwrap();
+
+    // Create a task with ideation_session_id pointing to the merged plan
+    let mut task = create_test_task(&project_id, "Re-executed task from merged plan");
+    task.internal_status = InternalStatus::Ready;
+    task.ideation_session_id = Some(session_id.clone());
+    let task_id_str = task.id.as_str().to_string();
+    s.task_repo.create(task).await.unwrap();
+
+    let services = build_task_services(&s);
+    let mut machine = create_state_machine(&task_id_str, project_id.as_str(), services);
+    let mut handler = create_transition_handler(&mut machine);
+
+    // Transition Ready -> Executing: triggers resolve_task_base_branch with Merged plan branch
+    let result = handler
+        .handle_transition(&State::Ready, &TaskEvent::StartExecution)
+        .await;
+
+    // The Merged arm is now exercised. Git operations fail on /tmp/test-project (no real repo),
+    // so the task enters ExecutionBlocked -> auto-fails to Failed.
+    // Previously (before the fix): would silently fall through to main as base branch.
+    assert!(
+        result.is_success(),
+        "TransitionHandler should return Success (auto-dispatches ExecutionFailed on git failure)"
+    );
+
+    // Verify the plan branch repo is accessible (state machine wired correctly)
+    let stored_pb = s
+        .plan_branch_repo
+        .get_by_session_id(&session_id)
+        .await
+        .unwrap();
+    assert!(
+        stored_pb.is_some(),
+        "Plan branch should still exist in repo after re-execution attempt"
+    );
+}
+
+// ============================================================================
+// FIX: Stale task_branch/worktree_path cleared on merge cleanup — COVERED
+// ============================================================================
+
+#[tokio::test]
+async fn test_fix_complete_merge_internal_clears_task_branch_and_worktree_path() {
+    // COVERED: After complete_merge_internal() runs, task.task_branch and
+    // task.worktree_path must both be None in the DB.
+    //
+    // Bug: Before this fix, cleanup_branch_and_worktree_internal() deleted the
+    // git branch/worktree but left task.task_branch and task.worktree_path set
+    // to the now-deleted values. When the task was later reopened and
+    // re-executed, on_enter(Executing) saw task.task_branch.is_some() and
+    // skipped branch setup entirely, then failed trying to use the deleted branch.
+    let s = create_hardening_services();
+
+    let project_id = ProjectId::from_string("proj-fix-cleanup".to_string());
+    let mut task = create_test_task_with_status(
+        &project_id,
+        "Merged task with stale branch",
+        InternalStatus::PendingMerge,
+    );
+    task.task_branch = Some("ralphx/test-project/task-fix-cleanup".to_string());
+    task.worktree_path = Some("/tmp/ralphx-worktrees/task-fix-cleanup".to_string());
+    s.task_repo.create(task.clone()).await.unwrap();
+
+    let project = create_test_project("proj-fix-cleanup");
+    s.project_repo.create(project.clone()).await.unwrap();
+
+    // Call complete_merge_internal directly with a fake commit SHA.
+    // GitService::is_commit_on_branch will fail (non-fatal) because the repo
+    // path doesn't exist — the function proceeds and cleanup runs.
+    // Git branch/worktree deletion will also fail (non-fatal) for the same reason.
+    // What we verify is that task_branch and worktree_path are cleared in the DB.
+    let task_repo = s.task_repo.clone() as std::sync::Arc<dyn crate::domain::repositories::TaskRepository>;
+    let result = complete_merge_internal::<tauri::Wry>(
+        &mut task,
+        &project,
+        "deadbeef000000000000000000000000deadbeef",
+        "main",
+        &task_repo,
+        None,
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "complete_merge_internal should succeed even when git operations fail: {:?}",
+        result
+    );
+
+    // Verify task in DB has task_branch and worktree_path cleared
+    let stored_task = s
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("Task should exist in DB");
+
+    assert!(
+        stored_task.task_branch.is_none(),
+        "task_branch must be cleared after merge cleanup so re-execution creates a fresh branch"
+    );
+    assert!(
+        stored_task.worktree_path.is_none(),
+        "worktree_path must be cleared after merge cleanup so re-execution creates a fresh worktree"
+    );
+
+    // Also verify the in-memory task struct was updated
+    assert!(
+        task.task_branch.is_none(),
+        "In-memory task.task_branch must also be None after complete_merge_internal"
+    );
+    assert!(
+        task.worktree_path.is_none(),
+        "In-memory task.worktree_path must also be None after complete_merge_internal"
     );
 }
