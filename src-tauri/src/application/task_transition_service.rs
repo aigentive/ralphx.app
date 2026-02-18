@@ -746,14 +746,14 @@ impl<R: Runtime> TaskTransitionService<R> {
                 self.chat_service.set_team_mode(explicit);
             }
             None => {
-                // No explicit choice — fall back to task metadata
-                if let Some(ref metadata_str) = task.metadata {
-                    if let Ok(meta) = serde_json::from_str::<serde_json::Value>(metadata_str) {
-                        if meta.get("agent_variant").and_then(|v| v.as_str()) == Some("team") {
-                            self.chat_service.set_team_mode(true);
-                        }
-                    }
-                }
+                // No explicit choice — fall back to task metadata.
+                // Always set team_mode explicitly to prevent AtomicBool contamination
+                // from previous tasks sharing the same Arc<ChatService>.
+                let is_team = task.metadata.as_ref()
+                    .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                    .and_then(|meta| meta.get("agent_variant").and_then(|v| v.as_str()).map(|s| s == "team"))
+                    .unwrap_or(false);
+                self.chat_service.set_team_mode(is_team);
             }
         }
 
