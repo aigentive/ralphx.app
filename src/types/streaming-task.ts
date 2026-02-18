@@ -17,10 +17,16 @@ export type StreamingTaskStatus = "running" | "completed" | "failed";
 /**
  * StreamingContentBlock - Discriminated union representing chunks of streaming content.
  * Allows text and tool calls to be interleaved in the order they arrive from the agent.
+ *
+ * The `task` variant is a position marker only — it records WHERE in the stream a Task
+ * tool call appeared. Actual task metadata is read from `streamingTasks` Map via
+ * toolUseId lookup. This preserves all existing StreamingTask behavior (status updates,
+ * child tool calls) while rendering the card at its chronological position.
  */
 export type StreamingContentBlock =
   | { type: "text"; text: string }
-  | { type: "tool_use"; toolCall: ToolCall };
+  | { type: "tool_use"; toolCall: ToolCall }
+  | { type: "task"; toolUseId: string };
 
 export interface StreamingTask {
   /** The Task tool_use.id — links child tool calls via parentToolUseId */
