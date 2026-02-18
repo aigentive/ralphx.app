@@ -283,7 +283,7 @@ export const tasksApi = {
   move: (taskId: string, toStatus: string, agentVariant?: string): Promise<Task> =>
     typedInvokeWithTransform(
       "move_task",
-      { taskId, toStatus, ...(agentVariant !== undefined && { agentVariant }) },
+      { taskId, toStatus, agentVariant: agentVariant ?? null },
       TaskSchema,
       transformTask
     ),
