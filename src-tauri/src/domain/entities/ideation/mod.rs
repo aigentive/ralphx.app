@@ -62,6 +62,8 @@ pub struct IdeationSession {
     pub team_mode: Option<String>,
     /// Serialized JSON team configuration
     pub team_config_json: Option<String>,
+    /// Title source: "auto" (session-namer) | "user" (manual rename). None treated as "auto".
+    pub title_source: Option<String>,
 }
 
 /// Builder for creating IdeationSession instances
@@ -80,6 +82,7 @@ pub struct IdeationSessionBuilder {
     converted_at: Option<DateTime<Utc>>,
     team_mode: Option<String>,
     team_config_json: Option<String>,
+    title_source: Option<String>,
 }
 
 impl IdeationSessionBuilder {
@@ -166,6 +169,12 @@ impl IdeationSessionBuilder {
         self
     }
 
+    /// Set the title source
+    pub fn title_source(mut self, title_source: impl Into<String>) -> Self {
+        self.title_source = Some(title_source.into());
+        self
+    }
+
     /// Build the IdeationSession
     /// Panics if project_id is not set
     pub fn build(self) -> IdeationSession {
@@ -184,6 +193,7 @@ impl IdeationSessionBuilder {
             converted_at: self.converted_at,
             team_mode: self.team_mode,
             team_config_json: self.team_config_json,
+            title_source: self.title_source,
         }
     }
 }
@@ -289,6 +299,7 @@ impl IdeationSession {
                 .map(Self::parse_datetime),
             team_mode: row.get::<_, Option<String>>("team_mode").unwrap_or(None),
             team_config_json: row.get::<_, Option<String>>("team_config_json").unwrap_or(None),
+            title_source: row.get::<_, Option<String>>("title_source").unwrap_or(None),
         })
     }
 

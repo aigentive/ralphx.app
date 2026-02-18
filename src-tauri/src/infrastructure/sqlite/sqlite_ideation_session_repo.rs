@@ -40,12 +40,13 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         let conn = self.conn.lock().await;
 
         conn.execute(
-            "INSERT INTO ideation_sessions (id, project_id, title, status, plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            "INSERT INTO ideation_sessions (id, project_id, title, title_source, status, plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             rusqlite::params![
                 session.id.as_str(),
                 session.project_id.as_str(),
                 session.title,
+                session.title_source,
                 session.status.to_string(),
                 session.plan_artifact_id.as_ref().map(|id| id.as_str()),
                 session.seed_task_id.as_ref().map(|id| id.as_str()),
@@ -67,7 +68,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         let conn = self.conn.lock().await;
 
         let result = conn.query_row(
-            "SELECT id, project_id, title, status, plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json
+            "SELECT id, project_id, title, title_source, status, plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json
              FROM ideation_sessions WHERE id = ?1",
             [id.as_str()],
             |row| IdeationSession::from_row(row),
@@ -85,7 +86,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, project_id, title, status, plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json
+                "SELECT id, project_id, title, title_source, status, plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json
                  FROM ideation_sessions WHERE project_id = ?1 ORDER BY updated_at DESC",
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -147,13 +148,18 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         Ok(())
     }
 
-    async fn update_title(&self, id: &IdeationSessionId, title: Option<String>) -> AppResult<()> {
+    async fn update_title(
+        &self,
+        id: &IdeationSessionId,
+        title: Option<String>,
+        title_source: &str,
+    ) -> AppResult<()> {
         let conn = self.conn.lock().await;
         let now = Utc::now();
 
         conn.execute(
-            "UPDATE ideation_sessions SET title = ?2, updated_at = ?3 WHERE id = ?1",
-            rusqlite::params![id.as_str(), title, now.to_rfc3339(),],
+            "UPDATE ideation_sessions SET title = ?2, title_source = ?3, updated_at = ?4 WHERE id = ?1",
+            rusqlite::params![id.as_str(), title, title_source, now.to_rfc3339(),],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
 
@@ -196,7 +202,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, project_id, title, status, plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json
+                "SELECT id, project_id, title, title_source, status, plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json
                  FROM ideation_sessions
                  WHERE project_id = ?1 AND status = 'active'
                  ORDER BY updated_at DESC",
@@ -238,7 +244,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, project_id, title, status, plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json
+                "SELECT id, project_id, title, title_source, status, plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json
                  FROM ideation_sessions WHERE plan_artifact_id = ?1",
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -257,7 +263,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, project_id, title, status, plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json
+                "SELECT id, project_id, title, title_source, status, plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json
                  FROM ideation_sessions WHERE parent_session_id = ?1 ORDER BY created_at DESC",
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -283,7 +289,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         // Walk up the parent chain iteratively
         loop {
             let result = conn.query_row(
-                "SELECT id, project_id, title, status, plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json
+                "SELECT id, project_id, title, title_source, status, plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json
                  FROM ideation_sessions WHERE id = ?1",
                 [current_id.as_str()],
                 |row| IdeationSession::from_row(row),
@@ -295,7 +301,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                         current_id = parent_id.clone();
                         // Fetch parent and add to chain
                         match conn.query_row(
-                            "SELECT id, project_id, title, status, plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json
+                            "SELECT id, project_id, title, title_source, status, plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json
                              FROM ideation_sessions WHERE id = ?1",
                             [parent_id.as_str()],
                             |row| IdeationSession::from_row(row),
@@ -690,12 +696,13 @@ mod tests {
         repo.create(session.clone()).await.unwrap();
 
         let result = repo
-            .update_title(&session.id, Some("New Title".to_string()))
+            .update_title(&session.id, Some("New Title".to_string()), "auto")
             .await;
         assert!(result.is_ok());
 
         let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
         assert_eq!(found.title, Some("New Title".to_string()));
+        assert_eq!(found.title_source, Some("auto".to_string()));
     }
 
     #[tokio::test]
@@ -709,11 +716,31 @@ mod tests {
 
         repo.create(session.clone()).await.unwrap();
 
-        let result = repo.update_title(&session.id, None).await;
+        let result = repo.update_title(&session.id, None, "auto").await;
         assert!(result.is_ok());
 
         let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
         assert_eq!(found.title, None);
+    }
+
+    #[tokio::test]
+    async fn test_update_title_user_source() {
+        let conn = setup_test_db();
+        let project_id = ProjectId::new();
+        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+
+        let repo = SqliteIdeationSessionRepository::new(conn);
+        let session = create_test_session(&project_id, Some("Original"));
+
+        repo.create(session.clone()).await.unwrap();
+
+        repo.update_title(&session.id, Some("User Renamed".to_string()), "user")
+            .await
+            .unwrap();
+
+        let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
+        assert_eq!(found.title, Some("User Renamed".to_string()));
+        assert_eq!(found.title_source, Some("user".to_string()));
     }
 
     #[tokio::test]
@@ -730,7 +757,7 @@ mod tests {
 
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
-        repo.update_title(&session.id, Some("Updated".to_string()))
+        repo.update_title(&session.id, Some("Updated".to_string()), "auto")
             .await
             .unwrap();
 
