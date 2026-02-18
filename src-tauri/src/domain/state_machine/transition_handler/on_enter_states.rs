@@ -723,17 +723,46 @@ impl<'a> super::TransitionHandler<'a> {
                     // Skip guard: check if metadata was already pre-computed (e.g., by transition_task_with_metadata)
                     match task_repo.get_by_id(&task_id_typed).await {
                         Ok(Some(task)) => {
+                            // Read auto_retry_count_executing from task metadata for observability
+                            let attempt_count = task
+                                .metadata
+                                .as_deref()
+                                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                                .and_then(|v| {
+                                    v.get("auto_retry_count_executing")
+                                        .and_then(|c| c.as_u64())
+                                })
+                                .unwrap_or(0) as u32;
+
                             if MetadataUpdate::key_exists_in(
                                 "failure_error",
                                 task.metadata.as_deref(),
                             ) {
                                 tracing::debug!(
                                     task_id = task_id,
-                                    "Skipping metadata write - failure_error already present (pre-computed)"
+                                    attempt_count = attempt_count,
+                                    "failure_error already present (pre-computed); writing attempt_count only"
                                 );
+                                // Write attempt_count even when other failure metadata was pre-computed
+                                let metadata_update =
+                                    MetadataUpdate::new().with_u32("attempt_count", attempt_count);
+                                let merged_metadata =
+                                    metadata_update.merge_into(task.metadata.as_deref());
+                                if let Err(e) = task_repo
+                                    .update_metadata(&task_id_typed, Some(merged_metadata))
+                                    .await
+                                {
+                                    tracing::error!(
+                                        task_id = task_id,
+                                        error = %e,
+                                        "Failed to write attempt_count to failure metadata"
+                                    );
+                                }
                             } else {
                                 // Fallback: metadata not pre-computed, write it now for backward compatibility
-                                let metadata_update = build_failed_metadata(data);
+                                let enriched_data =
+                                    data.clone().with_attempt_count(attempt_count);
+                                let metadata_update = build_failed_metadata(&enriched_data);
                                 let merged_metadata =
                                     metadata_update.merge_into(task.metadata.as_deref());
 
