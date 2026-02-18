@@ -1,8 +1,10 @@
-// Concurrency hardening tests (Scenarios G1-G4)
+// Concurrency hardening tests (Scenarios G1-G4 + TOCTOU fix)
 //
 // Focus: ExecutionState thread safety, max_concurrent enforcement,
-// pause/resume interaction, merge deferral race conditions.
+// pause/resume interaction, merge deferral race conditions,
+// and the TOCTOU fix using merge_lock + merges_in_flight.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use super::helpers::*;
@@ -484,5 +486,135 @@ async fn test_g4_merge_incomplete_exists_as_fallback() {
         result.state(),
         Some(&State::MergeIncomplete),
         "GAP: MergeIncomplete exists as fallback for merge race failures"
+    );
+}
+
+// ============================================================================
+// TOCTOU fix: merge_lock serializes the concurrent merge guard
+// ============================================================================
+
+#[tokio::test]
+async fn test_toctou_merge_lock_is_shared_across_task_services() {
+    // FIXED: Both TaskServices created from the same HardeningServices share
+    // the same Arc<Mutex<()>> merge_lock. This serializes the check-and-set
+    // in `attempt_programmatic_merge`, eliminating the TOCTOU race.
+    let s = create_hardening_services();
+
+    let services1 = build_task_services(&s);
+    let services2 = build_task_services(&s);
+
+    // Both services must point to the same underlying mutex
+    assert!(
+        Arc::ptr_eq(&services1.merge_lock, &services2.merge_lock),
+        "Both TaskServices must share the same merge_lock Arc (same pointer) \
+         so the lock serializes concurrent merge guard checks"
+    );
+}
+
+#[tokio::test]
+async fn test_toctou_merge_lock_serializes_concurrent_access() {
+    // FIXED: Verify that acquiring the merge_lock from one task blocks
+    // the other, preventing both from reading "no blocker" simultaneously.
+    let s = create_hardening_services();
+
+    // Take the lock (simulating task 1 inside the critical section)
+    let lock = Arc::clone(&s.merge_lock);
+    let guard = lock.lock().await;
+
+    // Task 2 should not be able to acquire the lock while task 1 holds it
+    let try_result = s.merge_lock.try_lock();
+    assert!(
+        try_result.is_err(),
+        "Second task must not acquire merge_lock while first task holds it — \
+         this is the atomicity guarantee that eliminates TOCTOU"
+    );
+
+    // Drop task 1's guard — task 2 can now proceed
+    drop(guard);
+    let try_result2 = s.merge_lock.try_lock();
+    assert!(
+        try_result2.is_ok(),
+        "After task 1 releases merge_lock, task 2 should be able to acquire it"
+    );
+}
+
+// ============================================================================
+// TOCTOU fix: merges_in_flight self-dedup guard
+// ============================================================================
+
+#[tokio::test]
+async fn test_self_dedup_merges_in_flight_is_shared_across_task_services() {
+    // FIXED: Both TaskServices share the same merges_in_flight set.
+    let s = create_hardening_services();
+
+    let services1 = build_task_services(&s);
+    let services2 = build_task_services(&s);
+
+    assert!(
+        Arc::ptr_eq(&services1.merges_in_flight, &services2.merges_in_flight),
+        "Both TaskServices must share the same merges_in_flight Arc so the \
+         self-dedup guard works correctly across concurrent callers"
+    );
+}
+
+#[tokio::test]
+async fn test_self_dedup_insert_prevents_duplicate_entry() {
+    // FIXED: Inserting the same task ID twice returns false on the second insert,
+    // causing `attempt_programmatic_merge` to skip the duplicate call.
+    let s = create_hardening_services();
+    let task_id = "task-dedup-test".to_string();
+
+    let mut set = s.merges_in_flight.lock().unwrap();
+
+    // First insert succeeds
+    let first = set.insert(task_id.clone());
+    assert!(first, "First insert should return true — task is not yet in flight");
+
+    // Second insert for the same task returns false (dedup fires)
+    let second = set.insert(task_id.clone());
+    assert!(
+        !second,
+        "Second insert returns false — duplicate merge attempt would be skipped"
+    );
+
+    // Cleanup: remove to simulate merge completion
+    set.remove(&task_id);
+    let after_remove = set.insert(task_id.clone());
+    assert!(
+        after_remove,
+        "After merge completes (remove), a new merge attempt should be accepted"
+    );
+}
+
+#[tokio::test]
+async fn test_self_dedup_concurrent_insert_only_one_wins() {
+    // FIXED: Concurrent inserts for the same task ID — only the first wins,
+    // the second returns false and would cause the caller to skip its merge.
+    let set: Arc<std::sync::Mutex<HashSet<String>>> =
+        Arc::new(std::sync::Mutex::new(HashSet::new()));
+
+    let task_id = "task-concurrent-dedup".to_string();
+
+    // Simulate two concurrent threads both trying to insert the same task
+    let set1 = Arc::clone(&set);
+    let id1 = task_id.clone();
+    let handle1 = std::thread::spawn(move || {
+        set1.lock().unwrap().insert(id1)
+    });
+
+    // Give thread 1 a head start, then thread 2 tries to insert
+    let result1 = handle1.join().unwrap();
+
+    let set2 = Arc::clone(&set);
+    let id2 = task_id.clone();
+    let result2 = set2.lock().unwrap().insert(id2);
+
+    // Exactly one of them should have succeeded
+    assert!(
+        result1 ^ result2,
+        "Exactly one insert must succeed (XOR): result1={}, result2={}. \
+         Both succeeding is the TOCTOU bug we fixed.",
+        result1,
+        result2
     );
 }

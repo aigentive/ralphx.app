@@ -68,7 +68,7 @@ paths:
 | `approved` | `pending_merge`, `ready` |
 | `pending_merge` | `merged`, `merging` |
 | `merging` | `merged`, `merge_conflict`, `merge_incomplete`, `stopped`, `paused` |
-| `merge_incomplete` | `merging`, `merged` |
+| `merge_incomplete` | `pending_merge`, `merged` |
 | `merge_conflict` | `merged` |
 | `merged` | `ready` |
 | `failed` | `ready` |

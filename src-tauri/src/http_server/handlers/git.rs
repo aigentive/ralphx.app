@@ -14,7 +14,7 @@ use tauri::Emitter;
 
 use super::*;
 use crate::application::{GitService, TaskSchedulerService, TaskTransitionService};
-use crate::domain::entities::{InternalStatus, TaskId};
+use crate::domain::entities::{task_metadata::MergeFailureSource, InternalStatus, TaskId};
 use crate::domain::state_machine::resolve_merge_branches;
 use crate::domain::state_machine::services::TaskScheduler;
 
@@ -408,6 +408,23 @@ pub async fn report_conflict(
         &req.conflict_files,
         "agent",
     );
+    // Mark this conflict as agent-reported so reconciler knows not to auto-retry.
+    // Smart retry guard: agent made a deliberate decision — requires human action.
+    {
+        let mut json: serde_json::Value = task
+            .metadata
+            .as_deref()
+            .and_then(|m| serde_json::from_str(m).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+        if let Some(obj) = json.as_object_mut() {
+            obj.insert(
+                "merge_failure_source".to_string(),
+                serde_json::to_value(MergeFailureSource::AgentReported)
+                    .unwrap_or(serde_json::json!("agent_reported")),
+            );
+        }
+        task.metadata = Some(json.to_string());
+    }
     task.touch();
 
     if let Err(e) = state.app_state.task_repo.update(&task).await {
@@ -500,11 +517,14 @@ pub async fn report_incomplete(
         ));
     }
 
-    // 2. Persist error context to task metadata
+    // 2. Persist error context to task metadata.
+    // Mark as agent-reported so reconciler skips auto-retry (agent made a deliberate decision).
     task.metadata = Some(
         serde_json::json!({
             "error": req.reason,
             "diagnostic_info": req.diagnostic_info,
+            "merge_failure_source": serde_json::to_value(MergeFailureSource::AgentReported)
+                .unwrap_or(serde_json::json!("agent_reported")),
         })
         .to_string(),
     );

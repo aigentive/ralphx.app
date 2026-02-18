@@ -46,8 +46,8 @@ use crate::application::{GitService, MergeAttemptResult};
 use crate::domain::entities::{
     merge_progress_event::{MergePhase, MergePhaseStatus},
     task_metadata::{
-        MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
-        MergeRecoverySource, MergeRecoveryState,
+        MergeFailureSource, MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata,
+        MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState,
     },
     GitMode, InternalStatus, MergeStrategy, MergeValidationMode, PlanBranchStatus, ProjectId, Task,
     TaskId,
@@ -92,6 +92,44 @@ impl<'a> super::TransitionHandler<'a> {
         let task_id_str = &self.machine.context.task_id;
         let project_id_str = &self.machine.context.project_id;
 
+        // --- Self-dedup guard ---
+        // Prevent two concurrent `attempt_programmatic_merge` calls for the same task
+        // (e.g., double-click retry or reconciliation racing with on_enter(PendingMerge)).
+        // Uses std::sync::Mutex for synchronous insert/remove (safe from async context).
+        {
+            let mut in_flight = self
+                .machine
+                .context
+                .services
+                .merges_in_flight
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            if !in_flight.insert(task_id_str.clone()) {
+                tracing::info!(
+                    task_id = task_id_str,
+                    "Merge attempt skipped — already in flight for this task (self-dedup guard)"
+                );
+                return;
+            }
+        }
+        // Register a cleanup guard so we always remove the task from `merges_in_flight`
+        // when this function returns (success, error, or early return).
+        struct InFlightGuard {
+            set: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
+            id: String,
+        }
+        impl Drop for InFlightGuard {
+            fn drop(&mut self) {
+                if let Ok(mut guard) = self.set.lock() {
+                    guard.remove(&self.id);
+                }
+            }
+        }
+        let _in_flight_guard = InFlightGuard {
+            set: std::sync::Arc::clone(&self.machine.context.services.merges_in_flight),
+            id: task_id_str.clone(),
+        };
+
         // Only proceed if repos are available
         let (Some(ref task_repo), Some(ref project_repo)) = (
             &self.machine.context.services.task_repo,
@@ -105,6 +143,10 @@ impl<'a> super::TransitionHandler<'a> {
                 "Programmatic merge BLOCKED: repos not available — \
                  task will remain stuck in PendingMerge"
             );
+            // Cannot write MergeIncomplete to DB without repos, but call on_exit so
+            // deferred merge retries for other tasks are not blocked by this one.
+            self.on_exit(&State::PendingMerge, &State::MergeIncomplete)
+                .await;
             return;
         };
 
@@ -202,6 +244,11 @@ impl<'a> super::TransitionHandler<'a> {
                 .services
                 .event_emitter
                 .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                .await;
+
+            // Route through TransitionHandler exit to trigger deferred merge retry
+            // and ensure all side effects (e.g. try_retry_deferred_merges) fire.
+            self.on_exit(&State::PendingMerge, &State::MergeIncomplete)
                 .await;
 
             return;
@@ -472,7 +519,13 @@ impl<'a> super::TransitionHandler<'a> {
         // we must defer this task to avoid the "branch already checked out" error.
         // Priority: task that entered pending_merge first wins; later task gets deferred.
         // Tie-breaker: lexical task ID comparison for deterministic results.
+        //
+        // TOCTOU fix: acquire merge_lock before the check-and-set so two tasks
+        // cannot both read "no blocker" simultaneously and both proceed to merge.
+        // The guard is held until the deferred metadata is written (or cleared),
+        // then dropped — either explicitly at the `return` site or at block end.
         if project.git_mode == GitMode::Worktree {
+            let _merge_guard = self.machine.context.services.merge_lock.lock().await;
             let all_tasks = task_repo
                 .get_by_project(&project.id)
                 .await
@@ -719,137 +772,17 @@ impl<'a> super::TransitionHandler<'a> {
             }
         }
 
-        // In worktree mode, delete the task worktree first to unlock the branch.
-        // Git refuses to checkout a branch that's checked out in another worktree,
-        // so we must remove the task worktree before creating the merge worktree.
-        if project.git_mode == GitMode::Worktree {
-            if let Some(ref worktree_path) = task.worktree_path {
-                let worktree_path_buf = PathBuf::from(worktree_path);
-                if worktree_path_buf.exists() {
-                    tracing::info!(
-                        task_id = task_id_str,
-                        worktree_path = %worktree_path,
-                        "Deleting task worktree before programmatic merge to unlock branch"
-                    );
-                    if let Err(e) = GitService::delete_worktree(repo_path, &worktree_path_buf).await {
-                        tracing::error!(
-                            task_id = task_id_str,
-                            error = %e,
-                            worktree_path = %worktree_path,
-                            "Failed to delete task worktree before merge"
-                        );
-                        // Continue anyway - merge will fail with a clear error
-                    }
-                }
-            }
-
-            // --- Stale merge worktree cleanup ---
-            // Step 1: Prune stale worktree references (metadata pointing to deleted dirs)
-            if let Err(e) = GitService::prune_worktrees(repo_path).await {
-                tracing::warn!(
-                    task_id = task_id_str,
-                    error = %e,
-                    "Failed to prune stale worktrees (non-fatal)"
-                );
-            }
-
-            // Step 2: Force-delete our own merge worktree if it exists from a prior attempt
-            let own_merge_wt = compute_merge_worktree_path(&project, task_id_str);
-            let own_merge_wt_path = PathBuf::from(&own_merge_wt);
-            if own_merge_wt_path.exists() {
-                tracing::info!(
-                    task_id = task_id_str,
-                    merge_worktree_path = %own_merge_wt,
-                    "Cleaning up stale merge worktree from previous attempt"
-                );
-                if let Err(e) = GitService::delete_worktree(repo_path, &own_merge_wt_path).await {
-                    tracing::warn!(
-                        task_id = task_id_str,
-                        error = %e,
-                        merge_worktree_path = %own_merge_wt,
-                        "Failed to delete stale merge worktree (non-fatal)"
-                    );
-                }
-            }
-
-            // Step 3: Scan for orphaned merge worktrees on the same target branch.
-            // Another task's merge may have crashed/failed, leaving a worktree that locks
-            // the target branch. We only clean up if the owning task is NOT actively merging.
-            if let Ok(worktrees) = GitService::list_worktrees(repo_path).await {
-                for wt in &worktrees {
-                    // Only consider merge worktrees (path contains "/merge-")
-                    let Some(other_task_id) = extract_task_id_from_merge_path(&wt.path) else {
-                        continue;
-                    };
-                    // Skip our own — already handled above
-                    if other_task_id == task_id_str {
-                        continue;
-                    }
-                    // Only care about worktrees on the same target branch
-                    let wt_branch = wt.branch.as_deref().unwrap_or("");
-                    if wt_branch != target_branch {
-                        continue;
-                    }
-                    // Check if the owning task is in the merge workflow — if so, leave it alone
-                    if is_task_in_merge_workflow(task_repo, other_task_id).await {
-                        tracing::info!(
-                            task_id = task_id_str,
-                            other_task_id = other_task_id,
-                            worktree_path = %wt.path,
-                            "Skipping merge worktree cleanup — owning task is still in merge workflow"
-                        );
-                        continue;
-                    }
-                    tracing::info!(
-                        task_id = task_id_str,
-                        other_task_id = other_task_id,
-                        worktree_path = %wt.path,
-                        target_branch = %target_branch,
-                        "Cleaning up orphaned merge worktree from non-active task"
-                    );
-                    let orphan_path = PathBuf::from(&wt.path);
-                    if let Err(e) = GitService::delete_worktree(repo_path, &orphan_path).await {
-                        tracing::warn!(
-                            task_id = task_id_str,
-                            other_task_id = other_task_id,
-                            error = %e,
-                            worktree_path = %wt.path,
-                            "Failed to delete orphaned merge worktree (non-fatal)"
-                        );
-                    }
-                }
-            }
-        }
-
-        // Abort stale rebase/merge from prior failed attempts (Local mode only —
-        // Worktree mode already deletes and recreates isolated worktrees above)
-        if project.git_mode == GitMode::Local {
-            if GitService::is_rebase_in_progress(repo_path) {
-                tracing::info!(
-                    task_id = task_id_str,
-                    "Aborting stale rebase before programmatic merge retry"
-                );
-                let _ = GitService::abort_rebase(repo_path).await;
-            }
-            if GitService::is_merge_in_progress(repo_path) {
-                tracing::info!(
-                    task_id = task_id_str,
-                    "Aborting stale merge before programmatic merge retry"
-                );
-                let _ = GitService::abort_merge(repo_path).await;
-            }
-        }
-
-        // Clean working tree before merge (non-fatal on error)
-        match GitService::clean_working_tree(repo_path).await {
-            Ok(()) => tracing::debug!(
-                task_id = task_id_str,
-                "Pre-merge working tree clean succeeded"
-            ),
-            Err(e) => {
-                tracing::warn!(task_id = task_id_str, error = %e, "Pre-merge clean failed (non-fatal)")
-            }
-        }
+        // Run pre-merge cleanup unconditionally on every attempt (first or retry).
+        // Removes stale worktrees, locks, and in-progress git operations from prior runs.
+        self.pre_merge_cleanup(
+            task_id_str,
+            &task,
+            &project,
+            repo_path,
+            &target_branch,
+            task_repo,
+        )
+        .await;
 
         // Attempt the merge based on (merge_strategy, git_mode):
         // - (Rebase, Local): rebase for linear history (operates on main repo)
@@ -5109,6 +5042,190 @@ impl<'a> super::TransitionHandler<'a> {
         } // end match
     }
 
+    /// Pre-merge cleanup: remove debris from any prior failed attempts and stale locks.
+    ///
+    /// Runs unconditionally on EVERY merge attempt (first or retry) so that transient
+    /// failures from a previous run never block the current one.
+    ///
+    /// Worktree mode:
+    ///   1. Delete the task worktree to unlock the task branch
+    ///   2. Prune stale worktree references
+    ///   3. Delete own merge worktree from a prior attempt
+    ///   4. Scan and remove orphaned merge worktrees targeting the same branch
+    ///
+    /// Local mode:
+    ///   1. Abort any in-progress rebase/merge
+    ///
+    /// Both modes:
+    ///   - Remove `.git/index.lock` if it is older than 5 seconds (stale lock from
+    ///     a crashed git process).
+    ///   - Clean the working tree (reset uncommitted changes)
+    async fn pre_merge_cleanup(
+        &self,
+        task_id_str: &str,
+        task: &crate::domain::entities::Task,
+        project: &crate::domain::entities::Project,
+        repo_path: &Path,
+        target_branch: &str,
+        task_repo: &Arc<dyn TaskRepository>,
+    ) {
+        use crate::domain::entities::GitMode;
+
+        // --- index.lock removal (both modes) ---
+        // Remove a stale .git/index.lock left by a crashed git process.
+        // Age threshold: 5 seconds — any lock older than that is definitely stale.
+        const INDEX_LOCK_STALE_SECS: u64 = 5;
+        match GitService::remove_stale_index_lock(repo_path, INDEX_LOCK_STALE_SECS) {
+            Ok(true) => {
+                tracing::info!(
+                    task_id = task_id_str,
+                    "Removed stale index.lock before merge attempt"
+                );
+            }
+            Ok(false) => {}
+            Err(e) => {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    error = %e,
+                    "Failed to remove stale index.lock (non-fatal)"
+                );
+            }
+        }
+
+        if project.git_mode == GitMode::Worktree {
+            // Step 1: Delete task worktree to unlock branch for merge worktree creation
+            if let Some(ref worktree_path) = task.worktree_path {
+                let worktree_path_buf = PathBuf::from(worktree_path);
+                if worktree_path_buf.exists() {
+                    tracing::info!(
+                        task_id = task_id_str,
+                        worktree_path = %worktree_path,
+                        "Deleting task worktree before programmatic merge to unlock branch"
+                    );
+                    if let Err(e) =
+                        GitService::delete_worktree(repo_path, &worktree_path_buf).await
+                    {
+                        tracing::error!(
+                            task_id = task_id_str,
+                            error = %e,
+                            worktree_path = %worktree_path,
+                            "Failed to delete task worktree before merge"
+                        );
+                        // Continue anyway - merge will fail with a clear error
+                    }
+                }
+            }
+
+            // Step 2: Prune stale worktree references (metadata pointing to deleted dirs)
+            if let Err(e) = GitService::prune_worktrees(repo_path).await {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    error = %e,
+                    "Failed to prune stale worktrees (non-fatal)"
+                );
+            }
+
+            // Step 3: Force-delete our own merge and rebase worktrees from prior attempts
+            for (wt_label, own_wt) in [
+                ("merge", compute_merge_worktree_path(project, task_id_str)),
+                ("rebase", compute_rebase_worktree_path(project, task_id_str)),
+            ] {
+                let own_wt_path = PathBuf::from(&own_wt);
+                if own_wt_path.exists() {
+                    tracing::info!(
+                        task_id = task_id_str,
+                        worktree_path = %own_wt,
+                        "Cleaning up stale {} worktree from previous attempt",
+                        wt_label
+                    );
+                    if let Err(e) = GitService::delete_worktree(repo_path, &own_wt_path).await {
+                        tracing::warn!(
+                            task_id = task_id_str,
+                            error = %e,
+                            worktree_path = %own_wt,
+                            "Failed to delete stale {} worktree (non-fatal)",
+                            wt_label
+                        );
+                    }
+                }
+            }
+
+            // Step 4: Scan for orphaned merge worktrees on the same target branch.
+            // Another task's merge may have crashed/failed, leaving a worktree that locks
+            // the target branch. We only clean up if the owning task is NOT actively merging.
+            if let Ok(worktrees) = GitService::list_worktrees(repo_path).await {
+                for wt in &worktrees {
+                    let Some(other_task_id) = extract_task_id_from_merge_path(&wt.path) else {
+                        continue;
+                    };
+                    if other_task_id == task_id_str {
+                        continue;
+                    }
+                    let wt_branch = wt.branch.as_deref().unwrap_or("");
+                    if wt_branch != target_branch {
+                        continue;
+                    }
+                    if is_task_in_merge_workflow(task_repo, other_task_id).await {
+                        tracing::info!(
+                            task_id = task_id_str,
+                            other_task_id = other_task_id,
+                            worktree_path = %wt.path,
+                            "Skipping merge worktree cleanup — owning task is still in merge workflow"
+                        );
+                        continue;
+                    }
+                    tracing::info!(
+                        task_id = task_id_str,
+                        other_task_id = other_task_id,
+                        worktree_path = %wt.path,
+                        target_branch = %target_branch,
+                        "Cleaning up orphaned merge worktree from non-active task"
+                    );
+                    let orphan_path = PathBuf::from(&wt.path);
+                    if let Err(e) = GitService::delete_worktree(repo_path, &orphan_path).await {
+                        tracing::warn!(
+                            task_id = task_id_str,
+                            other_task_id = other_task_id,
+                            error = %e,
+                            worktree_path = %wt.path,
+                            "Failed to delete orphaned merge worktree (non-fatal)"
+                        );
+                    }
+                }
+            }
+        }
+
+        // Abort stale rebase/merge from prior failed attempts (Local mode only —
+        // Worktree mode deletes and recreates isolated worktrees above)
+        if project.git_mode == GitMode::Local {
+            if GitService::is_rebase_in_progress(repo_path) {
+                tracing::info!(
+                    task_id = task_id_str,
+                    "Aborting stale rebase before programmatic merge"
+                );
+                let _ = GitService::abort_rebase(repo_path).await;
+            }
+            if GitService::is_merge_in_progress(repo_path) {
+                tracing::info!(
+                    task_id = task_id_str,
+                    "Aborting stale merge before programmatic merge"
+                );
+                let _ = GitService::abort_merge(repo_path).await;
+            }
+        }
+
+        // Clean working tree before merge (non-fatal on error)
+        match GitService::clean_working_tree(repo_path).await {
+            Ok(()) => tracing::debug!(
+                task_id = task_id_str,
+                "Pre-merge working tree clean succeeded"
+            ),
+            Err(e) => {
+                tracing::warn!(task_id = task_id_str, error = %e, "Pre-merge clean failed (non-fatal)")
+            }
+        }
+    }
+
     /// Post-merge cleanup: update plan branch status, delete feature branch, unblock dependents.
     ///
     /// Shared between Worktree and Local mode success paths in `attempt_programmatic_merge()`.
@@ -5303,12 +5420,33 @@ impl<'a> super::TransitionHandler<'a> {
                 );
             }
 
-            task.metadata = Some(format_validation_error_metadata(
-                failures,
-                log,
-                source_branch,
-                target_branch,
-            ));
+            // Track revert count for loop-breaking: increment existing counter.
+            // After >2 reverts due to validation failure, reconciler will stop auto-retrying.
+            let prev_revert_count: u32 = task
+                .metadata
+                .as_deref()
+                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                .and_then(|v| v.get("validation_revert_count").and_then(|c| c.as_u64()).map(|c| c as u32))
+                .unwrap_or(0);
+            let revert_count = prev_revert_count + 1;
+
+            let base_metadata = format_validation_error_metadata(failures, log, source_branch, target_branch);
+            // Merge base metadata with revert tracking fields
+            let final_metadata = if let Ok(mut v) = serde_json::from_str::<serde_json::Value>(&base_metadata) {
+                if let Some(obj) = v.as_object_mut() {
+                    obj.insert(
+                        "merge_failure_source".to_string(),
+                        serde_json::to_value(MergeFailureSource::ValidationFailed)
+                            .unwrap_or(serde_json::json!("validation_failed")),
+                    );
+                    obj.insert("validation_revert_count".to_string(), serde_json::json!(revert_count));
+                }
+                v.to_string()
+            } else {
+                base_metadata
+            };
+
+            task.metadata = Some(final_metadata);
             task.internal_status = InternalStatus::MergeIncomplete;
             task.touch();
 

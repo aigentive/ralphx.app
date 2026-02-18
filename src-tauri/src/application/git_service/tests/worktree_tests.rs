@@ -809,3 +809,114 @@ async fn test_create_worktree_fails_when_branch_exists() {
         err_msg
     );
 }
+
+// =========================================================================
+// remove_stale_index_lock Tests
+// =========================================================================
+
+/// Helper: initialise a bare-minimum git repo in `dir`.
+fn init_git_repo(dir: &std::path::Path) {
+    Command::new("git")
+        .args(["init"])
+        .current_dir(dir)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(dir)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(dir)
+        .output()
+        .unwrap();
+    std::fs::write(dir.join("file.txt"), "init").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(dir)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "init"])
+        .current_dir(dir)
+        .output()
+        .unwrap();
+    let _ = Command::new("git")
+        .args(["branch", "-M", "main"])
+        .current_dir(dir)
+        .output();
+}
+
+#[test]
+fn test_remove_stale_index_lock_no_lock_file() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+    init_git_repo(repo);
+
+    // No index.lock file exists — should return Ok(false)
+    let result = GitService::remove_stale_index_lock(repo, 5);
+    assert!(result.is_ok(), "Should not error: {:?}", result.err());
+    assert!(!result.unwrap(), "No lock file => false");
+}
+
+#[test]
+fn test_remove_stale_index_lock_fresh_lock_not_removed() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+    init_git_repo(repo);
+
+    // Create a fresh index.lock (age ~0s)
+    let lock_path = repo.join(".git").join("index.lock");
+    std::fs::write(&lock_path, "locked").unwrap();
+
+    // With threshold of 60s, a fresh lock should NOT be removed
+    let result = GitService::remove_stale_index_lock(repo, 60);
+    assert!(result.is_ok(), "Should not error: {:?}", result.err());
+    assert!(!result.unwrap(), "Fresh lock should not be removed");
+
+    // Lock file should still exist
+    assert!(lock_path.exists(), "Fresh lock should not be deleted");
+}
+
+#[test]
+fn test_remove_stale_index_lock_stale_lock_removed() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+    init_git_repo(repo);
+
+    // Create an index.lock and backdate its mtime by 10 seconds using `touch -t`
+    let lock_path = repo.join(".git").join("index.lock");
+    std::fs::write(&lock_path, "locked").unwrap();
+
+    // Use `touch` to set mtime to a time well in the past (10 seconds ago)
+    // Date format for touch: [[CC]YY]MMDDhhmm[.SS]
+    // We write a fixed date far in the past to ensure staleness
+    let _ = Command::new("touch")
+        .args(["-t", "202001010000.00", lock_path.to_str().unwrap()])
+        .output();
+
+    // With threshold of 5s, a lock from 2020 SHOULD be removed
+    let result = GitService::remove_stale_index_lock(repo, 5);
+    assert!(result.is_ok(), "Should not error: {:?}", result.err());
+    assert!(result.unwrap(), "Stale lock should be removed");
+
+    // Lock file should be gone
+    assert!(!lock_path.exists(), "Stale lock should be deleted");
+}
+
+#[test]
+fn test_remove_stale_index_lock_zero_threshold_removes_any_lock() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+    init_git_repo(repo);
+
+    let lock_path = repo.join(".git").join("index.lock");
+    std::fs::write(&lock_path, "locked").unwrap();
+
+    // Threshold of 0 means remove any lock, regardless of age
+    let result = GitService::remove_stale_index_lock(repo, 0);
+    assert!(result.is_ok(), "Should not error: {:?}", result.err());
+    assert!(result.unwrap(), "Any lock with threshold=0 should be removed");
+    assert!(!lock_path.exists(), "Lock should be deleted");
+}
