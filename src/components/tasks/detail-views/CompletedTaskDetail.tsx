@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import type { Task } from "@/types/task";
 import { ReviewDetailModal } from "@/components/reviews/ReviewDetailModal";
+import { DurationDisplay } from "./shared/DurationDisplay";
 import { api } from "@/lib/tauri";
 import { useQueryClient } from "@tanstack/react-query";
 import { taskKeys } from "@/hooks/useTasks";
@@ -186,6 +187,17 @@ export function CompletedTaskDetail({ task, isHistorical = false }: CompletedTas
             />
           }
         />
+
+        {/* Duration (static) */}
+        {task.startedAt && task.completedAt && (
+          <div data-testid="completed-task-duration">
+            <DurationDisplay
+              mode="static"
+              startedAt={task.startedAt}
+              completedAt={task.completedAt}
+            />
+          </div>
+        )}
 
         {/* Review History */}
         <section data-testid="review-history-section">
