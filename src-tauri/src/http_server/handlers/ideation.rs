@@ -272,7 +272,7 @@ pub async fn add_proposal_dependency(
     state
         .app_state
         .proposal_dependency_repo
-        .add_dependency(&proposal_id, &depends_on_id, None)
+        .add_dependency(&proposal_id, &depends_on_id, None, Some("manual"))
         .await
         .map_err(|e| {
             error!(
@@ -524,7 +524,7 @@ pub async fn apply_proposal_dependencies(
         match state
             .app_state
             .proposal_dependency_repo
-            .add_dependency(&proposal_id, &depends_on_id, suggestion.reason.as_deref())
+            .add_dependency(&proposal_id, &depends_on_id, suggestion.reason.as_deref(), Some("auto"))
             .await
         {
             Ok(_) => applied_count += 1,

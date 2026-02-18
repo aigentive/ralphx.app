@@ -45,16 +45,18 @@ impl ProposalDependencyRepository for SqliteProposalDependencyRepository {
         proposal_id: &TaskProposalId,
         depends_on_id: &TaskProposalId,
         reason: Option<&str>,
+        source: Option<&str>,
     ) -> AppResult<()> {
         let conn = self.conn.lock().await;
 
         let id = Uuid::new_v4().to_string();
+        let source = source.unwrap_or("auto");
 
         // INSERT OR IGNORE to handle UNIQUE constraint gracefully
         conn.execute(
-            "INSERT OR IGNORE INTO proposal_dependencies (id, proposal_id, depends_on_proposal_id, reason)
-             VALUES (?1, ?2, ?3, ?4)",
-            rusqlite::params![id, proposal_id.as_str(), depends_on_id.as_str(), reason],
+            "INSERT OR IGNORE INTO proposal_dependencies (id, proposal_id, depends_on_proposal_id, reason, source)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![id, proposal_id.as_str(), depends_on_id.as_str(), reason, source],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
 
@@ -159,6 +161,42 @@ impl ProposalDependencyRepository for SqliteProposalDependencyRepository {
         Ok(deps)
     }
 
+    async fn get_all_for_session_with_source(
+        &self,
+        session_id: &IdeationSessionId,
+    ) -> AppResult<Vec<(TaskProposalId, TaskProposalId, Option<String>, String)>> {
+        let conn = self.conn.lock().await;
+
+        // Join with task_proposals to filter by session
+        let mut stmt = conn
+            .prepare(
+                "SELECT pd.proposal_id, pd.depends_on_proposal_id, pd.reason, pd.source
+                 FROM proposal_dependencies pd
+                 INNER JOIN task_proposals tp ON pd.proposal_id = tp.id
+                 WHERE tp.session_id = ?1",
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        let deps = stmt
+            .query_map([session_id.as_str()], |row| {
+                let from_id: String = row.get(0)?;
+                let to_id: String = row.get(1)?;
+                let reason: Option<String> = row.get(2)?;
+                let source: String = row.get(3)?;
+                Ok((
+                    Self::string_to_proposal_id(from_id),
+                    Self::string_to_proposal_id(to_id),
+                    reason,
+                    source,
+                ))
+            })
+            .map_err(|e| AppError::Database(e.to_string()))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(deps)
+    }
+
     async fn would_create_cycle(
         &self,
         proposal_id: &TaskProposalId,
@@ -237,6 +275,22 @@ impl ProposalDependencyRepository for SqliteProposalDependencyRepository {
         conn.execute(
             "DELETE FROM proposal_dependencies
              WHERE proposal_id IN (
+                 SELECT id FROM task_proposals WHERE session_id = ?1
+             )",
+            [session_id.as_str()],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(())
+    }
+
+    async fn clear_auto_dependencies(&self, session_id: &IdeationSessionId) -> AppResult<()> {
+        let conn = self.conn.lock().await;
+
+        // Delete only auto-suggested dependencies for proposals in this session
+        conn.execute(
+            "DELETE FROM proposal_dependencies
+             WHERE source = 'auto' AND proposal_id IN (
                  SELECT id FROM task_proposals WHERE session_id = ?1
              )",
             [session_id.as_str()],

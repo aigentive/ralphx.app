@@ -83,7 +83,7 @@ async fn test_add_dependency_creates_record() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     let result = repo
-        .add_dependency(&proposal_a.id, &proposal_b.id, None)
+        .add_dependency(&proposal_a.id, &proposal_b.id, None, None)
         .await;
 
     assert!(result.is_ok());
@@ -106,11 +106,11 @@ async fn test_add_dependency_duplicate_is_ignored() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // Add same dependency twice
-    repo.add_dependency(&proposal_a.id, &proposal_b.id, None)
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
         .await
         .unwrap();
     let result = repo
-        .add_dependency(&proposal_a.id, &proposal_b.id, None)
+        .add_dependency(&proposal_a.id, &proposal_b.id, None, None)
         .await;
 
     assert!(result.is_ok());
@@ -133,10 +133,10 @@ async fn test_add_multiple_dependencies() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // A depends on B and C
-    repo.add_dependency(&proposal_a.id, &proposal_b.id, None)
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
         .await
         .unwrap();
-    repo.add_dependency(&proposal_a.id, &proposal_c.id, None)
+    repo.add_dependency(&proposal_a.id, &proposal_c.id, None, None)
         .await
         .unwrap();
 
@@ -159,7 +159,7 @@ async fn test_remove_dependency_deletes_record() {
 
     let repo = SqliteProposalDependencyRepository::new(conn);
 
-    repo.add_dependency(&proposal_a.id, &proposal_b.id, None)
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
         .await
         .unwrap();
     let result = repo.remove_dependency(&proposal_a.id, &proposal_b.id).await;
@@ -198,10 +198,10 @@ async fn test_remove_only_specified_dependency() {
 
     let repo = SqliteProposalDependencyRepository::new(conn);
 
-    repo.add_dependency(&proposal_a.id, &proposal_b.id, None)
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
         .await
         .unwrap();
-    repo.add_dependency(&proposal_a.id, &proposal_c.id, None)
+    repo.add_dependency(&proposal_a.id, &proposal_c.id, None, None)
         .await
         .unwrap();
 
@@ -243,7 +243,7 @@ async fn test_get_dependencies_returns_correct_direction() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // A depends on B
-    repo.add_dependency(&proposal_a.id, &proposal_b.id, None)
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
         .await
         .unwrap();
 
@@ -285,7 +285,7 @@ async fn test_get_dependents_returns_correct_direction() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // A depends on B (B blocks A)
-    repo.add_dependency(&proposal_a.id, &proposal_b.id, None)
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
         .await
         .unwrap();
 
@@ -312,10 +312,10 @@ async fn test_get_dependents_multiple() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // A and B both depend on C
-    repo.add_dependency(&proposal_a.id, &proposal_c.id, None)
+    repo.add_dependency(&proposal_a.id, &proposal_c.id, None, None)
         .await
         .unwrap();
-    repo.add_dependency(&proposal_b.id, &proposal_c.id, None)
+    repo.add_dependency(&proposal_b.id, &proposal_c.id, None, None)
         .await
         .unwrap();
 
@@ -353,10 +353,10 @@ async fn test_get_all_for_session_returns_all_deps() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // A -> B, B -> C
-    repo.add_dependency(&proposal_a.id, &proposal_b.id, None)
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
         .await
         .unwrap();
-    repo.add_dependency(&proposal_b.id, &proposal_c.id, None)
+    repo.add_dependency(&proposal_b.id, &proposal_c.id, None, None)
         .await
         .unwrap();
 
@@ -396,10 +396,10 @@ async fn test_get_all_for_session_filters_by_session() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // Create deps in both sessions
-    repo.add_dependency(&s1_proposal_a.id, &s1_proposal_b.id, None)
+    repo.add_dependency(&s1_proposal_a.id, &s1_proposal_b.id, None, None)
         .await
         .unwrap();
-    repo.add_dependency(&s2_proposal_a.id, &s2_proposal_b.id, None)
+    repo.add_dependency(&s2_proposal_a.id, &s2_proposal_b.id, None, None)
         .await
         .unwrap();
 
@@ -447,7 +447,7 @@ async fn test_would_create_cycle_direct_cycle() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // B depends on A
-    repo.add_dependency(&proposal_b.id, &proposal_a.id, None)
+    repo.add_dependency(&proposal_b.id, &proposal_a.id, None, None)
         .await
         .unwrap();
 
@@ -472,10 +472,10 @@ async fn test_would_create_cycle_indirect_cycle() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // B -> C, C -> A (existing chain)
-    repo.add_dependency(&proposal_b.id, &proposal_c.id, None)
+    repo.add_dependency(&proposal_b.id, &proposal_c.id, None, None)
         .await
         .unwrap();
-    repo.add_dependency(&proposal_c.id, &proposal_a.id, None)
+    repo.add_dependency(&proposal_c.id, &proposal_a.id, None, None)
         .await
         .unwrap();
 
@@ -500,7 +500,7 @@ async fn test_would_create_cycle_no_cycle() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // A -> B (existing)
-    repo.add_dependency(&proposal_a.id, &proposal_b.id, None)
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
         .await
         .unwrap();
 
@@ -546,10 +546,10 @@ async fn test_clear_dependencies_removes_outgoing() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // A -> B, A -> C
-    repo.add_dependency(&proposal_a.id, &proposal_b.id, None)
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
         .await
         .unwrap();
-    repo.add_dependency(&proposal_a.id, &proposal_c.id, None)
+    repo.add_dependency(&proposal_a.id, &proposal_c.id, None, None)
         .await
         .unwrap();
 
@@ -572,10 +572,10 @@ async fn test_clear_dependencies_removes_incoming() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // B -> A, C -> A
-    repo.add_dependency(&proposal_b.id, &proposal_a.id, None)
+    repo.add_dependency(&proposal_b.id, &proposal_a.id, None, None)
         .await
         .unwrap();
-    repo.add_dependency(&proposal_c.id, &proposal_a.id, None)
+    repo.add_dependency(&proposal_c.id, &proposal_a.id, None, None)
         .await
         .unwrap();
 
@@ -605,10 +605,10 @@ async fn test_clear_dependencies_removes_both_directions() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // A -> B (A depends on B), C -> A (C depends on A)
-    repo.add_dependency(&proposal_a.id, &proposal_b.id, None)
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
         .await
         .unwrap();
-    repo.add_dependency(&proposal_c.id, &proposal_a.id, None)
+    repo.add_dependency(&proposal_c.id, &proposal_a.id, None, None)
         .await
         .unwrap();
 
@@ -656,10 +656,10 @@ async fn test_count_dependencies_multiple() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // A depends on B and C
-    repo.add_dependency(&proposal_a.id, &proposal_b.id, None)
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
         .await
         .unwrap();
-    repo.add_dependency(&proposal_a.id, &proposal_c.id, None)
+    repo.add_dependency(&proposal_a.id, &proposal_c.id, None, None)
         .await
         .unwrap();
 
@@ -694,10 +694,10 @@ async fn test_count_dependents_multiple() {
     let repo = SqliteProposalDependencyRepository::new(conn);
 
     // B and C depend on A
-    repo.add_dependency(&proposal_b.id, &proposal_a.id, None)
+    repo.add_dependency(&proposal_b.id, &proposal_a.id, None, None)
         .await
         .unwrap();
-    repo.add_dependency(&proposal_c.id, &proposal_a.id, None)
+    repo.add_dependency(&proposal_c.id, &proposal_a.id, None, None)
         .await
         .unwrap();
 
@@ -719,7 +719,7 @@ async fn test_from_shared_works_correctly() {
     let shared_conn = Arc::new(Mutex::new(conn));
     let repo = SqliteProposalDependencyRepository::from_shared(shared_conn);
 
-    repo.add_dependency(&proposal_a.id, &proposal_b.id, None)
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
         .await
         .unwrap();
 
@@ -827,4 +827,216 @@ async fn test_self_dependency_check_constraint() {
     );
 
     assert!(result.is_err());
+}
+
+// ==================== SOURCE-AWARE METHODS TESTS ====================
+
+#[tokio::test]
+async fn test_get_all_for_session_with_source_includes_source_field() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test", "/test");
+    let session = create_test_session(&conn, &project_id);
+    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
+
+    let repo = SqliteProposalDependencyRepository::new(conn);
+
+    // Add auto-suggested dependency
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None, Some("auto"))
+        .await
+        .unwrap();
+
+    let all = repo.get_all_for_session_with_source(&session.id).await.unwrap();
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[0].0, proposal_a.id);
+    assert_eq!(all[0].1, proposal_b.id);
+    assert_eq!(all[0].3, "auto");
+}
+
+#[tokio::test]
+async fn test_add_dependency_with_manual_source() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test", "/test");
+    let session = create_test_session(&conn, &project_id);
+    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
+
+    let repo = SqliteProposalDependencyRepository::new(conn);
+
+    // Add manual dependency
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None, Some("manual"))
+        .await
+        .unwrap();
+
+    let all = repo.get_all_for_session_with_source(&session.id).await.unwrap();
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[0].3, "manual");
+}
+
+#[tokio::test]
+async fn test_add_dependency_defaults_to_auto() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test", "/test");
+    let session = create_test_session(&conn, &project_id);
+    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
+
+    let repo = SqliteProposalDependencyRepository::new(conn);
+
+    // Add dependency with None source (should default to "auto")
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
+        .await
+        .unwrap();
+
+    let all = repo.get_all_for_session_with_source(&session.id).await.unwrap();
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[0].3, "auto");
+}
+
+#[tokio::test]
+async fn test_clear_auto_dependencies_preserves_manual_deps() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test", "/test");
+    let session = create_test_session(&conn, &project_id);
+    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
+    let proposal_c = create_test_proposal(&conn, &session.id, "Proposal C");
+
+    let repo = SqliteProposalDependencyRepository::new(conn);
+
+    // Add auto dependency: A -> B
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None, Some("auto"))
+        .await
+        .unwrap();
+    // Add manual dependency: B -> C
+    repo.add_dependency(&proposal_b.id, &proposal_c.id, None, Some("manual"))
+        .await
+        .unwrap();
+
+    // Clear only auto dependencies
+    repo.clear_auto_dependencies(&session.id).await.unwrap();
+
+    let all = repo.get_all_for_session_with_source(&session.id).await.unwrap();
+    assert_eq!(all.len(), 1);
+    // Only the manual dependency should remain
+    assert_eq!(all[0].0, proposal_b.id);
+    assert_eq!(all[0].1, proposal_c.id);
+    assert_eq!(all[0].3, "manual");
+}
+
+#[tokio::test]
+async fn test_clear_auto_dependencies_clears_only_in_session() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test", "/test");
+
+    let session1 = create_test_session(&conn, &project_id);
+    let session2_id = IdeationSessionId::new();
+
+    // Create another session manually
+    conn.execute(
+        "INSERT INTO ideation_sessions (id, project_id, title, status, created_at, updated_at)
+         VALUES (?1, ?2, 'Session 2', 'active', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+        rusqlite::params![session2_id.as_str(), project_id.as_str()],
+    )
+    .unwrap();
+
+    let s1_proposal_a = create_test_proposal(&conn, &session1.id, "S1 Proposal A");
+    let s1_proposal_b = create_test_proposal(&conn, &session1.id, "S1 Proposal B");
+    let s2_proposal_a = create_test_proposal(&conn, &session2_id, "S2 Proposal A");
+    let s2_proposal_b = create_test_proposal(&conn, &session2_id, "S2 Proposal B");
+
+    let repo = SqliteProposalDependencyRepository::new(conn);
+
+    // Create auto deps in both sessions
+    repo.add_dependency(&s1_proposal_a.id, &s1_proposal_b.id, None, Some("auto"))
+        .await
+        .unwrap();
+    repo.add_dependency(&s2_proposal_a.id, &s2_proposal_b.id, None, Some("auto"))
+        .await
+        .unwrap();
+
+    // Clear auto deps only for session 1
+    repo.clear_auto_dependencies(&session1.id).await.unwrap();
+
+    // Session 1 should have no deps
+    let s1_all = repo.get_all_for_session_with_source(&session1.id).await.unwrap();
+    assert_eq!(s1_all.len(), 0);
+
+    // Session 2 should still have its auto dep
+    let s2_all = repo.get_all_for_session_with_source(&session2_id).await.unwrap();
+    assert_eq!(s2_all.len(), 1);
+    assert_eq!(s2_all[0].3, "auto");
+}
+
+#[tokio::test]
+async fn test_get_all_for_session_with_source_filters_by_session() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test", "/test");
+
+    let session1 = create_test_session(&conn, &project_id);
+    let session2_id = IdeationSessionId::new();
+
+    // Create another session manually
+    conn.execute(
+        "INSERT INTO ideation_sessions (id, project_id, title, status, created_at, updated_at)
+         VALUES (?1, ?2, 'Session 2', 'active', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+        rusqlite::params![session2_id.as_str(), project_id.as_str()],
+    )
+    .unwrap();
+
+    let s1_proposal_a = create_test_proposal(&conn, &session1.id, "S1 Proposal A");
+    let s1_proposal_b = create_test_proposal(&conn, &session1.id, "S1 Proposal B");
+    let s2_proposal_a = create_test_proposal(&conn, &session2_id, "S2 Proposal A");
+    let s2_proposal_b = create_test_proposal(&conn, &session2_id, "S2 Proposal B");
+
+    let repo = SqliteProposalDependencyRepository::new(conn);
+
+    // Create deps in both sessions
+    repo.add_dependency(&s1_proposal_a.id, &s1_proposal_b.id, None, Some("auto"))
+        .await
+        .unwrap();
+    repo.add_dependency(&s2_proposal_a.id, &s2_proposal_b.id, None, Some("manual"))
+        .await
+        .unwrap();
+
+    // Should only get session 1 deps
+    let s1_all = repo.get_all_for_session_with_source(&session1.id).await.unwrap();
+    assert_eq!(s1_all.len(), 1);
+    assert_eq!(s1_all[0].3, "auto");
+
+    // Should only get session 2 deps
+    let s2_all = repo.get_all_for_session_with_source(&session2_id).await.unwrap();
+    assert_eq!(s2_all.len(), 1);
+    assert_eq!(s2_all[0].3, "manual");
+}
+
+#[tokio::test]
+async fn test_would_create_cycle_includes_both_auto_and_manual() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test", "/test");
+    let session = create_test_session(&conn, &project_id);
+    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
+
+    let repo = SqliteProposalDependencyRepository::new(conn);
+
+    // B depends on A (manual)
+    repo.add_dependency(&proposal_b.id, &proposal_a.id, None, Some("manual"))
+        .await
+        .unwrap();
+
+    // Would adding A -> B create a cycle? Yes (A -> B -> A)
+    // Should detect cycle regardless of source
+    let result = repo
+        .would_create_cycle(&proposal_a.id, &proposal_b.id)
+        .await;
+    assert!(result.is_ok());
+    assert!(result.unwrap());
 }
