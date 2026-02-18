@@ -3,6 +3,15 @@
 // Extracted from side_effects.rs for maintainability. The `on_enter` method
 // signature stays in side_effects.rs and delegates here.
 
+/// Settle delay before `try_schedule_ready_tasks` in user-visible transitions (e.g. `on_enter(Ready)`).
+/// Long enough for the UI to render the task in the Ready column before it auto-advances to Executing.
+pub(crate) const READY_SETTLE_MS: u64 = 300;
+
+/// Settle delay before `try_schedule_ready_tasks` in internal, non-visible transitions
+/// (e.g. `on_enter(Merged)`, auto-complete path). No UI settle needed — 100ms is enough for
+/// the scheduling lock to be released before the next call.
+pub(crate) const MERGE_SETTLE_MS: u64 = 100;
+
 use std::path::Path;
 use std::sync::Arc;
 
@@ -166,11 +175,12 @@ impl<'a> super::TransitionHandler<'a> {
                 }
 
                 // Delay auto-scheduling so UI sees task "settle" in Ready column
-                // before it potentially moves to Executing (600ms matches common UI feedback timing)
+                // before it potentially moves to Executing (user-visible → READY_SETTLE_MS)
                 if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
                     let scheduler = Arc::clone(scheduler);
                     tokio::spawn(async move {
-                        tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(READY_SETTLE_MS))
+                            .await;
                         scheduler.try_schedule_ready_tasks().await;
                     });
                 }
@@ -936,22 +946,25 @@ impl<'a> super::TransitionHandler<'a> {
                     .await;
 
                 // Schedule newly-unblocked tasks (e.g. plan_merge tasks that just became Ready)
+                // Internal transition — no UI settle needed → MERGE_SETTLE_MS
                 if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
                     let scheduler = Arc::clone(scheduler);
                     tokio::spawn(async move {
-                        tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(MERGE_SETTLE_MS))
+                            .await;
                         scheduler.try_schedule_ready_tasks().await;
                     });
                 }
 
                 // Retry deferred merges — covers the HTTP handler path (e.g. ConflictResolved)
                 // where on_enter(Merged) is called directly without going through
-                // post_merge_cleanup(). Uses 800ms delay to serialize after scheduling.
+                // post_merge_cleanup(). No sleep needed: scheduling_lock mutex in
+                // task_scheduler_service.rs serializes concurrent calls via try_lock(), and
+                // has_merge_deferred_metadata is the actual safety guard.
                 if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
                     let scheduler = Arc::clone(scheduler);
                     let project_id = self.machine.context.project_id.clone();
                     tokio::spawn(async move {
-                        tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
                         scheduler.try_retry_deferred_merges(&project_id).await;
                     });
                 }
