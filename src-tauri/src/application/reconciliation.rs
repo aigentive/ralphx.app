@@ -376,6 +376,106 @@ impl<R: Runtime> ReconciliationRunner<R> {
         self
     }
 
+    /// Startup-only recovery: re-queue Failed tasks that failed due to transient timeouts.
+    ///
+    /// Runs once at app startup (not in the recurring loop). Finds tasks in Failed state where
+    /// `is_timeout: true` (in metadata) and `auto_retry_count_executing < 3`, then transitions
+    /// them back to Ready so they can be picked up on the next scheduling cycle.
+    ///
+    /// Cap at 3 attempts prevents infinite retry on persistent failures; timeout-only filter
+    /// ensures we only recover transient overnight stalls, not logic errors.
+    pub async fn recover_timeout_failures(&self) {
+        let projects = match self.project_repo.get_all().await {
+            Ok(projects) => projects,
+            Err(e) => {
+                warn!(error = %e, "recover_timeout_failures: failed to get projects");
+                return;
+            }
+        };
+
+        for project in &projects {
+            let failed_tasks = match self
+                .task_repo
+                .get_by_status(&project.id, InternalStatus::Failed)
+                .await
+            {
+                Ok(tasks) => tasks,
+                Err(e) => {
+                    warn!(
+                        project_id = project.id.as_str(),
+                        error = %e,
+                        "recover_timeout_failures: failed to get Failed tasks"
+                    );
+                    continue;
+                }
+            };
+
+            for task in failed_tasks {
+                let is_timeout = self.task_is_timeout_failure(&task);
+                let attempt_count =
+                    Self::auto_retry_count_for_status(&task, InternalStatus::Executing);
+
+                if !is_timeout || attempt_count >= 3 {
+                    continue;
+                }
+
+                tracing::info!(
+                    task_id = task.id.as_str(),
+                    attempt_count = attempt_count,
+                    "Startup recovery: re-queuing timeout-failed task"
+                );
+
+                // Increment attempt count before transitioning so the count persists
+                // across recovery cycles and the cap is enforced correctly next startup.
+                if let Err(e) = self
+                    .record_auto_retry_metadata(&task, InternalStatus::Executing, attempt_count + 1)
+                    .await
+                {
+                    warn!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Startup recovery: failed to increment attempt count (proceeding anyway)"
+                    );
+                }
+
+                match self
+                    .transition_service
+                    .transition_task(&task.id, InternalStatus::Ready)
+                    .await
+                {
+                    Ok(_) => {
+                        tracing::info!(
+                            task_id = task.id.as_str(),
+                            "Startup recovery: task transitioned Failed -> Ready"
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            task_id = task.id.as_str(),
+                            error = %e,
+                            "Startup recovery: failed to transition task to Ready"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// Returns true if the task's metadata indicates it failed due to a timeout.
+    fn task_is_timeout_failure(&self, task: &Task) -> bool {
+        let metadata = match task.metadata.as_deref() {
+            Some(m) => m,
+            None => return false,
+        };
+        let json: serde_json::Value = match serde_json::from_str(metadata) {
+            Ok(v) => v,
+            Err(_) => return false,
+        };
+        json.get("is_timeout")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+    }
+
     pub async fn reconcile_stuck_tasks(&self) {
         self.prune_stale_running_registry_entries().await;
 

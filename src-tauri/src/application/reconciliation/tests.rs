@@ -2345,3 +2345,239 @@ async fn reconcile_merging_stale_when_heartbeat_is_old() {
         "An attempt_failed event should be recorded when effective_age >= MERGING_TIMEOUT_SECONDS"
     );
 }
+
+// ==========================================
+// recover_timeout_failures tests
+// ==========================================
+
+/// Helper: set metadata on a task with the given JSON value.
+fn set_task_metadata(task: &mut Task, metadata: serde_json::Value) {
+    task.metadata = Some(metadata.to_string());
+}
+
+#[tokio::test]
+async fn recover_timeout_failures_recovers_timeout_failed_task_with_low_attempt_count() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Timeout Failed Task".to_string());
+    task.internal_status = InternalStatus::Failed;
+    // is_timeout=true, attempt_count=1 (auto_retry_count_executing=1) => should be recovered
+    set_task_metadata(
+        &mut task,
+        serde_json::json!({
+            "is_timeout": true,
+            "auto_retry_count_executing": 1
+        }),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    reconciler.recover_timeout_failures().await;
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Ready,
+        "Timeout-failed task with attempt_count < 3 should be transitioned to Ready"
+    );
+}
+
+#[tokio::test]
+async fn recover_timeout_failures_does_not_recover_non_timeout_failure() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Non-Timeout Failed Task".to_string());
+    task.internal_status = InternalStatus::Failed;
+    // is_timeout=false => should NOT be recovered
+    set_task_metadata(
+        &mut task,
+        serde_json::json!({
+            "is_timeout": false,
+            "auto_retry_count_executing": 0
+        }),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    reconciler.recover_timeout_failures().await;
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Failed,
+        "Non-timeout failures should remain in Failed state"
+    );
+}
+
+#[tokio::test]
+async fn recover_timeout_failures_does_not_recover_when_attempt_count_at_cap() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Exhausted Retry Task".to_string());
+    task.internal_status = InternalStatus::Failed;
+    // is_timeout=true, attempt_count=3 (at cap) => should NOT be recovered
+    set_task_metadata(
+        &mut task,
+        serde_json::json!({
+            "is_timeout": true,
+            "auto_retry_count_executing": 3
+        }),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    reconciler.recover_timeout_failures().await;
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Failed,
+        "Timeout-failed tasks at attempt_count >= 3 should remain in Failed state"
+    );
+}
+
+#[tokio::test]
+async fn recover_timeout_failures_does_not_recover_when_attempt_count_exceeds_cap() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Over-Cap Retry Task".to_string());
+    task.internal_status = InternalStatus::Failed;
+    // is_timeout=true, attempt_count=5 (above cap) => should NOT be recovered
+    set_task_metadata(
+        &mut task,
+        serde_json::json!({
+            "is_timeout": true,
+            "auto_retry_count_executing": 5
+        }),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    reconciler.recover_timeout_failures().await;
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Failed,
+        "Timeout-failed tasks with attempt_count > 3 should remain in Failed state"
+    );
+}
+
+#[tokio::test]
+async fn recover_timeout_failures_increments_attempt_count_on_recovery() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Incrementing Task".to_string());
+    task.internal_status = InternalStatus::Failed;
+    set_task_metadata(
+        &mut task,
+        serde_json::json!({
+            "is_timeout": true,
+            "auto_retry_count_executing": 1
+        }),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    reconciler.recover_timeout_failures().await;
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+
+    assert_eq!(updated.internal_status, InternalStatus::Ready);
+
+    let meta_json: serde_json::Value =
+        serde_json::from_str(updated.metadata.as_deref().unwrap_or("{}")).unwrap_or_default();
+    let attempt_count = meta_json
+        .get("auto_retry_count_executing")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    assert_eq!(
+        attempt_count, 2,
+        "attempt_count should be incremented to 2 after recovery"
+    );
+}
+
+#[tokio::test]
+async fn recover_timeout_failures_recovers_task_with_zero_attempt_count() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "First Timeout Task".to_string());
+    task.internal_status = InternalStatus::Failed;
+    // attempt_count not set => defaults to 0
+    set_task_metadata(
+        &mut task,
+        serde_json::json!({
+            "is_timeout": true
+        }),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    reconciler.recover_timeout_failures().await;
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Ready,
+        "Timeout-failed task with no prior attempts should be recovered"
+    );
+}
