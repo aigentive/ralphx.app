@@ -1,3 +1,4 @@
+use super::git_cmd;
 use super::*;
 
 impl GitService {
@@ -5,12 +6,8 @@ impl GitService {
     ///
     /// # Arguments
     /// * `repo` - Path to the git repository
-    pub fn get_conflict_files(repo: &Path) -> AppResult<Vec<PathBuf>> {
-        let output = Command::new("git")
-            .args(["diff", "--name-only", "--diff-filter=U"])
-            .current_dir(repo)
-            .output()
-            .map_err(|e| AppError::GitOperation(format!("Failed to run git diff: {}", e)))?;
+    pub async fn get_conflict_files(repo: &Path) -> AppResult<Vec<PathBuf>> {
+        let output = git_cmd::run(&["diff", "--name-only", "--diff-filter=U"], repo).await?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let files: Vec<PathBuf> = stdout
@@ -73,7 +70,7 @@ impl GitService {
     /// We intentionally scope marker scanning to files involved in current index/worktree
     /// changes instead of all tracked files. This avoids false positives from committed
     /// docs/tests that intentionally contain marker-like strings.
-    fn collect_conflict_scan_candidates(worktree: &Path) -> AppResult<Vec<String>> {
+    async fn collect_conflict_scan_candidates(worktree: &Path) -> AppResult<Vec<String>> {
         let mut seen = HashSet::new();
         let mut files = Vec::new();
 
@@ -84,13 +81,7 @@ impl GitService {
         ];
 
         for args in commands {
-            let output = Command::new("git")
-                .args(args)
-                .current_dir(worktree)
-                .output()
-                .map_err(|e| {
-                    AppError::GitOperation(format!("Failed to run git {}: {}", args.join(" "), e))
-                })?;
+            let output = git_cmd::run(args, worktree).await?;
 
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
@@ -130,8 +121,8 @@ impl GitService {
     ///
     /// # Arguments
     /// * `worktree` - Path to the git worktree or repository
-    pub fn has_conflict_markers(worktree: &Path) -> AppResult<bool> {
-        let candidate_files = Self::collect_conflict_scan_candidates(worktree)?;
+    pub async fn has_conflict_markers(worktree: &Path) -> AppResult<bool> {
+        let candidate_files = Self::collect_conflict_scan_candidates(worktree).await?;
         for file in candidate_files {
             let file_path = worktree.join(&file);
 
@@ -181,16 +172,10 @@ impl GitService {
     /// # Arguments
     /// * `path` - Path to the git repository or worktree
     /// * `target` - The commit ref to reset to (e.g., "HEAD~1", a SHA)
-    pub fn reset_hard(path: &Path, target: &str) -> AppResult<()> {
+    pub async fn reset_hard(path: &Path, target: &str) -> AppResult<()> {
         debug!("Hard resetting to '{}' in {:?}", target, path);
 
-        let output = Command::new("git")
-            .args(["reset", "--hard", target])
-            .current_dir(path)
-            .output()
-            .map_err(|e| {
-                AppError::GitOperation(format!("Failed to run git reset --hard: {}", e))
-            })?;
+        let output = git_cmd::run(&["reset", "--hard", target], path).await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);

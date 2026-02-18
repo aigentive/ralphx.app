@@ -5,8 +5,8 @@ use std::process::Command;
 // checkout_existing_branch_worktree Tests
 // =========================================================================
 
-#[test]
-fn test_checkout_existing_branch_worktree_success() {
+#[tokio::test]
+async fn test_checkout_existing_branch_worktree_success() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -51,18 +51,17 @@ fn test_checkout_existing_branch_worktree_success() {
 
     // Create worktree checking out the existing branch
     let worktree_path = temp_dir.path().join("worktrees").join("merge-wt");
-    let result =
-        GitService::checkout_existing_branch_worktree(repo, &worktree_path, "feature-branch");
+    let result = GitService::checkout_existing_branch_worktree(repo, &worktree_path, "feature-branch").await;
     assert!(result.is_ok(), "Should succeed: {:?}", result.err());
 
     // Verify worktree was created and is on the correct branch
     assert!(worktree_path.exists(), "Worktree directory should exist");
-    let branch = GitService::get_current_branch(&worktree_path).unwrap();
+    let branch = GitService::get_current_branch(&worktree_path).await.unwrap();
     assert_eq!(branch, "feature-branch");
 }
 
-#[test]
-fn test_checkout_existing_branch_worktree_creates_parent_dirs() {
+#[tokio::test]
+async fn test_checkout_existing_branch_worktree_creates_parent_dirs() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -105,7 +104,7 @@ fn test_checkout_existing_branch_worktree_creates_parent_dirs() {
 
     // Path with deeply nested non-existent parent dirs
     let worktree_path = temp_dir.path().join("deep").join("nested").join("merge-wt");
-    let result = GitService::checkout_existing_branch_worktree(repo, &worktree_path, "feature");
+    let result = GitService::checkout_existing_branch_worktree(repo, &worktree_path, "feature").await;
     assert!(
         result.is_ok(),
         "Should create parent dirs: {:?}",
@@ -114,8 +113,8 @@ fn test_checkout_existing_branch_worktree_creates_parent_dirs() {
     assert!(worktree_path.exists());
 }
 
-#[test]
-fn test_checkout_existing_branch_worktree_nonexistent_branch() {
+#[tokio::test]
+async fn test_checkout_existing_branch_worktree_nonexistent_branch() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -148,7 +147,7 @@ fn test_checkout_existing_branch_worktree_nonexistent_branch() {
 
     let worktree_path = temp_dir.path().join("merge-wt");
     let result =
-        GitService::checkout_existing_branch_worktree(repo, &worktree_path, "nonexistent-branch");
+        GitService::checkout_existing_branch_worktree(repo, &worktree_path, "nonexistent-branch").await;
     assert!(result.is_err(), "Should fail for nonexistent branch");
 }
 
@@ -156,8 +155,8 @@ fn test_checkout_existing_branch_worktree_nonexistent_branch() {
 // try_merge_in_worktree Tests
 // =========================================================================
 
-#[test]
-fn test_try_merge_in_worktree_fast_forward() {
+#[tokio::test]
+async fn test_try_merge_in_worktree_fast_forward() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -228,7 +227,7 @@ fn test_try_merge_in_worktree_fast_forward() {
 
     let merge_wt = temp_dir.path().join("merge-wt");
     let result =
-        GitService::try_merge_in_worktree(repo, "task-branch", "feature-branch", &merge_wt);
+        GitService::try_merge_in_worktree(repo, "task-branch", "feature-branch", &merge_wt).await;
     assert!(result.is_ok(), "Merge should succeed: {:?}", result.err());
 
     match result.unwrap() {
@@ -250,11 +249,11 @@ fn test_try_merge_in_worktree_fast_forward() {
     );
 
     // Clean up worktree
-    let _ = GitService::delete_worktree(repo, &merge_wt);
+    let _ = GitService::delete_worktree(repo, &merge_wt).await;
 }
 
-#[test]
-fn test_try_merge_in_worktree_conflict() {
+#[tokio::test]
+async fn test_try_merge_in_worktree_conflict() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -340,7 +339,7 @@ fn test_try_merge_in_worktree_conflict() {
 
     let merge_wt = temp_dir.path().join("merge-wt");
     let result =
-        GitService::try_merge_in_worktree(repo, "task-branch", "feature-branch", &merge_wt);
+        GitService::try_merge_in_worktree(repo, "task-branch", "feature-branch", &merge_wt).await;
     assert!(
         result.is_ok(),
         "Should return Ok even on conflict: {:?}",
@@ -370,11 +369,11 @@ fn test_try_merge_in_worktree_conflict() {
     }
 
     // Clean up
-    let _ = GitService::delete_worktree(repo, &merge_wt);
+    let _ = GitService::delete_worktree(repo, &merge_wt).await;
 }
 
-#[test]
-fn test_try_merge_in_worktree_does_not_touch_main_repo() {
+#[tokio::test]
+async fn test_try_merge_in_worktree_does_not_touch_main_repo() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -443,20 +442,20 @@ fn test_try_merge_in_worktree_does_not_touch_main_repo() {
         .unwrap();
 
     // Record main repo state before merge
-    let branch_before = GitService::get_current_branch(repo).unwrap();
+    let branch_before = GitService::get_current_branch(repo).await.unwrap();
 
     let merge_wt = temp_dir.path().join("merge-wt");
-    let _ = GitService::try_merge_in_worktree(repo, "task-branch", "feature-branch", &merge_wt);
+    let _ = GitService::try_merge_in_worktree(repo, "task-branch", "feature-branch", &merge_wt).await;
 
     // Main repo should still be on the same branch
-    let branch_after = GitService::get_current_branch(repo).unwrap();
+    let branch_after = GitService::get_current_branch(repo).await.unwrap();
     assert_eq!(
         branch_before, branch_after,
         "Main repo branch should not change"
     );
 
     // Clean up
-    let _ = GitService::delete_worktree(repo, &merge_wt);
+    let _ = GitService::delete_worktree(repo, &merge_wt).await;
 }
 
 // =========================================================================
@@ -595,8 +594,8 @@ prunable gitdir file points to non-existent location
 // Branch Recovery Tests (for re-execution scenarios)
 // =========================================================================
 
-#[test]
-fn test_worktree_recovery_existing_branch_checkout() {
+#[tokio::test]
+async fn test_worktree_recovery_existing_branch_checkout() {
     // Simulates re-entering Executing state where branch exists from previous attempt
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
@@ -660,7 +659,7 @@ fn test_worktree_recovery_existing_branch_checkout() {
         .unwrap();
 
     // Verify branch exists
-    let branch_exists = GitService::branch_exists(repo, task_branch);
+    let branch_exists = GitService::branch_exists(repo, task_branch).await;
     assert!(
         branch_exists,
         "Task branch should exist from previous attempt"
@@ -668,7 +667,7 @@ fn test_worktree_recovery_existing_branch_checkout() {
 
     // Re-execution: checkout existing branch into new worktree
     let worktree_path = temp_dir.path().join("worktrees").join("task-abc123");
-    let result = GitService::checkout_existing_branch_worktree(repo, &worktree_path, task_branch);
+    let result = GitService::checkout_existing_branch_worktree(repo, &worktree_path, task_branch).await;
     assert!(
         result.is_ok(),
         "Should successfully checkout existing branch: {:?}",
@@ -681,12 +680,12 @@ fn test_worktree_recovery_existing_branch_checkout() {
         worktree_path.join("work.txt").exists(),
         "Previous work should be present"
     );
-    let branch = GitService::get_current_branch(&worktree_path).unwrap();
+    let branch = GitService::get_current_branch(&worktree_path).await.unwrap();
     assert_eq!(branch, task_branch, "Should be on the task branch");
 }
 
-#[test]
-fn test_worktree_creation_new_branch_when_not_exists() {
+#[tokio::test]
+async fn test_worktree_creation_new_branch_when_not_exists() {
     // Verifies normal flow when branch doesn't exist yet
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
@@ -726,12 +725,12 @@ fn test_worktree_creation_new_branch_when_not_exists() {
     let new_branch = "ralphx/test-project/task-new";
 
     // Verify branch does NOT exist
-    let branch_exists = GitService::branch_exists(repo, new_branch);
+    let branch_exists = GitService::branch_exists(repo, new_branch).await;
     assert!(!branch_exists, "New task branch should not exist yet");
 
     // Create worktree with new branch
     let worktree_path = temp_dir.path().join("worktrees").join("task-new");
-    let result = GitService::create_worktree(repo, &worktree_path, new_branch, "main");
+    let result = GitService::create_worktree(repo, &worktree_path, new_branch, "main").await;
     assert!(
         result.is_ok(),
         "Should successfully create worktree with new branch: {:?}",
@@ -740,16 +739,16 @@ fn test_worktree_creation_new_branch_when_not_exists() {
 
     // Verify worktree was created and is on new branch
     assert!(worktree_path.exists(), "Worktree should be created");
-    let branch = GitService::get_current_branch(&worktree_path).unwrap();
+    let branch = GitService::get_current_branch(&worktree_path).await.unwrap();
     assert_eq!(branch, new_branch, "Should be on the new task branch");
 
     // Verify branch now exists
-    let branch_exists_after = GitService::branch_exists(repo, new_branch);
+    let branch_exists_after = GitService::branch_exists(repo, new_branch).await;
     assert!(branch_exists_after, "Branch should exist after creation");
 }
 
-#[test]
-fn test_create_worktree_fails_when_branch_exists() {
+#[tokio::test]
+async fn test_create_worktree_fails_when_branch_exists() {
     // Demonstrates the problem this fix addresses: create_worktree with -b fails for existing branch
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
@@ -796,7 +795,7 @@ fn test_create_worktree_fails_when_branch_exists() {
 
     // Attempt to create worktree with -b for existing branch (should fail)
     let worktree_path = temp_dir.path().join("worktrees").join("task-exists");
-    let result = GitService::create_worktree(repo, &worktree_path, existing_branch, "main");
+    let result = GitService::create_worktree(repo, &worktree_path, existing_branch, "main").await;
 
     assert!(
         result.is_err(),

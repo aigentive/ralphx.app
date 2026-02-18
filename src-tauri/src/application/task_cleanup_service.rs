@@ -369,7 +369,7 @@ impl TaskCleanupService {
                 // Delete worktree first if it exists
                 if let Some(ref worktree_path) = task.worktree_path {
                     let worktree_path_buf = PathBuf::from(worktree_path);
-                    if let Err(e) = GitService::delete_worktree(&repo_path, &worktree_path_buf) {
+                    if let Err(e) = GitService::delete_worktree(&repo_path, &worktree_path_buf).await {
                         tracing::warn!(
                             worktree = worktree_path.as_str(),
                             error = %e,
@@ -379,7 +379,7 @@ impl TaskCleanupService {
                 }
 
                 // Checkout base branch before deleting task branch
-                if let Err(e) = GitService::checkout_branch(&repo_path, base_branch) {
+                if let Err(e) = GitService::checkout_branch(&repo_path, base_branch).await {
                     tracing::warn!(
                         base_branch = base_branch,
                         error = %e,
@@ -388,7 +388,7 @@ impl TaskCleanupService {
                 }
 
                 // Delete task branch
-                if let Err(e) = GitService::delete_branch(&repo_path, &task_branch, true) {
+                if let Err(e) = GitService::delete_branch(&repo_path, &task_branch, true).await {
                     tracing::warn!(
                         branch = task_branch.as_str(),
                         error = %e,
@@ -399,12 +399,12 @@ impl TaskCleanupService {
             GitMode::Local => {
                 // Abort any in-progress rebase (safety for Local mode)
                 if GitService::is_rebase_in_progress(&repo_path) {
-                    let _ = GitService::abort_rebase(&repo_path);
+                    let _ = GitService::abort_rebase(&repo_path).await;
                 }
 
                 // Checkout base branch before deleting task branch
                 // (avoids "cannot delete the branch you are currently on")
-                if let Err(e) = GitService::checkout_branch(&repo_path, base_branch) {
+                if let Err(e) = GitService::checkout_branch(&repo_path, base_branch).await {
                     tracing::warn!(
                         base_branch = base_branch,
                         error = %e,
@@ -413,7 +413,7 @@ impl TaskCleanupService {
                 }
 
                 // Delete task branch
-                if let Err(e) = GitService::delete_branch(&repo_path, &task_branch, true) {
+                if let Err(e) = GitService::delete_branch(&repo_path, &task_branch, true).await {
                     tracing::warn!(
                         branch = task_branch.as_str(),
                         error = %e,

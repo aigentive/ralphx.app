@@ -61,7 +61,7 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
     let repo_path = Path::new(&project.working_directory);
 
     // VERIFY: Commit must be on target branch to prevent false merges
-    match GitService::is_commit_on_branch(repo_path, commit_sha, target_branch) {
+    match GitService::is_commit_on_branch(repo_path, commit_sha, target_branch).await {
         Ok(true) => {
             tracing::debug!(
                 task_id = task_id_str,
@@ -168,7 +168,7 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
     }
 
     // 3. Cleanup branch and worktree
-    cleanup_branch_and_worktree_internal(task, project);
+    cleanup_branch_and_worktree_internal(task, project).await;
 
     // 4. Emit events
     if let Some(handle) = app_handle {
@@ -218,7 +218,7 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
 ///
 /// This is the standalone version that can be called from `complete_merge_internal`.
 /// For use within TransitionHandler, use the async method which has access to services.
-pub(super) fn cleanup_branch_and_worktree_internal(task: &Task, project: &Project) {
+pub(super) async fn cleanup_branch_and_worktree_internal(task: &Task, project: &Project) {
     let task_id_str = task.id.as_str();
 
     let Some(ref task_branch) = task.task_branch else {
@@ -231,7 +231,7 @@ pub(super) fn cleanup_branch_and_worktree_internal(task: &Task, project: &Projec
     match project.git_mode {
         GitMode::Local => {
             // For Local mode: already on base branch (from merge), just delete task branch
-            match GitService::delete_branch(repo_path, task_branch, true) {
+            match GitService::delete_branch(repo_path, task_branch, true).await {
                 Ok(_) => {
                     tracing::info!(
                         task_id = task_id_str,
@@ -253,7 +253,7 @@ pub(super) fn cleanup_branch_and_worktree_internal(task: &Task, project: &Projec
             // For Worktree mode: delete worktree first, then branch
             if let Some(ref worktree_path) = task.worktree_path {
                 let worktree_path_buf = PathBuf::from(worktree_path);
-                match GitService::delete_worktree(repo_path, &worktree_path_buf) {
+                match GitService::delete_worktree(repo_path, &worktree_path_buf).await {
                     Ok(_) => {
                         tracing::info!(
                             task_id = task_id_str,
@@ -275,7 +275,7 @@ pub(super) fn cleanup_branch_and_worktree_internal(task: &Task, project: &Projec
             // Delete the branch from main repo.
             // The branch is no longer checked out in any worktree, so force-delete works
             // without needing to checkout a different branch in the main repo.
-            match GitService::delete_branch(repo_path, task_branch, true) {
+            match GitService::delete_branch(repo_path, task_branch, true).await {
                 Ok(_) => {
                     tracing::info!(
                         task_id = task_id_str,

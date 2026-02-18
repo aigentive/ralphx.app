@@ -41,8 +41,8 @@ fn test_parse_shortstat_empty() {
 // is_commit_on_branch Tests (Phase 78)
 // =========================================================================
 
-#[test]
-fn test_is_commit_on_branch_with_valid_ancestor() {
+#[tokio::test]
+async fn test_is_commit_on_branch_with_valid_ancestor() {
     // Create a temp git repo with a commit on main
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
@@ -88,13 +88,13 @@ fn test_is_commit_on_branch_with_valid_ancestor() {
     let commit_sha = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
     // Verify commit is on HEAD (main/master)
-    let result = GitService::is_commit_on_branch(repo, &commit_sha, "HEAD");
+    let result = GitService::is_commit_on_branch(repo, &commit_sha, "HEAD").await;
     assert!(result.is_ok());
     assert!(result.unwrap());
 }
 
-#[test]
-fn test_is_commit_on_branch_with_non_ancestor() {
+#[tokio::test]
+async fn test_is_commit_on_branch_with_non_ancestor() {
     // Create a temp git repo with divergent branches
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
@@ -182,7 +182,7 @@ fn test_is_commit_on_branch_with_non_ancestor() {
         .to_string();
 
     // Feature commit should NOT be on main (not merged yet)
-    let result = GitService::is_commit_on_branch(repo, &feature_sha, &main_branch);
+    let result = GitService::is_commit_on_branch(repo, &feature_sha, &main_branch).await;
     assert!(result.is_ok());
     assert!(!result.unwrap());
 }
@@ -191,8 +191,8 @@ fn test_is_commit_on_branch_with_non_ancestor() {
 // get_commit_count Tests (Phase 78)
 // =========================================================================
 
-#[test]
-fn test_get_commit_count_empty_repo() {
+#[tokio::test]
+async fn test_get_commit_count_empty_repo() {
     // Create a temp git repo with only an initial commit
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
@@ -230,13 +230,13 @@ fn test_get_commit_count_empty_repo() {
         .unwrap();
 
     // Should have exactly 1 commit
-    let result = GitService::get_commit_count(repo, "HEAD");
+    let result = GitService::get_commit_count(repo, "HEAD").await;
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), 1);
 }
 
-#[test]
-fn test_get_commit_count_multiple_commits() {
+#[tokio::test]
+async fn test_get_commit_count_multiple_commits() {
     // Create a temp git repo with multiple commits
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
@@ -280,7 +280,7 @@ fn test_get_commit_count_multiple_commits() {
     }
 
     // Should have exactly 3 commits
-    let result = GitService::get_commit_count(repo, "HEAD");
+    let result = GitService::get_commit_count(repo, "HEAD").await;
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), 3);
 }
@@ -289,8 +289,8 @@ fn test_get_commit_count_multiple_commits() {
 // find_commit_by_message_grep Tests
 // =========================================================================
 
-#[test]
-fn test_find_commit_by_message_grep_finds_matching_commit() {
+#[tokio::test]
+async fn test_find_commit_by_message_grep_finds_matching_commit() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -329,12 +329,14 @@ fn test_find_commit_by_message_grep_finds_matching_commit() {
         String::from_utf8_lossy(&out.stdout).trim().to_string()
     };
 
-    let result = GitService::find_commit_by_message_grep(repo, "abc-123", &branch).unwrap();
+    let result = GitService::find_commit_by_message_grep(repo, "abc-123", &branch)
+        .await
+        .unwrap();
     assert_eq!(result, Some(expected_sha));
 }
 
-#[test]
-fn test_find_commit_by_message_grep_returns_none_when_not_found() {
+#[tokio::test]
+async fn test_find_commit_by_message_grep_returns_none_when_not_found() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -361,6 +363,8 @@ fn test_find_commit_by_message_grep_returns_none_when_not_found() {
         String::from_utf8_lossy(&out.stdout).trim().to_string()
     };
 
-    let result = GitService::find_commit_by_message_grep(repo, "nonexistent-id", &branch).unwrap();
+    let result = GitService::find_commit_by_message_grep(repo, "nonexistent-id", &branch)
+        .await
+        .unwrap();
     assert_eq!(result, None);
 }

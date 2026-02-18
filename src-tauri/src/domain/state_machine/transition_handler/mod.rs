@@ -385,14 +385,14 @@ impl<'a> TransitionHandler<'a> {
         let working_path = resolve_working_directory(&task, &project);
 
         // Check for uncommitted changes
-        match GitService::has_uncommitted_changes(&working_path) {
+        match GitService::has_uncommitted_changes(&working_path).await {
             Ok(true) => {
                 // Build commit message: {prefix}{task_title}
                 // Default prefix: "feat: " (configurable in future)
                 let prefix = "feat: ";
                 let message = format!("{}{}", prefix, task.title);
 
-                match GitService::commit_all(&working_path, &message) {
+                match GitService::commit_all(&working_path, &message).await {
                     Ok(Some(sha)) => {
                         tracing::info!(
                             task_id = task_id_str,

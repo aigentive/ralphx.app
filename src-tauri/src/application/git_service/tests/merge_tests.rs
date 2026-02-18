@@ -2,8 +2,8 @@ use super::super::*;
 use super::init_test_repo;
 use std::process::Command;
 
-#[test]
-fn test_try_rebase_and_merge_first_task_on_empty_repo() {
+#[tokio::test]
+async fn test_try_rebase_and_merge_first_task_on_empty_repo() {
     // Test that first task on empty repo (only 1 commit) bypasses rebase
     // and directly merges the task branch
     let temp_dir = tempfile::tempdir().unwrap();
@@ -69,11 +69,11 @@ fn test_try_rebase_and_merge_first_task_on_empty_repo() {
         .unwrap();
 
     // Verify main has only 1 commit
-    let count = GitService::get_commit_count(repo, "main").unwrap();
+    let count = GitService::get_commit_count(repo, "main").await.unwrap();
     assert_eq!(count, 1, "Main should have only 1 commit before merge");
 
     // Try rebase and merge - should skip rebase and merge directly
-    let result = GitService::try_rebase_and_merge(repo, "task-branch", "main");
+    let result = GitService::try_rebase_and_merge(repo, "task-branch", "main").await;
     assert!(
         result.is_ok(),
         "try_rebase_and_merge should succeed for first task"
@@ -82,7 +82,9 @@ fn test_try_rebase_and_merge_first_task_on_empty_repo() {
     match result.unwrap() {
         MergeAttemptResult::Success { commit_sha } => {
             // Verify commit is on main
-            let on_main = GitService::is_commit_on_branch(repo, &commit_sha, "main").unwrap();
+            let on_main = GitService::is_commit_on_branch(repo, &commit_sha, "main")
+                .await
+                .unwrap();
             assert!(on_main, "Merge commit should be on main branch");
 
             // Verify feature file exists
@@ -100,8 +102,8 @@ fn test_try_rebase_and_merge_first_task_on_empty_repo() {
     }
 }
 
-#[test]
-fn test_try_rebase_and_merge_normal_case_with_history() {
+#[tokio::test]
+async fn test_try_rebase_and_merge_normal_case_with_history() {
     // Test that normal case (>1 commit on base) uses rebase workflow
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
@@ -185,17 +187,19 @@ fn test_try_rebase_and_merge_normal_case_with_history() {
         .unwrap();
 
     // Verify main has >1 commits
-    let count = GitService::get_commit_count(repo, "main").unwrap();
+    let count = GitService::get_commit_count(repo, "main").await.unwrap();
     assert!(count > 1, "Main should have >1 commits (has {})", count);
 
     // Try rebase and merge - should use normal rebase workflow
-    let result = GitService::try_rebase_and_merge(repo, "task-branch", "main");
+    let result = GitService::try_rebase_and_merge(repo, "task-branch", "main").await;
     assert!(result.is_ok(), "try_rebase_and_merge should succeed");
 
     match result.unwrap() {
         MergeAttemptResult::Success { commit_sha } => {
             // Verify commit is on main
-            let on_main = GitService::is_commit_on_branch(repo, &commit_sha, "main").unwrap();
+            let on_main = GitService::is_commit_on_branch(repo, &commit_sha, "main")
+                .await
+                .unwrap();
             assert!(on_main, "Merge commit should be on main branch");
 
             // Verify all files exist
@@ -221,8 +225,8 @@ fn test_try_rebase_and_merge_normal_case_with_history() {
 // These tests verify the merge verification logic used by attempt_merge_auto_complete
 // and complete_merge HTTP handler to detect when a commit is NOT on main branch.
 
-#[test]
-fn test_merge_verification_detects_unmerged_task_branch() {
+#[tokio::test]
+async fn test_merge_verification_detects_unmerged_task_branch() {
     // This test verifies the core logic that attempt_merge_auto_complete uses:
     // 1. Get task branch HEAD SHA
     // 2. Check if that SHA is on main branch
@@ -289,7 +293,7 @@ fn test_merge_verification_detects_unmerged_task_branch() {
         .unwrap();
 
     // Get task branch HEAD SHA (simulating getting SHA from worktree)
-    let task_branch_head = GitService::get_head_sha(repo).unwrap();
+    let task_branch_head = GitService::get_head_sha(repo).await.unwrap();
 
     // Go back to main WITHOUT merging
     Command::new("git")
@@ -300,7 +304,9 @@ fn test_merge_verification_detects_unmerged_task_branch() {
 
     // Verify task branch commit is NOT on main - this is the key check
     // that attempt_merge_auto_complete uses before marking merge complete
-    let is_on_main = GitService::is_commit_on_branch(repo, &task_branch_head, "main").unwrap();
+    let is_on_main = GitService::is_commit_on_branch(repo, &task_branch_head, "main")
+        .await
+        .unwrap();
     assert!(
         !is_on_main,
         "Task branch HEAD {} should NOT be on main before merge",
@@ -315,8 +321,9 @@ fn test_merge_verification_detects_unmerged_task_branch() {
         .unwrap();
 
     // After merge, task branch commit SHOULD be on main
-    let is_on_main_after =
-        GitService::is_commit_on_branch(repo, &task_branch_head, "main").unwrap();
+    let is_on_main_after = GitService::is_commit_on_branch(repo, &task_branch_head, "main")
+        .await
+        .unwrap();
     assert!(
         is_on_main_after,
         "Task branch HEAD {} should be on main after merge",
@@ -324,7 +331,7 @@ fn test_merge_verification_detects_unmerged_task_branch() {
     );
 
     // Main HEAD should be at least at task branch HEAD (fast-forward or merge commit)
-    let main_head = GitService::get_head_sha(repo).unwrap();
+    let main_head = GitService::get_head_sha(repo).await.unwrap();
     // In fast-forward case, they'll be equal; in merge commit case, main_head is newer
     // The key verification is that is_commit_on_branch returned true - that's what matters
     assert!(
@@ -333,8 +340,8 @@ fn test_merge_verification_detects_unmerged_task_branch() {
     );
 }
 
-#[test]
-fn test_merge_verification_uses_correct_repo_path() {
+#[tokio::test]
+async fn test_merge_verification_uses_correct_repo_path() {
     // This test verifies that checking the main repo (not worktree) correctly
     // identifies merge status - simulating the fix for the original bug
     let temp_dir = tempfile::tempdir().unwrap();
@@ -402,7 +409,7 @@ fn test_merge_verification_uses_correct_repo_path() {
         .unwrap();
 
     // Get task branch HEAD (this is what worktree would have)
-    let task_branch_head = GitService::get_head_sha(&main_repo).unwrap();
+    let task_branch_head = GitService::get_head_sha(&main_repo).await.unwrap();
 
     // Simulate creating a worktree (just init a separate repo for simplicity)
     // In real code, worktree would have task branch checked out
@@ -442,11 +449,11 @@ fn test_merge_verification_uses_correct_repo_path() {
 
     // KEY TEST: Checking worktree HEAD vs main repo's main branch
     // The worktree has its own commits, not related to main_repo's main branch
-    let worktree_head = GitService::get_head_sha(&worktree).unwrap();
+    let worktree_head = GitService::get_head_sha(&worktree).await.unwrap();
 
     // Worktree HEAD is NOT on main_repo's main branch - this is the bug we fixed
     // (Previously, code was using worktree HEAD as merge commit)
-    let result = GitService::is_commit_on_branch(&main_repo, &worktree_head, "main");
+    let result = GitService::is_commit_on_branch(&main_repo, &worktree_head, "main").await;
     // This will error or return false because worktree_head doesn't exist in main_repo
     assert!(
         result.is_err() || !result.unwrap(),
@@ -454,7 +461,9 @@ fn test_merge_verification_uses_correct_repo_path() {
     );
 
     // The correct check: task branch HEAD from main_repo
-    let is_merged = GitService::is_commit_on_branch(&main_repo, &task_branch_head, "main").unwrap();
+    let is_merged = GitService::is_commit_on_branch(&main_repo, &task_branch_head, "main")
+        .await
+        .unwrap();
     assert!(
         !is_merged,
         "Task branch HEAD should NOT be on main until merged"
@@ -468,8 +477,9 @@ fn test_merge_verification_uses_correct_repo_path() {
         .unwrap();
 
     // Now task branch HEAD should be on main
-    let is_merged_after =
-        GitService::is_commit_on_branch(&main_repo, &task_branch_head, "main").unwrap();
+    let is_merged_after = GitService::is_commit_on_branch(&main_repo, &task_branch_head, "main")
+        .await
+        .unwrap();
     assert!(
         is_merged_after,
         "Task branch HEAD should be on main after merge"
@@ -480,8 +490,8 @@ fn test_merge_verification_uses_correct_repo_path() {
 // try_merge Tests (Phase 98 - Worktree mode direct merge)
 // =========================================================================
 
-#[test]
-fn test_try_merge_clean_fast_forward() {
+#[tokio::test]
+async fn test_try_merge_clean_fast_forward() {
     // Task branch has commits ahead of base, no divergence → fast-forward
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
@@ -544,7 +554,7 @@ fn test_try_merge_clean_fast_forward() {
         .output()
         .unwrap();
 
-    let result = GitService::try_merge(repo, "task-branch", "main");
+    let result = GitService::try_merge(repo, "task-branch", "main").await;
     assert!(
         result.is_ok(),
         "try_merge should succeed: {:?}",
@@ -553,7 +563,9 @@ fn test_try_merge_clean_fast_forward() {
 
     match result.unwrap() {
         MergeAttemptResult::Success { commit_sha } => {
-            let on_main = GitService::is_commit_on_branch(repo, &commit_sha, "main").unwrap();
+            let on_main = GitService::is_commit_on_branch(repo, &commit_sha, "main")
+                .await
+                .unwrap();
             assert!(on_main, "Merge commit should be on main");
             assert!(
                 repo.join("feature.txt").exists(),
@@ -569,8 +581,8 @@ fn test_try_merge_clean_fast_forward() {
     }
 }
 
-#[test]
-fn test_try_merge_with_diverged_branches() {
+#[tokio::test]
+async fn test_try_merge_with_diverged_branches() {
     // Both base and task branch have new commits → merge commit created
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
@@ -644,7 +656,7 @@ fn test_try_merge_with_diverged_branches() {
         .output()
         .unwrap();
 
-    let result = GitService::try_merge(repo, "task-branch", "main");
+    let result = GitService::try_merge(repo, "task-branch", "main").await;
     assert!(
         result.is_ok(),
         "try_merge should succeed: {:?}",
@@ -653,7 +665,9 @@ fn test_try_merge_with_diverged_branches() {
 
     match result.unwrap() {
         MergeAttemptResult::Success { commit_sha } => {
-            let on_main = GitService::is_commit_on_branch(repo, &commit_sha, "main").unwrap();
+            let on_main = GitService::is_commit_on_branch(repo, &commit_sha, "main")
+                .await
+                .unwrap();
             assert!(on_main, "Merge commit should be on main");
             assert!(
                 repo.join("feature.txt").exists(),
@@ -670,8 +684,8 @@ fn test_try_merge_with_diverged_branches() {
     }
 }
 
-#[test]
-fn test_try_merge_with_conflict() {
+#[tokio::test]
+async fn test_try_merge_with_conflict() {
     // Both branches modify the same file → conflict → NeedsAgent
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
@@ -745,7 +759,7 @@ fn test_try_merge_with_conflict() {
         .output()
         .unwrap();
 
-    let result = GitService::try_merge(repo, "task-branch", "main");
+    let result = GitService::try_merge(repo, "task-branch", "main").await;
     assert!(
         result.is_ok(),
         "try_merge should return Ok even on conflict: {:?}",
@@ -756,7 +770,7 @@ fn test_try_merge_with_conflict() {
         MergeAttemptResult::NeedsAgent { conflict_files } => {
             assert!(!conflict_files.is_empty(), "Should report conflict files");
             // Verify merge was aborted (repo is clean)
-            let has_changes = GitService::has_uncommitted_changes(repo).unwrap();
+            let has_changes = GitService::has_uncommitted_changes(repo).await.unwrap();
             assert!(
                 !has_changes,
                 "Merge should be aborted, no uncommitted changes"
@@ -771,8 +785,8 @@ fn test_try_merge_with_conflict() {
     }
 }
 
-#[test]
-fn test_try_squash_merge_source_branch_not_found() {
+#[tokio::test]
+async fn test_try_squash_merge_source_branch_not_found() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -803,8 +817,9 @@ fn test_try_squash_merge_source_branch_not_found() {
         .output()
         .unwrap();
 
-    let result =
-        GitService::try_squash_merge(repo, "nonexistent-source", "main", "squash commit").unwrap();
+    let result = GitService::try_squash_merge(repo, "nonexistent-source", "main", "squash commit")
+        .await
+        .unwrap();
 
     match result {
         MergeAttemptResult::BranchNotFound { branch } => {
@@ -814,8 +829,8 @@ fn test_try_squash_merge_source_branch_not_found() {
     }
 }
 
-#[test]
-fn test_try_squash_merge_target_branch_not_found() {
+#[tokio::test]
+async fn test_try_squash_merge_target_branch_not_found() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -860,6 +875,7 @@ fn test_try_squash_merge_target_branch_not_found() {
         "nonexistent-target",
         "squash commit",
     )
+    .await
     .unwrap();
 
     match result {
@@ -874,8 +890,8 @@ fn test_try_squash_merge_target_branch_not_found() {
 // try_continue_rebase Tests (Bug A fix)
 // =========================================================================
 
-#[test]
-fn test_try_continue_rebase_no_rebase_in_progress() {
+#[tokio::test]
+async fn test_try_continue_rebase_no_rebase_in_progress() {
     // When no rebase is in progress, git rebase --continue should fail gracefully
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
@@ -910,12 +926,12 @@ fn test_try_continue_rebase_no_rebase_in_progress() {
         .unwrap();
 
     // try_continue_rebase should fail since no rebase is in progress
-    let result = GitService::try_continue_rebase(repo);
+    let result = GitService::try_continue_rebase(repo).await;
     assert!(result.is_err());
 }
 
-#[test]
-fn test_try_continue_rebase_auto_resolved_step() {
+#[tokio::test]
+async fn test_try_continue_rebase_auto_resolved_step() {
     // Create a scenario with auto-resolved conflicts
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
@@ -1007,11 +1023,11 @@ fn test_try_continue_rebase_auto_resolved_step() {
     // If it enters a state requiring --continue, try_continue_rebase should complete it
     if !rebase_output.status.success() {
         // Rebase is in progress, try to continue it
-        let result = GitService::try_continue_rebase(repo).unwrap();
+        let result = GitService::try_continue_rebase(repo).await.unwrap();
         match result {
             RebaseResult::Success => {
                 // Successfully completed the rebase
-                assert!(GitService::is_rebase_in_progress(repo) == false);
+                assert!(!GitService::is_rebase_in_progress(repo));
             }
             RebaseResult::Conflict { .. } => {
                 // Acceptable: real conflicts were detected
@@ -1021,8 +1037,8 @@ fn test_try_continue_rebase_auto_resolved_step() {
     }
 }
 
-#[test]
-fn test_rebase_onto_auto_resolved_conflicts() {
+#[tokio::test]
+async fn test_rebase_onto_auto_resolved_conflicts() {
     // Test that rebase_onto detects and handles auto-resolved conflicts
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
@@ -1102,13 +1118,13 @@ fn test_rebase_onto_auto_resolved_conflicts() {
         .unwrap();
 
     // Call rebase_onto - it should handle auto-resolved cases
-    let result = GitService::rebase_onto(repo, "main").unwrap();
+    let result = GitService::rebase_onto(repo, "main").await.unwrap();
 
     // With non-conflicting changes, we expect Success
     match result {
         RebaseResult::Success => {
             // Good: rebase completed
-            assert!(GitService::is_rebase_in_progress(repo) == false);
+            assert!(!GitService::is_rebase_in_progress(repo));
         }
         RebaseResult::Conflict { .. } => {
             // If conflicts were detected, they should be real (non-empty files)
@@ -1121,8 +1137,8 @@ fn test_rebase_onto_auto_resolved_conflicts() {
 // try_continue_rebase Tests
 // =========================================================================
 
-#[test]
-fn test_try_continue_rebase_completes_no_rebase() {
+#[tokio::test]
+async fn test_try_continue_rebase_completes_no_rebase() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -1158,15 +1174,15 @@ fn test_try_continue_rebase_completes_no_rebase() {
 
     // Call try_continue_rebase when no rebase is in progress
     // Should return an error since there's nothing to continue
-    let result = GitService::try_continue_rebase(repo);
+    let result = GitService::try_continue_rebase(repo).await;
     assert!(
         result.is_err(),
         "try_continue_rebase should fail when no rebase in progress"
     );
 }
 
-#[test]
-fn test_try_continue_rebase_with_auto_resolved_conflicts() {
+#[tokio::test]
+async fn test_try_continue_rebase_with_auto_resolved_conflicts() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -1256,7 +1272,7 @@ fn test_try_continue_rebase_with_auto_resolved_conflicts() {
         if stderr.contains("CONFLICT") {
             // We have a rebase in progress due to conflict
             // This test checks the try_continue_rebase behavior
-            let result = GitService::try_continue_rebase(repo);
+            let result = GitService::try_continue_rebase(repo).await;
 
             // The result depends on whether there are actually unmerged files
             // If no unmerged files exist after git's merge, it should succeed
@@ -1282,8 +1298,8 @@ fn test_try_continue_rebase_with_auto_resolved_conflicts() {
 // try_complete_stale_rebase Tests (Bug B recovery)
 // =========================================================================
 
-#[test]
-fn test_try_complete_stale_rebase_no_rebase() {
+#[tokio::test]
+async fn test_try_complete_stale_rebase_no_rebase() {
     // When no rebase is in progress, should return NoRebase
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
@@ -1319,12 +1335,12 @@ fn test_try_complete_stale_rebase_no_rebase() {
         .unwrap();
 
     // try_complete_stale_rebase should return NoRebase since no rebase is in progress
-    let result = GitService::try_complete_stale_rebase(repo);
+    let result = GitService::try_complete_stale_rebase(repo).await;
     assert!(matches!(result, StaleRebaseResult::NoRebase));
 }
 
-#[test]
-fn test_try_complete_stale_rebase_auto_resolved_completes() {
+#[tokio::test]
+async fn test_try_complete_stale_rebase_auto_resolved_completes() {
     // Create a scenario where rebase is in auto-resolved state and can be completed
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
@@ -1414,12 +1430,12 @@ fn test_try_complete_stale_rebase_auto_resolved_completes() {
     // If it's in progress, test try_complete_stale_rebase
     if !rebase_output.status.success() {
         // Rebase is in progress - this is the scenario we want to test
-        let result = GitService::try_complete_stale_rebase(repo);
+        let result = GitService::try_complete_stale_rebase(repo).await;
 
         match result {
             StaleRebaseResult::Completed => {
                 // Successfully completed the stale rebase
-                assert!(GitService::is_rebase_in_progress(repo) == false);
+                assert!(!GitService::is_rebase_in_progress(repo));
             }
             StaleRebaseResult::HasConflicts { .. } => {
                 // Acceptable: real conflicts were detected
@@ -1430,12 +1446,12 @@ fn test_try_complete_stale_rebase_auto_resolved_completes() {
         }
     } else {
         // Rebase succeeded directly - that's acceptable for this test
-        assert!(GitService::is_rebase_in_progress(repo) == false);
+        assert!(!GitService::is_rebase_in_progress(repo));
     }
 }
 
-#[test]
-fn test_squash_merge_identical_branches_returns_success() {
+#[tokio::test]
+async fn test_squash_merge_identical_branches_returns_success() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
     init_test_repo(repo);
@@ -1461,7 +1477,9 @@ fn test_squash_merge_identical_branches_returns_success() {
         .unwrap();
 
     // try_squash_merge should return Success immediately (early return)
-    let result = GitService::try_squash_merge(repo, "feature", "main", "squash merge").unwrap();
+    let result = GitService::try_squash_merge(repo, "feature", "main", "squash merge")
+        .await
+        .unwrap();
 
     match result {
         MergeAttemptResult::Success { commit_sha } => {
@@ -1478,8 +1496,8 @@ fn test_squash_merge_identical_branches_returns_success() {
 // try_complete_stale_rebase Tests — has_real_conflicts
 // =========================================================================
 
-#[test]
-fn test_try_complete_stale_rebase_has_real_conflicts() {
+#[tokio::test]
+async fn test_try_complete_stale_rebase_has_real_conflicts() {
     // Create a scenario where rebase hits real conflicts that can't be auto-resolved
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
@@ -1574,7 +1592,7 @@ fn test_try_complete_stale_rebase_has_real_conflicts() {
     );
 
     // try_complete_stale_rebase should detect the real conflicts
-    let result = GitService::try_complete_stale_rebase(repo);
+    let result = GitService::try_complete_stale_rebase(repo).await;
     match result {
         StaleRebaseResult::HasConflicts { files } => {
             assert!(!files.is_empty(), "Expected at least one conflict file");

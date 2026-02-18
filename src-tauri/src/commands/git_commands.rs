@@ -98,7 +98,7 @@ pub async fn get_task_commits(
     // Handle merged tasks specially - branch/worktree is deleted, use merge_commit_sha
     if task.internal_status == InternalStatus::Merged {
         if let Some(ref merge_sha) = task.merge_commit_sha {
-            let commits = GitService::get_merged_task_commits(&repo_path, base_branch, merge_sha)
+            let commits = GitService::get_merged_task_commits(&repo_path, base_branch, merge_sha).await
                 .map_err(|e| e.to_string())?;
             return Ok(TaskCommitsResponse {
                 commits: commits.into_iter().map(CommitInfoResponse::from).collect(),
@@ -128,7 +128,7 @@ pub async fn get_task_commits(
 
     // Get commits since base (from HEAD of the working path)
     let commits =
-        GitService::get_commits_since(&working_path, base_branch).map_err(|e| e.to_string())?;
+        GitService::get_commits_since(&working_path, base_branch).await.map_err(|e| e.to_string())?;
 
     Ok(TaskCommitsResponse {
         commits: commits.into_iter().map(CommitInfoResponse::from).collect(),
@@ -176,7 +176,7 @@ pub async fn get_task_diff_stats(
 
     // Get diff stats
     let stats =
-        GitService::get_diff_stats(&working_path, base_branch).map_err(|e| e.to_string())?;
+        GitService::get_diff_stats(&working_path, base_branch).await.map_err(|e| e.to_string())?;
 
     Ok(TaskDiffStatsResponse::from(stats))
 }
@@ -240,7 +240,7 @@ pub async fn resolve_merge_conflict(
     let merge_in_progress = GitService::is_merge_in_progress(&working_path);
     let rebase_in_progress = GitService::is_rebase_in_progress(&working_path);
     if (merge_in_progress || rebase_in_progress)
-        && GitService::has_conflict_markers(&working_path).unwrap_or(true)
+        && GitService::has_conflict_markers(&working_path).await.unwrap_or(true)
     {
         return Err(
             "Conflict markers still present in merge-related changed files. Please resolve all conflicts before marking as complete."
@@ -250,7 +250,7 @@ pub async fn resolve_merge_conflict(
 
     // Commit the resolved merge
     let commit_message = format!("Merge resolution for task: {}", task.title);
-    let commit_sha = GitService::commit_all(&working_path, &commit_message)
+    let commit_sha = GitService::commit_all(&working_path, &commit_message).await
         .map_err(|e| format!("Failed to commit resolved merge: {}", e))?;
 
     // Update task with merge commit SHA if commit was made
@@ -744,7 +744,7 @@ async fn cleanup_task_git_resources(
             // Delete worktree first if it exists
             if let Some(worktree_path) = &task.worktree_path {
                 let worktree_path_buf = PathBuf::from(worktree_path);
-                if let Err(e) = GitService::delete_worktree(&repo_path, &worktree_path_buf) {
+                if let Err(e) = GitService::delete_worktree(&repo_path, &worktree_path_buf).await {
                     warn!(
                         "Failed to delete worktree {}: {} (non-fatal)",
                         worktree_path, e
@@ -753,7 +753,7 @@ async fn cleanup_task_git_resources(
             }
 
             // Checkout base branch in main repo before deleting the task branch
-            if let Err(e) = GitService::checkout_branch(&repo_path, base_branch) {
+            if let Err(e) = GitService::checkout_branch(&repo_path, base_branch).await {
                 warn!(
                     "Failed to checkout base branch {} after merge: {} (non-fatal)",
                     base_branch, e
@@ -761,13 +761,13 @@ async fn cleanup_task_git_resources(
             }
 
             // Delete task branch
-            if let Err(e) = GitService::delete_branch(&repo_path, &task_branch, true) {
+            if let Err(e) = GitService::delete_branch(&repo_path, &task_branch, true).await {
                 warn!("Failed to delete branch {}: {} (non-fatal)", task_branch, e);
             }
         }
         GitMode::Local => {
             // For local mode, just delete the branch (already on base after merge)
-            if let Err(e) = GitService::delete_branch(&repo_path, &task_branch, true) {
+            if let Err(e) = GitService::delete_branch(&repo_path, &task_branch, true).await {
                 warn!("Failed to delete branch {}: {} (non-fatal)", task_branch, e);
             }
         }

@@ -6,10 +6,10 @@
 //!
 //! Requires Git 2.38+ for `git merge-tree --write-tree`.
 
+use super::git_cmd;
 use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use tracing::debug;
 
 /// Result of a checkout-free merge operation
@@ -30,16 +30,13 @@ pub enum CheckoutFreeMergeResult {
 ///
 /// Returns `Ok(Ok(tree_sha))` on clean merge, `Ok(Err(files))` on conflicts,
 /// or `Err(AppError)` if the git command fails to spawn.
-pub fn merge_tree_write(
+pub async fn merge_tree_write(
     repo: &Path,
     target_ref: &str,
     source_ref: &str,
 ) -> AppResult<Result<String, Vec<PathBuf>>> {
-    let output = Command::new("git")
-        .args(["merge-tree", "--write-tree", target_ref, source_ref])
-        .current_dir(repo)
-        .output()
-        .map_err(|e| AppError::GitOperation(format!("Failed to run git merge-tree: {}", e)))?;
+    let output =
+        git_cmd::run(&["merge-tree", "--write-tree", target_ref, source_ref], repo).await?;
 
     if output.status.success() {
         let tree_sha = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -84,25 +81,27 @@ fn parse_merge_tree_conflicts(output: &str) -> Vec<PathBuf> {
 ///
 /// Creates a commit object without touching HEAD or the working tree.
 /// Returns the new commit SHA.
-pub fn commit_tree(
+pub async fn commit_tree(
     repo: &Path,
     tree_sha: &str,
     parents: &[&str],
     message: &str,
 ) -> AppResult<String> {
-    let mut args = vec!["commit-tree".to_string(), tree_sha.to_string()];
-    for parent in parents {
-        args.push("-p".to_string());
-        args.push(parent.to_string());
+    let mut args = vec!["commit-tree", tree_sha];
+    // Build parent args: we need owned strings for the format
+    let parent_args: Vec<String> = parents.iter().map(|p| p.to_string()).collect();
+    let mut full_args: Vec<&str> = vec!["commit-tree", tree_sha];
+    for parent in &parent_args {
+        full_args.push("-p");
+        full_args.push(parent);
     }
-    args.push("-m".to_string());
-    args.push(message.to_string());
+    full_args.push("-m");
+    full_args.push(message);
 
-    let output = Command::new("git")
-        .args(&args)
-        .current_dir(repo)
-        .output()
-        .map_err(|e| AppError::GitOperation(format!("Failed to run git commit-tree: {}", e)))?;
+    // Drop the unused `args` binding
+    let _ = args;
+
+    let output = git_cmd::run(&full_args, repo).await?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -120,13 +119,9 @@ pub fn commit_tree(
 /// Run `git update-ref refs/heads/<branch> <new_sha>`
 ///
 /// Advances (or sets) the branch pointer without touching HEAD or the working tree.
-pub fn update_branch_ref(repo: &Path, branch: &str, new_sha: &str) -> AppResult<()> {
+pub async fn update_branch_ref(repo: &Path, branch: &str, new_sha: &str) -> AppResult<()> {
     let refname = format!("refs/heads/{}", branch);
-    let output = Command::new("git")
-        .args(["update-ref", &refname, new_sha])
-        .current_dir(repo)
-        .output()
-        .map_err(|e| AppError::GitOperation(format!("Failed to run git update-ref: {}", e)))?;
+    let output = git_cmd::run(&["update-ref", &refname, new_sha], repo).await?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -151,21 +146,22 @@ pub fn update_branch_ref(repo: &Path, branch: &str, new_sha: &str) -> AppResult<
 /// 3. `update-ref` to advance the target branch
 ///
 /// Does NOT touch the working tree. Caller must `git reset --hard HEAD` to sync.
-pub fn try_merge_checkout_free(
+pub async fn try_merge_checkout_free(
     repo: &Path,
     source_branch: &str,
     target_branch: &str,
 ) -> AppResult<CheckoutFreeMergeResult> {
     debug!("Checkout-free merge: {} → {}", source_branch, target_branch);
 
-    let target_sha = super::GitService::get_branch_sha(repo, target_branch)?;
-    let source_sha = super::GitService::get_branch_sha(repo, source_branch)?;
+    let target_sha = super::GitService::get_branch_sha(repo, target_branch).await?;
+    let source_sha = super::GitService::get_branch_sha(repo, source_branch).await?;
 
-    match merge_tree_write(repo, target_branch, source_branch)? {
+    match merge_tree_write(repo, target_branch, source_branch).await? {
         Ok(tree_sha) => {
             let message = format!("Merge branch '{}' into {}", source_branch, target_branch);
-            let commit_sha = commit_tree(repo, &tree_sha, &[&target_sha, &source_sha], &message)?;
-            update_branch_ref(repo, target_branch, &commit_sha)?;
+            let commit_sha =
+                commit_tree(repo, &tree_sha, &[&target_sha, &source_sha], &message).await?;
+            update_branch_ref(repo, target_branch, &commit_sha).await?;
             debug!(
                 "Checkout-free merge succeeded: {} → {} = {}",
                 source_branch, target_branch, commit_sha
@@ -186,7 +182,7 @@ pub fn try_merge_checkout_free(
 /// 3. `update-ref` to advance the target branch
 ///
 /// Does NOT touch the working tree. Caller must `git reset --hard HEAD` to sync.
-pub fn try_squash_merge_checkout_free(
+pub async fn try_squash_merge_checkout_free(
     repo: &Path,
     source_branch: &str,
     target_branch: &str,
@@ -197,12 +193,13 @@ pub fn try_squash_merge_checkout_free(
         source_branch, target_branch
     );
 
-    let target_sha = super::GitService::get_branch_sha(repo, target_branch)?;
+    let target_sha = super::GitService::get_branch_sha(repo, target_branch).await?;
 
-    match merge_tree_write(repo, target_branch, source_branch)? {
+    match merge_tree_write(repo, target_branch, source_branch).await? {
         Ok(tree_sha) => {
-            let commit_sha = commit_tree(repo, &tree_sha, &[&target_sha], commit_message)?;
-            update_branch_ref(repo, target_branch, &commit_sha)?;
+            let commit_sha =
+                commit_tree(repo, &tree_sha, &[&target_sha], commit_message).await?;
+            update_branch_ref(repo, target_branch, &commit_sha).await?;
             debug!(
                 "Checkout-free squash merge succeeded: {} → {} = {}",
                 source_branch, target_branch, commit_sha
@@ -222,7 +219,7 @@ pub fn try_squash_merge_checkout_free(
 /// then advances target ref to source's commit.
 ///
 /// Does NOT touch the working tree. Caller must `git reset --hard HEAD` to sync.
-pub fn try_fast_forward_checkout_free(
+pub async fn try_fast_forward_checkout_free(
     repo: &Path,
     source_branch: &str,
     target_branch: &str,
@@ -232,17 +229,15 @@ pub fn try_fast_forward_checkout_free(
         source_branch, target_branch
     );
 
-    let target_sha = super::GitService::get_branch_sha(repo, target_branch)?;
-    let source_sha = super::GitService::get_branch_sha(repo, source_branch)?;
+    let target_sha = super::GitService::get_branch_sha(repo, target_branch).await?;
+    let source_sha = super::GitService::get_branch_sha(repo, source_branch).await?;
 
     // Check if target is ancestor of source (FF possible)
-    let output = Command::new("git")
-        .args(["merge-base", "--is-ancestor", &target_sha, &source_sha])
-        .current_dir(repo)
-        .output()
-        .map_err(|e| {
-            AppError::GitOperation(format!("Failed to run git merge-base --is-ancestor: {}", e))
-        })?;
+    let output = git_cmd::run(
+        &["merge-base", "--is-ancestor", &target_sha, &source_sha],
+        repo,
+    )
+    .await?;
 
     if !output.status.success() {
         // Not a fast-forward — fall back to regular merge
@@ -250,11 +245,11 @@ pub fn try_fast_forward_checkout_free(
             "Cannot fast-forward {} → {}, target is not ancestor of source",
             source_branch, target_branch
         );
-        return try_merge_checkout_free(repo, source_branch, target_branch);
+        return try_merge_checkout_free(repo, source_branch, target_branch).await;
     }
 
     // Fast-forward: just advance the ref
-    update_branch_ref(repo, target_branch, &source_sha)?;
+    update_branch_ref(repo, target_branch, &source_sha).await?;
     debug!(
         "Checkout-free fast-forward succeeded: {} → {} = {}",
         source_branch, target_branch, source_sha

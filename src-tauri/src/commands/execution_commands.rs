@@ -1994,7 +1994,7 @@ async fn validate_resume(task: &Task, state: &AppState) -> ResumeValidationResul
     let repo_path = Path::new(&project.working_directory);
 
     // Check branch exists
-    if !GitService::branch_exists(repo_path, &branch_name) {
+    if !GitService::branch_exists(repo_path, &branch_name).await {
         warnings.push(ResumeValidationWarning {
             code: "branch_not_found".to_string(),
             message: format!("Task branch '{}' does not exist", branch_name),
@@ -2008,7 +2008,7 @@ async fn validate_resume(task: &Task, state: &AppState) -> ResumeValidationResul
     // Check worktree is clean (if worktree path exists)
     if let Some(worktree_path) = &task.worktree_path {
         let worktree = Path::new(worktree_path);
-        match GitService::has_uncommitted_changes(worktree) {
+        match GitService::has_uncommitted_changes(worktree).await {
             Ok(false) => {} // Clean, no changes
             Ok(true) => {
                 warnings.push(ResumeValidationWarning {

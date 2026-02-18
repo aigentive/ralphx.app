@@ -211,7 +211,7 @@ impl<'a> super::TransitionHandler<'a> {
                                 match project.git_mode {
                                     GitMode::Local => {
                                         // Block if uncommitted changes exist
-                                        match GitService::has_uncommitted_changes(repo_path) {
+                                        match GitService::has_uncommitted_changes(repo_path).await {
                                             Ok(true) => {
                                                 return Err(AppError::ExecutionBlocked(
                                                 "Cannot execute task: uncommitted changes in working directory. \
@@ -225,10 +225,18 @@ impl<'a> super::TransitionHandler<'a> {
                                                     &branch,
                                                     base_branch,
                                                 )
-                                                .and_then(|_| {
-                                                    GitService::checkout_branch(repo_path, &branch)
-                                                }) {
-                                                    Ok(_) => Ok(Some((branch.clone(), None))),
+                                                .await
+                                                {
+                                                    Ok(_) => {
+                                                        match GitService::checkout_branch(repo_path, &branch).await {
+                                                            Ok(_) => Ok(Some((branch.clone(), None))),
+                                                            Err(e) => {
+                                                                return Err(AppError::ExecutionBlocked(
+                                                                    format!("Git isolation failed: could not create/checkout branch '{}': {}", branch, e)
+                                                                ));
+                                                            }
+                                                        }
+                                                    }
                                                     Err(e) => {
                                                         return Err(AppError::ExecutionBlocked(
                                                             format!("Git isolation failed: could not create/checkout branch '{}': {}", branch, e)
@@ -262,7 +270,7 @@ impl<'a> super::TransitionHandler<'a> {
 
                                         // Check if branch already exists from a previous execution attempt
                                         let branch_exists =
-                                            GitService::branch_exists(repo_path, &branch);
+                                            GitService::branch_exists(repo_path, &branch).await;
 
                                         // Create worktree - use existing branch if it exists, create new one otherwise
                                         let result = if branch_exists {
@@ -276,6 +284,7 @@ impl<'a> super::TransitionHandler<'a> {
                                                 &worktree_path_buf,
                                                 &branch,
                                             )
+                                            .await
                                         } else {
                                             GitService::create_worktree(
                                                 repo_path,
@@ -283,6 +292,7 @@ impl<'a> super::TransitionHandler<'a> {
                                                 &branch,
                                                 base_branch,
                                             )
+                                            .await
                                         };
 
                                         match result {
@@ -827,14 +837,14 @@ impl<'a> super::TransitionHandler<'a> {
                                     task_id = task_id,
                                     "on_enter(Merging): Aborting stale rebase before agent spawn"
                                 );
-                                let _ = GitService::abort_rebase(&wt_path);
+                                let _ = GitService::abort_rebase(&wt_path).await;
                             }
                             if GitService::is_merge_in_progress(&wt_path) {
                                 tracing::info!(
                                     task_id = task_id,
                                     "on_enter(Merging): Aborting stale merge before agent spawn"
                                 );
-                                let _ = GitService::abort_merge(&wt_path);
+                                let _ = GitService::abort_merge(&wt_path).await;
                             }
 
                             // Always: remove worktree symlinks that cause false conflicts.
@@ -974,9 +984,9 @@ impl<'a> super::TransitionHandler<'a> {
                 if project.git_mode == GitMode::Local {
                     if let Some(branch) = &task.task_branch {
                         let repo_path = Path::new(&project.working_directory);
-                        match GitService::get_current_branch(repo_path) {
+                        match GitService::get_current_branch(repo_path).await {
                             Ok(current) if current != *branch => {
-                                match GitService::checkout_branch(repo_path, branch) {
+                                match GitService::checkout_branch(repo_path, branch).await {
                                     Ok(_) => {
                                         tracing::info!(
                                             task_id = task_id_str,

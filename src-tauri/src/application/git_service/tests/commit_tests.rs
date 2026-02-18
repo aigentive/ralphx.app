@@ -6,8 +6,8 @@ use std::process::Command;
 // commit_all Tests
 // =========================================================================
 
-#[test]
-fn test_commit_all_excludes_environment_artifacts() {
+#[tokio::test]
+async fn test_commit_all_excludes_environment_artifacts() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -51,6 +51,7 @@ fn test_commit_all_excludes_environment_artifacts() {
     std::fs::write(repo.join("src-tauri/target"), "placeholder").unwrap();
 
     let commit_sha = GitService::commit_all(repo, "test commit")
+        .await
         .unwrap()
         .expect("commit should be created");
     assert!(!commit_sha.is_empty());
@@ -71,8 +72,8 @@ fn test_commit_all_excludes_environment_artifacts() {
 // Conflict Marker Detection Tests
 // =========================================================================
 
-#[test]
-fn test_has_conflict_markers_ignores_committed_marker_literals() {
+#[tokio::test]
+async fn test_has_conflict_markers_ignores_committed_marker_literals() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
     init_test_repo(repo);
@@ -94,15 +95,15 @@ fn test_has_conflict_markers_ignores_committed_marker_literals() {
         .output()
         .unwrap();
 
-    let has_markers = GitService::has_conflict_markers(repo).unwrap();
+    let has_markers = GitService::has_conflict_markers(repo).await.unwrap();
     assert!(
         !has_markers,
         "Committed marker literals in unchanged files should not block merge completion"
     );
 }
 
-#[test]
-fn test_has_conflict_markers_detects_unstaged_markers() {
+#[tokio::test]
+async fn test_has_conflict_markers_detects_unstaged_markers() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
     init_test_repo(repo);
@@ -125,7 +126,7 @@ fn test_has_conflict_markers_detects_unstaged_markers() {
     )
     .unwrap();
 
-    let has_markers = GitService::has_conflict_markers(repo).unwrap();
+    let has_markers = GitService::has_conflict_markers(repo).await.unwrap();
     assert!(
         has_markers,
         "Unstaged conflict markers in changed files should be detected"
@@ -136,8 +137,8 @@ fn test_has_conflict_markers_detects_unstaged_markers() {
 // branches_have_same_content Tests
 // =========================================================================
 
-#[test]
-fn test_branches_have_same_content_identical() {
+#[tokio::test]
+async fn test_branches_have_same_content_identical() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
     init_test_repo(repo);
@@ -162,12 +163,14 @@ fn test_branches_have_same_content_identical() {
         .output()
         .unwrap();
 
-    let result = GitService::branches_have_same_content(repo, "main", "feature").unwrap();
+    let result = GitService::branches_have_same_content(repo, "main", "feature")
+        .await
+        .unwrap();
     assert!(result, "Branches at same commit should be identical");
 }
 
-#[test]
-fn test_branches_have_same_content_diverged() {
+#[tokio::test]
+async fn test_branches_have_same_content_diverged() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
     init_test_repo(repo);
@@ -203,7 +206,9 @@ fn test_branches_have_same_content_diverged() {
         .output()
         .unwrap();
 
-    let result = GitService::branches_have_same_content(repo, "main", "feature").unwrap();
+    let result = GitService::branches_have_same_content(repo, "main", "feature")
+        .await
+        .unwrap();
     assert!(
         !result,
         "Branches with different content should not be identical"

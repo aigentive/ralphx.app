@@ -165,7 +165,7 @@ pub async fn complete_merge(
         if let Some(ref worktree_path) = task.worktree_path {
             let wt_path = PathBuf::from(worktree_path);
             if wt_path.exists() {
-                let _ = GitService::delete_worktree(&repo_path, &wt_path);
+                let _ = GitService::delete_worktree(&repo_path, &wt_path).await;
             }
         }
 
@@ -246,7 +246,7 @@ pub async fn complete_merge(
     let (_, target_branch) = resolve_merge_branches(&task, &project, &plan_branch_repo).await;
     let repo_path = PathBuf::from(&project.working_directory);
 
-    if !GitService::is_commit_on_branch(&repo_path, &req.commit_sha, &target_branch)
+    if !GitService::is_commit_on_branch(&repo_path, &req.commit_sha, &target_branch).await
         .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?
     {
         return Err(json_error(
@@ -337,11 +337,11 @@ pub async fn complete_merge(
 
         // Delete worktree if exists (Worktree mode)
         if let Some(worktree_path) = &task.worktree_path {
-            let _ = GitService::delete_worktree(&repo_path, &PathBuf::from(worktree_path));
+            let _ = GitService::delete_worktree(&repo_path, &PathBuf::from(worktree_path)).await;
         }
 
         // Delete branch (both modes)
-        let _ = GitService::delete_branch(&repo_path, task_branch, true);
+        let _ = GitService::delete_branch(&repo_path, task_branch, true).await;
     }
 
     // 11. Emit events
@@ -611,7 +611,7 @@ pub async fn get_task_commits(
         .unwrap_or_else(|| PathBuf::from(&project.working_directory));
 
     // 5. Get commits from GitService
-    let commits = GitService::get_commits_since(&working_path, base_branch)
+    let commits = GitService::get_commits_since(&working_path, base_branch).await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // 6. Convert to response format
@@ -674,7 +674,7 @@ pub async fn get_task_diff_stats(
         .unwrap_or_else(|| PathBuf::from(&project.working_directory));
 
     // 5. Get diff stats from GitService
-    let stats = GitService::get_diff_stats(&working_path, base_branch)
+    let stats = GitService::get_diff_stats(&working_path, base_branch).await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(DiffStatsResponse {

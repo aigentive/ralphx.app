@@ -133,7 +133,7 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
     let worktree = Path::new(&worktree_path);
 
     // 3. Check git state - try to complete stale rebase first
-    match GitService::try_complete_stale_rebase(worktree) {
+    match GitService::try_complete_stale_rebase(worktree).await {
         StaleRebaseResult::Completed => {
             tracing::info!(
                 task_id = task_id_str,
@@ -259,7 +259,7 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
         return;
     }
 
-    match GitService::has_conflict_markers(worktree) {
+    match GitService::has_conflict_markers(worktree).await {
         Ok(true) => {
             tracing::info!(
                 task_id = task_id_str,
@@ -379,7 +379,7 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
                     "attempt_merge_auto_complete: re-validation failed, reverting merge"
                 );
 
-                if let Err(e) = GitService::reset_hard(worktree, "HEAD~1") {
+                if let Err(e) = GitService::reset_hard(worktree, "HEAD~1").await {
                     tracing::error!(
                         task_id = task_id_str,
                         error = %e,
@@ -438,7 +438,7 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
     }
 
     // 4. Verify merge actually happened on target branch using helper
-    let commit_sha = match verify_merge_on_target(&main_repo_path, &source_branch, &target_branch) {
+    let commit_sha = match verify_merge_on_target(&main_repo_path, &source_branch, &target_branch).await {
         MergeVerification::Merged(sha) => {
             // Task branch is merged - capture the merge commit SHA
             sha
@@ -781,25 +781,25 @@ pub(crate) enum MergeVerification {
 /// - `NotMerged` if source exists but is not on target
 /// - `SourceBranchMissing` if source branch doesn't exist or can't be resolved
 /// - `TargetBranchMissing` if target branch doesn't exist or can't be resolved
-pub(crate) fn verify_merge_on_target(
+pub(crate) async fn verify_merge_on_target(
     main_repo: &Path,
     source_branch: &str,
     target_branch: &str,
 ) -> MergeVerification {
     // Get source branch SHA
-    let source_sha = match GitService::get_branch_sha(main_repo, source_branch) {
+    let source_sha = match GitService::get_branch_sha(main_repo, source_branch).await {
         Ok(sha) => sha,
         Err(_) => return MergeVerification::SourceBranchMissing,
     };
 
     // Get target branch SHA
-    let target_sha = match GitService::get_branch_sha(main_repo, target_branch) {
+    let target_sha = match GitService::get_branch_sha(main_repo, target_branch).await {
         Ok(sha) => sha,
         Err(_) => return MergeVerification::TargetBranchMissing,
     };
 
     // Check if source commit is on target branch
-    match GitService::is_commit_on_branch(main_repo, &source_sha, target_branch) {
+    match GitService::is_commit_on_branch(main_repo, &source_sha, target_branch).await {
         Ok(true) => MergeVerification::Merged(target_sha),
         Ok(false) => MergeVerification::NotMerged,
         Err(_) => MergeVerification::TargetBranchMissing,

@@ -449,7 +449,7 @@ impl DiffService {
     /// # Git Version Requirements
     /// * `merge-tree --write-tree` requires Git 2.38+
     /// * Falls back to `get_conflict_files` only if Git < 2.38
-    pub fn detect_conflicts(
+    pub async fn detect_conflicts(
         &self,
         project_path: &str,
         task_branch: &str,
@@ -466,7 +466,7 @@ impl DiffService {
 
         // Pre-merge preview: use merge-tree --write-tree if Git 2.38+
         if Self::is_git_238_or_newer() {
-            match checkout_free::merge_tree_write(repo, base_branch, task_branch)? {
+            match checkout_free::merge_tree_write(repo, base_branch, task_branch).await? {
                 Ok(_tree_sha) => {
                     // Clean merge - no conflicts
                     Ok(Vec::new())
@@ -788,8 +788,8 @@ mod tests {
             .expect("Failed to checkout master");
     }
 
-    #[test]
-    fn test_detect_conflicts_clean_merge() {
+    #[tokio::test]
+    async fn test_detect_conflicts_clean_merge() {
         let (_temp_dir, repo_path) = create_git_repo();
         let repo_path_str = repo_path.to_string_lossy().to_string();
 
@@ -797,7 +797,7 @@ mod tests {
         create_branch_with_change(&repo_path, "feature-a", "file_a.txt", "Content A\n");
 
         let diff_service = DiffService::new();
-        let result = diff_service.detect_conflicts(&repo_path_str, "feature-a", "master");
+        let result = diff_service.detect_conflicts(&repo_path_str, "feature-a", "master").await;
 
         // Should succeed with no conflicts
         assert!(result.is_ok());
