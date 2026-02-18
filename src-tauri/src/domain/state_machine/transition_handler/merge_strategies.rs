@@ -122,15 +122,15 @@ impl<'a> super::TransitionHandler<'a> {
                         merge_path: repo_path.to_path_buf(),
                     };
                 }
-                Ok(CheckoutFreeMergeResult::NeedsAgent { conflict_files }) => {
+                Ok(CheckoutFreeMergeResult::Conflict { files }) => {
                     tracing::warn!(
                         task_id = task_id_str,
-                        conflict_count = conflict_files.len(),
+                        conflict_count = files.len(),
                         "Checkout-free merge detected conflicts"
                     );
 
                     return MergeOutcome::NeedsAgent {
-                        conflict_files,
+                        conflict_files: files,
                         merge_worktree: None, // Local mode for checkout-free
                     };
                 }
@@ -161,17 +161,16 @@ impl<'a> super::TransitionHandler<'a> {
             };
         }
 
-        // Create merge worktree
         let merge_wt_path = compute_merge_worktree_path(project, task_id_str);
         let merge_wt = PathBuf::from(&merge_wt_path);
 
         tracing::info!(
             task_id = task_id_str,
             worktree = %merge_wt_path,
-            "Creating merge worktree"
+            "Attempting worktree merge"
         );
 
-        // Delete existing worktree if present
+        // Pre-delete stale worktree so try_merge_in_worktree gets a clean path
         if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt).await {
             tracing::debug!(
                 task_id = task_id_str,
@@ -180,36 +179,23 @@ impl<'a> super::TransitionHandler<'a> {
             );
         }
 
-        // Create fresh worktree at target branch
-        if let Err(e) = GitService::create_worktree(repo_path, &merge_wt, target_branch).await {
-            tracing::error!(
-                task_id = task_id_str,
-                error = %e,
-                target_branch = %target_branch,
-                "Failed to create merge worktree"
-            );
-            return MergeOutcome::GitError(e);
-        }
-
-        // Attempt merge in worktree
-        let result = GitService::try_merge_in_worktree(&merge_wt, source_branch).await;
-
-        // Clean up worktree
-        if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt).await {
-            tracing::warn!(
-                task_id = task_id_str,
-                error = %e,
-                "Failed to delete merge worktree after operation (non-fatal)"
-            );
-        }
-
-        match result {
+        // try_merge_in_worktree creates the worktree, merges, and on conflict leaves
+        // the worktree in conflict state for agent resolution.
+        match GitService::try_merge_in_worktree(repo_path, source_branch, target_branch, &merge_wt).await {
             Ok(MergeAttemptResult::Success { commit_sha }) => {
                 tracing::info!(
                     task_id = task_id_str,
                     commit_sha = %commit_sha,
                     "Worktree merge succeeded"
                 );
+                // Clean up worktree on success
+                if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt).await {
+                    tracing::warn!(
+                        task_id = task_id_str,
+                        error = %e,
+                        "Failed to delete merge worktree after success (non-fatal)"
+                    );
+                }
                 MergeOutcome::Success {
                     commit_sha,
                     merge_path: repo_path.to_path_buf(),
@@ -219,32 +205,17 @@ impl<'a> super::TransitionHandler<'a> {
                 tracing::warn!(
                     task_id = task_id_str,
                     conflict_count = conflict_files.len(),
-                    "Worktree merge detected conflicts"
+                    "Worktree merge detected conflicts — worktree left for agent"
                 );
-
-                // Recreate worktree for agent conflict resolution
-                if let Err(e) = GitService::create_worktree(repo_path, &merge_wt, target_branch).await {
-                    tracing::error!(
-                        task_id = task_id_str,
-                        error = %e,
-                        "Failed to recreate merge worktree for conflict resolution"
-                    );
-                    return MergeOutcome::GitError(e);
-                }
-
-                // Attempt merge again to recreate conflict state
-                if let Err(e) = GitService::merge_branch(&merge_wt, source_branch).await {
-                    tracing::warn!(
-                        task_id = task_id_str,
-                        error = %e,
-                        "Expected conflict recreation, got error (non-fatal)"
-                    );
-                }
-
+                // Worktree is left in conflict state by try_merge_in_worktree
                 MergeOutcome::NeedsAgent {
                     conflict_files,
                     merge_worktree: Some(merge_wt),
                 }
+            }
+            Ok(MergeAttemptResult::BranchNotFound { branch }) => {
+                tracing::error!(task_id = task_id_str, branch = %branch, "Branch not found during merge");
+                MergeOutcome::BranchNotFound { branch }
             }
             Err(e) => {
                 tracing::error!(
@@ -299,6 +270,10 @@ impl<'a> super::TransitionHandler<'a> {
                     merge_worktree: None, // Local mode
                 }
             }
+            Ok(MergeAttemptResult::BranchNotFound { branch }) => {
+                tracing::error!(task_id = task_id_str, branch = %branch, "Branch not found");
+                MergeOutcome::BranchNotFound { branch }
+            }
             Err(e) => {
                 tracing::error!(
                     task_id = task_id_str,
@@ -351,6 +326,10 @@ impl<'a> super::TransitionHandler<'a> {
                     conflict_files,
                     merge_worktree: None, // Local mode
                 }
+            }
+            Ok(MergeAttemptResult::BranchNotFound { branch }) => {
+                tracing::error!(task_id = task_id_str, branch = %branch, "Branch not found");
+                MergeOutcome::BranchNotFound { branch }
             }
             Err(e) => {
                 tracing::error!(
@@ -421,14 +400,14 @@ impl<'a> super::TransitionHandler<'a> {
                         merge_path: repo_path.to_path_buf(),
                     };
                 }
-                Ok(CheckoutFreeMergeResult::NeedsAgent { conflict_files }) => {
+                Ok(CheckoutFreeMergeResult::Conflict { files }) => {
                     tracing::warn!(
                         task_id = task_id_str,
-                        conflict_count = conflict_files.len(),
+                        conflict_count = files.len(),
                         "Checkout-free rebase detected conflicts"
                     );
                     return MergeOutcome::NeedsAgent {
-                        conflict_files,
+                        conflict_files: files,
                         merge_worktree: None,
                     };
                 }
@@ -459,31 +438,38 @@ impl<'a> super::TransitionHandler<'a> {
 
         let rebase_wt_path = compute_rebase_worktree_path(project, task_id_str);
         let rebase_wt = PathBuf::from(&rebase_wt_path);
+        let merge_wt_path = compute_merge_worktree_path(project, task_id_str);
+        let merge_wt = PathBuf::from(&merge_wt_path);
 
         tracing::info!(
             task_id = task_id_str,
-            worktree = %rebase_wt_path,
-            "Creating rebase worktree"
+            rebase_worktree = %rebase_wt_path,
+            merge_worktree = %merge_wt_path,
+            "Attempting worktree rebase-and-merge"
         );
 
+        // Pre-delete stale worktrees
         let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
+        let _ = GitService::delete_worktree(repo_path, &merge_wt).await;
 
-        if let Err(e) = GitService::create_worktree(repo_path, &rebase_wt, source_branch).await {
-            tracing::error!(error = %e, "Failed to create rebase worktree");
-            return MergeOutcome::GitError(e);
-        }
-
-        let result = GitService::try_rebase_and_merge_in_worktree(&rebase_wt, target_branch).await;
-
-        let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
-
-        match result {
+        // try_rebase_and_merge_in_worktree creates its own worktrees internally.
+        // On conflict: leaves the rebase worktree in conflict state for agent resolution.
+        match GitService::try_rebase_and_merge_in_worktree(
+            repo_path,
+            source_branch,
+            target_branch,
+            &rebase_wt,
+            &merge_wt,
+        ).await {
             Ok(MergeAttemptResult::Success { commit_sha }) => {
                 tracing::info!(
                     task_id = task_id_str,
                     commit_sha = %commit_sha,
                     "Worktree rebase and merge succeeded"
                 );
+                // Clean up both worktrees on success
+                let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
+                let _ = GitService::delete_worktree(repo_path, &merge_wt).await;
                 MergeOutcome::Success {
                     commit_sha,
                     merge_path: repo_path.to_path_buf(),
@@ -493,20 +479,17 @@ impl<'a> super::TransitionHandler<'a> {
                 tracing::warn!(
                     task_id = task_id_str,
                     conflict_count = conflict_files.len(),
-                    "Worktree rebase detected conflicts"
+                    "Worktree rebase detected conflicts — rebase worktree left for agent"
                 );
-
-                // Recreate worktree for conflict resolution
-                if let Err(e) = GitService::create_worktree(repo_path, &rebase_wt, source_branch).await {
-                    return MergeOutcome::GitError(e);
-                }
-
-                let _ = GitService::rebase_onto(&rebase_wt, target_branch).await;
-
+                // Rebase worktree is left in conflict state by try_rebase_and_merge_in_worktree
                 MergeOutcome::NeedsAgent {
                     conflict_files,
                     merge_worktree: Some(rebase_wt),
                 }
+            }
+            Ok(MergeAttemptResult::BranchNotFound { branch }) => {
+                tracing::error!(task_id = task_id_str, branch = %branch, "Branch not found during rebase");
+                MergeOutcome::BranchNotFound { branch }
             }
             Err(e) => {
                 tracing::error!(error = %e, "Worktree rebase failed");
@@ -557,6 +540,10 @@ impl<'a> super::TransitionHandler<'a> {
                     conflict_files,
                     merge_worktree: None,
                 }
+            }
+            Ok(MergeAttemptResult::BranchNotFound { branch }) => {
+                tracing::error!(task_id = task_id_str, branch = %branch, "Branch not found");
+                MergeOutcome::BranchNotFound { branch }
             }
             Err(e) => {
                 tracing::error!(error = %e, "Local squash merge failed");
@@ -615,9 +602,9 @@ impl<'a> super::TransitionHandler<'a> {
                         merge_path: repo_path.to_path_buf(),
                     };
                 }
-                Ok(CheckoutFreeMergeResult::NeedsAgent { conflict_files }) => {
+                Ok(CheckoutFreeMergeResult::Conflict { files }) => {
                     return MergeOutcome::NeedsAgent {
-                        conflict_files,
+                        conflict_files: files,
                         merge_worktree: None,
                     };
                 }
@@ -627,51 +614,38 @@ impl<'a> super::TransitionHandler<'a> {
             }
         }
 
-        // Use worktree
-
-        if !GitService::branch_exists(repo_path, source_branch).await {
-            return MergeOutcome::BranchNotFound {
-                branch: source_branch.to_string(),
-            };
-        }
-        if !GitService::branch_exists(repo_path, target_branch).await {
-            return MergeOutcome::BranchNotFound {
-                branch: target_branch.to_string(),
-            };
-        }
-
         let merge_wt_path = compute_merge_worktree_path(project, task_id_str);
         let merge_wt = PathBuf::from(&merge_wt_path);
 
+        // Pre-delete stale worktree
         let _ = GitService::delete_worktree(repo_path, &merge_wt).await;
 
-        if let Err(e) = GitService::create_worktree(repo_path, &merge_wt, target_branch).await {
-            return MergeOutcome::GitError(e);
-        }
-
-        let result = GitService::try_squash_merge_in_worktree(&merge_wt, source_branch, squash_commit_msg).await;
-
-        let _ = GitService::delete_worktree(repo_path, &merge_wt).await;
-
-        match result {
+        // try_squash_merge_in_worktree creates the worktree internally.
+        // On conflict: leaves worktree in conflict state for agent resolution.
+        match GitService::try_squash_merge_in_worktree(
+            repo_path,
+            source_branch,
+            target_branch,
+            &merge_wt,
+            squash_commit_msg,
+        ).await {
             Ok(MergeAttemptResult::Success { commit_sha }) => {
+                // Clean up worktree on success
+                let _ = GitService::delete_worktree(repo_path, &merge_wt).await;
                 MergeOutcome::Success {
                     commit_sha,
                     merge_path: repo_path.to_path_buf(),
                 }
             }
             Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
-                // Recreate for conflict resolution
-                if let Err(e) = GitService::create_worktree(repo_path, &merge_wt, target_branch).await {
-                    return MergeOutcome::GitError(e);
-                }
-
-                let _ = GitService::merge_branch(&merge_wt, source_branch).await;
-
+                // Worktree is left in conflict state by try_squash_merge_in_worktree
                 MergeOutcome::NeedsAgent {
                     conflict_files,
                     merge_worktree: Some(merge_wt),
                 }
+            }
+            Ok(MergeAttemptResult::BranchNotFound { branch }) => {
+                MergeOutcome::BranchNotFound { branch }
             }
             Err(e) => MergeOutcome::GitError(e),
         }
@@ -719,6 +693,10 @@ impl<'a> super::TransitionHandler<'a> {
                     conflict_files,
                     merge_worktree: None,
                 }
+            }
+            Ok(MergeAttemptResult::BranchNotFound { branch }) => {
+                tracing::error!(task_id = task_id_str, branch = %branch, "Branch not found");
+                MergeOutcome::BranchNotFound { branch }
             }
             Err(e) => {
                 tracing::error!(error = %e, "Local rebase-squash failed");
@@ -778,9 +756,9 @@ impl<'a> super::TransitionHandler<'a> {
                         merge_path: repo_path.to_path_buf(),
                     };
                 }
-                Ok(CheckoutFreeMergeResult::NeedsAgent { conflict_files }) => {
+                Ok(CheckoutFreeMergeResult::Conflict { files }) => {
                     return MergeOutcome::NeedsAgent {
-                        conflict_files,
+                        conflict_files: files,
                         merge_worktree: None,
                     };
                 }
@@ -805,30 +783,39 @@ impl<'a> super::TransitionHandler<'a> {
 
         let rebase_wt_path = compute_rebase_worktree_path(project, task_id_str);
         let rebase_wt = PathBuf::from(&rebase_wt_path);
+        let merge_wt_path = compute_merge_worktree_path(project, task_id_str);
+        let merge_wt = PathBuf::from(&merge_wt_path);
 
         tracing::info!(
             task_id = task_id_str,
-            worktree = %rebase_wt_path,
-            "Creating rebase worktree for rebase-squash"
+            rebase_worktree = %rebase_wt_path,
+            merge_worktree = %merge_wt_path,
+            "Attempting worktree rebase-squash"
         );
 
+        // Pre-delete stale worktrees
         let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
+        let _ = GitService::delete_worktree(repo_path, &merge_wt).await;
 
-        if let Err(e) = GitService::create_worktree(repo_path, &rebase_wt, source_branch).await {
-            return MergeOutcome::GitError(e);
-        }
-
-        let result = GitService::try_rebase_squash_merge_in_worktree(&rebase_wt, target_branch, squash_commit_msg).await;
-
-        let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
-
-        match result {
+        // try_rebase_squash_merge_in_worktree creates its own worktrees internally.
+        // On conflict: leaves rebase worktree in conflict state for agent resolution.
+        match GitService::try_rebase_squash_merge_in_worktree(
+            repo_path,
+            source_branch,
+            target_branch,
+            &rebase_wt,
+            &merge_wt,
+            squash_commit_msg,
+        ).await {
             Ok(MergeAttemptResult::Success { commit_sha }) => {
                 tracing::info!(
                     task_id = task_id_str,
                     commit_sha = %commit_sha,
                     "Worktree rebase-squash succeeded"
                 );
+                // Clean up both worktrees on success
+                let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
+                let _ = GitService::delete_worktree(repo_path, &merge_wt).await;
                 MergeOutcome::Success {
                     commit_sha,
                     merge_path: repo_path.to_path_buf(),
@@ -838,20 +825,17 @@ impl<'a> super::TransitionHandler<'a> {
                 tracing::warn!(
                     task_id = task_id_str,
                     conflict_count = conflict_files.len(),
-                    "Worktree rebase-squash detected conflicts"
+                    "Worktree rebase-squash detected conflicts — rebase worktree left for agent"
                 );
-
-                // Recreate rebase worktree for conflict resolution
-                if let Err(e) = GitService::create_worktree(repo_path, &rebase_wt, source_branch).await {
-                    return MergeOutcome::GitError(e);
-                }
-
-                let _ = GitService::rebase_onto(&rebase_wt, target_branch).await;
-
+                // Rebase worktree is left in conflict state by try_rebase_squash_merge_in_worktree
                 MergeOutcome::NeedsAgent {
                     conflict_files,
                     merge_worktree: Some(rebase_wt),
                 }
+            }
+            Ok(MergeAttemptResult::BranchNotFound { branch }) => {
+                tracing::error!(task_id = task_id_str, branch = %branch, "Branch not found during rebase-squash");
+                MergeOutcome::BranchNotFound { branch }
             }
             Err(e) => {
                 tracing::error!(error = %e, "Worktree rebase-squash failed");
