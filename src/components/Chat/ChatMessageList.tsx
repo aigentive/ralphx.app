@@ -257,8 +257,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
               // Show lead messages (no sender or sender === "lead")
               return !msg.sender || msg.sender === "lead";
             }
-            // Show messages from specific teammate
-            return msg.sender === teamFilter;
+            // Show messages from specific teammate OR null-sender messages (user/system messages)
+            return msg.sender === teamFilter || msg.sender == null;
           })
         : filteredMessages;
 
@@ -391,6 +391,13 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       isSending, isAgentRunning,
     ]);
 
+    // Detect when a teammate tab filter produces zero results but messages exist
+    // Show an empty state placeholder instead of a blank view
+    const isFilteredTabEmpty = teamFilter && teamFilter !== "all" && timeline.length === 0 && messages.length > 0;
+    const emptyTabLabel = isFilteredTabEmpty
+      ? (teamFilter === "lead" ? "Lead" : teamFilter)
+      : null;
+
     // Helper to look up teammate info from team store
     const getTeammateInfo = useCallback((sender: string | null | undefined) => {
       if (!sender || !contextKey) {
@@ -448,6 +455,13 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     if (isTestEnv) {
       return (
         <div className="flex-1 overflow-hidden relative" data-testid="integrated-chat-messages">
+          {isFilteredTabEmpty && (
+            <div className="flex-1 flex items-center justify-center h-full" data-testid="teammate-tab-empty">
+              <span className="text-sm" style={{ color: "hsl(220 10% 40%)" }}>
+                No messages from {emptyTabLabel} yet
+              </span>
+            </div>
+          )}
           <div className="px-3 pt-3 w-full" style={contentContainerStyle}>
             {failedRun?.errorMessage && onDismissFailedRun && (
               <FailedRunBanner
@@ -560,6 +574,13 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
 
     return (
       <div className="flex-1 overflow-hidden relative" data-testid="integrated-chat-messages">
+        {isFilteredTabEmpty && (
+          <div className="absolute inset-0 flex items-center justify-center" data-testid="teammate-tab-empty">
+            <span className="text-sm" style={{ color: "hsl(220 10% 40%)" }}>
+              No messages from {emptyTabLabel} yet
+            </span>
+          </div>
+        )}
         <Virtuoso
           // Key forces complete remount when conversation changes - prevents scroll animation conflicts
           key={conversationId ?? "empty"}

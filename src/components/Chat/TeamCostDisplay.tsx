@@ -38,8 +38,8 @@ export const TeamCostDisplay = React.memo(function TeamCostDisplay({
           {formatTokens(totalTokens)} tokens | {formatCost(totalEstimatedCostUsd)}
         </span>
       </div>
-      {/* Per-teammate breakdown */}
-      {teammates.map((mate) => (
+      {/* Per-teammate breakdown — only shown when >1 teammate to avoid redundancy */}
+      {teammates.length > 1 && teammates.map((mate) => (
         <div key={mate.name} className="flex items-center justify-between py-0.5">
           <div className="flex items-center gap-1.5">
             <span

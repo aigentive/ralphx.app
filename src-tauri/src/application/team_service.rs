@@ -370,6 +370,27 @@ impl TeamService {
         self.tracker.team_exists(team_name).await
     }
 
+    /// Disband any existing teams for the given context_id before starting a new run.
+    ///
+    /// Called at the start of spawn_send_message_background to ensure stale teams from
+    /// a previous execution (e.g. team-mode → solo-mode switch) are cleaned up before
+    /// a new agent run begins. Silently skips errors (best-effort cleanup).
+    pub async fn cleanup_stale_teams_for_context(&self, context_id: &str) {
+        let teams = self.tracker.list_teams().await;
+        for team_name in &teams {
+            if let Ok(status) = self.tracker.get_team_status(team_name).await {
+                if status.context_id == context_id {
+                    tracing::info!(
+                        team = %team_name,
+                        context_id = %context_id,
+                        "Pre-spawn cleanup: disbanding stale team"
+                    );
+                    let _ = self.disband_team(team_name).await;
+                }
+            }
+        }
+    }
+
     /// Send a message to a teammate's stdin (interactive mode).
     pub async fn send_stdin_message(
         &self,
@@ -703,5 +724,46 @@ mod tests {
             .unwrap();
 
         assert_eq!(svc.get_teammate_count("t1").await.unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_stale_teams_for_context() {
+        let svc = test_service();
+        // Create two teams: one for the target context, one for a different context
+        svc.create_team("team-a", "ctx-target", "task_execution").await.unwrap();
+        svc.create_team("team-b", "ctx-other", "ideation").await.unwrap();
+
+        // Cleanup should only disband the team belonging to ctx-target
+        svc.cleanup_stale_teams_for_context("ctx-target").await;
+
+        // team-a should now be disbanded
+        let status_a = svc.get_team_status("team-a").await.unwrap();
+        assert_eq!(
+            status_a.phase,
+            super::super::team_state_tracker::TeamPhase::Disbanded
+        );
+
+        // team-b should still be active (different context)
+        let status_b = svc.get_team_status("team-b").await.unwrap();
+        assert_ne!(
+            status_b.phase,
+            super::super::team_state_tracker::TeamPhase::Disbanded
+        );
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_stale_teams_no_match() {
+        let svc = test_service();
+        svc.create_team("team-x", "ctx-1", "ideation").await.unwrap();
+
+        // Cleanup for a non-existent context should not panic or affect other teams
+        svc.cleanup_stale_teams_for_context("ctx-nonexistent").await;
+
+        // team-x should remain unaffected
+        let status = svc.get_team_status("team-x").await.unwrap();
+        assert_ne!(
+            status.phase,
+            super::super::team_state_tracker::TeamPhase::Disbanded
+        );
     }
 }

@@ -81,12 +81,13 @@ export function useTeamEvents(contextKey: string | null) {
       }),
     );
 
-    // team:disbanded — mark team as historical but keep data visible
-    // (disbandTeam now sets isHistorical=true instead of deleting)
+    // team:disbanded — mark team as historical and close isTeamActive gate
+    // setTeamActive(false) ensures all team UI elements hide after disbandment
     unsubs.push(
       bus.subscribe<TeamDisbandedPayload>("team:disbanded", (payload) => {
         if (matchKey(payload)) {
           disbandTeam(contextKey);
+          setTeamActive(contextKey, false);
         }
       }),
     );
@@ -183,7 +184,8 @@ export function useTeamEvents(contextKey: string | null) {
             id: payload.message_id ?? `msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
             from: payload.sender,
             to: payload.recipient ?? "*",
-            content: payload.content,
+            // eslint-disable-next-line no-control-regex
+            content: payload.content.replace(/\u001b\[[0-9;]*[A-Za-z]/g, ""),
             timestamp: payload.timestamp,
           });
         }

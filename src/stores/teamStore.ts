@@ -79,6 +79,7 @@ interface TeamActions {
   addTeamMessage: (contextKey: string, message: TeamMessage) => void;
   removeTeammate: (contextKey: string, name: string) => void;
   disbandTeam: (contextKey: string) => void;
+  clearTeamForContext: (contextKey: string) => void;
   getTeammates: (contextKey: string) => TeammateState[];
   setPendingPlan: (plan: PendingTeamPlan | null) => void;
   hydrateFromHistory: (contextKey: string, history: TeamHistoryResponse) => void;
@@ -136,7 +137,8 @@ export const useTeamStore = create<TeamState & TeamActions>()(
         if (team) {
           const mate = team.teammates[name];
           if (mate) {
-            mate.streamingText += text;
+            // eslint-disable-next-line no-control-regex
+            mate.streamingText += text.replace(/\u001b\[[0-9;]*[A-Za-z]/g, "");
           }
         }
       }),
@@ -194,6 +196,11 @@ export const useTeamStore = create<TeamState & TeamActions>()(
         if (team) {
           team.isHistorical = true;
         }
+      }),
+
+    clearTeamForContext: (contextKey) =>
+      set((state) => {
+        delete state.activeTeams[contextKey];
       }),
 
     getTeammates: (contextKey) => {

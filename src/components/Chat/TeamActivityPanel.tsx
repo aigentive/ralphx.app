@@ -2,16 +2,15 @@
  * TeamActivityPanel — Live teammate status panel (collapsible)
  *
  * Collapsed (default): compact summary bar with teammate count, status, cost.
- * Expanded: full view with teammate cards, messages, cost breakdown.
+ * Expanded: full view with teammate cards, cost breakdown, and Stop All button.
  */
 
 import React, { useState, useMemo, useCallback } from "react";
 import { Square, ChevronDown } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { useTeamStore, selectActiveTeam, selectTeammates, selectTeamMessages } from "@/stores/teamStore";
+import { useTeamStore, selectActiveTeam, selectTeammates } from "@/stores/teamStore";
 import { TeammateCard } from "./TeammateCard";
-import { TeamMessageBubble } from "./TeamMessageBubble";
 import { TeamCostDisplay } from "./TeamCostDisplay";
 import type { TeammateState } from "@/stores/teamStore";
 
@@ -22,8 +21,6 @@ interface TeamActivityPanelProps {
   onStopAll?: (() => void) | undefined;
   isHistorical?: boolean | undefined;
 }
-
-const MAX_RECENT_MESSAGES = 5;
 
 function formatSummaryCost(usd: number): string {
   return usd < 0.01 ? "<$0.01" : `$${usd.toFixed(2)}`;
@@ -42,8 +39,6 @@ export const TeamActivityPanel = React.memo(function TeamActivityPanel({
   const team = useTeamStore(teamSelector);
   const teammatesSelector = useMemo(() => selectTeammates(contextKey), [contextKey]);
   const teammates = useTeamStore(teammatesSelector);
-  const messagesSelector = useMemo(() => selectTeamMessages(contextKey), [contextKey]);
-  const messages = useTeamStore(messagesSelector);
 
   const activeCount = useMemo(
     () => teammates.filter((m: TeammateState) => m.status !== "shutdown").length,
@@ -54,18 +49,6 @@ export const TeamActivityPanel = React.memo(function TeamActivityPanel({
     () => teammates.filter((m: TeammateState) => m.status === "running" || m.status === "spawning").length,
     [teammates]
   );
-
-  const recentMessages = useMemo(
-    () => messages.slice(-MAX_RECENT_MESSAGES),
-    [messages]
-  );
-
-  // Build a color lookup for message display
-  const colorMap = useMemo(() => {
-    const map = new Map<string, string>();
-    teammates.forEach((m: TeammateState) => map.set(m.name, m.color));
-    return map;
-  }, [teammates]);
 
   const handleMessage = useCallback((name: string) => {
     onMessageTeammate?.(name);
@@ -169,27 +152,6 @@ export const TeamActivityPanel = React.memo(function TeamActivityPanel({
                 />
               ))}
             </div>
-
-            {/* Recent messages */}
-            {recentMessages.length > 0 && (
-              <div className="px-3 pb-2">
-                <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: "hsl(220 10% 40%)" }}>
-                  Recent Messages ({messages.length})
-                </div>
-                <div className="space-y-1">
-                  {recentMessages.map((msg) => (
-                    <TeamMessageBubble
-                      key={msg.id}
-                      from={msg.from}
-                      to={msg.to}
-                      content={msg.content}
-                      fromColor={colorMap.get(msg.from)}
-                      timestamp={msg.timestamp}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* Cost display */}
             <TeamCostDisplay

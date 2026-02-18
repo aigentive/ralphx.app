@@ -634,8 +634,8 @@ export function IntegratedChatPanel({
               streamingContentBlocks={streamingContentBlocks}
               scrollToTimestamp={isHistoryMode ? taskHistoryState?.timestamp : null}
               finalizingConversationRef={finalizingConversationRef}
-              teamFilter={isTeamActive ? teamFilter : undefined}
-              contextKey={isTeamActive ? storeContextKey : undefined}
+              teamFilter={activeTeam ? teamFilter : undefined}
+              contextKey={activeTeam ? storeContextKey : undefined}
             />
           )}
 
