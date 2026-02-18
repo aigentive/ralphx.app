@@ -295,6 +295,155 @@ async fn test_metadata_merge_preserves_existing_keys_not_in_update() {
 }
 
 // ============================================================================
+// Regression: merge unblocks dependent tasks
+// ============================================================================
+
+/// Regression test: when task A merges via the programmatic path (side_effects.rs),
+/// task B which depends on A must be unblocked (Blocked → Ready).
+///
+/// Before the fix, complete_merge_internal bypassed TransitionHandler so on_enter(Merged)
+/// never fired and unblock_dependents was never called. Blocked tasks stayed stuck forever.
+#[tokio::test]
+async fn test_merge_unblocks_dependent_task() {
+    let app_state = AppState::new_test();
+    let manager = build_dependency_manager(&app_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+
+    // Task A: the dependency (blocker) — simulate it just merged
+    let mut task_a = Task::new(project.id.clone(), "Task A (Blocker)".to_string());
+    task_a.internal_status = InternalStatus::Merged;
+    app_state.task_repo.create(task_a.clone()).await.unwrap();
+
+    // Task B: depends on A, currently blocked
+    let mut task_b = Task::new(project.id.clone(), "Task B (Dependent)".to_string());
+    task_b.internal_status = InternalStatus::Blocked;
+    task_b.blocked_reason = Some(format!("Waiting for: {}", task_a.title));
+    app_state.task_repo.create(task_b.clone()).await.unwrap();
+
+    // Register dependency: B is blocked by A (B depends on A)
+    app_state
+        .task_dependency_repo
+        .add_dependency(&task_b.id, &task_a.id)
+        .await
+        .unwrap();
+
+    // Simulate what post_merge_cleanup now calls after complete_merge_internal succeeds
+    manager.unblock_dependents(task_a.id.as_str()).await;
+
+    // Assert B is now Ready
+    let updated_b = app_state
+        .task_repo
+        .get_by_id(&task_b.id)
+        .await
+        .unwrap()
+        .expect("Task B should still exist");
+
+    assert_eq!(
+        updated_b.internal_status,
+        InternalStatus::Ready,
+        "Task B should be unblocked to Ready after Task A merges"
+    );
+    assert!(
+        updated_b.blocked_reason.is_none(),
+        "Task B should have no blocked_reason after unblocking"
+    );
+}
+
+/// Regression: unblock_dependents is idempotent — calling it twice does not cause errors
+/// and a Ready task stays Ready (not double-transitioned).
+#[tokio::test]
+async fn test_merge_unblocks_dependent_task_idempotent() {
+    let app_state = AppState::new_test();
+    let manager = build_dependency_manager(&app_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+
+    let mut task_a = Task::new(project.id.clone(), "Task A (Blocker)".to_string());
+    task_a.internal_status = InternalStatus::Merged;
+    app_state.task_repo.create(task_a.clone()).await.unwrap();
+
+    let mut task_b = Task::new(project.id.clone(), "Task B (Dependent)".to_string());
+    task_b.internal_status = InternalStatus::Blocked;
+    app_state.task_repo.create(task_b.clone()).await.unwrap();
+
+    app_state
+        .task_dependency_repo
+        .add_dependency(&task_b.id, &task_a.id)
+        .await
+        .unwrap();
+
+    // Call twice (defence-in-depth may call it from both post_merge_cleanup and chat_service_merge)
+    manager.unblock_dependents(task_a.id.as_str()).await;
+    manager.unblock_dependents(task_a.id.as_str()).await;
+
+    let updated_b = app_state
+        .task_repo
+        .get_by_id(&task_b.id)
+        .await
+        .unwrap()
+        .expect("Task B should still exist");
+
+    assert_eq!(
+        updated_b.internal_status,
+        InternalStatus::Ready,
+        "Task B should be Ready after idempotent unblock calls"
+    );
+}
+
+/// When task A merges but task B has another blocker still incomplete,
+/// task B should remain Blocked.
+#[tokio::test]
+async fn test_merge_does_not_unblock_task_with_remaining_blocker() {
+    let app_state = AppState::new_test();
+    let manager = build_dependency_manager(&app_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+
+    // Task A merges
+    let mut task_a = Task::new(project.id.clone(), "Task A".to_string());
+    task_a.internal_status = InternalStatus::Merged;
+    app_state.task_repo.create(task_a.clone()).await.unwrap();
+
+    // Task C is still executing (incomplete blocker)
+    let mut task_c = Task::new(project.id.clone(), "Task C (Still Running)".to_string());
+    task_c.internal_status = InternalStatus::Executing;
+    app_state.task_repo.create(task_c.clone()).await.unwrap();
+
+    // Task B depends on both A and C
+    let mut task_b = Task::new(project.id.clone(), "Task B (Dependent)".to_string());
+    task_b.internal_status = InternalStatus::Blocked;
+    app_state.task_repo.create(task_b.clone()).await.unwrap();
+
+    app_state
+        .task_dependency_repo
+        .add_dependency(&task_b.id, &task_a.id)
+        .await
+        .unwrap();
+    app_state
+        .task_dependency_repo
+        .add_dependency(&task_b.id, &task_c.id)
+        .await
+        .unwrap();
+
+    // A merges — but C is still running, so B should stay Blocked
+    manager.unblock_dependents(task_a.id.as_str()).await;
+
+    let updated_b = app_state
+        .task_repo
+        .get_by_id(&task_b.id)
+        .await
+        .unwrap()
+        .expect("Task B should still exist");
+
+    assert_eq!(
+        updated_b.internal_status,
+        InternalStatus::Blocked,
+        "Task B should remain Blocked since Task C is still executing"
+    );
+}
+
+// ============================================================================
 // Team Mode Priority Tests
 // ============================================================================
 

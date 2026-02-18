@@ -5159,6 +5159,17 @@ impl<'a> super::TransitionHandler<'a> {
             }
         }
 
+        // Unblock tasks that were waiting on this task to merge.
+        // complete_merge_internal bypasses TransitionHandler (raw task_repo.update),
+        // so on_enter(Merged) never fires and unblock_dependents is never called.
+        // This is the canonical unblock call for the programmatic merge path.
+        self.machine
+            .context
+            .services
+            .dependency_manager
+            .unblock_dependents(task_id_str)
+            .await;
+
     }
 
     /// Handle post-merge validation failure: revert the merge commit, then transition

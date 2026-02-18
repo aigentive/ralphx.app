@@ -83,6 +83,20 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
             status = ?task.internal_status,
             "attempt_merge_auto_complete: task already transitioned, skipping"
         );
+        // Defence-in-depth: if task reached Merged via a path that bypassed TransitionHandler
+        // (e.g. programmatic merge in side_effects.rs), unblock_dependents may not have fired.
+        // Calling it here is idempotent — blocked→ready only applies if the dependent is still Blocked.
+        if task.internal_status == InternalStatus::Merged {
+            use crate::application::task_transition_service::RepoBackedDependencyManager;
+            use crate::domain::state_machine::services::DependencyManager;
+
+            let dependency_manager = RepoBackedDependencyManager::new(
+                Arc::clone(task_dependency_repo),
+                Arc::clone(task_repo),
+                app_handle.cloned(),
+            );
+            dependency_manager.unblock_dependents(task_id_str).await;
+        }
         return;
     }
 
