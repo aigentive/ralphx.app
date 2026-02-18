@@ -942,6 +942,11 @@ impl<'a> super::TransitionHandler<'a> {
                         tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
                         scheduler.try_schedule_ready_tasks().await;
                     });
+                } else {
+                    tracing::warn!(
+                        task_id = self.machine.context.task_id.as_str(),
+                        "task_scheduler not wired — Ready tasks will not be auto-scheduled after Merged"
+                    );
                 }
 
                 // Retry deferred merges — covers the HTTP handler path (e.g. ConflictResolved)
