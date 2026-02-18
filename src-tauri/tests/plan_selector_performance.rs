@@ -51,6 +51,8 @@ async fn create_accepted_session(
         updated_at: converted_at,
         archived_at: None,
         converted_at: Some(converted_at),
+        team_mode: None,
+        team_config_json: None,
     };
 
     state
