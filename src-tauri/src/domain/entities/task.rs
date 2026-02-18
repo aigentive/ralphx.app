@@ -140,18 +140,12 @@ impl Task {
         self.touch();
     }
 
-    /// Returns true if this task is in a terminal state
-    /// Terminal: Approved, Merged, Failed, Cancelled, Stopped
-    /// NOT terminal: Paused (can resume to previous state)
+    /// Returns true if this task is in a terminal state.
+    /// Delegates to InternalStatus::is_terminal() as the single source of truth.
+    /// Terminal: Merged, Failed, Cancelled, Stopped, MergeIncomplete.
+    /// NOT terminal: Approved (→ PendingMerge), Paused (can resume).
     pub fn is_terminal(&self) -> bool {
-        matches!(
-            self.internal_status,
-            InternalStatus::Approved
-                | InternalStatus::Merged
-                | InternalStatus::Failed
-                | InternalStatus::Cancelled
-                | InternalStatus::Stopped
-        )
+        self.internal_status.is_terminal()
     }
 
     /// Returns true if this task is currently being worked on
@@ -352,11 +346,12 @@ mod tests {
 
     // ===== Task State Helper Tests =====
 
+    /// Approved is NOT terminal — it transitions to PendingMerge (still needs merging).
     #[test]
-    fn task_is_terminal_for_approved() {
+    fn task_is_not_terminal_for_approved() {
         let mut task = Task::new(ProjectId::new(), "Test".to_string());
         task.internal_status = InternalStatus::Approved;
-        assert!(task.is_terminal());
+        assert!(!task.is_terminal(), "Approved should NOT be terminal — it must merge to be done");
     }
 
     #[test]
@@ -378,6 +373,13 @@ mod tests {
         let mut task = Task::new(ProjectId::new(), "Test".to_string());
         task.internal_status = InternalStatus::Stopped;
         assert!(task.is_terminal());
+    }
+
+    #[test]
+    fn task_is_terminal_for_merge_incomplete() {
+        let mut task = Task::new(ProjectId::new(), "Test".to_string());
+        task.internal_status = InternalStatus::MergeIncomplete;
+        assert!(task.is_terminal(), "MergeIncomplete should be terminal for dependency unblocking");
     }
 
     #[test]
