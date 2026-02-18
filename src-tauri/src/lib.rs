@@ -326,6 +326,8 @@ pub fn run() {
                 // Clone task_dependency_repo for StartupJobRunner (before TaskTransitionService consumes it)
                 let startup_runner_task_dep_repo = Arc::clone(&startup_task_dependency_repo);
                 let startup_runner_app_handle = startup_app_handle.clone();
+                // Clone task_repo for watchdog (before StartupJobRunner moves it)
+                let watchdog_task_repo = Arc::clone(&startup_task_repo);
 
                 // Create TaskTransitionService for startup resumption
                 let transition_service = Arc::new(TaskTransitionService::new(
@@ -478,6 +480,15 @@ pub fn run() {
                         tokio::time::sleep(interval).await;
                         reconcile_runner.reconcile_stuck_tasks().await;
                     }
+                });
+
+                // Spawn Ready-task watchdog: periodic safety net for tasks stuck in Ready state.
+                // Reschedules stale Ready tasks every 60s (safety net for S5, S6, S7, S8).
+                let watchdog_scheduler = Arc::clone(&task_scheduler);
+                tauri::async_runtime::spawn(async move {
+                    application::ReadyWatchdog::new(watchdog_scheduler, watchdog_task_repo)
+                        .run_loop()
+                        .await;
                 });
 
                 // Spawn memory archive job background processing loop

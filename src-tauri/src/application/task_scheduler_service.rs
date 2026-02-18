@@ -741,6 +741,103 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
     }
 }
 
+/// Default interval between watchdog scan cycles (60 seconds).
+pub const WATCHDOG_INTERVAL_SECS: u64 = 60;
+
+/// Default staleness threshold: tasks in Ready state for longer than this are considered stale.
+pub const WATCHDOG_STALE_THRESHOLD_SECS: u64 = 30;
+
+/// Periodic watchdog that detects tasks stuck in Ready state and reschedules them.
+///
+/// Safety net for scenarios S5, S6, S7, S8 where the primary scheduling trigger
+/// (on_enter(Ready) or on_exit completion) may have been missed due to:
+/// - Lock contention in try_lock()
+/// - Scheduler unavailable (None) when task became Ready
+/// - Timing races with the 600ms spawn delay
+/// - Max concurrent capacity temporarily blocking schedule
+///
+/// The watchdog scans for Ready tasks older than `stale_threshold_secs` every
+/// `interval_secs` and calls `try_schedule_ready_tasks()` to reschedule them.
+pub struct ReadyWatchdog {
+    scheduler: Arc<dyn TaskScheduler>,
+    task_repo: Arc<dyn crate::domain::repositories::TaskRepository>,
+    /// How often to run the watchdog scan (default: 60s).
+    interval_secs: u64,
+    /// How long a task must be in Ready state before being considered stale (default: 30s).
+    stale_threshold_secs: u64,
+}
+
+impl ReadyWatchdog {
+    /// Create a new ReadyWatchdog with default configuration.
+    pub fn new(
+        scheduler: Arc<dyn TaskScheduler>,
+        task_repo: Arc<dyn crate::domain::repositories::TaskRepository>,
+    ) -> Self {
+        Self {
+            scheduler,
+            task_repo,
+            interval_secs: WATCHDOG_INTERVAL_SECS,
+            stale_threshold_secs: WATCHDOG_STALE_THRESHOLD_SECS,
+        }
+    }
+
+    /// Override the scan interval (builder pattern).
+    pub fn with_interval_secs(mut self, interval_secs: u64) -> Self {
+        self.interval_secs = interval_secs;
+        self
+    }
+
+    /// Override the staleness threshold (builder pattern).
+    pub fn with_stale_threshold_secs(mut self, threshold_secs: u64) -> Self {
+        self.stale_threshold_secs = threshold_secs;
+        self
+    }
+
+    /// Run one watchdog cycle: scan for stale Ready tasks and reschedule if any are found.
+    ///
+    /// Returns the number of stale tasks found (0 means no action was taken).
+    pub async fn run_once(&self) -> usize {
+        match self
+            .task_repo
+            .get_stale_ready_tasks(self.stale_threshold_secs)
+            .await
+        {
+            Ok(stale_tasks) => {
+                let count = stale_tasks.len();
+                if count > 0 {
+                    tracing::warn!(
+                        stale_count = count,
+                        threshold_secs = self.stale_threshold_secs,
+                        "Watchdog: found stale Ready tasks, triggering reschedule"
+                    );
+                    self.scheduler.try_schedule_ready_tasks().await;
+                } else {
+                    tracing::debug!("Watchdog: no stale Ready tasks found");
+                }
+                count
+            }
+            Err(e) => {
+                tracing::error!(
+                    error = %e,
+                    "Watchdog: failed to query stale Ready tasks"
+                );
+                0
+            }
+        }
+    }
+
+    /// Run the watchdog loop indefinitely, sleeping `interval_secs` between cycles.
+    ///
+    /// This is intended to be spawned as a background task at application startup.
+    pub async fn run_loop(&self) {
+        let interval = std::time::Duration::from_secs(self.interval_secs);
+        loop {
+            tokio::time::sleep(interval).await;
+            self.run_once().await;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2288,5 +2385,158 @@ mod tests {
             MAX_CONTENTION_RETRIES,
             "Counter must not exceed MAX_CONTENTION_RETRIES"
         );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Ready Watchdog Tests
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// Helper to create a ReadyWatchdog with a zero-second staleness threshold
+    /// (all Ready tasks are immediately stale) for testing.
+    fn build_watchdog(
+        app_state: &AppState,
+        execution_state: &Arc<ExecutionState>,
+    ) -> ReadyWatchdog {
+        let scheduler = Arc::new(build_scheduler(app_state, execution_state));
+        ReadyWatchdog::new(scheduler, Arc::clone(&app_state.task_repo))
+            .with_stale_threshold_secs(0)
+    }
+
+    #[tokio::test]
+    async fn test_watchdog_returns_zero_when_no_ready_tasks() {
+        let (execution_state, app_state) = setup_test_state().await;
+        execution_state.set_max_concurrent(10);
+
+        let watchdog = build_watchdog(&app_state, &execution_state);
+
+        let count = watchdog.run_once().await;
+        assert_eq!(count, 0, "No stale tasks when no Ready tasks exist");
+    }
+
+    #[tokio::test]
+    async fn test_watchdog_detects_stale_ready_task() {
+        let (execution_state, app_state) = setup_test_state().await;
+        execution_state.set_max_concurrent(10);
+
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        // Create a Ready task (threshold=0 so it's immediately stale)
+        let mut task = Task::new(project.id.clone(), "Stale Ready Task".to_string());
+        task.internal_status = InternalStatus::Ready;
+        app_state.task_repo.create(task.clone()).await.unwrap();
+
+        let watchdog = build_watchdog(&app_state, &execution_state);
+
+        // Watchdog should find the stale task
+        let count = watchdog.run_once().await;
+        assert_eq!(count, 1, "Should detect 1 stale Ready task");
+    }
+
+    #[tokio::test]
+    async fn test_watchdog_does_not_detect_non_ready_tasks() {
+        let (execution_state, app_state) = setup_test_state().await;
+        execution_state.set_max_concurrent(10);
+
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        // Create tasks in non-Ready states
+        for status in &[
+            InternalStatus::Backlog,
+            InternalStatus::Executing,
+            InternalStatus::Blocked,
+        ] {
+            let mut task = Task::new(project.id.clone(), format!("{:?} Task", status));
+            task.internal_status = *status;
+            app_state.task_repo.create(task).await.unwrap();
+        }
+
+        let watchdog = build_watchdog(&app_state, &execution_state);
+
+        // No Ready tasks → watchdog should find 0 stale tasks
+        let count = watchdog.run_once().await;
+        assert_eq!(count, 0, "Only Ready tasks should be detected as stale");
+    }
+
+    #[tokio::test]
+    async fn test_watchdog_triggers_scheduling_for_stale_tasks() {
+        let (execution_state, app_state) = setup_test_state().await;
+        execution_state.set_max_concurrent(10);
+
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        // Create a Ready task
+        let mut task = Task::new(project.id.clone(), "Stale Ready Task".to_string());
+        task.internal_status = InternalStatus::Ready;
+        app_state.task_repo.create(task.clone()).await.unwrap();
+
+        // Watchdog with threshold=0 so the task is immediately stale
+        let watchdog = build_watchdog(&app_state, &execution_state);
+        watchdog.run_once().await;
+
+        // The task should have been transitioned out of Ready (Failed due to no agent in test)
+        let updated = app_state
+            .task_repo
+            .get_by_id(&task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_ne!(
+            updated.internal_status,
+            InternalStatus::Ready,
+            "Stale task should be transitioned after watchdog reschedule"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_watchdog_with_high_threshold_skips_fresh_tasks() {
+        let (execution_state, app_state) = setup_test_state().await;
+        execution_state.set_max_concurrent(10);
+
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        // Create a Ready task (just created → not stale under a large threshold)
+        let mut task = Task::new(project.id.clone(), "Fresh Ready Task".to_string());
+        task.internal_status = InternalStatus::Ready;
+        app_state.task_repo.create(task.clone()).await.unwrap();
+
+        // Watchdog with a 3600-second threshold (task is too fresh to be stale)
+        let scheduler = Arc::new(build_scheduler(&app_state, &execution_state));
+        let watchdog = ReadyWatchdog::new(scheduler, Arc::clone(&app_state.task_repo))
+            .with_stale_threshold_secs(3600);
+
+        let count = watchdog.run_once().await;
+        assert_eq!(count, 0, "Fresh task should not be detected as stale");
+
+        // Task should still be Ready
+        let updated = app_state
+            .task_repo
+            .get_by_id(&task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            updated.internal_status,
+            InternalStatus::Ready,
+            "Fresh task should remain Ready with high staleness threshold"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_watchdog_configurable_threshold() {
+        let (execution_state, app_state) = setup_test_state().await;
+
+        let watchdog = ReadyWatchdog::new(
+            Arc::new(build_scheduler(&app_state, &execution_state)),
+            Arc::clone(&app_state.task_repo),
+        )
+        .with_stale_threshold_secs(120)
+        .with_interval_secs(30);
+
+        assert_eq!(watchdog.stale_threshold_secs, 120);
+        assert_eq!(watchdog.interval_secs, 30);
     }
 }
