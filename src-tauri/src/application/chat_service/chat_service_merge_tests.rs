@@ -86,8 +86,8 @@ fn merge_branch(repo: &Path, branch: &str) {
         .expect("git merge failed");
 }
 
-#[test]
-fn test_verify_merge_happy_path_merged() {
+#[tokio::test]
+async fn test_verify_merge_happy_path_merged() {
     let dir = setup_test_repo();
     let repo = dir.path();
 
@@ -98,7 +98,7 @@ fn test_verify_merge_happy_path_merged() {
     merge_branch(repo, "task-branch");
 
     // Verify the merge
-    let result = verify_merge_on_target(repo, "task-branch", "main");
+    let result = verify_merge_on_target(repo, "task-branch", "main").await;
     match result {
         MergeVerification::Merged(sha) => {
             assert!(!sha.is_empty(), "Merge commit SHA should not be empty");
@@ -107,8 +107,8 @@ fn test_verify_merge_happy_path_merged() {
     }
 }
 
-#[test]
-fn test_verify_merge_race_condition_not_merged() {
+#[tokio::test]
+async fn test_verify_merge_race_condition_not_merged() {
     let dir = setup_test_repo();
     let repo = dir.path();
 
@@ -117,7 +117,7 @@ fn test_verify_merge_race_condition_not_merged() {
 
     // Simulate the race condition: we're checking from main repo
     // Task branch exists but is not merged to main
-    let result = verify_merge_on_target(repo, "task-branch", "main");
+    let result = verify_merge_on_target(repo, "task-branch", "main").await;
     assert_eq!(
         result,
         MergeVerification::NotMerged,
@@ -125,13 +125,13 @@ fn test_verify_merge_race_condition_not_merged() {
     );
 }
 
-#[test]
-fn test_verify_merge_source_branch_missing() {
+#[tokio::test]
+async fn test_verify_merge_source_branch_missing() {
     let dir = setup_test_repo();
     let repo = dir.path();
 
     // Try to verify a non-existent source branch
-    let result = verify_merge_on_target(repo, "non-existent-branch", "main");
+    let result = verify_merge_on_target(repo, "non-existent-branch", "main").await;
     assert_eq!(
         result,
         MergeVerification::SourceBranchMissing,
@@ -139,8 +139,8 @@ fn test_verify_merge_source_branch_missing() {
     );
 }
 
-#[test]
-fn test_verify_merge_target_branch_missing() {
+#[tokio::test]
+async fn test_verify_merge_target_branch_missing() {
     let dir = setup_test_repo();
     let repo = dir.path();
 
@@ -148,7 +148,7 @@ fn test_verify_merge_target_branch_missing() {
     create_branch_with_change(repo, "task-branch", "feature.txt", "feature content\n");
 
     // Try to verify against a non-existent target branch
-    let result = verify_merge_on_target(repo, "task-branch", "non-existent-target");
+    let result = verify_merge_on_target(repo, "task-branch", "non-existent-target").await;
     assert_eq!(
         result,
         MergeVerification::TargetBranchMissing,
@@ -156,8 +156,8 @@ fn test_verify_merge_target_branch_missing() {
     );
 }
 
-#[test]
-fn test_verify_merge_plan_branch_merged() {
+#[tokio::test]
+async fn test_verify_merge_plan_branch_merged() {
     let dir = setup_test_repo();
     let repo = dir.path();
 
@@ -183,7 +183,7 @@ fn test_verify_merge_plan_branch_merged() {
     merge_branch(repo, "task-branch");
 
     // Verify the merge to plan branch
-    let result = verify_merge_on_target(repo, "task-branch", "plan-abc123");
+    let result = verify_merge_on_target(repo, "task-branch", "plan-abc123").await;
     match result {
         MergeVerification::Merged(sha) => {
             assert!(!sha.is_empty(), "Merge commit SHA should not be empty");
@@ -195,8 +195,8 @@ fn test_verify_merge_plan_branch_merged() {
     }
 }
 
-#[test]
-fn test_verify_merge_plan_branch_not_merged() {
+#[tokio::test]
+async fn test_verify_merge_plan_branch_not_merged() {
     let dir = setup_test_repo();
     let repo = dir.path();
 
@@ -207,7 +207,7 @@ fn test_verify_merge_plan_branch_not_merged() {
     create_branch_with_change(repo, "task-branch", "task-feature.txt", "task content\n");
 
     // Verify should return NotMerged
-    let result = verify_merge_on_target(repo, "task-branch", "plan-abc123");
+    let result = verify_merge_on_target(repo, "task-branch", "plan-abc123").await;
     assert_eq!(
         result,
         MergeVerification::NotMerged,

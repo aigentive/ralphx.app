@@ -149,7 +149,7 @@ pub async fn enable_feature_branch(
     let branch_name = format!("ralphx/{}/plan-{}", project_slug, short_id);
 
     // Create git feature branch from base branch
-    GitService::create_feature_branch(&repo_path, &branch_name, &base_branch)
+    GitService::create_feature_branch(&repo_path, &branch_name, &base_branch).await
         .map_err(|e| format!("Failed to create feature branch: {}", e))?;
 
     // Insert plan_branches DB record
@@ -345,7 +345,7 @@ pub async fn disable_feature_branch(
 
     // Delete the git branch
     let repo_path = PathBuf::from(&project.working_directory);
-    if let Err(e) = GitService::delete_feature_branch(&repo_path, &plan_branch.branch_name) {
+    if let Err(e) = GitService::delete_feature_branch(&repo_path, &plan_branch.branch_name).await {
         tracing::warn!(
             "Failed to delete git branch {}: {} (continuing with DB cleanup)",
             plan_branch.branch_name,

@@ -293,12 +293,14 @@ pub(super) async fn resolve_task_base_branch(
         Ok(Some(pb)) if pb.status == PlanBranchStatus::Active => {
             let repo_path = Path::new(&project.working_directory);
             // Lazily create git branch on first task execution
-            if !GitService::branch_exists(repo_path, &pb.branch_name) {
+            if !GitService::branch_exists(repo_path, &pb.branch_name).await {
                 match GitService::create_feature_branch(
                     repo_path,
                     &pb.branch_name,
                     &pb.source_branch,
-                ) {
+                )
+                .await
+                {
                     Ok(_) => {
                         tracing::info!(
                             branch = %pb.branch_name,
@@ -308,7 +310,7 @@ pub(super) async fn resolve_task_base_branch(
                     }
                     Err(e) => {
                         // Race condition: another task may have created it concurrently
-                        if GitService::branch_exists(repo_path, &pb.branch_name) {
+                        if GitService::branch_exists(repo_path, &pb.branch_name).await {
                             tracing::info!(
                                 branch = %pb.branch_name,
                                 "Deferred plan branch created by concurrent task"
@@ -433,7 +435,7 @@ pub(super) async fn discover_and_attach_task_branch(
 
     // Check if branch exists in the repository
     let repo_path = Path::new(&project.working_directory);
-    if !GitService::branch_exists(repo_path, &branch_name) {
+    if !GitService::branch_exists(repo_path, &branch_name).await {
         return Ok(false);
     }
 

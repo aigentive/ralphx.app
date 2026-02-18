@@ -11,6 +11,7 @@
 mod branch;
 pub mod checkout_free;
 mod commit;
+pub(crate) mod git_cmd;
 mod merge;
 mod query;
 mod rebase;
@@ -24,7 +25,7 @@ use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
 use tracing::{debug, warn};
 
 /// Result of a merge operation

@@ -41,6 +41,7 @@ use tauri::Emitter;
 
 use super::super::machine::State;
 use crate::application::git_service::checkout_free::{self, CheckoutFreeMergeResult};
+use crate::application::git_service::git_cmd;
 use crate::application::{GitService, MergeAttemptResult};
 use crate::domain::entities::{
     merge_progress_event::{MergePhase, MergePhaseStatus},
@@ -300,13 +301,13 @@ impl<'a> super::TransitionHandler<'a> {
                 if let Ok(Some(pb)) = pb_repo.get_by_session_id(session_id).await {
                     if pb.status == PlanBranchStatus::Active
                         && pb.branch_name == target_branch
-                        && !GitService::branch_exists(repo_path, &target_branch)
+                        && !GitService::branch_exists(repo_path, &target_branch).await
                     {
                         match GitService::create_feature_branch(
                             repo_path,
                             &pb.branch_name,
                             &pb.source_branch,
-                        ) {
+                        ).await {
                             Ok(_) => {
                                 tracing::info!(
                                     task_id = task_id_str,
@@ -315,7 +316,7 @@ impl<'a> super::TransitionHandler<'a> {
                                     "Lazily created plan branch for merge target"
                                 );
                             }
-                            Err(e) if GitService::branch_exists(repo_path, &pb.branch_name) => {
+                            Err(e) if GitService::branch_exists(repo_path, &pb.branch_name).await => {
                                 // Race: concurrent task created it between check and create
                                 let _ = e;
                             }
@@ -337,9 +338,9 @@ impl<'a> super::TransitionHandler<'a> {
         // If the source branch is already an ancestor of the target branch, the merge
         // was completed by a prior agent run that died before calling complete_merge.
         // Skip the merge entirely and transition straight to Merged.
-        if let Ok(source_sha) = GitService::get_branch_sha(repo_path, &source_branch) {
+        if let Ok(source_sha) = GitService::get_branch_sha(repo_path, &source_branch).await {
             if let Ok(true) =
-                GitService::is_commit_on_branch(repo_path, &source_sha, &target_branch)
+                GitService::is_commit_on_branch(repo_path, &source_sha, &target_branch).await
             {
                 tracing::info!(
                     task_id = task_id_str,
@@ -354,14 +355,14 @@ impl<'a> super::TransitionHandler<'a> {
                     let merge_wt = compute_merge_worktree_path(&project, task_id_str);
                     let merge_wt_path = Path::new(&merge_wt);
                     if merge_wt_path.exists() {
-                        if let Err(e) = GitService::delete_worktree(repo_path, merge_wt_path) {
+                        if let Err(e) = GitService::delete_worktree(repo_path, merge_wt_path).await {
                             tracing::warn!(error = %e, "Failed to clean up orphaned merge worktree (non-fatal)");
                         }
                     }
                 }
 
                 // Use target branch HEAD as the merge commit SHA
-                let target_sha = GitService::get_branch_sha(repo_path, &target_branch)
+                let target_sha = GitService::get_branch_sha(repo_path, &target_branch).await
                     .unwrap_or_else(|_| source_sha.clone());
 
                 if let Err(e) = complete_merge_internal(
@@ -387,8 +388,8 @@ impl<'a> super::TransitionHandler<'a> {
         // If the source branch ref is gone but the task's commits are already on
         // the target branch (e.g. detached HEAD, premature cleanup), recover
         // by completing the merge instead of falling through to MergeIncomplete.
-        if !GitService::branch_exists(repo_path, &source_branch) {
-            match GitService::find_commit_by_message_grep(repo_path, task_id_str, &target_branch) {
+        if !GitService::branch_exists(repo_path, &source_branch).await {
+            match GitService::find_commit_by_message_grep(repo_path, task_id_str, &target_branch).await {
                 Ok(Some(found_sha)) => {
                     tracing::info!(
                         task_id = task_id_str,
@@ -403,13 +404,13 @@ impl<'a> super::TransitionHandler<'a> {
                         let merge_wt = compute_merge_worktree_path(&project, task_id_str);
                         let merge_wt_path = Path::new(&merge_wt);
                         if merge_wt_path.exists() {
-                            if let Err(e) = GitService::delete_worktree(repo_path, merge_wt_path) {
+                            if let Err(e) = GitService::delete_worktree(repo_path, merge_wt_path).await {
                                 tracing::warn!(error = %e, "Failed to clean up orphaned merge worktree (non-fatal)");
                             }
                         }
                     }
 
-                    let target_sha = GitService::get_branch_sha(repo_path, &target_branch)
+                    let target_sha = GitService::get_branch_sha(repo_path, &target_branch).await
                         .unwrap_or_else(|_| found_sha.clone());
 
                     if let Err(e) = complete_merge_internal(
@@ -728,7 +729,7 @@ impl<'a> super::TransitionHandler<'a> {
                         worktree_path = %worktree_path,
                         "Deleting task worktree before programmatic merge to unlock branch"
                     );
-                    if let Err(e) = GitService::delete_worktree(repo_path, &worktree_path_buf) {
+                    if let Err(e) = GitService::delete_worktree(repo_path, &worktree_path_buf).await {
                         tracing::error!(
                             task_id = task_id_str,
                             error = %e,
@@ -742,7 +743,7 @@ impl<'a> super::TransitionHandler<'a> {
 
             // --- Stale merge worktree cleanup ---
             // Step 1: Prune stale worktree references (metadata pointing to deleted dirs)
-            if let Err(e) = GitService::prune_worktrees(repo_path) {
+            if let Err(e) = GitService::prune_worktrees(repo_path).await {
                 tracing::warn!(
                     task_id = task_id_str,
                     error = %e,
@@ -759,7 +760,7 @@ impl<'a> super::TransitionHandler<'a> {
                     merge_worktree_path = %own_merge_wt,
                     "Cleaning up stale merge worktree from previous attempt"
                 );
-                if let Err(e) = GitService::delete_worktree(repo_path, &own_merge_wt_path) {
+                if let Err(e) = GitService::delete_worktree(repo_path, &own_merge_wt_path).await {
                     tracing::warn!(
                         task_id = task_id_str,
                         error = %e,
@@ -772,7 +773,7 @@ impl<'a> super::TransitionHandler<'a> {
             // Step 3: Scan for orphaned merge worktrees on the same target branch.
             // Another task's merge may have crashed/failed, leaving a worktree that locks
             // the target branch. We only clean up if the owning task is NOT actively merging.
-            if let Ok(worktrees) = GitService::list_worktrees(repo_path) {
+            if let Ok(worktrees) = GitService::list_worktrees(repo_path).await {
                 for wt in &worktrees {
                     // Only consider merge worktrees (path contains "/merge-")
                     let Some(other_task_id) = extract_task_id_from_merge_path(&wt.path) else {
@@ -805,7 +806,7 @@ impl<'a> super::TransitionHandler<'a> {
                         "Cleaning up orphaned merge worktree from non-active task"
                     );
                     let orphan_path = PathBuf::from(&wt.path);
-                    if let Err(e) = GitService::delete_worktree(repo_path, &orphan_path) {
+                    if let Err(e) = GitService::delete_worktree(repo_path, &orphan_path).await {
                         tracing::warn!(
                             task_id = task_id_str,
                             other_task_id = other_task_id,
@@ -826,19 +827,19 @@ impl<'a> super::TransitionHandler<'a> {
                     task_id = task_id_str,
                     "Aborting stale rebase before programmatic merge retry"
                 );
-                let _ = GitService::abort_rebase(repo_path);
+                let _ = GitService::abort_rebase(repo_path).await;
             }
             if GitService::is_merge_in_progress(repo_path) {
                 tracing::info!(
                     task_id = task_id_str,
                     "Aborting stale merge before programmatic merge retry"
                 );
-                let _ = GitService::abort_merge(repo_path);
+                let _ = GitService::abort_merge(repo_path).await;
             }
         }
 
         // Clean working tree before merge (non-fatal on error)
-        match GitService::clean_working_tree(repo_path) {
+        match GitService::clean_working_tree(repo_path).await {
             Ok(()) => tracing::debug!(
                 task_id = task_id_str,
                 "Pre-merge working tree clean succeeded"
@@ -865,7 +866,7 @@ impl<'a> super::TransitionHandler<'a> {
                 // This happens for plan merge tasks (plan feature branch → main) because
                 // main is always checked out in the primary repo. Git forbids the same
                 // branch in multiple worktrees, so we merge directly in-repo instead.
-                let current_branch = GitService::get_current_branch(repo_path).unwrap_or_default();
+                let current_branch = GitService::get_current_branch(repo_path).await.unwrap_or_default();
                 let target_is_checked_out = current_branch == target_branch;
 
                 if target_is_checked_out {
@@ -878,7 +879,7 @@ impl<'a> super::TransitionHandler<'a> {
                     );
 
                     // Validate branches exist before merge
-                    if !GitService::branch_exists(repo_path, &source_branch) {
+                    if !GitService::branch_exists(repo_path, &source_branch).await {
                         tracing::error!(
                             task_id = task_id_str,
                             "Source branch '{}' does not exist",
@@ -962,7 +963,7 @@ impl<'a> super::TransitionHandler<'a> {
                             .await;
                         return;
                     }
-                    if !GitService::branch_exists(repo_path, &target_branch) {
+                    if !GitService::branch_exists(repo_path, &target_branch).await {
                         tracing::error!(
                             task_id = task_id_str,
                             "Target branch '{}' does not exist",
@@ -1051,12 +1052,12 @@ impl<'a> super::TransitionHandler<'a> {
                         repo_path,
                         &source_branch,
                         &target_branch,
-                    );
+                    ).await;
 
                     match cf_result {
                         Ok(CheckoutFreeMergeResult::Success { commit_sha }) => {
                             // Atomically sync working tree
-                            if let Err(e) = GitService::hard_reset_to_head(repo_path) {
+                            if let Err(e) = GitService::hard_reset_to_head(repo_path).await {
                                 tracing::error!(error = %e, task_id = task_id_str, "Failed to sync working tree after checkout-free merge");
                             }
 
@@ -1087,7 +1088,7 @@ impl<'a> super::TransitionHandler<'a> {
                                 if !skip_validation && *validation_mode != MergeValidationMode::Off
                                 {
                                     let source_sha =
-                                        GitService::get_branch_sha(repo_path, &source_branch).ok();
+                                        GitService::get_branch_sha(repo_path, &source_branch).await.ok();
                                     let cached_log = source_sha
                                         .as_deref()
                                         .and_then(|sha| extract_cached_validation(&task, sha));
@@ -1237,7 +1238,7 @@ impl<'a> super::TransitionHandler<'a> {
                             // Create temp worktree for conflict resolution (keeps primary checkout clean)
                             let merge_wt_path =
                                 PathBuf::from(compute_merge_worktree_path(&project, task_id_str));
-                            let target_sha = GitService::get_branch_sha(repo_path, &target_branch)
+                            let target_sha = GitService::get_branch_sha(repo_path, &target_branch).await
                                 .unwrap_or_default();
                             let resolve_branch = format!("merge-resolve/{}", task_id_str);
 
@@ -1246,7 +1247,7 @@ impl<'a> super::TransitionHandler<'a> {
                                 repo_path,
                                 &resolve_branch,
                                 &target_sha,
-                            ) {
+                            ).await {
                                 tracing::error!(error = %e, task_id = task_id_str, "Failed to create resolve branch");
                             }
 
@@ -1255,15 +1256,12 @@ impl<'a> super::TransitionHandler<'a> {
                                 repo_path,
                                 &merge_wt_path,
                                 &resolve_branch,
-                            ) {
+                            ).await {
                                 tracing::error!(error = %e, task_id = task_id_str, "Failed to create merge worktree for conflict resolution");
                             }
 
                             // Start the actual merge in the worktree (leaves conflicts for agent)
-                            let _ = std::process::Command::new("git")
-                                .args(["merge", &source_branch, "--no-edit"])
-                                .current_dir(&merge_wt_path)
-                                .output();
+                            let _ = git_cmd::run(&["merge", &source_branch, "--no-edit"], &merge_wt_path).await;
 
                             task.internal_status = InternalStatus::Merging;
                             task.touch();
@@ -1379,7 +1377,7 @@ impl<'a> super::TransitionHandler<'a> {
                         &source_branch,
                         &target_branch,
                         &merge_wt_path,
-                    );
+                    ).await;
 
                     match merge_result {
                         Ok(MergeAttemptResult::Success { commit_sha }) => {
@@ -1410,7 +1408,7 @@ impl<'a> super::TransitionHandler<'a> {
                                 if !skip_validation && *validation_mode != MergeValidationMode::Off
                                 {
                                     let source_sha =
-                                        GitService::get_branch_sha(repo_path, &source_branch).ok();
+                                        GitService::get_branch_sha(repo_path, &source_branch).await.ok();
                                     let cached_log = source_sha
                                         .as_deref()
                                         .and_then(|sha| extract_cached_validation(&task, sha));
@@ -1469,7 +1467,7 @@ impl<'a> super::TransitionHandler<'a> {
                                 }
                             }
 
-                            if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt_path) {
+                            if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt_path).await {
                                 tracing::warn!(
                                     error = %e,
                                     task_id = task_id_str,
@@ -1684,7 +1682,7 @@ impl<'a> super::TransitionHandler<'a> {
                                 );
 
                                 if merge_wt_path.exists() {
-                                    let _ = GitService::delete_worktree(repo_path, &merge_wt_path);
+                                    let _ = GitService::delete_worktree(repo_path, &merge_wt_path).await;
                                 }
 
                                 // Get or create merge recovery metadata
@@ -1752,7 +1750,7 @@ impl<'a> super::TransitionHandler<'a> {
                                 );
 
                                 if merge_wt_path.exists() {
-                                    let _ = GitService::delete_worktree(repo_path, &merge_wt_path);
+                                    let _ = GitService::delete_worktree(repo_path, &merge_wt_path).await;
                                 }
 
                                 // Append attempt_failed event
@@ -1872,7 +1870,7 @@ impl<'a> super::TransitionHandler<'a> {
             (MergeStrategy::Rebase, GitMode::Local) => {
                 // Local mode: rebase for linear history
                 let merge_result =
-                    GitService::try_rebase_and_merge(repo_path, &source_branch, &target_branch);
+                    GitService::try_rebase_and_merge(repo_path, &source_branch, &target_branch).await;
                 match merge_result {
                     Ok(MergeAttemptResult::Success { commit_sha }) => {
                         tracing::info!(
@@ -1901,7 +1899,7 @@ impl<'a> super::TransitionHandler<'a> {
                             let validation_mode = &project.merge_validation_mode;
                             if !skip_validation && *validation_mode != MergeValidationMode::Off {
                                 let source_sha =
-                                    GitService::get_branch_sha(repo_path, &source_branch).ok();
+                                    GitService::get_branch_sha(repo_path, &source_branch).await.ok();
                                 let cached_log = source_sha
                                     .as_deref()
                                     .and_then(|sha| extract_cached_validation(&task, sha));
@@ -2322,7 +2320,7 @@ impl<'a> super::TransitionHandler<'a> {
             }
             (MergeStrategy::Merge, GitMode::Local) => {
                 // Local mode: direct merge, no rebase (produces merge commits)
-                let merge_result = GitService::try_merge(repo_path, &source_branch, &target_branch);
+                let merge_result = GitService::try_merge(repo_path, &source_branch, &target_branch).await;
                 match merge_result {
                     Ok(MergeAttemptResult::Success { commit_sha }) => {
                         tracing::info!(
@@ -2349,7 +2347,7 @@ impl<'a> super::TransitionHandler<'a> {
                             let validation_mode = &project.merge_validation_mode;
                             if !skip_validation && *validation_mode != MergeValidationMode::Off {
                                 let source_sha =
-                                    GitService::get_branch_sha(repo_path, &source_branch).ok();
+                                    GitService::get_branch_sha(repo_path, &source_branch).await.ok();
                                 let cached_log = source_sha
                                     .as_deref()
                                     .and_then(|sha| extract_cached_validation(&task, sha));
@@ -2631,7 +2629,7 @@ impl<'a> super::TransitionHandler<'a> {
             }
             (MergeStrategy::Rebase, GitMode::Worktree) => {
                 // Worktree mode with rebase: rebase in worktree, then fast-forward merge
-                let current_branch = GitService::get_current_branch(repo_path).unwrap_or_default();
+                let current_branch = GitService::get_current_branch(repo_path).await.unwrap_or_default();
                 let target_is_checked_out = current_branch == target_branch;
 
                 if target_is_checked_out {
@@ -2645,10 +2643,10 @@ impl<'a> super::TransitionHandler<'a> {
                     );
 
                     // Validate branches exist
-                    if !GitService::branch_exists(repo_path, &source_branch)
-                        || !GitService::branch_exists(repo_path, &target_branch)
+                    if !GitService::branch_exists(repo_path, &source_branch).await
+                        || !GitService::branch_exists(repo_path, &target_branch).await
                     {
-                        let missing = if !GitService::branch_exists(repo_path, &source_branch) {
+                        let missing = if !GitService::branch_exists(repo_path, &source_branch).await {
                             &source_branch
                         } else {
                             &target_branch
@@ -2741,12 +2739,12 @@ impl<'a> super::TransitionHandler<'a> {
                         repo_path,
                         &source_branch,
                         &target_branch,
-                    );
+                    ).await;
 
                     match cf_result {
                         Ok(CheckoutFreeMergeResult::Success { commit_sha }) => {
                             // Atomically sync working tree
-                            if let Err(e) = GitService::hard_reset_to_head(repo_path) {
+                            if let Err(e) = GitService::hard_reset_to_head(repo_path).await {
                                 tracing::error!(error = %e, task_id = task_id_str, "Failed to sync working tree after checkout-free rebase merge");
                             }
 
@@ -2772,7 +2770,7 @@ impl<'a> super::TransitionHandler<'a> {
                                 if !skip_validation && *validation_mode != MergeValidationMode::Off
                                 {
                                     let source_sha =
-                                        GitService::get_branch_sha(repo_path, &source_branch).ok();
+                                        GitService::get_branch_sha(repo_path, &source_branch).await.ok();
                                     let cached_log = source_sha
                                         .as_deref()
                                         .and_then(|sha| extract_cached_validation(&task, sha));
@@ -2883,23 +2881,20 @@ impl<'a> super::TransitionHandler<'a> {
 
                             let merge_wt_path =
                                 PathBuf::from(compute_merge_worktree_path(&project, task_id_str));
-                            let target_sha = GitService::get_branch_sha(repo_path, &target_branch)
+                            let target_sha = GitService::get_branch_sha(repo_path, &target_branch).await
                                 .unwrap_or_default();
                             let resolve_branch = format!("merge-resolve/{}", task_id_str);
                             let _ = GitService::create_branch_at(
                                 repo_path,
                                 &resolve_branch,
                                 &target_sha,
-                            );
+                            ).await;
                             let _ = GitService::checkout_existing_branch_worktree(
                                 repo_path,
                                 &merge_wt_path,
                                 &resolve_branch,
-                            );
-                            let _ = std::process::Command::new("git")
-                                .args(["merge", &source_branch, "--no-edit"])
-                                .current_dir(&merge_wt_path)
-                                .output();
+                            ).await;
+                            let _ = git_cmd::run(&["merge", &source_branch, "--no-edit"], &merge_wt_path).await;
 
                             task.internal_status = InternalStatus::Merging;
                             task.touch();
@@ -2981,7 +2976,7 @@ impl<'a> super::TransitionHandler<'a> {
                             rebase_worktree_path = %rebase_wt_path_str,
                             "Cleaning up stale rebase worktree from previous attempt"
                         );
-                        let _ = GitService::delete_worktree(repo_path, &rebase_wt_path);
+                        let _ = GitService::delete_worktree(repo_path, &rebase_wt_path).await;
                     }
 
                     tracing::info!(
@@ -2997,7 +2992,7 @@ impl<'a> super::TransitionHandler<'a> {
                         &target_branch,
                         &rebase_wt_path,
                         &merge_wt_path,
-                    );
+                    ).await;
 
                     match merge_result {
                         Ok(MergeAttemptResult::Success { commit_sha }) => {
@@ -3026,7 +3021,7 @@ impl<'a> super::TransitionHandler<'a> {
                                 if !skip_validation && *validation_mode != MergeValidationMode::Off
                                 {
                                     let source_sha =
-                                        GitService::get_branch_sha(repo_path, &source_branch).ok();
+                                        GitService::get_branch_sha(repo_path, &source_branch).await.ok();
                                     let cached_log = source_sha
                                         .as_deref()
                                         .and_then(|sha| extract_cached_validation(&task, sha));
@@ -3084,7 +3079,7 @@ impl<'a> super::TransitionHandler<'a> {
                             }
 
                             // Clean up merge worktree after success
-                            if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt_path) {
+                            if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt_path).await {
                                 tracing::warn!(
                                     error = %e,
                                     task_id = task_id_str,
@@ -3303,10 +3298,10 @@ impl<'a> super::TransitionHandler<'a> {
                                 );
 
                                 if rebase_wt_path.exists() {
-                                    let _ = GitService::delete_worktree(repo_path, &rebase_wt_path);
+                                    let _ = GitService::delete_worktree(repo_path, &rebase_wt_path).await;
                                 }
                                 if merge_wt_path.exists() {
-                                    let _ = GitService::delete_worktree(repo_path, &merge_wt_path);
+                                    let _ = GitService::delete_worktree(repo_path, &merge_wt_path).await;
                                 }
                             } else {
                                 tracing::error!(
@@ -3316,10 +3311,10 @@ impl<'a> super::TransitionHandler<'a> {
                                 );
 
                                 if rebase_wt_path.exists() {
-                                    let _ = GitService::delete_worktree(repo_path, &rebase_wt_path);
+                                    let _ = GitService::delete_worktree(repo_path, &rebase_wt_path).await;
                                 }
                                 if merge_wt_path.exists() {
-                                    let _ = GitService::delete_worktree(repo_path, &merge_wt_path);
+                                    let _ = GitService::delete_worktree(repo_path, &merge_wt_path).await;
                                 }
 
                                 task.metadata = Some(
@@ -3365,7 +3360,7 @@ impl<'a> super::TransitionHandler<'a> {
                     &source_branch,
                     &target_branch,
                     &squash_commit_msg,
-                );
+                ).await;
                 match merge_result {
                     Ok(MergeAttemptResult::Success { commit_sha }) => {
                         tracing::info!(
@@ -3392,7 +3387,7 @@ impl<'a> super::TransitionHandler<'a> {
                             let validation_mode = &project.merge_validation_mode;
                             if !skip_validation && *validation_mode != MergeValidationMode::Off {
                                 let source_sha =
-                                    GitService::get_branch_sha(repo_path, &source_branch).ok();
+                                    GitService::get_branch_sha(repo_path, &source_branch).await.ok();
                                 let cached_log = source_sha
                                     .as_deref()
                                     .and_then(|sha| extract_cached_validation(&task, sha));
@@ -3668,7 +3663,7 @@ impl<'a> super::TransitionHandler<'a> {
             }
             (MergeStrategy::Squash, GitMode::Worktree) => {
                 // Worktree mode: squash merge in worktree (or in-repo if target checked out)
-                let current_branch = GitService::get_current_branch(repo_path).unwrap_or_default();
+                let current_branch = GitService::get_current_branch(repo_path).await.unwrap_or_default();
                 let target_is_checked_out = current_branch == target_branch;
 
                 let merge_result = if target_is_checked_out {
@@ -3679,11 +3674,11 @@ impl<'a> super::TransitionHandler<'a> {
                         "Target branch is checked out, using checkout-free squash merge"
                     );
                     // Validate branches exist
-                    if !GitService::branch_exists(repo_path, &source_branch) {
+                    if !GitService::branch_exists(repo_path, &source_branch).await {
                         Ok(MergeAttemptResult::BranchNotFound {
                             branch: source_branch.clone(),
                         })
-                    } else if !GitService::branch_exists(repo_path, &target_branch) {
+                    } else if !GitService::branch_exists(repo_path, &target_branch).await {
                         Ok(MergeAttemptResult::BranchNotFound {
                             branch: target_branch.clone(),
                         })
@@ -3693,10 +3688,10 @@ impl<'a> super::TransitionHandler<'a> {
                             &source_branch,
                             &target_branch,
                             &squash_commit_msg,
-                        ) {
+                        ).await {
                             Ok(CheckoutFreeMergeResult::Success { commit_sha }) => {
                                 // Atomically sync working tree
-                                if let Err(e) = GitService::hard_reset_to_head(repo_path) {
+                                if let Err(e) = GitService::hard_reset_to_head(repo_path).await {
                                     tracing::error!(error = %e, task_id = task_id_str, "Failed to sync working tree after checkout-free squash merge");
                                 }
                                 Ok(MergeAttemptResult::Success { commit_sha })
@@ -3723,10 +3718,10 @@ impl<'a> super::TransitionHandler<'a> {
                         &target_branch,
                         &merge_wt_path,
                         &squash_commit_msg,
-                    );
+                    ).await;
                     // Clean up worktree on success
                     if let Ok(MergeAttemptResult::Success { .. }) = &result {
-                        if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt_path) {
+                        if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt_path).await {
                             tracing::warn!(
                                 error = %e,
                                 task_id = task_id_str,
@@ -3763,7 +3758,7 @@ impl<'a> super::TransitionHandler<'a> {
                             let validation_mode = &project.merge_validation_mode;
                             if !skip_validation && *validation_mode != MergeValidationMode::Off {
                                 let source_sha =
-                                    GitService::get_branch_sha(repo_path, &source_branch).ok();
+                                    GitService::get_branch_sha(repo_path, &source_branch).await.ok();
                                 let cached_log = source_sha
                                     .as_deref()
                                     .and_then(|sha| extract_cached_validation(&task, sha));
@@ -4114,7 +4109,7 @@ impl<'a> super::TransitionHandler<'a> {
                     &source_branch,
                     &target_branch,
                     &squash_commit_msg,
-                );
+                ).await;
                 match merge_result {
                     Ok(MergeAttemptResult::Success { commit_sha }) => {
                         tracing::info!(
@@ -4141,7 +4136,7 @@ impl<'a> super::TransitionHandler<'a> {
                             let validation_mode = &project.merge_validation_mode;
                             if !skip_validation && *validation_mode != MergeValidationMode::Off {
                                 let source_sha =
-                                    GitService::get_branch_sha(repo_path, &source_branch).ok();
+                                    GitService::get_branch_sha(repo_path, &source_branch).await.ok();
                                 let cached_log = source_sha
                                     .as_deref()
                                     .and_then(|sha| extract_cached_validation(&task, sha));
@@ -4417,7 +4412,7 @@ impl<'a> super::TransitionHandler<'a> {
             }
             (MergeStrategy::RebaseSquash, GitMode::Worktree) => {
                 // Worktree mode: rebase in worktree, then squash into single commit
-                let current_branch = GitService::get_current_branch(repo_path).unwrap_or_default();
+                let current_branch = GitService::get_current_branch(repo_path).await.unwrap_or_default();
                 let target_is_checked_out = current_branch == target_branch;
 
                 if target_is_checked_out {
@@ -4430,10 +4425,10 @@ impl<'a> super::TransitionHandler<'a> {
                     );
 
                     // Validate branches exist
-                    if !GitService::branch_exists(repo_path, &source_branch)
-                        || !GitService::branch_exists(repo_path, &target_branch)
+                    if !GitService::branch_exists(repo_path, &source_branch).await
+                        || !GitService::branch_exists(repo_path, &target_branch).await
                     {
-                        let missing = if !GitService::branch_exists(repo_path, &source_branch) {
+                        let missing = if !GitService::branch_exists(repo_path, &source_branch).await {
                             &source_branch
                         } else {
                             &target_branch
@@ -4527,12 +4522,12 @@ impl<'a> super::TransitionHandler<'a> {
                         &source_branch,
                         &target_branch,
                         &squash_commit_msg,
-                    );
+                    ).await;
 
                     match cf_result {
                         Ok(CheckoutFreeMergeResult::Success { commit_sha }) => {
                             // Atomically sync working tree
-                            if let Err(e) = GitService::hard_reset_to_head(repo_path) {
+                            if let Err(e) = GitService::hard_reset_to_head(repo_path).await {
                                 tracing::error!(error = %e, task_id = task_id_str, "Failed to sync working tree after checkout-free rebase+squash");
                             }
 
@@ -4558,7 +4553,7 @@ impl<'a> super::TransitionHandler<'a> {
                                 if !skip_validation && *validation_mode != MergeValidationMode::Off
                                 {
                                     let source_sha =
-                                        GitService::get_branch_sha(repo_path, &source_branch).ok();
+                                        GitService::get_branch_sha(repo_path, &source_branch).await.ok();
                                     let cached_log = source_sha
                                         .as_deref()
                                         .and_then(|sha| extract_cached_validation(&task, sha));
@@ -4669,23 +4664,20 @@ impl<'a> super::TransitionHandler<'a> {
 
                             let merge_wt_path =
                                 PathBuf::from(compute_merge_worktree_path(&project, task_id_str));
-                            let target_sha = GitService::get_branch_sha(repo_path, &target_branch)
+                            let target_sha = GitService::get_branch_sha(repo_path, &target_branch).await
                                 .unwrap_or_default();
                             let resolve_branch = format!("merge-resolve/{}", task_id_str);
                             let _ = GitService::create_branch_at(
                                 repo_path,
                                 &resolve_branch,
                                 &target_sha,
-                            );
+                            ).await;
                             let _ = GitService::checkout_existing_branch_worktree(
                                 repo_path,
                                 &merge_wt_path,
                                 &resolve_branch,
-                            );
-                            let _ = std::process::Command::new("git")
-                                .args(["merge", &source_branch, "--no-edit"])
-                                .current_dir(&merge_wt_path)
-                                .output();
+                            ).await;
+                            let _ = git_cmd::run(&["merge", &source_branch, "--no-edit"], &merge_wt_path).await;
 
                             task.internal_status = InternalStatus::Merging;
                             task.touch();
@@ -4774,7 +4766,7 @@ impl<'a> super::TransitionHandler<'a> {
                         &rebase_wt_path,
                         &merge_wt_path,
                         &squash_commit_msg,
-                    );
+                    ).await;
 
                     match merge_result {
                         Ok(MergeAttemptResult::Success { commit_sha }) => {
@@ -4793,7 +4785,7 @@ impl<'a> super::TransitionHandler<'a> {
                             );
 
                             // Clean up merge worktree
-                            if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt_path) {
+                            if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt_path).await {
                                 tracing::warn!(error = %e, task_id = task_id_str, "Failed to delete merge worktree (non-fatal)");
                             }
 
@@ -4805,7 +4797,7 @@ impl<'a> super::TransitionHandler<'a> {
                                 if !skip_validation && *validation_mode != MergeValidationMode::Off
                                 {
                                     let source_sha =
-                                        GitService::get_branch_sha(repo_path, &source_branch).ok();
+                                        GitService::get_branch_sha(repo_path, &source_branch).await.ok();
                                     let cached_log = source_sha
                                         .as_deref()
                                         .and_then(|sha| extract_cached_validation(&task, sha));
@@ -5061,19 +5053,19 @@ impl<'a> super::TransitionHandler<'a> {
                             if GitService::is_branch_lock_error(&e) {
                                 tracing::warn!(task_id = task_id_str, error = %e, "Rebase+squash in worktrees failed due to branch lock, staying in PendingMerge");
                                 if rebase_wt_path.exists() {
-                                    let _ = GitService::delete_worktree(repo_path, &rebase_wt_path);
+                                    let _ = GitService::delete_worktree(repo_path, &rebase_wt_path).await;
                                 }
                                 if merge_wt_path.exists() {
-                                    let _ = GitService::delete_worktree(repo_path, &merge_wt_path);
+                                    let _ = GitService::delete_worktree(repo_path, &merge_wt_path).await;
                                 }
                             } else {
                                 tracing::error!(task_id = task_id_str, error = %e, "Rebase+squash in worktrees failed, transitioning to MergeIncomplete");
 
                                 if rebase_wt_path.exists() {
-                                    let _ = GitService::delete_worktree(repo_path, &rebase_wt_path);
+                                    let _ = GitService::delete_worktree(repo_path, &rebase_wt_path).await;
                                 }
                                 if merge_wt_path.exists() {
-                                    let _ = GitService::delete_worktree(repo_path, &merge_wt_path);
+                                    let _ = GitService::delete_worktree(repo_path, &merge_wt_path).await;
                                 }
 
                                 task.metadata = Some(
@@ -5138,7 +5130,7 @@ impl<'a> super::TransitionHandler<'a> {
                     );
                 }
 
-                if let Err(e) = GitService::delete_feature_branch(repo_path, &pb.branch_name) {
+                if let Err(e) = GitService::delete_feature_branch(repo_path, &pb.branch_name).await {
                     tracing::warn!(
                         error = %e,
                         task_id = task_id_str,
@@ -5167,34 +5159,6 @@ impl<'a> super::TransitionHandler<'a> {
             }
         }
 
-        self.machine
-            .context
-            .services
-            .dependency_manager
-            .unblock_dependents(task_id_str)
-            .await;
-
-        // Schedule newly-unblocked tasks (e.g. plan_merge tasks that just became Ready)
-        if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
-            let scheduler = Arc::clone(scheduler);
-            tokio::spawn(async move {
-                tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
-                scheduler.try_schedule_ready_tasks().await;
-            });
-        }
-
-        // Retry deferred merges: after a merge completes, re-trigger any tasks that
-        // were deferred because they targeted the same branch. We use the scheduler's
-        // try_retry_deferred_merges() method which builds a fresh TaskTransitionService
-        // and re-invokes attempt_programmatic_merge for each deferred task.
-        if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
-            let scheduler = Arc::clone(scheduler);
-            let project_id = self.machine.context.project_id.clone();
-            tokio::spawn(async move {
-                tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
-                scheduler.try_retry_deferred_merges(&project_id).await;
-            });
-        }
     }
 
     /// Handle post-merge validation failure: revert the merge commit, then transition
@@ -5318,7 +5282,7 @@ impl<'a> super::TransitionHandler<'a> {
             );
 
             // Revert the merge commit so failing code doesn't remain on the target branch
-            if let Err(e) = GitService::reset_hard(merge_path, "HEAD~1") {
+            if let Err(e) = GitService::reset_hard(merge_path, "HEAD~1").await {
                 tracing::error!(
                     task_id = task_id_str,
                     error = %e,

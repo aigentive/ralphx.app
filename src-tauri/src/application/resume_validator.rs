@@ -14,7 +14,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 
-use crate::application::git_service::GitService;
+use crate::application::git_service::{git_cmd, GitService};
 use crate::domain::entities::{Project, Task};
 use crate::domain::services::{RunningAgentKey, RunningAgentRegistry};
 use crate::error::AppResult;
@@ -111,7 +111,7 @@ impl ResumeValidator {
         let mut result = ResumeValidationResult::new();
 
         // 1. Git state validation
-        let git_result = self.validate_git_state(task, project, worktree_path)?;
+        let git_result = self.validate_git_state(task, project, worktree_path).await?;
         result.merge(&git_result);
 
         // 2. Agent cleanup (always attempt, even if git validation failed)
@@ -122,11 +122,11 @@ impl ResumeValidator {
         if let Some(ref base_branch) = project.base_branch {
             if let Some(ref task_branch) = task.task_branch {
                 let repo_path = PathBuf::from(&project.working_directory);
-                if GitService::branch_exists(&repo_path, base_branch)
-                    && GitService::branch_exists(&repo_path, task_branch)
+                if GitService::branch_exists(&repo_path, base_branch).await
+                    && GitService::branch_exists(&repo_path, task_branch).await
                 {
                     // Check if base branch has commits not on task branch
-                    if self.has_base_branch_moved_ahead(&repo_path, task_branch, base_branch)? {
+                    if self.has_base_branch_moved_ahead(&repo_path, task_branch, base_branch).await? {
                         result = result.with_warning(format!(
                             "Base branch '{}' has new commits that are not in task branch '{}'",
                             base_branch, task_branch
@@ -153,7 +153,7 @@ impl ResumeValidator {
     /// 1. Task branch exists and is accessible
     /// 2. Worktree is clean (no uncommitted changes)
     /// 3. No stale merge/rebase in progress
-    fn validate_git_state(
+    async fn validate_git_state(
         &self,
         task: &Task,
         project: &Project,
@@ -165,7 +165,7 @@ impl ResumeValidator {
 
         // 1. Check task branch exists
         if let Some(ref task_branch) = task.task_branch {
-            if !GitService::branch_exists(&repo_path, task_branch) {
+            if !GitService::branch_exists(&repo_path, task_branch).await {
                 result = result.with_error(format!(
                     "Task branch '{}' does not exist",
                     task_branch
@@ -187,7 +187,7 @@ impl ResumeValidator {
             .map(PathBuf::from)
             .unwrap_or_else(|| repo_path.clone());
 
-        if let Ok(status_output) = self.get_git_status(&check_path) {
+        if let Ok(status_output) = self.get_git_status(&check_path).await {
             if !status_output.trim().is_empty() {
                 result = result.with_error(format!(
                     "Working tree has uncommitted changes:\n{}",
@@ -210,7 +210,7 @@ impl ResumeValidator {
         }
 
         // 4. Check for conflict markers in changed files
-        if let Ok(true) = GitService::has_conflict_markers(&check_path) {
+        if let Ok(true) = GitService::has_conflict_markers(&check_path).await {
             result = result.with_error(
                 "Conflict markers found in working tree. Resolve conflicts before resuming.",
             );
@@ -287,50 +287,30 @@ impl ResumeValidator {
     }
 
     /// Get git status --porcelain output for a path.
-    fn get_git_status(&self, path: &PathBuf) -> std::io::Result<String> {
-        let output = std::process::Command::new("git")
-            .args(["status", "--porcelain"])
-            .current_dir(path)
-            .output()?;
-
-        if output.status.success() {
-            Ok(String::from_utf8_lossy(&output.stdout).to_string())
-        } else {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!(
-                    "git status failed: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                ),
-            ))
-        }
+    async fn get_git_status(&self, path: &PathBuf) -> std::io::Result<String> {
+        let output = git_cmd::run(&["status", "--porcelain"], path)
+            .await
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 
     /// Check if base branch has commits not on the task branch.
-    fn has_base_branch_moved_ahead(
+    async fn has_base_branch_moved_ahead(
         &self,
         repo_path: &PathBuf,
         task_branch: &str,
         base_branch: &str,
     ) -> AppResult<bool> {
         // Use git rev-list to count commits on base not in task
-        let output = std::process::Command::new("git")
-            .args([
-                "rev-list",
-                "--count",
-                &format!("{}..{}", task_branch, base_branch),
-            ])
-            .current_dir(repo_path)
-            .output()
-            .map_err(|e| {
-                crate::error::AppError::GitOperation(format!("Failed to run git rev-list: {}", e))
-            })?;
-
-        if output.status.success() {
-            let count_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if let Ok(count) = count_str.parse::<u32>() {
-                return Ok(count > 0);
+        let range = format!("{}..{}", task_branch, base_branch);
+        match git_cmd::run(&["rev-list", "--count", &range], repo_path).await {
+            Ok(output) => {
+                let count_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if let Ok(count) = count_str.parse::<u32>() {
+                    return Ok(count > 0);
+                }
             }
+            Err(_) => {}
         }
 
         // If we can't determine, assume no (don't block)

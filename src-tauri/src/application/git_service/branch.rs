@@ -1,3 +1,4 @@
+use super::git_cmd;
 use super::*;
 
 impl GitService {
@@ -11,14 +12,10 @@ impl GitService {
     /// * `repo` - Path to the git repository
     /// * `branch` - Name of the new branch to create
     /// * `base` - Name of the base branch to branch from
-    pub fn create_branch(repo: &Path, branch: &str, base: &str) -> AppResult<()> {
+    pub async fn create_branch(repo: &Path, branch: &str, base: &str) -> AppResult<()> {
         debug!("Creating branch '{}' from '{}' in {:?}", branch, base, repo);
 
-        let output = Command::new("git")
-            .args(["branch", branch, base])
-            .current_dir(repo)
-            .output()
-            .map_err(|e| AppError::GitOperation(format!("Failed to run git branch: {}", e)))?;
+        let output = git_cmd::run(&["branch", branch, base], repo).await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -36,14 +33,10 @@ impl GitService {
     /// Unlike `create_branch` which branches from another branch name,
     /// this creates a branch at an exact commit. Used for conflict resolution
     /// worktrees after checkout-free merge detects conflicts.
-    pub fn create_branch_at(repo: &Path, branch: &str, sha: &str) -> AppResult<()> {
+    pub async fn create_branch_at(repo: &Path, branch: &str, sha: &str) -> AppResult<()> {
         debug!("Creating branch '{}' at {} in {:?}", branch, sha, repo);
 
-        let output = Command::new("git")
-            .args(["branch", branch, sha])
-            .current_dir(repo)
-            .output()
-            .map_err(|e| AppError::GitOperation(format!("Failed to run git branch: {}", e)))?;
+        let output = git_cmd::run(&["branch", branch, sha], repo).await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -61,16 +54,10 @@ impl GitService {
     /// Runs `git reset --hard HEAD` to atomically update all files.
     /// Used after checkout-free merge operations that advance the branch ref
     /// without touching the working tree.
-    pub fn hard_reset_to_head(repo: &Path) -> AppResult<()> {
+    pub async fn hard_reset_to_head(repo: &Path) -> AppResult<()> {
         debug!("Resetting working tree to HEAD in {:?}", repo);
 
-        let output = Command::new("git")
-            .args(["reset", "--hard", "HEAD"])
-            .current_dir(repo)
-            .output()
-            .map_err(|e| {
-                AppError::GitOperation(format!("Failed to run git reset --hard HEAD: {}", e))
-            })?;
+        let output = git_cmd::run(&["reset", "--hard", "HEAD"], repo).await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -95,15 +82,11 @@ impl GitService {
     ///
     /// # Arguments
     /// * `repo` - Path to the git repository
-    pub fn clean_working_tree(repo: &Path) -> AppResult<()> {
+    pub async fn clean_working_tree(repo: &Path) -> AppResult<()> {
         debug!("Cleaning working tree in {:?}", repo);
 
         // Check if already clean (early return optimization)
-        let status_output = Command::new("git")
-            .args(["status", "--porcelain"])
-            .current_dir(repo)
-            .output()
-            .map_err(|e| AppError::GitOperation(format!("Failed to run git status: {}", e)))?;
+        let status_output = git_cmd::run(&["status", "--porcelain"], repo).await?;
 
         if !status_output.status.success() {
             let stderr = String::from_utf8_lossy(&status_output.stderr);
@@ -142,15 +125,11 @@ impl GitService {
         }
 
         // Reset tracked files to HEAD state
-        Self::hard_reset_to_head(repo)?;
+        Self::hard_reset_to_head(repo).await?;
 
         // Remove untracked files and directories
         // Using -fd (not -fdx) to preserve .gitignore'd files
-        let clean_output = Command::new("git")
-            .args(["clean", "-fd"])
-            .current_dir(repo)
-            .output()
-            .map_err(|e| AppError::GitOperation(format!("Failed to run git clean -fd: {}", e)))?;
+        let clean_output = git_cmd::run(&["clean", "-fd"], repo).await?;
 
         if !clean_output.status.success() {
             let stderr = String::from_utf8_lossy(&clean_output.stderr);
@@ -169,14 +148,10 @@ impl GitService {
     /// # Arguments
     /// * `repo` - Path to the git repository
     /// * `branch` - Name of the branch to checkout
-    pub fn checkout_branch(repo: &Path, branch: &str) -> AppResult<()> {
+    pub async fn checkout_branch(repo: &Path, branch: &str) -> AppResult<()> {
         debug!("Checking out branch '{}' in {:?}", branch, repo);
 
-        let output = Command::new("git")
-            .args(["checkout", branch])
-            .current_dir(repo)
-            .output()
-            .map_err(|e| AppError::GitOperation(format!("Failed to run git checkout: {}", e)))?;
+        let output = git_cmd::run(&["checkout", branch], repo).await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -195,18 +170,14 @@ impl GitService {
     /// * `repo` - Path to the git repository
     /// * `branch` - Name of the branch to delete
     /// * `force` - If true, use -D (force delete), otherwise -d (safe delete)
-    pub fn delete_branch(repo: &Path, branch: &str, force: bool) -> AppResult<()> {
+    pub async fn delete_branch(repo: &Path, branch: &str, force: bool) -> AppResult<()> {
         debug!(
             "Deleting branch '{}' (force={}) in {:?}",
             branch, force, repo
         );
 
         let flag = if force { "-D" } else { "-d" };
-        let output = Command::new("git")
-            .args(["branch", flag, branch])
-            .current_dir(repo)
-            .output()
-            .map_err(|e| AppError::GitOperation(format!("Failed to run git branch -d: {}", e)))?;
+        let output = git_cmd::run(&["branch", flag, branch], repo).await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -226,7 +197,7 @@ impl GitService {
     /// * `repo_path` - Path to the git repository
     /// * `branch_name` - Name of the feature branch (e.g., "ralphx/my-app/plan-abc123")
     /// * `source_branch` - Branch to create from (e.g., "main")
-    pub fn create_feature_branch(
+    pub async fn create_feature_branch(
         repo_path: &Path,
         branch_name: &str,
         source_branch: &str,
@@ -236,11 +207,7 @@ impl GitService {
             branch_name, source_branch, repo_path
         );
 
-        let output = Command::new("git")
-            .args(["branch", branch_name, source_branch])
-            .current_dir(repo_path)
-            .output()
-            .map_err(|e| AppError::GitOperation(format!("Failed to run git branch: {}", e)))?;
+        let output = git_cmd::run(&["branch", branch_name, source_branch], repo_path).await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -260,17 +227,13 @@ impl GitService {
     /// # Arguments
     /// * `repo_path` - Path to the git repository
     /// * `branch_name` - Name of the feature branch to delete
-    pub fn delete_feature_branch(repo_path: &Path, branch_name: &str) -> AppResult<()> {
+    pub async fn delete_feature_branch(repo_path: &Path, branch_name: &str) -> AppResult<()> {
         debug!(
             "Deleting feature branch '{}' in {:?}",
             branch_name, repo_path
         );
 
-        let output = Command::new("git")
-            .args(["branch", "-d", branch_name])
-            .current_dir(repo_path)
-            .output()
-            .map_err(|e| AppError::GitOperation(format!("Failed to run git branch -d: {}", e)))?;
+        let output = git_cmd::run(&["branch", "-d", branch_name], repo_path).await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -288,12 +251,8 @@ impl GitService {
     ///
     /// # Arguments
     /// * `repo` - Path to the git repository
-    pub fn get_current_branch(repo: &Path) -> AppResult<String> {
-        let output = Command::new("git")
-            .args(["rev-parse", "--abbrev-ref", "HEAD"])
-            .current_dir(repo)
-            .output()
-            .map_err(|e| AppError::GitOperation(format!("Failed to run git rev-parse: {}", e)))?;
+    pub async fn get_current_branch(repo: &Path) -> AppResult<String> {
+        let output = git_cmd::run(&["rev-parse", "--abbrev-ref", "HEAD"], repo).await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -308,31 +267,26 @@ impl GitService {
     }
 
     /// Check if a branch (local or remote-tracking) exists in the repo.
-    pub fn branch_exists(repo: &Path, branch: &str) -> bool {
-        Command::new("git")
-            .args(["rev-parse", "--verify", branch])
-            .current_dir(repo)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .map(|s| s.success())
+    pub async fn branch_exists(repo: &Path, branch: &str) -> bool {
+        git_cmd::run_status(&["rev-parse", "--verify", branch], repo)
+            .await
             .unwrap_or(false)
     }
 
     /// Validate that both source and target branches exist before merge.
     /// Returns `Some(BranchNotFound)` if either is missing, `None` if both exist.
-    pub(super) fn validate_merge_branches(
+    pub(super) async fn validate_merge_branches(
         repo: &Path,
         source_branch: &str,
         target_branch: &str,
     ) -> Option<MergeAttemptResult> {
-        if !Self::branch_exists(repo, source_branch) {
+        if !Self::branch_exists(repo, source_branch).await {
             warn!("Source branch '{}' does not exist", source_branch);
             return Some(MergeAttemptResult::BranchNotFound {
                 branch: source_branch.to_string(),
             });
         }
-        if !Self::branch_exists(repo, target_branch) {
+        if !Self::branch_exists(repo, target_branch).await {
             warn!("Target branch '{}' does not exist", target_branch);
             return Some(MergeAttemptResult::BranchNotFound {
                 branch: target_branch.to_string(),
@@ -344,18 +298,12 @@ impl GitService {
     /// Check if two branches have identical content (tree-level diff).
     ///
     /// Uses `git diff --quiet` which exits 0 if identical, 1 if different.
-    pub fn branches_have_same_content(
+    pub async fn branches_have_same_content(
         repo: &Path,
         branch_a: &str,
         branch_b: &str,
     ) -> AppResult<bool> {
-        let output = Command::new("git")
-            .args(["diff", "--quiet", branch_a, branch_b])
-            .current_dir(repo)
-            .output()
-            .map_err(|e| {
-                AppError::GitOperation(format!("Failed to diff {} {}: {}", branch_a, branch_b, e))
-            })?;
+        let output = git_cmd::run(&["diff", "--quiet", branch_a, branch_b], repo).await?;
         Ok(output.status.success())
     }
 }

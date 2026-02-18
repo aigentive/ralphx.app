@@ -700,14 +700,14 @@ impl<R: Runtime> StartupJobRunner<R> {
                     project_id = project.id.as_str(),
                     "Phase 0: Aborting stale rebase on main repo before startup recovery"
                 );
-                let _ = GitService::abort_rebase(repo_path);
+                let _ = GitService::abort_rebase(repo_path).await;
             }
             if GitService::is_merge_in_progress(repo_path) {
                 info!(
                     project_id = project.id.as_str(),
                     "Phase 0: Aborting stale merge on main repo before startup recovery"
                 );
-                let _ = GitService::abort_merge(repo_path);
+                let _ = GitService::abort_merge(repo_path).await;
             }
         }
     }

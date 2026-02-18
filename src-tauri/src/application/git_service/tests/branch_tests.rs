@@ -5,8 +5,8 @@ use std::process::Command;
 // clean_working_tree Tests
 // =========================================================================
 
-#[test]
-fn test_clean_working_tree_removes_untracked_files() {
+#[tokio::test]
+async fn test_clean_working_tree_removes_untracked_files() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -50,7 +50,7 @@ fn test_clean_working_tree_removes_untracked_files() {
     assert!(repo.join("untracked_dir").exists());
 
     // Clean working tree
-    GitService::clean_working_tree(repo).unwrap();
+    GitService::clean_working_tree(repo).await.unwrap();
 
     // Verify untracked files are removed
     assert!(!repo.join("untracked.txt").exists());
@@ -60,8 +60,8 @@ fn test_clean_working_tree_removes_untracked_files() {
     assert!(repo.join("tracked.txt").exists());
 }
 
-#[test]
-fn test_clean_working_tree_resets_modified_tracked_files() {
+#[tokio::test]
+async fn test_clean_working_tree_resets_modified_tracked_files() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -103,15 +103,15 @@ fn test_clean_working_tree_resets_modified_tracked_files() {
     assert_eq!(content, "modified");
 
     // Clean working tree
-    GitService::clean_working_tree(repo).unwrap();
+    GitService::clean_working_tree(repo).await.unwrap();
 
     // Verify file is reset to HEAD
     let content = std::fs::read_to_string(repo.join("tracked.txt")).unwrap();
     assert_eq!(content, "initial");
 }
 
-#[test]
-fn test_clean_working_tree_noop_when_clean() {
+#[tokio::test]
+async fn test_clean_working_tree_noop_when_clean() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -146,7 +146,7 @@ fn test_clean_working_tree_noop_when_clean() {
         .unwrap();
 
     // Working tree is clean, should be no-op
-    let result = GitService::clean_working_tree(repo);
+    let result = GitService::clean_working_tree(repo).await;
 
     // Should succeed without error
     assert!(result.is_ok());
@@ -156,9 +156,9 @@ fn test_clean_working_tree_noop_when_clean() {
     assert_eq!(content, "content");
 }
 
-#[test]
+#[tokio::test]
 #[cfg(unix)]
-fn test_clean_working_tree_handles_symlinks() {
+async fn test_clean_working_tree_handles_symlinks() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -206,7 +206,7 @@ fn test_clean_working_tree_handles_symlinks() {
     assert!(symlink_path.exists());
 
     // Clean working tree
-    GitService::clean_working_tree(repo).unwrap();
+    GitService::clean_working_tree(repo).await.unwrap();
 
     // Verify symlink is removed
     assert!(!symlink_path.exists());
@@ -224,8 +224,8 @@ fn test_clean_working_tree_handles_symlinks() {
 // Feature Branch Operations Tests (Phase 85)
 // =========================================================================
 
-#[test]
-fn test_create_feature_branch_success() {
+#[tokio::test]
+async fn test_create_feature_branch_success() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -258,7 +258,8 @@ fn test_create_feature_branch_success() {
         .unwrap();
 
     // Create feature branch
-    let result = GitService::create_feature_branch(repo, "ralphx/my-app/plan-abc123", "main");
+    let result =
+        GitService::create_feature_branch(repo, "ralphx/my-app/plan-abc123", "main").await;
     assert!(
         result.is_ok(),
         "create_feature_branch should succeed: {:?}",
@@ -278,15 +279,15 @@ fn test_create_feature_branch_success() {
     );
 
     // Verify we didn't checkout the branch (still on main)
-    let current = GitService::get_current_branch(repo).unwrap();
+    let current = GitService::get_current_branch(repo).await.unwrap();
     assert_eq!(
         current, "main",
         "Should still be on main after creating feature branch"
     );
 }
 
-#[test]
-fn test_create_feature_branch_from_specific_source() {
+#[tokio::test]
+async fn test_create_feature_branch_from_specific_source() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -331,10 +332,10 @@ fn test_create_feature_branch_from_specific_source() {
         .output()
         .unwrap();
 
-    let main_sha = GitService::get_head_sha(repo).unwrap();
+    let main_sha = GitService::get_head_sha(repo).await.unwrap();
 
     // Create feature branch from main
-    let result = GitService::create_feature_branch(repo, "feature/plan-test", "main");
+    let result = GitService::create_feature_branch(repo, "feature/plan-test", "main").await;
     assert!(result.is_ok());
 
     // Verify feature branch points to same commit as main
@@ -350,8 +351,8 @@ fn test_create_feature_branch_from_specific_source() {
     );
 }
 
-#[test]
-fn test_create_feature_branch_already_exists() {
+#[tokio::test]
+async fn test_create_feature_branch_already_exists() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -384,18 +385,20 @@ fn test_create_feature_branch_already_exists() {
         .unwrap();
 
     // Create branch first time
-    GitService::create_feature_branch(repo, "feature/dup", "main").unwrap();
+    GitService::create_feature_branch(repo, "feature/dup", "main")
+        .await
+        .unwrap();
 
     // Try to create again — should fail
-    let result = GitService::create_feature_branch(repo, "feature/dup", "main");
+    let result = GitService::create_feature_branch(repo, "feature/dup", "main").await;
     assert!(
         result.is_err(),
         "Creating duplicate feature branch should fail"
     );
 }
 
-#[test]
-fn test_create_feature_branch_invalid_source() {
+#[tokio::test]
+async fn test_create_feature_branch_invalid_source() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -428,15 +431,16 @@ fn test_create_feature_branch_invalid_source() {
         .unwrap();
 
     // Create from non-existent source branch
-    let result = GitService::create_feature_branch(repo, "feature/bad", "nonexistent-branch");
+    let result =
+        GitService::create_feature_branch(repo, "feature/bad", "nonexistent-branch").await;
     assert!(
         result.is_err(),
         "Creating from non-existent source should fail"
     );
 }
 
-#[test]
-fn test_delete_feature_branch_success() {
+#[tokio::test]
+async fn test_delete_feature_branch_success() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -469,10 +473,12 @@ fn test_delete_feature_branch_success() {
         .unwrap();
 
     // Create feature branch, then merge it back so -d works
-    GitService::create_feature_branch(repo, "feature/to-delete", "main").unwrap();
+    GitService::create_feature_branch(repo, "feature/to-delete", "main")
+        .await
+        .unwrap();
 
     // Delete it (safe delete — branch is fully merged since it's at same commit as main)
-    let result = GitService::delete_feature_branch(repo, "feature/to-delete");
+    let result = GitService::delete_feature_branch(repo, "feature/to-delete").await;
     assert!(
         result.is_ok(),
         "delete_feature_branch should succeed: {:?}",
@@ -492,8 +498,8 @@ fn test_delete_feature_branch_success() {
     );
 }
 
-#[test]
-fn test_delete_feature_branch_nonexistent() {
+#[tokio::test]
+async fn test_delete_feature_branch_nonexistent() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -526,7 +532,7 @@ fn test_delete_feature_branch_nonexistent() {
         .unwrap();
 
     // Delete non-existent branch — should fail
-    let result = GitService::delete_feature_branch(repo, "feature/nonexistent");
+    let result = GitService::delete_feature_branch(repo, "feature/nonexistent").await;
     assert!(result.is_err(), "Deleting non-existent branch should fail");
 }
 
@@ -599,8 +605,8 @@ fn test_is_branch_lock_error_false_positive_avoided() {
     assert!(!GitService::is_branch_lock_error(&error));
 }
 
-#[test]
-fn test_branch_exists_returns_true_for_existing_branch() {
+#[tokio::test]
+async fn test_branch_exists_returns_true_for_existing_branch() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -641,11 +647,11 @@ fn test_branch_exists_returns_true_for_existing_branch() {
         .unwrap();
     let branch_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
-    assert!(GitService::branch_exists(repo, &branch_name));
+    assert!(GitService::branch_exists(repo, &branch_name).await);
 }
 
-#[test]
-fn test_branch_exists_returns_false_for_nonexistent_branch() {
+#[tokio::test]
+async fn test_branch_exists_returns_false_for_nonexistent_branch() {
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -655,5 +661,5 @@ fn test_branch_exists_returns_false_for_nonexistent_branch() {
         .output()
         .unwrap();
 
-    assert!(!GitService::branch_exists(repo, "nonexistent-branch"));
+    assert!(!GitService::branch_exists(repo, "nonexistent-branch").await);
 }

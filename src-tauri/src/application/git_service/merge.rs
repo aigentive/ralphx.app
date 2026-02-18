@@ -3,6 +3,7 @@
 //! Extracted from `mod.rs` — contains merge, squash merge, and
 //! worktree-isolated merge operations. Rebase operations are in `rebase.rs`.
 
+use super::git_cmd;
 use super::*;
 
 impl GitService {
@@ -16,17 +17,17 @@ impl GitService {
     /// * `repo` - Path to the git repository
     /// * `source` - Name of the branch to merge from
     /// * `_target` - Name of the target branch (unused, we merge into current HEAD)
-    pub fn merge_branch(repo: &Path, source: &str, _target: &str) -> AppResult<MergeResult> {
+    pub async fn merge_branch(
+        repo: &Path,
+        source: &str,
+        _target: &str,
+    ) -> AppResult<MergeResult> {
         debug!("Merging branch '{}' in {:?}", source, repo);
 
-        let output = Command::new("git")
-            .args(["merge", source, "--no-edit"])
-            .current_dir(repo)
-            .output()
-            .map_err(|e| AppError::GitOperation(format!("Failed to run git merge: {}", e)))?;
+        let output = git_cmd::run(&["merge", source, "--no-edit"], repo).await?;
 
         if output.status.success() {
-            let sha = Self::get_head_sha(repo)?;
+            let sha = Self::get_head_sha(repo).await?;
             let stdout = String::from_utf8_lossy(&output.stdout);
 
             // Check if it was a fast-forward
@@ -40,7 +41,7 @@ impl GitService {
         // Check if it's a conflict
         let stderr = String::from_utf8_lossy(&output.stderr);
         if stderr.contains("CONFLICT") || stderr.contains("conflict") {
-            let conflict_files = Self::get_conflict_files(repo)?;
+            let conflict_files = Self::get_conflict_files(repo).await?;
             return Ok(MergeResult::Conflict {
                 files: conflict_files,
             });
@@ -53,16 +54,10 @@ impl GitService {
     ///
     /// # Arguments
     /// * `repo` - Path to the git repository
-    pub fn abort_merge(repo: &Path) -> AppResult<()> {
+    pub async fn abort_merge(repo: &Path) -> AppResult<()> {
         debug!("Aborting merge in {:?}", repo);
 
-        let output = Command::new("git")
-            .args(["merge", "--abort"])
-            .current_dir(repo)
-            .output()
-            .map_err(|e| {
-                AppError::GitOperation(format!("Failed to run git merge --abort: {}", e))
-            })?;
+        let output = git_cmd::run(&["merge", "--abort"], repo).await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -90,7 +85,7 @@ impl GitService {
     /// * `repo` - Path to the main git repository
     /// * `task_branch` - Name of the task branch to merge
     /// * `base` - Name of the base branch to merge into
-    pub fn try_rebase_and_merge(
+    pub async fn try_rebase_and_merge(
         repo: &Path,
         task_branch: &str,
         base: &str,
@@ -101,20 +96,20 @@ impl GitService {
         );
 
         // Step 1: Fetch latest from origin (non-fatal if fails)
-        match Self::fetch_origin(repo) {
+        match Self::fetch_origin(repo).await {
             Ok(_) => debug!("Fetch from origin succeeded for {:?}", repo),
             Err(e) => debug!("Fetch from origin failed (non-fatal): {}", e),
         }
 
         // Validate branches exist before attempting merge
-        if let Some(not_found) = Self::validate_merge_branches(repo, task_branch, base) {
+        if let Some(not_found) = Self::validate_merge_branches(repo, task_branch, base).await {
             return Ok(not_found);
         }
 
         // Step 2: Check if base branch is empty (0 or 1 commits)
         // For first task on empty repo, rebase fails due to unrelated histories.
         // Skip rebase and directly merge - the task branch becomes the base history.
-        let base_commit_count = Self::get_commit_count(repo, base).unwrap_or(0);
+        let base_commit_count = Self::get_commit_count(repo, base).await.unwrap_or(0);
         if base_commit_count <= 1 {
             debug!(
                 "Base branch '{}' has {} commit(s), skipping rebase for first task",
@@ -126,9 +121,9 @@ impl GitService {
                 "Checking out base branch '{}' for direct merge (empty repo path)",
                 base
             );
-            Self::checkout_branch(repo, base)?;
+            Self::checkout_branch(repo, base).await?;
 
-            let merge_result = Self::merge_branch(repo, task_branch, base)?;
+            let merge_result = Self::merge_branch(repo, task_branch, base).await?;
             debug!(
                 "Direct merge result for '{}': {:?}",
                 task_branch, merge_result
@@ -138,7 +133,7 @@ impl GitService {
                     return Ok(MergeAttemptResult::Success { commit_sha });
                 }
                 MergeResult::Conflict { files } => {
-                    Self::abort_merge(repo)?;
+                    Self::abort_merge(repo).await?;
                     return Ok(MergeAttemptResult::NeedsAgent {
                         conflict_files: files,
                     });
@@ -148,9 +143,9 @@ impl GitService {
 
         // Step 3: Checkout task branch and rebase onto base (normal case)
         debug!("Checking out task branch '{}' for rebase", task_branch);
-        Self::checkout_branch(repo, task_branch)?;
+        Self::checkout_branch(repo, task_branch).await?;
 
-        let rebase_result = Self::rebase_onto(repo, base)?;
+        let rebase_result = Self::rebase_onto(repo, base).await?;
         debug!(
             "Rebase result for '{}' onto '{}': {:?}",
             task_branch, base, rebase_result
@@ -159,9 +154,9 @@ impl GitService {
             RebaseResult::Success => {
                 // Step 4: Checkout base and merge task branch (should be fast-forward)
                 debug!("Checking out base branch '{}' for fast-forward merge", base);
-                Self::checkout_branch(repo, base)?;
+                Self::checkout_branch(repo, base).await?;
 
-                let merge_result = Self::merge_branch(repo, task_branch, base)?;
+                let merge_result = Self::merge_branch(repo, task_branch, base).await?;
                 debug!(
                     "Post-rebase merge result for '{}': {:?}",
                     task_branch, merge_result
@@ -173,7 +168,7 @@ impl GitService {
                     }
                     MergeResult::Conflict { files } => {
                         // This shouldn't happen after successful rebase, but handle it
-                        Self::abort_merge(repo)?;
+                        Self::abort_merge(repo).await?;
                         Ok(MergeAttemptResult::NeedsAgent {
                             conflict_files: files,
                         })
@@ -182,9 +177,9 @@ impl GitService {
             }
             RebaseResult::Conflict { files } => {
                 // Abort the rebase and let agent handle it
-                Self::abort_rebase(repo)?;
+                Self::abort_rebase(repo).await?;
                 // Checkout back to base to leave repo in clean state
-                Self::checkout_branch(repo, base)?;
+                Self::checkout_branch(repo, base).await?;
                 Ok(MergeAttemptResult::NeedsAgent {
                     conflict_files: files,
                 })
@@ -206,36 +201,36 @@ impl GitService {
     /// * `repo` - Path to the main git repository
     /// * `task_branch` - Name of the task branch to merge
     /// * `base` - Name of the base branch to merge into
-    pub fn try_merge(repo: &Path, task_branch: &str, base: &str) -> AppResult<MergeAttemptResult> {
+    pub async fn try_merge(
+        repo: &Path,
+        task_branch: &str,
+        base: &str,
+    ) -> AppResult<MergeAttemptResult> {
         debug!(
             "Attempting direct merge of '{}' into '{}' in {:?}",
             task_branch, base, repo
         );
 
         // Step 1: Fetch latest from origin (non-fatal if fails)
-        match Self::fetch_origin(repo) {
+        match Self::fetch_origin(repo).await {
             Ok(_) => debug!("Fetch from origin succeeded for {:?}", repo),
             Err(e) => debug!("Fetch from origin failed (non-fatal): {}", e),
         }
 
         // Validate branches exist before attempting merge
-        if let Some(not_found) = Self::validate_merge_branches(repo, task_branch, base) {
+        if let Some(not_found) = Self::validate_merge_branches(repo, task_branch, base).await {
             return Ok(not_found);
         }
 
         // Step 2: Checkout base branch
         debug!("Checking out base branch '{}' for merge", base);
-        Self::checkout_branch(repo, base)?;
+        Self::checkout_branch(repo, base).await?;
 
         // Step 3: Merge task branch into base
-        let output = Command::new("git")
-            .args(["merge", task_branch, "--no-edit"])
-            .current_dir(repo)
-            .output()
-            .map_err(|e| AppError::GitOperation(format!("Failed to run git merge: {}", e)))?;
+        let output = git_cmd::run(&["merge", task_branch, "--no-edit"], repo).await?;
 
         if output.status.success() {
-            let commit_sha = Self::get_head_sha(repo)?;
+            let commit_sha = Self::get_head_sha(repo).await?;
             debug!(
                 "Direct merge succeeded for '{}', SHA: {}",
                 task_branch, commit_sha
@@ -251,8 +246,8 @@ impl GitService {
             || stdout.contains("conflict")
             || stderr.contains("conflict")
         {
-            let conflict_files = Self::get_conflict_files(repo)?;
-            Self::abort_merge(repo)?;
+            let conflict_files = Self::get_conflict_files(repo).await?;
+            Self::abort_merge(repo).await?;
             debug!(
                 "Direct merge conflict for '{}', files: {:?}",
                 task_branch, conflict_files
@@ -282,7 +277,7 @@ impl GitService {
     /// * `repo` - Path to the main git repository
     /// * `source_branch` - Branch to merge from (e.g., plan feature branch)
     /// * `target_branch` - Branch to merge into (e.g., main — already checked out)
-    pub fn try_merge_in_repo(
+    pub async fn try_merge_in_repo(
         repo: &Path,
         source_branch: &str,
         target_branch: &str,
@@ -293,13 +288,15 @@ impl GitService {
         );
 
         // Step 1: Fetch latest from origin (non-fatal if fails)
-        match Self::fetch_origin(repo) {
+        match Self::fetch_origin(repo).await {
             Ok(_) => debug!("Fetch from origin succeeded for {:?}", repo),
             Err(e) => debug!("Fetch from origin failed (non-fatal): {}", e),
         }
 
         // Validate branches exist before attempting merge
-        if let Some(not_found) = Self::validate_merge_branches(repo, source_branch, target_branch) {
+        if let Some(not_found) =
+            Self::validate_merge_branches(repo, source_branch, target_branch).await
+        {
             return Ok(not_found);
         }
 
@@ -308,17 +305,13 @@ impl GitService {
             "Checking out target branch '{}' for in-repo merge",
             target_branch
         );
-        Self::checkout_branch(repo, target_branch)?;
+        Self::checkout_branch(repo, target_branch).await?;
 
         // Step 3: Merge source branch into target
-        let output = Command::new("git")
-            .args(["merge", source_branch, "--no-edit"])
-            .current_dir(repo)
-            .output()
-            .map_err(|e| AppError::GitOperation(format!("Failed to run git merge: {}", e)))?;
+        let output = git_cmd::run(&["merge", source_branch, "--no-edit"], repo).await?;
 
         if output.status.success() {
-            let commit_sha = Self::get_head_sha(repo)?;
+            let commit_sha = Self::get_head_sha(repo).await?;
             debug!(
                 "In-repo merge succeeded for '{}', SHA: {}",
                 source_branch, commit_sha
@@ -334,7 +327,7 @@ impl GitService {
             || stdout.contains("conflict")
             || stderr.contains("conflict")
         {
-            let conflict_files = Self::get_conflict_files(repo)?;
+            let conflict_files = Self::get_conflict_files(repo).await?;
             debug!(
                 "In-repo merge conflict for '{}', files: {:?}",
                 source_branch, conflict_files
@@ -357,7 +350,7 @@ impl GitService {
     /// - On **success**: returns commit SHA of the squashed commit.
     /// - On **conflict**: aborts the merge and returns NeedsAgent.
     /// - On **error**: returns an error.
-    pub fn try_squash_merge(
+    pub async fn try_squash_merge(
         repo: &Path,
         source_branch: &str,
         target_branch: &str,
@@ -369,37 +362,36 @@ impl GitService {
         );
 
         // Step 1: Fetch latest from origin (non-fatal)
-        match Self::fetch_origin(repo) {
+        match Self::fetch_origin(repo).await {
             Ok(_) => debug!("Fetch from origin succeeded for {:?}", repo),
             Err(e) => debug!("Fetch from origin failed (non-fatal): {}", e),
         }
 
         // Validate branches exist before attempting merge
-        if let Some(not_found) = Self::validate_merge_branches(repo, source_branch, target_branch) {
+        if let Some(not_found) =
+            Self::validate_merge_branches(repo, source_branch, target_branch).await
+        {
             return Ok(not_found);
         }
 
         // Early return: if branches are already identical, skip merge entirely
-        if Self::branches_have_same_content(repo, source_branch, target_branch).unwrap_or(false) {
+        if Self::branches_have_same_content(repo, source_branch, target_branch)
+            .await
+            .unwrap_or(false)
+        {
             debug!(
                 "Source '{}' and target '{}' already identical, skipping merge",
                 source_branch, target_branch
             );
-            let commit_sha = Self::get_branch_sha(repo, target_branch)?;
+            let commit_sha = Self::get_branch_sha(repo, target_branch).await?;
             return Ok(MergeAttemptResult::Success { commit_sha });
         }
 
         // Step 2: Checkout target branch
-        Self::checkout_branch(repo, target_branch)?;
+        Self::checkout_branch(repo, target_branch).await?;
 
         // Step 3: Squash merge (stages changes but does NOT commit)
-        let output = Command::new("git")
-            .args(["merge", "--squash", source_branch])
-            .current_dir(repo)
-            .output()
-            .map_err(|e| {
-                AppError::GitOperation(format!("Failed to run git merge --squash: {}", e))
-            })?;
+        let output = git_cmd::run(&["merge", "--squash", source_branch], repo).await?;
 
         if !output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -409,8 +401,8 @@ impl GitService {
                 || stdout.contains("conflict")
                 || stderr.contains("conflict")
             {
-                let conflict_files = Self::get_conflict_files(repo)?;
-                Self::abort_merge(repo)?;
+                let conflict_files = Self::get_conflict_files(repo).await?;
+                Self::abort_merge(repo).await?;
                 debug!(
                     "Squash merge conflict for '{}', files: {:?}",
                     source_branch, conflict_files
@@ -425,18 +417,14 @@ impl GitService {
         }
 
         // Step 4: Commit the squashed changes
-        let commit_output = Command::new("git")
-            .args(["commit", "-m", commit_message])
-            .current_dir(repo)
-            .output()
-            .map_err(|e| AppError::GitOperation(format!("Failed to commit squash merge: {}", e)))?;
+        let commit_output = git_cmd::run(&["commit", "-m", commit_message], repo).await?;
 
         if !commit_output.status.success() {
             let stdout = String::from_utf8_lossy(&commit_output.stdout);
             let stderr = String::from_utf8_lossy(&commit_output.stderr);
             // "nothing to commit" means branches are identical — treat as success
             if stdout.contains("nothing to commit") || stderr.contains("nothing to commit") {
-                let commit_sha = Self::get_head_sha(repo)?;
+                let commit_sha = Self::get_head_sha(repo).await?;
                 debug!(
                     "Squash merge no-op (branches identical), SHA: {}",
                     commit_sha
@@ -449,7 +437,7 @@ impl GitService {
             )));
         }
 
-        let commit_sha = Self::get_head_sha(repo)?;
+        let commit_sha = Self::get_head_sha(repo).await?;
         debug!(
             "Squash merge succeeded for '{}', SHA: {}",
             source_branch, commit_sha
@@ -465,7 +453,7 @@ impl GitService {
     /// - On **success**: returns commit SHA. Caller should clean up the worktree.
     /// - On **conflict**: leaves worktree in conflict state for agent resolution.
     /// - On **error**: cleans up worktree and returns error.
-    pub fn try_squash_merge_in_worktree(
+    pub async fn try_squash_merge_in_worktree(
         repo: &Path,
         source_branch: &str,
         target_branch: &str,
@@ -478,32 +466,41 @@ impl GitService {
         );
 
         // Validate branches exist before attempting merge
-        if let Some(not_found) = Self::validate_merge_branches(repo, source_branch, target_branch) {
+        if let Some(not_found) =
+            Self::validate_merge_branches(repo, source_branch, target_branch).await
+        {
             return Ok(not_found);
         }
 
         // Early return: if branches are already identical, skip merge entirely
-        if Self::branches_have_same_content(repo, source_branch, target_branch).unwrap_or(false) {
+        if Self::branches_have_same_content(repo, source_branch, target_branch)
+            .await
+            .unwrap_or(false)
+        {
             debug!(
                 "Source '{}' and target '{}' already identical, skipping worktree merge",
                 source_branch, target_branch
             );
-            let commit_sha = Self::get_branch_sha(repo, target_branch)?;
+            let commit_sha = Self::get_branch_sha(repo, target_branch).await?;
             return Ok(MergeAttemptResult::Success { commit_sha });
         }
 
         // Step 1: Create worktree on target branch
-        Self::checkout_existing_branch_worktree(repo, merge_worktree_path, target_branch)?;
+        Self::checkout_existing_branch_worktree(repo, merge_worktree_path, target_branch).await?;
 
         // Step 2: Squash merge source into worktree
-        let output = Command::new("git")
-            .args(["merge", "--squash", source_branch])
-            .current_dir(merge_worktree_path)
-            .output()
-            .map_err(|e| {
-                let _ = Self::delete_worktree(repo, merge_worktree_path);
-                AppError::GitOperation(format!("Failed to run git merge --squash: {}", e))
-            })?;
+        let output = match git_cmd::run(
+            &["merge", "--squash", source_branch],
+            merge_worktree_path,
+        )
+        .await
+        {
+            Ok(output) => output,
+            Err(e) => {
+                let _ = Self::delete_worktree(repo, merge_worktree_path).await;
+                return Err(e);
+            }
+        };
 
         if !output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -513,7 +510,7 @@ impl GitService {
                 || stdout.contains("conflict")
                 || stderr.contains("conflict")
             {
-                let conflict_files = Self::get_conflict_files(merge_worktree_path)?;
+                let conflict_files = Self::get_conflict_files(merge_worktree_path).await?;
                 debug!(
                     "Squash merge conflict in worktree, files: {:?}",
                     conflict_files
@@ -522,7 +519,7 @@ impl GitService {
                 return Ok(MergeAttemptResult::NeedsAgent { conflict_files });
             }
 
-            let _ = Self::delete_worktree(repo, merge_worktree_path);
+            let _ = Self::delete_worktree(repo, merge_worktree_path).await;
             return Err(AppError::GitOperation(format!(
                 "Squash merge of '{}' into '{}' in worktree failed: {}{}",
                 source_branch, target_branch, stderr, stdout
@@ -530,34 +527,34 @@ impl GitService {
         }
 
         // Step 3: Commit the squashed changes in the worktree
-        let commit_output = Command::new("git")
-            .args(["commit", "-m", commit_message])
-            .current_dir(merge_worktree_path)
-            .output()
-            .map_err(|e| {
-                let _ = Self::delete_worktree(repo, merge_worktree_path);
-                AppError::GitOperation(format!("Failed to commit squash merge: {}", e))
-            })?;
+        let commit_output =
+            match git_cmd::run(&["commit", "-m", commit_message], merge_worktree_path).await {
+                Ok(output) => output,
+                Err(e) => {
+                    let _ = Self::delete_worktree(repo, merge_worktree_path).await;
+                    return Err(e);
+                }
+            };
 
         if !commit_output.status.success() {
             let stdout = String::from_utf8_lossy(&commit_output.stdout);
             let stderr = String::from_utf8_lossy(&commit_output.stderr);
             if stdout.contains("nothing to commit") || stderr.contains("nothing to commit") {
-                let commit_sha = Self::get_head_sha(merge_worktree_path)?;
+                let commit_sha = Self::get_head_sha(merge_worktree_path).await?;
                 debug!(
                     "Squash merge no-op in worktree (branches identical), SHA: {}",
                     commit_sha
                 );
                 return Ok(MergeAttemptResult::Success { commit_sha });
             }
-            let _ = Self::delete_worktree(repo, merge_worktree_path);
+            let _ = Self::delete_worktree(repo, merge_worktree_path).await;
             return Err(AppError::GitOperation(format!(
                 "Failed to commit squash merge in worktree: stdout={}, stderr={}",
                 stdout, stderr
             )));
         }
 
-        let commit_sha = Self::get_head_sha(merge_worktree_path)?;
+        let commit_sha = Self::get_head_sha(merge_worktree_path).await?;
         debug!("Squash merge in worktree succeeded, SHA: {}", commit_sha);
         Ok(MergeAttemptResult::Success { commit_sha })
     }
@@ -567,7 +564,7 @@ impl GitService {
     /// 1. Rebase source_branch onto target_branch (conflicts caught here)
     /// 2. Checkout target, `git merge --squash source`, commit
     /// 3. Result: single clean commit on target with all changes
-    pub fn try_rebase_squash_merge(
+    pub async fn try_rebase_squash_merge(
         repo: &Path,
         source_branch: &str,
         target_branch: &str,
@@ -579,55 +576,55 @@ impl GitService {
         );
 
         // Step 1: Fetch
-        match Self::fetch_origin(repo) {
+        match Self::fetch_origin(repo).await {
             Ok(_) => debug!("Fetch from origin succeeded for {:?}", repo),
             Err(e) => debug!("Fetch from origin failed (non-fatal): {}", e),
         }
 
         // Validate branches exist before attempting merge
-        if let Some(not_found) = Self::validate_merge_branches(repo, source_branch, target_branch) {
+        if let Some(not_found) =
+            Self::validate_merge_branches(repo, source_branch, target_branch).await
+        {
             return Ok(not_found);
         }
 
         // Early return: if branches are already identical, skip merge entirely
-        if Self::branches_have_same_content(repo, source_branch, target_branch).unwrap_or(false) {
+        if Self::branches_have_same_content(repo, source_branch, target_branch)
+            .await
+            .unwrap_or(false)
+        {
             debug!(
                 "Source '{}' and target '{}' already identical, skipping rebase+squash",
                 source_branch, target_branch
             );
-            let commit_sha = Self::get_branch_sha(repo, target_branch)?;
+            let commit_sha = Self::get_branch_sha(repo, target_branch).await?;
             return Ok(MergeAttemptResult::Success { commit_sha });
         }
 
         // Step 2: Check for empty base (skip rebase for first task)
-        let base_commit_count = Self::get_commit_count(repo, target_branch).unwrap_or(0);
+        let base_commit_count = Self::get_commit_count(repo, target_branch)
+            .await
+            .unwrap_or(0);
         if base_commit_count <= 1 {
             debug!(
                 "Base branch '{}' has {} commit(s), using plain squash merge",
                 target_branch, base_commit_count
             );
-            return Self::try_squash_merge(repo, source_branch, target_branch, commit_message);
+            return Self::try_squash_merge(repo, source_branch, target_branch, commit_message)
+                .await;
         }
 
         // Step 3: Checkout source branch and rebase onto target
-        Self::checkout_branch(repo, source_branch)?;
-        let rebase_result = Self::rebase_onto(repo, target_branch)?;
+        Self::checkout_branch(repo, source_branch).await?;
+        let rebase_result = Self::rebase_onto(repo, target_branch).await?;
 
         match rebase_result {
             RebaseResult::Success => {
                 // Step 4: Checkout target and squash merge
-                Self::checkout_branch(repo, target_branch)?;
+                Self::checkout_branch(repo, target_branch).await?;
 
-                let output = Command::new("git")
-                    .args(["merge", "--squash", source_branch])
-                    .current_dir(repo)
-                    .output()
-                    .map_err(|e| {
-                        AppError::GitOperation(format!(
-                            "Failed to run git merge --squash after rebase: {}",
-                            e
-                        ))
-                    })?;
+                let output =
+                    git_cmd::run(&["merge", "--squash", source_branch], repo).await?;
 
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -639,23 +636,15 @@ impl GitService {
                 }
 
                 // Step 5: Commit
-                let commit_output = Command::new("git")
-                    .args(["commit", "-m", commit_message])
-                    .current_dir(repo)
-                    .output()
-                    .map_err(|e| {
-                        AppError::GitOperation(format!(
-                            "Failed to commit rebase+squash merge: {}",
-                            e
-                        ))
-                    })?;
+                let commit_output =
+                    git_cmd::run(&["commit", "-m", commit_message], repo).await?;
 
                 if !commit_output.status.success() {
                     let stdout = String::from_utf8_lossy(&commit_output.stdout);
                     let stderr = String::from_utf8_lossy(&commit_output.stderr);
                     if stdout.contains("nothing to commit") || stderr.contains("nothing to commit")
                     {
-                        let sha = Self::get_head_sha(repo)?;
+                        let sha = Self::get_head_sha(repo).await?;
                         return Ok(MergeAttemptResult::Success { commit_sha: sha });
                     }
                     return Err(AppError::GitOperation(format!(
@@ -664,13 +653,13 @@ impl GitService {
                     )));
                 }
 
-                let sha = Self::get_head_sha(repo)?;
+                let sha = Self::get_head_sha(repo).await?;
                 debug!("Rebase+squash succeeded, SHA: {}", sha);
                 Ok(MergeAttemptResult::Success { commit_sha: sha })
             }
             RebaseResult::Conflict { files } => {
-                Self::abort_rebase(repo)?;
-                Self::checkout_branch(repo, target_branch)?;
+                Self::abort_rebase(repo).await?;
+                Self::checkout_branch(repo, target_branch).await?;
                 debug!("Rebase conflict during rebase+squash, files: {:?}", files);
                 Ok(MergeAttemptResult::NeedsAgent {
                     conflict_files: files,
@@ -684,7 +673,7 @@ impl GitService {
     /// 1. Create rebase worktree on source, rebase onto target
     /// 2. On success: delete rebase wt, create merge wt on target, squash merge, commit
     /// 3. On conflict: leave rebase worktree for agent resolution
-    pub fn try_rebase_squash_merge_in_worktree(
+    pub async fn try_rebase_squash_merge_in_worktree(
         repo: &Path,
         source_branch: &str,
         target_branch: &str,
@@ -698,28 +687,35 @@ impl GitService {
         );
 
         // Step 1: Fetch
-        match Self::fetch_origin(repo) {
+        match Self::fetch_origin(repo).await {
             Ok(_) => debug!("Fetch from origin succeeded"),
             Err(e) => debug!("Fetch from origin failed (non-fatal): {}", e),
         }
 
         // Validate branches exist before attempting merge
-        if let Some(not_found) = Self::validate_merge_branches(repo, source_branch, target_branch) {
+        if let Some(not_found) =
+            Self::validate_merge_branches(repo, source_branch, target_branch).await
+        {
             return Ok(not_found);
         }
 
         // Early return: if branches are already identical, skip merge entirely
-        if Self::branches_have_same_content(repo, source_branch, target_branch).unwrap_or(false) {
+        if Self::branches_have_same_content(repo, source_branch, target_branch)
+            .await
+            .unwrap_or(false)
+        {
             debug!(
                 "Source '{}' and target '{}' already identical, skipping worktree rebase+squash",
                 source_branch, target_branch
             );
-            let commit_sha = Self::get_branch_sha(repo, target_branch)?;
+            let commit_sha = Self::get_branch_sha(repo, target_branch).await?;
             return Ok(MergeAttemptResult::Success { commit_sha });
         }
 
         // Step 2: Check for empty base
-        let base_commit_count = Self::get_commit_count(repo, target_branch).unwrap_or(0);
+        let base_commit_count = Self::get_commit_count(repo, target_branch)
+            .await
+            .unwrap_or(0);
         if base_commit_count <= 1 {
             debug!(
                 "Base branch '{}' has {} commit(s), using plain squash merge in worktree",
@@ -731,35 +727,36 @@ impl GitService {
                 target_branch,
                 merge_worktree_path,
                 commit_message,
-            );
+            )
+            .await;
         }
 
         // Step 3: Create rebase worktree on source branch
-        Self::checkout_existing_branch_worktree(repo, rebase_worktree_path, source_branch)?;
+        Self::checkout_existing_branch_worktree(repo, rebase_worktree_path, source_branch).await?;
 
         // Step 4: Rebase onto target in the worktree
-        let rebase_output = Command::new("git")
-            .args(["rebase", target_branch])
-            .current_dir(rebase_worktree_path)
-            .output()
-            .map_err(|e| {
-                let _ = Self::delete_worktree(repo, rebase_worktree_path);
-                AppError::GitOperation(format!("Failed to run git rebase: {}", e))
-            })?;
+        let rebase_output =
+            match git_cmd::run(&["rebase", target_branch], rebase_worktree_path).await {
+                Ok(output) => output,
+                Err(e) => {
+                    let _ = Self::delete_worktree(repo, rebase_worktree_path).await;
+                    return Err(e);
+                }
+            };
 
         if !rebase_output.status.success() {
             let stderr = String::from_utf8_lossy(&rebase_output.stderr);
             if stderr.contains("CONFLICT") || stderr.contains("conflict") {
-                let conflict_files = Self::get_conflict_files(rebase_worktree_path)?;
+                let conflict_files = Self::get_conflict_files(rebase_worktree_path).await?;
                 debug!(
                     "Rebase conflict in worktree during rebase+squash, files: {:?}",
                     conflict_files
                 );
                 // Leave rebase worktree for agent — abort rebase first so agent starts clean
-                let _ = Self::abort_rebase(rebase_worktree_path);
+                let _ = Self::abort_rebase(rebase_worktree_path).await;
                 return Ok(MergeAttemptResult::NeedsAgent { conflict_files });
             }
-            let _ = Self::delete_worktree(repo, rebase_worktree_path);
+            let _ = Self::delete_worktree(repo, rebase_worktree_path).await;
             return Err(AppError::GitOperation(format!(
                 "Rebase in worktree failed: {}",
                 stderr
@@ -767,28 +764,29 @@ impl GitService {
         }
 
         // Step 5: Rebase succeeded — delete rebase worktree
-        if let Err(e) = Self::delete_worktree(repo, rebase_worktree_path) {
+        if let Err(e) = Self::delete_worktree(repo, rebase_worktree_path).await {
             debug!("Failed to delete rebase worktree (non-fatal): {}", e);
         }
 
         // Step 6: Create merge worktree on target, squash merge
-        Self::checkout_existing_branch_worktree(repo, merge_worktree_path, target_branch)?;
+        Self::checkout_existing_branch_worktree(repo, merge_worktree_path, target_branch).await?;
 
-        let squash_output = Command::new("git")
-            .args(["merge", "--squash", source_branch])
-            .current_dir(merge_worktree_path)
-            .output()
-            .map_err(|e| {
-                let _ = Self::delete_worktree(repo, merge_worktree_path);
-                AppError::GitOperation(format!(
-                    "Failed to squash merge after rebase in worktree: {}",
-                    e
-                ))
-            })?;
+        let squash_output = match git_cmd::run(
+            &["merge", "--squash", source_branch],
+            merge_worktree_path,
+        )
+        .await
+        {
+            Ok(output) => output,
+            Err(e) => {
+                let _ = Self::delete_worktree(repo, merge_worktree_path).await;
+                return Err(e);
+            }
+        };
 
         if !squash_output.status.success() {
             let stderr = String::from_utf8_lossy(&squash_output.stderr);
-            let _ = Self::delete_worktree(repo, merge_worktree_path);
+            let _ = Self::delete_worktree(repo, merge_worktree_path).await;
             return Err(AppError::GitOperation(format!(
                 "Squash merge after rebase unexpectedly failed in worktree: {}",
                 stderr
@@ -796,30 +794,30 @@ impl GitService {
         }
 
         // Step 7: Commit
-        let commit_output = Command::new("git")
-            .args(["commit", "-m", commit_message])
-            .current_dir(merge_worktree_path)
-            .output()
-            .map_err(|e| {
-                let _ = Self::delete_worktree(repo, merge_worktree_path);
-                AppError::GitOperation(format!("Failed to commit rebase+squash in worktree: {}", e))
-            })?;
+        let commit_output =
+            match git_cmd::run(&["commit", "-m", commit_message], merge_worktree_path).await {
+                Ok(output) => output,
+                Err(e) => {
+                    let _ = Self::delete_worktree(repo, merge_worktree_path).await;
+                    return Err(e);
+                }
+            };
 
         if !commit_output.status.success() {
             let stdout = String::from_utf8_lossy(&commit_output.stdout);
             let stderr = String::from_utf8_lossy(&commit_output.stderr);
             if stdout.contains("nothing to commit") || stderr.contains("nothing to commit") {
-                let sha = Self::get_head_sha(merge_worktree_path)?;
+                let sha = Self::get_head_sha(merge_worktree_path).await?;
                 return Ok(MergeAttemptResult::Success { commit_sha: sha });
             }
-            let _ = Self::delete_worktree(repo, merge_worktree_path);
+            let _ = Self::delete_worktree(repo, merge_worktree_path).await;
             return Err(AppError::GitOperation(format!(
                 "Failed to commit rebase+squash in worktree: stdout={}, stderr={}",
                 stdout, stderr
             )));
         }
 
-        let sha = Self::get_head_sha(merge_worktree_path)?;
+        let sha = Self::get_head_sha(merge_worktree_path).await?;
         debug!("Rebase+squash in worktree succeeded, SHA: {}", sha);
         Ok(MergeAttemptResult::Success { commit_sha: sha })
     }
@@ -840,7 +838,7 @@ impl GitService {
     /// * `source_branch` - Branch to merge from (e.g., task branch)
     /// * `target_branch` - Branch to merge into (e.g., plan feature branch)
     /// * `merge_worktree_path` - Path for the temporary merge worktree
-    pub fn try_merge_in_worktree(
+    pub async fn try_merge_in_worktree(
         repo: &Path,
         source_branch: &str,
         target_branch: &str,
@@ -852,26 +850,32 @@ impl GitService {
         );
 
         // Validate branches exist before attempting merge
-        if let Some(not_found) = Self::validate_merge_branches(repo, source_branch, target_branch) {
+        if let Some(not_found) =
+            Self::validate_merge_branches(repo, source_branch, target_branch).await
+        {
             return Ok(not_found);
         }
 
         // Step 1: Create merge worktree checking out the target branch
-        Self::checkout_existing_branch_worktree(repo, merge_worktree_path, target_branch)?;
+        Self::checkout_existing_branch_worktree(repo, merge_worktree_path, target_branch).await?;
 
         // Step 2: Merge source branch into the merge worktree
-        let output = Command::new("git")
-            .args(["merge", source_branch, "--no-edit"])
-            .current_dir(merge_worktree_path)
-            .output()
-            .map_err(|e| {
+        let output = match git_cmd::run(
+            &["merge", source_branch, "--no-edit"],
+            merge_worktree_path,
+        )
+        .await
+        {
+            Ok(output) => output,
+            Err(e) => {
                 // Clean up worktree on command execution failure
-                let _ = Self::delete_worktree(repo, merge_worktree_path);
-                AppError::GitOperation(format!("Failed to run git merge: {}", e))
-            })?;
+                let _ = Self::delete_worktree(repo, merge_worktree_path).await;
+                return Err(e);
+            }
+        };
 
         if output.status.success() {
-            let commit_sha = Self::get_head_sha(merge_worktree_path)?;
+            let commit_sha = Self::get_head_sha(merge_worktree_path).await?;
             debug!("Merge succeeded in worktree, SHA: {}", commit_sha);
             return Ok(MergeAttemptResult::Success { commit_sha });
         }
@@ -884,14 +888,14 @@ impl GitService {
             || stdout.contains("conflict")
             || stderr.contains("conflict")
         {
-            let conflict_files = Self::get_conflict_files(merge_worktree_path)?;
+            let conflict_files = Self::get_conflict_files(merge_worktree_path).await?;
             debug!("Merge conflict in worktree, files: {:?}", conflict_files);
             // Do NOT abort — leave worktree in conflict state for agent resolution
             return Ok(MergeAttemptResult::NeedsAgent { conflict_files });
         }
 
         // Unexpected error — clean up worktree
-        let _ = Self::delete_worktree(repo, merge_worktree_path);
+        let _ = Self::delete_worktree(repo, merge_worktree_path).await;
         Err(AppError::GitOperation(format!(
             "Merge of '{}' into '{}' in worktree failed: {}{}",
             source_branch, target_branch, stderr, stdout
@@ -911,7 +915,7 @@ impl GitService {
     /// * `target_branch` - Branch to merge into (e.g., plan feature branch or main)
     /// * `rebase_worktree_path` - Path for the temporary rebase worktree
     /// * `merge_worktree_path` - Path for the temporary merge worktree
-    pub fn try_rebase_and_merge_in_worktree(
+    pub async fn try_rebase_and_merge_in_worktree(
         repo: &Path,
         source_branch: &str,
         target_branch: &str,
@@ -924,19 +928,23 @@ impl GitService {
         );
 
         // Step 1: Fetch latest from origin (non-fatal)
-        match Self::fetch_origin(repo) {
+        match Self::fetch_origin(repo).await {
             Ok(_) => debug!("Fetch from origin succeeded for {:?}", repo),
             Err(e) => debug!("Fetch from origin failed (non-fatal): {}", e),
         }
 
         // Validate branches exist before attempting merge
-        if let Some(not_found) = Self::validate_merge_branches(repo, source_branch, target_branch) {
+        if let Some(not_found) =
+            Self::validate_merge_branches(repo, source_branch, target_branch).await
+        {
             return Ok(not_found);
         }
 
         // Step 2: Check if base branch is empty (0 or 1 commits)
         // For first task on empty repo, rebase fails. Skip rebase and merge directly.
-        let base_commit_count = Self::get_commit_count(repo, target_branch).unwrap_or(0);
+        let base_commit_count = Self::get_commit_count(repo, target_branch)
+            .await
+            .unwrap_or(0);
         if base_commit_count <= 1 {
             debug!(
                 "Target branch '{}' has {} commit(s), falling back to direct worktree merge",
@@ -947,14 +955,15 @@ impl GitService {
                 source_branch,
                 target_branch,
                 merge_worktree_path,
-            );
+            )
+            .await;
         }
 
         // Step 3: Create rebase worktree on source branch
-        Self::checkout_existing_branch_worktree(repo, rebase_worktree_path, source_branch)?;
+        Self::checkout_existing_branch_worktree(repo, rebase_worktree_path, source_branch).await?;
 
         // Step 4: Rebase source onto target in the rebase worktree
-        let rebase_result = Self::rebase_onto(rebase_worktree_path, target_branch)?;
+        let rebase_result = Self::rebase_onto(rebase_worktree_path, target_branch).await?;
         debug!(
             "Rebase result for '{}' onto '{}' in worktree: {:?}",
             source_branch, target_branch, rebase_result
@@ -963,22 +972,27 @@ impl GitService {
         match rebase_result {
             RebaseResult::Success => {
                 // Step 5: Rebase succeeded — delete rebase worktree, then merge
-                let _ = Self::delete_worktree(repo, rebase_worktree_path);
+                let _ = Self::delete_worktree(repo, rebase_worktree_path).await;
 
                 // Step 6: Create merge worktree on target branch and fast-forward
-                Self::checkout_existing_branch_worktree(repo, merge_worktree_path, target_branch)?;
+                Self::checkout_existing_branch_worktree(repo, merge_worktree_path, target_branch)
+                    .await?;
 
-                let output = Command::new("git")
-                    .args(["merge", source_branch, "--no-edit"])
-                    .current_dir(merge_worktree_path)
-                    .output()
-                    .map_err(|e| {
-                        let _ = Self::delete_worktree(repo, merge_worktree_path);
-                        AppError::GitOperation(format!("Failed to run git merge: {}", e))
-                    })?;
+                let output = match git_cmd::run(
+                    &["merge", source_branch, "--no-edit"],
+                    merge_worktree_path,
+                )
+                .await
+                {
+                    Ok(output) => output,
+                    Err(e) => {
+                        let _ = Self::delete_worktree(repo, merge_worktree_path).await;
+                        return Err(e);
+                    }
+                };
 
                 if output.status.success() {
-                    let commit_sha = Self::get_head_sha(merge_worktree_path)?;
+                    let commit_sha = Self::get_head_sha(merge_worktree_path).await?;
                     debug!(
                         "Rebase-and-merge in worktree succeeded, SHA: {}",
                         commit_sha
@@ -994,7 +1008,7 @@ impl GitService {
                     || stdout.contains("conflict")
                     || stderr.contains("conflict")
                 {
-                    let conflict_files = Self::get_conflict_files(merge_worktree_path)?;
+                    let conflict_files = Self::get_conflict_files(merge_worktree_path).await?;
                     debug!(
                         "Post-rebase merge conflict in worktree (unexpected), files: {:?}",
                         conflict_files
@@ -1004,7 +1018,7 @@ impl GitService {
                 }
 
                 // Unexpected error — clean up merge worktree
-                let _ = Self::delete_worktree(repo, merge_worktree_path);
+                let _ = Self::delete_worktree(repo, merge_worktree_path).await;
                 Err(AppError::GitOperation(format!(
                     "Post-rebase merge of '{}' into '{}' in worktree failed: {}{}",
                     source_branch, target_branch, stderr, stdout

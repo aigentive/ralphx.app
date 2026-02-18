@@ -1,5 +1,6 @@
 use super::*;
 use std::fs;
+use std::process::Command;
 
 /// Create a temp git repo with an initial commit, returns the repo path
 fn setup_test_repo() -> tempfile::TempDir {
@@ -76,21 +77,23 @@ fn create_branch_with_change(repo: &Path, branch: &str, filename: &str, content:
         .expect("git checkout main failed");
 }
 
-#[test]
-fn test_merge_tree_write_clean_merge() {
+#[tokio::test]
+async fn test_merge_tree_write_clean_merge() {
     let dir = setup_test_repo();
     let repo = dir.path();
 
     create_branch_with_change(repo, "feature", "feature.txt", "feature content\n");
 
-    let result = merge_tree_write(repo, "main", "feature").expect("git command failed");
+    let result = merge_tree_write(repo, "main", "feature")
+        .await
+        .expect("git command failed");
     assert!(result.is_ok(), "Expected clean merge, got: {:?}", result);
     let tree_sha = result.unwrap();
     assert!(!tree_sha.is_empty());
 }
 
-#[test]
-fn test_merge_tree_write_conflict() {
+#[tokio::test]
+async fn test_merge_tree_write_conflict() {
     let dir = setup_test_repo();
     let repo = dir.path();
 
@@ -106,14 +109,16 @@ fn test_merge_tree_write_conflict() {
         .expect("git merge failed");
 
     // Now try merge-tree with branch-b → should conflict
-    let result = merge_tree_write(repo, "main", "branch-b").expect("git command failed");
+    let result = merge_tree_write(repo, "main", "branch-b")
+        .await
+        .expect("git command failed");
     assert!(result.is_err(), "Expected conflict, got: {:?}", result);
     let files = result.unwrap_err();
     assert!(!files.is_empty());
 }
 
-#[test]
-fn test_commit_tree_creates_commit() {
+#[tokio::test]
+async fn test_commit_tree_creates_commit() {
     let dir = setup_test_repo();
     let repo = dir.path();
 
@@ -127,17 +132,17 @@ fn test_commit_tree_creates_commit() {
         .trim()
         .to_string();
 
-    let head_sha = super::super::GitService::get_head_sha(repo).unwrap();
+    let head_sha = super::super::GitService::get_head_sha(repo).await.unwrap();
 
-    let result = commit_tree(repo, &tree_sha, &[&head_sha], "Test commit");
+    let result = commit_tree(repo, &tree_sha, &[&head_sha], "Test commit").await;
     assert!(result.is_ok());
     let commit_sha = result.unwrap();
     assert!(!commit_sha.is_empty());
     assert_ne!(commit_sha, head_sha);
 }
 
-#[test]
-fn test_update_branch_ref() {
+#[tokio::test]
+async fn test_update_branch_ref() {
     let dir = setup_test_repo();
     let repo = dir.path();
 
@@ -148,7 +153,7 @@ fn test_update_branch_ref() {
         .output()
         .expect("git branch failed");
 
-    let head_sha = super::super::GitService::get_head_sha(repo).unwrap();
+    let head_sha = super::super::GitService::get_head_sha(repo).await.unwrap();
 
     // Create a new commit via commit-tree
     let tree_output = Command::new("git")
@@ -160,19 +165,23 @@ fn test_update_branch_ref() {
         .trim()
         .to_string();
 
-    let new_sha = commit_tree(repo, &tree_sha, &[&head_sha], "Advance ref").unwrap();
+    let new_sha = commit_tree(repo, &tree_sha, &[&head_sha], "Advance ref")
+        .await
+        .unwrap();
 
     // Update the branch ref
-    let result = update_branch_ref(repo, "test-branch", &new_sha);
+    let result = update_branch_ref(repo, "test-branch", &new_sha).await;
     assert!(result.is_ok());
 
     // Verify branch now points to new SHA
-    let branch_sha = super::super::GitService::get_branch_sha(repo, "test-branch").unwrap();
+    let branch_sha = super::super::GitService::get_branch_sha(repo, "test-branch")
+        .await
+        .unwrap();
     assert_eq!(branch_sha, new_sha);
 }
 
-#[test]
-fn test_try_merge_checkout_free_clean() {
+#[tokio::test]
+async fn test_try_merge_checkout_free_clean() {
     let dir = setup_test_repo();
     let repo = dir.path();
 
@@ -181,7 +190,7 @@ fn test_try_merge_checkout_free_clean() {
     // Verify main doesn't have feature.txt before merge
     assert!(!repo.join("feature.txt").exists());
 
-    let result = try_merge_checkout_free(repo, "feature", "main");
+    let result = try_merge_checkout_free(repo, "feature", "main").await;
     assert!(result.is_ok());
 
     match result.unwrap() {
@@ -193,7 +202,9 @@ fn test_try_merge_checkout_free_clean() {
                 "Working tree should not be modified by checkout-free merge"
             );
             // But branch ref should be advanced
-            let main_sha = super::super::GitService::get_branch_sha(repo, "main").unwrap();
+            let main_sha = super::super::GitService::get_branch_sha(repo, "main")
+                .await
+                .unwrap();
             assert_eq!(main_sha, commit_sha);
         }
         CheckoutFreeMergeResult::Conflict { .. } => {
@@ -202,8 +213,8 @@ fn test_try_merge_checkout_free_clean() {
     }
 }
 
-#[test]
-fn test_try_merge_checkout_free_conflict() {
+#[tokio::test]
+async fn test_try_merge_checkout_free_conflict() {
     let dir = setup_test_repo();
     let repo = dir.path();
 
@@ -217,7 +228,7 @@ fn test_try_merge_checkout_free_conflict() {
         .output()
         .expect("git merge failed");
 
-    let result = try_merge_checkout_free(repo, "branch-b", "main");
+    let result = try_merge_checkout_free(repo, "branch-b", "main").await;
     assert!(result.is_ok());
 
     match result.unwrap() {
@@ -230,14 +241,15 @@ fn test_try_merge_checkout_free_conflict() {
     }
 }
 
-#[test]
-fn test_try_squash_merge_checkout_free() {
+#[tokio::test]
+async fn test_try_squash_merge_checkout_free() {
     let dir = setup_test_repo();
     let repo = dir.path();
 
     create_branch_with_change(repo, "feature", "feature.txt", "feature content\n");
 
-    let result = try_squash_merge_checkout_free(repo, "feature", "main", "squash: add feature");
+    let result =
+        try_squash_merge_checkout_free(repo, "feature", "main", "squash: add feature").await;
     assert!(result.is_ok());
 
     match result.unwrap() {
@@ -266,24 +278,28 @@ fn test_try_squash_merge_checkout_free() {
     }
 }
 
-#[test]
-fn test_try_fast_forward_checkout_free() {
+#[tokio::test]
+async fn test_try_fast_forward_checkout_free() {
     let dir = setup_test_repo();
     let repo = dir.path();
 
     // Create feature branch with a change (main is behind feature = FF possible)
     create_branch_with_change(repo, "feature", "feature.txt", "feature content\n");
 
-    let feature_sha = super::super::GitService::get_branch_sha(repo, "feature").unwrap();
+    let feature_sha = super::super::GitService::get_branch_sha(repo, "feature")
+        .await
+        .unwrap();
 
-    let result = try_fast_forward_checkout_free(repo, "feature", "main");
+    let result = try_fast_forward_checkout_free(repo, "feature", "main").await;
     assert!(result.is_ok());
 
     match result.unwrap() {
         CheckoutFreeMergeResult::Success { commit_sha } => {
             assert_eq!(commit_sha, feature_sha);
             // Main ref should now equal feature
-            let main_sha = super::super::GitService::get_branch_sha(repo, "main").unwrap();
+            let main_sha = super::super::GitService::get_branch_sha(repo, "main")
+                .await
+                .unwrap();
             assert_eq!(main_sha, feature_sha);
         }
         CheckoutFreeMergeResult::Conflict { .. } => {
@@ -292,8 +308,8 @@ fn test_try_fast_forward_checkout_free() {
     }
 }
 
-#[test]
-fn test_try_fast_forward_falls_back_to_merge() {
+#[tokio::test]
+async fn test_try_fast_forward_falls_back_to_merge() {
     let dir = setup_test_repo();
     let repo = dir.path();
 
@@ -312,7 +328,7 @@ fn test_try_fast_forward_falls_back_to_merge() {
         .output()
         .expect("git commit failed");
 
-    let result = try_fast_forward_checkout_free(repo, "feature", "main");
+    let result = try_fast_forward_checkout_free(repo, "feature", "main").await;
     assert!(result.is_ok());
 
     // Should fall back to regular merge (not FF)

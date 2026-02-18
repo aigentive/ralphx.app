@@ -209,7 +209,7 @@ pub async fn delete_ideation_session(
 
         if let Some(project) = project {
             let repo_path = PathBuf::from(&project.working_directory);
-            if let Err(e) = GitService::delete_feature_branch(&repo_path, &plan_branch.branch_name)
+            if let Err(e) = GitService::delete_feature_branch(&repo_path, &plan_branch.branch_name).await
             {
                 tracing::warn!(
                     branch = plan_branch.branch_name.as_str(),

@@ -1,3 +1,4 @@
+use super::git_cmd;
 use super::*;
 
 impl GitService {
@@ -14,7 +15,7 @@ impl GitService {
     /// * `worktree` - Path where the worktree should be created
     /// * `branch` - Name of the new branch to create in the worktree
     /// * `base` - Name of the base branch to branch from
-    pub fn create_worktree(
+    pub async fn create_worktree(
         repo: &Path,
         worktree: &Path,
         branch: &str,
@@ -35,20 +36,18 @@ impl GitService {
             })?;
         }
 
-        let output = Command::new("git")
-            .args([
+        let output = git_cmd::run(
+            &[
                 "worktree",
                 "add",
                 "-b",
                 branch,
                 worktree.to_str().unwrap_or_default(),
                 base,
-            ])
-            .current_dir(repo)
-            .output()
-            .map_err(|e| {
-                AppError::GitOperation(format!("Failed to run git worktree add: {}", e))
-            })?;
+            ],
+            repo,
+        )
+        .await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -66,21 +65,19 @@ impl GitService {
     /// # Arguments
     /// * `repo` - Path to the main git repository
     /// * `worktree` - Path of the worktree to delete
-    pub fn delete_worktree(repo: &Path, worktree: &Path) -> AppResult<()> {
+    pub async fn delete_worktree(repo: &Path, worktree: &Path) -> AppResult<()> {
         debug!("Deleting worktree at {:?} from {:?}", worktree, repo);
 
-        let output = Command::new("git")
-            .args([
+        let output = git_cmd::run(
+            &[
                 "worktree",
                 "remove",
                 "--force",
                 worktree.to_str().unwrap_or_default(),
-            ])
-            .current_dir(repo)
-            .output()
-            .map_err(|e| {
-                AppError::GitOperation(format!("Failed to run git worktree remove: {}", e))
-            })?;
+            ],
+            repo,
+        )
+        .await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -106,7 +103,7 @@ impl GitService {
     /// * `repo` - Path to the main git repository
     /// * `worktree` - Path where the worktree should be created
     /// * `branch` - Name of the existing branch to check out
-    pub fn checkout_existing_branch_worktree(
+    pub async fn checkout_existing_branch_worktree(
         repo: &Path,
         worktree: &Path,
         branch: &str,
@@ -126,18 +123,16 @@ impl GitService {
             })?;
         }
 
-        let output = Command::new("git")
-            .args([
+        let output = git_cmd::run(
+            &[
                 "worktree",
                 "add",
                 worktree.to_str().unwrap_or_default(),
                 branch,
-            ])
-            .current_dir(repo)
-            .output()
-            .map_err(|e| {
-                AppError::GitOperation(format!("Failed to run git worktree add: {}", e))
-            })?;
+            ],
+            repo,
+        )
+        .await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -161,16 +156,10 @@ impl GitService {
     ///
     /// # Arguments
     /// * `repo` - Path to the git repository
-    pub fn list_worktrees(repo: &Path) -> AppResult<Vec<WorktreeInfo>> {
+    pub async fn list_worktrees(repo: &Path) -> AppResult<Vec<WorktreeInfo>> {
         debug!("Listing worktrees in {:?}", repo);
 
-        let output = Command::new("git")
-            .args(["worktree", "list", "--porcelain"])
-            .current_dir(repo)
-            .output()
-            .map_err(|e| {
-                AppError::GitOperation(format!("Failed to run git worktree list: {}", e))
-            })?;
+        let output = git_cmd::run(&["worktree", "list", "--porcelain"], repo).await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -240,16 +229,10 @@ impl GitService {
     ///
     /// # Arguments
     /// * `repo` - Path to the git repository
-    pub fn prune_worktrees(repo: &Path) -> AppResult<()> {
+    pub async fn prune_worktrees(repo: &Path) -> AppResult<()> {
         debug!("Pruning stale worktrees in {:?}", repo);
 
-        let output = Command::new("git")
-            .args(["worktree", "prune"])
-            .current_dir(repo)
-            .output()
-            .map_err(|e| {
-                AppError::GitOperation(format!("Failed to run git worktree prune: {}", e))
-            })?;
+        let output = git_cmd::run(&["worktree", "prune"], repo).await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);

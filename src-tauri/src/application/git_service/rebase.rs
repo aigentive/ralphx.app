@@ -3,6 +3,7 @@
 //! Extracted from `merge.rs` — contains fetch, rebase, abort, continue,
 //! and stale rebase completion operations.
 
+use super::git_cmd;
 use super::*;
 
 impl GitService {
@@ -14,27 +15,18 @@ impl GitService {
     ///
     /// # Arguments
     /// * `repo` - Path to the git repository
-    pub fn fetch_origin(repo: &Path) -> AppResult<()> {
+    pub async fn fetch_origin(repo: &Path) -> AppResult<()> {
         debug!("Fetching from origin in {:?}", repo);
 
         // Check if origin exists first
-        let remote_check = Command::new("git")
-            .args(["remote", "get-url", "origin"])
-            .current_dir(repo)
-            .output();
-
-        if let Ok(output) = remote_check {
+        if let Ok(output) = git_cmd::run(&["remote", "get-url", "origin"], repo).await {
             if !output.status.success() {
                 debug!("No origin remote configured, skipping fetch");
                 return Ok(());
             }
         }
 
-        let output = Command::new("git")
-            .args(["fetch", "origin"])
-            .current_dir(repo)
-            .output()
-            .map_err(|e| AppError::GitOperation(format!("Failed to run git fetch: {}", e)))?;
+        let output = git_cmd::run(&["fetch", "origin"], repo).await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -49,14 +41,10 @@ impl GitService {
     /// # Arguments
     /// * `path` - Path to the git repository or worktree
     /// * `base` - Name of the base branch to rebase onto
-    pub fn rebase_onto(path: &Path, base: &str) -> AppResult<RebaseResult> {
+    pub async fn rebase_onto(path: &Path, base: &str) -> AppResult<RebaseResult> {
         debug!("Rebasing onto '{}' in {:?}", base, path);
 
-        let output = Command::new("git")
-            .args(["rebase", base])
-            .current_dir(path)
-            .output()
-            .map_err(|e| AppError::GitOperation(format!("Failed to run git rebase: {}", e)))?;
+        let output = git_cmd::run(&["rebase", base], path).await?;
 
         if output.status.success() {
             return Ok(RebaseResult::Success);
@@ -65,13 +53,14 @@ impl GitService {
         // Check if it's a conflict
         let stderr = String::from_utf8_lossy(&output.stderr);
         if stderr.contains("CONFLICT") || stderr.contains("conflict") {
-            let conflict_files = Self::get_conflict_files(path)?;
+            let conflict_files = Self::get_conflict_files(path).await?;
 
             // If no unmerged files and no conflict markers, git auto-resolved the conflicts
             // Try to continue the rebase programmatically
-            if conflict_files.is_empty() && !Self::has_conflict_markers(path).unwrap_or(true) {
+            if conflict_files.is_empty() && !Self::has_conflict_markers(path).await.unwrap_or(true)
+            {
                 debug!("Git auto-resolved conflicts, attempting to continue rebase");
-                return Self::try_continue_rebase(path);
+                return Self::try_continue_rebase(path).await;
             }
 
             return Ok(RebaseResult::Conflict {
@@ -86,16 +75,10 @@ impl GitService {
     ///
     /// # Arguments
     /// * `path` - Path to the git repository or worktree
-    pub fn abort_rebase(path: &Path) -> AppResult<()> {
+    pub async fn abort_rebase(path: &Path) -> AppResult<()> {
         debug!("Aborting rebase in {:?}", path);
 
-        let output = Command::new("git")
-            .args(["rebase", "--abort"])
-            .current_dir(path)
-            .output()
-            .map_err(|e| {
-                AppError::GitOperation(format!("Failed to run git rebase --abort: {}", e))
-            })?;
+        let output = git_cmd::run(&["rebase", "--abort"], path).await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -120,7 +103,7 @@ impl GitService {
     ///
     /// # Arguments
     /// * `path` - Path to the git repository or worktree
-    pub fn try_continue_rebase(path: &Path) -> AppResult<RebaseResult> {
+    pub async fn try_continue_rebase(path: &Path) -> AppResult<RebaseResult> {
         const MAX_ITERATIONS: u32 = 50;
         debug!(
             "Attempting to continue rebase in {:?} (max {} iterations)",
@@ -135,11 +118,7 @@ impl GitService {
             );
 
             // Stage all changes
-            let add_output = Command::new("git")
-                .args(["add", "--all"])
-                .current_dir(path)
-                .output()
-                .map_err(|e| AppError::GitOperation(format!("Failed to run git add: {}", e)))?;
+            let add_output = git_cmd::run(&["add", "--all"], path).await?;
 
             if !add_output.status.success() {
                 let stderr = String::from_utf8_lossy(&add_output.stderr);
@@ -150,14 +129,12 @@ impl GitService {
             }
 
             // Continue the rebase with GIT_EDITOR=true to auto-accept all prompts
-            let continue_output = Command::new("git")
-                .args(["rebase", "--continue"])
-                .env("GIT_EDITOR", "true")
-                .current_dir(path)
-                .output()
-                .map_err(|e| {
-                    AppError::GitOperation(format!("Failed to run git rebase --continue: {}", e))
-                })?;
+            let continue_output = git_cmd::run_with_env(
+                &["rebase", "--continue"],
+                path,
+                &[("GIT_EDITOR", "true")],
+            )
+            .await?;
 
             // Check if rebase completed successfully
             if continue_output.status.success() {
@@ -176,7 +153,7 @@ impl GitService {
                 || stderr.contains("conflict")
                 || stdout.contains("CONFLICT")
             {
-                let conflict_files = Self::get_conflict_files(path)?;
+                let conflict_files = Self::get_conflict_files(path).await?;
                 if !conflict_files.is_empty() {
                     debug!(
                         "Real conflict detected at iteration {} with {} files",
@@ -189,9 +166,9 @@ impl GitService {
                 }
 
                 // Check for conflict markers
-                if Self::has_conflict_markers(path).unwrap_or(false) {
+                if Self::has_conflict_markers(path).await.unwrap_or(false) {
                     debug!("Conflict markers found at iteration {}", iteration + 1);
-                    let conflict_files = Self::get_conflict_files(path)?;
+                    let conflict_files = Self::get_conflict_files(path).await?;
                     return Ok(RebaseResult::Conflict {
                         files: conflict_files,
                     });
@@ -237,7 +214,7 @@ impl GitService {
     ///
     /// # Arguments
     /// * `worktree` - Path to the git worktree or repository
-    pub fn try_complete_stale_rebase(worktree: &Path) -> StaleRebaseResult {
+    pub async fn try_complete_stale_rebase(worktree: &Path) -> StaleRebaseResult {
         const MAX_ITERATIONS: u32 = 50;
 
         // Check if a rebase is actually in progress
@@ -249,7 +226,7 @@ impl GitService {
 
         for iteration in 0..MAX_ITERATIONS {
             // Check for unmerged files
-            match Self::get_conflict_files(worktree) {
+            match Self::get_conflict_files(worktree).await {
                 Ok(conflict_files) if !conflict_files.is_empty() => {
                     debug!(
                         "Real conflicts detected in stale rebase iteration {} with {} files",
@@ -269,23 +246,29 @@ impl GitService {
             }
 
             // Check for conflict markers
-            if Self::has_conflict_markers(worktree).unwrap_or(false) {
-                debug!(
-                    "Conflict markers found in stale rebase iteration {}",
-                    iteration + 1
-                );
-                match Self::get_conflict_files(worktree) {
-                    Ok(files) => {
-                        return StaleRebaseResult::HasConflicts { files };
+            match Self::has_conflict_markers(worktree).await {
+                Ok(true) => {
+                    debug!(
+                        "Conflict markers found in stale rebase iteration {}",
+                        iteration + 1
+                    );
+                    match Self::get_conflict_files(worktree).await {
+                        Ok(files) => {
+                            return StaleRebaseResult::HasConflicts { files };
+                        }
+                        Err(e) => {
+                            return StaleRebaseResult::Failed {
+                                reason: format!(
+                                    "Failed to get conflict files after marker check: {}",
+                                    e
+                                ),
+                            };
+                        }
                     }
-                    Err(e) => {
-                        return StaleRebaseResult::Failed {
-                            reason: format!(
-                                "Failed to get conflict files after marker check: {}",
-                                e
-                            ),
-                        };
-                    }
+                }
+                Ok(false) => {}
+                Err(_) => {
+                    // has_conflict_markers returned Err — treat conservatively
                 }
             }
 
@@ -296,13 +279,10 @@ impl GitService {
             );
 
             // Stage all changes
-            let add_output = Command::new("git")
-                .args(["add", "--all"])
-                .current_dir(worktree)
-                .output();
+            let add_result = git_cmd::run(&["add", "--all"], worktree).await;
 
-            let add_status = match add_output {
-                Ok(output) if output.status.success() => true,
+            match add_result {
+                Ok(output) if output.status.success() => {}
                 Ok(output) => {
                     let stderr = String::from_utf8_lossy(&output.stderr);
                     debug!("git add failed: {}", stderr);
@@ -315,22 +295,17 @@ impl GitService {
                         reason: format!("Failed to run git add: {}", e),
                     };
                 }
-            };
-
-            if !add_status {
-                return StaleRebaseResult::Failed {
-                    reason: "git add failed".to_string(),
-                };
             }
 
             // Continue the rebase
-            let continue_output = Command::new("git")
-                .args(["rebase", "--continue"])
-                .env("GIT_EDITOR", "true")
-                .current_dir(worktree)
-                .output();
+            let continue_result = git_cmd::run_with_env(
+                &["rebase", "--continue"],
+                worktree,
+                &[("GIT_EDITOR", "true")],
+            )
+            .await;
 
-            let (continue_status, stdout, stderr) = match continue_output {
+            let (continue_status, stdout, stderr) = match continue_result {
                 Ok(output) => {
                     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -365,7 +340,7 @@ impl GitService {
                 || stdout.contains("CONFLICT")
             {
                 // Re-check for real conflicts
-                match Self::get_conflict_files(worktree) {
+                match Self::get_conflict_files(worktree).await {
                     Ok(conflict_files) if !conflict_files.is_empty() => {
                         debug!(
                             "Real conflicts found after rebase --continue in iteration {}",
