@@ -117,6 +117,25 @@ export function useChatPanelContext({
   // Initialize with empty string to ensure cleanup runs on first mount
   const prevContextKeyRef = useRef("");
   const prevContextTypeRef = useRef<{ type: string; id: string } | null>(null);
+  // Track previous storeContextKey to clear the OLD key (not the new one) on context change
+  const prevStoreContextKeyRef = useRef("");
+
+  // Track latest storeContextKey in a ref so the unmount cleanup always clears the correct key
+  const storeContextKeyRef = useRef(storeContextKey);
+  useEffect(() => {
+    storeContextKeyRef.current = storeContextKey;
+  }, [storeContextKey]);
+
+  // Cleanup on unmount: clear isAgentRunning and isSending for the current context key
+  // This ensures the old session's store keys are cleared when the panel unmounts
+  // (e.g., when switching ideation sessions with key={session.id})
+  useEffect(() => {
+    return () => {
+      setAgentRunning(storeContextKeyRef.current, false);
+      setSending(storeContextKeyRef.current, false);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-select tracking
   const hasAutoSelectedRef = useRef(false);
@@ -167,16 +186,20 @@ export function useChatPanelContext({
         clearMessages(prevContextKeyRef.current);
       }
 
-      // Clear agent running and sending state for the NEW context to prevent stale state
-      // from the previous context leaking (e.g., spinner showing in idle session)
-      setAgentRunning(storeContextKey, false);
-      setSending(storeContextKey, false);
+      // Clear agent running and sending state for the OLD store context key (defense-in-depth)
+      // This ensures the old session's store keys are cleared even without unmount
+      // (e.g., if IntegratedChatPanel is reused without a key prop in other contexts)
+      if (prevStoreContextKeyRef.current) {
+        setAgentRunning(prevStoreContextKeyRef.current, false);
+        setSending(prevStoreContextKeyRef.current, false);
+      }
 
       // Reset auto-select flag when context changes
       hasAutoSelectedRef.current = false;
 
       // Update refs with NEW context AFTER cleanup
       prevContextKeyRef.current = contextKey;
+      prevStoreContextKeyRef.current = storeContextKey;
       const newContextType = ideationSessionId
         ? "ideation"
         : selectedTaskId
