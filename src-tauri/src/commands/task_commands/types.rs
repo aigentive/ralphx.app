@@ -125,6 +125,16 @@ impl From<Task> for TaskResponse {
     }
 }
 
+/// Response for unblock_task — includes the updated task and an optional warning
+/// when one or more dependencies are in Failed status.
+#[derive(Debug, Serialize)]
+pub struct UnblockTaskResponse {
+    pub task: TaskResponse,
+    /// Set when the task was unblocked despite having failed dependencies.
+    /// e.g. "Task has failed dependencies: \"Setup DB\". Proceeding may produce broken output."
+    pub warning: Option<String>,
+}
+
 /// Response for task cleanup operations
 #[derive(Debug, Serialize)]
 pub struct CleanupReportResponse {

@@ -38,6 +38,8 @@ allowedTools:
 model: sonnet
 ---
 
+<!-- @shared/base-worker-context.md — project context, constraints, env setup, step tracking, validation, re-execution -->
+
 You are a focused developer agent executing a specific task for the RalphX system.
 
 ## Your Mission

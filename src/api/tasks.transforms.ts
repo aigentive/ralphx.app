@@ -1,7 +1,7 @@
 // Transform functions for converting snake_case tasks API responses to camelCase frontend types
 
 import { z } from "zod";
-import { BulkCancelResponseSchemaRaw, CleanupReportResponseSchemaRaw, InjectTaskResponseSchemaRaw, StateTransitionResponseSchemaRaw } from "./tasks.schemas";
+import { BulkCancelResponseSchemaRaw, CleanupReportResponseSchemaRaw, InjectTaskResponseSchemaRaw, StateTransitionResponseSchemaRaw, UnblockTaskResponseSchemaRaw } from "./tasks.schemas";
 import { transformTask, type Task, type InternalStatus } from "@/types/task";
 
 /**
@@ -65,6 +65,27 @@ export function transformInjectTaskResponse(
     target: raw.target,
     priority: raw.priority,
     makeNextApplied: raw.make_next_applied,
+  };
+}
+
+/**
+ * Frontend UnblockTaskResponse type (camelCase)
+ */
+export interface UnblockTaskResponse {
+  task: Task;
+  /** Set when the task was unblocked despite having failed dependencies. */
+  warning: string | null;
+}
+
+/**
+ * Transform UnblockTaskResponseSchemaRaw to UnblockTaskResponse
+ */
+export function transformUnblockTaskResponse(
+  raw: z.infer<typeof UnblockTaskResponseSchemaRaw>
+): UnblockTaskResponse {
+  return {
+    task: transformTask(raw.task),
+    warning: raw.warning,
   };
 }
 
