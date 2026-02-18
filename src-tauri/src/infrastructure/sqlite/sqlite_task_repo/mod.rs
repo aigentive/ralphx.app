@@ -649,6 +649,27 @@ impl TaskRepository for SqliteTaskRepository {
         Ok(tasks)
     }
 
+    async fn get_stale_ready_tasks(&self, threshold_secs: u64) -> AppResult<Vec<Task>> {
+        use chrono::{Duration, Utc};
+
+        let cutoff = Utc::now() - Duration::seconds(threshold_secs as i64);
+        let cutoff_str = cutoff.format("%Y-%m-%dT%H:%M:%S%.fZ").to_string();
+
+        let conn = self.conn.lock().await;
+
+        let mut stmt = conn
+            .prepare(queries::GET_STALE_READY_TASKS)
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        let tasks = stmt
+            .query_map([cutoff_str], Task::from_row)
+            .map_err(|e| AppError::Database(e.to_string()))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(tasks)
+    }
+
     async fn update_latest_state_history_metadata(
         &self,
         task_id: &TaskId,

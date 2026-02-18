@@ -827,6 +827,10 @@ mod tests {
             Ok(vec![])
         }
 
+        async fn get_stale_ready_tasks(&self, _threshold_secs: u64) -> AppResult<Vec<Task>> {
+            Ok(vec![])
+        }
+
         async fn update_latest_state_history_metadata(
             &self,
             _task_id: &TaskId,
