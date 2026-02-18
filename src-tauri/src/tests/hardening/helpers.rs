@@ -4,6 +4,7 @@
 // Reuses existing infrastructure: MemoryTaskRepository, MemoryProjectRepository,
 // MockAgentSpawner, MockEventEmitter, MockChatService, etc.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::application::MockChatService;
@@ -64,6 +65,10 @@ pub struct HardeningServices {
     pub chat_service: Arc<MockChatService>,
     pub scheduler: Arc<MockTaskScheduler>,
     pub execution_state: Arc<ExecutionState>,
+    /// Shared merge lock — pass to both tasks to simulate real concurrent merge guard behavior.
+    pub merge_lock: Arc<tokio::sync::Mutex<()>>,
+    /// Shared merges_in_flight set — pass to both tasks for self-dedup guard tests.
+    pub merges_in_flight: Arc<std::sync::Mutex<HashSet<String>>>,
 }
 
 /// Create a full set of mock services wired together for hardening tests.
@@ -94,6 +99,8 @@ pub fn create_hardening_services() -> HardeningServices {
         chat_service,
         scheduler,
         execution_state,
+        merge_lock: Arc::new(tokio::sync::Mutex::new(())),
+        merges_in_flight: Arc::new(std::sync::Mutex::new(HashSet::new())),
     }
 }
 
@@ -120,6 +127,8 @@ pub fn build_task_services(s: &HardeningServices) -> TaskServices {
         s.plan_branch_repo.clone() as Arc<dyn crate::domain::repositories::PlanBranchRepository>
     )
     .with_step_repo(s.step_repo.clone() as Arc<dyn crate::domain::repositories::TaskStepRepository>)
+    .with_merge_lock(Arc::clone(&s.merge_lock))
+    .with_merges_in_flight(Arc::clone(&s.merges_in_flight))
 }
 
 /// Create a TaskStateMachine with the given context.

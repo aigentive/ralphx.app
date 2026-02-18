@@ -1,4 +1,4 @@
-// Migration v40: Add composite index on activity_events for efficient merge audit queries
+// Migration v41: Add composite index on activity_events for efficient merge audit queries
 //
 // Adds a composite index (task_id, internal_status, created_at DESC) to support
 // efficient per-task-status queries such as finding the latest activity event for

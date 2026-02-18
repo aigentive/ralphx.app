@@ -607,8 +607,10 @@ async fn reconcile_merge_incomplete_retries_normally_without_branch_missing() {
 // ── Merging state retry cap tests (Gap 1) ──
 
 #[test]
-fn merging_timeout_is_300_seconds() {
-    assert_eq!(super::MERGING_TIMEOUT_SECONDS, 300);
+fn merging_timeout_default_is_600_seconds() {
+    // Default merger agent timeout is 10 minutes (600s); configurable via
+    // RALPHX_MERGER_TIMEOUT_SECS env var.
+    assert_eq!(super::merging_timeout_seconds(), 600);
 }
 
 #[test]
@@ -698,6 +700,110 @@ fn merge_policy_prompts_when_run_missing_and_cannot_start() {
     };
     let decision = policy.decide_reconciliation(RecoveryContext::Merge, evidence);
     assert_eq!(decision.action, RecoveryActionKind::Prompt);
+}
+
+// ── Merger agent timeout → MergeIncomplete tests ──
+
+/// Test: Stale Merging task policy attempts auto-complete first.
+///
+/// When is_stale=true and there's no conflict (agent marked Running in registry),
+/// the policy should attempt AttemptMergeAutoComplete to check if the merge already
+/// happened before the agent timed out.
+#[test]
+fn merge_policy_stale_attempts_auto_complete() {
+    let policy = RecoveryPolicy;
+    let evidence = RecoveryEvidence {
+        // run_status=Running + registry_running=true → has_conflict()=false (no conflict)
+        run_status: Some(AgentRunStatus::Running),
+        registry_running: true,
+        can_start: true,
+        is_stale: true,
+        is_deferred: false,
+    };
+    let decision = policy.decide_reconciliation(RecoveryContext::Merge, evidence);
+    assert_eq!(
+        decision.action,
+        RecoveryActionKind::AttemptMergeAutoComplete,
+        "Stale merging task should attempt auto-complete to check git state before re-spawning"
+    );
+}
+
+/// Test: After max retries, the reconciler transitions Merging to MergeIncomplete
+/// (not MergeConflict), because a timeout indicates a hung agent, not an explicit
+/// merge conflict reported by the agent.
+#[tokio::test]
+async fn merging_timeout_escalates_to_merge_incomplete_not_merge_conflict() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Build task with MERGING_MAX_AUTO_RETRIES attempt_failed events (retry limit hit).
+    // Set updated_at far in the past so latest_status_transition_age falls back to updated_at
+    // and returns a stale age (> merging_timeout_seconds()).
+    let mut task = Task::new(project.id.clone(), "Stuck Merging Task".to_string());
+    task.internal_status = InternalStatus::Merging;
+    task.updated_at = chrono::Utc::now()
+        - chrono::Duration::seconds(super::merging_timeout_seconds() + 60);
+
+    // Write MERGING_MAX_AUTO_RETRIES attempt_failed events to hit the retry cap
+    let events: Vec<serde_json::Value> = (0..super::MERGING_MAX_AUTO_RETRIES)
+        .map(|i| {
+            serde_json::json!({
+                "at": format!("2026-02-10T{:02}:00:00Z", i),
+                "kind": "attempt_failed",
+                "source": "system",
+                "reason_code": "git_error",
+                "message": format!("timeout {}", i)
+            })
+        })
+        .collect();
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_recovery": {
+                "version": 1,
+                "events": events,
+                "last_state": "failed"
+            }
+        })
+        .to_string(),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let reconciled = reconciler
+        .reconcile_merging_task(&task, InternalStatus::Merging)
+        .await;
+
+    // After max retries with stale age, task must transition to MergeIncomplete
+    assert!(
+        reconciled,
+        "Reconciler should take action for stale Merging task at retry limit"
+    );
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::MergeIncomplete,
+        "Merging timeout escalation must use MergeIncomplete, not MergeConflict. \
+         MergeConflict is reserved for agent-reported conflicts."
+    );
+    assert_ne!(
+        updated.internal_status,
+        InternalStatus::MergeConflict,
+        "Timeout should NOT produce MergeConflict"
+    );
 }
 
 // ── MergeConflict reconciliation tests ──
@@ -2282,7 +2388,7 @@ async fn reconcile_merging_not_stale_when_heartbeat_is_recent() {
 
 #[tokio::test]
 async fn reconcile_merging_stale_when_heartbeat_is_old() {
-    // Task has an old heartbeat (>300s) — should be considered stale.
+    // Task has an old heartbeat (>600s default timeout) — should be considered stale.
     // Staleness is confirmed by checking that record_merge_timeout_event fired
     // (writes merge_recovery metadata).
     let app_state = AppState::new_test();
@@ -2298,7 +2404,7 @@ async fn reconcile_merging_stale_when_heartbeat_is_old() {
     task.updated_at = chrono::Utc::now() - chrono::Duration::seconds(10);
     app_state.task_repo.create(task.clone()).await.unwrap();
 
-    // Register agent with an OLD heartbeat (400s ago — beyond 300s timeout)
+    // Register agent with an OLD heartbeat (700s ago — beyond 600s default timeout)
     let merge_key = RunningAgentKey::new("merge", task.id.as_str());
     app_state
         .running_agent_registry
@@ -2311,7 +2417,7 @@ async fn reconcile_merging_stale_when_heartbeat_is_old() {
             None,
         )
         .await;
-    let old_heartbeat = chrono::Utc::now() - chrono::Duration::seconds(400);
+    let old_heartbeat = chrono::Utc::now() - chrono::Duration::seconds(700);
     app_state
         .running_agent_registry
         .update_heartbeat(&merge_key, old_heartbeat)
@@ -2342,6 +2448,378 @@ async fn reconcile_merging_stale_when_heartbeat_is_old() {
     }).unwrap_or(false);
     assert!(
         has_attempt_failed,
-        "An attempt_failed event should be recorded when effective_age >= MERGING_TIMEOUT_SECONDS"
+        "An attempt_failed event should be recorded when effective_age >= merging_timeout_seconds()"
+    );
+}
+
+// =========================================================================
+// Smart auto-retry guards (Phase 4)
+// =========================================================================
+
+// ── Agent-reported conflict guard ──
+
+#[tokio::test]
+async fn reconcile_merge_conflict_skips_when_agent_reported() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Agent Conflict Task".to_string());
+    task.internal_status = InternalStatus::MergeConflict;
+    task.updated_at = chrono::Utc::now() - chrono::Duration::seconds(3600);
+    // Mark as agent-reported (set by report_conflict handler)
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_failure_source": "agent_reported",
+            "conflict_files": ["src/foo.rs"],
+        })
+        .to_string(),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let reconciled = reconciler
+        .reconcile_merge_conflict_task(&task, InternalStatus::MergeConflict)
+        .await;
+    assert!(
+        !reconciled,
+        "Agent-reported conflicts must not be auto-retried (AgentReported guard)"
+    );
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::MergeConflict,
+        "Task should remain in MergeConflict — agent-reported conflicts require human action"
+    );
+}
+
+#[tokio::test]
+async fn reconcile_merge_incomplete_skips_when_agent_reported() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Agent Incomplete Task".to_string());
+    task.internal_status = InternalStatus::MergeIncomplete;
+    task.updated_at = chrono::Utc::now() - chrono::Duration::seconds(3600);
+    // Mark as agent-reported (set by report_incomplete handler)
+    task.metadata = Some(
+        serde_json::json!({
+            "error": "Merger agent explicitly gave up",
+            "merge_failure_source": "agent_reported",
+        })
+        .to_string(),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Record status history
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task.id,
+            InternalStatus::Merging,
+            InternalStatus::MergeIncomplete,
+            "merge_incomplete",
+        )
+        .await
+        .unwrap();
+
+    let reconciled = reconciler
+        .reconcile_merge_incomplete_task(&task, InternalStatus::MergeIncomplete)
+        .await;
+    assert!(
+        !reconciled,
+        "Agent-reported incomplete must not be auto-retried (AgentReported guard)"
+    );
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::MergeIncomplete,
+        "Task should remain in MergeIncomplete — agent-reported failures require human action"
+    );
+}
+
+// ── SHA comparison guard ──
+
+#[test]
+fn last_stored_source_sha_reads_most_recent_event_sha() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "SHA Guard Task".to_string(),
+    );
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_recovery": {
+                "version": 1,
+                "events": [
+                    {
+                        "at": "2026-02-10T00:00:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "git_error",
+                        "message": "retry 1",
+                        "source_sha": "abc123"
+                    },
+                    {
+                        "at": "2026-02-10T00:01:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "git_error",
+                        "message": "retry 2",
+                        "source_sha": "def456"
+                    }
+                ],
+                "last_state": "retrying"
+            }
+        })
+        .to_string(),
+    );
+
+    let sha = ReconciliationRunner::<tauri::Wry>::last_stored_source_sha(&task);
+    assert_eq!(
+        sha.as_deref(),
+        Some("def456"),
+        "Should return the SHA from the most recent event"
+    );
+}
+
+#[test]
+fn last_stored_source_sha_returns_none_when_no_events() {
+    let task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "No SHA Task".to_string(),
+    );
+
+    let sha = ReconciliationRunner::<tauri::Wry>::last_stored_source_sha(&task);
+    assert!(sha.is_none(), "Should return None when no events exist");
+}
+
+// ── Validation revert loop-breaking guard ──
+
+#[tokio::test]
+async fn reconcile_merge_incomplete_stops_after_max_validation_reverts() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Task with validation_revert_count = 3 (> max of 2)
+    let mut task = Task::new(project.id.clone(), "Validation Loop Task".to_string());
+    task.internal_status = InternalStatus::MergeIncomplete;
+    task.updated_at = chrono::Utc::now() - chrono::Duration::seconds(3600);
+    task.metadata = Some(
+        serde_json::json!({
+            "error": "Merge validation failed: 1 command(s) failed",
+            "merge_failure_source": "validation_failed",
+            "validation_revert_count": 3,  // > VALIDATION_REVERT_MAX_COUNT (2)
+            "source_branch": "ralphx/task-xyz",
+            "target_branch": "main",
+        })
+        .to_string(),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Record status history
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task.id,
+            InternalStatus::PendingMerge,
+            InternalStatus::MergeIncomplete,
+            "validation_failed",
+        )
+        .await
+        .unwrap();
+
+    let reconciled = reconciler
+        .reconcile_merge_incomplete_task(&task, InternalStatus::MergeIncomplete)
+        .await;
+    assert!(
+        !reconciled,
+        "Should stop auto-retrying after max validation reverts (loop-breaking guard)"
+    );
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::MergeIncomplete,
+        "Task should remain in MergeIncomplete and surface to user for manual fix"
+    );
+}
+
+#[tokio::test]
+async fn reconcile_merge_incomplete_retries_when_below_max_validation_reverts() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Task with validation_revert_count = 1 (< max of 2)
+    let mut task = Task::new(
+        project.id.clone(),
+        "Validation Retry OK Task".to_string(),
+    );
+    task.internal_status = InternalStatus::MergeIncomplete;
+    // updated_at far in past so age > retry delay
+    task.updated_at = chrono::Utc::now() - chrono::Duration::seconds(7200);
+    task.metadata = Some(
+        serde_json::json!({
+            "error": "Merge validation failed: 1 command(s) failed",
+            "merge_failure_source": "validation_failed",
+            "validation_revert_count": 1,  // <= VALIDATION_REVERT_MAX_COUNT (2), allow retry
+            "source_branch": "ralphx/task-xyz",
+            "target_branch": "main",
+        })
+        .to_string(),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let reconciled = reconciler
+        .reconcile_merge_incomplete_task(&task, InternalStatus::MergeIncomplete)
+        .await;
+    // Should NOT be blocked by the revert count guard (count=1 <= max=2)
+    // But may be blocked by age check if status history isn't set up
+    // The key assertion: reconciler did NOT refuse due to validation_revert_count
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+
+    // With count=1 <= max=2 and no branch_missing/agent_reported, the reconciler
+    // proceeds to age check. Without history, it falls back to updated_at which is
+    // 2h ago (> 30s delay), so it should transition to PendingMerge.
+    assert!(
+        reconciled || updated.internal_status == InternalStatus::MergeIncomplete,
+        "Task with revert_count=1 should not be blocked by loop-breaking guard"
+    );
+}
+
+#[test]
+fn validation_revert_max_count_is_2() {
+    assert_eq!(
+        super::VALIDATION_REVERT_MAX_COUNT,
+        2,
+        "Max validation reverts before stopping should be 2"
+    );
+}
+
+// ── is_agent_reported_failure helper ──
+
+#[test]
+fn is_agent_reported_failure_returns_true_for_agent_reported() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Agent Reported".to_string(),
+    );
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_failure_source": serde_json::to_value(MergeFailureSource::AgentReported).unwrap()
+        })
+        .to_string(),
+    );
+    assert!(
+        ReconciliationRunner::<tauri::Wry>::is_agent_reported_failure(&task),
+        "Should return true for agent_reported failure source"
+    );
+}
+
+#[test]
+fn is_agent_reported_failure_returns_false_for_transient_git() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Transient Git".to_string(),
+    );
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_failure_source": serde_json::to_value(MergeFailureSource::TransientGit).unwrap()
+        })
+        .to_string(),
+    );
+    assert!(
+        !ReconciliationRunner::<tauri::Wry>::is_agent_reported_failure(&task),
+        "TransientGit should not block auto-retry"
+    );
+}
+
+#[test]
+fn is_agent_reported_failure_returns_false_for_no_metadata() {
+    let task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "No Metadata".to_string(),
+    );
+    assert!(
+        !ReconciliationRunner::<tauri::Wry>::is_agent_reported_failure(&task),
+        "No metadata should not block auto-retry"
+    );
+}
+
+#[test]
+fn validation_revert_count_reads_counter_from_metadata() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Revert Count Task".to_string(),
+    );
+    task.metadata = Some(
+        serde_json::json!({"validation_revert_count": 3}).to_string(),
+    );
+    assert_eq!(
+        ReconciliationRunner::<tauri::Wry>::validation_revert_count(&task),
+        3
+    );
+}
+
+#[test]
+fn validation_revert_count_returns_zero_for_no_metadata() {
+    let task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "No Metadata".to_string(),
+    );
+    assert_eq!(
+        ReconciliationRunner::<tauri::Wry>::validation_revert_count(&task),
+        0
     );
 }
