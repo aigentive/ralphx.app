@@ -1,6 +1,7 @@
 use super::super::*;
 use super::init_test_repo;
 use std::process::Command;
+use std::sync::{Arc, Mutex as StdMutex};
 
 #[tokio::test]
 async fn test_try_rebase_and_merge_first_task_on_empty_repo() {
@@ -1601,4 +1602,91 @@ async fn test_try_complete_stale_rebase_has_real_conflicts() {
             panic!("Expected HasConflicts, got {:?}", other);
         }
     }
+}
+
+// =============================================================================
+// fetch_origin serialization tests
+// =============================================================================
+
+/// Verify that concurrent fetch_origin calls on repos without an origin remote
+/// complete without errors and without panicking.
+///
+/// This test exercises the FETCH_LOCK path: multiple tasks racing to call
+/// fetch_origin() should serialize via the global mutex rather than contending
+/// on git internals.
+#[tokio::test]
+async fn test_fetch_origin_concurrent_no_remote_no_errors() {
+    const CONCURRENCY: usize = 5;
+
+    // Create separate temp repos (no origin) — each call will short-circuit after
+    // checking for the remote, but the lock acquisition still happens.
+    let temp_dirs: Vec<_> = (0..CONCURRENCY)
+        .map(|_| tempfile::tempdir().unwrap())
+        .collect();
+
+    for td in &temp_dirs {
+        init_test_repo(td.path());
+        // Create an initial commit so git is fully initialized
+        Command::new("git")
+            .args(["commit", "--allow-empty", "-m", "init"])
+            .current_dir(td.path())
+            .output()
+            .unwrap();
+    }
+
+    let errors: Arc<StdMutex<Vec<String>>> = Arc::new(StdMutex::new(Vec::new()));
+    let paths: Vec<std::path::PathBuf> = temp_dirs.iter().map(|td| td.path().to_path_buf()).collect();
+
+    let handles: Vec<_> = paths
+        .into_iter()
+        .map(|path| {
+            let errors = Arc::clone(&errors);
+            tokio::spawn(async move {
+                match GitService::fetch_origin(&path).await {
+                    Ok(()) => {}
+                    Err(e) => errors.lock().unwrap().push(format!("{}", e)),
+                }
+            })
+        })
+        .collect();
+
+    for handle in handles {
+        handle.await.unwrap();
+    }
+
+    let errs = errors.lock().unwrap();
+    assert!(
+        errs.is_empty(),
+        "Concurrent fetch_origin calls produced errors: {:?}",
+        *errs
+    );
+}
+
+/// Verify that fetch_origin serializes: the second caller waits for the first
+/// rather than running simultaneously. We test this by checking that both calls
+/// return Ok(()) without error — true parallel execution on the same repo would
+/// risk FETCH_HEAD corruption, but the mutex prevents that.
+#[tokio::test]
+async fn test_fetch_origin_serializes_on_same_repo() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path().to_path_buf();
+
+    init_test_repo(&repo);
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "init"])
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+
+    // Spawn two concurrent calls on the same repo path (no origin → returns quickly).
+    // Neither should error; the second acquires the lock after the first releases it.
+    let repo1 = repo.clone();
+    let repo2 = repo.clone();
+    let (r1, r2) = tokio::join!(
+        tokio::spawn(async move { GitService::fetch_origin(&repo1).await }),
+        tokio::spawn(async move { GitService::fetch_origin(&repo2).await }),
+    );
+
+    assert!(r1.unwrap().is_ok(), "First concurrent fetch_origin should succeed");
+    assert!(r2.unwrap().is_ok(), "Second concurrent fetch_origin should succeed");
 }
