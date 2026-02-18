@@ -734,14 +734,26 @@ impl<R: Runtime> ReconciliationRunner<R> {
         let run = self
             .lookup_latest_run_for_task_context(task, ChatContextType::Merge)
             .await;
-        let age = match self.latest_status_transition_age(task, status).await {
+        let transition_age = match self.latest_status_transition_age(task, status).await {
             Some(age) => age,
             None => return false,
         };
+        // Read last_active_at from registry to compute activity-based effective age.
+        // Falls back to wall-clock transition age when no heartbeat exists.
+        let merge_key = crate::domain::services::RunningAgentKey::new(
+            ChatContextType::Merge.to_string(),
+            task.id.as_str(),
+        );
+        let agent_info = self.running_agent_registry.get(&merge_key).await;
+        let effective_age = agent_info
+            .as_ref()
+            .and_then(|info| info.last_active_at)
+            .map(|last_active| chrono::Utc::now() - last_active)
+            .unwrap_or(transition_age);
         let mut evidence = self
             .build_run_evidence(task, ChatContextType::Merge, run.as_ref())
             .await;
-        evidence.is_stale = age >= chrono::Duration::seconds(MERGING_TIMEOUT_SECONDS);
+        evidence.is_stale = effective_age >= chrono::Duration::seconds(MERGING_TIMEOUT_SECONDS);
 
         // Agent is running, registered, and not stale — let it work
         if evidence.run_status == Some(AgentRunStatus::Running)
@@ -752,7 +764,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         }
 
         if evidence.is_stale {
-            self.record_merge_timeout_event(task, age).await;
+            self.record_merge_timeout_event(task, effective_age).await;
         }
 
         // Gap 1: Check retry count — escalate to MergeConflict after max retries.

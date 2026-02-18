@@ -1090,4 +1090,65 @@ mod tests {
         assert_eq!(id, event.id.as_str());
         assert!(ts.contains("T")); // ISO timestamp
     }
+
+    // Tests for Merge context activity persistence (task ef532169)
+
+    #[tokio::test]
+    async fn test_save_merge_context_event_with_merging_status() {
+        let conn = setup_test_db();
+        let repo = SqliteActivityEventRepository::new(conn);
+
+        let task_id = TaskId::from_string("t1".to_string());
+        // Simulate what chat_service_streaming does for Merge context:
+        // persists events with internal_status = Merging
+        let event = ActivityEvent::new_task_event(task_id.clone(), ActivityEventType::Text, "merger output")
+            .with_status(InternalStatus::Merging);
+
+        let saved = repo.save(event.clone()).await.unwrap();
+        assert_eq!(saved.internal_status, Some(InternalStatus::Merging));
+
+        // Verify it can be retrieved and has the correct status
+        let found = repo.get_by_id(&saved.id).await.unwrap().unwrap();
+        assert_eq!(found.internal_status, Some(InternalStatus::Merging));
+        assert_eq!(found.event_type, ActivityEventType::Text);
+        assert_eq!(found.task_id, Some(task_id));
+    }
+
+    #[tokio::test]
+    async fn test_merge_context_events_queryable_by_status_filter() {
+        let conn = setup_test_db();
+        let repo = SqliteActivityEventRepository::new(conn);
+
+        let task_id = TaskId::from_string("t1".to_string());
+
+        // Simulate merge agent producing multiple event types under Merging status
+        for event_type in [ActivityEventType::Thinking, ActivityEventType::ToolCall, ActivityEventType::Text] {
+            repo.save(
+                ActivityEvent::new_task_event(task_id.clone(), event_type, "content")
+                    .with_status(InternalStatus::Merging),
+            )
+            .await
+            .unwrap();
+        }
+
+        // Also save an Executing event (from a different context) — should not appear in Merging filter
+        repo.save(
+            ActivityEvent::new_task_event(task_id.clone(), ActivityEventType::Text, "exec content")
+                .with_status(InternalStatus::Executing),
+        )
+        .await
+        .unwrap();
+
+        // Filter by Merging status — should see only 3 events
+        let filter = ActivityEventFilter::new().with_statuses(vec![InternalStatus::Merging]);
+        let page = repo
+            .list_by_task_id(&task_id, None, 50, Some(&filter))
+            .await
+            .unwrap();
+
+        assert_eq!(page.events.len(), 3, "Should have 3 Merging events");
+        for event in &page.events {
+            assert_eq!(event.internal_status, Some(InternalStatus::Merging));
+        }
+    }
 }

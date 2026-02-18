@@ -228,6 +228,8 @@ pub enum MergeRecoveryReasonCode {
     BranchNotFound,
     /// Merge deferred because agents are running globally
     AgentsRunning,
+    /// Deferred merge forced retry after timeout expired
+    DeferredTimeout,
     /// Unknown/unclassified reason
     Unknown,
 }
@@ -478,6 +480,7 @@ mod tests {
             ),
             (MergeRecoveryReasonCode::BranchNotFound, "branch_not_found"),
             (MergeRecoveryReasonCode::AgentsRunning, "agents_running"),
+            (MergeRecoveryReasonCode::DeferredTimeout, "deferred_timeout"),
             (MergeRecoveryReasonCode::Unknown, "unknown"),
         ];
 
