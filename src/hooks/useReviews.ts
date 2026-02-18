@@ -216,9 +216,9 @@ export function useReviewsByTaskId(
  */
 export function useTaskStateHistory(
   taskId: string,
-  options: { enabled?: boolean } = {}
+  options: { enabled?: boolean; refetchOnMount?: boolean } = {}
 ) {
-  const { enabled = true } = options;
+  const { enabled = true, refetchOnMount = false } = options;
 
   const query = useQuery<ReviewNoteResponse[], Error>({
     queryKey: reviewKeys.stateHistoryById(taskId),
@@ -228,7 +228,7 @@ export function useTaskStateHistory(
     staleTime: 30 * 1000, // 30 seconds
     gcTime: 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    refetchOnMount,
     refetchOnReconnect: false,
   });
 

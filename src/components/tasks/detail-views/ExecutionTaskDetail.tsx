@@ -303,7 +303,7 @@ export function ExecutionTaskDetail({ task, isHistorical }: ExecutionTaskDetailP
   const { data: progress } = useStepProgress(task.id, { isExecuting: !isHistorical });
   const { data: history, isLoading: historyLoading } = useTaskStateHistory(
     task.id,
-    { enabled: task.internalStatus === "re_executing" }
+    { enabled: task.internalStatus === "re_executing", refetchOnMount: true }
   );
 
   // Fetch open issues when re-executing to show what needs to be addressed
@@ -433,8 +433,8 @@ export function ExecutionTaskDetail({ task, isHistorical }: ExecutionTaskDetailP
         metadataLogKey="execution_setup_log"
       />
 
-      {/* Revision Feedback (only for re-executing) */}
-      {isReExecuting && (
+      {/* Revision Feedback (only for re-executing with feedback or while loading) */}
+      {isReExecuting && (revisionFeedback !== null || historyLoading) && (
         <section data-testid="revision-feedback-banner">
           <SectionTitle>Feedback Being Addressed</SectionTitle>
           <RevisionFeedbackCard
