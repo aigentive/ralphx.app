@@ -11,7 +11,6 @@
 import React, { forwardRef, useCallback, useEffect, useMemo, useRef, useImperativeHandle, useState } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { MessageItem } from "./MessageItem";
-import { StreamingToolIndicator } from "./StreamingToolIndicator";
 import { HookEventMessage } from "./HookEventMessage";
 import {
   TypingIndicator,
@@ -186,6 +185,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       messageCount: messages.length,
       disabled: !!scrollToTimestamp, // Disable auto-scroll in history mode
       virtuosoRef, // Route scrollToBottom through Virtuoso scrollToIndex
+      conversationId, // Reset isAtBottom when conversation changes
     });
 
     // Scroll to specific timestamp for history mode (time-travel feature)
@@ -315,6 +315,24 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       return items;
     }, [messages, hookEvents, activeHooks, hasHookEvents, shouldFilterLastAssistant, streamingContentBlocks, streamingTasks, conversationId, attachmentsMap, teamFilter, teamMessages]);
 
+    // Explicit initial scroll — fires when conversation changes to ensure
+    // the last message is visible after layout settles.
+    // Virtuoso's initialTopMostItemIndex races with layout calculation on mount,
+    // so we use a delayed scrollToIndex to guarantee scroll position is correct.
+    useEffect(() => {
+      if (timeline.length === 0 || !conversationId || isTestEnv) return;
+
+      const timeoutId = setTimeout(() => {
+        virtuosoRef.current?.scrollToIndex({
+          index: timeline.length - 1,
+          align: "end",
+          behavior: "auto", // 'auto' = instant jump (no animation)
+        });
+      }, MARKDOWN_RENDER_DELAY_MS);
+
+      return () => clearTimeout(timeoutId);
+    }, [conversationId]); // eslint-disable-line react-hooks/exhaustive-deps
+
     // Memoize Virtuoso components to prevent infinite re-render loop.
     // Inline object literals create new references every render, causing Virtuoso
     // to re-mount Header/Footer → layout change → atBottomStateChange → re-render → loop.
@@ -331,13 +349,6 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         </div>
       ),
       Footer: () => {
-        // Filter out Task tool calls — they're already represented by TaskSubagentCard
-        // Also filter out diff tool calls (Edit/Write) — they're rendered in streamingContentBlocks
-        const otherToolCalls = streamingToolCalls.filter(
-          (tc) => tc.name.toLowerCase() !== "task" &&
-                  (!isDiffToolCall(tc.name) || tc.arguments == null)
-        );
-
         return (
           <div className="px-3 pb-3 w-full relative" style={contentContainerStyle}>
             {/* Render streaming content blocks in order — text, tool calls, and Task cards interleaved */}
@@ -376,13 +387,10 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
               return null;
             })}
 
-            {/* Aggregated indicator for remaining tools, or typing indicator */}
-            {(isSending || isAgentRunning) && (
-              otherToolCalls.length > 0 ? (
-                <StreamingToolIndicator toolCalls={otherToolCalls} isActive={true} />
-              ) : (!streamingContentBlocks || streamingContentBlocks.length === 0) ? (
-                <TypingIndicator />
-              ) : null
+            {/* Typing indicator — shows when thinking but no tool calls are active yet.
+                StreamingToolIndicator is now rendered outside the scroll container by parent panels. */}
+            {(isSending || isAgentRunning) && streamingToolCalls.length === 0 && (!streamingContentBlocks || streamingContentBlocks.length === 0) && (
+              <TypingIndicator />
             )}
 
           </div>
@@ -390,7 +398,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       },
     }), [
       failedRun, onDismissFailedRun,
-      streamingToolCalls, streamingTasks, streamingContentBlocks,
+      streamingToolCalls.length, streamingTasks, streamingContentBlocks,
       isSending, isAgentRunning,
     ]);
 
@@ -555,12 +563,10 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
               return null;
             })}
 
-            {(isSending || isAgentRunning) && (
-              streamingToolCalls.length > 0 ? (
-                <StreamingToolIndicator toolCalls={streamingToolCalls} isActive={true} />
-              ) : (!streamingContentBlocks || streamingContentBlocks.length === 0) ? (
-                <TypingIndicator />
-              ) : null
+            {/* Typing indicator — shows when thinking but no tool calls are active yet.
+                StreamingToolIndicator is now rendered outside the scroll container by parent panels. */}
+            {(isSending || isAgentRunning) && streamingToolCalls.length === 0 && (!streamingContentBlocks || streamingContentBlocks.length === 0) && (
+              <TypingIndicator />
             )}
             <div ref={messagesEndRef} />
           </div>

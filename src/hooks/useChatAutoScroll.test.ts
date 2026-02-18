@@ -763,6 +763,104 @@ describe("useChatAutoScroll", () => {
     });
   });
 
+  describe("conversationId reset behavior", () => {
+    it("should reset isAtBottom to true when conversationId changes", () => {
+      const { result, rerender } = renderHook(
+        (props) => useChatAutoScroll(props),
+        {
+          initialProps: {
+            messageCount: 10,
+            conversationId: "conv-1" as string | null,
+          },
+        }
+      );
+
+      // User scrolls up
+      act(() => {
+        result.current.handleAtBottomStateChange(false);
+      });
+      expect(result.current.isAtBottom).toBe(false);
+
+      // Switch conversation
+      rerender({ messageCount: 5, conversationId: "conv-2" });
+
+      // isAtBottom should be reset to true for the new conversation
+      expect(result.current.isAtBottom).toBe(true);
+    });
+
+    it("should not reset when conversationId stays the same", () => {
+      const { result, rerender } = renderHook(
+        (props) => useChatAutoScroll(props),
+        {
+          initialProps: {
+            messageCount: 10,
+            conversationId: "conv-1" as string | null,
+          },
+        }
+      );
+
+      // User scrolls up
+      act(() => {
+        result.current.handleAtBottomStateChange(false);
+      });
+      expect(result.current.isAtBottom).toBe(false);
+
+      // Re-render with same conversationId (different messageCount)
+      rerender({ messageCount: 11, conversationId: "conv-1" });
+
+      // isAtBottom should remain false (user scrolled up in same conv)
+      expect(result.current.isAtBottom).toBe(false);
+    });
+
+    it("should not reset when conversationId is null", () => {
+      const { result, rerender } = renderHook(
+        (props) => useChatAutoScroll(props),
+        {
+          initialProps: {
+            messageCount: 10,
+            conversationId: "conv-1" as string | null,
+          },
+        }
+      );
+
+      // User scrolls up
+      act(() => {
+        result.current.handleAtBottomStateChange(false);
+      });
+      expect(result.current.isAtBottom).toBe(false);
+
+      // Switch to null conversationId (no active conversation)
+      rerender({ messageCount: 0, conversationId: null });
+
+      // isAtBottom stays false — null conversationId guard prevents reset
+      expect(result.current.isAtBottom).toBe(false);
+    });
+
+    it("should reset shouldAutoScroll to true on conversation change", () => {
+      const { result, rerender } = renderHook(
+        (props) => useChatAutoScroll(props),
+        {
+          initialProps: {
+            messageCount: 10,
+            conversationId: "conv-1" as string | null,
+          },
+        }
+      );
+
+      // User scrolls up → shouldAutoScroll = false
+      act(() => {
+        result.current.handleAtBottomStateChange(false);
+      });
+      expect(result.current.shouldAutoScroll).toBe(false);
+
+      // Switch conversation → reset
+      rerender({ messageCount: 5, conversationId: "conv-2" });
+
+      expect(result.current.isAtBottom).toBe(true);
+      expect(result.current.shouldAutoScroll).toBe(true);
+    });
+  });
+
   describe("edge cases", () => {
     it("should handle messagesEndRef being null", () => {
       const { result, rerender } = renderHook(
