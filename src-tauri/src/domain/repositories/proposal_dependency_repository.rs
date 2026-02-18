@@ -13,11 +13,13 @@ use crate::error::AppResult;
 #[async_trait]
 pub trait ProposalDependencyRepository: Send + Sync {
     /// Add a dependency (proposal_id depends on depends_on_id)
+    /// source: "auto" for AI-suggested, "manual" for user-created, defaults to "auto"
     async fn add_dependency(
         &self,
         proposal_id: &TaskProposalId,
         depends_on_id: &TaskProposalId,
         reason: Option<&str>,
+        source: Option<&str>,
     ) -> AppResult<()>;
 
     /// Remove a dependency
@@ -43,6 +45,13 @@ pub trait ProposalDependencyRepository: Send + Sync {
         session_id: &IdeationSessionId,
     ) -> AppResult<Vec<(TaskProposalId, TaskProposalId, Option<String>)>>;
 
+    /// Get all dependency relationships for a session with source field
+    /// Returns tuples of (proposal_id, depends_on_proposal_id, reason, source)
+    async fn get_all_for_session_with_source(
+        &self,
+        session_id: &IdeationSessionId,
+    ) -> AppResult<Vec<(TaskProposalId, TaskProposalId, Option<String>, String)>>;
+
     /// Check if adding a dependency would create a cycle
     async fn would_create_cycle(
         &self,
@@ -55,6 +64,10 @@ pub trait ProposalDependencyRepository: Send + Sync {
 
     /// Clear all dependencies for all proposals in a session
     async fn clear_session_dependencies(&self, session_id: &IdeationSessionId) -> AppResult<()>;
+
+    /// Clear only auto-suggested dependencies for all proposals in a session
+    /// Preserves manually-added dependencies (source != 'auto')
+    async fn clear_auto_dependencies(&self, session_id: &IdeationSessionId) -> AppResult<()>;
 
     /// Count dependencies for a proposal (how many it depends on)
     async fn count_dependencies(&self, proposal_id: &TaskProposalId) -> AppResult<u32>;
@@ -106,6 +119,7 @@ mod tests {
             _proposal_id: &TaskProposalId,
             _depends_on_id: &TaskProposalId,
             _reason: Option<&str>,
+            _source: Option<&str>,
         ) -> AppResult<()> {
             Ok(())
         }
@@ -158,6 +172,19 @@ mod tests {
                 .collect())
         }
 
+        async fn get_all_for_session_with_source(
+            &self,
+            _session_id: &IdeationSessionId,
+        ) -> AppResult<Vec<(TaskProposalId, TaskProposalId, Option<String>, String)>> {
+            Ok(self
+                .dependencies
+                .iter()
+                .flat_map(|(from, tos)| {
+                    tos.iter().map(|to| (from.clone(), to.clone(), None, String::from("auto")))
+                })
+                .collect())
+        }
+
         async fn would_create_cycle(
             &self,
             proposal_id: &TaskProposalId,
@@ -181,6 +208,13 @@ mod tests {
         }
 
         async fn clear_session_dependencies(
+            &self,
+            _session_id: &IdeationSessionId,
+        ) -> AppResult<()> {
+            Ok(())
+        }
+
+        async fn clear_auto_dependencies(
             &self,
             _session_id: &IdeationSessionId,
         ) -> AppResult<()> {
@@ -219,7 +253,7 @@ mod tests {
         let depends_on_id = TaskProposalId::new();
 
         let result = repo
-            .add_dependency(&proposal_id, &depends_on_id, None)
+            .add_dependency(&proposal_id, &depends_on_id, None, None)
             .await;
         assert!(result.is_ok());
     }
@@ -477,7 +511,7 @@ mod tests {
         let proposal_a = TaskProposalId::new();
         let proposal_b = TaskProposalId::new();
 
-        let add_result = repo.add_dependency(&proposal_a, &proposal_b, None).await;
+        let add_result = repo.add_dependency(&proposal_a, &proposal_b, None, None).await;
         assert!(add_result.is_ok());
 
         let remove_result = repo.remove_dependency(&proposal_a, &proposal_b).await;
