@@ -56,6 +56,10 @@ export interface PlanDisplayProps {
   onViewHistory?: () => void;
   /** Team ideation metadata — shows findings section + badge when present */
   teamMetadata?: TeamMetadata;
+  /** When set, navigates PlanDisplay to this version number */
+  requestedVersion?: number;
+  /** Called after requestedVersion has been applied, to clear the parent's state */
+  onVersionViewed?: () => void;
 }
 
 // ============================================================================
@@ -210,6 +214,8 @@ export function PlanDisplay({
   isExpanded,
   onExpandedChange,
   teamMetadata,
+  requestedVersion,
+  onVersionViewed,
 }: PlanDisplayProps) {
   const [isHovered, setIsHovered] = useState(false);
   // Use controlled state if isExpanded prop is provided, otherwise use internal state
@@ -277,6 +283,17 @@ export function PlanDisplay({
       setIsOpen(true);
     }
   }, [isOpen, setIsOpen]);
+
+  // When a parent requests a specific version (e.g., from "View plan as of proposal creation"),
+  // select that version and then notify the parent so it can clear the request.
+  useEffect(() => {
+    if (requestedVersion === undefined || requestedVersion === null) return;
+    if (requestedVersion !== selectedVersion) {
+      handleVersionSelect(requestedVersion);
+    }
+    onVersionViewed?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedVersion]);
 
   const handleExport = useCallback(() => {
     if (onExport) {

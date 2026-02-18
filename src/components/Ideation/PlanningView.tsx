@@ -551,6 +551,15 @@ export function PlanningView({
     setIsPlanExpanded(expanded);
   }, [setIsPlanExpanded]);
 
+  // Historical plan version state - set when user clicks "View plan as of proposal creation (vX)"
+  const [historicalPlanVersion, setHistoricalPlanVersion] = useState<number | null>(null);
+
+  const handleViewHistoricalPlan = useCallback((_artifactId: string, version: number) => {
+    setHistoricalPlanVersion(version);
+    userOverrideRef.current = true;
+    setIsPlanExpanded(true);
+  }, [setIsPlanExpanded]);
+
   // Auto-scroll to bottom only when a new proposal is added
   const lastScrollSessionIdRef = useRef<string | null>(null);
   const lastScrollProposalAddedAtRef = useRef<number | null>(null);
@@ -961,6 +970,10 @@ export function PlanningView({
                             isExpanded={isPlanExpanded}
                             onExpandedChange={handlePlanExpandedChange}
                             {...(teamMetadata !== undefined && { teamMetadata })}
+                            {...(historicalPlanVersion !== null && {
+                              requestedVersion: historicalPlanVersion,
+                              onVersionViewed: () => setHistoricalPlanVersion(null),
+                            })}
                           />
                         </div>
                       )}
@@ -998,6 +1011,7 @@ export function PlanningView({
                           })}
                           {...(isReadOnly && { isReadOnly })}
                           onNavigateToTask={handleNavigateToTask}
+                          onViewHistoricalPlan={handleViewHistoricalPlan}
                         />
                       )}
                     </div>

@@ -10,7 +10,7 @@ use crate::domain::entities::{
     IdeationSessionStatus, Priority, PriorityAssessment, PriorityAssessmentFactors, TaskCategory,
     TaskProposal, TaskProposalId, UserHintFactor,
 };
-use crate::http_server::helpers::maybe_trigger_dependency_analysis;
+use crate::http_server::helpers::{assert_session_mutable, maybe_trigger_dependency_analysis};
 
 use super::ideation_commands_types::{
     CreateProposalInput, PriorityAssessmentResponse, TaskProposalResponse, UpdateProposalInput,
@@ -229,13 +229,24 @@ pub async fn update_task_proposal(
 pub async fn delete_task_proposal(id: String, state: State<'_, AppState>) -> Result<(), String> {
     let proposal_id = TaskProposalId::from_string(id.clone());
 
-    // Get the session_id before deleting (needed for auto-trigger)
-    let session_id = state
+    // Get the proposal before deleting (needed for session guard + auto-trigger)
+    let proposal = state
         .task_proposal_repo
         .get_by_id(&proposal_id)
         .await
         .map_err(|e| e.to_string())?
-        .map(|p| p.session_id);
+        .ok_or_else(|| format!("Proposal {} not found", id))?;
+
+    // Guard: reject mutations on Archived/Accepted sessions
+    let session = state
+        .ideation_session_repo
+        .get_by_id(&proposal.session_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Session {} not found", proposal.session_id))?;
+    assert_session_mutable(&session).map_err(|e| e.to_string())?;
+
+    let session_id = Some(proposal.session_id);
 
     state
         .task_proposal_repo
