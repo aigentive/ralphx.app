@@ -186,6 +186,8 @@ impl TaskContextService {
         );
 
         // 10. Return TaskContext
+        let task_branch = task.task_branch.clone();
+        let worktree_path = task.worktree_path.clone();
         Ok(TaskContext {
             task,
             source_proposal,
@@ -197,6 +199,8 @@ impl TaskContextService {
             blocked_by,
             blocks,
             tier,
+            task_branch,
+            worktree_path,
         })
     }
 
@@ -262,6 +266,14 @@ impl TaskContextService {
             hints.push(format!(
                 "Downstream impact: completing this task unblocks: {}",
                 names.join(", ")
+            ));
+        }
+
+        // CRITICAL: Branch safety hint — agents must stay on their assigned branch
+        if let Some(ref branch) = task.task_branch {
+            hints.push(format!(
+                "GIT BRANCH: You are on branch '{}'. Do NOT checkout other branches (especially main/master). All work must stay on this branch.",
+                branch
             ));
         }
 
