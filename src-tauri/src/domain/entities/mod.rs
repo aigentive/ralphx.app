@@ -95,8 +95,8 @@ pub use status::{InternalStatus, ParseInternalStatusError};
 pub use task::Task;
 pub use task_context::{ArtifactSummary, TaskContext, TaskDependencySummary, TaskProposalSummary};
 pub use task_metadata::{
-    MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
-    MergeRecoverySource, MergeRecoveryState,
+    MergeFailureSource, MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata,
+    MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState,
 };
 pub use task_qa::TaskQA;
 pub use task_step::{StepProgressSummary, TaskStep, TaskStepStatus};

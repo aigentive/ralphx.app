@@ -131,6 +131,12 @@ pub struct MergeRecoveryEvent {
     /// Attempt number for retries
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attempt: Option<u32>,
+    /// Classification of the failure source for smart retry decisions
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_source: Option<MergeFailureSource>,
+    /// SHA of source branch at time of failure (for SHA comparison guard)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_sha: Option<String>,
 }
 
 impl MergeRecoveryEvent {
@@ -152,6 +158,8 @@ impl MergeRecoveryEvent {
             source_branch: None,
             blocking_task_id: None,
             attempt: None,
+            failure_source: None,
+            source_sha: None,
         }
     }
 
@@ -178,6 +186,33 @@ impl MergeRecoveryEvent {
         self.attempt = Some(attempt);
         self
     }
+
+    /// Builder method to set failure source classification
+    pub fn with_failure_source(mut self, failure_source: MergeFailureSource) -> Self {
+        self.failure_source = Some(failure_source);
+        self
+    }
+
+    /// Builder method to record source branch SHA at failure time
+    pub fn with_source_sha(mut self, sha: impl Into<String>) -> Self {
+        self.source_sha = Some(sha.into());
+        self
+    }
+}
+
+/// Classification of why a merge failure occurred.
+/// Used by the reconciler to decide whether auto-retry is safe.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MergeFailureSource {
+    /// Transient git operation error (lock files, timeouts, network) — safe to auto-retry
+    TransientGit,
+    /// Agent explicitly called report_conflict — human deliberate decision, do NOT auto-retry
+    AgentReported,
+    /// System detected failure (conflict markers, MERGE_HEAD, stale rebase) — safe to auto-retry
+    SystemDetected,
+    /// Post-merge validation reverted — do not auto-retry until code changes
+    ValidationFailed,
 }
 
 /// Type of merge recovery event
