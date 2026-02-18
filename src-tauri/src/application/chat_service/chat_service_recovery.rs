@@ -7,12 +7,15 @@ use std::path::Path;
 use std::sync::Arc;
 
 use super::chat_service_context;
-use super::chat_service_replay::{build_rehydration_prompt, ReplayBuilder};
+use super::chat_service_replay::{
+    build_rehydration_prompt, IdeationRecoveryMetadata, ReplayBuilder,
+};
 use super::chat_service_streaming::process_stream_background;
 use super::streaming_state_cache::StreamingStateCache;
 use crate::domain::entities::{ChatContextType, ChatConversation, ChatConversationId};
 use crate::domain::repositories::{
     ChatAttachmentRepository, ChatConversationRepository, ChatMessageRepository,
+    IdeationSessionRepository, TaskProposalRepository,
 };
 use crate::error::{AppError, AppResult};
 
@@ -31,6 +34,8 @@ use crate::error::{AppError, AppResult};
 /// - `resolved_project_id`: Optional project ID for RALPHX_PROJECT_ID
 /// - `chat_message_repo`: Message repository
 /// - `conversation_repo`: Conversation repository
+/// - `ideation_session_repo`: Optional ideation session repository for Ideation context
+/// - `task_proposal_repo`: Optional proposal repository for Ideation context
 ///
 /// # Returns
 /// - `Ok(new_session_id)`: Recovery succeeded, new session ID
@@ -50,6 +55,8 @@ pub(super) async fn attempt_session_recovery(
     chat_message_repo: Arc<dyn ChatMessageRepository>,
     conversation_repo: Arc<dyn ChatConversationRepository>,
     chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
+    ideation_session_repo: Option<Arc<dyn IdeationSessionRepository>>,
+    task_proposal_repo: Option<Arc<dyn TaskProposalRepository>>,
     old_session_id: &str,
 ) -> AppResult<String> {
     let recovery_start = std::time::Instant::now();
@@ -86,10 +93,23 @@ pub(super) async fn attempt_session_recovery(
         "Built conversation replay for rehydration"
     );
 
-    // 2. Generate rehydration prompt
-    let bootstrap_prompt = build_rehydration_prompt(&replay, context_type, context_id, new_message);
+    // 2. Build ideation recovery metadata if context is Ideation
+    let ideation_metadata = if context_type == ChatContextType::Ideation {
+        build_ideation_recovery_metadata(
+            context_id,
+            ideation_session_repo.as_ref(),
+            task_proposal_repo.as_ref(),
+        )
+        .await
+    } else {
+        None
+    };
 
-    // 3. Spawn fresh Claude session with history
+    // 3. Generate rehydration prompt
+    let bootstrap_prompt =
+        build_rehydration_prompt(&replay, context_type, context_id, new_message, ideation_metadata.as_ref());
+
+    // 4. Spawn fresh Claude session with history
     let spawnable = match chat_service_context::build_command(
         cli_path,
         plugin_dir,
@@ -120,7 +140,7 @@ pub(super) async fn attempt_session_recovery(
         }
     };
 
-    // 4. Process stream to capture new session ID
+    // 5. Process stream to capture new session ID
     let outcome = match process_stream_background::<tauri::Wry>(
         child,
         context_type,
@@ -156,7 +176,7 @@ pub(super) async fn attempt_session_recovery(
         }
     };
 
-    // 5. Update conversation with new session ID
+    // 6. Update conversation with new session ID
     if let Err(e) = conversation_repo
         .update_claude_session_id(conversation_id, &new_session_id)
         .await
@@ -166,7 +186,7 @@ pub(super) async fn attempt_session_recovery(
         return Err(err);
     }
 
-    // 6. Log telemetry
+    // 7. Log telemetry
     tracing::info!(
         event = "rehydrate_success",
         conversation_id = conversation_id.as_str(),
@@ -178,4 +198,62 @@ pub(super) async fn attempt_session_recovery(
     );
 
     Ok(new_session_id)
+}
+
+/// Build ideation recovery metadata from repositories.
+///
+/// Fetches the ideation session and counts proposals to populate metadata
+/// for enriching the recovery prompt with ideation-specific context.
+async fn build_ideation_recovery_metadata(
+    context_id: &str,
+    ideation_session_repo: Option<&Arc<dyn IdeationSessionRepository>>,
+    task_proposal_repo: Option<&Arc<dyn TaskProposalRepository>>,
+) -> Option<IdeationRecoveryMetadata> {
+    // Both repositories are required for ideation metadata
+    let (session_repo, proposal_repo) = (ideation_session_repo?, task_proposal_repo?);
+
+    // Parse context_id as IdeationSessionId
+    let session_id = crate::domain::entities::IdeationSessionId::from_string(context_id.to_string());
+
+    // Fetch the session
+    let session = match session_repo.get_by_id(&session_id).await {
+        Ok(Some(s)) => s,
+        Ok(None) => {
+            tracing::warn!(
+                session_id = session_id.as_str(),
+                "Ideation session not found for recovery metadata"
+            );
+            return None;
+        }
+        Err(e) => {
+            tracing::error!(
+                session_id = session_id.as_str(),
+                error = %e,
+                "Failed to fetch ideation session for recovery metadata"
+            );
+            return None;
+        }
+    };
+
+    // Count proposals for this session
+    let proposal_count = match proposal_repo.count_by_session(&session_id).await {
+        Ok(count) => count,
+        Err(e) => {
+            tracing::warn!(
+                session_id = session_id.as_str(),
+                error = %e,
+                "Failed to count proposals for recovery metadata, using 0"
+            );
+            0
+        }
+    };
+
+    Some(IdeationRecoveryMetadata {
+        session_status: session.status.to_string(),
+        plan_artifact_id: session.plan_artifact_id.map(|id| id.to_string()),
+        proposal_count,
+        parent_session_id: session.parent_session_id.map(|id| id.to_string()),
+        team_mode: session.team_mode,
+        session_title: session.title,
+    })
 }

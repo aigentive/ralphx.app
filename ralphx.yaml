@@ -230,6 +230,8 @@ agents:
         ask_user_question,
         create_child_session,
         get_parent_session_context,
+        # session context recovery
+        get_session_messages,
         # memory read tools
         search_memories,
         get_memory,
@@ -602,6 +604,8 @@ agents:
         ask_user_question,
         create_child_session,
         get_parent_session_context,
+        # session context recovery
+        get_session_messages,
         search_memories,
         get_memory,
         get_memories_for_paths,

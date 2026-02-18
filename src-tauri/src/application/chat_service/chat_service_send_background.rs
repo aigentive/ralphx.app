@@ -23,7 +23,7 @@ use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
     MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
-    TaskRepository,
+    TaskProposalRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentKey, RunningAgentRegistry};
 use tokio_util::sync::CancellationToken;
@@ -38,6 +38,7 @@ pub(super) struct BackgroundRunRepos {
     pub task_dependency_repo: Arc<dyn TaskDependencyRepository>,
     pub project_repo: Arc<dyn ProjectRepository>,
     pub ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    pub task_proposal_repo: Option<Arc<dyn TaskProposalRepository>>,
     pub activity_event_repo: Arc<dyn ActivityEventRepository>,
     pub memory_event_repo: Arc<dyn MemoryEventRepository>,
     pub message_queue: Arc<MessageQueue>,
@@ -166,6 +167,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             task_dependency_repo,
             project_repo,
             ideation_session_repo,
+            task_proposal_repo,
             activity_event_repo,
             memory_event_repo,
             message_queue,
@@ -499,6 +501,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     &task_dependency_repo,
                     &project_repo,
                     &ideation_session_repo,
+                    &task_proposal_repo,
                     &activity_event_repo,
                     &message_queue,
                     &running_agent_registry,

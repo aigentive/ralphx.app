@@ -9,6 +9,27 @@ use crate::domain::entities::{ChatContextType, ChatConversationId, MessageRole};
 use crate::domain::repositories::ChatMessageRepository;
 use crate::error::AppResult;
 
+/// Metadata for enriching recovery prompts with ideation-specific state.
+///
+/// When recovering an ideation session, this metadata provides context about
+/// the session's current state, enabling the recovered agent to continue
+/// seamlessly with full awareness of the ideation context.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IdeationRecoveryMetadata {
+    /// Current session status (e.g., "active", "archived", "accepted")
+    pub session_status: String,
+    /// ID of the implementation plan artifact, if one exists
+    pub plan_artifact_id: Option<String>,
+    /// Number of task proposals in the session
+    pub proposal_count: u32,
+    /// Parent session ID for linked sessions (follow-on work)
+    pub parent_session_id: Option<String>,
+    /// Team mode: "solo", "research", or "debate"
+    pub team_mode: Option<String>,
+    /// Human-readable session title
+    pub session_title: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversationReplay {
     pub turns: Vec<Turn>,
@@ -104,12 +125,16 @@ impl ReplayBuilder {
     }
 }
 
-/// Build rehydration prompt with conversation history
+/// Build rehydration prompt with conversation history.
+///
+/// For ideation contexts, optionally includes `<ideation_state>` XML block
+/// with session metadata to enable seamless context continuity.
 pub fn build_rehydration_prompt(
     replay: &ConversationReplay,
     context_type: ChatContextType,
     context_id: &str,
     new_user_message: &str,
+    ideation_metadata: Option<&IdeationRecoveryMetadata>,
 ) -> String {
     let history_xml = replay
         .turns
@@ -128,15 +153,56 @@ pub fn build_rehydration_prompt(
         .collect::<Vec<_>>()
         .join("\n");
 
+    // Build ideation state XML block if metadata is provided
+    let ideation_state_xml = if let Some(meta) = ideation_metadata {
+        let plan_artifact = meta
+            .plan_artifact_id
+            .as_ref()
+            .map(|id| format!("\n  <plan_artifact_id>{}</plan_artifact_id>", id))
+            .unwrap_or_default();
+        let parent_session = meta
+            .parent_session_id
+            .as_ref()
+            .map(|id| format!("\n  <parent_session_id>{}</parent_session_id>", id))
+            .unwrap_or_default();
+        let team_mode = meta
+            .team_mode
+            .as_ref()
+            .map(|tm| format!("\n  <team_mode>{}</team_mode>", tm))
+            .unwrap_or_default();
+        let session_title = meta
+            .session_title
+            .as_ref()
+            .map(|t| format!("\n  <session_title>{}</session_title>", t))
+            .unwrap_or_default();
+
+        format!(
+            "<ideation_state>\n\
+             <session_status>{}</session_status>\n\
+             <proposal_count>{}</proposal_count>{}{}{}{}\n\
+             </ideation_state>\n\
+             <recovery_note>Session recovered from local storage. Phase 0 may call get_session_messages for additional context if needed.</recovery_note>\n",
+            meta.session_status,
+            meta.proposal_count,
+            plan_artifact,
+            parent_session,
+            team_mode,
+            session_title
+        )
+    } else {
+        String::new()
+    };
+
     format!(
         "<instructions>\n\
          Your previous session expired. Here is the conversation history restored from local storage.\n\
          Continue the conversation naturally from where it left off.\n\
          Context: {} ({})\n\
          </instructions>\n\
+         {}\
          <conversation_history>\n{}\n</conversation_history>\n\
          <current_message>{}</current_message>",
-        context_type, context_id, history_xml, new_user_message
+        context_type, context_id, ideation_state_xml, history_xml, new_user_message
     )
 }
 
@@ -206,6 +272,7 @@ mod tests {
             ChatContextType::Ideation,
             "session-123",
             "Continue conversation",
+            None,
         );
 
         assert!(prompt.contains("Hello"));
@@ -215,5 +282,130 @@ mod tests {
         assert!(prompt.contains("session-123"));
         assert!(prompt.contains("<turn role"));
         assert!(prompt.contains("</turn>"));
+        // No ideation_state block when metadata is None
+        assert!(!prompt.contains("<ideation_state>"));
+    }
+
+    #[test]
+    fn test_build_rehydration_prompt_with_ideation_metadata() {
+        let replay = ConversationReplay {
+            turns: vec![Turn {
+                role: MessageRole::User,
+                content: "Hello".to_string(),
+                tool_calls: vec![],
+                tool_results: vec![],
+            }],
+            total_tokens: 10,
+            is_truncated: false,
+        };
+
+        let metadata = IdeationRecoveryMetadata {
+            session_status: "active".to_string(),
+            plan_artifact_id: Some("artifact-abc-123".to_string()),
+            proposal_count: 5,
+            parent_session_id: Some("parent-xyz".to_string()),
+            team_mode: Some("solo".to_string()),
+            session_title: Some("Feature Plan".to_string()),
+        };
+
+        let prompt = build_rehydration_prompt(
+            &replay,
+            ChatContextType::Ideation,
+            "session-123",
+            "Continue",
+            Some(&metadata),
+        );
+
+        // Verify ideation_state block is present with all fields
+        assert!(prompt.contains("<ideation_state>"));
+        assert!(prompt.contains("<session_status>active</session_status>"));
+        assert!(prompt.contains("<plan_artifact_id>artifact-abc-123</plan_artifact_id>"));
+        assert!(prompt.contains("<proposal_count>5</proposal_count>"));
+        assert!(prompt.contains("<parent_session_id>parent-xyz</parent_session_id>"));
+        assert!(prompt.contains("<team_mode>solo</team_mode>"));
+        assert!(prompt.contains("<session_title>Feature Plan</session_title>"));
+        assert!(prompt.contains("</ideation_state>"));
+
+        // Verify recovery_note is present
+        assert!(prompt.contains("<recovery_note>"));
+        assert!(prompt.contains("Session recovered from local storage"));
+    }
+
+    #[test]
+    fn test_build_rehydration_prompt_with_minimal_ideation_metadata() {
+        let replay = ConversationReplay {
+            turns: vec![],
+            total_tokens: 0,
+            is_truncated: false,
+        };
+
+        // Minimal metadata with only required fields
+        let metadata = IdeationRecoveryMetadata {
+            session_status: "active".to_string(),
+            plan_artifact_id: None,
+            proposal_count: 0,
+            parent_session_id: None,
+            team_mode: None,
+            session_title: None,
+        };
+
+        let prompt = build_rehydration_prompt(
+            &replay,
+            ChatContextType::Ideation,
+            "session-minimal",
+            "Start",
+            Some(&metadata),
+        );
+
+        assert!(prompt.contains("<ideation_state>"));
+        assert!(prompt.contains("<session_status>active</session_status>"));
+        assert!(prompt.contains("<proposal_count>0</proposal_count>"));
+        // Optional fields should NOT appear when None
+        assert!(!prompt.contains("<plan_artifact_id>"));
+        assert!(!prompt.contains("<parent_session_id>"));
+        assert!(!prompt.contains("<team_mode>"));
+        assert!(!prompt.contains("<session_title>"));
+    }
+
+    #[test]
+    fn test_ideation_state_xml_placed_after_instructions() {
+        let replay = ConversationReplay {
+            turns: vec![],
+            total_tokens: 0,
+            is_truncated: false,
+        };
+
+        let metadata = IdeationRecoveryMetadata {
+            session_status: "active".to_string(),
+            plan_artifact_id: None,
+            proposal_count: 1,
+            parent_session_id: None,
+            team_mode: None,
+            session_title: None,
+        };
+
+        let prompt = build_rehydration_prompt(
+            &replay,
+            ChatContextType::Ideation,
+            "session-123",
+            "Test",
+            Some(&metadata),
+        );
+
+        // Verify ordering: </instructions> then <ideation_state> then <conversation_history>
+        let instructions_end = prompt.find("</instructions>").expect("instructions end tag");
+        let ideation_start = prompt.find("<ideation_state>").expect("ideation_state tag");
+        let history_start = prompt
+            .find("<conversation_history>")
+            .expect("conversation_history tag");
+
+        assert!(
+            instructions_end < ideation_start,
+            "ideation_state should come after </instructions>"
+        );
+        assert!(
+            ideation_start < history_start,
+            "conversation_history should come after ideation_state"
+        );
     }
 }

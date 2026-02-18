@@ -61,7 +61,8 @@ pub async fn send_orchestrator_message(
         state.memory_event_repo.clone(),
     )
     .with_app_handle(app)
-    .with_plan_branch_repo(state.plan_branch_repo.clone());
+    .with_plan_branch_repo(state.plan_branch_repo.clone())
+    .with_task_proposal_repo(state.task_proposal_repo.clone());
 
     // Check if service is available
     if !chat_service.is_available().await {
@@ -104,7 +105,8 @@ pub async fn is_orchestrator_available(state: State<'_, AppState>) -> Result<boo
         state.message_queue.clone(),
         state.running_agent_registry.clone(),
         state.memory_event_repo.clone(),
-    );
+    )
+    .with_task_proposal_repo(state.task_proposal_repo.clone());
 
     Ok(chat_service.is_available().await)
 }

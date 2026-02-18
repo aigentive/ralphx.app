@@ -35,7 +35,7 @@ use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
     MemoryEventRepository, PlanBranchRepository, ProjectRepository, StateHistoryMetadata,
-    TaskDependencyRepository, TaskRepository,
+    TaskDependencyRepository, TaskProposalRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, QueuedMessage, RunningAgentKey, RunningAgentRegistry};
 use async_trait::async_trait;
@@ -248,6 +248,7 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     execution_state: Option<Arc<crate::commands::ExecutionState>>,
     question_state: Option<Arc<QuestionState>>,
     plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
+    task_proposal_repo: Option<Arc<dyn TaskProposalRepository>>,
     model: String,
     /// When true, agent resolution uses team-lead variants if configured.
     /// Uses AtomicBool for interior mutability so team_mode can be set
@@ -305,6 +306,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             execution_state: None,
             question_state: None,
             plan_branch_repo: None,
+            task_proposal_repo: None,
             model: "sonnet".to_string(),
             team_mode: AtomicBool::new(false),
             team_service: None,
@@ -324,6 +326,11 @@ impl<R: Runtime> ClaudeChatService<R> {
 
     pub fn with_plan_branch_repo(mut self, repo: Arc<dyn PlanBranchRepository>) -> Self {
         self.plan_branch_repo = Some(repo);
+        self
+    }
+
+    pub fn with_task_proposal_repo(mut self, repo: Arc<dyn TaskProposalRepository>) -> Self {
+        self.task_proposal_repo = Some(repo);
         self
     }
 
@@ -714,6 +721,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 memory_event_repo: Arc::clone(&self.memory_event_repo),
                 message_queue: Arc::clone(&self.message_queue),
                 running_agent_registry: Arc::clone(&self.running_agent_registry),
+                task_proposal_repo: self.task_proposal_repo.clone(),
             },
             execution_state: self.execution_state.clone(),
             question_state: self.question_state.clone(),

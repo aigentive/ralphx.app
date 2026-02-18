@@ -867,6 +867,40 @@ pub struct GetConversationTranscriptResponse {
 }
 
 // ============================================================================
+// Request/Response Types - Session Messages (Ideation Agent Context Recovery)
+// ============================================================================
+
+/// Default limit for session messages retrieval
+fn default_session_messages_limit() -> usize {
+    50
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GetSessionMessagesRequest {
+    pub session_id: String,
+    #[serde(default = "default_session_messages_limit")]
+    pub limit: usize,
+    #[serde(default)]
+    pub include_tool_calls: bool,
+}
+
+/// Single message in a session messages response
+#[derive(Debug, Serialize, Clone)]
+pub struct SessionMessageResponse {
+    pub role: String,
+    pub content: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GetSessionMessagesResponse {
+    pub messages: Vec<SessionMessageResponse>,
+    pub count: usize,
+    pub truncated: bool,
+    pub total_available: usize,
+}
+
+// ============================================================================
 // Request/Response Types - Team Endpoints
 // ============================================================================
 

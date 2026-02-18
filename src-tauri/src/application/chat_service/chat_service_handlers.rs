@@ -23,7 +23,7 @@ use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
     MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
-    TaskRepository,
+    TaskProposalRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::TaskScheduler;
@@ -347,6 +347,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
     task_dependency_repo: &Arc<dyn TaskDependencyRepository>,
     project_repo: &Arc<dyn ProjectRepository>,
     ideation_session_repo: &Arc<dyn IdeationSessionRepository>,
+    task_proposal_repo: &Option<Arc<dyn TaskProposalRepository>>,
     activity_event_repo: &Arc<dyn ActivityEventRepository>,
     message_queue: &Arc<MessageQueue>,
     running_agent_registry: &Arc<dyn RunningAgentRegistry>,
@@ -456,6 +457,8 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     Arc::clone(chat_message_repo),
                     Arc::clone(conversation_repo),
                     Arc::clone(chat_attachment_repo),
+                    Some(Arc::clone(ideation_session_repo)),
+                    task_proposal_repo.clone(),
                     &session_id,
                 )
                 .await
@@ -524,6 +527,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                             ideation_session_repo: Arc::clone(
                                                 ideation_session_repo,
                                             ),
+                                            task_proposal_repo: task_proposal_repo.clone(),
                                             activity_event_repo: Arc::clone(activity_event_repo),
                                             memory_event_repo: Arc::clone(memory_event_repo),
                                             message_queue: Arc::clone(message_queue),

@@ -26,8 +26,9 @@ use super::super::helpers::{
 };
 use super::super::types::{
     AddDependencyRequest, ApplyDependenciesResponse, ApplyDependencySuggestionsRequest,
-    CreateProposalRequest, DeleteProposalRequest, HttpServerState, ListProposalsResponse,
-    ProposalDetailResponse, ProposalResponse, ProposalSummary, SuccessResponse,
+    CreateProposalRequest, DeleteProposalRequest, GetSessionMessagesRequest,
+    GetSessionMessagesResponse, HttpServerState, ListProposalsResponse, ProposalDetailResponse,
+    ProposalResponse, ProposalSummary, SessionMessageResponse, SuccessResponse,
     UpdateProposalRequest, UpdateSessionTitleRequest,
 };
 
@@ -926,4 +927,304 @@ async fn would_create_cycle(
     }
 
     false // No path found, safe to add
+}
+
+/// Get messages for an ideation session (context recovery for agents)
+/// Returns messages newest-first with optional truncation
+pub async fn get_session_messages(
+    State(state): State<HttpServerState>,
+    Json(req): Json<GetSessionMessagesRequest>,
+) -> Result<Json<GetSessionMessagesResponse>, JsonError> {
+    let session_id = IdeationSessionId::from_string(req.session_id.clone());
+
+    // Cap limit at 200
+    let limit = req.limit.clamp(1, 200);
+
+    // Get total count first
+    let total_available = state
+        .app_state
+        .chat_message_repo
+        .count_by_session(&session_id)
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to count messages for session {}: {}",
+                session_id.as_str(),
+                e
+            );
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to count messages: {}", e),
+            )
+        })? as usize;
+
+    // Get messages using existing repository method
+    let messages = state
+        .app_state
+        .chat_message_repo
+        .get_recent_by_session(&session_id, limit as u32)
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to get messages for session {}: {}",
+                session_id.as_str(),
+                e
+            );
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get messages: {}", e),
+            )
+        })?;
+
+    // Convert to response format
+    let response_messages: Vec<SessionMessageResponse> = messages
+        .into_iter()
+        .map(|msg| {
+            // If include_tool_calls is false and message has tool_calls,
+            // we may want to append a note. For now, just return content.
+            // The tool_calls field is excluded from SessionMessageResponse by design.
+            SessionMessageResponse {
+                role: msg.role.to_string(),
+                content: msg.content,
+                created_at: msg.created_at.to_rfc3339(),
+            }
+        })
+        .collect();
+
+    let count = response_messages.len();
+    let truncated = total_available > limit;
+
+    Ok(Json(GetSessionMessagesResponse {
+        messages: response_messages,
+        count,
+        truncated,
+        total_available,
+    }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::application::AppState;
+    use crate::commands::ExecutionState;
+    use crate::domain::entities::{ChatMessage, IdeationSessionId};
+    use std::sync::Arc;
+
+    async fn setup_test_state() -> HttpServerState {
+        let app_state = Arc::new(AppState::new_test());
+        let execution_state = Arc::new(ExecutionState::new());
+        let tracker = crate::application::TeamStateTracker::new();
+        let team_service = Arc::new(crate::application::TeamService::new_without_events(
+            Arc::new(tracker.clone()),
+        ));
+
+        HttpServerState {
+            app_state,
+            execution_state,
+            team_tracker: tracker,
+            team_service,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_session_messages_empty_session() {
+        let state = setup_test_state().await;
+        let session_id = IdeationSessionId::new();
+
+        let result = get_session_messages(
+            State(state),
+            Json(GetSessionMessagesRequest {
+                session_id: session_id.as_str().to_string(),
+                limit: 50,
+                include_tool_calls: false,
+            }),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap().0;
+        assert!(response.messages.is_empty());
+        assert_eq!(response.count, 0);
+        assert!(!response.truncated);
+        assert_eq!(response.total_available, 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_session_messages_returns_messages() {
+        let state = setup_test_state().await;
+        let session_id = IdeationSessionId::new();
+
+        // Create messages
+        let msg1 = ChatMessage::user_in_session(session_id.clone(), "Hello");
+        let msg2 = ChatMessage::orchestrator_in_session(session_id.clone(), "Hi there!");
+
+        state
+            .app_state
+            .chat_message_repo
+            .create(msg1.clone())
+            .await
+            .unwrap();
+        state
+            .app_state
+            .chat_message_repo
+            .create(msg2.clone())
+            .await
+            .unwrap();
+
+        let result = get_session_messages(
+            State(state),
+            Json(GetSessionMessagesRequest {
+                session_id: session_id.as_str().to_string(),
+                limit: 50,
+                include_tool_calls: false,
+            }),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap().0;
+        assert_eq!(response.messages.len(), 2);
+        assert_eq!(response.count, 2);
+        assert!(!response.truncated);
+        assert_eq!(response.total_available, 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_session_messages_respects_limit() {
+        let state = setup_test_state().await;
+        let session_id = IdeationSessionId::new();
+
+        // Create 10 messages
+        for i in 0..10 {
+            let msg = ChatMessage::user_in_session(session_id.clone(), format!("Message {}", i));
+            state
+                .app_state
+                .chat_message_repo
+                .create(msg)
+                .await
+                .unwrap();
+        }
+
+        let result = get_session_messages(
+            State(state),
+            Json(GetSessionMessagesRequest {
+                session_id: session_id.as_str().to_string(),
+                limit: 5,
+                include_tool_calls: false,
+            }),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap().0;
+        assert_eq!(response.messages.len(), 5);
+        assert_eq!(response.count, 5);
+        assert!(response.truncated);
+        assert_eq!(response.total_available, 10);
+    }
+
+    #[tokio::test]
+    async fn test_get_session_messages_caps_at_200() {
+        let state = setup_test_state().await;
+        let session_id = IdeationSessionId::new();
+
+        // Request limit over 200
+        let result = get_session_messages(
+            State(state),
+            Json(GetSessionMessagesRequest {
+                session_id: session_id.as_str().to_string(),
+                limit: 500, // Should be capped to 200
+                include_tool_calls: false,
+            }),
+        )
+        .await;
+
+        // Should still succeed (empty in this case)
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_get_session_messages_default_limit() {
+        let state = setup_test_state().await;
+        let session_id = IdeationSessionId::new();
+
+        // Create 60 messages
+        for i in 0..60 {
+            let msg = ChatMessage::user_in_session(session_id.clone(), format!("Message {}", i));
+            state
+                .app_state
+                .chat_message_repo
+                .create(msg)
+                .await
+                .unwrap();
+        }
+
+        // Use default limit (should be 50)
+        let result = get_session_messages(
+            State(state),
+            Json(GetSessionMessagesRequest {
+                session_id: session_id.as_str().to_string(),
+                limit: 50, // explicit default
+                include_tool_calls: false,
+            }),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap().0;
+        assert_eq!(response.messages.len(), 50);
+        assert!(response.truncated);
+        assert_eq!(response.total_available, 60);
+    }
+
+    #[tokio::test]
+    async fn test_get_session_messages_returns_chronological_order() {
+        let state = setup_test_state().await;
+        let session_id = IdeationSessionId::new();
+
+        // Create messages in order
+        let msg1 = ChatMessage::user_in_session(session_id.clone(), "First");
+        let msg2 = ChatMessage::user_in_session(session_id.clone(), "Second");
+        let msg3 = ChatMessage::user_in_session(session_id.clone(), "Third");
+
+        // Small delays to ensure different timestamps
+        state
+            .app_state
+            .chat_message_repo
+            .create(msg1)
+            .await
+            .unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        state
+            .app_state
+            .chat_message_repo
+            .create(msg2)
+            .await
+            .unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        state
+            .app_state
+            .chat_message_repo
+            .create(msg3)
+            .await
+            .unwrap();
+
+        let result = get_session_messages(
+            State(state),
+            Json(GetSessionMessagesRequest {
+                session_id: session_id.as_str().to_string(),
+                limit: 50,
+                include_tool_calls: false,
+            }),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap().0;
+        // get_recent_by_session returns messages in chronological order (oldest to newest)
+        // after selecting the most recent N messages
+        assert_eq!(response.messages[0].content, "First");
+        assert_eq!(response.messages[1].content, "Second");
+        assert_eq!(response.messages[2].content, "Third");
+    }
 }

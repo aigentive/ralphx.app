@@ -306,7 +306,8 @@ pub async fn create_child_session(
             Arc::clone(&app.memory_event_repo),
         )
         .with_execution_state(Arc::clone(&state.execution_state))
-        .with_plan_branch_repo(Arc::clone(&app.plan_branch_repo));
+        .with_plan_branch_repo(Arc::clone(&app.plan_branch_repo))
+        .with_task_proposal_repo(Arc::clone(&app.task_proposal_repo));
         if let Some(ref handle) = app.app_handle {
             chat_service = chat_service.with_app_handle(handle.clone());
         }
@@ -345,7 +346,8 @@ pub async fn create_child_session(
                 Arc::clone(&app.memory_event_repo),
             )
             .with_execution_state(Arc::clone(&state.execution_state))
-            .with_plan_branch_repo(Arc::clone(&app.plan_branch_repo));
+            .with_plan_branch_repo(Arc::clone(&app.plan_branch_repo))
+            .with_task_proposal_repo(Arc::clone(&app.task_proposal_repo));
             if let Some(ref handle) = app.app_handle {
                 chat_service = chat_service.with_app_handle(handle.clone());
             }
