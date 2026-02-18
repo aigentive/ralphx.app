@@ -59,6 +59,8 @@ mod v37_team_sessions;
 mod v38_ideation_team_mode;
 mod v39_conversation_parent_id;
 mod v40_dependency_source;
+mod v41_activity_events_merge_index;
+mod v42_running_agent_heartbeat;
 mod v3_add_activity_events;
 mod v4_add_blocked_reason;
 mod v5_add_review_summary_issues;
@@ -139,7 +141,7 @@ mod v8_task_git_fields_tests;
 mod v9_project_git_fields_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 40;
+pub const SCHEMA_VERSION: i32 = 42;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -353,6 +355,16 @@ const MIGRATIONS: &[Migration] = &[
         version: 40,
         name: "dependency_source",
         migrate: v40_dependency_source::migrate,
+    },
+    Migration {
+        version: 41,
+        name: "activity_events_merge_index",
+        migrate: v41_activity_events_merge_index::migrate,
+    },
+    Migration {
+        version: 42,
+        name: "running_agent_heartbeat",
+        migrate: v42_running_agent_heartbeat::migrate,
     },
 ];
 

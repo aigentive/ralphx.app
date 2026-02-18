@@ -4,7 +4,7 @@ use crate::commands::execution_commands::ExecutionState;
 use crate::domain::entities::{
     AgentRun, AgentRunId, AgentRunStatus, ChatConversationId, InternalStatus, Project, Task, TaskId,
 };
-use crate::domain::services::RunningAgentKey;
+use crate::domain::services::{MemoryRunningAgentRegistry, RunningAgentKey, RunningAgentRegistry};
 use std::sync::Arc;
 
 fn build_reconciler(
@@ -2167,5 +2167,181 @@ async fn reconcile_legacy_provider_error_key_still_works() {
         updated.internal_status,
         InternalStatus::Paused,
         "Legacy task should no longer be Paused after processing"
+    );
+}
+
+// ── Heartbeat / last_active_at tests ──
+
+#[tokio::test]
+async fn update_heartbeat_sets_last_active_at_in_memory_registry() {
+    let registry = MemoryRunningAgentRegistry::new();
+    let key = RunningAgentKey::new("merge", "task-hb-1");
+
+    // Register an agent with no heartbeat
+    registry
+        .register(
+            key.clone(),
+            12345,
+            "conv-hb".to_string(),
+            "run-hb".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    // Heartbeat not set yet
+    let info = registry.get(&key).await.unwrap();
+    assert!(info.last_active_at.is_none(), "last_active_at should be None before heartbeat");
+
+    // Write a heartbeat
+    let ts = chrono::Utc::now();
+    registry.update_heartbeat(&key, ts).await;
+
+    let info = registry.get(&key).await.unwrap();
+    assert!(
+        info.last_active_at.is_some(),
+        "last_active_at should be Some after heartbeat"
+    );
+    let delta = (info.last_active_at.unwrap() - ts).num_milliseconds().abs();
+    assert!(delta < 100, "last_active_at should match the written timestamp");
+}
+
+#[tokio::test]
+async fn update_heartbeat_noops_for_unknown_key() {
+    let registry = MemoryRunningAgentRegistry::new();
+    let key = RunningAgentKey::new("merge", "nonexistent-task");
+    // Should not panic — just silently does nothing
+    registry.update_heartbeat(&key, chrono::Utc::now()).await;
+    assert!(!registry.is_running(&key).await);
+}
+
+#[tokio::test]
+async fn reconcile_merging_not_stale_when_heartbeat_is_recent() {
+    // Task entered Merging a long time ago (via updated_at fallback) but has a recent heartbeat.
+    // Reconciler should use the heartbeat and NOT consider the task stale.
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Task entered Merging 600s ago (2x timeout) — would normally be stale
+    let mut task = Task::new(project.id.clone(), "Heartbeat Merging Task".to_string());
+    task.internal_status = InternalStatus::Merging;
+    task.updated_at = chrono::Utc::now() - chrono::Duration::seconds(600);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Register an agent in Merging context with a RECENT heartbeat (just 10s ago)
+    let merge_key = RunningAgentKey::new("merge", task.id.as_str());
+    app_state
+        .running_agent_registry
+        .register(
+            merge_key.clone(),
+            99999,
+            "conv-merge".to_string(),
+            "run-merge".to_string(),
+            None,
+            None,
+        )
+        .await;
+    let recent_heartbeat = chrono::Utc::now() - chrono::Duration::seconds(10);
+    app_state
+        .running_agent_registry
+        .update_heartbeat(&merge_key, recent_heartbeat)
+        .await;
+
+    // Reconcile — recent heartbeat means effective_age < timeout, so NOT stale
+    reconciler
+        .reconcile_merging_task(&task, InternalStatus::Merging)
+        .await;
+
+    // Task should still be in Merging — no timeout metadata recorded
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Merging,
+        "Task should not leave Merging when heartbeat is recent (effective_age < timeout)"
+    );
+
+    // merge_recovery metadata should NOT contain an attempt_failed event
+    // (record_merge_timeout_event only fires when is_stale)
+    let metadata_str = updated.metadata.as_deref().unwrap_or("{}");
+    let meta_json: serde_json::Value = serde_json::from_str(metadata_str).unwrap_or_default();
+    let has_timeout_record = meta_json.get("merge_recovery").is_some();
+    assert!(
+        !has_timeout_record,
+        "No merge_recovery metadata should be written when heartbeat is recent"
+    );
+}
+
+#[tokio::test]
+async fn reconcile_merging_stale_when_heartbeat_is_old() {
+    // Task has an old heartbeat (>300s) — should be considered stale.
+    // Staleness is confirmed by checking that record_merge_timeout_event fired
+    // (writes merge_recovery metadata).
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Task entered Merging "just now" via updated_at — wall-clock fallback would NOT trigger
+    let mut task = Task::new(project.id.clone(), "Old Heartbeat Merging Task".to_string());
+    task.internal_status = InternalStatus::Merging;
+    task.updated_at = chrono::Utc::now() - chrono::Duration::seconds(10);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Register agent with an OLD heartbeat (400s ago — beyond 300s timeout)
+    let merge_key = RunningAgentKey::new("merge", task.id.as_str());
+    app_state
+        .running_agent_registry
+        .register(
+            merge_key.clone(),
+            99999,
+            "conv-merge-old".to_string(),
+            "run-merge-old".to_string(),
+            None,
+            None,
+        )
+        .await;
+    let old_heartbeat = chrono::Utc::now() - chrono::Duration::seconds(400);
+    app_state
+        .running_agent_registry
+        .update_heartbeat(&merge_key, old_heartbeat)
+        .await;
+
+    // Reconcile — old heartbeat should trigger staleness
+    reconciler
+        .reconcile_merging_task(&task, InternalStatus::Merging)
+        .await;
+
+    // merge_recovery metadata with an attempt_failed event confirms staleness was detected
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    let metadata_str = updated.metadata.as_deref().unwrap_or("{}");
+    let meta_json: serde_json::Value = serde_json::from_str(metadata_str).unwrap_or_default();
+    assert!(
+        meta_json.get("merge_recovery").is_some(),
+        "merge_recovery metadata should be written when heartbeat is old (stale path)"
+    );
+    // Verify an AttemptFailed event was recorded
+    let events = meta_json["merge_recovery"]["events"].as_array();
+    let has_attempt_failed = events.map(|evts| {
+        evts.iter().any(|e| e["kind"].as_str() == Some("attempt_failed"))
+    }).unwrap_or(false);
+    assert!(
+        has_attempt_failed,
+        "An attempt_failed event should be recorded when effective_age >= MERGING_TIMEOUT_SECONDS"
     );
 }
