@@ -89,6 +89,7 @@ export function useChatEvents({
         context_type?: string;
         diff_context?: { old_content?: string; file_path: string } | null;
         parent_tool_use_id?: string | null;
+        seq?: number;
       }>("agent:tool_call", (payload) => {
         const { tool_name, tool_id, arguments: args, result, conversation_id, diff_context, parent_tool_use_id } = payload;
 
@@ -244,11 +245,14 @@ export function useChatEvents({
                   if (diffContext) {
                     updated.diffContext = diffContext;
                   }
-                  return { type: "tool_use", toolCall: updated };
+                  // Preserve existing seq when updating block
+                  const updatedBlock = { type: "tool_use" as const, toolCall: updated };
+                  return block.seq != null ? { ...updatedBlock, seq: block.seq } : updatedBlock;
                 });
               }
               // New tool_use block — append
-              return [...prev, { type: "tool_use", toolCall: entry }];
+              const newBlock = { type: "tool_use" as const, toolCall: entry };
+              return [...prev, payload.seq != null ? { ...newBlock, seq: payload.seq } : newBlock];
             });
           }
         }
@@ -270,11 +274,12 @@ export function useChatEvents({
           conversation_id: string;
           context_id?: string;
           context_type?: string;
+          seq?: number;
         }>("agent:task_started", (payload) => {
           if (!isRelevant(payload)) return;
           setStreamingTasks((prev) => {
             const next = new Map(prev);
-            next.set(payload.tool_use_id, {
+            const newTask: StreamingTask = {
               toolUseId: payload.tool_use_id,
               description: payload.description ?? "",
               subagentType: payload.subagent_type ?? "unknown",
@@ -282,7 +287,11 @@ export function useChatEvents({
               status: "running",
               startedAt: Date.now(),
               childToolCalls: [],
-            });
+            };
+            if (payload.seq != null) {
+              newTask.seq = payload.seq;
+            }
+            next.set(payload.tool_use_id, newTask);
             return next;
           });
         })
@@ -301,6 +310,7 @@ export function useChatEvents({
           conversation_id: string;
           context_id?: string;
           context_type?: string;
+          seq?: number;
         }>("agent:task_completed", (payload) => {
           if (!isRelevant(payload)) return;
           setStreamingTasks((prev) => {
@@ -324,6 +334,9 @@ export function useChatEvents({
             if (payload.total_tool_use_count != null) {
               updated.totalToolUseCount = payload.total_tool_use_count;
             }
+            if (payload.seq != null) {
+              updated.seq = payload.seq;
+            }
             next.set(payload.tool_use_id, updated);
             return next;
           });
@@ -335,7 +348,7 @@ export function useChatEvents({
     // Skip chunks with teammate_name — those route to teamStore via useTeamEvents
     if (supportsStreamingText) {
       unsubscribes.push(
-        bus.subscribe<{ text: string; conversation_id: string; context_id?: string; context_type?: string; teammate_name?: string | null }>(
+        bus.subscribe<{ text: string; conversation_id: string; context_id?: string; context_type?: string; teammate_name?: string | null; seq?: number }>(
           "agent:chunk", (payload) => {
             if (payload.teammate_name) return;
             if (!isRelevant(payload)) return;
@@ -344,10 +357,14 @@ export function useChatEvents({
               // If last block is text, append to it; otherwise create new text block
               if (lastBlock?.type === "text") {
                 const updated = [...prev];
-                updated[updated.length - 1] = { type: "text", text: lastBlock.text + payload.text };
+                // Preserve existing seq when appending to block (don't use latest chunk's seq)
+                const appendBlock = { type: "text" as const, text: lastBlock.text + payload.text };
+                updated[updated.length - 1] = lastBlock.seq != null ? { ...appendBlock, seq: lastBlock.seq } : appendBlock;
                 return updated;
               }
-              return [...prev, { type: "text", text: payload.text }];
+              // New text block: use seq from payload
+              const newBlock = { type: "text" as const, text: payload.text };
+              return [...prev, payload.seq != null ? { ...newBlock, seq: payload.seq } : newBlock];
             });
           }
         )
