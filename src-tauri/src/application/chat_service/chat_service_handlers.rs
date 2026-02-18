@@ -313,6 +313,26 @@ pub(super) async fn handle_stream_success<R: Runtime>(
     }
 }
 
+/// Check whether a task is still in an active execution state that needs recovery.
+///
+/// Returns `true` if the task is in `Executing` or `ReExecuting` — the "stuck" states that
+/// warrant a transition retry. Returns `false` if the task has already transitioned (e.g.,
+/// auto-complete resolved it), or if the task was not found. Returns `true` on repo errors
+/// so the retry is attempted defensively rather than silently dropped.
+pub(super) async fn task_still_needs_execution_recovery(
+    task_id: &TaskId,
+    task_repo: &Arc<dyn TaskRepository>,
+) -> bool {
+    match task_repo.get_by_id(task_id).await {
+        Ok(Some(refreshed)) => {
+            refreshed.internal_status == InternalStatus::Executing
+                || refreshed.internal_status == InternalStatus::ReExecuting
+        }
+        Ok(None) => false,
+        Err(_) => true,
+    }
+}
+
 /// Handle stream error: classify error, attempt stale session recovery,
 /// fail agent run, finalize message, emit error event, and transition task to Failed.
 ///
@@ -781,7 +801,19 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                         );
                         // D4: Retry once after 500ms delay
                         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                        if let Err(retry_err) = transition_service
+                        // Pre-check: re-fetch task state to avoid double-transition if
+                        // auto-complete already resolved the task during the 500ms window.
+                        let still_stuck = task_still_needs_execution_recovery(
+                            &task_id,
+                            task_repo,
+                        )
+                        .await;
+                        if !still_stuck {
+                            tracing::debug!(
+                                task_id = task_id.as_str(),
+                                "Skipping merge retry — task already transitioned before retry fired"
+                            );
+                        } else if let Err(retry_err) = transition_service
                             .transition_task(&task_id, target_status)
                             .await
                         {
@@ -971,4 +1003,120 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
     }
 
     false // Normal error handling performed, no retry spawned
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use chrono::{DateTime, Utc};
+    use std::sync::Arc;
+
+    use crate::domain::entities::{IdeationSessionId, ProjectId, Task};
+    use crate::domain::repositories::{StateHistoryMetadata, StatusTransition};
+    use crate::error::AppResult;
+
+    /// Configurable mock: `get_by_id` returns the stored task (or None).
+    struct StubTaskRepo {
+        task: Option<Task>,
+    }
+
+    #[async_trait]
+    impl TaskRepository for StubTaskRepo {
+        async fn get_by_id(&self, _id: &TaskId) -> AppResult<Option<Task>> {
+            Ok(self.task.clone())
+        }
+
+        // ── Stubs for all other required methods ────────────────────────────
+        async fn create(&self, task: Task) -> AppResult<Task> { Ok(task) }
+        async fn get_by_project(&self, _: &ProjectId) -> AppResult<Vec<Task>> { Ok(vec![]) }
+        async fn update(&self, _: &Task) -> AppResult<()> { Ok(()) }
+        async fn update_metadata(&self, _: &TaskId, _: Option<String>) -> AppResult<()> { Ok(()) }
+        async fn delete(&self, _: &TaskId) -> AppResult<()> { Ok(()) }
+        async fn clear_task_references(&self, _: &TaskId) -> AppResult<()> { Ok(()) }
+        async fn get_by_status(&self, _: &ProjectId, _: InternalStatus) -> AppResult<Vec<Task>> { Ok(vec![]) }
+        async fn persist_status_change(&self, _: &TaskId, _: InternalStatus, _: InternalStatus, _: &str) -> AppResult<()> { Ok(()) }
+        async fn get_status_history(&self, _: &TaskId) -> AppResult<Vec<StatusTransition>> { Ok(vec![]) }
+        async fn get_status_entered_at(&self, _: &TaskId, _: InternalStatus) -> AppResult<Option<DateTime<Utc>>> { Ok(None) }
+        async fn get_next_executable(&self, _: &ProjectId) -> AppResult<Option<Task>> { Ok(None) }
+        async fn get_blockers(&self, _: &TaskId) -> AppResult<Vec<Task>> { Ok(vec![]) }
+        async fn get_dependents(&self, _: &TaskId) -> AppResult<Vec<Task>> { Ok(vec![]) }
+        async fn add_blocker(&self, _: &TaskId, _: &TaskId) -> AppResult<()> { Ok(()) }
+        async fn resolve_blocker(&self, _: &TaskId, _: &TaskId) -> AppResult<()> { Ok(()) }
+        async fn get_by_ideation_session(&self, _: &IdeationSessionId) -> AppResult<Vec<Task>> { Ok(vec![]) }
+        async fn get_by_project_filtered(&self, _: &ProjectId, _: bool) -> AppResult<Vec<Task>> { Ok(vec![]) }
+        async fn archive(&self, id: &TaskId) -> AppResult<Task> {
+            let mut t = Task::new(ProjectId::new(), "archived".into());
+            t.id = id.clone();
+            Ok(t)
+        }
+        async fn restore(&self, id: &TaskId) -> AppResult<Task> {
+            let mut t = Task::new(ProjectId::new(), "restored".into());
+            t.id = id.clone();
+            Ok(t)
+        }
+        async fn get_archived_count(&self, _: &ProjectId, _: Option<&str>) -> AppResult<u32> { Ok(0) }
+        async fn list_paginated(&self, _: &ProjectId, _: Option<Vec<InternalStatus>>, _: u32, _: u32, _: bool, _: Option<&str>) -> AppResult<Vec<Task>> { Ok(vec![]) }
+        async fn count_tasks(&self, _: &ProjectId, _: bool, _: Option<&str>) -> AppResult<u32> { Ok(0) }
+        async fn search(&self, _: &ProjectId, _: &str, _: bool) -> AppResult<Vec<Task>> { Ok(vec![]) }
+        async fn get_oldest_ready_task(&self) -> AppResult<Option<Task>> { Ok(None) }
+        async fn get_oldest_ready_tasks(&self, _: u32) -> AppResult<Vec<Task>> { Ok(vec![]) }
+        async fn update_latest_state_history_metadata(&self, _: &TaskId, _: &StateHistoryMetadata) -> AppResult<()> { Ok(()) }
+        async fn has_task_in_states(&self, _: &ProjectId, _: &[InternalStatus]) -> AppResult<bool> { Ok(false) }
+    }
+
+    fn make_task(status: InternalStatus) -> Task {
+        let mut task = Task::new(ProjectId::new(), "test task".into());
+        task.internal_status = status;
+        task
+    }
+
+    #[tokio::test]
+    async fn test_still_needs_recovery_when_executing() {
+        let task_id = TaskId::new();
+        let repo: Arc<dyn TaskRepository> =
+            Arc::new(StubTaskRepo { task: Some(make_task(InternalStatus::Executing)) });
+        assert!(task_still_needs_execution_recovery(&task_id, &repo).await);
+    }
+
+    #[tokio::test]
+    async fn test_still_needs_recovery_when_re_executing() {
+        let task_id = TaskId::new();
+        let repo: Arc<dyn TaskRepository> =
+            Arc::new(StubTaskRepo { task: Some(make_task(InternalStatus::ReExecuting)) });
+        assert!(task_still_needs_execution_recovery(&task_id, &repo).await);
+    }
+
+    #[tokio::test]
+    async fn test_no_recovery_when_already_transitioned() {
+        // Simulate auto-complete resolving the task to PendingReview during the 500ms window
+        let task_id = TaskId::new();
+        let repo: Arc<dyn TaskRepository> =
+            Arc::new(StubTaskRepo { task: Some(make_task(InternalStatus::PendingReview)) });
+        assert!(!task_still_needs_execution_recovery(&task_id, &repo).await);
+    }
+
+    #[tokio::test]
+    async fn test_no_recovery_when_failed() {
+        let task_id = TaskId::new();
+        let repo: Arc<dyn TaskRepository> =
+            Arc::new(StubTaskRepo { task: Some(make_task(InternalStatus::Failed)) });
+        assert!(!task_still_needs_execution_recovery(&task_id, &repo).await);
+    }
+
+    #[tokio::test]
+    async fn test_no_recovery_when_cancelled() {
+        let task_id = TaskId::new();
+        let repo: Arc<dyn TaskRepository> =
+            Arc::new(StubTaskRepo { task: Some(make_task(InternalStatus::Cancelled)) });
+        assert!(!task_still_needs_execution_recovery(&task_id, &repo).await);
+    }
+
+    #[tokio::test]
+    async fn test_no_recovery_when_task_not_found() {
+        // Task not found (e.g., deleted) → skip retry safely
+        let task_id = TaskId::new();
+        let repo: Arc<dyn TaskRepository> = Arc::new(StubTaskRepo { task: None });
+        assert!(!task_still_needs_execution_recovery(&task_id, &repo).await);
+    }
 }
