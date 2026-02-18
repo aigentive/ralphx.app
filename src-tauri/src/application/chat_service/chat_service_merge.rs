@@ -567,8 +567,32 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
         tracing::error!(
             task_id = task_id_str,
             error = %e,
-            "attempt_merge_auto_complete: complete_merge_internal failed"
+            "attempt_merge_auto_complete: complete_merge_internal failed — transitioning to MergeIncomplete"
         );
+        // Transition via TaskTransitionService so on_exit(Merging) fires:
+        // - decrements running_count (prevents concurrency limit leak)
+        // - triggers try_retry_deferred_merges
+        // - surfaces task in needs_attention panel
+        transition_to_merge_incomplete(
+            &task_id,
+            &format!("Auto-complete failed: complete_merge_internal error: {}", e),
+            task_repo,
+            task_dependency_repo,
+            project_repo,
+            chat_message_repo,
+            chat_attachment_repo,
+            conversation_repo,
+            agent_run_repo,
+            ideation_session_repo,
+            activity_event_repo,
+            message_queue,
+            running_agent_registry,
+            memory_event_repo,
+            execution_state,
+            plan_branch_repo,
+            app_handle,
+        )
+        .await;
     } else {
         // Auto-unblock tasks that were waiting on this task
         // (auto-complete merge path - on_enter(Merged) won't be triggered)

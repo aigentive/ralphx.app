@@ -3052,3 +3052,109 @@ async fn test_on_enter_qa_testing_writes_when_not_present() {
         "trigger_origin should be set to 'qa' when not present"
     );
 }
+
+// ==================
+// TransitionHandler bypass fix tests (Phase 3 hardening)
+// ==================
+
+/// Test: Empty source branch path calls on_exit(PendingMerge → MergeIncomplete).
+///
+/// When `attempt_programmatic_merge` encounters an empty source branch (task has no
+/// task_branch set), it must call on_exit to trigger deferred merge retry for other
+/// tasks. Previously, this path returned early without calling on_exit, leaving
+/// deferred merges blocked.
+#[tokio::test]
+async fn test_empty_source_branch_triggers_deferred_merge_retry() {
+    use crate::domain::entities::{Project, Task};
+    use crate::domain::state_machine::mocks::MockTaskScheduler;
+    use crate::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
+
+    let scheduler = Arc::new(MockTaskScheduler::new());
+
+    // Task with NO task_branch → empty source branch → MergeIncomplete path
+    let project = Project::new("test-project".to_string(), "/tmp/test".to_string());
+    let task = Task::new(project.id.clone(), "Test task".to_string());
+    // task.task_branch is None by default → empty source branch
+
+    let task_repo: Arc<dyn crate::domain::repositories::TaskRepository> =
+        Arc::new(MemoryTaskRepository::new());
+    let project_repo: Arc<dyn crate::domain::repositories::ProjectRepository> =
+        Arc::new(MemoryProjectRepository::new());
+
+    task_repo.create(task.clone()).await.unwrap();
+    project_repo.create(project.clone()).await.unwrap();
+
+    let services = TaskServices::new_mock()
+        .with_task_repo(task_repo.clone())
+        .with_project_repo(project_repo.clone())
+        .with_task_scheduler(
+            Arc::clone(&scheduler) as Arc<dyn crate::domain::state_machine::services::TaskScheduler>
+        );
+
+    let context = create_context_with_services(task.id.as_str(), project.id.as_str(), services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    // Call on_enter(PendingMerge) which runs attempt_programmatic_merge
+    let _ = handler.on_enter(&State::PendingMerge).await;
+
+    // Wait for spawned tasks to complete
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    // Verify: on_exit(PendingMerge → MergeIncomplete) fired, triggering deferred retry
+    let calls = scheduler.get_calls();
+    let retry_calls: Vec<_> = calls
+        .iter()
+        .filter(|c| c.method == "try_retry_deferred_merges")
+        .collect();
+
+    assert!(
+        !retry_calls.is_empty(),
+        "Empty-source-branch path must call on_exit to trigger try_retry_deferred_merges, \
+         preventing deferred merges from being blocked"
+    );
+}
+
+/// Test: Repos-unavailable path calls on_exit(PendingMerge → MergeIncomplete).
+///
+/// When task_repo or project_repo is None during PendingMerge entry, the system
+/// cannot update the DB but must still call on_exit so that deferred merge retries
+/// for other tasks are not blocked.
+#[tokio::test]
+async fn test_repos_unavailable_triggers_deferred_merge_retry() {
+    use crate::domain::state_machine::mocks::MockTaskScheduler;
+
+    let scheduler = Arc::new(MockTaskScheduler::new());
+
+    // Services with NO task_repo/project_repo (repos unavailable)
+    let services = TaskServices::new_mock().with_task_scheduler(
+        Arc::clone(&scheduler) as Arc<dyn crate::domain::state_machine::services::TaskScheduler>,
+    );
+    // Verify repos are not set
+    assert!(
+        services.task_repo.is_none(),
+        "task_repo should be None for this test"
+    );
+
+    let context = create_context_with_services("task-unavailable", "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    // Call on_enter(PendingMerge) — repos unavailable path fires
+    let _ = handler.on_enter(&State::PendingMerge).await;
+
+    // Wait for spawned tasks to complete
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    // Verify: on_exit fired despite repos being unavailable
+    let calls = scheduler.get_calls();
+    let retry_calls: Vec<_> = calls
+        .iter()
+        .filter(|c| c.method == "try_retry_deferred_merges")
+        .collect();
+
+    assert!(
+        !retry_calls.is_empty(),
+        "Repos-unavailable path must still call on_exit to trigger try_retry_deferred_merges"
+    );
+}

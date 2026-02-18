@@ -143,6 +143,10 @@ impl<'a> super::TransitionHandler<'a> {
                 "Programmatic merge BLOCKED: repos not available — \
                  task will remain stuck in PendingMerge"
             );
+            // Cannot write MergeIncomplete to DB without repos, but call on_exit so
+            // deferred merge retries for other tasks are not blocked by this one.
+            self.on_exit(&State::PendingMerge, &State::MergeIncomplete)
+                .await;
             return;
         };
 
@@ -240,6 +244,11 @@ impl<'a> super::TransitionHandler<'a> {
                 .services
                 .event_emitter
                 .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                .await;
+
+            // Route through TransitionHandler exit to trigger deferred merge retry
+            // and ensure all side effects (e.g. try_retry_deferred_merges) fire.
+            self.on_exit(&State::PendingMerge, &State::MergeIncomplete)
                 .await;
 
             return;
