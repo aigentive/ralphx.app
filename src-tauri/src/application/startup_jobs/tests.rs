@@ -1060,8 +1060,9 @@ async fn test_blocked_task_remains_blocked_when_blocker_paused() {
     );
 }
 
+/// Stopped is now terminal — a blocked task should be unblocked when its blocker is Stopped.
 #[tokio::test]
-async fn test_blocked_task_remains_blocked_when_blocker_stopped() {
+async fn test_all_blockers_complete_treats_stopped_as_terminal() {
     let (execution_state, app_state) = setup_test_state().await;
 
     // Create a project
@@ -1106,7 +1107,7 @@ async fn test_blocked_task_remains_blocked_when_blocker_stopped() {
     // Run startup
     runner.run().await;
 
-    // Verify the blocked task is still Blocked
+    // Verify the blocked task is now Ready (Stopped blocker is terminal)
     let updated_task = app_state
         .task_repo
         .get_by_id(&blocked_task.id)
@@ -1115,12 +1116,69 @@ async fn test_blocked_task_remains_blocked_when_blocker_stopped() {
         .unwrap();
     assert_eq!(
         updated_task.internal_status,
-        InternalStatus::Blocked,
-        "Blocked task should remain blocked when blocker is Stopped"
+        InternalStatus::Ready,
+        "Blocked task should become Ready when blocker is Stopped (Stopped is terminal)"
     );
-    assert!(
-        updated_task.blocked_reason.is_some(),
-        "blocked_reason should be preserved"
+}
+
+/// MergeIncomplete is terminal — a blocked task should be unblocked when its blocker is MergeIncomplete.
+#[tokio::test]
+async fn test_all_blockers_complete_treats_merge_incomplete_as_terminal() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    // Create a project
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create a blocker task in MergeIncomplete state
+    let mut blocker_task = Task::new(project.id.clone(), "MergeIncomplete Blocker".to_string());
+    blocker_task.internal_status = InternalStatus::MergeIncomplete;
+    app_state
+        .task_repo
+        .create(blocker_task.clone())
+        .await
+        .unwrap();
+
+    // Create a blocked task
+    let mut blocked_task = Task::new(project.id.clone(), "Blocked Task".to_string());
+    blocked_task.internal_status = InternalStatus::Blocked;
+    blocked_task.blocked_reason = Some("Waiting for: MergeIncomplete Blocker".to_string());
+    app_state
+        .task_repo
+        .create(blocked_task.clone())
+        .await
+        .unwrap();
+
+    // Add the dependency relationship
+    app_state
+        .task_dependency_repo
+        .add_dependency(&blocked_task.id, &blocker_task.id)
+        .await
+        .unwrap();
+
+    // Pause execution to skip agent resumption (we only want to test unblocking)
+    execution_state.pause();
+
+    let (runner, _app_state_repo) = build_runner(&app_state, &execution_state);
+
+    // Run startup
+    runner.run().await;
+
+    // Verify the blocked task is now Ready (MergeIncomplete blocker is terminal)
+    let updated_task = app_state
+        .task_repo
+        .get_by_id(&blocked_task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated_task.internal_status,
+        InternalStatus::Ready,
+        "Blocked task should become Ready when blocker is MergeIncomplete (terminal)"
     );
 }
 

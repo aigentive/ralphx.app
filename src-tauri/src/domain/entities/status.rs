@@ -163,11 +163,15 @@ impl InternalStatus {
         ]
     }
 
-    /// Returns true if this status is terminal (task is done, no agent needed).
+    /// Returns true if this status is terminal for dependency-unblocking purposes.
+    /// Terminal: Merged, Failed, Cancelled, Stopped, MergeIncomplete.
+    /// MergeIncomplete is terminal because it requires manual intervention — a blocker
+    /// stuck in MergeIncomplete must not permanently block dependents.
+    /// NOT terminal: Paused (can resume), MergeConflict (agent can retry), Approved (→ PendingMerge).
     pub fn is_terminal(&self) -> bool {
         matches!(
             self,
-            Self::Merged | Self::Failed | Self::Cancelled | Self::Stopped
+            Self::Merged | Self::Failed | Self::Cancelled | Self::Stopped | Self::MergeIncomplete
         )
     }
 
@@ -1053,7 +1057,8 @@ mod tests {
     fn test_is_terminal() {
         use InternalStatus::*;
 
-        let terminal = [Merged, Failed, Cancelled, Stopped];
+        // MergeIncomplete is terminal for dependency purposes (requires manual intervention)
+        let terminal = [Merged, Failed, Cancelled, Stopped, MergeIncomplete];
         for status in &terminal {
             assert!(status.is_terminal(), "{:?} should be terminal", status);
         }
@@ -1064,6 +1069,31 @@ mod tests {
             .collect();
         for status in non_terminal {
             assert!(!status.is_terminal(), "{:?} should NOT be terminal", status);
+        }
+    }
+
+    /// Exhaustive test: every InternalStatus variant must explicitly be terminal or non-terminal.
+    /// This test will fail if new variants are added without updating is_terminal().
+    #[test]
+    fn test_is_terminal_covers_all_variants() {
+        use InternalStatus::*;
+        let terminal = [Merged, Failed, Cancelled, Stopped, MergeIncomplete];
+        let non_terminal = [
+            Backlog, Ready, Blocked, Executing, QaRefining, QaTesting, QaPassed, QaFailed,
+            PendingReview, Reviewing, ReviewPassed, Escalated, RevisionNeeded, ReExecuting,
+            Approved, PendingMerge, Merging, MergeConflict, Paused,
+        ];
+        // Verify total coverage matches all_variants()
+        assert_eq!(
+            terminal.len() + non_terminal.len(),
+            InternalStatus::all_variants().len(),
+            "is_terminal coverage is incomplete — update this test when adding new variants"
+        );
+        for s in &terminal {
+            assert!(s.is_terminal(), "{:?} should be terminal", s);
+        }
+        for s in &non_terminal {
+            assert!(!s.is_terminal(), "{:?} should NOT be terminal", s);
         }
     }
 }
