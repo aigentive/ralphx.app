@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use crate::application::{AppState, CreateProposalOptions, UpdateProposalOptions};
 use crate::domain::entities::{
-    Artifact, ArtifactContent, ArtifactSummary, ArtifactType, IdeationSessionId,
+    Artifact, ArtifactContent, ArtifactSummary, ArtifactType, IdeationSession, IdeationSessionId,
     IdeationSessionStatus, InternalStatus, Priority, TaskCategory, TaskContext, TaskId,
     TaskProposal, TaskProposalId,
 };
@@ -111,6 +111,30 @@ pub fn create_artifact_preview(artifact: &Artifact) -> String {
 }
 
 // ============================================================================
+// Session Guard
+// ============================================================================
+
+/// Assert that a session can be mutated (not Archived or Accepted).
+///
+/// Returns `Ok(())` for Active sessions.
+/// Returns `AppError::Validation` for Archived/Accepted sessions, preventing
+/// silent mutation of immutable sessions.
+///
+/// # Reference pattern
+/// `create_task_proposal` (Tauri IPC) is the original protected handler.
+pub fn assert_session_mutable(session: &IdeationSession) -> AppResult<()> {
+    match session.status {
+        IdeationSessionStatus::Archived | IdeationSessionStatus::Accepted => {
+            Err(AppError::Validation(format!(
+                "Cannot modify {} session. Reopen it first.",
+                session.status
+            )))
+        }
+        IdeationSessionStatus::Active => Ok(()),
+    }
+}
+
+// ============================================================================
 // Proposal Implementation Functions
 // ============================================================================
 
@@ -203,6 +227,16 @@ pub async fn update_proposal_impl(
         .get_by_id(proposal_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Proposal {} not found", proposal_id)))?;
+
+    // Guard: reject mutations on Archived/Accepted sessions
+    let session = state
+        .ideation_session_repo
+        .get_by_id(&proposal.session_id)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(format!("Session {} not found", proposal.session_id))
+        })?;
+    assert_session_mutable(&session)?;
 
     // Apply updates
     if let Some(title) = options.title {
@@ -671,8 +705,54 @@ mod tests {
     use super::*;
     use crate::application::AppState;
     use crate::domain::entities::{
-        Artifact, ArtifactType, IdeationSession, ProjectId, TaskCategory,
+        Artifact, ArtifactType, IdeationSession, IdeationSessionStatus, ProjectId, TaskCategory,
     };
+
+    // -------------------------------------------------------------------------
+    // assert_session_mutable tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_assert_session_mutable_active_ok() {
+        let session = IdeationSession::new_with_title(ProjectId::new(), "Active Session");
+        assert_eq!(session.status, IdeationSessionStatus::Active);
+        assert!(assert_session_mutable(&session).is_ok());
+    }
+
+    #[test]
+    fn test_assert_session_mutable_archived_err() {
+        let session = IdeationSession::builder()
+            .project_id(ProjectId::new())
+            .title("Archived Session")
+            .status(IdeationSessionStatus::Archived)
+            .build();
+        let result = assert_session_mutable(&session);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            AppError::Validation(msg) => {
+                assert!(msg.contains("archived"), "Expected 'archived' in: {}", msg);
+                assert!(msg.contains("Reopen"), "Expected 'Reopen' in: {}", msg);
+            }
+            other => panic!("Expected Validation error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_assert_session_mutable_accepted_err() {
+        let session = IdeationSession::builder()
+            .project_id(ProjectId::new())
+            .title("Accepted Session")
+            .status(IdeationSessionStatus::Accepted)
+            .build();
+        let result = assert_session_mutable(&session);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            AppError::Validation(msg) => {
+                assert!(msg.contains("accepted"), "Expected 'accepted' in: {}", msg);
+            }
+            other => panic!("Expected Validation error, got: {:?}", other),
+        }
+    }
 
     #[tokio::test]
     async fn test_create_proposal_without_plan_artifact_returns_validation_error() {

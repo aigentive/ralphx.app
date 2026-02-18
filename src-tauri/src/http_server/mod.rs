@@ -86,6 +86,7 @@ pub async fn start_http_server(
         // Session messages (context recovery for ideation agents)
         .route("/api/get_session_messages", post(get_session_messages))
         // Plan artifact tools (orchestrator-ideation agent)
+        // NOTE: All ideation mutation routes MUST call assert_session_mutable() after fetching the session.
         .route("/api/create_plan_artifact", post(create_plan_artifact))
         .route("/api/update_plan_artifact", post(update_plan_artifact))
         .route(

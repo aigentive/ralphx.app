@@ -34,6 +34,9 @@ pub async fn create_plan_artifact(
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
+    // Guard: reject mutations on Archived/Accepted sessions
+    assert_session_mutable(&session).map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
+
     // Create the specification artifact
     let bucket_id = ArtifactBucketId::from_string("prd-library");
     let artifact = Artifact {
@@ -154,6 +157,25 @@ pub async fn update_plan_artifact(
             StatusCode::INTERNAL_SERVER_ERROR
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Guard: reject mutations on Archived/Accepted sessions
+    // Look up the owning session via the artifact ID
+    let owning_sessions = state
+        .app_state
+        .ideation_session_repo
+        .get_by_plan_artifact_id(old_artifact_id.as_str())
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to find sessions for artifact {}: {}",
+                old_artifact_id.as_str(),
+                e
+            );
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if let Some(session) = owning_sessions.first() {
+        assert_session_mutable(session).map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
+    }
 
     // Create NEW artifact with incremented version (version chain, not in-place update)
     let new_artifact = Artifact {
@@ -350,6 +372,24 @@ pub async fn link_proposals_to_plan(
             StatusCode::INTERNAL_SERVER_ERROR
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Guard: reject mutations on Archived/Accepted sessions
+    let owning_sessions = state
+        .app_state
+        .ideation_session_repo
+        .get_by_plan_artifact_id(artifact_id.as_str())
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to find sessions for artifact {}: {}",
+                artifact_id.as_str(),
+                e
+            );
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if let Some(session) = owning_sessions.first() {
+        assert_session_mutable(session).map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
+    }
 
     // Update each proposal
     for proposal_id_str in req.proposal_ids {

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { PlanDisplay } from "./PlanDisplay";
-import type { PlanDisplayProps, TeamMetadata } from "./PlanDisplay";
+import type { TeamMetadata } from "./PlanDisplay";
 import type { Artifact } from "@/types/artifact";
 
 vi.mock("./TeamFindingsSection", () => ({
