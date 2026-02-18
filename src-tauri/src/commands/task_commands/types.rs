@@ -104,7 +104,7 @@ impl From<Task> for TaskResponse {
         Self {
             id: task.id.as_str().to_string(),
             project_id: task.project_id.as_str().to_string(),
-            category: task.category,
+            category: task.category.to_string(),
             title: task.title,
             description: task.description,
             priority: task.priority,

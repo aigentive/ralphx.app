@@ -5,7 +5,7 @@ use tauri::{Emitter, State};
 
 use crate::application::AppState;
 use crate::domain::entities::{
-    ProjectId, ReviewId, ReviewNote, ReviewOutcome, ReviewerType, TaskId,
+    ProjectId, ReviewId, ReviewNote, ReviewOutcome, ReviewerType, TaskCategory, TaskId,
 };
 
 // Re-export types for external use
@@ -327,7 +327,7 @@ pub async fn reject_fix_task(
     let mut new_fix_task = Task::new_with_category(
         project_id.clone(),
         format!("Fix: {}", original_task.title),
-        "fix".to_string(),
+        TaskCategory::Regular,
     );
     new_fix_task.set_description(Some(new_fix_description));
     new_fix_task.set_priority(original_task.priority + 1);
@@ -1069,7 +1069,7 @@ mod tests {
         let mut fix_task = Task::new_with_category(
             project_id,
             "Fix: Original Task".to_string(),
-            "fix".to_string(),
+            TaskCategory::Regular,
         );
         fix_task.internal_status = InternalStatus::Blocked;
         let fix_task = state
@@ -1210,7 +1210,7 @@ mod tests {
         let mut new_fix_task = Task::new_with_category(
             original.project_id.clone(),
             format!("Fix: {}", original.title),
-            "fix".to_string(),
+            TaskCategory::Regular,
         );
         new_fix_task.set_description(Some(format!(
             "Previous fix rejected. Feedback: {}\n\nOriginal issue: {}",

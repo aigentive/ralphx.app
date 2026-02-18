@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crate::application::{AppState, CreateProposalOptions, UpdateProposalOptions};
 use crate::domain::entities::{
     Artifact, ArtifactContent, ArtifactSummary, ArtifactType, IdeationSession, IdeationSessionId,
-    IdeationSessionStatus, InternalStatus, Priority, TaskCategory, TaskContext, TaskId,
+    IdeationSessionStatus, InternalStatus, Priority, ProposalCategory, TaskContext, TaskId,
     TaskProposal, TaskProposalId,
 };
 use crate::error::{AppError, AppResult};
@@ -20,26 +20,26 @@ use tauri::Emitter;
 // Parsing Functions
 // ============================================================================
 
-/// Parse a category string to TaskCategory enum
+/// Parse a category string to ProposalCategory enum
 ///
 /// Accepts: "feature", "fix"/"bug", "refactor", "test"/"testing",
 /// "docs"/"documentation", "setup"/"infrastructure"/"infra",
 /// "performance"/"perf", "security"/"sec", "devops"/"dev_ops"/"ci_cd"/"cicd",
 /// "research"/"investigation", "design", "chore"/"maintenance"
-pub fn parse_category(s: &str) -> Result<TaskCategory, String> {
+pub fn parse_category(s: &str) -> Result<ProposalCategory, String> {
     match s.to_lowercase().as_str() {
-        "feature" => Ok(TaskCategory::Feature),
-        "fix" | "bug" => Ok(TaskCategory::Fix),
-        "refactor" => Ok(TaskCategory::Refactor),
-        "test" | "testing" => Ok(TaskCategory::Test),
-        "docs" | "documentation" => Ok(TaskCategory::Docs),
-        "setup" | "infrastructure" | "infra" => Ok(TaskCategory::Setup),
-        "performance" | "perf" => Ok(TaskCategory::Performance),
-        "security" | "sec" => Ok(TaskCategory::Security),
-        "devops" | "dev_ops" | "ci_cd" | "cicd" => Ok(TaskCategory::DevOps),
-        "research" | "investigation" => Ok(TaskCategory::Research),
-        "design" => Ok(TaskCategory::Design),
-        "chore" | "maintenance" => Ok(TaskCategory::Chore),
+        "feature" => Ok(ProposalCategory::Feature),
+        "fix" | "bug" => Ok(ProposalCategory::Fix),
+        "refactor" => Ok(ProposalCategory::Refactor),
+        "test" | "testing" => Ok(ProposalCategory::Test),
+        "docs" | "documentation" => Ok(ProposalCategory::Docs),
+        "setup" | "infrastructure" | "infra" => Ok(ProposalCategory::Setup),
+        "performance" | "perf" => Ok(ProposalCategory::Performance),
+        "security" | "sec" => Ok(ProposalCategory::Security),
+        "devops" | "dev_ops" | "ci_cd" | "cicd" => Ok(ProposalCategory::DevOps),
+        "research" | "investigation" => Ok(ProposalCategory::Research),
+        "design" => Ok(ProposalCategory::Design),
+        "chore" | "maintenance" => Ok(ProposalCategory::Chore),
         _ => Err(format!(
             "Invalid category: '{}'. Valid: setup, feature, fix, refactor, docs, test, performance, security, devops, research, design, chore",
             s
@@ -856,7 +856,7 @@ mod tests {
     use super::*;
     use crate::application::AppState;
     use crate::domain::entities::{
-        Artifact, ArtifactType, IdeationSession, IdeationSessionStatus, ProjectId, TaskCategory,
+        Artifact, ArtifactType, IdeationSession, IdeationSessionStatus, ProjectId, ProposalCategory,
     };
 
     // -------------------------------------------------------------------------
@@ -918,7 +918,7 @@ mod tests {
         let options = CreateProposalOptions {
             title: "Test Proposal".to_string(),
             description: None,
-            category: TaskCategory::Feature,
+            category: ProposalCategory::Feature,
             suggested_priority: Priority::Medium,
             steps: None,
             acceptance_criteria: None,
@@ -966,7 +966,7 @@ mod tests {
         let options = CreateProposalOptions {
             title: "Test Proposal".to_string(),
             description: Some("A test proposal".to_string()),
-            category: TaskCategory::Feature,
+            category: ProposalCategory::Feature,
             suggested_priority: Priority::High,
             steps: None,
             acceptance_criteria: None,
@@ -1010,7 +1010,7 @@ mod tests {
         let options = CreateProposalOptions {
             title: "Versioned Proposal".to_string(),
             description: None,
-            category: TaskCategory::Feature,
+            category: ProposalCategory::Feature,
             suggested_priority: Priority::Medium,
             steps: None,
             acceptance_criteria: None,

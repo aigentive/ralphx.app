@@ -56,9 +56,9 @@ pub use ideation::{
     DependencyFactor, DependencyGraph, DependencyGraphEdge, DependencyGraphNode, IdeationSession,
     IdeationSessionBuilder, IdeationSessionStatus, MessageRole, ParseComplexityError,
     ParseIdeationSessionStatusError, ParseMessageRoleError, ParsePriorityError,
-    ParseProposalStatusError, ParseTaskCategoryError, Priority, PriorityAssessment,
-    PriorityAssessmentFactors, PriorityFactors, ProposalStatus, SessionLink, SessionRelationship,
-    TaskCategory, TaskProposal, UserHintFactor,
+    ParseProposalCategoryError, ParseProposalStatusError, Priority, PriorityAssessment,
+    PriorityAssessmentFactors, PriorityFactors, ProposalCategory, ProposalStatus, SessionLink,
+    SessionRelationship, TaskProposal, UserHintFactor,
 };
 pub use memory_archive::{
     ArchiveJobPayload, ArchiveJobStatus, ArchiveJobType, FullRebuildPayload, MemoryArchiveJob,
@@ -92,7 +92,7 @@ pub use review_issue::{
     SeverityBreakdown, SeverityCount,
 };
 pub use status::{InternalStatus, ParseInternalStatusError};
-pub use task::Task;
+pub use task::{Task, TaskCategory};
 pub use task_context::{ArtifactSummary, TaskContext, TaskDependencySummary, TaskProposalSummary};
 pub use task_metadata::{
     MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,

@@ -1,6 +1,6 @@
 use super::DependencyService;
 use crate::domain::entities::{
-    ArtifactId, IdeationSessionId, Priority, TaskCategory, TaskProposal, TaskProposalId,
+    ArtifactId, IdeationSessionId, Priority, ProposalCategory, TaskProposal, TaskProposalId,
 };
 use crate::domain::repositories::{ProposalDependencyRepository, TaskProposalRepository};
 use crate::error::AppResult;
@@ -328,7 +328,7 @@ fn create_test_proposal(session_id: &IdeationSessionId, title: &str) -> TaskProp
     TaskProposal::new(
         session_id.clone(),
         title,
-        TaskCategory::Feature,
+        ProposalCategory::Feature,
         Priority::Medium,
     )
 }
@@ -336,7 +336,7 @@ fn create_test_proposal(session_id: &IdeationSessionId, title: &str) -> TaskProp
 fn create_proposal_with_category(
     session_id: &IdeationSessionId,
     title: &str,
-    category: TaskCategory,
+    category: ProposalCategory,
 ) -> TaskProposal {
     TaskProposal::new(session_id.clone(), title, category, Priority::Medium)
 }
@@ -644,9 +644,9 @@ fn test_suggest_dependencies_empty() {
 #[test]
 fn test_suggest_dependencies_setup_before_feature() {
     let session_id = IdeationSessionId::new();
-    let setup = create_proposal_with_category(&session_id, "Setup database", TaskCategory::Setup);
+    let setup = create_proposal_with_category(&session_id, "Setup database", ProposalCategory::Setup);
     let feature =
-        create_proposal_with_category(&session_id, "Add user auth", TaskCategory::Feature);
+        create_proposal_with_category(&session_id, "Add user auth", ProposalCategory::Feature);
 
     let service = create_service(vec![setup.clone(), feature.clone()], vec![]);
     let suggestions = service.suggest_dependencies(&[setup.clone(), feature.clone()]);
@@ -663,8 +663,8 @@ fn test_suggest_dependencies_setup_before_feature() {
 fn test_suggest_dependencies_test_after_feature() {
     let session_id = IdeationSessionId::new();
     let feature =
-        create_proposal_with_category(&session_id, "Add user auth", TaskCategory::Feature);
-    let test = create_proposal_with_category(&session_id, "Test user auth", TaskCategory::Test);
+        create_proposal_with_category(&session_id, "Add user auth", ProposalCategory::Feature);
+    let test = create_proposal_with_category(&session_id, "Test user auth", ProposalCategory::Test);
 
     let service = create_service(vec![feature.clone(), test.clone()], vec![]);
     let suggestions = service.suggest_dependencies(&[feature.clone(), test.clone()]);
@@ -863,11 +863,11 @@ async fn test_full_workflow_build_and_analyze() {
     let session_id = IdeationSessionId::new();
 
     // Create a realistic project structure
-    let setup = create_proposal_with_category(&session_id, "Setup project", TaskCategory::Setup);
-    let feature1 = create_proposal_with_category(&session_id, "User auth", TaskCategory::Feature);
+    let setup = create_proposal_with_category(&session_id, "Setup project", ProposalCategory::Setup);
+    let feature1 = create_proposal_with_category(&session_id, "User auth", ProposalCategory::Feature);
     let feature2 =
-        create_proposal_with_category(&session_id, "User profile", TaskCategory::Feature);
-    let test = create_proposal_with_category(&session_id, "Integration tests", TaskCategory::Test);
+        create_proposal_with_category(&session_id, "User profile", ProposalCategory::Feature);
+    let test = create_proposal_with_category(&session_id, "Integration tests", ProposalCategory::Test);
 
     // Dependencies: feature1 depends on setup, feature2 depends on feature1, test depends on both features
     let deps = vec![

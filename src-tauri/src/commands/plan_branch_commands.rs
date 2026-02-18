@@ -9,7 +9,7 @@ use crate::application::git_service::GitService;
 use crate::application::AppState;
 use crate::domain::entities::{
     ArtifactId, IdeationSessionId, InternalStatus, PlanBranch, PlanBranchStatus, ProjectId, Task,
-    TaskId,
+    TaskCategory, TaskId,
 };
 
 /// Response for plan branch queries
@@ -225,7 +225,7 @@ pub async fn enable_feature_branch(
         _ => format!("Merge plan into {}", base_branch),
     };
     let mut merge_task =
-        Task::new_with_category(project_id.clone(), plan_title, "plan_merge".to_string());
+        Task::new_with_category(project_id.clone(), plan_title, TaskCategory::PlanMerge);
     merge_task.description = Some(format!(
         "Auto-created merge task: merges feature branch into {}",
         base_branch

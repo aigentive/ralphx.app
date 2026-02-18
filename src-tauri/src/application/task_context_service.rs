@@ -320,7 +320,7 @@ mod tests {
     use super::*;
     use crate::domain::entities::{
         Artifact, ArtifactId, ArtifactRelation, ArtifactRelationType, ArtifactType, InternalStatus,
-        Priority, ProjectId, TaskCategory, TaskProposal, TaskProposalId, TaskStep, TaskStepId,
+        Priority, ProjectId, ProposalCategory, TaskProposal, TaskProposalId, TaskStep, TaskStepId,
     };
     use crate::domain::repositories::{
         ArtifactRepository, StateHistoryMetadata, TaskProposalRepository, TaskRepository,
@@ -913,7 +913,7 @@ mod tests {
         let mut proposal = TaskProposal::new(
             crate::domain::entities::IdeationSessionId::new(),
             "Test Proposal",
-            TaskCategory::Feature,
+            ProposalCategory::Feature,
             Priority::Medium,
         );
         proposal.id = proposal_id;

@@ -208,7 +208,7 @@ pub fn is_complex_task(task: &Task) -> bool {
         .as_ref()
         .map(|d| d.to_lowercase())
         .unwrap_or_default();
-    let category_lower = task.category.to_lowercase();
+    let category_lower = task.category.to_string().to_lowercase();
 
     let combined = format!("{} {} {}", title_lower, desc_lower, category_lower);
 
@@ -562,8 +562,10 @@ mod tests {
 
     #[test]
     fn is_complex_task_category_refactor() {
-        let mut task = create_task("Update code", None);
-        task.category = "refactor".to_string();
+        // TaskCategory no longer has a "refactor" variant; complexity is detected
+        // via title/description keywords instead. Verify a refactor-like title
+        // still triggers complexity detection.
+        let task = create_task("Refactor the payment processing module", None);
         assert!(is_complex_task(&task));
     }
 

@@ -1,6 +1,6 @@
 // Helper functions for ApplyService
 
-use crate::domain::entities::{InternalStatus, ProjectId, Task, TaskProposal, TaskProposalId};
+use crate::domain::entities::{InternalStatus, ProjectId, Task, TaskCategory, TaskProposal, TaskProposalId};
 use std::collections::{HashMap, HashSet};
 
 use super::types::SelectionValidation;
@@ -96,10 +96,11 @@ pub fn create_task_from_proposal(
     project_id: &ProjectId,
     status: InternalStatus,
 ) -> Task {
+    // All tasks from proposals are Regular (not system-managed PlanMerge tasks)
     let mut task = Task::new_with_category(
         project_id.clone(),
         proposal.title.clone(),
-        proposal.category.to_string(),
+        TaskCategory::Regular,
     );
 
     task.description = proposal.description.clone();
