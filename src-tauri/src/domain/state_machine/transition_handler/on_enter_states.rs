@@ -325,6 +325,11 @@ impl<'a> super::TransitionHandler<'a> {
                     }
                 }
 
+                // Ensure task branch is checked out for resumed tasks (Local mode).
+                // Fresh execution: branch was just created+checked out above, this is a no-op.
+                // Resume after restart: branch exists but may not be checked out — this fixes it.
+                self.checkout_task_branch_if_needed("Executing").await;
+
                 // Run pre-execution setup (worktree_setup + install) before spawning agent
                 self.run_and_store_pre_execution_setup(
                     task_id_str,

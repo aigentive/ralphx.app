@@ -399,6 +399,14 @@ pub async fn get_task_context_impl(state: &AppState, task_id: &TaskId) -> AppRes
         ));
     }
 
+    // CRITICAL: Branch safety hint — agents must stay on their assigned branch
+    if let Some(ref branch) = task.task_branch {
+        context_hints.push(format!(
+            "GIT BRANCH: You are on branch '{}'. Do NOT checkout other branches (especially main/master). All work must stay on this branch.",
+            branch
+        ));
+    }
+
     if source_proposal.is_some() {
         context_hints.push(
             "Task was created from ideation proposal - check acceptance criteria".to_string(),
@@ -440,6 +448,8 @@ pub async fn get_task_context_impl(state: &AppState, task_id: &TaskId) -> AppRes
     }
 
     // 10. Return TaskContext
+    let task_branch = task.task_branch.clone();
+    let worktree_path = task.worktree_path.clone();
     Ok(TaskContext {
         task,
         source_proposal,
@@ -451,6 +461,8 @@ pub async fn get_task_context_impl(state: &AppState, task_id: &TaskId) -> AppRes
         blocked_by,
         blocks,
         tier,
+        task_branch,
+        worktree_path,
     })
 }
 

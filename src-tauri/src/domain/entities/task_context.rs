@@ -39,6 +39,14 @@ pub struct TaskContext {
     /// Execution tier from dependency graph (lower = earlier in chain)
     /// Tier 1 tasks have no blockers, higher tiers depend on lower tiers
     pub tier: Option<u32>,
+
+    /// Git branch assigned to this task (if git isolation is active).
+    /// Agents MUST work only on this branch — do not checkout other branches.
+    pub task_branch: Option<String>,
+
+    /// Worktree path for this task (Worktree git mode only).
+    /// When set, agents should work exclusively within this directory.
+    pub worktree_path: Option<String>,
 }
 
 /// Summary of a task proposal for context purposes
@@ -100,6 +108,8 @@ mod tests {
             blocked_by: vec![],
             blocks: vec![],
             tier: None,
+            task_branch: None,
+            worktree_path: None,
         };
 
         assert_eq!(context.task.id, task.id);
@@ -223,6 +233,8 @@ mod tests {
             blocked_by: vec![blocker_task],
             blocks: vec![dependent_task],
             tier: Some(2),
+            task_branch: Some("ralphx/test-project/task-abc123".to_string()),
+            worktree_path: None,
         };
 
         assert_eq!(context.task.id, task.id);
