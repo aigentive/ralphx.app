@@ -362,6 +362,30 @@ export const ALL_TOOLS = [
             required: ["session_id"],
         },
     },
+    {
+        name: "get_session_messages",
+        description: "Get chat messages for an ideation session. Used for context recovery when resuming an expired session. " +
+            "Returns messages newest-first (up to limit). The truncated flag indicates if older messages were dropped. " +
+            "Default limit: 50, max: 200. Set include_tool_calls=true to include tool_calls JSON (increases token usage).",
+        inputSchema: {
+            type: "object",
+            properties: {
+                session_id: {
+                    type: "string",
+                    description: "The ideation session ID",
+                },
+                limit: {
+                    type: "number",
+                    description: "Maximum messages to return (default: 50, max: 200)",
+                },
+                include_tool_calls: {
+                    type: "boolean",
+                    description: "Include tool_calls JSON in response (default: false)",
+                },
+            },
+            required: ["session_id"],
+        },
+    },
     // ========================================================================
     // TEAM TOOLS (team lead agents)
     // ========================================================================
@@ -1225,6 +1249,8 @@ export const TOOL_ALLOWLIST = {
         // session linking tools
         "create_child_session",
         "get_parent_session_context",
+        // session context recovery
+        "get_session_messages",
         // memory read tools
         "search_memories",
         "get_memory",
@@ -1467,6 +1493,8 @@ export const TOOL_ALLOWLIST = {
         // Session linking tools
         "create_child_session",
         "get_parent_session_context",
+        // Session context recovery
+        "get_session_messages",
         // Memory read tools
         "search_memories",
         "get_memory",

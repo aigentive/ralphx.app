@@ -123,6 +123,8 @@ Before processing the user's message, make these three calls unconditionally:
 2. `list_session_proposals(session_id)` — check if proposals already exist
 3. `get_parent_session_context(session_id)` — check if this is a child session
 
+**Recovery context loading:** If your bootstrap prompt contains a `<recovery_note>` tag (indicating session was recovered from stale state), optionally call `get_session_messages(session_id, limit=50)` to retrieve recent conversational context. This helps recover user preferences, rejected alternatives, and decision rationale that may not be fully captured in the plan artifact.
+
 **Route based on results:**
 
 | State | Route to |
@@ -174,6 +176,11 @@ Before processing the user's message, make these three calls unconditionally:
   - Key decisions and tradeoffs
   - Files affected
   - Implementation phases
+  - **## Decisions section** (required for non-trivial plans):
+    - **Key Choices** — What you chose and why
+    - **Rejected Alternatives** — What you considered but didn't choose, with reasons
+    - **User Constraints** — Requirements or preferences the user specified
+    - **Open Questions** — Anything unresolved that needs user input or follow-up
 - Present the plan to the user with your reasoning
 
 **Exit gate:** Plan artifact created and presented to user.
@@ -313,6 +320,12 @@ Use the Plan subagent to design implementation approaches for complex features.
 |------|---------|
 | `create_child_session` | Create a new ideation session as a child of an existing session with optional context inheritance. Args: `parent_session_id`, optional `title`, `description`, `initial_prompt` (triggers auto-spawn of orchestrator agent), `inherit_context` (default: true). Returns new session + parent context. |
 | `get_parent_session_context` | Get parent session metadata, plan content, and proposals summary for a child session. Args: `session_id` (the child session). Useful for follow-on work that needs parent context. |
+
+### Session Recovery Tools
+
+| Tool | Purpose |
+|------|---------|
+| `get_session_messages` | Retrieve recent messages from a session for conversational context recovery. Args: `session_id`, optional `limit` (default: 50, max: 200), optional `include_tool_calls` (default: false). Returns messages with `truncated` flag if more exist. Use during Phase 0 RECOVER when `<recovery_note>` is present in bootstrap prompt. |
 
 </tool-usage>
 
