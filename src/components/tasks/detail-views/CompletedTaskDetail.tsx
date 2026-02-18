@@ -137,7 +137,7 @@ export function CompletedTaskDetail({ task, isHistorical = false }: CompletedTas
           case "keep_changes":
           case "revert_commit":
           case "create_new":
-            await api.tasks.move(task.id, "ready");
+            await api.tasks.move(task.id, "ready", undefined, result.note);
             break;
         }
 

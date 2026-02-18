@@ -1885,12 +1885,13 @@ pub enum RestartResult {
 pub async fn restart_task(
     task_id: String,
     force: bool,
+    note: Option<String>,
     state: State<'_, AppState>,
     execution_state: State<'_, Arc<ExecutionState>>,
 ) -> Result<RestartResult, String> {
     use crate::application::TaskTransitionService;
     use crate::domain::state_machine::transition_handler::metadata_builder::{
-        clear_stop_metadata, parse_stop_metadata,
+        build_restart_metadata, parse_stop_metadata,
     };
 
     let task_id = TaskId::from_string(task_id);
@@ -1959,10 +1960,10 @@ pub async fn restart_task(
     )
     .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
 
-    // 7. Transition to target status and clear stop metadata
-    let clear_metadata = clear_stop_metadata();
+    // 7. Transition to target status: clear stop metadata and optionally store restart_note
+    let restart_metadata = build_restart_metadata(note.as_deref());
     let updated_task = transition_service
-        .transition_task_with_metadata(&task_id, categorized.target_status, Some(clear_metadata))
+        .transition_task_with_metadata(&task_id, categorized.target_status, Some(restart_metadata))
         .await
         .map_err(|e| e.to_string())?;
 

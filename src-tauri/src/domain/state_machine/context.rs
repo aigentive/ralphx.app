@@ -12,7 +12,8 @@ use super::types::Blocker;
 use crate::application::ChatService;
 use crate::commands::ExecutionState;
 use crate::domain::repositories::{
-    PlanBranchRepository, ProjectRepository, TaskRepository, TaskStepRepository,
+    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskRepository,
+    TaskStepRepository,
 };
 use std::any::Any;
 use std::sync::Arc;
@@ -69,6 +70,10 @@ pub struct TaskServices {
     /// Task step repository for updating step statuses during state transitions.
     /// Used by TransitionHandler to fail in-progress steps when task fails.
     pub step_repo: Option<Arc<dyn TaskStepRepository>>,
+
+    /// Ideation session repository for fetching live session titles.
+    /// Used by TransitionHandler to build descriptive plan merge commit messages.
+    pub ideation_session_repo: Option<Arc<dyn IdeationSessionRepository>>,
 }
 
 impl TaskServices {
@@ -95,6 +100,7 @@ impl TaskServices {
             project_repo: None,
             plan_branch_repo: None,
             step_repo: None,
+            ideation_session_repo: None,
         }
     }
 
@@ -152,6 +158,12 @@ impl TaskServices {
         self
     }
 
+    /// Set the ideation session repository (builder pattern)
+    pub fn with_ideation_session_repo(mut self, repo: Arc<dyn IdeationSessionRepository>) -> Self {
+        self.ideation_session_repo = Some(repo);
+        self
+    }
+
     /// Creates a TaskServices with all mock implementations for testing
     pub fn new_mock() -> Self {
         use crate::application::MockChatService;
@@ -170,6 +182,7 @@ impl TaskServices {
             project_repo: None,
             plan_branch_repo: None,
             step_repo: None,
+            ideation_session_repo: None,
         }
     }
 }
@@ -209,6 +222,13 @@ impl std::fmt::Debug for TaskServices {
                     .plan_branch_repo
                     .as_ref()
                     .map(|_| "<PlanBranchRepository>"),
+            )
+            .field(
+                "ideation_session_repo",
+                &self
+                    .ideation_session_repo
+                    .as_ref()
+                    .map(|_| "<IdeationSessionRepository>"),
             )
             .finish()
     }
