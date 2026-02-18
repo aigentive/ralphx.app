@@ -168,7 +168,7 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
     }
 
     // 3. Cleanup branch and worktree
-    cleanup_branch_and_worktree_internal(task, project).await;
+    cleanup_branch_and_worktree_internal(task, project, task_repo).await;
 
     // 4. Emit events
     if let Some(handle) = app_handle {
@@ -218,10 +218,19 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
 ///
 /// This is the standalone version that can be called from `complete_merge_internal`.
 /// For use within TransitionHandler, use the async method which has access to services.
-pub(super) async fn cleanup_branch_and_worktree_internal(task: &Task, project: &Project) {
-    let task_id_str = task.id.as_str();
+///
+/// After deleting the git branch and worktree, clears `task.task_branch` and
+/// `task.worktree_path` to `None` and persists the update. This prevents a
+/// reopened task from seeing stale (now-deleted) branch/worktree values and
+/// skipping branch setup on re-execution.
+pub(super) async fn cleanup_branch_and_worktree_internal(
+    task: &mut Task,
+    project: &Project,
+    task_repo: &Arc<dyn TaskRepository>,
+) {
+    let task_id_str = task.id.as_str().to_string();
 
-    let Some(ref task_branch) = task.task_branch else {
+    let Some(ref task_branch) = task.task_branch.clone() else {
         tracing::debug!(task_id = task_id_str, "No branch to cleanup");
         return;
     };
@@ -251,7 +260,7 @@ pub(super) async fn cleanup_branch_and_worktree_internal(task: &Task, project: &
         }
         GitMode::Worktree => {
             // For Worktree mode: delete worktree first, then branch
-            if let Some(ref worktree_path) = task.worktree_path {
+            if let Some(ref worktree_path) = task.worktree_path.clone() {
                 let worktree_path_buf = PathBuf::from(worktree_path);
                 match GitService::delete_worktree(repo_path, &worktree_path_buf).await {
                     Ok(_) => {
@@ -293,5 +302,24 @@ pub(super) async fn cleanup_branch_and_worktree_internal(task: &Task, project: &
                 }
             }
         }
+    }
+
+    // Clear stale branch/worktree fields so a reopened task doesn't see deleted values.
+    // on_enter(Executing) checks task.task_branch.is_some() to decide whether to skip
+    // branch setup — if these are left set, re-execution will try to use a deleted branch.
+    task.task_branch = None;
+    task.worktree_path = None;
+    task.touch();
+    if let Err(e) = task_repo.update(task).await {
+        tracing::warn!(
+            error = %e,
+            task_id = task_id_str,
+            "Failed to clear task_branch/worktree_path after cleanup (non-fatal)"
+        );
+    } else {
+        tracing::info!(
+            task_id = task_id_str,
+            "Cleared task_branch and worktree_path after merge cleanup"
+        );
     }
 }

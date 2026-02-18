@@ -333,6 +333,67 @@ pub(super) async fn resolve_task_base_branch(
             );
             pb.branch_name
         }
+        Ok(Some(pb)) if pb.status == PlanBranchStatus::Merged => {
+            // Task is being re-executed after the plan was merged and its branch deleted.
+            // Recreate the plan branch from source_branch if missing, then reset DB status
+            // back to Active so subsequent tasks use this branch.
+            let repo_path = Path::new(&project.working_directory);
+            if !GitService::branch_exists(repo_path, &pb.branch_name).await {
+                match GitService::create_feature_branch(
+                    repo_path,
+                    &pb.branch_name,
+                    &pb.source_branch,
+                )
+                .await
+                {
+                    Ok(_) => {
+                        tracing::info!(
+                            branch = %pb.branch_name,
+                            source = %pb.source_branch,
+                            "Recreated merged plan branch for re-executed task"
+                        );
+                        // Reset DB status to Active so subsequent tasks use this branch
+                        let _ = plan_branch_repo
+                            .update_status(&pb.id, PlanBranchStatus::Active)
+                            .await;
+                    }
+                    Err(e) => {
+                        // Race condition: another task may have created it concurrently
+                        if GitService::branch_exists(repo_path, &pb.branch_name).await {
+                            tracing::info!(
+                                branch = %pb.branch_name,
+                                "Merged plan branch recreated by concurrent task"
+                            );
+                            let _ = plan_branch_repo
+                                .update_status(&pb.id, PlanBranchStatus::Active)
+                                .await;
+                        } else {
+                            tracing::warn!(
+                                error = %e,
+                                branch = %pb.branch_name,
+                                "Failed to recreate merged plan branch, falling back to project base"
+                            );
+                            return default;
+                        }
+                    }
+                }
+            } else {
+                // Branch exists in git but DB still says Merged — reset status only
+                tracing::info!(
+                    branch = %pb.branch_name,
+                    "Plan branch exists in git but DB status is Merged — resetting to Active"
+                );
+                let _ = plan_branch_repo
+                    .update_status(&pb.id, PlanBranchStatus::Active)
+                    .await;
+            }
+            tracing::info!(
+                task_id = task.id.as_str(),
+                feature_branch = %pb.branch_name,
+                "Resolved task base branch to recreated plan feature branch"
+            );
+            pb.branch_name
+        }
         _ => default,
     }
 }
@@ -462,8 +523,8 @@ pub(super) async fn discover_and_attach_task_branch(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::entities::{Project, ProjectId, Task};
-    use crate::infrastructure::memory::MemoryTaskRepository;
+    use crate::domain::entities::{ArtifactId, IdeationSessionId, PlanBranch, Project, ProjectId, Task};
+    use crate::infrastructure::memory::{MemoryPlanBranchRepository, MemoryTaskRepository};
     use std::fs;
     use std::path::PathBuf;
     use std::process::Command;
@@ -878,5 +939,188 @@ mod tests {
 
         let meta: serde_json::Value = serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
         assert_eq!(meta["conflict_detected_by"], "programmatic");
+    }
+
+    // ===== resolve_task_base_branch: Merged plan branch re-creation tests =====
+
+    /// Helper: create a PlanBranch with the given status and branch_name pointing to a git branch
+    /// in the temp repo.
+    fn make_plan_branch(
+        session_id: &IdeationSessionId,
+        project_id: &ProjectId,
+        branch_name: &str,
+        source_branch: &str,
+        status: PlanBranchStatus,
+    ) -> PlanBranch {
+        let mut pb = PlanBranch::new(
+            ArtifactId::from_string("artifact-test"),
+            session_id.clone(),
+            project_id.clone(),
+            branch_name.to_string(),
+            source_branch.to_string(),
+        );
+        pb.status = status;
+        pb
+    }
+
+    #[tokio::test]
+    async fn test_resolve_task_base_branch_merged_branch_missing_recreates_it() {
+        // Regression: when plan branch status is Merged and the git branch no longer exists,
+        // resolve_task_base_branch should recreate it from source_branch and return it,
+        // NOT fall back to "main".
+        let (_temp_dir, repo_path) = create_temp_git_repo();
+        let project = create_test_project("test-plan-branch", repo_path.to_string_lossy().to_string());
+
+        let session_id = IdeationSessionId::from_string("session-merged-test");
+        let mut task = create_test_task(project.id.clone());
+        task.ideation_session_id = Some(session_id.clone());
+
+        let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+        let pb = make_plan_branch(
+            &session_id,
+            &project.id,
+            "ralphx/test-plan-branch/plan-session-merged-test",
+            "main",
+            PlanBranchStatus::Merged,
+        );
+        plan_branch_repo.create(pb).await.unwrap();
+
+        // Plan branch git branch does NOT exist (was deleted after merge)
+        let plan_branch_repo_opt: Option<Arc<dyn PlanBranchRepository>> =
+            Some(plan_branch_repo.clone() as Arc<dyn PlanBranchRepository>);
+
+        let result = resolve_task_base_branch(&task, &project, &plan_branch_repo_opt).await;
+
+        // Should return the plan branch name (recreated), not "main"
+        assert_eq!(
+            result,
+            "ralphx/test-plan-branch/plan-session-merged-test",
+            "Should return plan branch name when Merged branch is recreated"
+        );
+
+        // DB status should be reset to Active
+        let updated = plan_branch_repo
+            .get_by_session_id(&session_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            updated.status,
+            PlanBranchStatus::Active,
+            "DB status should be reset to Active after recreation"
+        );
+
+        // Git branch should now exist
+        assert!(
+            GitService::branch_exists(
+                Path::new(&project.working_directory),
+                "ralphx/test-plan-branch/plan-session-merged-test"
+            )
+            .await,
+            "Git branch should exist after recreation"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resolve_task_base_branch_merged_branch_exists_in_git_resets_db_status() {
+        // Regression: when plan branch status is Merged but the git branch still exists
+        // (e.g., deletion was skipped), resolve_task_base_branch should reset DB status
+        // to Active and return the branch name.
+        let (_temp_dir, repo_path) = create_temp_git_repo();
+        let project = create_test_project("test-plan-branch", repo_path.to_string_lossy().to_string());
+
+        let session_id = IdeationSessionId::from_string("session-merged-exists");
+        let mut task = create_test_task(project.id.clone());
+        task.ideation_session_id = Some(session_id.clone());
+
+        let plan_branch_name = "ralphx/test-plan-branch/plan-session-merged-exists";
+
+        // Create the git branch so it already exists
+        Command::new("git")
+            .args(["branch", plan_branch_name])
+            .current_dir(&repo_path)
+            .output()
+            .unwrap();
+
+        let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+        let pb = make_plan_branch(
+            &session_id,
+            &project.id,
+            plan_branch_name,
+            "main",
+            PlanBranchStatus::Merged,
+        );
+        plan_branch_repo.create(pb).await.unwrap();
+
+        let plan_branch_repo_opt: Option<Arc<dyn PlanBranchRepository>> =
+            Some(plan_branch_repo.clone() as Arc<dyn PlanBranchRepository>);
+
+        let result = resolve_task_base_branch(&task, &project, &plan_branch_repo_opt).await;
+
+        // Should return the plan branch name
+        assert_eq!(
+            result, plan_branch_name,
+            "Should return plan branch name when git branch exists but DB says Merged"
+        );
+
+        // DB status should be reset to Active
+        let updated = plan_branch_repo
+            .get_by_session_id(&session_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            updated.status,
+            PlanBranchStatus::Active,
+            "DB status should be reset to Active"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resolve_task_base_branch_active_status_unchanged() {
+        // Sanity: Active status arm still works correctly after adding Merged arm.
+        let (_temp_dir, repo_path) = create_temp_git_repo();
+        let project = create_test_project("test-plan-branch", repo_path.to_string_lossy().to_string());
+
+        let session_id = IdeationSessionId::from_string("session-active-test");
+        let mut task = create_test_task(project.id.clone());
+        task.ideation_session_id = Some(session_id.clone());
+
+        let plan_branch_name = "ralphx/test-plan-branch/plan-session-active-test";
+
+        let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+        let pb = make_plan_branch(
+            &session_id,
+            &project.id,
+            plan_branch_name,
+            "main",
+            PlanBranchStatus::Active,
+        );
+        plan_branch_repo.create(pb).await.unwrap();
+
+        let plan_branch_repo_opt: Option<Arc<dyn PlanBranchRepository>> =
+            Some(plan_branch_repo.clone() as Arc<dyn PlanBranchRepository>);
+
+        let result = resolve_task_base_branch(&task, &project, &plan_branch_repo_opt).await;
+
+        // Active arm creates the branch lazily and returns its name
+        assert_eq!(
+            result, plan_branch_name,
+            "Active arm should return plan branch name (creating lazily if needed)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resolve_task_base_branch_no_session_id_returns_default() {
+        // Task with no ideation_session_id falls back to project base branch.
+        let (_temp_dir, repo_path) = create_temp_git_repo();
+        let project = create_test_project("test", repo_path.to_string_lossy().to_string());
+        let task = create_test_task(project.id.clone()); // no ideation_session_id
+
+        let plan_branch_repo_opt: Option<Arc<dyn PlanBranchRepository>> = None;
+
+        let result = resolve_task_base_branch(&task, &project, &plan_branch_repo_opt).await;
+
+        assert_eq!(result, "main", "No session_id should fall back to default");
     }
 }
