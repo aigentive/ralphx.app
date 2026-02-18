@@ -265,6 +265,13 @@ impl<'a> TransitionHandler<'a> {
                     let project_id = self.machine.context.project_id.clone();
                     let from_state = format!("{:?}", from);
                     let to_state = format!("{:?}", _to);
+                    let execution_state_clone = self
+                        .machine
+                        .context
+                        .services
+                        .execution_state
+                        .as_ref()
+                        .map(Arc::clone);
 
                     tracing::info!(
                         task_id = %self.machine.context.task_id,
@@ -276,6 +283,19 @@ impl<'a> TransitionHandler<'a> {
                     tokio::spawn(async move {
                         tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
                         scheduler.try_retry_deferred_merges(&project_id).await;
+                        // Also retry main merges if all agents are idle.
+                        // Handles two stuck cases:
+                        // 1. Late-arriving task: entered pending_merge after all agents
+                        //    finished, so the agent-exit trigger already fired and missed it.
+                        // 2. Cascading merges: try_retry_main_merges processes one task at a
+                        //    time (break); each merge-exit must trigger the next retry.
+                        if execution_state_clone
+                            .as_ref()
+                            .map(|s| s.running_count() == 0)
+                            .unwrap_or(false)
+                        {
+                            scheduler.try_retry_main_merges().await;
+                        }
                     });
                 }
             }

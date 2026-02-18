@@ -2066,6 +2066,136 @@ async fn test_deferred_merge_not_triggered_by_non_merge_exits() {
 }
 
 // ==================
+// Merge-exit main merge retry tests
+// ==================
+
+/// Test: Exiting PendingMerge calls try_retry_main_merges when running_count == 0.
+///
+/// Fixes the "late-arriving task" stuck case: a task enters pending_merge after
+/// all agents have already exited, so the agent-exit trigger already fired and
+/// missed it. The merge-exit trigger must call try_retry_main_merges to unblock it.
+#[tokio::test]
+async fn test_merge_exit_triggers_main_merge_retry_when_all_idle() {
+    use crate::commands::ExecutionState;
+    use crate::domain::state_machine::mocks::MockTaskScheduler;
+
+    let scheduler = Arc::new(MockTaskScheduler::new());
+    let execution_state = Arc::new(ExecutionState::new());
+    // running_count == 0: all agents are idle
+
+    let services = TaskServices::new_mock()
+        .with_task_scheduler(
+            Arc::clone(&scheduler) as Arc<dyn crate::domain::state_machine::services::TaskScheduler>,
+        )
+        .with_execution_state(Arc::clone(&execution_state));
+
+    let context = create_context_with_services("task-1", "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    handler.on_exit(&State::PendingMerge, &State::Merged).await;
+
+    // Wait for the spawned task
+    tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
+
+    let calls = scheduler.get_calls();
+    let main_retry_calls: Vec<_> = calls
+        .iter()
+        .filter(|c| c.method == "try_retry_main_merges")
+        .collect();
+
+    assert_eq!(
+        main_retry_calls.len(),
+        1,
+        "Expected try_retry_main_merges when all agents idle (running_count == 0)"
+    );
+}
+
+/// Test: Exiting PendingMerge skips try_retry_main_merges when agents are still running.
+///
+/// When running_count > 0, agents are still active. The agent-exit trigger will
+/// call try_retry_main_merges when they finish. Calling it here would be a
+/// premature duplicate.
+#[tokio::test]
+async fn test_merge_exit_skips_main_merge_retry_when_agents_running() {
+    use crate::commands::ExecutionState;
+    use crate::domain::state_machine::mocks::MockTaskScheduler;
+
+    let scheduler = Arc::new(MockTaskScheduler::new());
+    let execution_state = Arc::new(ExecutionState::new());
+    execution_state.increment_running(); // running_count == 1: an agent is active
+
+    let services = TaskServices::new_mock()
+        .with_task_scheduler(
+            Arc::clone(&scheduler) as Arc<dyn crate::domain::state_machine::services::TaskScheduler>,
+        )
+        .with_execution_state(Arc::clone(&execution_state));
+
+    let context = create_context_with_services("task-1", "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    handler.on_exit(&State::PendingMerge, &State::Merged).await;
+
+    // Wait for the spawned task
+    tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
+
+    let calls = scheduler.get_calls();
+    let main_retry_calls: Vec<_> = calls
+        .iter()
+        .filter(|c| c.method == "try_retry_main_merges")
+        .collect();
+
+    assert_eq!(
+        main_retry_calls.len(),
+        0,
+        "Expected NO try_retry_main_merges when agents are still running (running_count > 0)"
+    );
+}
+
+/// Test: Cascading merge unblocking — Merging exit also triggers main merge retry when idle.
+///
+/// try_retry_main_merges processes one task at a time (break). Each merge-exit
+/// must trigger the next retry in the chain for cascading merges.
+#[tokio::test]
+async fn test_merging_exit_triggers_main_merge_retry_when_all_idle() {
+    use crate::commands::ExecutionState;
+    use crate::domain::state_machine::mocks::MockTaskScheduler;
+
+    let scheduler = Arc::new(MockTaskScheduler::new());
+    let execution_state = Arc::new(ExecutionState::new());
+    // running_count == 0: all agents are idle
+
+    let services = TaskServices::new_mock()
+        .with_task_scheduler(
+            Arc::clone(&scheduler) as Arc<dyn crate::domain::state_machine::services::TaskScheduler>,
+        )
+        .with_execution_state(Arc::clone(&execution_state));
+
+    let context = create_context_with_services("task-1", "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    handler.on_exit(&State::Merging, &State::Merged).await;
+
+    // Wait for the spawned task
+    tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
+
+    let calls = scheduler.get_calls();
+    let main_retry_calls: Vec<_> = calls
+        .iter()
+        .filter(|c| c.method == "try_retry_main_merges")
+        .collect();
+
+    // Merging is agent-active (decrement path also calls try_retry_main_merges when
+    // running_count reaches 0), so there may be 1 or 2 calls. Assert at least 1.
+    assert!(
+        !main_retry_calls.is_empty(),
+        "Merging exit should trigger try_retry_main_merges when all agents idle"
+    );
+}
+
+// ==================
 // Branch discovery integration tests
 // ==================
 
