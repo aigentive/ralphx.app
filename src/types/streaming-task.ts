@@ -19,8 +19,8 @@ export type StreamingTaskStatus = "running" | "completed" | "failed";
  * Allows text and tool calls to be interleaved in the order they arrive from the agent.
  */
 export type StreamingContentBlock =
-  | { type: "text"; text: string }
-  | { type: "tool_use"; toolCall: ToolCall };
+  | { type: "text"; text: string; seq?: number }
+  | { type: "tool_use"; toolCall: ToolCall; seq?: number };
 
 export interface StreamingTask {
   /** The Task tool_use.id — links child tool calls via parentToolUseId */
@@ -47,4 +47,6 @@ export interface StreamingTask {
   agentId?: string;
   /** Tool calls made by this subagent (matched by parentToolUseId) */
   childToolCalls: ToolCall[];
+  /** Monotonically increasing sequence number for cross-event-type ordering */
+  seq?: number;
 }

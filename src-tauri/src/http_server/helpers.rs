@@ -540,6 +540,8 @@ pub async fn maybe_trigger_dependency_analysis(
     let session_id_str = session_id.as_str().to_string();
     let task_proposal_repo = Arc::clone(&app_state.task_proposal_repo);
     let proposal_dependency_repo = Arc::clone(&app_state.proposal_dependency_repo);
+    let ideation_session_repo = Arc::clone(&app_state.ideation_session_repo);
+    let artifact_repo = Arc::clone(&app_state.artifact_repo);
 
     // Spawn with debounce delay
     tokio::spawn(async move {
@@ -562,6 +564,14 @@ pub async fn maybe_trigger_dependency_analysis(
         if proposals.len() < 2 {
             return;
         }
+
+        // Fetch plan artifact summary for the session
+        let plan_summary = fetch_plan_summary_for_session(
+            &session_id_str,
+            &ideation_session_repo,
+            &artifact_repo,
+        )
+        .await;
 
         // Get existing dependencies
         let existing_deps = match proposal_dependency_repo
@@ -588,7 +598,7 @@ pub async fn maybe_trigger_dependency_analysis(
             ));
         }
 
-        // Build existing dependencies summary
+        // Build existing dependencies summary with source labels when available
         let existing_deps_summary = if existing_deps.is_empty() {
             "None".to_string()
         } else {
@@ -599,10 +609,18 @@ pub async fn maybe_trigger_dependency_analysis(
                 .join(", ")
         };
 
+        // Build plan summary section (injected before the analysis instruction)
+        let plan_section = if plan_summary.is_empty() {
+            String::new()
+        } else {
+            format!("\nImplementation Plan Summary:\n{}\n", plan_summary)
+        };
+
         // Build the prompt
         let prompt = format!(
-            "Session ID: {}\n\nProposals:\n{}\nExisting dependencies: {}\n\nAnalyze these proposals and identify logical dependencies based on their content. Call the apply_proposal_dependencies tool with your findings.",
-            session_id_str, proposal_summaries, existing_deps_summary
+            "Session ID: {}\n\nProposals:\n{}\nExisting dependencies: {}\n{}
+Analyze these proposals and identify logical dependencies based on their content. Call the apply_proposal_dependencies tool with your findings.",
+            session_id_str, proposal_summaries, existing_deps_summary, plan_section
         );
 
         // Emit analysis started event
@@ -673,8 +691,141 @@ pub async fn maybe_trigger_dependency_analysis(
 }
 
 // ============================================================================
+// Plan Summarization for Dependency Analysis
+// ============================================================================
+
+/// Extract a structured summary of plan phases and ordering notes from markdown text.
+///
+/// Scans the text for markdown headings (`## Phase N`, `### ...`) and numbered/bullet
+/// ordering lines. Returns a "Plan Structure:" block truncated to ~1500 chars.
+/// Returns an empty string if the input is empty.
+pub fn summarize_plan_for_dependencies(text: &str) -> String {
+    if text.is_empty() {
+        return String::new();
+    }
+
+    let mut lines_out: Vec<String> = Vec::new();
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+
+        // Include markdown headings (## Phase N, ### subsections)
+        if trimmed.starts_with("##") {
+            lines_out.push(trimmed.to_string());
+            continue;
+        }
+
+        // Include numbered list items (1. ..., 2. ...)
+        if trimmed
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_digit())
+            .unwrap_or(false)
+        {
+            let after_digit: &str = trimmed.trim_start_matches(|c: char| c.is_ascii_digit());
+            if after_digit.starts_with(". ") || after_digit.starts_with(") ") {
+                lines_out.push(trimmed.to_string());
+                continue;
+            }
+        }
+
+        // Include bullet ordering notes with ordering keywords
+        if trimmed.starts_with("- ") || trimmed.starts_with("* ") {
+            let content = &trimmed[2..];
+            let lower = content.to_lowercase();
+            if lower.contains("phase")
+                || lower.contains("before")
+                || lower.contains("after")
+                || lower.contains("order")
+                || lower.contains("first")
+                || lower.contains("then")
+                || lower.contains("depends")
+                || lower.contains("foundation")
+                || lower.contains("wave")
+            {
+                lines_out.push(trimmed.to_string());
+                continue;
+            }
+        }
+    }
+
+    if lines_out.is_empty() {
+        return String::new();
+    }
+
+    let body = lines_out.join("\n");
+
+    // Truncate to ~1500 chars
+    const MAX_CHARS: usize = 1500;
+    let truncated = if body.chars().count() > MAX_CHARS {
+        let cut: String = body.chars().take(MAX_CHARS).collect();
+        // Trim to last newline to avoid mid-line cut
+        match cut.rfind('\n') {
+            Some(pos) => cut[..pos].to_string(),
+            None => cut,
+        }
+    } else {
+        body
+    };
+
+    format!("Plan Structure:\n{}", truncated)
+}
+
+// ============================================================================
 // Helper Functions
 // ============================================================================
+
+/// Fetch the plan artifact summary for a session, returning empty string if none exists.
+///
+/// Looks up the session by ID, retrieves its plan_artifact_id, fetches the artifact,
+/// and calls `summarize_plan_for_dependencies` on the inline content.
+async fn fetch_plan_summary_for_session(
+    session_id_str: &str,
+    ideation_session_repo: &Arc<dyn crate::domain::repositories::IdeationSessionRepository>,
+    artifact_repo: &Arc<dyn crate::domain::repositories::ArtifactRepository>,
+) -> String {
+    let session_id = IdeationSessionId::from_string(session_id_str.to_string());
+
+    // Fetch session to get plan_artifact_id
+    let session = match ideation_session_repo.get_by_id(&session_id).await {
+        Ok(Some(s)) => s,
+        Ok(None) => {
+            tracing::debug!("Session {} not found for plan summary", session_id_str);
+            return String::new();
+        }
+        Err(e) => {
+            tracing::warn!("Failed to fetch session for plan summary: {}", e);
+            return String::new();
+        }
+    };
+
+    // Extract plan artifact ID
+    let artifact_id = match session.plan_artifact_id {
+        Some(id) => id,
+        None => return String::new(),
+    };
+
+    // Fetch artifact content
+    let artifact = match artifact_repo.get_by_id(&artifact_id).await {
+        Ok(Some(a)) => a,
+        Ok(None) => {
+            tracing::debug!("Plan artifact {} not found", artifact_id);
+            return String::new();
+        }
+        Err(e) => {
+            tracing::warn!("Failed to fetch plan artifact: {}", e);
+            return String::new();
+        }
+    };
+
+    // Extract text from artifact content
+    let text = match &artifact.content {
+        ArtifactContent::Inline { text } => text.clone(),
+        ArtifactContent::File { .. } => return String::new(),
+    };
+
+    summarize_plan_for_dependencies(&text)
+}
 
 /// Find the project root directory where ralphx-plugin exists
 ///
@@ -874,5 +1025,142 @@ mod tests {
             Some(1),
             "Proposal should have plan_version_at_creation set to artifact's current version"
         );
+    }
+
+    // -------------------------------------------------------------------------
+    // summarize_plan_for_dependencies tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_summarize_empty_input_returns_empty() {
+        let result = summarize_plan_for_dependencies("");
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_summarize_extracts_phase_headings() {
+        let input = "# Title\n\n## Phase 1: Setup\nSome prose.\n\n## Phase 2: Features\nMore prose.";
+        let result = summarize_plan_for_dependencies(input);
+        assert!(result.contains("## Phase 1: Setup"), "Should include phase 1 heading");
+        assert!(result.contains("## Phase 2: Features"), "Should include phase 2 heading");
+        assert!(result.starts_with("Plan Structure:"));
+    }
+
+    #[test]
+    fn test_summarize_extracts_numbered_items() {
+        let input = "## Overview\n1. First step\n2. Second step\n3. Third step";
+        let result = summarize_plan_for_dependencies(input);
+        assert!(result.contains("1. First step"));
+        assert!(result.contains("2. Second step"));
+        assert!(result.contains("3. Third step"));
+    }
+
+    #[test]
+    fn test_summarize_includes_ordering_bullets() {
+        let input = "## Notes\n- This task depends on setup\n- Run after the database phase\n- Unrelated bullet point";
+        let result = summarize_plan_for_dependencies(input);
+        assert!(result.contains("- This task depends on setup"));
+        assert!(result.contains("- Run after the database phase"));
+        // Unrelated bullet without ordering keywords should be excluded
+        assert!(!result.contains("Unrelated bullet point"));
+    }
+
+    #[test]
+    fn test_summarize_truncates_to_1500_chars() {
+        // Build a long input with many headings
+        let long_input: String = (1..=100)
+            .map(|i| format!("## Phase {}: Some very long phase title with lots of words here\n", i))
+            .collect();
+        let result = summarize_plan_for_dependencies(&long_input);
+        // Result (including "Plan Structure:\n" prefix) should be bounded
+        // 1500 chars of body + "Plan Structure:\n" prefix (16 chars) = ~1516 max
+        assert!(result.len() <= 1520, "Result should be truncated, got {} chars", result.len());
+        assert!(result.starts_with("Plan Structure:"));
+    }
+
+    #[test]
+    fn test_summarize_no_matching_content_returns_empty() {
+        let input = "Just regular prose with no headings or numbered lists.\nAnother line of prose.";
+        let result = summarize_plan_for_dependencies(input);
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_summarize_h1_heading_excluded_h2_included() {
+        let input = "# Main Title (excluded)\n## Phase 1 (included)\n### Sub-section (included)";
+        let result = summarize_plan_for_dependencies(input);
+        assert!(!result.contains("# Main Title"), "H1 headings should not be included");
+        assert!(result.contains("## Phase 1"));
+        assert!(result.contains("### Sub-section"));
+    }
+
+    // -------------------------------------------------------------------------
+    // fetch_plan_summary_for_session tests
+    // -------------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_fetch_plan_summary_session_not_found_returns_empty() {
+        let state = AppState::new_test();
+        let result = fetch_plan_summary_for_session(
+            "nonexistent-session-id",
+            &state.ideation_session_repo,
+            &state.artifact_repo,
+        )
+        .await;
+        assert_eq!(result, "");
+    }
+
+    #[tokio::test]
+    async fn test_fetch_plan_summary_session_without_plan_returns_empty() {
+        let state = AppState::new_test();
+        let project_id = ProjectId::new();
+
+        // Session WITHOUT a plan artifact
+        let session = IdeationSession::new_with_title(project_id, "No Plan Session");
+        let session_id = session.id.as_str().to_string();
+        state.ideation_session_repo.create(session).await.unwrap();
+
+        let result = fetch_plan_summary_for_session(
+            &session_id,
+            &state.ideation_session_repo,
+            &state.artifact_repo,
+        )
+        .await;
+        assert_eq!(result, "");
+    }
+
+    #[tokio::test]
+    async fn test_fetch_plan_summary_with_plan_returns_summary() {
+        let state = AppState::new_test();
+        let project_id = ProjectId::new();
+
+        let plan_content = "## Phase 1: Setup\n1. Create schema\n2. Run migrations\n\n## Phase 2: Features\n1. Implement API";
+        let artifact = Artifact::new_inline(
+            "Implementation Plan",
+            ArtifactType::Specification,
+            plan_content,
+            "test",
+        );
+        let artifact_id = artifact.id.clone();
+        state.artifact_repo.create(artifact).await.unwrap();
+
+        let session = IdeationSession::builder()
+            .project_id(project_id)
+            .title("Session With Plan")
+            .plan_artifact_id(artifact_id)
+            .build();
+        let session_id = session.id.as_str().to_string();
+        state.ideation_session_repo.create(session).await.unwrap();
+
+        let result = fetch_plan_summary_for_session(
+            &session_id,
+            &state.ideation_session_repo,
+            &state.artifact_repo,
+        )
+        .await;
+
+        assert!(result.starts_with("Plan Structure:"), "Should start with Plan Structure:");
+        assert!(result.contains("## Phase 1: Setup"));
+        assert!(result.contains("## Phase 2: Features"));
     }
 }

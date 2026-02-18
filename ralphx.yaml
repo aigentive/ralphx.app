@@ -80,6 +80,14 @@
 # - Unknown attributes are ignored by the current parser.
 # - Missing/invalid config falls back to embedded defaults bundled at compile time.
 
+# defer_merge_enabled:
+#   Controls merge deferral behavior.
+#   - true (default): Defers merges when conflicts exist or agents are running
+#   - false: All merges proceed immediately without deferral
+#
+# Env override: RALPHX_DEFER_MERGE_ENABLED=true|false
+defer_merge_enabled: false
+
 tool_sets:
   base_tools: [Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill]
 

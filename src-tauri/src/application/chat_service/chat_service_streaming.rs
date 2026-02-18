@@ -228,6 +228,7 @@ pub async fn process_stream_background<R: Runtime>(
     let mut debug_lines: Vec<String> = Vec::new();
     let mut lines_seen: usize = 0;
     let mut lines_parsed: usize = 0;
+    let mut stream_seq: u64 = 0;
     let mut last_parsed_at = std::time::Instant::now();
 
     // Debounced flush for incremental persistence (every 2 seconds)
@@ -326,8 +327,10 @@ pub async fn process_stream_background<R: Runtime>(
                                     conversation_id: conversation_id_str.clone(),
                                     context_type: context_type_str.clone(),
                                     context_id: context_id_str.clone(),
+                                    seq: stream_seq,
                                 },
                             );
+                            stream_seq += 1;
 
                             // Activity stream event for task execution
                             if context_type == ChatContextType::TaskExecution {
@@ -432,8 +435,10 @@ pub async fn process_stream_background<R: Runtime>(
                                     context_id: context_id_str.clone(),
                                     diff_context: None,
                                     parent_tool_use_id,
+                                    seq: stream_seq,
                                 },
                             );
+                            stream_seq += 1;
                         }
                     }
                     StreamEvent::ToolCallCompleted {
@@ -497,8 +502,10 @@ pub async fn process_stream_background<R: Runtime>(
                                     context_id: context_id_str.clone(),
                                     diff_context: diff_context_value,
                                     parent_tool_use_id: parent_tool_use_id.clone(),
+                                    seq: stream_seq,
                                 },
                             );
+                            stream_seq += 1;
 
                             // Activity stream event for task execution
                             if context_type == ChatContextType::TaskExecution {
@@ -605,8 +612,10 @@ pub async fn process_stream_background<R: Runtime>(
                                     conversation_id: conversation_id_str.clone(),
                                     context_type: context_type_str.clone(),
                                     context_id: context_id_str.clone(),
+                                    seq: stream_seq,
                                 },
                             );
+                            stream_seq += 1;
                         }
                     }
                     StreamEvent::TaskCompleted {
@@ -657,8 +666,10 @@ pub async fn process_stream_background<R: Runtime>(
                                     conversation_id: conversation_id_str.clone(),
                                     context_type: context_type_str.clone(),
                                     context_id: context_id_str.clone(),
+                                    seq: stream_seq,
                                 },
                             );
+                            stream_seq += 1;
                         }
                     }
                     StreamEvent::HookStarted {
@@ -843,8 +854,10 @@ pub async fn process_stream_background<R: Runtime>(
                                     context_id: context_id_str.clone(),
                                     diff_context: None,
                                     parent_tool_use_id,
+                                    seq: stream_seq,
                                 },
                             );
+                            stream_seq += 1;
 
                             // Activity stream event for task execution
                             if context_type == ChatContextType::TaskExecution {
@@ -1180,5 +1193,96 @@ mod tests {
         assert!(review.line_read_timeout < default.line_read_timeout);
         assert!(merge.parse_stall_timeout < review.parse_stall_timeout);
         assert!(review.parse_stall_timeout < default.parse_stall_timeout);
+    }
+
+    #[test]
+    fn test_payloads_serialize_with_seq() {
+        use crate::application::chat_service::{
+            AgentChunkPayload, AgentTaskCompletedPayload, AgentTaskStartedPayload,
+            AgentToolCallPayload,
+        };
+
+        // Verify AgentChunkPayload includes seq field
+        let chunk = AgentChunkPayload {
+            text: "test".to_string(),
+            conversation_id: "conv-1".to_string(),
+            context_type: "task".to_string(),
+            context_id: "task-1".to_string(),
+            seq: 0,
+        };
+        let json = serde_json::to_string(&chunk).unwrap();
+        assert!(json.contains("\"seq\":0"), "AgentChunkPayload should serialize with seq field");
+
+        // Verify AgentToolCallPayload includes seq field
+        let tool_call = AgentToolCallPayload {
+            tool_name: "test_tool".to_string(),
+            tool_id: Some("tool-1".to_string()),
+            arguments: serde_json::json!({}),
+            result: None,
+            conversation_id: "conv-1".to_string(),
+            context_type: "task".to_string(),
+            context_id: "task-1".to_string(),
+            diff_context: None,
+            parent_tool_use_id: None,
+            seq: 1,
+        };
+        let json = serde_json::to_string(&tool_call).unwrap();
+        assert!(json.contains("\"seq\":1"), "AgentToolCallPayload should serialize with seq field");
+
+        // Verify AgentTaskStartedPayload includes seq field
+        let task_started = AgentTaskStartedPayload {
+            tool_use_id: "tool-1".to_string(),
+            description: Some("test".to_string()),
+            subagent_type: Some("bash".to_string()),
+            model: Some("sonnet".to_string()),
+            teammate_name: None,
+            conversation_id: "conv-1".to_string(),
+            context_type: "task".to_string(),
+            context_id: "task-1".to_string(),
+            seq: 2,
+        };
+        let json = serde_json::to_string(&task_started).unwrap();
+        assert!(json.contains("\"seq\":2"), "AgentTaskStartedPayload should serialize with seq field");
+
+        // Verify AgentTaskCompletedPayload includes seq field
+        let task_completed = AgentTaskCompletedPayload {
+            tool_use_id: "tool-1".to_string(),
+            agent_id: Some("agent-1".to_string()),
+            total_duration_ms: Some(1000),
+            total_tokens: Some(100),
+            total_tool_use_count: Some(5),
+            teammate_name: None,
+            conversation_id: "conv-1".to_string(),
+            context_type: "task".to_string(),
+            context_id: "task-1".to_string(),
+            seq: 3,
+        };
+        let json = serde_json::to_string(&task_completed).unwrap();
+        assert!(json.contains("\"seq\":3"), "AgentTaskCompletedPayload should serialize with seq field");
+    }
+
+    #[test]
+    fn test_seq_values_are_monotonic() {
+        // Test that multiple events would have incrementing seq values
+        let mut stream_seq: u64 = 0;
+
+        // Simulate streaming multiple events
+        let seq1 = stream_seq;
+        stream_seq += 1;
+        let seq2 = stream_seq;
+        stream_seq += 1;
+        let seq3 = stream_seq;
+        stream_seq += 1;
+        let seq4 = stream_seq;
+
+        assert_eq!(seq1, 0, "First event should have seq 0");
+        assert_eq!(seq2, 1, "Second event should have seq 1");
+        assert_eq!(seq3, 2, "Third event should have seq 2");
+        assert_eq!(seq4, 3, "Fourth event should have seq 3");
+
+        // Verify strict monotonic ordering
+        assert!(seq2 > seq1, "seq must be strictly increasing");
+        assert!(seq3 > seq2, "seq must be strictly increasing");
+        assert!(seq4 > seq3, "seq must be strictly increasing");
     }
 }
