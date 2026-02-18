@@ -44,6 +44,7 @@ interface MergeIncompleteTaskDetailProps {
 
 interface MergeErrorContext {
   error: string | null;
+  errorCode: string | null;
   sourceBranch: string | null;
   targetBranch: string | null;
   diagnosticInfo: string | null;
@@ -58,6 +59,7 @@ function parseMergeError(metadata?: string | null): MergeErrorContext | null {
     const m: TaskMetadata = JSON.parse(metadata);
     return {
       error: m.error ?? null,
+      errorCode: m.error_code ?? null,
       sourceBranch: m.source_branch ?? null,
       targetBranch: m.target_branch ?? null,
       diagnosticInfo: m.diagnostic_info ?? null,

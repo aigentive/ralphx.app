@@ -22,7 +22,7 @@ pub(crate) use super::merge_validation::{
 // Internal imports used by code remaining in this file
 use super::merge_helpers::{
     compute_merge_worktree_path, compute_rebase_worktree_path, extract_task_id_from_merge_path,
-    is_task_in_merge_workflow, task_targets_branch, truncate_str,
+    is_task_in_merge_workflow, task_targets_branch, truncate_str, validate_plan_merge_preconditions,
 };
 // Used by #[cfg(test)] mod tests via `super::*`
 #[cfg(test)]
@@ -152,8 +152,62 @@ impl<'a> super::TransitionHandler<'a> {
             }
         }
 
-        // Resolve source and target branches (handles merge tasks and plan feature branches)
+        // Pre-merge validation: for plan_merge tasks, check preconditions upfront
+        // before attempting any git operations. This surfaces actionable errors
+        // (S9: repo not wired, S10/S12: branch not active, S13: feature branch deleted)
+        // as clear MergeIncomplete transitions instead of silent failures deep in the merge flow.
         let plan_branch_repo = &self.machine.context.services.plan_branch_repo;
+        if let Err(validation_err) =
+            validate_plan_merge_preconditions(&task, &project, plan_branch_repo).await
+        {
+            let error_msg = validation_err.message();
+            let error_code = validation_err.error_code();
+            tracing::warn!(
+                task_id = task_id_str,
+                error_code = error_code,
+                error = %error_msg,
+                "Pre-merge validation failed for plan_merge task — transitioning to MergeIncomplete"
+            );
+
+            task.metadata = Some(
+                serde_json::json!({
+                    "error": error_msg,
+                    "error_code": error_code,
+                    "category": task.category,
+                })
+                .to_string(),
+            );
+            task.internal_status = InternalStatus::MergeIncomplete;
+            task.touch();
+
+            if let Err(e) = task_repo.update(&task).await {
+                tracing::error!(error = %e, "Failed to update task to MergeIncomplete after pre-merge validation failure");
+                return;
+            }
+
+            if let Err(e) = task_repo
+                .persist_status_change(
+                    &task_id,
+                    InternalStatus::PendingMerge,
+                    InternalStatus::MergeIncomplete,
+                    "merge_incomplete",
+                )
+                .await
+            {
+                tracing::warn!(error = %e, "Failed to record merge_incomplete transition (non-fatal)");
+            }
+
+            self.machine
+                .context
+                .services
+                .event_emitter
+                .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                .await;
+
+            return;
+        }
+
+        // Resolve source and target branches (handles merge tasks and plan feature branches)
         let (source_branch, target_branch) =
             resolve_merge_branches(&task, &project, plan_branch_repo).await;
 
