@@ -348,6 +348,21 @@ impl<R: Runtime> StartupJobRunner<R> {
                         continue;
                     }
 
+                    // Skip tasks that already have main_merge_deferred=true — they need
+                    // serialized one-at-a-time retry via try_retry_main_merges(), not
+                    // direct execute_entry_actions() which could race if multiple siblings
+                    // are all in PendingMerge with the flag set.
+                    {
+                        use crate::domain::state_machine::transition_handler::has_main_merge_deferred_metadata;
+                        if has_main_merge_deferred_metadata(&task) {
+                            debug!(
+                                task_id = task.id.as_str(),
+                                "Phase 1: skipping main_merge_deferred task — will be handled by try_retry_main_merges at startup end"
+                            );
+                            continue;
+                        }
+                    }
+
                     let reconciled = self.reconciler.reconcile_task(&task, *status).await;
 
                     if reconciled {
@@ -533,6 +548,19 @@ impl<R: Runtime> StartupJobRunner<R> {
         if let Some(ref scheduler) = self.task_scheduler {
             info!("Scheduling Ready tasks after resumption");
             scheduler.try_schedule_ready_tasks().await;
+        }
+
+        // Boot recovery: if no agents were spawned during startup (quiescent boot),
+        // invoke try_retry_main_merges() now. Normally this is called from the
+        // agent-exit path in transition_handler when running_count transitions to 0,
+        // but at boot there may be no agents to exit and thus no future trigger.
+        // Without this call, PendingMerge tasks with main_merge_deferred=true would
+        // sit stuck indefinitely after a reboot.
+        if self.execution_state.running_count() == 0 {
+            if let Some(ref scheduler) = self.task_scheduler {
+                info!("Boot recovery: invoking try_retry_main_merges for deferred main-branch merges (running_count == 0)");
+                scheduler.try_retry_main_merges().await;
+            }
         }
     }
 
