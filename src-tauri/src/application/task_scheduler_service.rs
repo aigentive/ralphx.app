@@ -28,7 +28,7 @@ use crate::domain::entities::{
         MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
         MergeRecoverySource, MergeRecoveryState,
     },
-    GitMode, InternalStatus, ProjectId, Task,
+    GitMode, InternalStatus, ProjectId, Task, TaskCategory,
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
@@ -363,7 +363,7 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
             );
 
             // Determine target status: plan_merge tasks skip execution and go directly to merge
-            let target_status = if task.category == "plan_merge" {
+            let target_status = if task.category == TaskCategory::PlanMerge {
                 tracing::info!(
                     task_id = task.id.as_str(),
                     "Plan merge task: routing to PendingMerge (skip execution)"

@@ -3,7 +3,7 @@
 
 use crate::domain::entities::{
     InternalStatus, ProjectId, Review, ReviewAction, ReviewActionType, ReviewNote, ReviewOutcome,
-    ReviewerType, Task, TaskId,
+    ReviewerType, Task, TaskCategory, TaskId,
 };
 use crate::domain::repositories::{ReviewRepository, TaskRepository};
 use crate::domain::review::config::ReviewSettings;
@@ -154,7 +154,7 @@ impl<R: ReviewRepository, T: TaskRepository> ReviewService<R, T> {
         let mut fix_task = Task::new_with_category(
             project_id.clone(),
             format!("Fix: {}", original.title),
-            "fix".to_string(),
+            TaskCategory::Regular,
         );
         fix_task.set_description(Some(fix_description.to_string()));
         fix_task.set_priority(original.priority + 1); // Higher priority than original
@@ -936,7 +936,7 @@ mod tests {
         let fix_task_id = result.unwrap();
         let fix_task = task_repo.get_by_id(&fix_task_id).await.unwrap().unwrap();
         assert!(fix_task.title.starts_with("Fix:"));
-        assert_eq!(fix_task.category, "fix");
+        assert_eq!(fix_task.category, TaskCategory::Regular);
     }
 
     #[tokio::test]
@@ -1342,7 +1342,7 @@ mod tests {
         // Verify fix task was created
         let fix_task = task_repo.get_by_id(&fix_task_id).await.unwrap().unwrap();
         assert!(fix_task.title.starts_with("Fix:"));
-        assert_eq!(fix_task.category, "fix");
+        assert_eq!(fix_task.category, TaskCategory::Regular);
         assert!(fix_task
             .description
             .as_ref()

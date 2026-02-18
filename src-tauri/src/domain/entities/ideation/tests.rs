@@ -709,50 +709,50 @@ fn proposal_status_from_str_invalid() {
 }
 
 // ==========================================
-// TaskCategory Enum Tests
+// ProposalCategory Enum Tests
 // ==========================================
 
 #[test]
-fn task_category_default_is_feature() {
-    assert_eq!(TaskCategory::default(), TaskCategory::Feature);
+fn proposal_category_default_is_feature() {
+    assert_eq!(ProposalCategory::default(), ProposalCategory::Feature);
 }
 
 #[test]
-fn task_category_display() {
-    assert_eq!(format!("{}", TaskCategory::Setup), "setup");
-    assert_eq!(format!("{}", TaskCategory::Feature), "feature");
-    assert_eq!(format!("{}", TaskCategory::Fix), "fix");
-    assert_eq!(format!("{}", TaskCategory::Refactor), "refactor");
-    assert_eq!(format!("{}", TaskCategory::Docs), "docs");
-    assert_eq!(format!("{}", TaskCategory::Test), "test");
-    assert_eq!(format!("{}", TaskCategory::Performance), "performance");
-    assert_eq!(format!("{}", TaskCategory::Security), "security");
-    assert_eq!(format!("{}", TaskCategory::DevOps), "devops");
-    assert_eq!(format!("{}", TaskCategory::Research), "research");
-    assert_eq!(format!("{}", TaskCategory::Design), "design");
-    assert_eq!(format!("{}", TaskCategory::Chore), "chore");
+fn proposal_category_display() {
+    assert_eq!(format!("{}", ProposalCategory::Setup), "setup");
+    assert_eq!(format!("{}", ProposalCategory::Feature), "feature");
+    assert_eq!(format!("{}", ProposalCategory::Fix), "fix");
+    assert_eq!(format!("{}", ProposalCategory::Refactor), "refactor");
+    assert_eq!(format!("{}", ProposalCategory::Docs), "docs");
+    assert_eq!(format!("{}", ProposalCategory::Test), "test");
+    assert_eq!(format!("{}", ProposalCategory::Performance), "performance");
+    assert_eq!(format!("{}", ProposalCategory::Security), "security");
+    assert_eq!(format!("{}", ProposalCategory::DevOps), "devops");
+    assert_eq!(format!("{}", ProposalCategory::Research), "research");
+    assert_eq!(format!("{}", ProposalCategory::Design), "design");
+    assert_eq!(format!("{}", ProposalCategory::Chore), "chore");
 }
 
 #[test]
-fn task_category_from_str() {
+fn proposal_category_from_str() {
     assert_eq!(
-        "setup".parse::<TaskCategory>().unwrap(),
-        TaskCategory::Setup
+        "setup".parse::<ProposalCategory>().unwrap(),
+        ProposalCategory::Setup
     );
     assert_eq!(
-        "feature".parse::<TaskCategory>().unwrap(),
-        TaskCategory::Feature
+        "feature".parse::<ProposalCategory>().unwrap(),
+        ProposalCategory::Feature
     );
-    assert_eq!("fix".parse::<TaskCategory>().unwrap(), TaskCategory::Fix);
+    assert_eq!("fix".parse::<ProposalCategory>().unwrap(), ProposalCategory::Fix);
     assert_eq!(
-        "devops".parse::<TaskCategory>().unwrap(),
-        TaskCategory::DevOps
+        "devops".parse::<ProposalCategory>().unwrap(),
+        ProposalCategory::DevOps
     );
 }
 
 #[test]
-fn task_category_from_str_invalid() {
-    let result: Result<TaskCategory, _> = "invalid".parse();
+fn proposal_category_from_str_invalid() {
+    let result: Result<ProposalCategory, _> = "invalid".parse();
     assert!(result.is_err());
 }
 
@@ -808,13 +808,13 @@ fn proposal_new_creates_with_defaults() {
     let proposal = TaskProposal::new(
         session_id.clone(),
         "Add authentication",
-        TaskCategory::Feature,
+        ProposalCategory::Feature,
         Priority::High,
     );
 
     assert_eq!(proposal.session_id, session_id);
     assert_eq!(proposal.title, "Add authentication");
-    assert_eq!(proposal.category, TaskCategory::Feature);
+    assert_eq!(proposal.category, ProposalCategory::Feature);
     assert_eq!(proposal.suggested_priority, Priority::High);
     assert_eq!(proposal.priority_score, 50);
     assert_eq!(proposal.estimated_complexity, Complexity::Moderate);
@@ -831,10 +831,10 @@ fn proposal_new_generates_unique_id() {
     let p1 = TaskProposal::new(
         session_id.clone(),
         "Task 1",
-        TaskCategory::Feature,
+        ProposalCategory::Feature,
         Priority::High,
     );
-    let p2 = TaskProposal::new(session_id, "Task 2", TaskCategory::Feature, Priority::Low);
+    let p2 = TaskProposal::new(session_id, "Task 2", ProposalCategory::Feature, Priority::Low);
 
     assert_ne!(p1.id, p2.id);
 }
@@ -844,7 +844,7 @@ fn proposal_effective_priority_returns_suggested_when_no_override() {
     let proposal = TaskProposal::new(
         IdeationSessionId::new(),
         "Test",
-        TaskCategory::Feature,
+        ProposalCategory::Feature,
         Priority::High,
     );
 
@@ -856,7 +856,7 @@ fn proposal_effective_priority_returns_user_override() {
     let mut proposal = TaskProposal::new(
         IdeationSessionId::new(),
         "Test",
-        TaskCategory::Feature,
+        ProposalCategory::Feature,
         Priority::High,
     );
     proposal.set_user_priority(Priority::Low);
@@ -873,7 +873,7 @@ fn proposal_is_pending() {
     let proposal = TaskProposal::new(
         IdeationSessionId::new(),
         "Test",
-        TaskCategory::Feature,
+        ProposalCategory::Feature,
         Priority::Medium,
     );
     assert!(proposal.is_pending());
@@ -885,7 +885,7 @@ fn proposal_accept() {
     let mut proposal = TaskProposal::new(
         IdeationSessionId::new(),
         "Test",
-        TaskCategory::Feature,
+        ProposalCategory::Feature,
         Priority::Medium,
     );
     proposal.accept();
@@ -900,7 +900,7 @@ fn proposal_reject() {
     let mut proposal = TaskProposal::new(
         IdeationSessionId::new(),
         "Test",
-        TaskCategory::Feature,
+        ProposalCategory::Feature,
         Priority::Medium,
     );
     proposal.reject();
@@ -914,7 +914,7 @@ fn proposal_set_user_priority() {
     let mut proposal = TaskProposal::new(
         IdeationSessionId::new(),
         "Test",
-        TaskCategory::Feature,
+        ProposalCategory::Feature,
         Priority::Low,
     );
     proposal.set_user_priority(Priority::Critical);
@@ -929,7 +929,7 @@ fn proposal_link_to_task() {
     let mut proposal = TaskProposal::new(
         IdeationSessionId::new(),
         "Test",
-        TaskCategory::Feature,
+        ProposalCategory::Feature,
         Priority::Medium,
     );
     let task_id = TaskId::new();
@@ -944,7 +944,7 @@ fn proposal_toggle_selection() {
     let mut proposal = TaskProposal::new(
         IdeationSessionId::new(),
         "Test",
-        TaskCategory::Feature,
+        ProposalCategory::Feature,
         Priority::Medium,
     );
     assert!(!proposal.selected);
@@ -961,7 +961,7 @@ fn proposal_touch_updates_timestamp() {
     let mut proposal = TaskProposal::new(
         IdeationSessionId::new(),
         "Test",
-        TaskCategory::Feature,
+        ProposalCategory::Feature,
         Priority::Medium,
     );
     let original = proposal.updated_at;
@@ -981,7 +981,7 @@ fn proposal_serializes_to_json() {
     let proposal = TaskProposal::new(
         IdeationSessionId::new(),
         "JSON Test",
-        TaskCategory::Fix,
+        ProposalCategory::Fix,
         Priority::Critical,
     );
     let json = serde_json::to_string(&proposal).unwrap();
@@ -1021,7 +1021,7 @@ fn proposal_deserializes_from_json() {
     assert_eq!(proposal.id.as_str(), "prop-123");
     assert_eq!(proposal.session_id.as_str(), "sess-456");
     assert_eq!(proposal.title, "Deserialized");
-    assert_eq!(proposal.category, TaskCategory::Refactor);
+    assert_eq!(proposal.category, ProposalCategory::Refactor);
     assert_eq!(proposal.suggested_priority, Priority::High);
     assert_eq!(proposal.priority_score, 75);
     assert_eq!(proposal.estimated_complexity, Complexity::Complex);
@@ -1036,7 +1036,7 @@ fn proposal_roundtrip_serialization() {
     let mut original = TaskProposal::new(
         IdeationSessionId::new(),
         "Roundtrip",
-        TaskCategory::Security,
+        ProposalCategory::Security,
         Priority::High,
     );
     original.set_user_priority(Priority::Critical);
@@ -1111,7 +1111,7 @@ fn proposal_from_row_basic() {
     assert_eq!(proposal.id.as_str(), "prop-1");
     assert_eq!(proposal.session_id.as_str(), "sess-1");
     assert_eq!(proposal.title, "Test Proposal");
-    assert_eq!(proposal.category, TaskCategory::Feature);
+    assert_eq!(proposal.category, ProposalCategory::Feature);
     assert_eq!(proposal.suggested_priority, Priority::High);
     assert_eq!(proposal.priority_score, 75);
     assert_eq!(proposal.estimated_complexity, Complexity::Complex);
@@ -1220,7 +1220,7 @@ fn proposal_from_row_unknown_category_defaults_to_feature() {
         )
         .unwrap();
 
-    assert_eq!(proposal.category, TaskCategory::Feature);
+    assert_eq!(proposal.category, ProposalCategory::Feature);
 }
 
 // ==========================================

@@ -50,7 +50,7 @@ use crate::domain::entities::{
         MergeRecoverySource, MergeRecoveryState,
     },
     GitMode, InternalStatus, MergeStrategy, MergeValidationMode, PlanBranchStatus, ProjectId, Task,
-    TaskId,
+    TaskCategory, TaskId,
 };
 use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 use crate::error::AppResult;
@@ -60,10 +60,10 @@ const TEMP_SKIP_POST_MERGE_VALIDATION: bool = true;
 
 /// Build a squash commit message based on task category.
 ///
-/// For plan_merge tasks: `feat: {title}\n\nPlan branch: {branch}`
+/// For PlanMerge tasks: `feat: {title}\n\nPlan branch: {branch}`
 /// For regular tasks: `feat: {branch} ({title})`
-fn build_squash_commit_msg(category: &str, title: &str, source_branch: &str) -> String {
-    if category == "plan_merge" {
+fn build_squash_commit_msg(category: TaskCategory, title: &str, source_branch: &str) -> String {
+    if category == TaskCategory::PlanMerge {
         format!("feat: {}\n\nPlan branch: {}", title, source_branch)
     } else {
         format!("feat: {} ({})", source_branch, title)
@@ -861,7 +861,7 @@ impl<'a> super::TransitionHandler<'a> {
 
         // Build commit message for squash merges
         let squash_commit_msg =
-            build_squash_commit_msg(&task.category, &task.title, &source_branch);
+            build_squash_commit_msg(task.category, &task.title, &source_branch);
         match (project.merge_strategy, project.git_mode) {
             (MergeStrategy::Merge, GitMode::Worktree) => {
                 // Detect if the target branch is already checked out in the primary repo.
@@ -6668,7 +6668,7 @@ mod tests {
     #[test]
     fn test_build_squash_commit_msg_plan_merge() {
         let msg = build_squash_commit_msg(
-            "plan_merge",
+            TaskCategory::PlanMerge,
             "Fix \"Remove All From Plan\"",
             "ralphx/ralphx/plan-abc123",
         );
@@ -6680,13 +6680,13 @@ mod tests {
 
     #[test]
     fn test_build_squash_commit_msg_regular_task() {
-        let msg = build_squash_commit_msg("feat", "Write tests", "ralphx/ralphx/task-xyz");
+        let msg = build_squash_commit_msg(TaskCategory::Regular, "Write tests", "ralphx/ralphx/task-xyz");
         assert_eq!(msg, "feat: ralphx/ralphx/task-xyz (Write tests)");
     }
 
     #[test]
     fn test_build_squash_commit_msg_different_category() {
-        let msg = build_squash_commit_msg("fix", "Fix bug", "ralphx/ralphx/task-123");
+        let msg = build_squash_commit_msg(TaskCategory::Regular, "Fix bug", "ralphx/ralphx/task-123");
         assert_eq!(msg, "feat: ralphx/ralphx/task-123 (Fix bug)");
     }
 }

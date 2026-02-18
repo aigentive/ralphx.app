@@ -82,7 +82,7 @@ mod tests {
     use super::*;
     use crate::domain::entities::{
         BusinessValueFactor, Complexity, ComplexityFactor, CriticalPathFactor, DependencyFactor,
-        Priority, PriorityAssessmentFactors, TaskCategory, UserHintFactor,
+        Priority, PriorityAssessmentFactors, ProposalCategory, UserHintFactor,
     };
     use std::sync::Arc;
 
@@ -232,7 +232,7 @@ mod tests {
         TaskProposal::new(
             session_id.clone(),
             "Test Proposal",
-            TaskCategory::Feature,
+            ProposalCategory::Feature,
             Priority::Medium,
         )
     }

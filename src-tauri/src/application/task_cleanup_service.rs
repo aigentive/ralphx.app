@@ -12,7 +12,7 @@ use tauri::AppHandle;
 use crate::application::git_service::GitService;
 use crate::commands::execution_commands::AGENT_ACTIVE_STATUSES;
 use crate::domain::entities::project::GitMode;
-use crate::domain::entities::{IdeationSessionId, InternalStatus, ProjectId, Task, TaskId};
+use crate::domain::entities::{IdeationSessionId, InternalStatus, ProjectId, Task, TaskCategory, TaskId};
 use crate::domain::repositories::{ProjectRepository, TaskRepository};
 use crate::domain::services::{RunningAgentKey, RunningAgentRegistry};
 use crate::error::AppResult;
@@ -308,7 +308,7 @@ impl TaskCleanupService {
         // Filter out plan_merge tasks (system-managed)
         let filtered: Vec<Task> = tasks
             .into_iter()
-            .filter(|t| t.category != "plan_merge")
+            .filter(|t| t.category != TaskCategory::PlanMerge)
             .collect();
         Ok(self
             .cleanup_tasks(&filtered, StopMode::Graceful, true)
@@ -769,7 +769,7 @@ mod tests {
         let task = Task::new_with_category(
             project_id.clone(),
             "Merge Plan".to_string(),
-            "plan_merge".to_string(),
+            TaskCategory::PlanMerge,
         );
         let created = state.task_repo.create(task).await.unwrap();
 

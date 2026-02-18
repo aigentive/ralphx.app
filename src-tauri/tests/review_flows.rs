@@ -15,7 +15,7 @@ use tokio::sync::Mutex;
 use ralphx_lib::application::ReviewService;
 use ralphx_lib::domain::entities::IssueSeverity;
 use ralphx_lib::domain::entities::{
-    ProjectId, ReviewActionType, ReviewOutcome, ReviewStatus, ReviewerType, TaskId,
+    ProjectId, ReviewActionType, ReviewOutcome, ReviewStatus, ReviewerType, TaskCategory, TaskId,
 };
 use ralphx_lib::domain::repositories::ReviewRepository;
 use ralphx_lib::domain::review::config::ReviewSettings;
@@ -559,8 +559,8 @@ async fn test_ai_review_needs_changes_flow() {
         "Fix task title should start with 'Fix:'"
     );
     assert_eq!(
-        fix_task.category, "fix",
-        "Fix task category should be 'fix'"
+        fix_task.category, TaskCategory::Regular,
+        "Fix task category should be Regular"
     );
     assert!(
         fix_task

@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crate::application::GitService;
 use crate::domain::entities::InternalStatus;
-use crate::domain::entities::{PlanBranchStatus, Project, Task, TaskId};
+use crate::domain::entities::{PlanBranchStatus, Project, Task, TaskCategory, TaskId};
 use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 use crate::error::AppResult;
 
@@ -423,7 +423,7 @@ pub async fn resolve_merge_branches(
     );
 
     let Some(ref plan_branch_repo) = plan_branch_repo else {
-        if task.category == "plan_merge" {
+        if task.category == TaskCategory::PlanMerge {
             tracing::warn!(
                 task_id = task.id.as_str(),
                 "resolve_merge_branches: plan_branch_repo is None for plan_merge task — \

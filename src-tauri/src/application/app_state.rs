@@ -634,7 +634,7 @@ mod tests {
     use super::*;
     use crate::domain::agents::ClientType;
     use crate::domain::entities::{
-        ChatMessage, IdeationSession, Priority, Project, ProjectId, Task, TaskCategory,
+        ChatMessage, IdeationSession, Priority, Project, ProjectId, ProposalCategory, Task,
         TaskProposal,
     };
 
@@ -777,7 +777,7 @@ mod tests {
         let proposal = TaskProposal::new(
             session_id.clone(),
             "Test Proposal",
-            TaskCategory::Feature,
+            ProposalCategory::Feature,
             Priority::Medium,
         );
         let proposal_id = proposal.id.clone();
@@ -807,7 +807,7 @@ mod tests {
         let proposal2 = TaskProposal::new(
             session_id.clone(),
             "Another Proposal",
-            TaskCategory::Feature,
+            ProposalCategory::Feature,
             Priority::Low,
         );
         let proposal2_id = proposal2.id.clone();
