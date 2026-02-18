@@ -251,7 +251,7 @@ pub async fn move_task(
         Some(app.clone()),
         Arc::clone(&state.memory_event_repo),
     )
-    .with_task_scheduler(task_scheduler)
+    .with_task_scheduler(Arc::clone(&task_scheduler))
     .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
 
     // ALWAYS set team_mode based on explicit UI selection so it overrides
@@ -263,6 +263,17 @@ pub async fn move_task(
         .transition_task(&task_id, new_status)
         .await
         .map_err(|e| e.to_string())?;
+
+    // If the task was already Ready and we requested Ready (Start button on Ready task),
+    // transition_task is a no-op. Explicitly trigger the scheduler so plan_merge and
+    // other Ready tasks get picked up.
+    if old_status == InternalStatus::Ready && new_status == InternalStatus::Ready {
+        tracing::info!(
+            task_id = task_id.as_str(),
+            "Ready→Ready self-transition detected, triggering scheduler"
+        );
+        task_scheduler.try_schedule_ready_tasks().await;
+    }
 
     // Emit queue_changed event if the move affects Ready status
     if old_status == InternalStatus::Ready || new_status == InternalStatus::Ready {
