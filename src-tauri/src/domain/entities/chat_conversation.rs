@@ -138,6 +138,9 @@ pub struct ChatConversation {
     pub created_at: DateTime<Utc>,
     /// When this conversation was last updated
     pub updated_at: DateTime<Utc>,
+    /// ID of the prior execution's conversation (for TaskExecution re-runs only).
+    /// Enables UI navigation between execution generations.
+    pub parent_conversation_id: Option<String>,
 }
 
 impl ChatConversation {
@@ -154,6 +157,7 @@ impl ChatConversation {
             last_message_at: None,
             created_at: now,
             updated_at: now,
+            parent_conversation_id: None,
         }
     }
 
@@ -170,6 +174,7 @@ impl ChatConversation {
             last_message_at: None,
             created_at: now,
             updated_at: now,
+            parent_conversation_id: None,
         }
     }
 
@@ -186,10 +191,12 @@ impl ChatConversation {
             last_message_at: None,
             created_at: now,
             updated_at: now,
+            parent_conversation_id: None,
         }
     }
 
-    /// Create a new conversation for task execution (worker output)
+    /// Create a new conversation for task execution (worker output).
+    /// Pass `parent_id` when re-executing a task to link to the prior run's conversation.
     pub fn new_task_execution(task_id: TaskId) -> Self {
         let now = Utc::now();
         Self {
@@ -202,6 +209,7 @@ impl ChatConversation {
             last_message_at: None,
             created_at: now,
             updated_at: now,
+            parent_conversation_id: None,
         }
     }
 
@@ -218,6 +226,7 @@ impl ChatConversation {
             last_message_at: None,
             created_at: now,
             updated_at: now,
+            parent_conversation_id: None,
         }
     }
 
@@ -234,6 +243,7 @@ impl ChatConversation {
             last_message_at: None,
             created_at: now,
             updated_at: now,
+            parent_conversation_id: None,
         }
     }
 

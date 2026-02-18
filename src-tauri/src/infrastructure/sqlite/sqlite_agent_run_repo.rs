@@ -330,6 +330,7 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                     last_message_at: last_message_at_str.map(|s| parse_datetime(&s)),
                     created_at: parse_datetime(&conv_created_at_str),
                     updated_at: parse_datetime(&conv_updated_at_str),
+                    parent_conversation_id: None,
                 };
 
                 // Parse agent run fields

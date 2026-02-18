@@ -53,8 +53,8 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
         let conn = self.conn.lock().await;
 
         conn.execute(
-            "INSERT INTO chat_conversations (id, context_type, context_id, claude_session_id, title, message_count, last_message_at, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT INTO chat_conversations (id, context_type, context_id, claude_session_id, title, message_count, last_message_at, created_at, updated_at, parent_conversation_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             rusqlite::params![
                 conversation.id.as_str(),
                 conversation.context_type.to_string(),
@@ -65,6 +65,7 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
                 conversation.last_message_at.map(|dt| dt.to_rfc3339()),
                 conversation.created_at.to_rfc3339(),
                 conversation.updated_at.to_rfc3339(),
+                conversation.parent_conversation_id,
             ],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
@@ -76,7 +77,7 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
         let conn = self.conn.lock().await;
 
         let result = conn.query_row(
-            "SELECT id, context_type, context_id, claude_session_id, title, message_count, last_message_at, created_at, updated_at
+            "SELECT id, context_type, context_id, claude_session_id, title, message_count, last_message_at, created_at, updated_at, parent_conversation_id
              FROM chat_conversations WHERE id = ?1",
             [id.as_str()],
             |row| {
@@ -99,6 +100,7 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
                     last_message_at: last_message_at_str.and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc))),
                     created_at,
                     updated_at,
+                    parent_conversation_id: row.get("parent_conversation_id")?,
                 })
             },
         );
@@ -119,7 +121,7 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, context_type, context_id, claude_session_id, title, message_count, last_message_at, created_at, updated_at
+                "SELECT id, context_type, context_id, claude_session_id, title, message_count, last_message_at, created_at, updated_at, parent_conversation_id
                  FROM chat_conversations WHERE context_type = ?1 AND context_id = ?2 ORDER BY created_at DESC",
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -151,6 +153,7 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
                     }),
                     created_at,
                     updated_at,
+                    parent_conversation_id: row.get("parent_conversation_id")?,
                 })
             })
             .map_err(|e| AppError::Database(e.to_string()))?
@@ -168,7 +171,7 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
         let conn = self.conn.lock().await;
 
         let result = conn.query_row(
-            "SELECT id, context_type, context_id, claude_session_id, title, message_count, last_message_at, created_at, updated_at
+            "SELECT id, context_type, context_id, claude_session_id, title, message_count, last_message_at, created_at, updated_at, parent_conversation_id
              FROM chat_conversations WHERE context_type = ?1 AND context_id = ?2 ORDER BY created_at DESC LIMIT 1",
             [context_type.to_string(), context_id.to_string()],
             |row| {
@@ -191,6 +194,7 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
                     last_message_at: last_message_at_str.and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc))),
                     created_at,
                     updated_at,
+                    parent_conversation_id: row.get("parent_conversation_id")?,
                 })
             },
         );

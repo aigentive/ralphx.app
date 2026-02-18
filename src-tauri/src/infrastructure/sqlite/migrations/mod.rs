@@ -57,6 +57,7 @@ mod v35_step_substeps;
 mod v36_spawn_orchestrator_jobs;
 mod v37_team_sessions;
 mod v38_ideation_team_mode;
+mod v39_conversation_parent_id;
 mod v3_add_activity_events;
 mod v4_add_blocked_reason;
 mod v5_add_review_summary_issues;
@@ -120,6 +121,8 @@ mod v37_team_sessions_tests;
 #[cfg(test)]
 mod v38_ideation_team_mode_tests;
 #[cfg(test)]
+mod v39_conversation_parent_id_tests;
+#[cfg(test)]
 mod v3_add_activity_events_tests;
 #[cfg(test)]
 mod v4_add_blocked_reason_tests;
@@ -133,7 +136,7 @@ mod v8_task_git_fields_tests;
 mod v9_project_git_fields_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 38;
+pub const SCHEMA_VERSION: i32 = 39;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -337,6 +340,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 38,
         name: "ideation_team_mode",
         migrate: v38_ideation_team_mode::migrate,
+    },
+    Migration {
+        version: 39,
+        name: "conversation_parent_id",
+        migrate: v39_conversation_parent_id::migrate,
     },
 ];
 
