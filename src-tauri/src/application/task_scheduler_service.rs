@@ -11,9 +11,16 @@
 // - resume_execution and set_max_concurrent commands (future Phase 26 tasks)
 
 use async_trait::async_trait;
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicU32, Ordering},
+    Arc, Mutex,
+};
 use tauri::{AppHandle, Runtime};
 use tokio::sync::{Mutex as TokioMutex, RwLock};
+
+/// Maximum number of pending contention-retry spawns for try_schedule_ready_tasks().
+/// Prevents cascading retries if the scheduler is persistently held.
+const MAX_CONTENTION_RETRIES: u32 = 3;
 
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
@@ -80,6 +87,10 @@ pub struct TaskSchedulerService<R: Runtime = tauri::Wry> {
     /// leading to TOCTOU races where two invocations both find the same Ready task
     /// and both transition it to Executing, causing duplicate on_enter(Executing).
     scheduling_lock: TokioMutex<()>,
+    /// Number of pending contention-retry spawns currently in flight.
+    /// Wrapped in Arc so spawned retry closures can decrement it without downcasting.
+    /// Bounded by MAX_CONTENTION_RETRIES.
+    contention_retry_pending: Arc<AtomicU32>,
 }
 
 impl<R: Runtime> TaskSchedulerService<R> {
@@ -120,6 +131,7 @@ impl<R: Runtime> TaskSchedulerService<R> {
             self_ref: Mutex::new(None),
             active_project_id: RwLock::new(None),
             scheduling_lock: TokioMutex::new(()),
+            contention_retry_pending: Arc::new(AtomicU32::new(0)),
         }
     }
 
@@ -288,12 +300,39 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
     async fn try_schedule_ready_tasks(&self) {
         // Prevent concurrent scheduling to avoid TOCTOU race where two invocations
         // both find the same Ready task and both transition it to Executing.
-        // Use try_lock: if another scheduling is already in progress, skip — the
-        // running invocation's loop will handle all available slots.
+        // Use try_lock: if another scheduling is already in progress, queue a 200ms retry
+        // so the caller's scheduling intent is not silently lost (S6 fix).
         let _guard = match self.scheduling_lock.try_lock() {
             Ok(guard) => guard,
             Err(_) => {
-                tracing::debug!("Scheduling already in progress, skipping concurrent attempt");
+                // Limit concurrent retry spawns to avoid cascading if lock is persistently held.
+                let pending = self.contention_retry_pending.load(Ordering::Relaxed);
+                if pending >= MAX_CONTENTION_RETRIES {
+                    tracing::debug!(
+                        pending_retries = pending,
+                        "Scheduling already in progress; retry limit reached, dropping attempt"
+                    );
+                    return;
+                }
+                if let Some(scheduler) = self.self_ref.lock().unwrap().clone() {
+                    self.contention_retry_pending.fetch_add(1, Ordering::Relaxed);
+                    tracing::debug!(
+                        pending_retries = pending + 1,
+                        "Scheduling lock contention detected; queuing retry in 200ms"
+                    );
+                    let retry_counter = Arc::clone(&self.contention_retry_pending);
+                    tokio::spawn(async move {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                        // Decrement before the retry attempt so the slot is freed
+                        // regardless of whether the retry succeeds or skips.
+                        retry_counter.fetch_sub(1, Ordering::Relaxed);
+                        scheduler.try_schedule_ready_tasks().await;
+                    });
+                } else {
+                    tracing::debug!(
+                        "Scheduling already in progress, skipping concurrent attempt (no self_ref)"
+                    );
+                }
                 return;
             }
         };
@@ -2135,6 +2174,119 @@ mod tests {
         assert!(
             flag1_cleared || flag2_cleared,
             "At least one task across all projects should have its flag cleared"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Lock Contention Retry Tests (S6 fix)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// When scheduling_lock is held, a retry should be queued instead of silently dropping.
+    #[tokio::test]
+    async fn test_contention_queues_retry_when_self_ref_set() {
+        let (execution_state, app_state) = setup_test_state().await;
+        execution_state.set_max_concurrent(10);
+
+        let scheduler = Arc::new(build_scheduler(&app_state, &execution_state));
+        scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
+
+        // Verify no pending retries initially
+        assert_eq!(
+            scheduler.contention_retry_pending.load(Ordering::Relaxed),
+            0,
+            "No pending retries at start"
+        );
+
+        // Hold the scheduling_lock to simulate contention
+        let _guard = scheduler.scheduling_lock.lock().await;
+
+        // Call try_schedule_ready_tasks while lock is held — should queue a retry
+        // We can't await it directly because it would block. Spawn it.
+        let scheduler2 = Arc::clone(&scheduler);
+        let handle = tokio::spawn(async move {
+            // This call should encounter contention and queue a retry
+            scheduler2.try_schedule_ready_tasks().await;
+        });
+        handle.await.unwrap();
+
+        // A retry should now be pending (spawned but sleeping for 200ms)
+        assert_eq!(
+            scheduler.contention_retry_pending.load(Ordering::Relaxed),
+            1,
+            "One retry should be pending after contention"
+        );
+
+        // Release the lock so the retry can succeed
+        drop(_guard);
+
+        // Wait for the retry to fire (200ms delay + buffer)
+        tokio::time::sleep(tokio::time::Duration::from_millis(350)).await;
+
+        // After retry completes, counter should be back to 0
+        assert_eq!(
+            scheduler.contention_retry_pending.load(Ordering::Relaxed),
+            0,
+            "Retry counter should return to 0 after retry fires"
+        );
+    }
+
+    /// When scheduling_lock is held and self_ref is NOT set, the call is silently dropped
+    /// (unchanged from original behaviour — no retry can be queued without a self reference).
+    #[tokio::test]
+    async fn test_contention_drops_silently_without_self_ref() {
+        let (execution_state, app_state) = setup_test_state().await;
+        execution_state.set_max_concurrent(10);
+
+        let scheduler = Arc::new(build_scheduler(&app_state, &execution_state));
+        // Deliberately do NOT call set_self_ref
+
+        let _guard = scheduler.scheduling_lock.lock().await;
+
+        let scheduler2 = Arc::clone(&scheduler);
+        tokio::spawn(async move {
+            scheduler2.try_schedule_ready_tasks().await;
+        })
+        .await
+        .unwrap();
+
+        // No retry queued because self_ref is None
+        assert_eq!(
+            scheduler.contention_retry_pending.load(Ordering::Relaxed),
+            0,
+            "No retry queued when self_ref is not set"
+        );
+    }
+
+    /// When retry limit is reached, further contention attempts are dropped without
+    /// queuing additional retries.
+    #[tokio::test]
+    async fn test_contention_respects_max_retry_limit() {
+        let (execution_state, app_state) = setup_test_state().await;
+        execution_state.set_max_concurrent(10);
+
+        let scheduler = Arc::new(build_scheduler(&app_state, &execution_state));
+        scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
+
+        // Pre-fill the retry counter to the maximum
+        scheduler
+            .contention_retry_pending
+            .store(MAX_CONTENTION_RETRIES, Ordering::Relaxed);
+
+        let _guard = scheduler.scheduling_lock.lock().await;
+
+        let scheduler2 = Arc::clone(&scheduler);
+        tokio::spawn(async move {
+            // Should be dropped: retry limit already at max
+            scheduler2.try_schedule_ready_tasks().await;
+        })
+        .await
+        .unwrap();
+
+        // Counter must stay at MAX (not incremented further)
+        assert_eq!(
+            scheduler.contention_retry_pending.load(Ordering::Relaxed),
+            MAX_CONTENTION_RETRIES,
+            "Counter must not exceed MAX_CONTENTION_RETRIES"
         );
     }
 }
