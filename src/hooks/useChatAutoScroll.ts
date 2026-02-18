@@ -29,6 +29,8 @@ export interface UseChatAutoScrollProps {
   disabled?: boolean;
   /** Virtuoso handle ref — when provided, all scrolling goes through Virtuoso APIs */
   virtuosoRef?: React.RefObject<VirtuosoHandle | null>;
+  /** Conversation ID — when it changes, resets isAtBottom to true for the new conversation */
+  conversationId?: string | null;
 }
 
 export interface UseChatAutoScrollReturn {
@@ -56,6 +58,7 @@ export function useChatAutoScroll({
   messageCount,
   disabled = false,
   virtuosoRef,
+  conversationId,
 }: UseChatAutoScrollProps): UseChatAutoScrollReturn {
   // Refs for div-based scroll components (non-Virtuoso fallback)
   const containerRef = useRef<HTMLDivElement>(null);
@@ -64,6 +67,14 @@ export function useChatAutoScroll({
   // Track if user is at bottom
   const [isAtBottom, setIsAtBottom] = useState(true);
   const isAtBottomRef = useRef(true);
+
+  // Reset isAtBottom when conversation changes — ensures a scrolled-up state from
+  // the previous conversation doesn't carry over to the new one.
+  useEffect(() => {
+    if (conversationId == null) return;
+    isAtBottomRef.current = true;
+    setIsAtBottom(true);
+  }, [conversationId]);
 
   // Computed: should we auto-scroll?
   const shouldAutoScroll = isAtBottom && !disabled;

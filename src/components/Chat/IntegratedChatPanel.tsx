@@ -57,6 +57,8 @@ import { useTeamEvents } from "@/hooks/useTeamEvents";
 import { useTeamActions } from "@/hooks/useTeamActions";
 import { TeamActivityPanel } from "./TeamActivityPanel";
 import { TeamPlanApproval } from "./TeamPlanApproval";
+import { StreamingToolIndicator } from "./StreamingToolIndicator";
+import { isDiffToolCall } from "./DiffToolCallView.utils";
 import { TeamFilterTabs, type TeamFilterValue } from "./TeamFilterTabs";
 import { TargetSelector, type TargetValue } from "./TargetSelector";
 import { useTeamHistory } from "@/hooks/useTeamHistory";
@@ -639,6 +641,20 @@ export function IntegratedChatPanel({
               contextKey={activeTeam ? storeContextKey : undefined}
             />
           )}
+
+          {/* StreamingToolIndicator — outside scroll container so it's always visible.
+              Filters out Task calls (shown as TaskSubagentCard) and diff calls (shown inline). */}
+          {(isSending || isAgentRunning) && (() => {
+            const otherToolCalls = streamingToolCalls.filter(
+              (tc) => tc.name.toLowerCase() !== "task" &&
+                      (!isDiffToolCall(tc.name) || tc.arguments == null)
+            );
+            return otherToolCalls.length > 0 ? (
+              <div className="shrink-0 px-3 pb-2">
+                <StreamingToolIndicator toolCalls={otherToolCalls} isActive={true} />
+              </div>
+            ) : null;
+          })()}
 
           {/* Team Plan Approval (shown when lead requests plan approval) */}
           {pendingPlan && (

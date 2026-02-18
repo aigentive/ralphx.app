@@ -126,7 +126,9 @@ describe("ChatMessageList - Scroll Behavior", () => {
   });
 
   describe("streaming auto-scroll", () => {
-    it("auto-scrolls when new streaming tool calls appear", () => {
+    it("suppresses TypingIndicator when streaming tool calls are active", () => {
+      // StreamingToolIndicator is now rendered OUTSIDE ChatMessageList (in parent panels)
+      // ChatMessageList only shows TypingIndicator when there are no tool calls active
       const streamingToolCalls: ToolCall[] = [
         {
           id: "tool-1",
@@ -135,16 +137,7 @@ describe("ChatMessageList - Scroll Behavior", () => {
         },
       ];
 
-      const { rerender } = render(
-        <ChatMessageList
-          {...defaultProps}
-          isSending={true}
-          streamingToolCalls={[]}
-        />
-      );
-
-      // Add streaming tool call
-      rerender(
+      render(
         <ChatMessageList
           {...defaultProps}
           isSending={true}
@@ -152,8 +145,8 @@ describe("ChatMessageList - Scroll Behavior", () => {
         />
       );
 
-      // Verify tool indicator is rendered
-      expect(screen.getByTestId("streaming-tool-indicator")).toBeInTheDocument();
+      // StreamingToolIndicator is NOT in ChatMessageList anymore (moved to parent)
+      expect(screen.queryByTestId("streaming-tool-indicator")).not.toBeInTheDocument();
     });
 
     it("auto-scrolls when streaming text appears", () => {
@@ -610,9 +603,11 @@ describe("ChatMessageList - Scroll Behavior", () => {
         />
       );
 
-      // Verify streaming indicators render
-      // Virtuoso handles scroll via context prop (footerContentHash)
-      expect(screen.getByTestId("streaming-tool-indicator")).toBeInTheDocument();
+      // Virtuoso handles scroll via context prop (footerContentHash).
+      // StreamingToolIndicator is rendered in parent panels, not in ChatMessageList.
+      expect(screen.queryByTestId("streaming-tool-indicator")).not.toBeInTheDocument();
+      // Component renders without error
+      expect(screen.getByTestId("integrated-chat-messages")).toBeInTheDocument();
     });
 
     it("computes hash based on streaming text presence", () => {
@@ -681,6 +676,18 @@ describe("ChatMessageList - Scroll Behavior", () => {
 
       const hookArgs = mockUseChatAutoScroll.mock.calls[0][0] as Record<string, unknown>;
       expect(hookArgs.messageCount).toBe(7);
+    });
+
+    it("passes conversationId to useChatAutoScroll hook", () => {
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          conversationId="conv-test-123"
+        />
+      );
+
+      const hookArgs = mockUseChatAutoScroll.mock.calls[0][0] as Record<string, unknown>;
+      expect(hookArgs.conversationId).toBe("conv-test-123");
     });
 
     it("does not pass isStreaming or streamingHash to hook (removed props)", () => {
