@@ -16,6 +16,7 @@ import { chatKeys } from "@/hooks/useChat";
 import { taskKeys } from "@/hooks/useTasks";
 import type { ContextType } from "@/types/chat-conversation";
 import { MERGE_STATUSES } from "@/types/status";
+import { chatApi } from "@/api/chat";
 
 // ============================================================================
 // Types
@@ -25,6 +26,8 @@ interface UseChatRecoveryProps {
   activeConversationId: string | null | undefined;
   storeContextKey: string;
   currentContextType: ContextType;
+  /** Context ID used to key is_agent_running — bypasses activeConversationId mismatch */
+  currentContextId: string;
   isHistoryMode: boolean;
   isAgentContext: boolean;
   isAgentRunning: boolean;
@@ -48,6 +51,7 @@ export function useChatRecovery({
   activeConversationId,
   storeContextKey,
   currentContextType,
+  currentContextId,
   isHistoryMode,
   isAgentContext,
   isAgentRunning,
@@ -133,6 +137,53 @@ export function useChatRecovery({
 
     return () => clearInterval(intervalId);
   }, [activeConversationId, currentContextType, ideationSessionId, isAgentRunning, isAgentContext, queryClient, selectedTaskId]);
+
+  // Reconciliation poll: 1.5s safety net while isAgentRunning is true.
+  // Uses is_agent_running(contextType, contextId) rather than getAgentRunStatus(conversationId)
+  // to bypass the activeConversationId mismatch that is the actual root cause of stuck state.
+  // Zero overhead when no agent is running (interval is never created).
+  useEffect(() => {
+    if (!isAgentRunning) return undefined;
+
+    const intervalId = setInterval(() => {
+      chatApi
+        .isAgentRunning(currentContextType, currentContextId)
+        .then((running) => {
+          if (!running) {
+            setAgentRunning(storeContextKey, false);
+          }
+        })
+        .catch(() => {
+          // Silently ignore — primary signal is still Tauri events
+        });
+    }, 1500);
+
+    return () => clearInterval(intervalId);
+  }, [isAgentRunning, currentContextType, currentContextId, storeContextKey, setAgentRunning]);
+
+  // Fast path: reconcile immediately when user re-focuses the app.
+  // Covers the most common user-facing case: app was backgrounded/suspended during completion.
+  useEffect(() => {
+    if (!isAgentRunning) return undefined;
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        chatApi
+          .isAgentRunning(currentContextType, currentContextId)
+          .then((running) => {
+            if (!running) {
+              setAgentRunning(storeContextKey, false);
+            }
+          })
+          .catch(() => {
+            // Silently ignore
+          });
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [isAgentRunning, currentContextType, currentContextId, storeContextKey, setAgentRunning]);
 
   // Merge watchdog: keep polling task status while in merge flow
   useEffect(() => {

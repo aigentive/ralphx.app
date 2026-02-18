@@ -302,6 +302,7 @@ export function IntegratedChatPanel({
     activeConversationId,
     storeContextKey,
     currentContextType,
+    currentContextId,
     isHistoryMode,
     isAgentContext,
     isAgentRunning,
