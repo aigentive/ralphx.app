@@ -13,6 +13,7 @@ mod agent_spawning_tests;
 mod cleanup_tests;
 mod completion_transition_tests;
 mod concurrency_tests;
+mod concurrent_merge_guard_tests;
 mod error_visibility_tests;
 mod git_isolation_tests;
 pub(crate) mod helpers;

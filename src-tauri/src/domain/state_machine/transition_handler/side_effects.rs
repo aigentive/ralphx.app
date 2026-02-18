@@ -92,6 +92,44 @@ impl<'a> super::TransitionHandler<'a> {
         let task_id_str = &self.machine.context.task_id;
         let project_id_str = &self.machine.context.project_id;
 
+        // --- Self-dedup guard ---
+        // Prevent two concurrent `attempt_programmatic_merge` calls for the same task
+        // (e.g., double-click retry or reconciliation racing with on_enter(PendingMerge)).
+        // Uses std::sync::Mutex for synchronous insert/remove (safe from async context).
+        {
+            let mut in_flight = self
+                .machine
+                .context
+                .services
+                .merges_in_flight
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            if !in_flight.insert(task_id_str.clone()) {
+                tracing::info!(
+                    task_id = task_id_str,
+                    "Merge attempt skipped — already in flight for this task (self-dedup guard)"
+                );
+                return;
+            }
+        }
+        // Register a cleanup guard so we always remove the task from `merges_in_flight`
+        // when this function returns (success, error, or early return).
+        struct InFlightGuard {
+            set: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
+            id: String,
+        }
+        impl Drop for InFlightGuard {
+            fn drop(&mut self) {
+                if let Ok(mut guard) = self.set.lock() {
+                    guard.remove(&self.id);
+                }
+            }
+        }
+        let _in_flight_guard = InFlightGuard {
+            set: std::sync::Arc::clone(&self.machine.context.services.merges_in_flight),
+            id: task_id_str.clone(),
+        };
+
         // Only proceed if repos are available
         let (Some(ref task_repo), Some(ref project_repo)) = (
             &self.machine.context.services.task_repo,
@@ -472,7 +510,13 @@ impl<'a> super::TransitionHandler<'a> {
         // we must defer this task to avoid the "branch already checked out" error.
         // Priority: task that entered pending_merge first wins; later task gets deferred.
         // Tie-breaker: lexical task ID comparison for deterministic results.
+        //
+        // TOCTOU fix: acquire merge_lock before the check-and-set so two tasks
+        // cannot both read "no blocker" simultaneously and both proceed to merge.
+        // The guard is held until the deferred metadata is written (or cleared),
+        // then dropped — either explicitly at the `return` site or at block end.
         if project.git_mode == GitMode::Worktree {
+            let _merge_guard = self.machine.context.services.merge_lock.lock().await;
             let all_tasks = task_repo
                 .get_by_project(&project.id)
                 .await
