@@ -177,6 +177,12 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
         tracing::debug!("send_background start");
         let event_ctx = event_context(&conversation_id, &context_type, &context_id);
 
+        // Pre-spawn cleanup: disband any stale teams for this context before the new run.
+        // Handles mode-switch (team → solo) and crash-recovery re-execution scenarios.
+        if let Some(ref service) = team_service {
+            service.cleanup_stale_teams_for_context(&context_id).await;
+        }
+
         // Resolve project ID for RALPHX_PROJECT_ID env var (used in queue processing)
         let resolved_project_id = chat_service_context::resolve_project_id(
             context_type,

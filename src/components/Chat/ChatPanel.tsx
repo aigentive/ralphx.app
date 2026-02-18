@@ -560,8 +560,8 @@ function ChatPanelContent({ context }: ChatPanelProps) {
               hookEvents={hookEvents}
               activeHooks={activeHooksList}
               finalizingConversationRef={finalizingConversationRef}
-              teamFilter={isTeamActive ? teamFilter : undefined}
-              contextKey={isTeamActive ? contextKey : undefined}
+              teamFilter={activeTeam ? teamFilter : undefined}
+              contextKey={activeTeam ? contextKey : undefined}
             />
           </div>
         )}

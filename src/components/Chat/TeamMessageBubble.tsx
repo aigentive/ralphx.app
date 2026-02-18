@@ -6,6 +6,9 @@
  */
 
 import React from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { markdownComponents } from "./MessageItem.markdown";
 
 interface TeamMessageBubbleProps {
   from: string;
@@ -52,10 +55,15 @@ export const TeamMessageBubble = React.memo(function TeamMessageBubble({
             </span>
           )}
         </div>
-        {/* Content */}
-        <p className="text-[12px] leading-relaxed" style={{ color: "hsl(220 10% 70%)" }}>
-          {content}
-        </p>
+        {/* Content — heading sizes clamped for compact bubble layout */}
+        <div
+          className="text-[12px] [&_h1]:text-[14px] [&_h2]:text-[13px] [&_h3]:text-[12px]"
+          style={{ color: "hsl(220 10% 70%)" }}
+        >
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            {content}
+          </ReactMarkdown>
+        </div>
       </div>
     </div>
   );
