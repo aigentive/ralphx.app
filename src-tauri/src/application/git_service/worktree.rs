@@ -246,4 +246,60 @@ impl GitService {
 
         Ok(())
     }
+
+    /// Remove a stale `.git/index.lock` file if it is older than `min_age_secs`.
+    ///
+    /// `index.lock` is created by git when it starts an index-modifying operation and
+    /// removed when the operation completes. A lock file that is older than `min_age_secs`
+    /// was left behind by a crashed or killed process and is safe to remove.
+    ///
+    /// Returns `Ok(true)` if the lock was removed, `Ok(false)` if it did not exist or
+    /// was too young to remove, and `Err` only if removal was attempted but failed.
+    ///
+    /// # Arguments
+    /// * `repo` - Path to the git repository (the directory containing `.git`)
+    /// * `min_age_secs` - Minimum age in seconds before the lock is considered stale
+    pub fn remove_stale_index_lock(repo: &Path, min_age_secs: u64) -> AppResult<bool> {
+        let git_dir = Self::resolve_git_dir(repo);
+        let lock_path = git_dir.join("index.lock");
+
+        if !lock_path.exists() {
+            return Ok(false);
+        }
+
+        let metadata = std::fs::metadata(&lock_path).map_err(|e| {
+            AppError::GitOperation(format!(
+                "Failed to read index.lock metadata at '{}': {}",
+                lock_path.display(),
+                e
+            ))
+        })?;
+
+        let age_secs = metadata
+            .modified()
+            .ok()
+            .and_then(|mtime| mtime.elapsed().ok())
+            .map(|dur| dur.as_secs())
+            .unwrap_or(0);
+
+        if age_secs < min_age_secs {
+            debug!(
+                "index.lock at '{}' is only {}s old (threshold: {}s) — skipping removal",
+                lock_path.display(),
+                age_secs,
+                min_age_secs
+            );
+            return Ok(false);
+        }
+
+        std::fs::remove_file(&lock_path).map_err(|e| {
+            AppError::GitOperation(format!(
+                "Failed to remove stale index.lock at '{}': {}",
+                lock_path.display(),
+                e
+            ))
+        })?;
+
+        Ok(true)
+    }
 }
