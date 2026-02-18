@@ -33,6 +33,16 @@ export const BulkCancelResponseSchemaRaw = z.object({
 });
 
 /**
+ * Unblock task response schema from Rust (snake_case)
+ * Returned by unblock_task command. Includes the updated task and an optional
+ * warning when one or more of its dependencies are in Failed status.
+ */
+export const UnblockTaskResponseSchemaRaw = z.object({
+  task: TaskSchema,
+  warning: z.string().nullable(),
+});
+
+/**
  * State transition response schema from Rust (snake_case)
  * Used by StateTimelineNav for displaying task state history.
  */
