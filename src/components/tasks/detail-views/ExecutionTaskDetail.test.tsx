@@ -226,6 +226,51 @@ describe("ExecutionTaskDetail", () => {
     expect(screen.queryByText("AI Feedback")).not.toBeInTheDocument();
   });
 
+  it("renders revision feedback section for re_executing tasks with human reviewer", () => {
+    const task = createTestTask({ internalStatus: "re_executing" });
+    const reviewNote: ReviewNoteResponse = {
+      id: "note-2",
+      task_id: task.id,
+      reviewer: "human",
+      outcome: "changes_requested",
+      notes: "Please add better error messages",
+      created_at: "2026-01-28T11:00:00+00:00",
+    };
+
+    mockUseTaskStateHistory.mockReturnValue({
+      data: [reviewNote],
+      isLoading: false,
+      error: null,
+      isEmpty: false,
+      latestEntry: reviewNote,
+      refetch: vi.fn(),
+    });
+
+    render(<ExecutionTaskDetail task={task} />, { wrapper: TestWrapper });
+
+    expect(screen.getByTestId("revision-feedback-banner")).toBeInTheDocument();
+    expect(screen.getByText("Feedback Being Addressed")).toBeInTheDocument();
+    expect(screen.getByText("Human Feedback")).toBeInTheDocument();
+    expect(screen.queryByText("AI Feedback")).not.toBeInTheDocument();
+    expect(screen.getByText("Please add better error messages")).toBeInTheDocument();
+  });
+
+  it("hides revision feedback section when re_executing but no feedback and not loading", () => {
+    const task = createTestTask({ internalStatus: "re_executing" });
+    mockUseTaskStateHistory.mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+      isEmpty: true,
+      latestEntry: null,
+      refetch: vi.fn(),
+    });
+
+    render(<ExecutionTaskDetail task={task} />, { wrapper: TestWrapper });
+
+    expect(screen.queryByTestId("revision-feedback-banner")).not.toBeInTheDocument();
+  });
+
   it("renders steps section when task has steps", () => {
     const task = createTestTask();
     mockUseTaskSteps.mockReturnValue({
