@@ -496,6 +496,7 @@ impl ProposalDependencyRepository for MockDependencyRepository {
         proposal_id: &TaskProposalId,
         depends_on_id: &TaskProposalId,
         _reason: Option<&str>,
+        _source: Option<&str>,
     ) -> AppResult<()> {
         self.dependencies
             .lock()
@@ -577,6 +578,31 @@ impl ProposalDependencyRepository for MockDependencyRepository {
     }
 
     async fn clear_session_dependencies(&self, _session_id: &IdeationSessionId) -> AppResult<()> {
+        self.dependencies.lock().unwrap().clear();
+        Ok(())
+    }
+
+    async fn get_all_for_session_with_source(
+        &self,
+        _session_id: &IdeationSessionId,
+    ) -> AppResult<Vec<(TaskProposalId, TaskProposalId, Option<String>, String)>> {
+        Ok(self
+            .dependencies
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(p, d)| {
+                (
+                    TaskProposalId::from_string(p.clone()),
+                    TaskProposalId::from_string(d.clone()),
+                    None,
+                    String::from("auto"),
+                )
+            })
+            .collect())
+    }
+
+    async fn clear_auto_dependencies(&self, _session_id: &IdeationSessionId) -> AppResult<()> {
         self.dependencies.lock().unwrap().clear();
         Ok(())
     }

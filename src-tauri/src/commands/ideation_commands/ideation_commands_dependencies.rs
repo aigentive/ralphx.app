@@ -32,7 +32,7 @@ pub async fn add_proposal_dependency(
 
     state
         .proposal_dependency_repo
-        .add_dependency(&from_id, &to_id, None)
+        .add_dependency(&from_id, &to_id, None, Some("manual"))
         .await
         .map_err(|e| e.to_string())?;
 
