@@ -853,6 +853,29 @@ async fn run_install_phase(
             exec_cwd.join(&resolved_path)
         };
 
+        // Skip install if node_modules already exists (symlink from setup phase or prior install)
+        let nm_path = cmd_cwd.join("node_modules");
+        if nm_path.exists() || nm_path.is_symlink() {
+            tracing::info!(
+                command = %resolved_cmd,
+                cwd = %cmd_cwd.display(),
+                is_symlink = nm_path.is_symlink(),
+                "Skipping install: node_modules already exists"
+            );
+            log.push(ValidationLogEntry {
+                phase: "install".to_string(),
+                command: resolved_cmd.clone(),
+                path: resolved_path.clone(),
+                label: entry.label.clone(),
+                status: "skipped".to_string(),
+                exit_code: None,
+                stdout: String::new(),
+                stderr: "node_modules already exists — install skipped".to_string(),
+                duration_ms: 0,
+            });
+            continue;
+        }
+
         // Emit "running" event before execution
         if let Some(handle) = app_handle {
             let _ = handle.emit(
