@@ -1049,6 +1049,7 @@ export function PlanningView({
               style={{ width: `${chatPanelWidth}px` }}
             >
               <IntegratedChatPanel
+                key={session.id}
                 projectId={session.projectId}
                 ideationSessionId={session.id}
                 emptyState={<ConversationEmptyState />}

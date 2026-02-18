@@ -32,7 +32,8 @@ vi.mock("@/stores/chatStore", () => ({
   useChatStore: vi.fn(),
   selectActiveConversationId: vi.fn((state: MockState) => state.activeConversationId),
   getContextKey: vi.fn((context: ChatContext) => {
-    if (context.view === "ideation") return `ideation:${context.ideationSessionId}`;
+    // Mirrors real implementation: ideation uses "session" prefix (from chat-context-registry storeKeyPrefix)
+    if (context.view === "ideation") return `session:${context.ideationSessionId}`;
     if (context.view === "task_detail") return `task:${context.selectedTaskId}`;
     return `project:${context.projectId}`;
   }),
@@ -100,7 +101,81 @@ describe("useChatPanelContext", () => {
   const wrapper = ({ children }: { children: React.ReactNode }) =>
     createElement(QueryClientProvider, { client: queryClient }, children);
 
+  describe("unmount cleanup", () => {
+    it("should clear isAgentRunning and isSending for current storeContextKey on unmount", async () => {
+      const { unmount } = renderHook(
+        (props) => useChatPanelContext(props),
+        {
+          wrapper,
+          initialProps: {
+            projectId: "project-1",
+            ideationSessionId: "session-1",
+            selectedTaskId: undefined,
+            isExecutionMode: false,
+            isReviewMode: false,
+            isMergeMode: false,
+            isHistoryMode: false,
+          },
+        }
+      );
+
+      // Unmount the hook (simulates switching sessions with key={session.id})
+      unmount();
+
+      // Should have cleared the storeContextKey for this session
+      // (mock getContextKey returns "session:session-1" for ideation view, mirroring the real registry storeKeyPrefix)
+      expect(mockStore.setAgentRunning).toHaveBeenCalledWith("session:session-1", false);
+      expect(mockStore.setSending).toHaveBeenCalledWith("session:session-1", false);
+    });
+  });
+
   describe("context switching", () => {
+    it("should clear agent running state for OLD storeContextKey on context switch", async () => {
+      const { rerender } = renderHook(
+        (props) => useChatPanelContext(props),
+        {
+          wrapper,
+          initialProps: {
+            projectId: "project-1",
+            ideationSessionId: "session-1",
+            selectedTaskId: undefined,
+            isExecutionMode: false,
+            isReviewMode: false,
+            isMergeMode: false,
+            isHistoryMode: false,
+          },
+        }
+      );
+
+      // Clear calls from initial mount
+      mockStore.setAgentRunning.mockClear();
+      mockStore.setSending.mockClear();
+
+      // Switch to a different session
+      rerender({
+        projectId: "project-1",
+        ideationSessionId: "session-2",
+        selectedTaskId: undefined,
+        isExecutionMode: false,
+        isReviewMode: false,
+        isMergeMode: false,
+        isHistoryMode: false,
+      });
+
+      // Should have cleared the OLD session's storeContextKey, not the new one
+      // (mock getContextKey returns "session:<id>" for ideation view, mirroring registry storeKeyPrefix)
+      await waitFor(() => {
+        expect(mockStore.setAgentRunning).toHaveBeenCalledWith("session:session-1", false);
+        expect(mockStore.setSending).toHaveBeenCalledWith("session:session-1", false);
+      });
+
+      // Should NOT have cleared the NEW session's key
+      const newSessionCalls = mockStore.setAgentRunning.mock.calls.filter(
+        (call: [string, boolean]) => call[0] === "session:session-2"
+      );
+      expect(newSessionCalls.length).toBe(0);
+    });
+
     it("should clear messages for old context during context change", async () => {
       const { rerender } = renderHook(
         (props) => useChatPanelContext(props),
